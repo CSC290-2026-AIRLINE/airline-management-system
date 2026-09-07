@@ -1,0 +1,20 @@
+# Fallback whole Repo for Infra team
+* @CSC290-2026-AIRLINE/infrastructure-leads
+
+# Documentations
+/docs/ @CSC290-2026-AIRLINE/project-managers @CSC290-2026-AIRLINE/infrastructure-leads
+
+# Database Schema & Migrations
+/database/ @CSC290-2026-AIRLINE/database-leads
+
+# Backend Core & Modules
+/apps/backend/ @CSC290-2026-AIRLINE/development-leads
+
+# Frontend
+/apps/frontend/ @CSC290-2026-AIRLINE/development-leads
+
+# Infra & System Configs
+/.github/ @CSC290-2026-AIRLINE/infrastructure-leads
+/docker* @CSC290-2026-AIRLINE/infrastructure-leads
+/package.json @CSC290-2026-AIRLINE/infrastructure-leads
+/pnpm-workspace.yaml @CSC290-2026-AIRLINE/infrastructure-leads
