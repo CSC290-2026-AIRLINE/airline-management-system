@@ -22,7 +22,7 @@ services:
           memory: 512M
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: airline_minio
     restart: always
     command: server /data --console-address ":9001"
@@ -40,19 +40,19 @@ services:
           memory: 256M
 
   minio-create-buckets:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     container_name: airline_minio_init
     depends_on:
       - minio
     entrypoint: >
       /bin/sh -c "
       echo 'Waiting for MinIO to be ready...';
-      until /usr/bin/mc alias set local http://minio:9000 minioadmin minioadminpassword; do
+      until mc alias set local http://minio:9000 minioadmin minioadminpassword; do
         sleep 1;
       done;
-      /usr/bin/mc mb --ignore-existing local/airline-public;
-      /usr/bin/mc mb --ignore-existing local/airline-private;
-      /usr/bin/mc anonymous set download local/airline-public;
+      mc mb --ignore-existing local/airline-public;
+      mc mb --ignore-existing local/airline-private;
+      mc anonymous set download local/airline-public;
       echo 'Buckets created successfully!';
       exit 0;
       "
