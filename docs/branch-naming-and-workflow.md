@@ -32,7 +32,7 @@ chore/g11-cleanup-unused-imports
 
 **Not allowed:** `johns-branch`, `test123`, `fix-bug`, `Feature/G03_SeatHold`, anything with your name, anything without a team-id.
 
-> **Protected Branches:** Direct pushes to both `dev` and `main` are strictly forbidden.
+> **Protected Branches:** Groups (G01–G16) cannot push directly to `dev` or `main` — all changes go through a PR. **Dev Leads and Infra Leads are the exception:** as branch administrators, Dev Leads can push/merge directly to `dev` and Infra Leads can push/merge directly to `main`, without opening a PR.
 
 ---
 
@@ -63,7 +63,7 @@ Keep the description under ~72 characters. If you need more detail, put it in th
 
 ### 1. Feature PRs (Target: `dev`)
 
-All day-to-day development work merges into `dev`.
+All day-to-day development work from groups (G01–G16) merges into `dev` through a PR.
 
 **PR title:**
 
@@ -85,8 +85,9 @@ All day-to-day development work merges into `dev`.
 Production releases follow a strict integration pipeline from `dev` to `main`.
 
 - **Source:** Must originate from `dev` only (PRs from feature branches directly to `main` are blocked automatically).
+- **Opened by:** Dev Leads, once `dev` is ready to release.
 - **Merge Method:** **Merge commit** only (preserves release checkpoints and branch history).
-- **Approvals & Merge Authority:** Handled and approved exclusively by **Infra Leads**.
+- **Approvals & Merge Authority:** Handled and merged **exclusively by Infra Leads**. Code Owner review is not required on `main` PRs — since only Infra Leads can complete the merge, this branch doesn't need a separate ownership check.
 
 ---
 

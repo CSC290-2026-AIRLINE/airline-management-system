@@ -7,7 +7,6 @@ Central database workspace managing schema definitions, migrations, seeds, and d
 ## Infrastructure
 
 - **Database Engine:** PostgreSQL 16
-- **Caching & Ephemeral Store:** Redis 7 (Alpine)
 - **ORM:** Prisma
 
 ---

@@ -1,15 +1,17 @@
 # Backend Structure
 
-Monolith. One app, one repo (`backend`), one module folder per team. No Docker, no separate services — everything runs as a single application.
+Monolith. One NestJS app (`apps/backend`), one module folder per team. Part of the pnpm monorepo — deployed as one of three Docker images (backend, frontend, database-related tooling) built by CI and pulled onto the project VM; locally it runs via `pnpm dev`, not containerized.
 
-**Layered pattern inside each module** (per Phase 1 sign-off): `Route → Controller → Service → Model/Repository`. Exact file naming inside that pattern depends on the language/framework chosen at the tech stack meeting — placeholder below until that's finalized, but the top-level skeleton is fixed now so teams can start scaffolding.
+Prisma is the ORM. **Models live in one centralized schema** (`database/prisma/schema.prisma`), not per-module — see `database-structure.md`. Backend modules import the generated Prisma client; they do not own their own model files.
 
 ## Folder skeleton
 
 ```
-backend/
+apps/backend/
 ├── src/
-│   ├── core/                      # auth, RBAC, JWKS — dev leads + infra leads only
+│   ├── main.ts
+│   ├── app.module.ts
+│   ├── core/                       # auth, RBAC, JWKS — dev leads + infra leads only
 │   ├── modules/
 │   │   ├── flight-scheduling/
 │   │   ├── booking-search/
@@ -27,39 +29,39 @@ backend/
 │   │   ├── customer-service/
 │   │   ├── bi-dashboards/
 │   │   └── admin-console/
-│   ├── shared/                    # shared utils, middleware, constants — dev lead review required
-│   └── config/                    # env config, app entrypoint wiring
-├── tests/
-│   └── modules/                   # mirrors src/modules/ structure exactly
-├── CODEOWNERS
+│   ├── shared/                      # guards, interceptors, pipes, common utils — dev lead review required
+│   ├── config/                      # env config module (ConfigModule setup)
+│   └── prisma/                      # PrismaService wrapper around the generated client
+├── test/                            # e2e tests
+├── .env.example
 └── README.md
 ```
 
 ## Inside each module folder
 
+Standard NestJS module shape (tests are colocated next to the code they test — NestJS convention, no separate `tests/` mirror folder):
+
 ```
 modules/<module-name>/
-├── routes/         # (or controllers/, depending on framework — TBD after tech stack meeting)
-├── controllers/
-├── services/
-├── models/         # or repositories/, TBD
-└── index.*         # the module's public interface — this is the ONLY thing other modules may import
+├── <module-name>.module.ts       # declares the module, its imports/exports — this IS the public interface
+├── <module-name>.controller.ts   # routes
+├── <module-name>.service.ts      # business logic
+├── dto/                           # request/response DTOs, validated with class-validator
+└── <module-name>.service.spec.ts # unit tests
 ```
-
-*(File extension and exact sub-folder names will be confirmed as an update to this doc once backend language/framework is finalized. This skeleton — module folders under `src/modules/`, one per team — will not change regardless of language.)*
 
 ## Rules
 
-1. **One team, one folder.** Your team only writes inside `modules/<your-module>/` and `tests/modules/<your-module>/`. Anything outside that needs the owning team's (or a lead's) review — `CODEOWNERS` enforces this automatically.
+1. **One team, one folder.** Your team only writes inside `src/modules/<your-module>/`. Anything outside needs the owning team's (or a lead's) review — enforced by `CODEOWNERS` once per-module entries are added (see status note below).
 
-2. **No cross-module internal imports.** Module A cannot import Module B's `services/` or `models/` directly. Module A can only import Module B's `index.*` — its declared public interface. If you need something Module B doesn't expose, ask them to expose it; don't reach into their internals. This is what keeps 16 teams from breaking each other silently.
+2. **Module boundaries are enforced through NestJS's own module system, not just convention.** A module only exposes what it lists in its `exports` array. If Module A needs something from Module B, Module A imports Module B's module and injects its exported service — standard NestJS dependency injection. Module A must never import a file from deep inside Module B's folder directly. If B doesn't export what A needs, A asks B to export it.
 
 3. **`core/` and `shared/` are not team folders.** Changes there need dev lead sign-off regardless of who's making them — these are load-bearing for every module.
 
-4. **`tests/modules/` mirrors `src/modules/` 1:1.** If your module folder is `booking-pnr`, your tests live in `tests/modules/booking-pnr/`, same file names as what they test.
+4. **Data models are not yours to add locally.** If your module needs a new table/model, you edit `database/prisma/schema.prisma` (see `database-structure.md`), not a local model file — there is one Prisma schema for the whole system.
 
-5. **Every module folder needs its own short `README.md`** stating: what it does, what it depends on, what its public interface (`index.*`) exposes. This is what other teams read before they ask you questions in Discord.
+5. **Every module folder needs a short comment block at the top of its `.module.ts`** stating what it does and what it depends on. This is what other teams read before asking questions in Discord.
 
 ## Status
 
-Structure is expected to change once or twice before development starts, once the tech stack meeting locks in a language/framework. This doc will be updated in place — check `docs` repo PR history for changes rather than assuming this is final.
+Structure may still shift slightly as dev leads scaffold the actual 16 module folders. Once module folders exist, `CODEOWNERS` needs a line per module (`/apps/backend/src/modules/booking-pnr/ @CSC290-2026-AIRLINE/g03`) — currently the whole of `apps/backend/` is owned broadly by `development-leads` as a placeholder.
