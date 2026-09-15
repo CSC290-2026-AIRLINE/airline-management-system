@@ -1,6 +1,6 @@
 # Database Structure
 
-Single shared PostgreSQL database, single **centralized Prisma schema** — not per-team SQL files. Every team edits the same `schema.prisma`, so this file is the highest merge-conflict risk in the whole repo. MinIO is a separate service (object storage), not covered by this doc. Redis was previously planned but is not currently in use.
+The database layer is centrally designed, modeled, and maintained exclusively by the Database Leads/Team. Feature teams do not directly write Prisma models or generate migrations. Feature teams specify domain requirements, while the DB team translates them into normalized tables, constraints, relations, and managed migrations.
 
 ## Folder skeleton
 
