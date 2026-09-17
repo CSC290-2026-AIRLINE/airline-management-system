@@ -1,6 +1,10 @@
 # Frontend Structure
 
-React (Vite, TypeScript), same module boundaries as `backend`, adapted to a feature-based structure. Part of the pnpm monorepo — deployed as one of three Docker images built by CI; locally it runs via `pnpm dev`, not containerized.
+React (Vite, TypeScript), adhering to module boundaries adapted to a feature-based structure. The frontend architecture is split into two distinct applications inside `apps/`:
+1. `apps/customer-web`
+2. `apps/staff-web`
+
+Part of the npm monorepo (npm workspaces) — deployed as independent Docker containers (`customer-web:5151`, `staff-web:6161`); locally running via `npm run dev -w apps/customer-web` and `npm run dev -w apps/staff-web` (or together via `npm run dev`).
 
 ## Folder skeleton
 
@@ -35,7 +39,7 @@ apps/frontend/
 └── README.md
 ```
 
-Feature folder names match `apps/backend/src/modules/` exactly (tests are colocated next to the code they test — no separate `tests/` mirror folder). Whichever team owns `booking-pnr` in backend owns `booking-pnr` in frontend too — no exceptions, this is what keeps API contract discussions between the two apps unambiguous.
+Feature folder names match `apps/backend/src/modules/` exactly (tests are colocated next to the code they test — no separate `tests/` mirror folder). Whichever team owns `booking-pnr` in backend owns `booking-pnr` in frontend too — no exceptions, this is what keeps API contract discussions between the apps unambiguous.
 
 ## Inside each feature folder
 
@@ -64,4 +68,4 @@ features/<feature-name>/
 
 ## Status
 
-Structure may still shift slightly as dev leads and UI/UX leads scaffold the actual 16 feature folders. Once they exist, `CODEOWNERS` needs a line per feature (`/apps/frontend/src/features/booking-pnr/ @CSC290-2026-AIRLINE/g03`) — currently the whole of `apps/frontend/` is owned broadly by `development-leads` as a placeholder.
+Structure will be scaffolded per feature. Once folders exist, `CODEOWNERS` will feature per-module lines (e.g. `/apps/customer-web/src/features/booking-pnr/ @CSC290-2026-AIRLINE/g03`) — currently both `/apps/customer-web/` and `/apps/staff-web/` are owned by `development-leads` as a placeholder.

@@ -1,8 +1,8 @@
 # Backend Structure
 
-Monolith. One NestJS app (`apps/backend`), one module folder per team. Part of the pnpm monorepo — deployed as one of three Docker images (backend, frontend, database-related tooling) built by CI and pulled onto the project VM; locally it runs via `pnpm dev`, not containerized.
+Monolith. One NestJS app (`apps/backend`), one module folder per team. Part of the npm monorepo (npm workspaces) — deployed as Docker images; locally it runs via npm scripts (`npm run dev` or `npm run start:dev -w apps/backend`).
 
-Prisma is the ORM. **Models live in one centralized schema** (`database/prisma/schema.prisma`), not per-module — see `database-structure.md`. Backend modules import the generated Prisma client; they do not own their own model files.
+Prisma is the ORM. **Models live in one centralized schema** (`db/prisma/schema.prisma`), not per-module — see `database-structure.md`. Backend modules import the generated Prisma client; they do not own their own model files.
 
 ## Folder skeleton
 
@@ -58,7 +58,7 @@ modules/<module-name>/
 
 3. **`core/` and `shared/` are not team folders.** Changes there need dev lead sign-off regardless of who's making them — these are load-bearing for every module.
 
-4. **Data models are not yours to add locally.** If your module needs a new table/model, you edit `database/prisma/schema.prisma` (see `database-structure.md`), not a local model file — there is one Prisma schema for the whole system.
+4. **Data models are managed centrally by the Database Team.** Feature teams do not edit `db/prisma/schema.prisma` or generate migrations directly. If your module needs a new table, field, or relation, define your domain requirements in `db/schema-docs/<module>.md` and submit a request to the DB Team (see `database-structure.md`). Once merged, run `npx prisma generate --schema=db/prisma/schema.prisma` to update your local Prisma client.
 
 5. **Every module folder needs a short comment block at the top of its `.module.ts`** stating what it does and what it depends on. This is what other teams read before asking questions in Discord.
 

@@ -5,8 +5,9 @@ This repository is a unified **Monorepo** containing all services, database sche
 ## Architecture Layout
 
 - `/apps/backend` — NestJS monolith API, Prisma ORM, OpenAPI/Swagger, MinIO
-- `/apps/frontend` — React (Vite), Tailwind CSS, shadcn/ui, TanStack Query (no raw fetch)
-- `/database` — Centralized Prisma schema, migrations, seeds, ERD
+- `/apps/customer-web` — React (Vite), Tailwind CSS, shadcn/ui, TanStack Query
+- `/apps/staff-web` — React (Vite), Tailwind CSS, shadcn/ui, TanStack Query
+- `/db` — Centralized Prisma schema, migrations, seeds, ERD
 - `/docs` — System rules, workflows, architecture docs
 
 ## Start here
@@ -15,8 +16,8 @@ This repository is a unified **Monorepo** containing all services, database sche
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
 | [`branch-naming-and-workflow.md`](./branch-naming-and-workflow.md) | Branch names, commit messages, PR rules, review process — read this first |
 | [`backend-structure.md`](./backend-structure.md)                   | Folder structure for the `backend`, module boundaries                     |
-| [`frontend-structure.md`](./frontend-structure.md)                 | Folder structure for the `frontend`                                       |
-| [`database-structure.md`](./database-structure.md)                 | Migration structure, naming, ownership rules for the `database`           |
+| [`frontend-structure.md`](./frontend-structure.md)                 | Folder structure for the frontends (`customer-web`, `staff-web`)          |
+| [`database-structure.md`](./database-structure.md)                 | Migration structure, naming, ownership rules for the database (`db`)     |
 
 ## Non-negotiable rules (summary)
 

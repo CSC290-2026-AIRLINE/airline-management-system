@@ -1,4 +1,4 @@
-# Airline Management System — Frontend
+# Airline Management System — Customer Web
 
 Client application workspace for the user interface of the Airline Management System (CSC290 Integrated Project I).
 
