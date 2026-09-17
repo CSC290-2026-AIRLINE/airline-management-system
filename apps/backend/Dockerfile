@@ -1,36 +1,29 @@
 FROM node:20-alpine AS base
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
 
 FROM base AS build
 WORKDIR /usr/src/app
 
-# Copy workspace config and package.json
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY package.json package-lock.json tsconfig*.json ./
 COPY apps/backend/package.json ./apps/backend/
-COPY database/ ./database/
+COPY db/ ./db/
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile --filter backend...
+RUN npm ci
 
-# Generate Prisma Client before compile NestJS
-RUN pnpm --filter backend prisma generate
+# RUn prisma generate via binary in node_modules
+RUN ./node_modules/.bin/prisma generate --schema=db/prisma/schema.prisma
 
-# Copy source code and compile
 COPY apps/backend/ ./apps/backend/
-RUN pnpm --filter backend build
-
-# Prepare production dependencies
-RUN pnpm --filter backend --prod deploy /prod/backend
+RUN npm run build -w apps/backend
 
 FROM node:20-alpine AS runner
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
+ENV PORT=8080
 
 USER node
-COPY --from=build --chown=node:node /prod/backend ./
+COPY --from=build --chown=node:node /usr/src/app/node_modules ./node_modules
+COPY --from=build --chown=node:node /usr/src/app/apps/backend/package.json ./
 COPY --from=build --chown=node:node /usr/src/app/apps/backend/dist ./dist
 
-EXPOSE 3000
+EXPOSE 8080
 CMD ["node", "dist/main.js"]

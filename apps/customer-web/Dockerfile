@@ -1,24 +1,18 @@
-FROM node:20-alpine AS base
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
-
-FROM base AS build
+FROM node:20-alpine AS build
 WORKDIR /usr/src/app
 
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY apps/frontend/package.json ./apps/frontend/
+COPY package.json package-lock.json ./
+COPY apps/customer-web/package.json ./apps/customer-web/
 
-RUN pnpm install --frozen-lockfile --filter frontend...
+RUN npm ci
 
-COPY apps/frontend/ ./apps/frontend/
-RUN pnpm --filter frontend build
+COPY tsconfig*.json ./
+COPY apps/customer-web/ ./apps/customer-web/
+RUN npm run build -w apps/customer-web
 
-# Production static server via Nginx
 FROM nginx:alpine AS runner
-COPY --from=build /usr/src/app/apps/frontend/dist /usr/share/nginx/html
+COPY --from=build /usr/src/app/apps/customer-web/dist /usr/share/nginx/html
 
-# Clean ASCII Nginx fallback config
 RUN printf '%s\n' \
 'server {' \
 '    listen 80;' \

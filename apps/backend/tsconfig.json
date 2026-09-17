@@ -13,7 +13,7 @@
     "allowSyntheticDefaultImports": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "src",
     "incremental": true,
     "strictNullChecks": true,
     "noImplicitAny": false,
