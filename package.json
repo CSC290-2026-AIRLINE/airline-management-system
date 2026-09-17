@@ -1,11 +1,12 @@
 {
   "name": "airline-management-system",
   "private": true,
+  "workspaces": ["apps/*"],
   "scripts": {
-    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"pnpm --filter ./apps/backend dev\" \"pnpm --filter ./apps/frontend dev\"",
-    "db:up": "docker compose -f docker-compose.dev.yml up -d",
-    "db:down": "docker compose -f docker-compose.dev.yml down",
-    "db:logs": "docker compose -f docker-compose.dev.yml logs -f"
+    "dev": "npm run db:up && concurrently -n \"BACKEND,CUSTOMER,STAFF\" -c \"blue,green,magenta\" \"npm run start:dev -w apps/backend\" \"npm run dev -w apps/customer-web\" \"npm run dev -w apps/staff-web\"",
+    "db:up": "docker compose -f docker-compose.yml up -d",
+    "db:down": "docker compose -f docker-compose.yml down",
+    "db:logs": "docker compose -f docker-compose.yml logs -f"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
