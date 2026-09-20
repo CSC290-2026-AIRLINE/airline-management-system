@@ -4,10 +4,11 @@
 		"**/package-lock.json": true,
 		"**/dist": true,
 		"**/eslint*": true,
-		// "**/tsconfig*": true,
+		"**/tsconfig*": true,
 		"**/.prettier*": true,
 		"**/.git": true,
 		"**/.github": true,
-		"**/.gitignore": true
+		"**/.gitignore": true,
+		"**/.env*": true
 	}
 }
