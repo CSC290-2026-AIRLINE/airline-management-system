@@ -1,24 +1,29 @@
 import { BadRequestException, Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import type { Request, Response } from 'express'
+import type { EnvConfig } from '@backend/config/env.validation'
 import { AuthService, TokenPair } from './auth.service'
 import { Public } from './decorators/public.decorator'
 import type { SessionExchangeDto } from './dto/session-exchange.dto'
-import { REFRESH_COOKIE_NAME, REFRESH_TOKEN_TTL_DAYS } from './auth.constants'
+import { getRefreshCookieName } from './auth.constants'
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService<EnvConfig, true>,
+  ) {}
 
   @Public()
   @Post('session')
   @HttpCode(200)
-  async createSession(@Body() body: SessionExchangeDto, @Res({ passthrough: true }) res: Response) {
+  async createSession(@Req() req: Request, @Body() body: SessionExchangeDto, @Res({ passthrough: true }) res: Response) {
     if (!body?.sessionToken) {
       throw new BadRequestException('sessionToken is required')
     }
 
-    const { user, tokens } = await this.authService.exchangeClerkSession(body.sessionToken)
-    this.setRefreshCookie(res, tokens.refreshToken)
+    const { user, tokens } = await this.authService.exchangeClerkSession(body.sessionToken, req.headers.origin)
+    this.setRefreshCookie(req, res, tokens.refreshToken)
 
     return { accessToken: tokens.accessToken, user: { id: user.id, email: user.email, name: user.name } }
   }
@@ -33,7 +38,7 @@ export class AuthController {
     }
 
     const { tokens } = await this.authService.refresh(rawRefreshToken)
-    this.setRefreshCookie(res, tokens.refreshToken)
+    this.setRefreshCookie(req, res, tokens.refreshToken)
 
     return { accessToken: tokens.accessToken }
   }
@@ -46,21 +51,33 @@ export class AuthController {
     if (rawRefreshToken) {
       await this.authService.logout(rawRefreshToken)
     }
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: '/api/auth' })
+    const cookieName = getRefreshCookieName(req.headers.origin)
+    if (cookieName) {
+      res.clearCookie(cookieName, { path: '/api/auth' })
+    }
   }
 
   private getRefreshCookie(req: Request): string | undefined {
+    const cookieName = getRefreshCookieName(req.headers.origin)
+    if (!cookieName) {
+      return undefined
+    }
     const cookies = req.cookies as Record<string, string | undefined> | undefined
-    return cookies?.[REFRESH_COOKIE_NAME]
+    return cookies?.[cookieName]
   }
 
-  private setRefreshCookie(res: Response, refreshToken: TokenPair['refreshToken']) {
-    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+  private setRefreshCookie(req: Request, res: Response, refreshToken: TokenPair['refreshToken']) {
+    const cookieName = getRefreshCookieName(req.headers.origin)
+    if (!cookieName) {
+      throw new BadRequestException('Unrecognized origin')
+    }
+    const refreshTokenTtlDays = this.configService.get('REFRESH_TOKEN_TTL_DAYS', { infer: true })
+    res.cookie(cookieName, refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: this.configService.get('NODE_ENV', { infer: true }) === 'production',
       sameSite: 'lax',
       path: '/api/auth',
-      maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
+      maxAge: refreshTokenTtlDays * 24 * 60 * 60 * 1000,
     })
   }
 }

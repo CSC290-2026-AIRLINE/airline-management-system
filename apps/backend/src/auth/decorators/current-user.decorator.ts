@@ -1,5 +1,5 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common'
-import type { AuthenticatedUser } from '@backend/auth/strategies/jwt.strategy'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 
 export const CurrentUser = createParamDecorator((_: unknown, ctx: ExecutionContext): AuthenticatedUser => {
   const request = ctx.switchToHttp().getRequest<{ user: AuthenticatedUser }>()

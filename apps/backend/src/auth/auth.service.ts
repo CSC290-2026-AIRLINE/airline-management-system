@@ -1,10 +1,14 @@
 import { randomBytes, createHash } from 'node:crypto'
 import { Injectable, UnauthorizedException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
+import { ConfigService } from '@nestjs/config'
 import { createClerkClient, verifyToken } from '@clerk/backend'
 import { DbService } from '@backend/db/db.service'
+import type { EnvConfig } from '@backend/config/env.validation'
 import type { user } from '../db/generated/prisma/client'
-import { ACCESS_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_DAYS } from './auth.constants'
+import { getAppOriginConfig, type AppOriginConfig } from './auth.constants'
+
+type ClerkClient = ReturnType<typeof createClerkClient>
 
 export interface TokenPair {
   accessToken: string
@@ -17,19 +21,29 @@ interface IssuedTokenPair extends TokenPair {
 
 @Injectable()
 export class AuthService {
-  private readonly clerkSecretKey = requireEnv('CLERK_SECRET_KEY')
-  private readonly clerkClient = createClerkClient({ secretKey: this.clerkSecretKey })
+  private readonly clerkClients = new Map<string, ClerkClient>()
 
   constructor(
     private readonly db: DbService,
     private readonly jwt: JwtService,
+    private readonly configService: ConfigService<EnvConfig, true>,
   ) {}
 
-  async exchangeClerkSession(sessionToken: string): Promise<{ user: user; tokens: TokenPair }> {
-    const payload = await verifyToken(sessionToken, { secretKey: this.clerkSecretKey })
+  async exchangeClerkSession(sessionToken: string, origin: string | undefined): Promise<{ user: user; tokens: TokenPair }> {
+    const config = getAppOriginConfig(origin)
+    if (!config) {
+      throw new UnauthorizedException('Unrecognized origin')
+    }
+    const clerkSecretKey = this.configService.get(config.clerkSecretKeyEnvVar, { infer: true })
+    if (!clerkSecretKey) {
+      throw new UnauthorizedException(`${config.clerkSecretKeyEnvVar} is not configured`)
+    }
+    const clerkClient = this.getClerkClient(config, clerkSecretKey)
+
+    const payload = await verifyToken(sessionToken, { secretKey: clerkSecretKey })
     const clerkUserId = payload.sub
 
-    const user = await this.findOrCreateUser(clerkUserId)
+    const user = await this.findOrCreateUser(clerkClient, clerkUserId)
     const tokens = await this.issueTokenPair(user)
     return { user, tokens }
   }
@@ -78,13 +92,22 @@ export class AuthService {
     })
   }
 
-  private async findOrCreateUser(clerkUserId: string): Promise<user> {
+  private getClerkClient(config: AppOriginConfig, clerkSecretKey: string): ClerkClient {
+    let client = this.clerkClients.get(config.clerkSecretKeyEnvVar)
+    if (!client) {
+      client = createClerkClient({ secretKey: clerkSecretKey })
+      this.clerkClients.set(config.clerkSecretKeyEnvVar, client)
+    }
+    return client
+  }
+
+  private async findOrCreateUser(clerkClient: ClerkClient, clerkUserId: string): Promise<user> {
     const existing = await this.db.user.findUnique({ where: { auth_user_id: clerkUserId } })
     if (existing) {
       return existing
     }
 
-    const clerkUser = await this.clerkClient.users.getUser(clerkUserId)
+    const clerkUser = await clerkClient.users.getUser(clerkUserId)
     const primaryEmail = clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
     if (!primaryEmail) {
       throw new UnauthorizedException('Clerk account has no verified email address')
@@ -97,13 +120,13 @@ export class AuthService {
   }
 
   private async issueTokenPair(user: user): Promise<IssuedTokenPair> {
-    const accessToken = this.jwt.sign(
-      { sub: user.id, email: user.email },
-      { secret: requireEnv('ACCESS_TOKEN_SECRET'), expiresIn: ACCESS_TOKEN_TTL_SECONDS },
-    )
+    // Secret + expiry come from the JwtModule's own config (auth.module.ts),
+    // sourced from ConfigService, so no need to pass them per call.
+    const accessToken = this.jwt.sign({ sub: user.id, email: user.email })
 
     const refreshToken = randomBytes(48).toString('hex')
-    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000)
+    const refreshTokenTtlDays = this.configService.get('REFRESH_TOKEN_TTL_DAYS', { infer: true })
+    const expiresAt = new Date(Date.now() + refreshTokenTtlDays * 24 * 60 * 60 * 1000)
 
     const row = await this.db.refresh_token.create({
       data: { user_id: user.id, token_hash: hashToken(refreshToken), expires_at: expiresAt },
@@ -115,12 +138,4 @@ export class AuthService {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name]
-  if (!value) {
-    throw new Error(`${name} is not set`)
-  }
-  return value
 }

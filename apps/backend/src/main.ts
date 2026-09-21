@@ -1,25 +1,23 @@
-import path from 'node:path'
 import cookieParser from 'cookie-parser'
 import { NestFactory } from '@nestjs/core'
+import { ConfigService } from '@nestjs/config'
 import { AppModule } from './app.module'
-
-try {
-  process.loadEnvFile(path.join(process.cwd(), '.env'))
-} catch {
-  // .env is optional (e.g. env vars provided by the shell/CI)
-}
+import { APP_ORIGINS } from './auth/auth.constants'
+import type { EnvConfig } from './config/env.validation'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn'],
   })
+  const configService = app.get(ConfigService<EnvConfig, true>)
+
   app.setGlobalPrefix('/api')
   app.use(cookieParser())
   app.enableCors({
-    origin: ['http://localhost:5151', 'http://localhost:6161'],
+    origin: Object.keys(APP_ORIGINS),
     credentials: true,
   })
-  await app.listen(process.env.PORT ?? 8080)
+  await app.listen(configService.get('PORT', { infer: true }))
 }
 
 void bootstrap()
