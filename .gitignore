@@ -27,6 +27,9 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 
+# TanStack Router generated route tree
+routeTree.gen.ts
+
 # IDE & OS specific files
 .DS_Store
 Thumbs.db

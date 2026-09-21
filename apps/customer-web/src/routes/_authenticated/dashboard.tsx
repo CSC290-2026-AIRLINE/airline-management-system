@@ -1,19 +1,10 @@
-import { SignedIn, SignedOut, SignIn, useUser } from '@clerk/clerk-react'
-import { useAppAuth } from './auth/AuthProvider'
-import './App.css'
+import { createFileRoute } from '@tanstack/react-router'
+import { useUser } from '@clerk/clerk-react'
+import { useAppAuth } from '../../auth/AuthProvider'
 
-function App() {
-  return (
-    <section id="center">
-      <SignedOut>
-        <SignIn />
-      </SignedOut>
-      <SignedIn>
-        <Dashboard />
-      </SignedIn>
-    </section>
-  )
-}
+export const Route = createFileRoute('/_authenticated/dashboard')({
+  component: Dashboard,
+})
 
 function Dashboard() {
   const { user: clerkUser } = useUser()
@@ -29,5 +20,3 @@ function Dashboard() {
     </div>
   )
 }
-
-export default App
