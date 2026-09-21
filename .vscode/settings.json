@@ -7,8 +7,8 @@
 		"**/tsconfig*": true,
 		"**/.prettier*": true,
 		"**/.git": true,
-		"**/.github": true,
-		"**/.gitignore": true,
-		"**/.env*": true
+		"**/.github": true
+		// "**/.gitignore": true
+		// "**/.env*": true
 	}
 }
