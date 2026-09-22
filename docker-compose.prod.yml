@@ -8,11 +8,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
       POSTGRES_DB: ${POSTGRES_DB:-airline_db}
     ports:
-      - '5432:5432'
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d airline_db']
+      test: ["CMD-SHELL", "pg_isready -U postgres -d airline_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -26,8 +26,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadminpassword}
     ports:
-      - '9000:9000'
-      - '9001:9001'
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - miniodata:/data
 
@@ -44,6 +44,36 @@ services:
       mc anonymous set download local/airline-public;
       exit 0;
       "
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    image: airline-backend:test
+    container_name: airline_backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/airline_db?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  customer-web:
+    image: airline-customer-web:test
+    container_name: airline_customer_web
+    restart: always
+    ports:
+      - "5151:80"
+
+  staff-web:
+    image: airline-staff-web:test
+    container_name: airline_staff_web
+    restart: always
+    ports:
+      - "6161:80"
 
 volumes:
   pgdata:
