@@ -7,12 +7,13 @@ COPY package.json package-lock.json tsconfig*.json ./
 COPY apps/backend/package.json ./apps/backend/
 COPY db/ ./db/
 
-RUN npm ci
-
-# RUn prisma generate via binary in node_modules
-RUN ./node_modules/.bin/prisma generate --schema=db/prisma/schema.prisma
+RUN npm ci --ignore-scripts
 
 COPY apps/backend/ ./apps/backend/
+
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+RUN npm --workspace=apps/backend exec prisma -- generate
+
 RUN npm run build -w apps/backend
 
 FROM node:24-alpine AS runner
@@ -21,9 +22,11 @@ ENV NODE_ENV=production
 ENV PORT=8080
 
 USER node
+
 COPY --from=build --chown=node:node /usr/src/app/node_modules ./node_modules
-COPY --from=build --chown=node:node /usr/src/app/apps/backend/package.json ./
-COPY --from=build --chown=node:node /usr/src/app/apps/backend/dist ./dist
+COPY --from=build --chown=node:node /usr/src/app/apps/backend ./apps/backend
+
+WORKDIR /usr/src/app/apps/backend
 
 EXPOSE 8080
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]
