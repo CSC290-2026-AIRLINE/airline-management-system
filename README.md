@@ -23,7 +23,7 @@ airline-management-system/
 
 ### 1. Prerequisites
 
-- Node.js v18+ — [Download & install guide](https://nodejs.org/en/download)
+- Node.js v24 (LTS), pinned in `.nvmrc`; run `nvm use` in the repo root. v22.12+ also works — [Download & install guide](https://nodejs.org/en/download)
 - npm (bundled with Node.js, used here for workspaces) — [Install/update guide](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - Docker Desktop — [Download & install guide](https://docs.docker.com/desktop/)
 
