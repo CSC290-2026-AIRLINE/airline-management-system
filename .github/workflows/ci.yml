@@ -7,6 +7,8 @@ on:
 jobs:
   lint-and-build:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
 
     steps:
       - name: Checkout code
@@ -20,9 +22,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Generate Prisma client
-        run: npx prisma generate --schema=db/prisma/schema.prisma
 
       # ---- Backend ----
       - name: Lint backend
