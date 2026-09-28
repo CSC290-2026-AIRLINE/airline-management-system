@@ -5,7 +5,7 @@ import { useAuth as useClerkAuth } from '@clerk/clerk-react'
 export interface AppUser {
   id: string
   email: string
-  name: string
+  type: string
 }
 
 interface AppAuthContextValue {

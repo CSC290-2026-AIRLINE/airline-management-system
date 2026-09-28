@@ -43,7 +43,7 @@ export class AuthService {
     const payload = await verifyToken(sessionToken, { secretKey: clerkSecretKey })
     const clerkUserId = payload.sub
 
-    const user = await this.findOrCreateUser(clerkClient, clerkUserId)
+    const user = await this.findOrCreateUser(clerkClient, clerkUserId, config.userType)
     const tokens = await this.issueTokenPair(user)
     return { user, tokens }
   }
@@ -101,8 +101,8 @@ export class AuthService {
     return client
   }
 
-  private async findOrCreateUser(clerkClient: ClerkClient, clerkUserId: string): Promise<user> {
-    const existing = await this.db.user.findUnique({ where: { auth_user_id: clerkUserId } })
+  private async findOrCreateUser(clerkClient: ClerkClient, clerkUserId: string, userType: 'customer' | 'staff'): Promise<user> {
+    const existing = await this.db.user.findUnique({ where: { clerk_user_id: clerkUserId } })
     if (existing) {
       return existing
     }
@@ -112,11 +112,21 @@ export class AuthService {
     if (!primaryEmail) {
       throw new UnauthorizedException('Clerk account has no verified email address')
     }
-    const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') || primaryEmail
+    const firstName = clerkUser.firstName || primaryEmail
+    const lastName = clerkUser.lastName || ''
 
-    return this.db.user.create({
-      data: { auth_user_id: clerkUserId, email: primaryEmail, name },
+    const newUser = await this.db.user.create({
+      data: { type: userType, email: primaryEmail, clerk_user_id: clerkUserId },
     })
+
+    if (userType === 'customer') {
+      await this.db.customer.create({ data: { user_id: newUser.id, first_name: firstName, last_name: lastName } })
+    } else {
+      // No Clerk field maps to a staff role, so every new staff sign-in defaults to 'admin'.
+      await this.db.staff.create({ data: { user_id: newUser.id, first_name: firstName, last_name: lastName, role: 'admin' } })
+    }
+
+    return newUser
   }
 
   private async issueTokenPair(user: user): Promise<IssuedTokenPair> {

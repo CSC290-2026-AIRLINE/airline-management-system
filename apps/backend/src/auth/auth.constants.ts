@@ -1,6 +1,7 @@
 export interface AppOriginConfig {
   cookieName: string
   clerkSecretKeyEnvVar: 'CLERK_SECRET_KEY_CUSTOMER' | 'CLERK_SECRET_KEY_STAFF'
+  userType: 'customer' | 'staff'
 }
 
 // Each frontend gets its own refresh-token cookie name AND its own Clerk
@@ -9,8 +10,8 @@ export interface AppOriginConfig {
 // each other, even though they hit one shared backend origin. Also doubles
 // as the CORS allow-list (main.ts).
 export const APP_ORIGINS: Record<string, AppOriginConfig> = {
-  'http://localhost:5151': { cookieName: 'refresh_token_customer', clerkSecretKeyEnvVar: 'CLERK_SECRET_KEY_CUSTOMER' },
-  'http://localhost:6161': { cookieName: 'refresh_token_staff', clerkSecretKeyEnvVar: 'CLERK_SECRET_KEY_STAFF' },
+  'http://localhost:5151': { cookieName: 'refresh_token_customer', clerkSecretKeyEnvVar: 'CLERK_SECRET_KEY_CUSTOMER', userType: 'customer' },
+  'http://localhost:6161': { cookieName: 'refresh_token_staff', clerkSecretKeyEnvVar: 'CLERK_SECRET_KEY_STAFF', userType: 'staff' },
 }
 
 export function getAppOriginConfig(origin: string | undefined): AppOriginConfig | null {

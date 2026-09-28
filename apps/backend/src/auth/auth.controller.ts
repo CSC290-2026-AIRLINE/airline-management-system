@@ -25,7 +25,7 @@ export class AuthController {
     const { user, tokens } = await this.authService.exchangeClerkSession(body.sessionToken, req.headers.origin)
     this.setRefreshCookie(req, res, tokens.refreshToken)
 
-    return { accessToken: tokens.accessToken, user: { id: user.id, email: user.email, name: user.name } }
+    return { accessToken: tokens.accessToken, user: { id: user.id, email: user.email, type: user.type } }
   }
 
   @Public()
@@ -40,7 +40,7 @@ export class AuthController {
     const { user, tokens } = await this.authService.refresh(rawRefreshToken)
     this.setRefreshCookie(req, res, tokens.refreshToken)
 
-    return { accessToken: tokens.accessToken, user: { id: user.id, email: user.email, name: user.name } }
+    return { accessToken: tokens.accessToken, user: { id: user.id, email: user.email, type: user.type } }
   }
 
   @Public()

@@ -12,7 +12,7 @@ function Dashboard() {
 
   return (
     <div>
-      <h1>Welcome{user ? `, ${user.name}` : ''}</h1>
+      <h1>Welcome{user ? `, ${clerkUser?.firstName ?? user.email}` : ''}</h1>
       <p>{clerkUser?.primaryEmailAddress?.emailAddress}</p>
       <button type="button" className="counter" onClick={() => void logout()} disabled={isLoading}>
         Log out

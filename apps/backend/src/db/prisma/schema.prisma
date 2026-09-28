@@ -8,23 +8,61 @@ datasource db {
 }
 
 model user {
-  id             String          @id @default(uuid())
-  email          String
-  name           String
-  auth_user_id   String          @unique
-  created_at     DateTime        @default(now())
-  refresh_tokens refresh_token[]
+  id            String         @id @default(uuid()) @db.Uuid
+  type          String
+  email         String         @unique
+  clerk_user_id String         @unique
+  created_at    DateTime       @default(now()) @db.Timestamptz
+  updated_at    DateTime       @default(now()) @db.Timestamptz
+  deleted_at    DateTime?      @db.Timestamptz
+  customer      customer?
+  staff         staff?
+  refresh_token refresh_token[]
+
+  @@unique([id, type])
 }
 
 model refresh_token {
-  id          String    @id @default(uuid())
-  user_id     String
+  id          String    @id @default(uuid()) @db.Uuid
+  user_id     String    @db.Uuid
   user        user      @relation(fields: [user_id], references: [id])
   token_hash  String    @unique
-  expires_at  DateTime
-  revoked_at  DateTime?
-  replaced_by String?
-  created_at  DateTime  @default(now())
+  expires_at  DateTime  @db.Timestamptz
+  revoked_at  DateTime? @db.Timestamptz
+  replaced_by String?   @db.Uuid
+  created_at  DateTime  @default(now()) @db.Timestamptz
 
   @@index([user_id])
+}
+
+model customer {
+  id                String    @id @default(uuid()) @db.Uuid
+  user_id           String    @unique @db.Uuid
+  user_type         String    @default("customer")
+  first_name        String
+  last_name         String
+  date_of_birth     DateTime? @db.Date
+  nationality       String?
+  gender            String?
+  phone             String?
+  seat_preference   String?
+  meal_preference   String?
+  profile_photo_url String?
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  updated_at        DateTime  @default(now()) @db.Timestamptz
+  deleted_at        DateTime? @db.Timestamptz
+  user              user      @relation(fields: [user_id], references: [id])
+}
+
+model staff {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String    @unique @db.Uuid
+  user_type  String    @default("staff")
+  first_name String
+  last_name  String
+  role       String
+  created_at DateTime  @default(now()) @db.Timestamptz
+  updated_at DateTime  @default(now()) @db.Timestamptz
+  deleted_at DateTime? @db.Timestamptz
+  user       user      @relation(fields: [user_id], references: [id])
 }
