@@ -41,20 +41,26 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
 
       setIsLoading(true)
       try {
-        const clerkToken = await getToken()
-        if (!clerkToken) {
-          throw new Error('No Clerk session token')
+        const refreshRes = await fetch(`${API_URL}/api/auth/refresh`, { method: 'POST', credentials: 'include' })
+        let data: { accessToken: string; user: AppUser }
+        if (refreshRes.ok) {
+          data = (await refreshRes.json()) as { accessToken: string; user: AppUser }
+        } else {
+          const clerkToken = await getToken()
+          if (!clerkToken) {
+            throw new Error('No Clerk session token')
+          }
+          const res = await fetch(`${API_URL}/api/auth/session`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionToken: clerkToken }),
+          })
+          if (!res.ok) {
+            throw new Error('Failed to exchange Clerk session')
+          }
+          data = (await res.json()) as { accessToken: string; user: AppUser }
         }
-        const res = await fetch(`${API_URL}/api/auth/session`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionToken: clerkToken }),
-        })
-        if (!res.ok) {
-          throw new Error('Failed to exchange Clerk session')
-        }
-        const data = (await res.json()) as { accessToken: string; user: AppUser }
         if (!cancelled) {
           setAccessToken(data.accessToken)
           setUser(data.user)
@@ -85,8 +91,9 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(null)
       return null
     }
-    const data = (await res.json()) as { accessToken: string }
+    const data = (await res.json()) as { accessToken: string; user: AppUser }
     setAccessToken(data.accessToken)
+    setUser(data.user)
     return data.accessToken
   }
 

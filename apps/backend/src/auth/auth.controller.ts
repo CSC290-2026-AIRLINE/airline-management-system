@@ -37,10 +37,10 @@ export class AuthController {
       throw new UnauthorizedException('Missing refresh token')
     }
 
-    const { tokens } = await this.authService.refresh(rawRefreshToken)
+    const { user, tokens } = await this.authService.refresh(rawRefreshToken)
     this.setRefreshCookie(req, res, tokens.refreshToken)
 
-    return { accessToken: tokens.accessToken }
+    return { accessToken: tokens.accessToken, user: { id: user.id, email: user.email, name: user.name } }
   }
 
   @Public()
