@@ -1,67 +1,109 @@
 # Backend Structure
 
-Monolith. One NestJS app (`apps/backend`), one module folder per team. Part of the npm monorepo (npm workspaces) — deployed as Docker images; locally it runs via npm scripts (`npm run dev` or `npm run start:dev -w apps/backend`).
+The backend is a single **NestJS monolith** under `apps/backend`. Feature teams will eventually own one module folder each under `src/modules/`.
 
-Prisma is the ORM. **Models live in one centralized schema** (`db/prisma/schema.prisma`), not per-module — see `database-structure.md`. Backend modules import the generated Prisma client; they do not own their own model files.
+Prisma is the ORM. The database schema is centralized and currently lives at:
 
-## Folder skeleton
-
+```text
+apps/backend/src/db/prisma/schema.prisma
 ```
+
+Feature modules do not own separate Prisma schemas or database clients.
+
+## Current repository structure
+
+```text
 apps/backend/
 ├── src/
 │   ├── main.ts
 │   ├── app.module.ts
-│   ├── core/                       # auth, RBAC, JWKS — dev leads + infra leads only
-│   ├── modules/
-│   │   ├── flight-scheduling/
-│   │   ├── booking-search/
-│   │   ├── booking-pnr/
-│   │   ├── pricing/
-│   │   ├── payments-checkout/
-│   │   ├── payments-refunds/
-│   │   ├── checkin-boarding/
-│   │   ├── passenger-profiles/
-│   │   ├── crew-rostering/
-│   │   ├── aircraft-management/
-│   │   ├── baggage/
-│   │   ├── cargo/
-│   │   ├── onboard-products/
-│   │   ├── customer-service/
-│   │   ├── bi-dashboards/
-│   │   └── admin-console/
-│   ├── shared/                      # guards, interceptors, pipes, common utils — dev lead review required
-│   ├── config/                      # env config module (ConfigModule setup)
-│   └── prisma/                      # PrismaService wrapper around the generated client
-├── test/                            # e2e tests
+│   ├── app.controller.ts
+│   ├── app.service.ts
+│   ├── auth/                       # existing authentication implementation
+│   │   ├── auth.constants.ts
+│   │   ├── auth.controller.ts
+│   │   ├── auth.module.ts
+│   │   ├── auth.service.ts
+│   │   ├── decorators/
+│   │   ├── dto/
+│   │   └── guards/
+│   ├── config/                     # environment validation
+│   └── db/                         # Prisma/database integration
+│       ├── db.module.ts
+│       ├── db.service.ts
+│       ├── prisma/
+│       │   ├── schema.prisma
+│       │   └── migrations/
+│       ├── schema.sql
+│       └── seed.ts
+├── Dockerfile
+├── prisma.config.ts
 ├── .env.example
-└── README.md
+└── package.json
 ```
 
-## Inside each module folder
+The feature-module directory has **not yet been scaffolded in this repository snapshot**. When the Dev Leads add it, the intended layout is:
 
-Standard NestJS module shape (tests are colocated next to the code they test — NestJS convention, no separate `tests/` mirror folder):
-
+```text
+apps/backend/src/modules/
+├── flight-scheduling/
+├── booking-search/
+├── booking-pnr/
+├── pricing/
+├── payments-checkout/
+├── payments-refunds/
+├── checkin-boarding/
+├── passenger-profiles/
+├── crew-rostering/
+├── aircraft-management/
+├── baggage/
+├── cargo/
+├── onboard-products/
+├── customer-service/
+├── bi-dashboards/
+└── admin-console/
 ```
+
+## Inside a feature module
+
+The planned standard NestJS shape is:
+
+```text
 modules/<module-name>/
-├── <module-name>.module.ts       # declares the module, its imports/exports — this IS the public interface
-├── <module-name>.controller.ts   # routes
-├── <module-name>.service.ts      # business logic
-├── dto/                           # request/response DTOs, validated with class-validator
-└── <module-name>.service.spec.ts # unit tests
+├── <module-name>.module.ts
+├── <module-name>.controller.ts
+├── <module-name>.service.ts
+├── dto/
+└── <module-name>.service.spec.ts
 ```
 
 ## Rules
 
-1. **One team, one folder.** Your team only writes inside `src/modules/<your-module>/`. Anything outside needs the owning team's (or a lead's) review — enforced by `CODEOWNERS` once per-module entries are added (see status note below).
+1. **One team, one module folder.** Do not edit another team's module without the relevant review.
+2. **Use NestJS module boundaries.** If Module A needs functionality from Module B, consume what B exports through its module interface. Do not import B's internal files directly.
+3. **Authentication is centralized.** The existing `AuthModule` installs a global JWT guard. Feature modules should use the authenticated request user rather than implementing their own token verification.
+4. **Database access is centralized.** Feature teams do not create independent Prisma schemas or migrations.
+5. **Configuration is centralized.** Runtime environment validation is handled by `src/config/env.validation.ts`.
+6. **Keep cross-module API contracts explicit.** Changes that affect another team's endpoint or response contract must be discussed with the affected team before implementation.
 
-2. **Module boundaries are enforced through NestJS's own module system, not just convention.** A module only exposes what it lists in its `exports` array. If Module A needs something from Module B, Module A imports Module B's module and injects its exported service — standard NestJS dependency injection. Module A must never import a file from deep inside Module B's folder directly. If B doesn't export what A needs, A asks B to export it.
+## Authentication interface currently available
 
-3. **`core/` and `shared/` are not team folders.** Changes there need dev lead sign-off regardless of who's making them — these are load-bearing for every module.
+Global prefix:
 
-4. **Data models are managed centrally by the Database Team.** Feature teams do not edit `db/prisma/schema.prisma` or generate migrations directly. If your module needs a new table, field, or relation, define your domain requirements in `db/schema-docs/<module>.md` and submit a request to the DB Team (see `database-structure.md`). Once merged, run `npx prisma generate --schema=db/prisma/schema.prisma` to update your local Prisma client.
+```text
+/api
+```
 
-5. **Every module folder needs a short comment block at the top of its `.module.ts`** stating what it does and what it depends on. This is what other teams read before asking questions in Discord.
+Current authentication endpoints:
 
-## Status
+```text
+POST /api/auth/session
+POST /api/auth/refresh
+POST /api/auth/logout
+```
 
-Structure may still shift slightly as dev leads scaffold the actual 16 module folders. Once module folders exist, `CODEOWNERS` needs a line per module (`/apps/backend/src/modules/booking-pnr/ @CSC290-2026-AIRLINE/g03`) — currently the whole of `apps/backend/` is owned broadly by `development-leads` as a placeholder.
+See [`infra-guide.md`](./infra-guide.md) for the full flow.
+
+## Important current-state note
+
+The repository currently does **not** contain `src/core/`, `src/shared/`, or `src/prisma/` directories described in older versions of this document. The implemented equivalents are currently `src/auth/`, `src/config/`, and `src/db/`.

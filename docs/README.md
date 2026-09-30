@@ -1,37 +1,43 @@
 # Airline Management System — Project Docs
 
-This repository is a unified **Monorepo** containing all services, database schemas, and documentation. Holds the shared rules every team (G01–G16) and lead follows. If it's not written here, it's not a rule — raise it with the Infra Leads to get it added.
+This repository is a unified **npm monorepo** containing the backend, customer web app, staff web app, database layer, and shared project documentation.
 
-## Architecture Layout
+This documentation is the shared reference for G01–G16 and the project leads. Where a document conflicts with the actual repository, update the document or raise the mismatch with the responsible lead rather than inventing a new convention in a feature branch.
 
-- `/apps/backend` — NestJS monolith API, Prisma ORM, OpenAPI/Swagger, MinIO
-- `/apps/customer-web` — React (Vite), Tailwind CSS, shadcn/ui, TanStack Query
-- `/apps/staff-web` — React (Vite), Tailwind CSS, shadcn/ui, TanStack Query
-- `/db` — Centralized Prisma schema, migrations, seeds, ERD
-- `/docs` — System rules, workflows, architecture docs
+## Current architecture
+
+- `/apps/backend` — NestJS monolith API, Prisma, authentication, configuration, and database access
+- `/apps/customer-web` — React/Vite customer application
+- `/apps/staff-web` — React/Vite staff application
+- `/apps/backend/src/db` — centralized Prisma schema, migrations, seed, and SQL schema snapshot
+- `/docs` — system rules, workflows, architecture, and onboarding guidance
+- `/docker-compose.yml` — local PostgreSQL + MinIO infrastructure
+- `/docker-compose.prod.yml` — current multi-container deployment definition
 
 ## Start here
 
-| Doc                                                                | What it's for                                                             |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| [`branch-naming-and-workflow.md`](./branch-naming-and-workflow.md) | Branch names, commit messages, PR rules, review process — read this first |
-| [`backend-structure.md`](./backend-structure.md)                   | Folder structure for the `backend`, module boundaries                     |
-| [`frontend-structure.md`](./frontend-structure.md)                 | Folder structure for the frontends (`customer-web`, `staff-web`)          |
-| [`database-structure.md`](./database-structure.md)                 | Migration structure, naming, ownership rules for the database (`db`)     |
+| Document | Purpose |
+|---|---|
+| [`infra-guide.md`](./infra-guide.md) | Group-facing infrastructure guide: architecture, stack, setup, auth, environment, deployment, and infra rules |
+| [`branch-naming-and-workflow.md`](./branch-naming-and-workflow.md) | Branch names, commits, PR flow, reviews, and merge authority |
+| [`backend-structure.md`](./backend-structure.md) | Current NestJS structure and backend module boundaries |
+| [`frontend-structure.md`](./frontend-structure.md) | Current customer/staff frontend structure and planned feature organization |
+| [`database-structure.md`](./database-structure.md) | Current Prisma location, migration ownership, naming, and DB workflow |
 
-## Non-negotiable rules (summary)
+## Shared rules summary
 
-1. Groups never push directly to `dev` or `main` — only through PR. Dev Leads and Infra Leads are the exception: they hold merge/push rights on `dev` and `main` respectively as branch administrators.
-2. Every group PR into `dev` needs **2 approvals + Code Owner approval** (enforced by branch protection + `CODEOWNERS`). PRs into `main` come only from `dev` and are merged exclusively by Infra Leads.
-3. Branch and commit naming must follow `branch-naming-and-workflow.md` exactly — PRs that don't follow it get requested-changes, not merged.
-4. Don't touch another team's folder without that team (or a lead) reviewing your PR — `CODEOWNERS` will request them automatically if you do.
-5. Cross-module API contracts freeze by week 3–4. After that, changing another team's API is a conversation, not a PR.
+1. Feature groups do not push directly to protected integration/release branches; they work through the documented PR flow.
+2. Database models and migrations are owned centrally by the Database Team.
+3. Authentication is provided centrally; feature modules do not create their own auth flow.
+4. Infrastructure/configuration changes are reviewed by Infra Leads.
+5. Cross-module API and data changes must be coordinated with the affected teams.
 
 ## Who to ask
 
-- Branching/Git/CI questions → Infra Leads
-- Backend architecture/folder questions → Dev Leads
-- Database/migration questions → DB Leads
-- Everything else → your PM/Coordinator
+- Branching, CI/CD, Docker, deployment, environment configuration → Infra Leads
+- Backend module architecture and API conventions → Dev Leads
+- Prisma schema and migrations → Database Leads
+- UI/UX and design system → UI/UX Leads
+- Feature requirements and cross-feature coordination → Feature Leads / PM / Coordinator
 
-_Last updated: reflects Redis removal and finalized branch protection rules. Structure may still shift as module folders and CI/CD get built out — check PR history on this repo for the latest._
+_Last reviewed against the repository snapshot from September 28, 2026._

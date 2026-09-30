@@ -5,7 +5,7 @@ WORKDIR /usr/src/app
 
 COPY package.json package-lock.json tsconfig*.json ./
 COPY apps/backend/package.json ./apps/backend/
-COPY db/ ./db/
+COPY apps/backend/src/db/ ./apps/backend/src/db/
 
 RUN npm ci --ignore-scripts
 

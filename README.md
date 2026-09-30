@@ -1,20 +1,26 @@
 # Airline Management System (Monorepo)
 
-A centralized monorepo architecture powering the Airline Management System (CSC290 Integrated Project I).
+A centralized npm monorepo powering the Airline Management System (CSC290 Integrated Project I).
 
----
-
-## Monorepo Layout
+## Repository Layout
 
 ```text
 airline-management-system/
 ├── apps/
-│   ├── backend/        # NestJS, Prisma, OpenAPI (Swagger), MinIO
-│   ├── customer-web/   # React, shadcn/ui, Tailwind CSS, TanStack Query
-│   └── staff-web/      # React, shadcn/ui, Tailwind CSS, TanStack Query
-├── db/                 # PostgreSQL schemas, migrations, seeds
-├── docs/               # System architecture, workflows, module boundaries
-└── docker-compose.yml
+│   ├── backend/        # NestJS API, Prisma, authentication
+│   ├── customer-web/   # React + Vite customer app
+│   └── staff-web/      # React + Vite staff app
+├── docs/               # shared architecture, workflows, and onboarding docs
+├── docker-compose.yml  # local PostgreSQL + MinIO
+├── docker-compose.prod.yml
+├── package.json        # npm workspaces and root scripts
+└── package-lock.json
+```
+
+The centralized Prisma schema is **inside the backend application** at:
+
+```text
+apps/backend/src/db/prisma/schema.prisma
 ```
 
 ---
@@ -27,6 +33,12 @@ airline-management-system/
 - npm (bundled with Node.js, used here for workspaces) — [Install/update guide](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - Docker Desktop — [Download & install guide](https://docs.docker.com/desktop/)
 
+Use the repository's Node version:
+
+```bash
+nvm use
+```
+
 ### 2. Install Dependencies
 
 Run once from the repo root — this installs and links `apps/backend`, `apps/customer-web`, and `apps/staff-web` together via npm workspaces.
@@ -35,89 +47,116 @@ Run once from the repo root — this installs and links `apps/backend`, `apps/cu
 npm install
 ```
 
-### 3. Run Everything
+For a clean lockfile-based install:
 
 ```bash
-npm run dev
+npm ci
 ```
 
-This starts local services (PostgreSQL 16 and MinIO, via `db:up`) and then runs all three apps together — backend, customer-web, and staff-web.
+### 3. Configure Environment Variables
 
-- Postgres: `localhost:5432`
-- MinIO S3 API: `localhost:9000` (Console: `localhost:9001`, login `minioadmin` / `minioadminpassword`)
-- Backend API: `localhost:8080`
-- Customer web: `localhost:5151`
-- Staff web: `localhost:6161`
-
-Starting the services also spins up a fourth, short-lived container, `airline_minio_init` — a one-shot bootstrap job that waits for MinIO, creates the `airline-public` and `airline-private` buckets, sets `airline-public` to public-read, then exits. It's expected to show `Exited (0)` in `docker ps -a`; you don't need to run anything against it.
-
-Stopping `npm run dev` (Ctrl+C) only stops the apps — Postgres and MinIO keep running in the background. Stop them explicitly when you're done for the day:
+Create local environment files from the examples:
 
 ```bash
-npm run db:down
+cp apps/backend/.env.example apps/backend/.env
+cp apps/customer-web/.env.example apps/customer-web/.env
+cp apps/staff-web/.env.example apps/staff-web/.env
 ```
 
-Tail their logs:
+The backend requires database, JWT, and both Clerk secret-key configuration values. Each frontend requires its own Clerk publishable key and the backend API URL. See [`docs/infra-guide.md`](./docs/infra-guide.md) for the authentication flow and configuration rules.
 
-```bash
-npm run db:logs
-```
-
-Restart just the services without the apps:
+### 4. Start Local Infrastructure
 
 ```bash
 npm run db:up
 ```
 
-### 4. Running Apps Individually
+This starts:
 
-To run just one app instead of all three, target its workspace with `-w` (make sure `npm run db:up` has been run first if the backend needs Postgres/MinIO):
+- PostgreSQL 16: `localhost:5432`
+- MinIO S3 API: `localhost:9000`
+- MinIO Console: `localhost:9001`
+
+A one-shot MinIO initialization container also creates the `airline-public` and `airline-private` buckets. Seeing `airline_minio_init` exit successfully is expected.
+
+### 5. Start Everything
 
 ```bash
-npm run start:dev -w apps/backend      # NestJS, watch mode
-npm run dev -w apps/customer-web       # Vite dev server
-npm run dev -w apps/staff-web          # Vite dev server
+npm run dev
 ```
 
-### 5. Build, Lint & Test
+Current application ports:
 
-Each app is an npm workspace, so any script in its `package.json` can be run the same way:
+- Backend API: `http://localhost:8080`
+- Customer web: `http://localhost:5151`
+- Staff web: `http://localhost:6161`
+
+`npm run dev` starts the three applications after bringing up PostgreSQL and MinIO. Stopping it does not stop those infrastructure containers; use:
 
 ```bash
-# Build
+npm run db:down
+```
+
+Logs:
+
+```bash
+npm run db:logs
+```
+
+Restart infrastructure only:
+
+```bash
+npm run db:up
+```
+
+### 6. Running Apps Individually
+
+```bash
+npm run start:dev -w apps/backend
+npm run dev -w apps/customer-web
+npm run dev -w apps/staff-web
+```
+
+### 7. Database Commands
+
+```bash
+npm run db:migrate
+npm run db:migrate:deploy
+npm run db:migrate:reset
+npm run db:studio
+npm run db:seed
+```
+
+## Build & Lint
+
+```bash
 npm run build -w apps/backend
 npm run build -w apps/customer-web
 npm run build -w apps/staff-web
 
-# Lint
 npm run lint -w apps/backend
 npm run lint -w apps/customer-web
 npm run lint -w apps/staff-web
-
-# Backend tests
-npm run test -w apps/backend           # unit tests
-npm run test:e2e -w apps/backend       # e2e tests
-npm run test:cov -w apps/backend       # coverage
 ```
 
----
+Backend tests:
 
-## Git Workflow & Governance
+```bash
+npm run test -w apps/backend
+npm run test:e2e -w apps/backend
+npm run test:cov -w apps/backend
+```
 
-### - Branch Targets:
+## Documentation
 
-- Feature branches (from groups) branch off and target `dev`.
-- Only `dev` can be merged into `main`.
+Start with [`docs/README.md`](./docs/README.md), especially [`docs/infra-guide.md`](./docs/infra-guide.md) for group onboarding.
 
-### - Pull Requests & Reviews:
+## Git Workflow
 
-- PRs to `dev` (from groups) require 2 approvals + Code Owner review.
-- Merging into `dev` uses Squash and Merge (managed by Dev Leads).
-- Merging into `main` uses Merge Commit (managed by Infra Leads).
+- Feature branches start from `dev`.
+- Feature PRs target `dev`.
+- Feature PRs use the documented review/approval rules.
+- Releases move from `dev` to `main`.
+- Infra Leads handle the release merge into `main` according to the repository workflow document.
 
-### - Coding Standards:
-
-- AI Agent (MiniMax (tbc)) and manual code must follow rules defined in docs
-
-IDE - vscode
-if you can't see some files, check .vscode/settings.json for hidden files settings
+See [`docs/branch-naming-and-workflow.md`](./docs/branch-naming-and-workflow.md).
