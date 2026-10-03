@@ -8,6 +8,12 @@ RUN npm ci
 
 COPY tsconfig*.json ./
 COPY apps/customer-web/ ./apps/customer-web/
+
+ARG VITE_CLERK_PUBLISHABLE_KEY
+ARG VITE_API_URL
+ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
+ENV VITE_API_URL=${VITE_API_URL}
+
 RUN npm run build -w apps/customer-web
 
 FROM nginx:alpine AS runner
