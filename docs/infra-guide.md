@@ -415,7 +415,7 @@ npm run lint:fix -w apps/<app>
 npm run format -w apps/<app>
 ```
 
-Dependabot (`.github/dependabot.yml`) opens weekly update PRs against `dev` for npm packages, GitHub Actions, Dockerfile base images, and the images pinned in the Compose files.
+Dependabot security updates are enabled in the repository settings: when a vulnerability is published for a dependency, Dependabot opens a PR with the fix. There are no scheduled version-update PRs; Infra Leads upgrade dependencies deliberately.
 
 ### Important current deployment gaps
 
