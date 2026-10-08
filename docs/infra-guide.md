@@ -482,7 +482,7 @@ npm run lint:fix -w apps/<app>
 npm run format -w apps/<app>
 ```
 
-Dependabot security updates are enabled in the repository settings: when a vulnerability is published for a dependency, Dependabot opens a PR with the fix. There are no scheduled version-update PRs; Infra Leads upgrade dependencies deliberately.
+Dependabot alerts are enabled in the repository settings; Dependabot does not open PRs. When an alert or the CI audit step reports a vulnerable dependency, an Infra Lead updates it in a normal PR. Infra Leads also handle routine dependency upgrades deliberately.
 
 ### Important current deployment gaps
 
