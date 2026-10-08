@@ -2,7 +2,7 @@
 * @CSC290-2026-AIRLINE/infrastructure-leads
 
 # Documentations
-/docs/ @CSC290-2026-AIRLINE/project-managers @CSC290-2026-AIRLINE/infrastructure-leads
+/docs/ @CSC290-2026-AIRLINE/infrastructure-leads
 
 # Database Schema & Migrations
 /apps/backend/src/db/ @CSC290-2026-AIRLINE/database-leads
