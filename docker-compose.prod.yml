@@ -1,14 +1,18 @@
 services:
   postgres:
     image: postgres:16-alpine
+    platform: linux/amd64
     container_name: airline_postgres
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
       POSTGRES_DB: ${POSTGRES_DB:-airline_db}
+    # Bound to the VM's own loopback only. Docker-published ports bypass ufw,
+    # so "5432:5432" would be reachable from the network even with ufw closed.
+    # The backend reaches Postgres over the Docker network (postgres:5432).
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,33 +21,27 @@ services:
       timeout: 5s
       retries: 5
 
-  minio:
-    image: quay.io/minio/minio:latest
-    container_name: airline_minio
+  # S3-compatible object storage. Replaces MinIO, whose official images were
+  # pulled from Docker Hub and quay.io (Sept 2026).
+  # S3 endpoint inside the Docker network: http://seaweedfs:8333
+  # Buckets are NOT created automatically — see the one-time commands in the
+  # deployment notes (s3.bucket.create via `weed shell`).
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    platform: linux/amd64
+    container_name: airline_seaweedfs
     restart: always
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadminpassword}
+    command: server -dir=/data -master.volumeSizeLimitMB=1024 -s3 -s3.config=/etc/seaweedfs/s3.json
+    # Loopback only (testing from the VM). The backend uses seaweedfs:8333
+    # over the Docker network. Browsers would need this published publicly
+    # to fetch public files directly — decide that when the feature exists.
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:8333:8333"
     volumes:
-      - miniodata:/data
-
-  minio-create-buckets:
-    image: quay.io/minio/mc:latest
-    container_name: airline_minio_init
-    depends_on:
-      - minio
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://minio:9000 minioadmin minioadminpassword; do sleep 1; done;
-      mc mb --ignore-existing local/airline-public;
-      mc mb --ignore-existing local/airline-private;
-      mc anonymous set download local/airline-public;
-      exit 0;
-      "
+      - seaweedfsdata:/data
+    configs:
+      - source: seaweedfs_s3
+        target: /etc/seaweedfs/s3.json
 
   # NOTE: no "build:" key on backend/customer-web/staff-web below —
   # the VM only ever pulls these from Docker Hub, it never builds them.
@@ -52,6 +50,7 @@ services:
 
   backend:
     image: ${DOCKERHUB_USER}/airline-backend:${IMAGE_TAG:-latest}
+    platform: linux/amd64
     container_name: airline_backend
     restart: always
     ports:
@@ -73,6 +72,7 @@ services:
 
   customer-web:
     image: ${DOCKERHUB_USER}/airline-customer-web:${IMAGE_TAG:-latest}
+    platform: linux/amd64
     container_name: airline_customer_web
     restart: always
     ports:
@@ -80,6 +80,7 @@ services:
 
   staff-web:
     image: ${DOCKERHUB_USER}/airline-staff-web:${IMAGE_TAG:-latest}
+    platform: linux/amd64
     container_name: airline_staff_web
     restart: always
     ports:
@@ -87,4 +88,25 @@ services:
 
 volumes:
   pgdata:
-  miniodata:
+  seaweedfsdata:
+
+# Needs Docker Compose >= 2.23.1 (check: docker compose version).
+# ${...} values are filled in from the VM's .env file.
+configs:
+  seaweedfs_s3:
+    content: |
+      {
+        "identities": [
+          {
+            "name": "anonymous",
+            "actions": ["Read:airline-public", "List:airline-public"]
+          },
+          {
+            "name": "app",
+            "credentials": [
+              { "accessKey": "${S3_ACCESS_KEY}", "secretKey": "${S3_SECRET_KEY}" }
+            ],
+            "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+          }
+        ]
+      }

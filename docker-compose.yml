@@ -17,34 +17,61 @@ services:
       timeout: 5s
       retries: 5
 
-  minio:
-    image: quay.io/minio/minio:latest
-    container_name: airline_minio
+  # S3-compatible object storage (replaces MinIO, whose official images were
+  # removed from Docker Hub and quay.io in Sept 2026).
+  # S3 API: http://localhost:8333
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: airline_seaweedfs
     restart: always
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadminpassword}
+    command: server -dir=/data -master.volumeSizeLimitMB=1024 -s3 -s3.config=/etc/seaweedfs/s3.json
     ports:
-      - '9000:9000'
-      - '9001:9001'
+      - '8333:8333'
     volumes:
-      - miniodata:/data
+      - seaweedfsdata:/data
+    configs:
+      - source: seaweedfs_s3
+        target: /etc/seaweedfs/s3.json
 
-  minio-create-buckets:
-    image: quay.io/minio/mc:latest
-    container_name: airline_minio_init
+  # One-shot job: creates the two buckets, then exits.
+  # Seeing airline_seaweedfs_init exit with code 0 is expected.
+  seaweedfs-create-buckets:
+    image: chrislusf/seaweedfs:latest
+    container_name: airline_seaweedfs_init
     depends_on:
-      - minio
-    entrypoint: >
-      /bin/sh -c "
-      until mc alias set local http://minio:9000 minioadmin minioadminpassword; do sleep 1; done;
-      mc mb --ignore-existing local/airline-public;
-      mc mb --ignore-existing local/airline-private;
-      mc anonymous set download local/airline-public;
-      exit 0;
-      "
+      - seaweedfs
+    restart: 'no'
+    entrypoint: /bin/sh -c
+    command: >
+      "until echo 's3.bucket.list' | weed shell -master=seaweedfs:9333 2>&1 | grep -q airline-private; do
+      echo 'Creating buckets (waiting for SeaweedFS to be ready)...';
+      echo 's3.bucket.create -name airline-public' | weed shell -master=seaweedfs:9333;
+      echo 's3.bucket.create -name airline-private' | weed shell -master=seaweedfs:9333;
+      sleep 3;
+      done;
+      echo 'Buckets ready.'"
 
 volumes:
   pgdata:
-  miniodata:
+  seaweedfsdata:
+
+# Needs Docker Compose >= 2.23.1 (Docker Desktop is recent enough).
+# Local-development credentials only — do not reuse in production.
+configs:
+  seaweedfs_s3:
+    content: |
+      {
+        "identities": [
+          {
+            "name": "anonymous",
+            "actions": ["Read:airline-public", "List:airline-public"]
+          },
+          {
+            "name": "app",
+            "credentials": [
+              { "accessKey": "${S3_ACCESS_KEY:-devaccesskey}", "secretKey": "${S3_SECRET_KEY:-devsecretkey}" }
+            ],
+            "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+          }
+        ]
+      }
