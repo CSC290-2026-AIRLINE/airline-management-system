@@ -8,7 +8,7 @@ NestJS backend workspace for the Airline Management System (CSC290 Integrated Pr
 - **ORM:** Prisma 7
 - **Database:** PostgreSQL 16
 - **Authentication:** Clerk + project-issued JWT access tokens + rotating refresh-token cookies
-- **Object storage:** MinIO is provisioned in Docker Compose but is not yet integrated into backend code
+- **Object storage:** SeaweedFS (S3-compatible, replaces MinIO) is provisioned in Docker Compose but is not yet integrated into backend code
 
 ## API
 

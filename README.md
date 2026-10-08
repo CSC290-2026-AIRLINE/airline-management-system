@@ -11,7 +11,7 @@ airline-management-system/
 │   ├── customer-web/   # React + Vite customer app
 │   └── staff-web/      # React + Vite staff app
 ├── docs/               # shared architecture, workflows, and onboarding docs
-├── docker-compose.yml  # local PostgreSQL + MinIO
+├── docker-compose.yml  # local PostgreSQL + SeaweedFS (S3 storage)
 ├── docker-compose.prod.yml
 ├── package.json        # npm workspaces and root scripts
 └── package-lock.json
@@ -74,10 +74,9 @@ npm run db:up
 This starts:
 
 - PostgreSQL 16: `localhost:5432`
-- MinIO S3 API: `localhost:9000`
-- MinIO Console: `localhost:9001`
+- SeaweedFS S3 API: `localhost:8333`
 
-A one-shot MinIO initialization container also creates the `airline-public` and `airline-private` buckets. Seeing `airline_minio_init` exit successfully is expected.
+A one-shot initialization container also creates the `airline-public` and `airline-private` buckets. Seeing `airline_seaweedfs_init` exit successfully is expected. Docker Compose 2.23.1 or newer is required (`docker compose version`).
 
 ### 5. Start Everything
 
@@ -91,7 +90,7 @@ Current application ports:
 - Customer web: `http://localhost:5151`
 - Staff web: `http://localhost:6161`
 
-`npm run dev` starts the three applications after bringing up PostgreSQL and MinIO. Stopping it does not stop those infrastructure containers; use:
+`npm run dev` starts the three applications after bringing up PostgreSQL and SeaweedFS. Stopping it does not stop those infrastructure containers; use:
 
 ```bash
 npm run db:down

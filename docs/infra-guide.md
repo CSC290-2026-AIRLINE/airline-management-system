@@ -24,7 +24,7 @@ flowchart LR
     B -->|Verify Clerk session\nusing app-specific secret| CLERK_API[Clerk Backend API]
     B -->|Prisma| DB[(PostgreSQL 16)]
 
-    M[MinIO\nS3-compatible storage] -. currently provisioned by Docker\nnot yet used by backend code .- B
+    M[SeaweedFS\nS3-compatible storage] -. currently provisioned by Docker\nnot yet used by backend code .- B
 ```
 
 ### What talks to what
@@ -37,7 +37,7 @@ flowchart LR
 | Staff Web | Backend API | Business data and authenticated API requests |
 | Backend | Clerk | Verifies frontend Clerk session tokens and reads user details when creating a local user |
 | Backend | PostgreSQL | Application data, users, refresh tokens, and future module data |
-| Backend | MinIO | **Not yet integrated in the current codebase**; MinIO is currently only provisioned by Docker Compose |
+| Backend | SeaweedFS (S3 API) | **Not yet integrated in the current codebase**; SeaweedFS is currently only provisioned by Docker Compose |
 
 The backend exposes its API under the global prefix:
 
@@ -69,7 +69,7 @@ POST /api/auth/logout
 | Authentication | Clerk + project-issued JWT access tokens + refresh-token cookies |
 | Frontend | React 19 + Vite 8 + TypeScript |
 | Frontend routing | TanStack Router |
-| Object storage | MinIO, provisioned in Docker Compose but not yet connected to backend code |
+| Object storage | SeaweedFS (S3-compatible; replaced MinIO), provisioned in Docker Compose but not yet connected to backend code |
 | Local orchestration | Docker Compose |
 | CI | GitHub Actions |
 | Container base | Node 24 Alpine for backend builds; Nginx Alpine for frontend runtime images |
@@ -171,9 +171,8 @@ npm run db:up
 This starts:
 
 - PostgreSQL 16 on `localhost:5432`
-- MinIO S3 API on `localhost:9000`
-- MinIO Console on `localhost:9001`
-- A one-shot MinIO initialization container that creates the `airline-public` and `airline-private` buckets
+- SeaweedFS S3 API on `localhost:8333`
+- A one-shot initialization container that creates the `airline-public` and `airline-private` buckets
 
 ### Start all applications
 
@@ -189,8 +188,7 @@ Current local application ports:
 | Customer Web | `http://localhost:5151` |
 | Staff Web | `http://localhost:6161` |
 | PostgreSQL | `localhost:5432` |
-| MinIO API | `http://localhost:9000` |
-| MinIO Console | `http://localhost:9001` |
+| SeaweedFS S3 API | `http://localhost:8333` |
 
 ### Start one application
 
@@ -347,8 +345,7 @@ The production Compose file currently defines:
 
 ```text
 postgres
-minio
-minio-create-buckets
+seaweedfs
 backend
 customer-web
 staff-web
@@ -357,9 +354,8 @@ staff-web
 Current container ports exposed by Compose:
 
 ```text
-5432  PostgreSQL
-9000  MinIO API
-9001  MinIO Console
+5432  PostgreSQL (VM loopback only)
+8333  SeaweedFS S3 API (VM loopback only)
 8080  Backend API
 5151  Customer Web
 6161  Staff Web
@@ -402,8 +398,8 @@ These are **not yet fully automated** in the repository:
 2. The frontend production images need their `VITE_*` values at build time.
 3. Database migrations are not automatically executed by the backend container startup command.
 4. The current auth CORS/origin allow-list contains the two localhost frontend origins; production origins must be explicitly configured in the application before a non-local deployment can use the same auth flow.
-5. MinIO is provisioned but the backend has no current MinIO client/integration code.
-6. The production Compose file exposes PostgreSQL and MinIO ports directly; this should only be used where that exposure is intentional.
+5. SeaweedFS is provisioned but the backend has no S3 client/integration code yet. In production the buckets are not created automatically; create them once by running `s3.bucket.create -name airline-public` and `s3.bucket.create -name airline-private` inside `weed shell` in the `seaweedfs` container.
+6. The production Compose file binds PostgreSQL and SeaweedFS to the VM's loopback address only. Docker-published ports bypass `ufw`, so do not publish them on all interfaces unless that exposure is intentional.
 
 Do not tell feature groups that deployment is fully automated until these pieces are resolved.
 

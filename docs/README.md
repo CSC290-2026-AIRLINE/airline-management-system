@@ -11,7 +11,7 @@ This documentation is the shared reference for G01–G16 and the project leads. 
 - `/apps/staff-web` — React/Vite staff application
 - `/apps/backend/src/db` — centralized Prisma schema, migrations, seed, and SQL schema snapshot
 - `/docs` — system rules, workflows, architecture, and onboarding guidance
-- `/docker-compose.yml` — local PostgreSQL + MinIO infrastructure
+- `/docker-compose.yml` — local PostgreSQL + SeaweedFS (S3 storage) infrastructure
 - `/docker-compose.prod.yml` — current multi-container deployment definition
 
 ## Start here
