@@ -29,7 +29,7 @@ apps/backend/src/db/prisma/schema.prisma
 
 ### 1. Prerequisites
 
-- Node.js v24 (LTS), pinned in `.nvmrc`; run `nvm use` in the repo root. v22.12+ also works — [Download & install guide](https://nodejs.org/en/download)
+- Node.js v24 (LTS), pinned in `.nvmrc`; run `nvm use` in the repo root. Older versions are refused by `npm install` — [Download & install guide](https://nodejs.org/en/download)
 - npm (bundled with Node.js, used here for workspaces) — [Install/update guide](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - Docker Desktop — [Download & install guide](https://docs.docker.com/desktop/)
 
@@ -53,6 +53,8 @@ For a clean lockfile-based install:
 npm ci
 ```
 
+Run `npm install` again after every `git pull`; it also regenerates the Prisma client.
+
 ### 3. Configure Environment Variables
 
 Create local environment files from the examples:
@@ -63,7 +65,12 @@ cp apps/customer-web/.env.example apps/customer-web/.env
 cp apps/staff-web/.env.example apps/staff-web/.env
 ```
 
-The backend requires database, JWT, and both Clerk secret-key configuration values. Each frontend requires its own Clerk publishable key and the backend API URL. See [`docs/infra-guide.md`](./docs/infra-guide.md) for the authentication flow and configuration rules.
+Then fill in the empty values:
+
+- **Clerk keys** (both backend secret keys and each frontend's publishable key): ask the Infra Leads for the development keys. They are shared privately, never committed.
+- **`ACCESS_TOKEN_SECRET`**: generate your own with `openssl rand -hex 32`.
+
+See [`docs/infra-guide.md`](./docs/infra-guide.md) for the authentication flow and configuration rules.
 
 ### 4. Start Local Infrastructure
 
@@ -126,23 +133,22 @@ npm run db:studio
 npm run db:seed
 ```
 
-## Build & Lint
+## Build, Lint, Format & Test
+
+CI runs these on every pull request; run them before you push. Replace `<app>` with `backend`, `customer-web`, or `staff-web`.
 
 ```bash
-npm run build -w apps/backend
-npm run build -w apps/customer-web
-npm run build -w apps/staff-web
-
-npm run lint -w apps/backend
-npm run lint -w apps/customer-web
-npm run lint -w apps/staff-web
+npm run lint -w apps/<app>           # report lint problems
+npm run lint:fix -w apps/<app>       # fix what can be fixed automatically
+npm run format:check -w apps/<app>   # report formatting problems
+npm run format -w apps/<app>         # fix formatting
+npm run build -w apps/<app>
 ```
 
-Backend tests:
+Backend tests (`*.spec.ts` files next to the code they test):
 
 ```bash
 npm run test -w apps/backend
-npm run test:e2e -w apps/backend
 npm run test:cov -w apps/backend
 ```
 

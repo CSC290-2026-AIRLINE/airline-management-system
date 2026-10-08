@@ -21,7 +21,7 @@ services:
   # removed from Docker Hub and quay.io in Sept 2026).
   # S3 API: http://localhost:8333
   seaweedfs:
-    image: chrislusf/seaweedfs:latest
+    image: chrislusf/seaweedfs:4.48
     container_name: airline_seaweedfs
     restart: always
     command: server -dir=/data -master.volumeSizeLimitMB=1024 -s3 -s3.config=/etc/seaweedfs/s3.json
@@ -36,7 +36,7 @@ services:
   # One-shot job: creates the two buckets, then exits.
   # Seeing airline_seaweedfs_init exit with code 0 is expected.
   seaweedfs-create-buckets:
-    image: chrislusf/seaweedfs:latest
+    image: chrislusf/seaweedfs:4.48
     container_name: airline_seaweedfs_init
     depends_on:
       - seaweedfs

@@ -2,10 +2,15 @@ name: CI
 
 on:
   pull_request:
-    branches: [dev]
+    branches: [dev, main]
+
+# A new push to the same PR cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  lint-and-build:
+  lint-test-build:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
@@ -23,9 +28,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit production dependencies (high and critical)
+        run: npm audit --omit=dev --audit-level=high
+
       # ---- Backend ----
       - name: Lint backend
         run: npm run lint -w apps/backend
+
+      - name: Check backend formatting
+        run: npm run format:check -w apps/backend
+
+      - name: Test backend
+        run: npm run test -w apps/backend
 
       - name: Build backend
         run: npm run build -w apps/backend
@@ -34,6 +48,9 @@ jobs:
       - name: Lint customer-web
         run: npm run lint -w apps/customer-web
 
+      - name: Check customer-web formatting
+        run: npm run format:check -w apps/customer-web
+
       - name: Build customer-web
         run: npm run build -w apps/customer-web
 
@@ -41,5 +58,86 @@ jobs:
       - name: Lint staff-web
         run: npm run lint -w apps/staff-web
 
+      - name: Check staff-web formatting
+        run: npm run format:check -w apps/staff-web
+
       - name: Build staff-web
         run: npm run build -w apps/staff-web
+
+  # Applies every migration to an empty database, checks the result matches
+  # schema.prisma, then runs the seed script against it.
+  database:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations
+        run: npm run db:migrate:deploy
+
+      - name: Check migrations match schema.prisma
+        run: |
+          npm exec -w apps/backend -- prisma migrate diff \
+            --from-config-datasource \
+            --to-schema src/db/prisma/schema.prisma \
+            --exit-code \
+          || { echo "::error::schema.prisma has changes with no migration. Run 'npm run db:migrate' and commit the new migration."; exit 1; }
+
+      - name: Run seed script
+        run: npm run db:seed
+
+  # Builds the production images without pushing them, so a broken
+  # Dockerfile fails here instead of at deploy time.
+  docker-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [backend, customer-web, staff-web]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.app }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: false
+          # Placeholders: the frontend images only need these at build time.
+          build-args: |
+            VITE_CLERK_PUBLISHABLE_KEY=pk_test_ci_placeholder
+            VITE_API_URL=http://localhost:8080
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}

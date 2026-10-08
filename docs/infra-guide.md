@@ -92,7 +92,7 @@ Do not assume these are available in the current checkout until the Dev/UI-UX Le
 
 ### Prerequisites
 
-- Node.js 24 (use the repository `.nvmrc`)
+- Node.js 24 (use the repository `.nvmrc`). npm refuses to install on older versions (`EBADENGINE`); run `nvm use` and try again.
 - npm
 - Docker Desktop or Docker Engine + Compose
 - Git
@@ -119,6 +119,8 @@ For a clean CI-style install:
 ```bash
 npm ci
 ```
+
+Run `npm install` again **every time you pull** changes. It also regenerates the Prisma client from `schema.prisma`; a stale client shows up as backend build errors about missing tables or fields.
 
 ### Configure local environment variables
 
@@ -161,6 +163,16 @@ VITE_API_URL
 ```
 
 The customer and staff applications must use **different Clerk applications** and therefore different Clerk publishable/secret keys.
+
+Where the values come from:
+
+| Value | Source |
+| --- | --- |
+| Clerk publishable and secret keys | The shared development Clerk applications. Infra Leads hand out the keys privately (never in Git, chat, or issues). |
+| `ACCESS_TOKEN_SECRET` | Generate your own: `openssl rand -hex 32` |
+| Everything else | The defaults in `.env.example` work for local development |
+
+If a frontend shows a **blank page**, check the browser console: a placeholder or wrong `VITE_CLERK_PUBLISHABLE_KEY` makes Clerk throw before anything renders.
 
 ### Start local infrastructure
 
@@ -371,7 +383,7 @@ group feature branch
         v
        PR -> dev
         |
-   CI lint + build
+   CI checks pass
         |
    Dev Leads merge
         |
@@ -388,7 +400,22 @@ group feature branch
  deploy Compose stack
 ```
 
-The current repository CI runs on pull requests targeting `dev` and performs lint/build for all three applications.
+CI (`.github/workflows/ci.yml`) runs on every pull request targeting `dev` or `main`. Its jobs:
+
+| Job | What it checks |
+| --- | --- |
+| `lint-test-build` | Production dependencies have no high/critical `npm audit` findings; then, for each app: lint, Prettier formatting, backend tests, build |
+| `database` | All migrations apply to an empty PostgreSQL 16, the result matches `schema.prisma` (no schema change without a migration), and the seed script runs |
+| `docker-build (backend / customer-web / staff-web)` | Each production Dockerfile still builds (images are not pushed) |
+
+Lint and format checks only report problems; they never edit files. To fix them locally:
+
+```bash
+npm run lint:fix -w apps/<app>
+npm run format -w apps/<app>
+```
+
+Dependabot (`.github/dependabot.yml`) opens weekly update PRs against `dev` for npm packages, GitHub Actions, Dockerfile base images, and the images pinned in the Compose files.
 
 ### Important current deployment gaps
 
@@ -398,7 +425,7 @@ These are **not yet fully automated** in the repository:
 2. The frontend production images need their `VITE_*` values at build time.
 3. Database migrations are not automatically executed by the backend container startup command.
 4. The current auth CORS/origin allow-list contains the two localhost frontend origins; production origins must be explicitly configured in the application before a non-local deployment can use the same auth flow.
-5. SeaweedFS is provisioned but the backend has no S3 client/integration code yet. In production the buckets are not created automatically; create them once by running `s3.bucket.create -name airline-public` and `s3.bucket.create -name airline-private` inside `weed shell` in the `seaweedfs` container.
+5. SeaweedFS is provisioned but the backend has no S3 client/integration code yet. In production the buckets are not created automatically; create them once by running `s3.bucket.create -name airline-public` and `s3.bucket.create -name airline-private` inside `weed shell` in the `seaweedfs` container. The VM's `.env` must set `S3_ACCESS_KEY` and `S3_SECRET_KEY`; `docker compose -f docker-compose.prod.yml` refuses to start without them.
 6. The production Compose file binds PostgreSQL and SeaweedFS to the VM's loopback address only. Docker-published ports bypass `ufw`, so do not publish them on all interfaces unless that exposure is intentional.
 
 Do not tell feature groups that deployment is fully automated until these pieces are resolved.
@@ -491,7 +518,7 @@ A practical sequence is:
 3. Validate endpoint behavior
 4. Integrate the frontend using the shared API/auth approach
 5. Add tests and UI verification
-6. Run lint/build locally
+6. Run lint, format check, tests, and build locally (the same checks CI runs)
 7. Open PR into dev
 ```
 

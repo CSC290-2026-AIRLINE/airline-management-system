@@ -7,8 +7,10 @@
     "dev": "vite",
     "build": "vite build && tsc",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "preview": "vite preview",
-    "format": "prettier --write ."
+    "format": "prettier --write . --ignore-path ../../.gitignore --ignore-path .prettierignore",
+    "format:check": "prettier --check . --ignore-path ../../.gitignore --ignore-path .prettierignore"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.10",
