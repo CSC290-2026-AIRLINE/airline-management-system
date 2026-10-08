@@ -84,7 +84,7 @@ All day-to-day development work from groups (G01–G16) merges into `dev` throug
 
 Production releases follow a strict integration pipeline from `dev` to `main`.
 
-- **Source:** Must originate from `dev` only (PRs from feature branches directly to `main` are blocked automatically).
+- **Source:** Must originate from `dev` only. GitHub does not block PRs from other branches into `main`; instead, only Infra Leads can merge into `main`, and they merge only PRs whose source is `dev`. Do not open PRs from feature branches into `main`.
 - **Opened by:** Dev Leads, once `dev` is ready to release.
 - **Merge Method:** **Merge commit** only (preserves release checkpoints and branch history).
 - **Approvals & Merge Authority:** Handled and merged **exclusively by Infra Leads**. Code Owner review is not required on `main` PRs — since only Infra Leads can complete the merge, this branch doesn't need a separate ownership check.
