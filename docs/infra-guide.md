@@ -94,7 +94,7 @@ Do not assume these are available in the current checkout until the Dev/UI-UX Le
 
 - Node.js 24 (use the repository `.nvmrc`). npm refuses to install on older versions (`EBADENGINE`); run `nvm use` and try again.
 - npm
-- Docker Desktop or Docker Engine + Compose
+- Docker Desktop or Docker Engine + Compose **2.23.1 or newer** (check with `docker compose version`; the SeaweedFS setup needs it)
 - Git
 
 ### Clone
@@ -172,7 +172,14 @@ Where the values come from:
 | `ACCESS_TOKEN_SECRET` | Generate your own: `openssl rand -hex 32` |
 | Everything else | The defaults in `.env.example` work for local development |
 
-If a frontend shows a **blank page**, check the browser console: a placeholder or wrong `VITE_CLERK_PUBLISHABLE_KEY` makes Clerk throw before anything renders.
+### Troubleshooting local setup
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `npm install` fails with `EBADENGINE` | Wrong Node version. Run `nvm use`, then install again. |
+| Backend build errors about missing tables or fields | Stale Prisma client after a pull. Run `npm install`. |
+| A frontend shows a **blank page** | Check the browser console. A placeholder or wrong `VITE_CLERK_PUBLISHABLE_KEY` makes Clerk throw before anything renders. |
+| Two `401` errors from `*.clerk.accounts.dev` in the console on the first page load | Harmless. Both apps run on `localhost`, so their Clerk dev cookies collide; Clerk recovers by itself. Does not happen in production. |
 
 ### Start local infrastructure
 
@@ -184,7 +191,16 @@ This starts:
 
 - PostgreSQL 16 on `localhost:5432`
 - SeaweedFS S3 API on `localhost:8333`
-- A one-shot initialization container that creates the `airline-public` and `airline-private` buckets
+- A one-shot initialization container that creates the `airline-public` and `airline-private` buckets (it exits with code 0 when done; that is expected)
+
+Local S3 details, for when file storage is added to the backend:
+
+| Setting | Local value |
+| --- | --- |
+| Endpoint | `http://localhost:8333` (path-style addressing, e.g. `forcePathStyle: true` in the AWS SDK) |
+| Access key / secret key | `devaccesskey` / `devsecretkey` (local only, set in `docker-compose.yml`) |
+| `airline-public` | Anyone can read and list; only the app credentials can write |
+| `airline-private` | App credentials only; give browsers time-limited presigned URLs |
 
 ### Start all applications
 
@@ -314,6 +330,55 @@ Feature groups normally **do not create their own authentication system**.
 
 Backend features should rely on the existing global auth guard and request user information. Frontend features should use the existing app authentication context rather than building their own login/token storage flow.
 
+#### Backend: protected and public routes
+
+Every route requires a valid access token **by default**; a request without one gets `401`. Mark the rare route that must work signed-out with `@Public()`, and read the signed-in user with `@CurrentUser()`:
+
+```ts
+import { Controller, Get } from '@nestjs/common'
+import { Public } from '@backend/auth/decorators/public.decorator'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
+
+@Controller('flights')
+export class FlightsController {
+  @Public()
+  @Get('search')
+  search() {
+    // open to everyone
+  }
+
+  @Get('mine')
+  mine(@CurrentUser() user: AuthenticatedUser) {
+    // user.id and user.email are verified by the global guard
+  }
+}
+```
+
+`AuthenticatedUser` currently contains only `id` and `email`. It does **not** say whether the user is a customer or staff member, so do not build customer-only or staff-only rules on it until the Dev Leads add the user type.
+
+#### Frontend: calling the API
+
+Inside pages under `src/routes/_authenticated/`, use the `useAppAuth()` hook from `src/auth/AuthProvider.tsx`. It provides `user`, `isLoading`, `logout`, and `fetchWithAuth`:
+
+```tsx
+const { fetchWithAuth } = useAppAuth()
+const res = await fetchWithAuth('/api/flights/mine')
+```
+
+`fetchWithAuth` prefixes `VITE_API_URL`, attaches the access token, and on a `401` refreshes the token once and retries. `useAppAuth()` only works inside the `_authenticated` routes, because that layout provides it; public pages call public endpoints with plain `fetch`.
+
+### Known issues in the current auth code
+
+These are known and owned by the Dev Leads. Do not work around them inside a feature; report anything new to the Dev Leads.
+
+| Issue | What you may notice |
+| --- | --- |
+| Two refresh requests sent at the same moment can revoke the whole session | In local development (React StrictMode runs effects twice) you are occasionally signed out of the backend session and the app re-exchanges your Clerk session. |
+| An invalid Clerk session token returns `500` instead of `401` | A `500` from `POST /api/auth/session` usually means a bad or expired Clerk token, not a server crash. |
+| Access tokens do not carry the user type | See above: no customer-only or staff-only checks yet. |
+| Soft-deleted users (`deleted_at` set) can still sign in and refresh | Do not rely on soft delete to block access. |
+
 ---
 
 ## 5. Environment Rules
@@ -338,6 +403,8 @@ For deployed frontend images, these values therefore need to be supplied at **im
 ### Backend environment variables are runtime configuration
 
 The backend validates the required environment variables when NestJS starts. A missing required value prevents the application from starting.
+
+The check only confirms that each value is present. It does not check the values themselves: a non-number such as `ACCESS_TOKEN_TTL_SECONDS=15m` lets the backend start, then every login and refresh fails with `500`. Keep the numeric values plain numbers, as in `.env.example`.
 
 ---
 
@@ -395,9 +462,9 @@ group feature branch
    Infra Leads merge
         |
         v
- build/pull deployment images
+ build + push images to Docker Hub (manual, Infra Leads)
         |
- deploy Compose stack
+ pull images + deploy Compose stack on the VM
 ```
 
 CI (`.github/workflows/ci.yml`) runs on every pull request targeting `dev` or `main`. Its jobs:
@@ -421,10 +488,10 @@ Dependabot security updates are enabled in the repository settings: when a vulne
 
 These are **not yet fully automated** in the repository:
 
-1. The production Compose file does not currently pass all required backend auth environment variables.
-2. The frontend production images need their `VITE_*` values at build time.
-3. Database migrations are not automatically executed by the backend container startup command.
-4. The current auth CORS/origin allow-list contains the two localhost frontend origins; production origins must be explicitly configured in the application before a non-local deployment can use the same auth flow.
+1. Production images are not built or pushed by CI. CI only checks that each Dockerfile builds; an Infra Lead builds the three images and pushes them to the Docker Hub namespace in `DOCKERHUB_USER`, tagged with `IMAGE_TAG` (default `latest`).
+2. The frontend production images need their `VITE_*` values at build time (`--build-arg VITE_CLERK_PUBLISHABLE_KEY=... --build-arg VITE_API_URL=...`), so each environment needs its own frontend images.
+3. Database migrations are not automatically executed by the backend container startup command. Run `prisma migrate deploy` against the production database before starting a backend version that needs new migrations.
+4. The backend reads the allowed frontend origins from `CUSTOMER_WEB_ORIGIN` and `STAFF_WEB_ORIGIN` (for CORS, cookie names, and choosing the Clerk app). The VM's `.env` must set both to the deployed frontend URLs. If either is missing, the backend still starts, but every sign-in and refresh from that app is rejected.
 5. SeaweedFS is provisioned but the backend has no S3 client/integration code yet. In production the buckets are not created automatically; create them once by running `s3.bucket.create -name airline-public` and `s3.bucket.create -name airline-private` inside `weed shell` in the `seaweedfs` container. The VM's `.env` must set `S3_ACCESS_KEY` and `S3_SECRET_KEY`; `docker compose -f docker-compose.prod.yml` refuses to start without them.
 6. The production Compose file binds PostgreSQL and SeaweedFS to the VM's loopback address only. Docker-published ports bypass `ufw`, so do not publish them on all interfaces unless that exposure is intentional.
 
@@ -437,10 +504,10 @@ Do not tell feature groups that deployment is fully automated until these pieces
 All feature development starts from `dev`.
 
 ```text
-feature/<team-id>-<short-description>
+<type>/<team-id>-<short-description>
 ```
 
-Example:
+`type` is one of `feature`, `fix`, `refactor`, `chore`, `docs`, `test`. Example:
 
 ```text
 feature/g03-seat-hold-ttl
@@ -463,6 +530,7 @@ Feature groups open PRs into `dev`.
 Current repository policy documented in `branch-naming-and-workflow.md`:
 
 - 2 approvals + Code Owner review for group PRs into `dev`
+- PRs use the PR template (`.github/pull_request_template.md`, filled in automatically when you open a PR)
 - squash merge into `dev`
 - release PRs come from `dev` to `main`
 - Infra Leads merge releases into `main`
@@ -481,6 +549,7 @@ Before assuming a rule is enforced automatically, check the current GitHub branc
 - Do not implement a separate authentication mechanism.
 - Do not import another module's internal files directly; use its exported NestJS interface.
 - Keep API contracts explicit and coordinate cross-module changes with the affected teams.
+- Put unit tests in `*.spec.ts` files next to the code they test (see `src/config/env.validation.spec.ts`). CI runs them with `npm run test -w apps/backend`. The frontends have no test runner yet.
 
 ### Frontend
 
