@@ -47,3 +47,7 @@ Thumbs.db
 
 # Docker local data
 *.local.db
+
+# Claude Code: settings.example.json is the team template; settings.json is personal and ignored
+.claude/settings.json
+CLAUDE.local.md
