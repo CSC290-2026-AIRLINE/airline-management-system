@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from 'node:crypto'
-import { Injectable, UnauthorizedException } from '@nestjs/common'
+import { Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { createClerkClient, verifyToken } from '@clerk/backend'
@@ -67,6 +67,7 @@ export class AuthService {
     }
 
     const user = await this.db.user.findUniqueOrThrow({ where: { id: existing.user_id } })
+    this.assertUserActive(user)
     const { refreshTokenId, ...tokens } = await this.issueTokenPair(user)
 
     await this.db.refresh_token.update({
@@ -104,29 +105,73 @@ export class AuthService {
   private async findOrCreateUser(clerkClient: ClerkClient, clerkUserId: string, userType: 'customer' | 'staff'): Promise<user> {
     const existing = await this.db.user.findUnique({ where: { clerk_user_id: clerkUserId } })
     if (existing) {
+      this.assertUserActive(existing)
       return existing
     }
 
     const clerkUser = await clerkClient.users.getUser(clerkUserId)
-    const primaryEmail = clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
-    if (!primaryEmail) {
+    const primaryEmailAddress = clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)
+    if (!primaryEmailAddress) {
       throw new UnauthorizedException('Clerk account has no verified email address')
     }
+    const primaryEmail = primaryEmailAddress.emailAddress
     const firstName = clerkUser.firstName || primaryEmail
     const lastName = clerkUser.lastName || ''
 
-    const newUser = await this.db.user.create({
-      data: { type: userType, email: primaryEmail, clerk_user_id: clerkUserId },
-    })
-
-    if (userType === 'customer') {
-      await this.db.customer.create({ data: { user_id: newUser.id, first_name: firstName, last_name: lastName } })
-    } else {
-      // No Clerk field maps to a staff role, so every new staff sign-in defaults to 'admin'.
-      await this.db.staff.create({ data: { user_id: newUser.id, first_name: firstName, last_name: lastName, role: 'admin' } })
+    // An admin can create a staff account before the person ever signs in (clerk_user_id is NULL). Link that row on the
+    // first sign-in instead of inserting a second user with the same email. Only a verified address may claim it, otherwise
+    // anyone could sign up in Clerk with a staff member's email and take over their account.
+    if (userType === 'staff') {
+      const preCreated = await this.db.user.findFirst({
+        where: { type: 'staff', email: { equals: primaryEmail, mode: 'insensitive' }, clerk_user_id: null, deleted_at: null },
+      })
+      if (preCreated) {
+        if (primaryEmailAddress.verification?.status !== 'verified') {
+          throw new UnauthorizedException('Verify your email address before signing in')
+        }
+        this.assertUserActive(preCreated)
+        return this.db.user.update({ where: { id: preCreated.id }, data: { clerk_user_id: clerkUserId } })
+      }
     }
 
+    // Staff accounts need a role row. Look it up first so a missing seed fails before anything is written.
+    const role = userType === 'staff' ? await this.findAdminRole() : null
+
+    // One transaction so a failed profile insert cannot leave a user row without its customer/staff row.
+    const newUser = await this.db.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: { type: userType, email: primaryEmail, clerk_user_id: clerkUserId },
+      })
+
+      if (userType === 'customer') {
+        // The customer's own identity is a passenger row; names live there, not on customer.
+        const passenger = await tx.passenger.create({ data: { first_name: firstName, last_name: lastName } })
+        await tx.customer.create({ data: { user_id: created.id, passenger_id: passenger.id } })
+      } else if (role) {
+        // No Clerk field maps to a staff role, so every new staff sign-in defaults to the 'admin' role.
+        await tx.staff.create({ data: { user_id: created.id, first_name: firstName, last_name: lastName, role_id: role.id } })
+      }
+
+      return created
+    })
+
     return newUser
+  }
+
+  // user.disabled_at / deleted_at: an account that is switched off or removed must not sign in or refresh.
+  // Requests that already carry an access token are not re-checked here; the JWT guard does not read the database.
+  private assertUserActive(user: user): void {
+    if (user.deleted_at || user.disabled_at) {
+      throw new UnauthorizedException('Account is disabled')
+    }
+  }
+
+  private async findAdminRole() {
+    const role = await this.db.role.findUnique({ where: { code: 'admin' } })
+    if (!role) {
+      throw new InternalServerErrorException("Staff sign-in needs the 'admin' role. Apply the migrations or run the seed.")
+    }
+    return role
   }
 
   private async issueTokenPair(user: user): Promise<IssuedTokenPair> {
