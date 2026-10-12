@@ -1,15 +1,16 @@
 -- Level 1 schema: features 2, 4, 7, 9, 12 and 15, plus the Feature 1 baseline they depend on.
 -- One file, in apply order. Run it once against an empty PostgreSQL 15 or later database (the project runs 16).
--- Not included: the reference SQL (feature-*-reference.sql, feature-2-queries.sql). Those are not migrations.
--- Seeds are in level1-seed.sql (roles, screens, base currency, airline code, first admin, and the other required rows).
--- Prisma cannot express most of this; create the migration with `prisma migrate dev --create-only` and keep this SQL in it.
+-- Prisma cannot express most of this (exclusion constraints, expression and trigram indexes, check constraints, triggers),
+-- so the migration in prisma/migrations/*_level1_schema is this file with the old scaffold tables dropped first and the
+-- 'admin' role inserted last. Keep the two in step. schema.prisma is generated from the migrated database with `prisma db pull`.
+-- Seed rows beyond that role (screens, base currency, airline code, first admin and so on) are not in the repo yet.
 
 -- ======================================================================================================================
 -- PART 1 of 8: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
 -- ======================================================================================================================
 
 -- Feature 1 baseline assumed by features 2, 4, 7, 9 and 15.
--- There is no Feature 1 doc and the repo's schema.sql is a scaffold, so this is what the other features need from Feature 1.
+-- There is no Feature 1 doc, so this is what the other features need from Feature 1 (refresh_token is kept from the old scaffold).
 -- The Feature 1 owner must confirm or replace it.
 
 CREATE EXTENSION IF NOT EXISTS btree_gist; -- exclusion constraints (features 2, 9)
@@ -86,8 +87,8 @@ CREATE INDEX refresh_token_user_idx ON refresh_token (user_id);
 
 -- Feature 2 (Flight Scheduling and Network Ops) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format checks, overlap rules other than the aircraft
--- timetable, event shape checks and helper triggers are the backend's job (see the review file).
--- Cross-module foreign keys are in 99-cross-module-fks.sql.
+-- timetable, event shape checks and helper triggers are the backend's job.
+-- Cross-module foreign keys are in Part 8 of this file.
 
 -- Reference data -----------------------------------------------------------------------------------
 
@@ -221,7 +222,7 @@ CREATE INDEX flight_pattern_idx ON flight (pattern_id) WHERE pattern_id IS NOT N
 -- commit order across flights, so subscribers replay through the outbox, never by "seq > last seen".
 -- old_*/new_* mean the value before/after the event. delay_minutes is this event's increment; the
 -- total delay is dep_at - scheduled_dep_at.
--- Which columns each event type must fill is enforced by the backend's event factory (see the review file).
+-- Which columns each event type must fill is enforced by the backend's event factory.
 CREATE TABLE flight_event (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   seq                    BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
@@ -250,7 +251,7 @@ CREATE INDEX flight_event_flight_idx ON flight_event (flight_id, seq);
 CREATE INDEX flight_event_occurred_idx ON flight_event (occurred_at);
 CREATE INDEX flight_event_reason_idx ON flight_event (disruption_reason_code, occurred_at);
 
--- Append-only through the shared forbid_mutation() trigger (see 00-baseline.sql).
+-- Append-only through the shared forbid_mutation() trigger (see Part 1 of this file).
 CREATE TRIGGER flight_event_append_only
   BEFORE UPDATE OR DELETE ON flight_event
   FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
@@ -335,8 +336,8 @@ INSERT INTO flight_setting (key, value) VALUES ('holding_limit_minutes', '30');
 
 -- Feature 9 (Aircraft Management) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Layout validation, format checks, task and
--- maintenance state consistency and the turnaround readiness calculation are the backend's job (see the review file).
--- Cross-module foreign keys (airport, flight) are in 99-cross-module-fks.sql.
+-- maintenance state consistency and the turnaround readiness calculation are the backend's job.
+-- Cross-module foreign keys (airport, flight) are in Part 8 of this file.
 -- Dates are calendar dates on the simulated calendar. end_date is the LAST unavailable day (inclusive).
 
 CREATE TABLE aircraft_type (
@@ -483,8 +484,8 @@ INSERT INTO fleet_setting (key, value) VALUES ('reserve_ratio', '1.10');
 
 -- Feature 4 (Pricing and Fare Rules) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format and range checks, rule-shape checks,
--- immutability of quotes and the base_currency lock are the backend's job (see the review file).
--- Cross-module foreign keys (route, flight) are in 99-cross-module-fks.sql.
+-- immutability of quotes and the base_currency lock are the backend's job.
+-- Cross-module foreign keys (route, flight) are in Part 8 of this file.
 -- All money is NUMERIC in the base currency (pricing_setting 'base_currency'). Percent columns are plain percents (15.00 = 15%).
 -- Columns that mean "when, in the simulation" (quoted_at, expires_at, paid_on, computed_at) have no default.
 
@@ -553,7 +554,7 @@ CREATE TABLE pricing_rule (
   CHECK (rule_group <> 'period' OR (start_date IS NOT NULL AND end_date IS NOT NULL AND end_date >= start_date))
 );
 
--- Unique priority per group among live rules. Reordering is two steps in one transaction (see the review file).
+-- Unique priority per group among live rules. Reordering is two steps in one transaction.
 CREATE UNIQUE INDEX pricing_rule_group_priority_uq ON pricing_rule (rule_group, priority) WHERE deleted_at IS NULL;
 CREATE INDEX pricing_rule_class_idx ON pricing_rule (fare_class_id) WHERE fare_class_id IS NOT NULL;
 
@@ -753,10 +754,10 @@ CREATE TABLE finance_monthly_summary (
 
 -- Feature 7 (Customer and Passenger Profiles) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Formats, the identity lock, screening consistency
--- and immutability of screening rows are the backend's job (see the review file).
--- "user" and staff are in 00-baseline.sql. This REPLACES the scaffold customer table in schema.sql:
+-- and immutability of screening rows are the backend's job.
+-- "user" and staff are in Part 1 of this file. This REPLACES the old scaffold customer table:
 -- names, DOB, gender, nationality moved to passenger; seat and meal preferences were cut from scope.
--- The flight cross-module FK is in 99-cross-module-fks.sql.
+-- The flight cross-module FK is in Part 8 of this file.
 
 -- Normalised name used for matching: uppercase letters and digits only. Passport spelling is ASCII.
 -- A function (not a stored column) so there is nothing for the backend to keep in sync; indexes use the same expression.
@@ -852,7 +853,7 @@ CREATE INDEX watchlist_entry_name_trgm ON watchlist_entry USING gin (name_key(fi
 
 -- One row per (run, matched entry); a clean run is one row with match_level 'none'. Never updated or deleted
 -- (the backend has no update or delete path for it). Decisions live in screening_review, so "held" is never overwritten.
--- The backend keeps match_level, outcome and trigger_point consistent (see the review file).
+-- The backend keeps match_level, outcome and trigger_point consistent.
 CREATE TABLE screening_check (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   run_id             UUID NOT NULL,                        -- one POST /screening/check call
@@ -897,8 +898,8 @@ CREATE TABLE screening_review (
 
 -- Feature 15 (Admin Console) - proposed schema.
 -- Contents: the screens model, the audit log columns and append-only. The last-admin guard, the reason rule and the
--- audit actor rules are the backend's job (see the review file).
--- role, staff (with staff_code, last_sign_in_at) and "user" (with disabled_at) are in 00-baseline.sql.
+-- audit actor rules are the backend's job.
+-- role, staff (with staff_code, last_sign_in_at) and "user" (with disabled_at) are in Part 1 of this file.
 
 -- Screens ------------------------------------------------------------------------------------------
 
@@ -931,7 +932,7 @@ CREATE INDEX role_screen_screen_idx ON role_screen (screen_id);
 
 -- Audit log ----------------------------------------------------------------------------------------
 
--- Written by an in-process audit service inside the same transaction as the change it records (see the review file).
+-- Written by an in-process audit service inside the same transaction as the change it records.
 -- id is chosen by the writer, so a retry is INSERT ... ON CONFLICT (id) DO NOTHING and never duplicates.
 -- occurred_at is the simulation clock; recorded_at is real time and seq is the order of insertion. Rewinding the
 -- simulation clock must not be able to reorder history, so list and page by seq.
@@ -979,10 +980,9 @@ CREATE TRIGGER audit_log_no_truncate
 -- Feature 12 (Onboard Products) - proposed schema.
 -- Contents: the doc's own checks and the columns and tables the doc is missing. Settings resolution (flight, route, network),
 -- completion rules, FEFO transfers, the order and payment state machine and on-hand reconciliation are the backend's job
--- (see the review file).
 -- Uses customer (feature 7), staff (feature 1) and forbid_mutation() (baseline).
 -- booking_id, booking_passenger_id and payment_id belong to features 3b and 5, whose schemas do not exist yet: no foreign key.
--- The route, flight, aircraft and airport foreign keys are in 99-cross-module-fks.sql.
+-- The route, flight, aircraft and airport foreign keys are in Part 8 of this file.
 -- Business timestamps (generated_at, transferred_at, submitted_at, sold_at, occurred_at, expires_at) have no default and
 -- come from the simulation clock. created_at and updated_at are real time.
 -- Money is NUMERIC in the base currency (feature 4, pricing_setting 'base_currency'). Orders and sales keep a currency snapshot.
@@ -1378,8 +1378,8 @@ CREATE TRIGGER stock_movement_no_truncate
 -- Cross-module foreign keys for features 2, 4, 7, 9 and 12.
 -- Recommended: the targets are never hard-deleted (airport, route, flight and aircraft are deactivated or cancelled),
 -- everything lives in one Postgres, and the DB leads own the migration order. Apply after every feature script.
--- This file is optional as a whole: delete it (or any statement) and the features still work, with the backend
--- checking the ids through the other feature's API instead. See 00-cross-feature-decisions.md, decision D6.
+-- This part is optional: delete it (or any statement) and the features still work, with the backend
+-- checking the ids through the other feature's API instead.
 
 -- Feature 2 <-> feature 9
 ALTER TABLE flight       ADD CONSTRAINT flight_aircraft_fk              FOREIGN KEY (aircraft_id)     REFERENCES aircraft (id);

@@ -1,3 +1,10 @@
+// Generated with `prisma db pull` from a database migrated by src/db/schema.sql. After every re-pull, change these three
+// back-relations to lists by hand, or `prisma validate` fails (Prisma rejects a one-to-one relation over a composite foreign key
+// unless the composite is unique, and the database does not need that extra unique):
+//   fare_quote.promo_redemption  ->  promo_redemption[]
+//   user.customer                ->  customer[]
+//   user.staff                   ->  staff[]
+
 generator client {
   provider        = "prisma-client"
   output          = "../generated/prisma"

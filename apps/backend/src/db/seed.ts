@@ -26,10 +26,13 @@ const prisma = new PrismaClient({
 
 // Roles are reference data (the sign-in flow looks up 'admin'), so upsert them rather than create:
 // running the seed twice, or after the Level 1 seed file, must not fail on the unique code.
-async function seedRoles() {
+async function seedRoles(): Promise<string[]> {
+  const ids: string[] = []
   for (const role of STAFF_ROLES) {
-    await prisma.role.upsert({ where: { code: role.code }, update: {}, create: role })
+    const row = await prisma.role.upsert({ where: { code: role.code }, update: {}, create: role })
+    ids.push(row.id)
   }
+  return ids
 }
 
 async function seedCustomer() {
@@ -64,7 +67,7 @@ async function seedCustomer() {
   return user
 }
 
-async function seedStaff() {
+async function seedStaff(roleIds: string[]) {
   const user = await prisma.user.create({
     data: {
       type: 'staff',
@@ -73,14 +76,12 @@ async function seedStaff() {
     },
   })
 
-  const role = await prisma.role.findUniqueOrThrow({ where: { code: faker.helpers.arrayElement(STAFF_ROLES).code } })
-
   await prisma.staff.create({
     data: {
       user_id: user.id,
       first_name: faker.person.firstName(),
       last_name: faker.person.lastName(),
-      role_id: role.id,
+      role_id: faker.helpers.arrayElement(roleIds),
     },
   })
 
@@ -100,7 +101,7 @@ async function seedRefreshTokens(userId: string) {
 async function main() {
   console.log(`Seeding ${STAFF_ROLES.length} roles, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`)
 
-  await seedRoles()
+  const roleIds = await seedRoles()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()
@@ -108,7 +109,7 @@ async function main() {
   }
 
   for (let i = 0; i < STAFF_COUNT; i++) {
-    const user = await seedStaff()
+    const user = await seedStaff(roleIds)
     await seedRefreshTokens(user.id)
   }
 
