@@ -12,13 +12,25 @@ try {
 const CUSTOMER_COUNT = 3
 const STAFF_COUNT = 2
 const REFRESH_TOKENS_PER_USER = 2
-const STAFF_ROLES = ['check-in', 'gate', 'baggage', 'admin']
-const SEAT_PREFERENCES = ['window', 'aisle', 'middle']
-const MEAL_PREFERENCES = ['standard', 'vegetarian', 'vegan', 'halal', 'kosher']
+const STAFF_ROLES = [
+  { code: 'check-in', name: 'Check-in', is_admin: false },
+  { code: 'gate', name: 'Gate', is_admin: false },
+  { code: 'baggage', name: 'Baggage', is_admin: false },
+  { code: 'admin', name: 'Admin', is_admin: true },
+]
+const GENDERS = ['M', 'F', 'X']
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 })
+
+// Roles are reference data (the sign-in flow looks up 'admin'), so upsert them rather than create:
+// running the seed twice, or after the Level 1 seed file, must not fail on the unique code.
+async function seedRoles() {
+  for (const role of STAFF_ROLES) {
+    await prisma.role.upsert({ where: { code: role.code }, update: {}, create: role })
+  }
+}
 
 async function seedCustomer() {
   const user = await prisma.user.create({
@@ -29,17 +41,22 @@ async function seedCustomer() {
     },
   })
 
-  await prisma.customer.create({
+  // A customer's identity (names, date of birth, gender, nationality) lives on the passenger row.
+  const passenger = await prisma.passenger.create({
     data: {
-      user_id: user.id,
       first_name: faker.person.firstName(),
       last_name: faker.person.lastName(),
       date_of_birth: faker.date.birthdate(),
-      nationality: faker.location.country(),
-      gender: faker.person.sex(),
+      gender: faker.helpers.arrayElement(GENDERS),
+      nationality: faker.location.countryCode('alpha-2').toLowerCase(),
+    },
+  })
+
+  await prisma.customer.create({
+    data: {
+      user_id: user.id,
+      passenger_id: passenger.id,
       phone: faker.phone.number(),
-      seat_preference: faker.helpers.arrayElement(SEAT_PREFERENCES),
-      meal_preference: faker.helpers.arrayElement(MEAL_PREFERENCES),
       profile_photo_url: faker.image.avatar(),
     },
   })
@@ -56,12 +73,14 @@ async function seedStaff() {
     },
   })
 
+  const role = await prisma.role.findUniqueOrThrow({ where: { code: faker.helpers.arrayElement(STAFF_ROLES).code } })
+
   await prisma.staff.create({
     data: {
       user_id: user.id,
       first_name: faker.person.firstName(),
       last_name: faker.person.lastName(),
-      role: faker.helpers.arrayElement(STAFF_ROLES),
+      role_id: role.id,
     },
   })
 
@@ -79,7 +98,9 @@ async function seedRefreshTokens(userId: string) {
 }
 
 async function main() {
-  console.log(`Seeding ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`)
+  console.log(`Seeding ${STAFF_ROLES.length} roles, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`)
+
+  await seedRoles()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()

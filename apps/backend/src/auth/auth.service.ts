@@ -115,16 +115,26 @@ export class AuthService {
     const firstName = clerkUser.firstName || primaryEmail
     const lastName = clerkUser.lastName || ''
 
-    const newUser = await this.db.user.create({
-      data: { type: userType, email: primaryEmail, clerk_user_id: clerkUserId },
-    })
+    // Staff accounts need a role row. Look it up first so a missing seed fails before anything is written.
+    const role = userType === 'staff' ? await this.db.role.findUniqueOrThrow({ where: { code: 'admin' } }) : null
 
-    if (userType === 'customer') {
-      await this.db.customer.create({ data: { user_id: newUser.id, first_name: firstName, last_name: lastName } })
-    } else {
-      // No Clerk field maps to a staff role, so every new staff sign-in defaults to 'admin'.
-      await this.db.staff.create({ data: { user_id: newUser.id, first_name: firstName, last_name: lastName, role: 'admin' } })
-    }
+    // One transaction so a failed profile insert cannot leave a user row without its customer/staff row.
+    const newUser = await this.db.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: { type: userType, email: primaryEmail, clerk_user_id: clerkUserId },
+      })
+
+      if (userType === 'customer') {
+        // The customer's own identity is a passenger row; names live there, not on customer.
+        const passenger = await tx.passenger.create({ data: { first_name: firstName, last_name: lastName } })
+        await tx.customer.create({ data: { user_id: created.id, passenger_id: passenger.id } })
+      } else if (role) {
+        // No Clerk field maps to a staff role, so every new staff sign-in defaults to the 'admin' role.
+        await tx.staff.create({ data: { user_id: created.id, first_name: firstName, last_name: lastName, role_id: role.id } })
+      }
+
+      return created
+    })
 
     return newUser
   }
