@@ -2,9 +2,11 @@
 
 ## Team ID
 
-Every branch and commit is scoped to a **team ID**: `g01`–`g16`, or `core` for platform-wide work (auth/RBAC/shared code, owned by dev leads + infra leads).
+Every commit and PR title is scoped to a **team ID**: `g01`–`g16`, or `core` for platform-wide work (auth/RBAC/shared code, owned by dev leads + infra leads).
 
-Use your team ID in branches and commits — never a module name, never a person's name. Team IDs don't change even if members do or the module they're assigned to changes. Which team owns which module lives in `backend-structure.md` / `frontend-structure.md`, not here — this doc only cares about the ID.
+Use your team ID in commits and PR titles — never a module name, never a person's name. Team IDs don't change even if members do or the module they're assigned to changes. Which team owns which module lives in `backend-structure.md` / `frontend-structure.md`, not here — this doc only cares about the ID.
+
+Branches are named by **feature number**, not team ID (see below).
 
 ---
 
@@ -13,24 +15,22 @@ Use your team ID in branches and commits — never a module name, never a person
 All feature branches must branch off **`dev`**:
 
 ```
-<type>/<team-id>-<short-description>
+feat-<feature-number>-<feature-name>
 ```
 
-- `type`: `feature`, `fix`, `refactor`, `chore`, `docs`, `test`
-- `team-id`: lowercase, from the table above (`g03`, `core`, etc.)
-- `short-description`: lowercase, hyphen-separated, no underscores, no spaces, max ~6 words
+- `feat`: fixed prefix, always lowercase
+- `feature-number`: the number of the feature you are working on, as assigned by the Dev Leads (e.g. `03`, `12`)
+- `feature-name`: lowercase, hyphen-separated, no camelCase, no underscores, no spaces, max ~6 words
 
 **Examples:**
 
 ```
-feature/g03-seat-hold-ttl
-fix/g07-boarding-pass-qr-bug
-refactor/g04-fare-rules-engine
-docs/core-readme-update
-chore/g11-cleanup-unused-imports
+feat-03-seat-hold-ttl
+feat-07-boarding-pass-qr
+feat-12-fare-rules-engine
 ```
 
-**Not allowed:** `johns-branch`, `test123`, `fix-bug`, `Feature/G03_SeatHold`, anything with your name, anything without a team-id.
+**Not allowed:** `johns-branch`, `test123`, `fix-bug`, `Feat-03-SeatHold`, `feat-03-seatHoldTtl`, `feat_03_seat_hold`, `feature/g03-seat-hold-ttl`, anything with your name, anything without a feature number.
 
 > **Protected Branches:** Groups (G01–G16) cannot push directly to `dev` or `main` — all changes go through a PR. **Dev Leads and Infra Leads are the exception:** as branch administrators, Dev Leads can push/merge directly to `dev` and Infra Leads can push/merge directly to `main`, without opening a PR.
 
@@ -95,7 +95,7 @@ Production releases follow a strict integration pipeline from `dev` to `main`.
 
 Two long-lived branches (`main` for releases, `dev` for integration):
 
-1. **Branch off `dev`:** `git checkout dev && git pull origin dev && git checkout -b feature/<team-id>-<feature>`
+1. **Branch off `dev`:** `git checkout dev && git pull origin dev && git checkout -b feat-<feature-number>-<feature-name>`
 2. **Develop & Commit:** Commit changes using conventional commit standards.
 3. **Open PR against `dev`:** Open a PR as soon as code is reviewable.
 4. **Code Review:** Obtain 2 approvals (including Code Owner).

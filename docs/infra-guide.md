@@ -504,13 +504,13 @@ Do not tell feature groups that deployment is fully automated until these pieces
 All feature development starts from `dev`.
 
 ```text
-<type>/<team-id>-<short-description>
+feat-<feature-number>-<feature-name>
 ```
 
-`type` is one of `feature`, `fix`, `refactor`, `chore`, `docs`, `test`. Example:
+`feature-number` is the feature number assigned by the Dev Leads; `feature-name` is lowercase and hyphen-separated (no camelCase). Example:
 
 ```text
-feature/g03-seat-hold-ttl
+feat-03-seat-hold-ttl
 ```
 
 Commits use:
