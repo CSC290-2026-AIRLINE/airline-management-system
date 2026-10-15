@@ -1,9 +1,12 @@
 -- Level 1 schema: features 2, 4, 7, 9, 12 and 15, plus the Feature 1 baseline they depend on.
 -- One file, in apply order. Run it once against an empty PostgreSQL 15 or later database (the project runs 16).
 -- Prisma cannot express most of this (exclusion constraints, expression and trigram indexes, check constraints, triggers),
--- so the migration in prisma/migrations/*_level1_schema is this file with the old scaffold tables dropped first and the
--- 'admin' role inserted last. Keep the two in step. schema.prisma is generated from the migrated database with `prisma db pull`.
--- Seed rows beyond that role (screens, base currency, airline code, first admin and so on) are not in the repo yet.
+-- so migrations are written by hand. prisma/migrations/*_level1_schema created the first version of this file (with the old
+-- scaffold tables dropped first and the 'admin' role inserted last), and each later migration applies a change to it.
+-- This file is always the result of all migrations: change both together. schema.prisma is generated from the migrated
+-- database with `prisma db pull`.
+-- Apart from that role and the default settings inserted below, seed rows (screens, base currency, quote hold, airline code,
+-- first admin and so on) are not in the repo yet.
 
 -- ======================================================================================================================
 -- PART 1 of 8: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
@@ -16,7 +19,7 @@
 CREATE EXTENSION IF NOT EXISTS btree_gist; -- exclusion constraints (features 2, 9)
 CREATE EXTENSION IF NOT EXISTS pg_trgm;    -- fuzzy name matching (feature 7)
 
--- Shared by the append-only tables (flight_event, audit_log).
+-- Shared by the append-only tables (flight_event, audit_log, stock_movement).
 -- A trigger rather than grants: the app connects as the table owner, so grants would not bind it.
 CREATE FUNCTION forbid_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -51,6 +54,11 @@ CREATE UNIQUE INDEX user_type_email_uq ON "user" (type, lower(email)) WHERE dele
 
 CREATE SEQUENCE staff_code_seq;
 
+-- 'ST-0001' ... 'ST-9999', then 'ST-10000'. Plain lpad would cut the 10000th code back to 'ST-1000'.
+CREATE FUNCTION next_staff_code() RETURNS text LANGUAGE sql AS $$
+  SELECT 'ST-' || lpad(n::text, greatest(4, length(n::text)), '0') FROM nextval('staff_code_seq') AS n
+$$;
+
 CREATE TABLE staff (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL,
@@ -58,8 +66,8 @@ CREATE TABLE staff (
   first_name      TEXT NOT NULL,
   last_name       TEXT NOT NULL,
   role_id         UUID NOT NULL REFERENCES role (id),
-  staff_code      TEXT NOT NULL UNIQUE DEFAULT 'ST-' || lpad(nextval('staff_code_seq')::text, 4, '0'), -- feature 15
-  last_sign_in_at TIMESTAMPTZ,                                                                          -- feature 15, simulation clock
+  staff_code      TEXT NOT NULL UNIQUE DEFAULT next_staff_code(), -- feature 15
+  last_sign_in_at TIMESTAMPTZ,                                    -- feature 15, simulation clock
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at      TIMESTAMPTZ,
@@ -256,16 +264,23 @@ CREATE TRIGGER flight_event_append_only
   BEFORE UPDATE OR DELETE ON flight_event
   FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
 
+CREATE TRIGGER flight_event_no_truncate
+  BEFORE TRUNCATE ON flight_event
+  FOR EACH STATEMENT EXECUTE FUNCTION forbid_mutation();
+
 -- Delivery state lives apart from the immutable event. The backend inserts the outbox row in the same
 -- transaction as the event; the publisher sets published_at (simulation clock) after the bus accepts it.
+-- The publisher sends pending rows in seq order. seq is taken when the outbox row is inserted, inside the same
+-- flight lock as the event, so it is monotonic per flight.
 CREATE TABLE flight_event_outbox (
   event_id     UUID PRIMARY KEY REFERENCES flight_event (id),
   published_at TIMESTAMPTZ,
   attempts     INTEGER NOT NULL DEFAULT 0,
-  last_error   TEXT
+  last_error   TEXT,
+  seq          BIGINT GENERATED ALWAYS AS IDENTITY
 );
 
-CREATE INDEX flight_event_outbox_pending_idx ON flight_event_outbox (event_id) WHERE published_at IS NULL;
+CREATE INDEX flight_event_outbox_pending_idx ON flight_event_outbox (seq) WHERE published_at IS NULL;
 
 -- Congestion and conflicts -------------------------------------------------------------------------
 
@@ -390,8 +405,8 @@ CREATE INDEX aircraft_type_idx ON aircraft (aircraft_type_id);
 CREATE INDEX aircraft_base_idx ON aircraft (base_airport_code);
 
 -- No row for a date means in_service. A period is editable (end it, shorten it, soft-delete it).
--- origin = 'maintenance' periods belong to an aircraft_maintenance window and are changed only through it;
--- the backend never creates an 'in_maintenance' period any other way.
+-- origin = 'maintenance' periods belong to an aircraft_maintenance window and are changed only through it,
+-- and they are exactly the 'in_maintenance' periods.
 CREATE TABLE aircraft_status_period (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   aircraft_id UUID NOT NULL REFERENCES aircraft (id),
@@ -405,6 +420,8 @@ CREATE TABLE aircraft_status_period (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at  TIMESTAMPTZ,
   CHECK (end_date IS NULL OR end_date >= start_date),
+  CONSTRAINT aircraft_status_period_origin_status_check CHECK ((origin = 'maintenance') = (status = 'in_maintenance')),
+  UNIQUE (id, aircraft_id),                               -- lets aircraft_maintenance prove its period is for the same aircraft
   -- Two live periods for one aircraft may not overlap; the 409 on POST/PUT maps from SQLSTATE 23P01.
   EXCLUDE USING gist (
     aircraft_id WITH =,
@@ -420,14 +437,17 @@ CREATE TABLE aircraft_maintenance (
   planned_end_date   DATE NOT NULL,                       -- last day the aircraft is unavailable
   actual_end_date    DATE,
   status             TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'in_progress', 'completed', 'cancelled')),
-  status_period_id   UUID NOT NULL UNIQUE REFERENCES aircraft_status_period (id),
+  status_period_id   UUID NOT NULL,
   created_by         UUID NOT NULL REFERENCES staff (id),
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at         TIMESTAMPTZ,
   CHECK (planned_end_date >= planned_start_date),
   -- A completed window must have its actual end: completing it shortens or extends the status period to that date.
-  CHECK (status <> 'completed' OR actual_end_date IS NOT NULL)
+  CHECK (status <> 'completed' OR actual_end_date IS NOT NULL),
+  -- The period must be for the same aircraft. A period has one aircraft, so the pair still allows one window per period.
+  UNIQUE (status_period_id, aircraft_id),
+  FOREIGN KEY (status_period_id, aircraft_id) REFERENCES aircraft_status_period (id, aircraft_id)
 );
 
 CREATE INDEX aircraft_maintenance_aircraft_idx ON aircraft_maintenance (aircraft_id, planned_start_date DESC);
@@ -1222,6 +1242,7 @@ CREATE TABLE stock_batch (
 
 -- Earliest-expiring first.
 CREATE INDEX stock_batch_fefo_idx ON stock_batch (warehouse_id, product_id, expires_at) WHERE quantity_remaining > 0;
+CREATE INDEX stock_batch_receipt_idx ON stock_batch (purchase_receipt_id);
 
 -- Catering orders and aircraft stock ----------------------------------------------------------------------
 
@@ -1273,6 +1294,8 @@ CREATE TABLE stock_transfer_line (
   FOREIGN KEY (stock_batch_id, product_id) REFERENCES stock_batch (id, product_id)
 );
 
+CREATE INDEX stock_transfer_line_transfer_idx ON stock_transfer_line (stock_transfer_id);
+
 -- Stock on the aircraft by batch, kept across flights. The expiry is the batch's (join stock_batch).
 CREATE TABLE aircraft_stock (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1284,6 +1307,8 @@ CREATE TABLE aircraft_stock (
   UNIQUE (aircraft_id, stock_batch_id),
   FOREIGN KEY (stock_batch_id, product_id) REFERENCES stock_batch (id, product_id)
 );
+
+CREATE INDEX aircraft_stock_batch_idx ON aircraft_stock (stock_batch_id);
 
 -- Flight report and on-board sales --------------------------------------------------------------------------
 
@@ -1361,6 +1386,10 @@ CREATE UNIQUE INDEX stock_movement_order_once_uq
   ON stock_movement (product_order_id, product_id, type) WHERE type IN ('reserve', 'release');
 CREATE INDEX stock_movement_product_idx ON stock_movement (product_id, occurred_at);
 CREATE INDEX stock_movement_flight_idx ON stock_movement (flight_id) WHERE flight_id IS NOT NULL;
+CREATE INDEX stock_movement_warehouse_idx ON stock_movement (warehouse_id, occurred_at) WHERE warehouse_id IS NOT NULL;
+CREATE INDEX stock_movement_aircraft_idx ON stock_movement (aircraft_id, occurred_at) WHERE aircraft_id IS NOT NULL;
+CREATE INDEX stock_movement_batch_idx ON stock_movement (stock_batch_id) WHERE stock_batch_id IS NOT NULL;
+CREATE INDEX stock_movement_transfer_idx ON stock_movement (stock_transfer_id) WHERE stock_transfer_id IS NOT NULL;
 
 CREATE TRIGGER stock_movement_no_change
   BEFORE UPDATE OR DELETE ON stock_movement

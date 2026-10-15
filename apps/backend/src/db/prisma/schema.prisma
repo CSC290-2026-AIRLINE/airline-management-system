@@ -51,15 +51,16 @@ model aircraft_maintenance {
   planned_end_date       DateTime               @db.Date
   actual_end_date        DateTime?              @db.Date
   status                 String                 @default("planned")
-  status_period_id       String                 @unique @db.Uuid
+  status_period_id       String                 @db.Uuid
   created_by             String                 @db.Uuid
   created_at             DateTime               @default(now()) @db.Timestamptz(6)
   updated_at             DateTime               @default(now()) @db.Timestamptz(6)
   deleted_at             DateTime?              @db.Timestamptz(6)
   aircraft               aircraft               @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff                  staff                  @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  aircraft_status_period aircraft_status_period @relation(fields: [status_period_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  aircraft_status_period aircraft_status_period @relation(fields: [status_period_id, aircraft_id], references: [id, aircraft_id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@unique([status_period_id, aircraft_id])
   @@index([aircraft_id, planned_start_date(sort: Desc)], map: "aircraft_maintenance_aircraft_idx")
 }
 
@@ -89,6 +90,8 @@ model aircraft_status_period {
   aircraft_maintenance aircraft_maintenance?
   aircraft             aircraft              @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff                staff                 @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([id, aircraft_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -103,6 +106,7 @@ model aircraft_stock {
   stock_batch    stock_batch @relation(fields: [stock_batch_id, product_id], references: [id, product_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([aircraft_id, stock_batch_id])
+  @@index([stock_batch_id], map: "aircraft_stock_batch_idx")
 }
 
 model aircraft_turnaround {
@@ -571,9 +575,10 @@ model flight_event_outbox {
   published_at DateTime?    @db.Timestamptz(6)
   attempts     Int          @default(0)
   last_error   String?
+  seq          BigInt       @default(autoincrement())
   flight_event flight_event @relation(fields: [event_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([event_id], map: "flight_event_outbox_pending_idx", where: raw("(published_at IS NULL)"))
+  @@index([seq], map: "flight_event_outbox_pending_idx", where: raw("(published_at IS NULL)"))
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1071,7 +1076,7 @@ model staff {
   first_name                                                 String
   last_name                                                  String
   role_id                                                    String                   @db.Uuid
-  staff_code                                                 String                   @unique @default(dbgenerated("('ST-'::text || lpad((nextval('staff_code_seq'::regclass))::text, 4, '0'::text))"))
+  staff_code                                                 String                   @unique @default(dbgenerated("next_staff_code()"))
   last_sign_in_at                                            DateTime?                @db.Timestamptz(6)
   created_at                                                 DateTime                 @default(now()) @db.Timestamptz(6)
   updated_at                                                 DateTime                 @default(now()) @db.Timestamptz(6)
@@ -1126,6 +1131,7 @@ model stock_batch {
   @@unique([id, product_id])
   @@unique([warehouse_id, product_id, batch_code])
   @@index([warehouse_id, product_id, expires_at], map: "stock_batch_fefo_idx", where: raw("(quantity_remaining > 0)"))
+  @@index([purchase_receipt_id], map: "stock_batch_receipt_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1157,6 +1163,10 @@ model stock_movement {
   @@unique([product_order_id, product_id, type], map: "stock_movement_order_once_uq", where: raw("(type = ANY (ARRAY['reserve'::text, 'release'::text]))"))
   @@index([flight_id], map: "stock_movement_flight_idx", where: raw("(flight_id IS NOT NULL)"))
   @@index([product_id, occurred_at], map: "stock_movement_product_idx")
+  @@index([aircraft_id, occurred_at], map: "stock_movement_aircraft_idx", where: raw("(aircraft_id IS NOT NULL)"))
+  @@index([stock_batch_id], map: "stock_movement_batch_idx", where: raw("(stock_batch_id IS NOT NULL)"))
+  @@index([stock_transfer_id], map: "stock_movement_transfer_idx", where: raw("(stock_transfer_id IS NOT NULL)"))
+  @@index([warehouse_id, occurred_at], map: "stock_movement_warehouse_idx", where: raw("(warehouse_id IS NOT NULL)"))
 }
 
 model stock_transfer {
@@ -1184,6 +1194,8 @@ model stock_transfer_line {
   quantity          Int
   stock_batch       stock_batch    @relation(fields: [stock_batch_id, product_id], references: [id, product_id], onDelete: NoAction, onUpdate: NoAction)
   stock_transfer    stock_transfer @relation(fields: [stock_transfer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([stock_transfer_id], map: "stock_transfer_line_transfer_idx")
 }
 
 model supplier {
