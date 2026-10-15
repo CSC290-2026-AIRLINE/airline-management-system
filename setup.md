@@ -14,23 +14,7 @@ Use the repository's Node version:
 nvm use
 ```
 
-## 2. Install Dependencies
-
-Run once from the repo root — this installs and links `apps/backend`, `apps/customer-web`, and `apps/staff-web` together via npm workspaces.
-
-```bash
-npm install
-```
-
-For a clean lockfile-based install:
-
-```bash
-npm ci
-```
-
-Run `npm install` again after every `git pull`; it also regenerates the Prisma client.
-
-## 3. Configure Environment Variables
+## 2. Configure Environment Variables
 
 Create local environment files from the examples:
 
@@ -40,27 +24,25 @@ cp apps/customer-web/.env.example apps/customer-web/.env
 cp apps/staff-web/.env.example apps/staff-web/.env
 ```
 
-Then fill in the empty values:
+replace content with provided env files
 
-- **Clerk keys** (both backend secret keys and each frontend's publishable key): ask the Infra Leads for the development keys. They are shared privately, never committed.
-- **`ACCESS_TOKEN_SECRET`**: generate your own with `openssl rand -hex 32`.
+## 3. Install Dependencies
 
-See [`docs/infra-guide.md`](./docs/infra-guide.md) for the authentication flow and configuration rules.
-
-## 4. Start Local Infrastructure
+Run once from the repo root — this installs and links `apps/backend`, `apps/customer-web`, and `apps/staff-web` together via npm workspaces.
 
 ```bash
-npm run db:up
+npm install
 ```
 
-This starts:
+Run `npm install` again after every `git pull`; it also regenerates the Prisma client.
 
-- PostgreSQL 16: `localhost:5432`
-- SeaweedFS S3 API: `localhost:8333`
+Before starting the apps for the first time, apply database migrations (see step 7):
 
-A one-shot initialization container also creates the `airline-public` and `airline-private` buckets. Seeing `airline_seaweedfs_init` exit successfully is expected. Docker Compose 2.23.1 or newer is required (`docker compose version`).
+```bash
+npm run db:migrate
+```
 
-## 5. Start Everything
+## 5. Start Everything (peak command)
 
 ```bash
 npm run dev
@@ -71,6 +53,8 @@ Current application ports:
 - Backend API: `http://localhost:8080`
 - Customer web: `http://localhost:5151`
 - Staff web: `http://localhost:6161`
+- PostgreSQL 16: `localhost:5432`
+- SeaweedFS S3 API: `localhost:8333`
 
 `npm run dev` starts the three applications after bringing up PostgreSQL and SeaweedFS. Stopping it does not stop those infrastructure containers; use:
 
@@ -107,3 +91,5 @@ npm run db:migrate:reset
 npm run db:studio
 npm run db:seed
 ```
+
+See [`docs/infra-guide.md`](./docs/infra-guide.md) for the authentication flow and configuration rules.
