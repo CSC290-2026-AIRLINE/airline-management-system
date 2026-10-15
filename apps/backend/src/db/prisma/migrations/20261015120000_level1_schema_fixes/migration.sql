@@ -22,15 +22,18 @@ ALTER TABLE staff ALTER COLUMN staff_code SET DEFAULT next_staff_code();
 ALTER TABLE aircraft_status_period
   ADD CONSTRAINT aircraft_status_period_origin_status_check CHECK ((origin = 'maintenance') = (status = 'in_maintenance'));
 
--- A maintenance window's status period must belong to the same aircraft.
--- The pair replaces the unique on status_period_id alone: a period has one aircraft, so it is still one window per period.
-ALTER TABLE aircraft_status_period ADD UNIQUE (id, aircraft_id);
+-- A maintenance window's status period must belong to the same aircraft and be a maintenance period. period_origin is
+-- pinned to 'maintenance' and is part of the key, like role_screen.screen_kind. The unique replaces the one on
+-- status_period_id alone: a period has one aircraft and one origin, so it is still one window per period.
+ALTER TABLE aircraft_status_period ADD UNIQUE (id, aircraft_id, origin);
 
 ALTER TABLE aircraft_maintenance
+  ADD COLUMN period_origin TEXT NOT NULL DEFAULT 'maintenance' CHECK (period_origin = 'maintenance'),
   DROP CONSTRAINT aircraft_maintenance_status_period_id_fkey,
   DROP CONSTRAINT aircraft_maintenance_status_period_id_key,
-  ADD UNIQUE (status_period_id, aircraft_id),
-  ADD FOREIGN KEY (status_period_id, aircraft_id) REFERENCES aircraft_status_period (id, aircraft_id);
+  ADD CONSTRAINT aircraft_maintenance_period_uq UNIQUE (status_period_id, aircraft_id, period_origin),
+  ADD CONSTRAINT aircraft_maintenance_period_fk FOREIGN KEY (status_period_id, aircraft_id, period_origin)
+    REFERENCES aircraft_status_period (id, aircraft_id, origin);
 
 -- Indexes for foreign keys that are joined from the parent side.
 CREATE INDEX stock_transfer_line_transfer_idx ON stock_transfer_line (stock_transfer_id);

@@ -55,11 +55,12 @@ model aircraft_maintenance {
   created_at             DateTime               @default(now()) @db.Timestamptz(6)
   updated_at             DateTime               @default(now()) @db.Timestamptz(6)
   deleted_at             DateTime?              @db.Timestamptz(6)
+  period_origin          String                 @default("maintenance")
   aircraft               aircraft               @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff                  staff                  @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  aircraft_status_period aircraft_status_period @relation(fields: [status_period_id, aircraft_id], references: [id, aircraft_id], onDelete: NoAction, onUpdate: NoAction)
+  aircraft_status_period aircraft_status_period @relation(fields: [status_period_id, aircraft_id, period_origin], references: [id, aircraft_id, origin], onDelete: NoAction, onUpdate: NoAction, map: "aircraft_maintenance_period_fk")
 
-  @@unique([status_period_id, aircraft_id])
+  @@unique([status_period_id, aircraft_id, period_origin], map: "aircraft_maintenance_period_uq")
   @@index([aircraft_id, planned_start_date(sort: Desc)], map: "aircraft_maintenance_aircraft_idx")
 }
 
@@ -90,7 +91,7 @@ model aircraft_status_period {
   aircraft             aircraft              @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff                staff                 @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@unique([id, aircraft_id])
+  @@unique([id, aircraft_id, origin])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

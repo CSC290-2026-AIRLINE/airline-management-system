@@ -423,7 +423,7 @@ CREATE TABLE aircraft_status_period (
   deleted_at  TIMESTAMPTZ,
   CHECK (end_date IS NULL OR end_date >= start_date),
   CONSTRAINT aircraft_status_period_origin_status_check CHECK ((origin = 'maintenance') = (status = 'in_maintenance')),
-  UNIQUE (id, aircraft_id),                               -- lets aircraft_maintenance prove its period is for the same aircraft
+  UNIQUE (id, aircraft_id, origin),                       -- lets aircraft_maintenance prove its period is the right kind
   -- Two live periods for one aircraft may not overlap; the 409 on POST/PUT maps from SQLSTATE 23P01.
   EXCLUDE USING gist (
     aircraft_id WITH =,
@@ -444,13 +444,16 @@ CREATE TABLE aircraft_maintenance (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at         TIMESTAMPTZ,
+  period_origin      TEXT NOT NULL DEFAULT 'maintenance' CHECK (period_origin = 'maintenance'),
   CHECK (planned_end_date >= planned_start_date),
   -- A completed window must have its actual end: completing it shortens or extends the status period to that date.
   CHECK (status <> 'completed' OR actual_end_date IS NOT NULL),
   CONSTRAINT aircraft_maintenance_actual_end_check CHECK (actual_end_date IS NULL OR actual_end_date >= planned_start_date),
-  -- The period must be for the same aircraft. A period has one aircraft, so the pair still allows one window per period.
-  UNIQUE (status_period_id, aircraft_id),
-  FOREIGN KEY (status_period_id, aircraft_id) REFERENCES aircraft_status_period (id, aircraft_id)
+  -- The period must be a maintenance period of the same aircraft (period_origin is pinned, like role_screen.screen_kind).
+  -- A period has one aircraft and one origin, so the key still allows one window per period.
+  CONSTRAINT aircraft_maintenance_period_uq UNIQUE (status_period_id, aircraft_id, period_origin),
+  CONSTRAINT aircraft_maintenance_period_fk FOREIGN KEY (status_period_id, aircraft_id, period_origin)
+    REFERENCES aircraft_status_period (id, aircraft_id, origin)
 );
 
 CREATE INDEX aircraft_maintenance_aircraft_idx ON aircraft_maintenance (aircraft_id, planned_start_date DESC);
