@@ -55,3 +55,14 @@ ALTER TABLE flight_report DROP CONSTRAINT flight_report_flight_id_key;
 CREATE UNIQUE INDEX flight_report_flight_uq ON flight_report (flight_id) WHERE status <> 'void';
 ALTER TABLE catering_order DROP CONSTRAINT catering_order_flight_id_key;
 CREATE UNIQUE INDEX catering_order_flight_uq ON catering_order (flight_id) WHERE status <> 'void';
+
+-- A mistaken screening decision is corrected by a new check, but screening_check_once_uq refused a second check for the
+-- same passenger, flight, entry and trigger point. A staff re-check gets its own trigger point, outside that rule.
+ALTER TABLE screening_check
+  DROP CONSTRAINT screening_check_trigger_point_check,
+  ADD CONSTRAINT screening_check_trigger_point_check
+    CHECK (trigger_point IN ('booking', 'check_in', 'new_entry', 'identity_change', 'manual'));
+DROP INDEX screening_check_once_uq;
+CREATE UNIQUE INDEX screening_check_once_uq
+  ON screening_check (passenger_id, flight_id, watchlist_entry_id, trigger_point)
+  WHERE watchlist_entry_id IS NOT NULL AND trigger_point NOT IN ('identity_change', 'manual');

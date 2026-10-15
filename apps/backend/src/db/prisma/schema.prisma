@@ -1037,7 +1037,7 @@ model screening_check {
   watchlist_entry    watchlist_entry?  @relation(fields: [watchlist_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   screening_review   screening_review?
 
-  @@unique([passenger_id, flight_id, watchlist_entry_id, trigger_point], map: "screening_check_once_uq", where: raw("((watchlist_entry_id IS NOT NULL) AND (trigger_point <> 'identity_change'::text))"))
+  @@unique([passenger_id, flight_id, watchlist_entry_id, trigger_point], map: "screening_check_once_uq", where: raw("((watchlist_entry_id IS NOT NULL) AND (trigger_point <> ALL (ARRAY['identity_change'::text, 'manual'::text])))"))
   @@index([flight_id], map: "screening_check_flight_idx")
   @@index([passenger_id, occurred_at(sort: Desc)], map: "screening_check_passenger_idx")
   @@index([flight_dep_at], map: "screening_check_queue_idx", where: raw("(outcome = ANY (ARRAY['flagged'::text, 'held'::text]))"))

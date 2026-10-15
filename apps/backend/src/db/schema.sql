@@ -885,7 +885,7 @@ CREATE TABLE screening_check (
   flight_id          UUID NOT NULL,                        -- feature 2's flight (cross-module FK)
   flight_dep_at      TIMESTAMPTZ NOT NULL,                 -- copied from feature 2 so the queue can sort without calling it
   pnr_id             UUID,                                 -- feature 3b, for the review screen; optional
-  trigger_point      TEXT NOT NULL CHECK (trigger_point IN ('booking', 'check_in', 'new_entry', 'identity_change')),
+  trigger_point      TEXT NOT NULL CHECK (trigger_point IN ('booking', 'check_in', 'new_entry', 'identity_change', 'manual')),
   watchlist_entry_id UUID REFERENCES watchlist_entry (id),
   match_level        TEXT NOT NULL CHECK (match_level IN ('none', 'weak', 'probable', 'strong')),
   outcome            TEXT NOT NULL CHECK (outcome IN ('clear', 'flagged', 'held')),
@@ -894,15 +894,16 @@ CREATE TABLE screening_check (
 );
 
 -- Idempotency: a retry or a re-run of the background job cannot create a second row for the same hit.
--- identity_change is excluded because a passenger can legitimately be corrected more than once.
+-- identity_change is excluded because a passenger can legitimately be corrected more than once, and manual because
+-- a staff re-check is how a mistaken decision is corrected.
 CREATE UNIQUE INDEX screening_check_once_uq
   ON screening_check (passenger_id, flight_id, watchlist_entry_id, trigger_point)
-  WHERE watchlist_entry_id IS NOT NULL AND trigger_point <> 'identity_change';
+  WHERE watchlist_entry_id IS NOT NULL AND trigger_point NOT IN ('identity_change', 'manual');
 CREATE INDEX screening_check_flight_idx ON screening_check (flight_id);
 CREATE INDEX screening_check_passenger_idx ON screening_check (passenger_id, occurred_at DESC);
 CREATE INDEX screening_check_queue_idx ON screening_check (flight_dep_at) WHERE outcome IN ('flagged', 'held');
 
--- One decision per check. A mistaken decision is handled by a new check, not by editing this row.
+-- One decision per check. A mistaken decision is handled by a new check (trigger_point 'manual'), not by editing this row.
 -- The Screening Queue is: flagged or held checks with no review, nearest departure first (a query, not a view).
 CREATE TABLE screening_review (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
