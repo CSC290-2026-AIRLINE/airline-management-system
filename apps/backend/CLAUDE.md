@@ -5,6 +5,7 @@ Single NestJS monolith. Global prefix `/api`, port 8080. See the root `CLAUDE.md
 ## Commands (from repo root, or drop `-w` inside this folder)
 
 ```bash
+npm run db:generate                   # from repo root: generate the Prisma client; needed before start:dev, test and build
 npm run start:dev -w apps/backend     # watch mode
 npm run lint -w apps/backend
 npm run format:check -w apps/backend  # `format` to fix
@@ -42,6 +43,7 @@ A feature module follows the standard shape: `<name>.module.ts`, `<name>.control
 - Use `DbService` (Prisma client over the `pg` adapter) via dependency injection. Never `new PrismaClient()`.
 - Do **not** edit `src/db/prisma/schema.prisma`, migrations, or `schema.sql` unless the task is a Database Team change. Propose the schema change in text instead.
 - Model and column names are `snake_case` (`user`, `refresh_token`, `created_at`). Soft delete uses `deleted_at`, so filter on it in queries.
+- After pulling a schema change, run `npm run db:generate`. A stale client shows up as type errors about missing models or fields; fix it by regenerating, not by editing code.
 - Schema changes need `npm run db:migrate` and a committed migration; CI fails if `schema.prisma` and migrations drift.
 
 ## Conventions
