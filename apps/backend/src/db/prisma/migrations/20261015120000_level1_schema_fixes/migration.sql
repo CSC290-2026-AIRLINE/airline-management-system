@@ -40,3 +40,11 @@ CREATE INDEX stock_movement_warehouse_idx ON stock_movement (warehouse_id, occur
 CREATE INDEX stock_movement_aircraft_idx ON stock_movement (aircraft_id, occurred_at) WHERE aircraft_id IS NOT NULL;
 CREATE INDEX stock_movement_batch_idx ON stock_movement (stock_batch_id) WHERE stock_batch_id IS NOT NULL;
 CREATE INDEX stock_movement_transfer_idx ON stock_movement (stock_transfer_id) WHERE stock_transfer_id IS NOT NULL;
+
+-- A promo use is counted once per booking, not once per quote. A quote is shared by everyone who books in its window,
+-- so with the quote as the key a second booking's redeem was a no-op and max_uses could be passed.
+ALTER TABLE promo_redemption
+  ADD COLUMN booking_id UUID NOT NULL,
+  DROP CONSTRAINT promo_redemption_fare_quote_id_key,
+  ADD UNIQUE (booking_id, promo_code_id);
+CREATE INDEX promo_redemption_quote_idx ON promo_redemption (fare_quote_id, promo_code_id);

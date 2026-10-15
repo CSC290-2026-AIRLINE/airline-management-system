@@ -698,19 +698,23 @@ CREATE TABLE fare_quote_line (
   UNIQUE (fare_quote_id, seq)
 );
 
--- A promo use is counted when a booking is confirmed, once per quote. Retrying "redeem" is a no-op:
---   INSERT INTO promo_redemption ... ON CONFLICT (fare_quote_id) DO NOTHING; then, only if a row was inserted,
+-- A promo use is counted when a booking is confirmed, once per booking. Not once per quote: a quote is shared by everyone
+-- who books in its window, so keying on it would let many bookings share one use. Retrying "redeem" is a no-op:
+--   INSERT INTO promo_redemption ... ON CONFLICT (booking_id, promo_code_id) DO NOTHING; then, only if a row was inserted,
 --   UPDATE promo_code SET used_count = used_count + 1 WHERE id = $1;   (the CHECK on promo_code refuses to overshoot max_uses)
 CREATE TABLE promo_redemption (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   promo_code_id UUID NOT NULL REFERENCES promo_code (id),
-  fare_quote_id UUID NOT NULL UNIQUE,
+  fare_quote_id UUID NOT NULL,                             -- the quote the booking was priced from
   redeemed_at   TIMESTAMPTZ NOT NULL,                      -- simulation clock
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  FOREIGN KEY (fare_quote_id, promo_code_id) REFERENCES fare_quote (id, promo_code_id)
+  booking_id    UUID NOT NULL,                             -- feature 3b; no foreign key until its schema exists
+  FOREIGN KEY (fare_quote_id, promo_code_id) REFERENCES fare_quote (id, promo_code_id),
+  UNIQUE (booking_id, promo_code_id)
 );
 
 CREATE INDEX promo_redemption_promo_idx ON promo_redemption (promo_code_id);
+CREATE INDEX promo_redemption_quote_idx ON promo_redemption (fare_quote_id, promo_code_id);
 
 -- Finance --------------------------------------------------------------------------------------------
 

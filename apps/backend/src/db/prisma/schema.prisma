@@ -1,7 +1,6 @@
-// Generated with `prisma db pull` from a database migrated by src/db/schema.sql. After every re-pull, change these three
+// Generated with `prisma db pull` from a database migrated by src/db/schema.sql. After every re-pull, change these two
 // back-relations to lists by hand, or `prisma validate` fails (Prisma rejects a one-to-one relation over a composite foreign key
 // unless the composite is unique, and the database does not need that extra unique):
-//   fare_quote.promo_redemption  ->  promo_redemption[]
 //   user.customer                ->  customer[]
 //   user.staff                   ->  staff[]
 
@@ -428,22 +427,22 @@ model fare_class {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model fare_quote {
-  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  flight_id          String            @db.Uuid
-  fare_class_id      String            @db.Uuid
-  promo_code_id      String?           @db.Uuid
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  flight_id          String             @db.Uuid
+  fare_class_id      String             @db.Uuid
+  promo_code_id      String?            @db.Uuid
   seat_type          String?
   currency           String
-  total_amount       Decimal           @db.Decimal(12, 2)
-  seats_left_pct     Decimal           @db.Decimal(5, 2)
+  total_amount       Decimal            @db.Decimal(12, 2)
+  seats_left_pct     Decimal            @db.Decimal(5, 2)
   days_to_departure  Int
   fare_rule_snapshot Json
-  quoted_at          DateTime          @db.Timestamptz(6)
-  expires_at         DateTime          @db.Timestamptz(6)
-  created_at         DateTime          @default(now()) @db.Timestamptz(6)
-  fare_class         fare_class        @relation(fields: [fare_class_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  flight             flight            @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fare_quote_flight_fk")
-  promo_code         promo_code?       @relation(fields: [promo_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  quoted_at          DateTime           @db.Timestamptz(6)
+  expires_at         DateTime           @db.Timestamptz(6)
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  fare_class         fare_class         @relation(fields: [fare_class_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flight             flight             @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fare_quote_flight_fk")
+  promo_code         promo_code?        @relation(fields: [promo_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   fare_quote_line    fare_quote_line[]
   promo_redemption   promo_redemption[]
 
@@ -892,13 +891,16 @@ model promo_code {
 model promo_redemption {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   promo_code_id String     @db.Uuid
-  fare_quote_id String     @unique @db.Uuid
+  fare_quote_id String     @db.Uuid
   redeemed_at   DateTime   @db.Timestamptz(6)
   created_at    DateTime   @default(now()) @db.Timestamptz(6)
+  booking_id    String     @db.Uuid
   fare_quote    fare_quote @relation(fields: [fare_quote_id, promo_code_id], references: [id, promo_code_id], onDelete: NoAction, onUpdate: NoAction)
   promo_code    promo_code @relation(fields: [promo_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@unique([booking_id, promo_code_id])
   @@index([promo_code_id], map: "promo_redemption_promo_idx")
+  @@index([fare_quote_id, promo_code_id], map: "promo_redemption_quote_idx")
 }
 
 model purchase_receipt {
