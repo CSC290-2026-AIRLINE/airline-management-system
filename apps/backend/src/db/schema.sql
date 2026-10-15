@@ -55,9 +55,11 @@ CREATE UNIQUE INDEX user_type_email_uq ON "user" (type, lower(email)) WHERE dele
 CREATE SEQUENCE staff_code_seq;
 
 -- 'ST-0001' ... 'ST-9999', then 'ST-10000'. Plain lpad would cut the 10000th code back to 'ST-1000'.
-CREATE FUNCTION next_staff_code() RETURNS text LANGUAGE sql AS $$
-  SELECT 'ST-' || lpad(n::text, greatest(4, length(n::text)), '0') FROM nextval('staff_code_seq') AS n
-$$;
+-- BEGIN ATOMIC binds staff_code_seq when the function is created, so the caller's search_path cannot pick another one.
+CREATE FUNCTION next_staff_code() RETURNS text LANGUAGE sql
+BEGIN ATOMIC
+  SELECT 'ST-' || lpad(n::text, greatest(4, length(n::text)), '0') FROM nextval('staff_code_seq') AS n;
+END;
 
 CREATE TABLE staff (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

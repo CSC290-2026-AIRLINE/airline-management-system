@@ -12,9 +12,11 @@ CREATE TRIGGER flight_event_no_truncate
   FOR EACH STATEMENT EXECUTE FUNCTION forbid_mutation();
 
 -- lpad cuts longer strings, so the 10000th code came out as 'ST-1000' again. Pad to 4 digits but never cut.
-CREATE FUNCTION next_staff_code() RETURNS text LANGUAGE sql AS $$
-  SELECT 'ST-' || lpad(n::text, greatest(4, length(n::text)), '0') FROM nextval('staff_code_seq') AS n
-$$;
+-- BEGIN ATOMIC binds staff_code_seq when the function is created, so the caller's search_path cannot pick another one.
+CREATE FUNCTION next_staff_code() RETURNS text LANGUAGE sql
+BEGIN ATOMIC
+  SELECT 'ST-' || lpad(n::text, greatest(4, length(n::text)), '0') FROM nextval('staff_code_seq') AS n;
+END;
 
 ALTER TABLE staff ALTER COLUMN staff_code SET DEFAULT next_staff_code();
 
