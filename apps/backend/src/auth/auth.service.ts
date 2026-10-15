@@ -138,24 +138,32 @@ export class AuthService {
     const role = userType === 'staff' ? await this.findAdminRole() : null
 
     // One transaction so a failed profile insert cannot leave a user row without its customer/staff row.
-    const newUser = await this.db.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: { type: userType, email: primaryEmail, clerk_user_id: clerkUserId },
+    try {
+      return await this.db.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: { type: userType, email: primaryEmail, clerk_user_id: clerkUserId },
+        })
+
+        if (userType === 'customer') {
+          // The customer's own identity is a passenger row; names live there, not on customer.
+          const passenger = await tx.passenger.create({ data: { first_name: firstName, last_name: lastName } })
+          await tx.customer.create({ data: { user_id: created.id, passenger_id: passenger.id } })
+        } else if (role) {
+          // No Clerk field maps to a staff role, so every new staff sign-in defaults to the 'admin' role.
+          await tx.staff.create({ data: { user_id: created.id, first_name: firstName, last_name: lastName, role_id: role.id } })
+        }
+
+        return created
       })
-
-      if (userType === 'customer') {
-        // The customer's own identity is a passenger row; names live there, not on customer.
-        const passenger = await tx.passenger.create({ data: { first_name: firstName, last_name: lastName } })
-        await tx.customer.create({ data: { user_id: created.id, passenger_id: passenger.id } })
-      } else if (role) {
-        // No Clerk field maps to a staff role, so every new staff sign-in defaults to the 'admin' role.
-        await tx.staff.create({ data: { user_id: created.id, first_name: firstName, last_name: lastName, role_id: role.id } })
-      }
-
-      return created
-    })
-
-    return newUser
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error
+      // Two first sign-ins raced (e.g. a double-fired request): the other one created the row and this transaction rolled
+      // back whole, so use the winner's row. If it is not ours, the email already belongs to a different account.
+      const winner = await this.db.user.findUnique({ where: { clerk_user_id: clerkUserId } })
+      if (!winner) throw new ConflictException('An account with this email already exists')
+      this.assertUserActive(winner)
+      return winner
+    }
   }
 
   // user.disabled_at / deleted_at: an account that is switched off or removed must not sign in or refresh.

@@ -38,13 +38,17 @@ describe('AuthService.findOrCreateUser', () => {
     },
   }
   const existingUser = { id: 'u1', email: 'a@example.com', clerk_user_id: 'clerk_1' }
-  let db: { user: { findUnique: jest.Mock }; $transaction: jest.Mock }
+  let db: { user: { findUnique: jest.Mock; findFirst: jest.Mock }; role: { findUnique: jest.Mock }; $transaction: jest.Mock }
   let service: AuthService
 
   const call = () => (service as any).findOrCreateUser(clerkClient, 'clerk_1', 'staff')
 
   beforeEach(() => {
-    db = { user: { findUnique: jest.fn() }, $transaction: jest.fn() }
+    db = {
+      user: { findUnique: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
+      role: { findUnique: jest.fn().mockResolvedValue({ id: 'r1', code: 'admin' }) },
+      $transaction: jest.fn(),
+    }
     service = new AuthService(db as any, {} as any, {} as any)
   })
 
