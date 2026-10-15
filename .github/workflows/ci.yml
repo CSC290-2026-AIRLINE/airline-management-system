@@ -116,6 +116,34 @@ jobs:
             --exit-code \
           || { echo "::error::schema.prisma has changes with no migration. Run 'npm run db:migrate' and commit the new migration."; exit 1; }
 
+      # The check above cannot see CHECK and exclusion constraints, triggers, functions or expression
+      # indexes. Loading schema.sql into a second database and comparing schema dumps covers them.
+      - name: Check schema.sql matches the migrations
+        run: |
+          set -o pipefail
+          pg="${{ job.services.postgres.id }}"
+          docker exec "$pg" createdb -U ci schema_sql
+          docker exec -i "$pg" psql -U ci -d schema_sql -q -v ON_ERROR_STOP=1 < apps/backend/src/db/schema.sql
+          for db in ci schema_sql; do
+            docker exec "$pg" pg_dump -U ci -d "$db" --schema-only -T _prisma_migrations | grep -vE '^\\(un)?restrict ' > "$RUNNER_TEMP/$db.sql"
+          done
+          diff -u "$RUNNER_TEMP/ci.sql" "$RUNNER_TEMP/schema_sql.sql" \
+          || { echo "::error::src/db/schema.sql and the migrations build different schemas. Change both together."; exit 1; }
+
+      - name: Check every updated_at column has its trigger
+        run: |
+          missing=$(docker exec -i "${{ job.services.postgres.id }}" psql -U ci -d ci -tA -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT string_agg(c.relname, ', ' ORDER BY c.relname)
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+          JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'updated_at' AND NOT a.attisdropped
+          WHERE c.relkind = 'r'
+            AND NOT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
+                            WHERE t.tgrelid = c.oid AND p.proname = 'set_updated_at');
+          SQL
+          )
+          [ -z "$missing" ] || { echo "::error::No set_updated_at trigger on: $missing. Add one in the migration and in schema.sql."; exit 1; }
+
       - name: Run seed script
         run: npm run db:seed
 

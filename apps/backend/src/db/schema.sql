@@ -3,7 +3,8 @@
 -- Prisma cannot express most of this (exclusion constraints, expression and trigram indexes, check constraints, triggers),
 -- so migrations are written by hand. prisma/migrations/*_level1_schema created the first version of this file (with the old
 -- scaffold tables dropped first and the 'admin' role inserted last), and each later migration applies a change to it.
--- This file is always the result of all migrations: change both together. schema.prisma is generated from the migrated
+-- This file is always the result of all migrations: change both together, and CI compares the two. Never edit a migration
+-- that is already on dev (Prisma checksums applied migrations); add a new one. schema.prisma is generated from the migrated
 -- database with `prisma db pull`.
 -- Apart from that role and the default settings inserted below, seed rows (screens, base currency, quote hold, airline code,
 -- first admin and so on) are not in the repo yet.
@@ -1480,7 +1481,7 @@ ALTER TABLE stock_movement   ADD CONSTRAINT stock_movement_aircraft_fk     FOREI
 -- ======================================================================================================================
 
 -- updated_at is real time and must change on every UPDATE, raw SQL included, so a trigger sets it instead of each caller.
--- Every table with an updated_at column has its line here.
+-- Every table with an updated_at column has its line here; CI fails if one is missing.
 CREATE FUNCTION set_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   NEW.updated_at := now();
