@@ -74,7 +74,9 @@ CREATE TABLE staff (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at      TIMESTAMPTZ,
   FOREIGN KEY (user_id, user_type) REFERENCES "user" (id, type),
-  UNIQUE (user_id)
+  UNIQUE (user_id),
+  -- The same rule, since user_type is a constant. Prisma needs the foreign key's columns unique to model it one-to-one.
+  UNIQUE (user_id, user_type)
 );
 
 CREATE INDEX staff_role_idx ON staff (role_id);
@@ -834,7 +836,8 @@ CREATE TABLE customer (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at        TIMESTAMPTZ,
   FOREIGN KEY (user_id, user_type) REFERENCES "user" (id, type),
-  UNIQUE (user_id)
+  UNIQUE (user_id),
+  UNIQUE (user_id, user_type)                             -- the same rule; lets Prisma model the foreign key one-to-one
 );
 
 -- Who a customer books for. Removing from the saved list sets is_saved = false and keeps the link (past bookings).

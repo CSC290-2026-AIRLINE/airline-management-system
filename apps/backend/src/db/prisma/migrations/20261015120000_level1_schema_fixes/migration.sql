@@ -148,3 +148,8 @@ CREATE INDEX screening_check_entry_idx ON screening_check (watchlist_entry_id) W
 CREATE INDEX catering_order_warehouse_idx ON catering_order (warehouse_id);
 CREATE INDEX stock_transfer_flight_idx ON stock_transfer (flight_id);
 CREATE INDEX purchase_receipt_supplier_idx ON purchase_receipt (supplier_id);
+
+-- Prisma models a composite foreign key as one-to-one only when the same columns are unique, so every db pull needed
+-- hand edits on user.customer and user.staff. user_type is a constant, so the pair is the same rule as UNIQUE (user_id).
+ALTER TABLE staff ADD UNIQUE (user_id, user_type);
+ALTER TABLE customer ADD UNIQUE (user_id, user_type);

@@ -1,8 +1,5 @@
-// Generated with `prisma db pull` from a database migrated by src/db/schema.sql. After every re-pull, change these two
-// back-relations to lists by hand, or `prisma validate` fails (Prisma rejects a one-to-one relation over a composite foreign key
-// unless the composite is unique, and the database does not need that extra unique):
-//   user.customer                ->  customer[]
-//   user.staff                   ->  staff[]
+// Generated with `prisma db pull` from a database built by the migrations. Do not edit it by hand; re-pull instead.
+// db pull drops this comment, so put it back after a re-pull.
 
 generator client {
   provider        = "prisma-client"
@@ -354,6 +351,8 @@ model customer {
   user               user                 @relation(fields: [user_id, user_type], references: [id, type], onDelete: NoAction, onUpdate: NoAction)
   customer_passenger customer_passenger[]
   product_order      product_order[]
+
+  @@unique([user_id, user_type])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1113,6 +1112,7 @@ model staff {
   watchlist_entry_watchlist_entry_cleared_by_staff_idTostaff watchlist_entry[]        @relation("watchlist_entry_cleared_by_staff_idTostaff")
   watchlist_entry_watchlist_entry_created_by_staff_idTostaff watchlist_entry[]        @relation("watchlist_entry_created_by_staff_idTostaff")
 
+  @@unique([user_id, user_type])
   @@index([role_id], map: "staff_role_idx")
 }
 
@@ -1245,9 +1245,9 @@ model user {
   created_at    DateTime        @default(now()) @db.Timestamptz(6)
   updated_at    DateTime        @default(now()) @db.Timestamptz(6)
   deleted_at    DateTime?       @db.Timestamptz(6)
-  customer      customer[]
+  customer      customer?
   refresh_token refresh_token[]
-  staff         staff[]
+  staff         staff?
 
   @@unique([id, type])
 }
