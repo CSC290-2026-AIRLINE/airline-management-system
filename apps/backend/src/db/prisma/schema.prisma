@@ -286,7 +286,7 @@ model cabin_setting {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model catering_order {
   id                    String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  flight_id             String                @unique @db.Uuid
+  flight_id             String                @unique(map: "catering_order_flight_uq", where: raw("(status <> 'void'::text)")) @db.Uuid
   warehouse_id          String                @db.Uuid
   status                String                @default("generated")
   cutoff_at             DateTime              @db.Timestamptz(6)
@@ -600,7 +600,7 @@ model flight_pattern {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model flight_report {
   id                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  flight_id             String               @unique @db.Uuid
+  flight_id             String               @unique(map: "flight_report_flight_uq", where: raw("(status <> 'void'::text)")) @db.Uuid
   status                String               @default("submitted")
   submitted_by_staff_id String               @db.Uuid
   submitted_at          DateTime             @db.Timestamptz(6)

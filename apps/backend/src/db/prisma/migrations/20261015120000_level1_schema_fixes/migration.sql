@@ -48,3 +48,10 @@ ALTER TABLE promo_redemption
   DROP CONSTRAINT promo_redemption_fare_quote_id_key,
   ADD UNIQUE (booking_id, promo_code_id);
 CREATE INDEX promo_redemption_quote_idx ON promo_redemption (fare_quote_id, promo_code_id);
+
+-- A voided flight report or catering order is kept, so the one-per-flight rule applies to live rows only. Before, a
+-- corrected report could not be submitted after the wrong one was voided.
+ALTER TABLE flight_report DROP CONSTRAINT flight_report_flight_id_key;
+CREATE UNIQUE INDEX flight_report_flight_uq ON flight_report (flight_id) WHERE status <> 'void';
+ALTER TABLE catering_order DROP CONSTRAINT catering_order_flight_id_key;
+CREATE UNIQUE INDEX catering_order_flight_uq ON catering_order (flight_id) WHERE status <> 'void';

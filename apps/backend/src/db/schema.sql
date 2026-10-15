@@ -1250,11 +1250,11 @@ CREATE INDEX stock_batch_receipt_idx ON stock_batch (purchase_receipt_id);
 
 -- Catering orders and aircraft stock ----------------------------------------------------------------------
 
--- One per flight. cutoff_at is the departure minus the shortest order window of the flight's cabins, taken from the
--- scheduled departure so a delay does not reopen ordering.
+-- One live order per flight; a voided one is kept and a new one can replace it. cutoff_at is the departure minus the
+-- shortest order window of the flight's cabins, taken from the scheduled departure so a delay does not reopen ordering.
 CREATE TABLE catering_order (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  flight_id             UUID NOT NULL UNIQUE,                  -- feature 2's flight (cross-module FK)
+  flight_id             UUID NOT NULL,                         -- feature 2's flight (cross-module FK)
   warehouse_id          UUID NOT NULL REFERENCES warehouse (id),
   status                TEXT NOT NULL DEFAULT 'generated' CHECK (status IN ('generated', 'loaded', 'closed', 'void')),
   cutoff_at             TIMESTAMPTZ NOT NULL,                  -- simulation clock
@@ -1265,6 +1265,8 @@ CREATE TABLE catering_order (
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX catering_order_flight_uq ON catering_order (flight_id) WHERE status <> 'void';
 
 CREATE TABLE catering_order_line (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1316,14 +1318,17 @@ CREATE INDEX aircraft_stock_batch_idx ON aircraft_stock (stock_batch_id);
 
 -- Flight report and on-board sales --------------------------------------------------------------------------
 
+-- One live report per flight. A wrong report is voided and kept, and the corrected one is a new row.
 CREATE TABLE flight_report (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  flight_id             UUID NOT NULL UNIQUE,                  -- feature 2's flight (cross-module FK)
+  flight_id             UUID NOT NULL,                         -- feature 2's flight (cross-module FK)
   status                TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted', 'void')),
   submitted_by_staff_id UUID NOT NULL REFERENCES staff (id),
   submitted_at          TIMESTAMPTZ NOT NULL,                  -- simulation clock
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX flight_report_flight_uq ON flight_report (flight_id) WHERE status <> 'void';
 
 -- sold must equal the on-board sales of that product on that flight (the backend refuses a report that disagrees).
 CREATE TABLE flight_report_line (
