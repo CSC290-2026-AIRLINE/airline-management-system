@@ -1,11 +1,11 @@
 import { randomBytes, createHash } from 'node:crypto'
-import { Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common'
+import { ConflictException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { createClerkClient, verifyToken } from '@clerk/backend'
 import { DbService } from '@backend/db/db.service'
 import type { EnvConfig } from '@backend/config/env.validation'
-import type { user } from '../db/generated/prisma/client'
+import { Prisma, type user } from '../db/generated/prisma/client'
 import { getAppOriginConfig, type AppOriginConfig } from './auth.constants'
 
 type ClerkClient = ReturnType<typeof createClerkClient>
