@@ -237,9 +237,9 @@ model audit_log {
   after          Json?
   is_sensitive   Boolean  @default(false)
 
-  @@index([actor_type, actor_id, occurred_at(sort: Desc)], map: "audit_log_actor_idx")
-  @@index([entity_type, entity_id, occurred_at(sort: Desc)], map: "audit_log_entity_idx")
-  @@index([source_feature, occurred_at(sort: Desc)], map: "audit_log_feature_idx")
+  @@index([actor_type, actor_id, seq(sort: Desc)], map: "audit_log_actor_idx")
+  @@index([entity_type, entity_id, seq(sort: Desc)], map: "audit_log_entity_idx")
+  @@index([source_feature, seq(sort: Desc)], map: "audit_log_feature_idx")
   @@index([occurred_at(sort: Desc)], map: "audit_log_occurred_idx")
 }
 
@@ -301,6 +301,8 @@ model catering_order {
   staff                 staff?                @relation(fields: [generated_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   warehouse             warehouse             @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   catering_order_line   catering_order_line[]
+
+  @@index([warehouse_id], map: "catering_order_warehouse_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -915,6 +917,8 @@ model purchase_receipt {
   supplier             supplier      @relation(fields: [supplier_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   warehouse            warehouse     @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   stock_batch          stock_batch[]
+
+  @@index([supplier_id], map: "purchase_receipt_supplier_idx")
 }
 
 model refresh_token {
@@ -1042,6 +1046,7 @@ model screening_check {
   @@index([flight_id], map: "screening_check_flight_idx")
   @@index([passenger_id, occurred_at(sort: Desc)], map: "screening_check_passenger_idx")
   @@index([flight_dep_at], map: "screening_check_queue_idx", where: raw("(outcome = ANY (ARRAY['flagged'::text, 'held'::text]))"))
+  @@index([watchlist_entry_id], map: "screening_check_entry_idx", where: raw("(watchlist_entry_id IS NOT NULL)"))
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1186,6 +1191,8 @@ model stock_transfer {
   staff               staff                 @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   warehouse           warehouse             @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   stock_transfer_line stock_transfer_line[]
+
+  @@index([flight_id], map: "stock_transfer_flight_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

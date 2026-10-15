@@ -910,6 +910,7 @@ CREATE UNIQUE INDEX screening_check_once_uq
 CREATE INDEX screening_check_flight_idx ON screening_check (flight_id);
 CREATE INDEX screening_check_passenger_idx ON screening_check (passenger_id, occurred_at DESC);
 CREATE INDEX screening_check_queue_idx ON screening_check (flight_dep_at) WHERE outcome IN ('flagged', 'held');
+CREATE INDEX screening_check_entry_idx ON screening_check (watchlist_entry_id) WHERE watchlist_entry_id IS NOT NULL;
 
 -- One decision per check. A mistaken decision is handled by a new check (trigger_point 'manual'), not by editing this row.
 -- The Screening Queue is: flagged or held checks with no review, nearest departure first (a query, not a view).
@@ -992,10 +993,11 @@ CREATE TABLE audit_log (
   is_sensitive   BOOLEAN NOT NULL DEFAULT false           -- before/after are masked by the writer; list views hide them
 );
 
+-- Filtered lists page by seq, so the filter indexes end in seq. occurred_at keeps its own index for date-range filters.
 CREATE INDEX audit_log_occurred_idx ON audit_log (occurred_at DESC);
-CREATE INDEX audit_log_feature_idx ON audit_log (source_feature, occurred_at DESC);
-CREATE INDEX audit_log_actor_idx ON audit_log (actor_type, actor_id, occurred_at DESC);
-CREATE INDEX audit_log_entity_idx ON audit_log (entity_type, entity_id, occurred_at DESC);
+CREATE INDEX audit_log_feature_idx ON audit_log (source_feature, seq DESC);
+CREATE INDEX audit_log_actor_idx ON audit_log (actor_type, actor_id, seq DESC);
+CREATE INDEX audit_log_entity_idx ON audit_log (entity_type, entity_id, seq DESC);
 
 CREATE TRIGGER audit_log_no_change
   BEFORE UPDATE OR DELETE ON audit_log
@@ -1221,6 +1223,8 @@ CREATE TABLE purchase_receipt (
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE INDEX purchase_receipt_supplier_idx ON purchase_receipt (supplier_id);
+
 -- quantity_on_hand is kept equal to the sum of the warehouse's batch quantity_remaining by the backend, in one transaction
 -- with every change to a batch. quantity_reserved is the part of it promised to unpaid and confirmed orders.
 CREATE TABLE warehouse_stock (
@@ -1276,6 +1280,7 @@ CREATE TABLE catering_order (
 );
 
 CREATE UNIQUE INDEX catering_order_flight_uq ON catering_order (flight_id) WHERE status <> 'void';
+CREATE INDEX catering_order_warehouse_idx ON catering_order (warehouse_id);
 
 CREATE TABLE catering_order_line (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1299,6 +1304,8 @@ CREATE TABLE stock_transfer (
   staff_id       UUID NOT NULL REFERENCES staff (id),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX stock_transfer_flight_idx ON stock_transfer (flight_id);
 
 CREATE TABLE stock_transfer_line (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

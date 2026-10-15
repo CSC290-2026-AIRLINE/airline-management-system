@@ -135,3 +135,16 @@ ALTER TABLE aircraft_maintenance
 -- stock_movement_order_once_uq skips rows with no order, so a reserve or release without one could be recorded twice.
 ALTER TABLE stock_movement
   ADD CONSTRAINT stock_movement_order_check CHECK (type NOT IN ('reserve', 'release') OR product_order_id IS NOT NULL);
+
+-- audit_log lists page by seq, but the filter indexes ended in occurred_at. occurred_at keeps its own index.
+DROP INDEX audit_log_feature_idx, audit_log_actor_idx, audit_log_entity_idx;
+CREATE INDEX audit_log_feature_idx ON audit_log (source_feature, seq DESC);
+CREATE INDEX audit_log_actor_idx ON audit_log (actor_type, actor_id, seq DESC);
+CREATE INDEX audit_log_entity_idx ON audit_log (entity_type, entity_id, seq DESC);
+
+-- More foreign-key indexes on real read paths: a watchlist entry's checks, a warehouse's catering orders, a flight's
+-- transfers and a supplier's deliveries.
+CREATE INDEX screening_check_entry_idx ON screening_check (watchlist_entry_id) WHERE watchlist_entry_id IS NOT NULL;
+CREATE INDEX catering_order_warehouse_idx ON catering_order (warehouse_id);
+CREATE INDEX stock_transfer_flight_idx ON stock_transfer (flight_id);
+CREATE INDEX purchase_receipt_supplier_idx ON purchase_receipt (supplier_id);
