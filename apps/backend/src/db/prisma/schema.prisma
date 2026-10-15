@@ -1,9 +1,5 @@
-// Generated with `prisma db pull` from a database migrated by src/db/schema.sql. After every re-pull, change these three
-// back-relations to lists by hand, or `prisma validate` fails (Prisma rejects a one-to-one relation over a composite foreign key
-// unless the composite is unique, and the database does not need that extra unique):
-//   fare_quote.promo_redemption  ->  promo_redemption[]
-//   user.customer                ->  customer[]
-//   user.staff                   ->  staff[]
+// Generated with `prisma db pull` from a database built by the migrations. Do not edit it by hand; re-pull instead.
+// db pull drops this comment, so put it back after a re-pull.
 
 generator client {
   provider        = "prisma-client"
@@ -51,15 +47,17 @@ model aircraft_maintenance {
   planned_end_date       DateTime               @db.Date
   actual_end_date        DateTime?              @db.Date
   status                 String                 @default("planned")
-  status_period_id       String                 @unique @db.Uuid
+  status_period_id       String                 @db.Uuid
   created_by             String                 @db.Uuid
   created_at             DateTime               @default(now()) @db.Timestamptz(6)
   updated_at             DateTime               @default(now()) @db.Timestamptz(6)
   deleted_at             DateTime?              @db.Timestamptz(6)
+  period_origin          String                 @default("maintenance")
   aircraft               aircraft               @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff                  staff                  @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  aircraft_status_period aircraft_status_period @relation(fields: [status_period_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  aircraft_status_period aircraft_status_period @relation(fields: [status_period_id, aircraft_id, period_origin], references: [id, aircraft_id, origin], onDelete: NoAction, onUpdate: NoAction, map: "aircraft_maintenance_period_fk")
 
+  @@unique([status_period_id, aircraft_id, period_origin], map: "aircraft_maintenance_period_uq")
   @@index([aircraft_id, planned_start_date(sort: Desc)], map: "aircraft_maintenance_aircraft_idx")
 }
 
@@ -89,6 +87,8 @@ model aircraft_status_period {
   aircraft_maintenance aircraft_maintenance?
   aircraft             aircraft              @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff                staff                 @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([id, aircraft_id, origin])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -103,6 +103,7 @@ model aircraft_stock {
   stock_batch    stock_batch @relation(fields: [stock_batch_id, product_id], references: [id, product_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([aircraft_id, stock_batch_id])
+  @@index([stock_batch_id], map: "aircraft_stock_batch_idx")
 }
 
 model aircraft_turnaround {
@@ -233,9 +234,9 @@ model audit_log {
   after          Json?
   is_sensitive   Boolean  @default(false)
 
-  @@index([actor_type, actor_id, occurred_at(sort: Desc)], map: "audit_log_actor_idx")
-  @@index([entity_type, entity_id, occurred_at(sort: Desc)], map: "audit_log_entity_idx")
-  @@index([source_feature, occurred_at(sort: Desc)], map: "audit_log_feature_idx")
+  @@index([actor_type, actor_id, seq(sort: Desc)], map: "audit_log_actor_idx")
+  @@index([entity_type, entity_id, seq(sort: Desc)], map: "audit_log_entity_idx")
+  @@index([source_feature, seq(sort: Desc)], map: "audit_log_feature_idx")
   @@index([occurred_at(sort: Desc)], map: "audit_log_occurred_idx")
 }
 
@@ -283,7 +284,7 @@ model cabin_setting {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model catering_order {
   id                    String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  flight_id             String                @unique @db.Uuid
+  flight_id             String                @unique(map: "catering_order_flight_uq", where: raw("(status <> 'void'::text)")) @db.Uuid
   warehouse_id          String                @db.Uuid
   status                String                @default("generated")
   cutoff_at             DateTime              @db.Timestamptz(6)
@@ -297,6 +298,8 @@ model catering_order {
   staff                 staff?                @relation(fields: [generated_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   warehouse             warehouse             @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   catering_order_line   catering_order_line[]
+
+  @@index([warehouse_id], map: "catering_order_warehouse_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -348,6 +351,8 @@ model customer {
   user               user                 @relation(fields: [user_id, user_type], references: [id, type], onDelete: NoAction, onUpdate: NoAction)
   customer_passenger customer_passenger[]
   product_order      product_order[]
+
+  @@unique([user_id, user_type])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -424,22 +429,22 @@ model fare_class {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model fare_quote {
-  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  flight_id          String            @db.Uuid
-  fare_class_id      String            @db.Uuid
-  promo_code_id      String?           @db.Uuid
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  flight_id          String             @db.Uuid
+  fare_class_id      String             @db.Uuid
+  promo_code_id      String?            @db.Uuid
   seat_type          String?
   currency           String
-  total_amount       Decimal           @db.Decimal(12, 2)
-  seats_left_pct     Decimal           @db.Decimal(5, 2)
+  total_amount       Decimal            @db.Decimal(12, 2)
+  seats_left_pct     Decimal            @db.Decimal(5, 2)
   days_to_departure  Int
   fare_rule_snapshot Json
-  quoted_at          DateTime          @db.Timestamptz(6)
-  expires_at         DateTime          @db.Timestamptz(6)
-  created_at         DateTime          @default(now()) @db.Timestamptz(6)
-  fare_class         fare_class        @relation(fields: [fare_class_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  flight             flight            @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fare_quote_flight_fk")
-  promo_code         promo_code?       @relation(fields: [promo_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  quoted_at          DateTime           @db.Timestamptz(6)
+  expires_at         DateTime           @db.Timestamptz(6)
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  fare_class         fare_class         @relation(fields: [fare_class_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flight             flight             @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fare_quote_flight_fk")
+  promo_code         promo_code?        @relation(fields: [promo_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   fare_quote_line    fare_quote_line[]
   promo_redemption   promo_redemption[]
 
@@ -571,9 +576,10 @@ model flight_event_outbox {
   published_at DateTime?    @db.Timestamptz(6)
   attempts     Int          @default(0)
   last_error   String?
+  seq          BigInt       @default(autoincrement())
   flight_event flight_event @relation(fields: [event_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([event_id], map: "flight_event_outbox_pending_idx", where: raw("(published_at IS NULL)"))
+  @@index([seq], map: "flight_event_outbox_pending_idx", where: raw("(published_at IS NULL)"))
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -596,7 +602,7 @@ model flight_pattern {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model flight_report {
   id                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  flight_id             String               @unique @db.Uuid
+  flight_id             String               @unique(map: "flight_report_flight_uq", where: raw("(status <> 'void'::text)")) @db.Uuid
   status                String               @default("submitted")
   submitted_by_staff_id String               @db.Uuid
   submitted_at          DateTime             @db.Timestamptz(6)
@@ -887,13 +893,16 @@ model promo_code {
 model promo_redemption {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   promo_code_id String     @db.Uuid
-  fare_quote_id String     @unique @db.Uuid
+  fare_quote_id String     @db.Uuid
   redeemed_at   DateTime   @db.Timestamptz(6)
   created_at    DateTime   @default(now()) @db.Timestamptz(6)
+  booking_id    String     @db.Uuid
   fare_quote    fare_quote @relation(fields: [fare_quote_id, promo_code_id], references: [id, promo_code_id], onDelete: NoAction, onUpdate: NoAction)
   promo_code    promo_code @relation(fields: [promo_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@unique([booking_id, promo_code_id])
   @@index([promo_code_id], map: "promo_redemption_promo_idx")
+  @@index([fare_quote_id, promo_code_id], map: "promo_redemption_quote_idx")
 }
 
 model purchase_receipt {
@@ -907,6 +916,8 @@ model purchase_receipt {
   supplier             supplier      @relation(fields: [supplier_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   warehouse            warehouse     @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   stock_batch          stock_batch[]
+
+  @@index([supplier_id], map: "purchase_receipt_supplier_idx")
 }
 
 model refresh_token {
@@ -1030,10 +1041,11 @@ model screening_check {
   watchlist_entry    watchlist_entry?  @relation(fields: [watchlist_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   screening_review   screening_review?
 
-  @@unique([passenger_id, flight_id, watchlist_entry_id, trigger_point], map: "screening_check_once_uq", where: raw("((watchlist_entry_id IS NOT NULL) AND (trigger_point <> 'identity_change'::text))"))
+  @@unique([passenger_id, flight_id, watchlist_entry_id, trigger_point], map: "screening_check_once_uq", where: raw("((watchlist_entry_id IS NOT NULL) AND (trigger_point <> ALL (ARRAY['identity_change'::text, 'manual'::text])))"))
   @@index([flight_id], map: "screening_check_flight_idx")
   @@index([passenger_id, occurred_at(sort: Desc)], map: "screening_check_passenger_idx")
   @@index([flight_dep_at], map: "screening_check_queue_idx", where: raw("(outcome = ANY (ARRAY['flagged'::text, 'held'::text]))"))
+  @@index([watchlist_entry_id], map: "screening_check_entry_idx", where: raw("(watchlist_entry_id IS NOT NULL)"))
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1071,7 +1083,7 @@ model staff {
   first_name                                                 String
   last_name                                                  String
   role_id                                                    String                   @db.Uuid
-  staff_code                                                 String                   @unique @default(dbgenerated("('ST-'::text || lpad((nextval('staff_code_seq'::regclass))::text, 4, '0'::text))"))
+  staff_code                                                 String                   @unique @default(dbgenerated("next_staff_code()"))
   last_sign_in_at                                            DateTime?                @db.Timestamptz(6)
   created_at                                                 DateTime                 @default(now()) @db.Timestamptz(6)
   updated_at                                                 DateTime                 @default(now()) @db.Timestamptz(6)
@@ -1100,6 +1112,7 @@ model staff {
   watchlist_entry_watchlist_entry_cleared_by_staff_idTostaff watchlist_entry[]        @relation("watchlist_entry_cleared_by_staff_idTostaff")
   watchlist_entry_watchlist_entry_created_by_staff_idTostaff watchlist_entry[]        @relation("watchlist_entry_created_by_staff_idTostaff")
 
+  @@unique([user_id, user_type])
   @@index([role_id], map: "staff_role_idx")
 }
 
@@ -1126,6 +1139,7 @@ model stock_batch {
   @@unique([id, product_id])
   @@unique([warehouse_id, product_id, batch_code])
   @@index([warehouse_id, product_id, expires_at], map: "stock_batch_fefo_idx", where: raw("(quantity_remaining > 0)"))
+  @@index([purchase_receipt_id], map: "stock_batch_receipt_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1157,6 +1171,10 @@ model stock_movement {
   @@unique([product_order_id, product_id, type], map: "stock_movement_order_once_uq", where: raw("(type = ANY (ARRAY['reserve'::text, 'release'::text]))"))
   @@index([flight_id], map: "stock_movement_flight_idx", where: raw("(flight_id IS NOT NULL)"))
   @@index([product_id, occurred_at], map: "stock_movement_product_idx")
+  @@index([aircraft_id, occurred_at], map: "stock_movement_aircraft_idx", where: raw("(aircraft_id IS NOT NULL)"))
+  @@index([stock_batch_id], map: "stock_movement_batch_idx", where: raw("(stock_batch_id IS NOT NULL)"))
+  @@index([stock_transfer_id], map: "stock_movement_transfer_idx", where: raw("(stock_transfer_id IS NOT NULL)"))
+  @@index([warehouse_id, occurred_at], map: "stock_movement_warehouse_idx", where: raw("(warehouse_id IS NOT NULL)"))
 }
 
 model stock_transfer {
@@ -1173,6 +1191,8 @@ model stock_transfer {
   staff               staff                 @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   warehouse           warehouse             @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   stock_transfer_line stock_transfer_line[]
+
+  @@index([flight_id], map: "stock_transfer_flight_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1184,6 +1204,8 @@ model stock_transfer_line {
   quantity          Int
   stock_batch       stock_batch    @relation(fields: [stock_batch_id, product_id], references: [id, product_id], onDelete: NoAction, onUpdate: NoAction)
   stock_transfer    stock_transfer @relation(fields: [stock_transfer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([stock_transfer_id], map: "stock_transfer_line_transfer_idx")
 }
 
 model supplier {
@@ -1223,9 +1245,9 @@ model user {
   created_at    DateTime        @default(now()) @db.Timestamptz(6)
   updated_at    DateTime        @default(now()) @db.Timestamptz(6)
   deleted_at    DateTime?       @db.Timestamptz(6)
-  customer      customer[]
+  customer      customer?
   refresh_token refresh_token[]
-  staff         staff[]
+  staff         staff?
 
   @@unique([id, type])
 }

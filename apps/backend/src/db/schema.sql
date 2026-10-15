@@ -1,12 +1,16 @@
 -- Level 1 schema: features 2, 4, 7, 9, 12 and 15, plus the Feature 1 baseline they depend on.
 -- One file, in apply order. Run it once against an empty PostgreSQL 15 or later database (the project runs 16).
 -- Prisma cannot express most of this (exclusion constraints, expression and trigram indexes, check constraints, triggers),
--- so the migration in prisma/migrations/*_level1_schema is this file with the old scaffold tables dropped first and the
--- 'admin' role inserted last. Keep the two in step. schema.prisma is generated from the migrated database with `prisma db pull`.
--- Seed rows beyond that role (screens, base currency, airline code, first admin and so on) are not in the repo yet.
+-- so migrations are written by hand. prisma/migrations/*_level1_schema created the first version of this file (with the old
+-- scaffold tables dropped first and the 'admin' role inserted last), and each later migration applies a change to it.
+-- This file is always the result of all migrations: change both together, and CI compares the two. Never edit a migration
+-- that is already on dev (Prisma checksums applied migrations); add a new one. schema.prisma is generated from the migrated
+-- database with `prisma db pull`.
+-- Apart from that role and the default settings inserted below, seed rows (screens, base currency, quote hold, airline code,
+-- first admin and so on) are not in the repo yet.
 
 -- ======================================================================================================================
--- PART 1 of 8: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
+-- PART 1 of 9: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
 -- ======================================================================================================================
 
 -- Feature 1 baseline assumed by features 2, 4, 7, 9 and 15.
@@ -16,7 +20,7 @@
 CREATE EXTENSION IF NOT EXISTS btree_gist; -- exclusion constraints (features 2, 9)
 CREATE EXTENSION IF NOT EXISTS pg_trgm;    -- fuzzy name matching (feature 7)
 
--- Shared by the append-only tables (flight_event, audit_log).
+-- Shared by the append-only tables (flight_event, audit_log, stock_movement).
 -- A trigger rather than grants: the app connects as the table owner, so grants would not bind it.
 CREATE FUNCTION forbid_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -51,6 +55,13 @@ CREATE UNIQUE INDEX user_type_email_uq ON "user" (type, lower(email)) WHERE dele
 
 CREATE SEQUENCE staff_code_seq;
 
+-- 'ST-0001' ... 'ST-9999', then 'ST-10000'. Plain lpad would cut the 10000th code back to 'ST-1000'.
+-- BEGIN ATOMIC binds staff_code_seq when the function is created, so the caller's search_path cannot pick another one.
+CREATE FUNCTION next_staff_code() RETURNS text LANGUAGE sql
+BEGIN ATOMIC
+  SELECT 'ST-' || lpad(n::text, greatest(4, length(n::text)), '0') FROM nextval('staff_code_seq') AS n;
+END;
+
 CREATE TABLE staff (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL,
@@ -58,13 +69,15 @@ CREATE TABLE staff (
   first_name      TEXT NOT NULL,
   last_name       TEXT NOT NULL,
   role_id         UUID NOT NULL REFERENCES role (id),
-  staff_code      TEXT NOT NULL UNIQUE DEFAULT 'ST-' || lpad(nextval('staff_code_seq')::text, 4, '0'), -- feature 15
-  last_sign_in_at TIMESTAMPTZ,                                                                          -- feature 15, simulation clock
+  staff_code      TEXT NOT NULL UNIQUE DEFAULT next_staff_code(), -- feature 15
+  last_sign_in_at TIMESTAMPTZ,                                    -- feature 15, simulation clock
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at      TIMESTAMPTZ,
   FOREIGN KEY (user_id, user_type) REFERENCES "user" (id, type),
-  UNIQUE (user_id)
+  UNIQUE (user_id),
+  -- The same rule, since user_type is a constant. Prisma needs the foreign key's columns unique to model it one-to-one.
+  UNIQUE (user_id, user_type)
 );
 
 CREATE INDEX staff_role_idx ON staff (role_id);
@@ -82,7 +95,7 @@ CREATE INDEX refresh_token_user_idx ON refresh_token (user_id);
 
 
 -- ======================================================================================================================
--- PART 2 of 8: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
+-- PART 2 of 9: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
 -- ======================================================================================================================
 
 -- Feature 2 (Flight Scheduling and Network Ops) - proposed schema.
@@ -138,7 +151,8 @@ CREATE TABLE airport_fee (
   effective_from DATE NOT NULL,
   effective_to   DATE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT airport_fee_effective_range_check CHECK (effective_to IS NULL OR effective_to >= effective_from)
 );
 
 CREATE INDEX airport_fee_lookup_idx ON airport_fee (airport, fee_type, applies_on, effective_from);
@@ -256,16 +270,23 @@ CREATE TRIGGER flight_event_append_only
   BEFORE UPDATE OR DELETE ON flight_event
   FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
 
+CREATE TRIGGER flight_event_no_truncate
+  BEFORE TRUNCATE ON flight_event
+  FOR EACH STATEMENT EXECUTE FUNCTION forbid_mutation();
+
 -- Delivery state lives apart from the immutable event. The backend inserts the outbox row in the same
 -- transaction as the event; the publisher sets published_at (simulation clock) after the bus accepts it.
+-- The publisher sends pending rows in seq order. seq is taken when the outbox row is inserted, inside the same
+-- flight lock as the event, so it is monotonic per flight.
 CREATE TABLE flight_event_outbox (
   event_id     UUID PRIMARY KEY REFERENCES flight_event (id),
   published_at TIMESTAMPTZ,
   attempts     INTEGER NOT NULL DEFAULT 0,
-  last_error   TEXT
+  last_error   TEXT,
+  seq          BIGINT GENERATED ALWAYS AS IDENTITY
 );
 
-CREATE INDEX flight_event_outbox_pending_idx ON flight_event_outbox (event_id) WHERE published_at IS NULL;
+CREATE INDEX flight_event_outbox_pending_idx ON flight_event_outbox (seq) WHERE published_at IS NULL;
 
 -- Congestion and conflicts -------------------------------------------------------------------------
 
@@ -331,7 +352,7 @@ INSERT INTO flight_setting (key, value) VALUES ('holding_limit_minutes', '30');
 
 
 -- ======================================================================================================================
--- PART 3 of 8: FEATURE 9 - AIRCRAFT MANAGEMENT
+-- PART 3 of 9: FEATURE 9 - AIRCRAFT MANAGEMENT
 -- ======================================================================================================================
 
 -- Feature 9 (Aircraft Management) - proposed schema.
@@ -382,7 +403,8 @@ CREATE TABLE aircraft (
   base_airport_code       TEXT NOT NULL,                -- feature 2's airport (cross-module FK)
   created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at              TIMESTAMPTZ
+  deleted_at              TIMESTAMPTZ,
+  CONSTRAINT aircraft_retired_on_check CHECK (retired_on IS NULL OR retired_on >= entry_into_service_date)
 );
 
 CREATE UNIQUE INDEX aircraft_tail_number_uq ON aircraft (tail_number) WHERE deleted_at IS NULL;
@@ -390,8 +412,8 @@ CREATE INDEX aircraft_type_idx ON aircraft (aircraft_type_id);
 CREATE INDEX aircraft_base_idx ON aircraft (base_airport_code);
 
 -- No row for a date means in_service. A period is editable (end it, shorten it, soft-delete it).
--- origin = 'maintenance' periods belong to an aircraft_maintenance window and are changed only through it;
--- the backend never creates an 'in_maintenance' period any other way.
+-- origin = 'maintenance' periods belong to an aircraft_maintenance window and are changed only through it,
+-- and they are exactly the 'in_maintenance' periods.
 CREATE TABLE aircraft_status_period (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   aircraft_id UUID NOT NULL REFERENCES aircraft (id),
@@ -405,6 +427,8 @@ CREATE TABLE aircraft_status_period (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at  TIMESTAMPTZ,
   CHECK (end_date IS NULL OR end_date >= start_date),
+  CONSTRAINT aircraft_status_period_origin_status_check CHECK ((origin = 'maintenance') = (status = 'in_maintenance')),
+  UNIQUE (id, aircraft_id, origin),                       -- lets aircraft_maintenance prove its period is the right kind
   -- Two live periods for one aircraft may not overlap; the 409 on POST/PUT maps from SQLSTATE 23P01.
   EXCLUDE USING gist (
     aircraft_id WITH =,
@@ -420,14 +444,21 @@ CREATE TABLE aircraft_maintenance (
   planned_end_date   DATE NOT NULL,                       -- last day the aircraft is unavailable
   actual_end_date    DATE,
   status             TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'in_progress', 'completed', 'cancelled')),
-  status_period_id   UUID NOT NULL UNIQUE REFERENCES aircraft_status_period (id),
+  status_period_id   UUID NOT NULL,
   created_by         UUID NOT NULL REFERENCES staff (id),
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at         TIMESTAMPTZ,
+  period_origin      TEXT NOT NULL DEFAULT 'maintenance' CHECK (period_origin = 'maintenance'),
   CHECK (planned_end_date >= planned_start_date),
   -- A completed window must have its actual end: completing it shortens or extends the status period to that date.
-  CHECK (status <> 'completed' OR actual_end_date IS NOT NULL)
+  CHECK (status <> 'completed' OR actual_end_date IS NOT NULL),
+  CONSTRAINT aircraft_maintenance_actual_end_check CHECK (actual_end_date IS NULL OR actual_end_date >= planned_start_date),
+  -- The period must be a maintenance period of the same aircraft (period_origin is pinned, like role_screen.screen_kind).
+  -- A period has one aircraft and one origin, so the key still allows one window per period.
+  CONSTRAINT aircraft_maintenance_period_uq UNIQUE (status_period_id, aircraft_id, period_origin),
+  CONSTRAINT aircraft_maintenance_period_fk FOREIGN KEY (status_period_id, aircraft_id, period_origin)
+    REFERENCES aircraft_status_period (id, aircraft_id, origin)
 );
 
 CREATE INDEX aircraft_maintenance_aircraft_idx ON aircraft_maintenance (aircraft_id, planned_start_date DESC);
@@ -479,7 +510,7 @@ INSERT INTO fleet_setting (key, value) VALUES ('reserve_ratio', '1.10');
 
 
 -- ======================================================================================================================
--- PART 4 of 8: FEATURE 4 - PRICING, FARE RULES AND FINANCE
+-- PART 4 of 9: FEATURE 4 - PRICING, FARE RULES AND FINANCE
 -- ======================================================================================================================
 
 -- Feature 4 (Pricing and Fare Rules) - proposed schema.
@@ -678,19 +709,23 @@ CREATE TABLE fare_quote_line (
   UNIQUE (fare_quote_id, seq)
 );
 
--- A promo use is counted when a booking is confirmed, once per quote. Retrying "redeem" is a no-op:
---   INSERT INTO promo_redemption ... ON CONFLICT (fare_quote_id) DO NOTHING; then, only if a row was inserted,
+-- A promo use is counted when a booking is confirmed, once per booking. Not once per quote: a quote is shared by everyone
+-- who books in its window, so keying on it would let many bookings share one use. Retrying "redeem" is a no-op:
+--   INSERT INTO promo_redemption ... ON CONFLICT (booking_id, promo_code_id) DO NOTHING; then, only if a row was inserted,
 --   UPDATE promo_code SET used_count = used_count + 1 WHERE id = $1;   (the CHECK on promo_code refuses to overshoot max_uses)
 CREATE TABLE promo_redemption (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   promo_code_id UUID NOT NULL REFERENCES promo_code (id),
-  fare_quote_id UUID NOT NULL UNIQUE,
+  fare_quote_id UUID NOT NULL,                             -- the quote the booking was priced from
   redeemed_at   TIMESTAMPTZ NOT NULL,                      -- simulation clock
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  FOREIGN KEY (fare_quote_id, promo_code_id) REFERENCES fare_quote (id, promo_code_id)
+  booking_id    UUID NOT NULL,                             -- feature 3b; no foreign key until its schema exists
+  FOREIGN KEY (fare_quote_id, promo_code_id) REFERENCES fare_quote (id, promo_code_id),
+  UNIQUE (booking_id, promo_code_id)
 );
 
 CREATE INDEX promo_redemption_promo_idx ON promo_redemption (promo_code_id);
+CREATE INDEX promo_redemption_quote_idx ON promo_redemption (fare_quote_id, promo_code_id);
 
 -- Finance --------------------------------------------------------------------------------------------
 
@@ -749,7 +784,7 @@ CREATE TABLE finance_monthly_summary (
 
 
 -- ======================================================================================================================
--- PART 5 of 8: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
+-- PART 5 of 9: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
 -- ======================================================================================================================
 
 -- Feature 7 (Customer and Passenger Profiles) - proposed schema.
@@ -802,7 +837,8 @@ CREATE TABLE customer (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at        TIMESTAMPTZ,
   FOREIGN KEY (user_id, user_type) REFERENCES "user" (id, type),
-  UNIQUE (user_id)
+  UNIQUE (user_id),
+  UNIQUE (user_id, user_type)                             -- the same rule; lets Prisma model the foreign key one-to-one
 );
 
 -- Who a customer books for. Removing from the saved list sets is_saved = false and keeps the link (past bookings).
@@ -861,7 +897,7 @@ CREATE TABLE screening_check (
   flight_id          UUID NOT NULL,                        -- feature 2's flight (cross-module FK)
   flight_dep_at      TIMESTAMPTZ NOT NULL,                 -- copied from feature 2 so the queue can sort without calling it
   pnr_id             UUID,                                 -- feature 3b, for the review screen; optional
-  trigger_point      TEXT NOT NULL CHECK (trigger_point IN ('booking', 'check_in', 'new_entry', 'identity_change')),
+  trigger_point      TEXT NOT NULL CHECK (trigger_point IN ('booking', 'check_in', 'new_entry', 'identity_change', 'manual')),
   watchlist_entry_id UUID REFERENCES watchlist_entry (id),
   match_level        TEXT NOT NULL CHECK (match_level IN ('none', 'weak', 'probable', 'strong')),
   outcome            TEXT NOT NULL CHECK (outcome IN ('clear', 'flagged', 'held')),
@@ -870,15 +906,17 @@ CREATE TABLE screening_check (
 );
 
 -- Idempotency: a retry or a re-run of the background job cannot create a second row for the same hit.
--- identity_change is excluded because a passenger can legitimately be corrected more than once.
+-- identity_change is excluded because a passenger can legitimately be corrected more than once, and manual because
+-- a staff re-check is how a mistaken decision is corrected.
 CREATE UNIQUE INDEX screening_check_once_uq
   ON screening_check (passenger_id, flight_id, watchlist_entry_id, trigger_point)
-  WHERE watchlist_entry_id IS NOT NULL AND trigger_point <> 'identity_change';
+  WHERE watchlist_entry_id IS NOT NULL AND trigger_point NOT IN ('identity_change', 'manual');
 CREATE INDEX screening_check_flight_idx ON screening_check (flight_id);
 CREATE INDEX screening_check_passenger_idx ON screening_check (passenger_id, occurred_at DESC);
 CREATE INDEX screening_check_queue_idx ON screening_check (flight_dep_at) WHERE outcome IN ('flagged', 'held');
+CREATE INDEX screening_check_entry_idx ON screening_check (watchlist_entry_id) WHERE watchlist_entry_id IS NOT NULL;
 
--- One decision per check. A mistaken decision is handled by a new check, not by editing this row.
+-- One decision per check. A mistaken decision is handled by a new check (trigger_point 'manual'), not by editing this row.
 -- The Screening Queue is: flagged or held checks with no review, nearest departure first (a query, not a view).
 CREATE TABLE screening_review (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -893,7 +931,7 @@ CREATE TABLE screening_review (
 
 
 -- ======================================================================================================================
--- PART 6 of 8: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
+-- PART 6 of 9: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
 -- ======================================================================================================================
 
 -- Feature 15 (Admin Console) - proposed schema.
@@ -959,10 +997,11 @@ CREATE TABLE audit_log (
   is_sensitive   BOOLEAN NOT NULL DEFAULT false           -- before/after are masked by the writer; list views hide them
 );
 
+-- Filtered lists page by seq, so the filter indexes end in seq. occurred_at keeps its own index for date-range filters.
 CREATE INDEX audit_log_occurred_idx ON audit_log (occurred_at DESC);
-CREATE INDEX audit_log_feature_idx ON audit_log (source_feature, occurred_at DESC);
-CREATE INDEX audit_log_actor_idx ON audit_log (actor_type, actor_id, occurred_at DESC);
-CREATE INDEX audit_log_entity_idx ON audit_log (entity_type, entity_id, occurred_at DESC);
+CREATE INDEX audit_log_feature_idx ON audit_log (source_feature, seq DESC);
+CREATE INDEX audit_log_actor_idx ON audit_log (actor_type, actor_id, seq DESC);
+CREATE INDEX audit_log_entity_idx ON audit_log (entity_type, entity_id, seq DESC);
 
 CREATE TRIGGER audit_log_no_change
   BEFORE UPDATE OR DELETE ON audit_log
@@ -974,7 +1013,7 @@ CREATE TRIGGER audit_log_no_truncate
 
 
 -- ======================================================================================================================
--- PART 7 of 8: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
+-- PART 7 of 9: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
 -- ======================================================================================================================
 
 -- Feature 12 (Onboard Products) - proposed schema.
@@ -1188,6 +1227,8 @@ CREATE TABLE purchase_receipt (
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE INDEX purchase_receipt_supplier_idx ON purchase_receipt (supplier_id);
+
 -- quantity_on_hand is kept equal to the sum of the warehouse's batch quantity_remaining by the backend, in one transaction
 -- with every change to a batch. quantity_reserved is the part of it promised to unpaid and confirmed orders.
 CREATE TABLE warehouse_stock (
@@ -1222,14 +1263,15 @@ CREATE TABLE stock_batch (
 
 -- Earliest-expiring first.
 CREATE INDEX stock_batch_fefo_idx ON stock_batch (warehouse_id, product_id, expires_at) WHERE quantity_remaining > 0;
+CREATE INDEX stock_batch_receipt_idx ON stock_batch (purchase_receipt_id);
 
 -- Catering orders and aircraft stock ----------------------------------------------------------------------
 
--- One per flight. cutoff_at is the departure minus the shortest order window of the flight's cabins, taken from the
--- scheduled departure so a delay does not reopen ordering.
+-- One live order per flight; a voided one is kept and a new one can replace it. cutoff_at is the departure minus the
+-- shortest order window of the flight's cabins, taken from the scheduled departure so a delay does not reopen ordering.
 CREATE TABLE catering_order (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  flight_id             UUID NOT NULL UNIQUE,                  -- feature 2's flight (cross-module FK)
+  flight_id             UUID NOT NULL,                         -- feature 2's flight (cross-module FK)
   warehouse_id          UUID NOT NULL REFERENCES warehouse (id),
   status                TEXT NOT NULL DEFAULT 'generated' CHECK (status IN ('generated', 'loaded', 'closed', 'void')),
   cutoff_at             TIMESTAMPTZ NOT NULL,                  -- simulation clock
@@ -1240,6 +1282,9 @@ CREATE TABLE catering_order (
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX catering_order_flight_uq ON catering_order (flight_id) WHERE status <> 'void';
+CREATE INDEX catering_order_warehouse_idx ON catering_order (warehouse_id);
 
 CREATE TABLE catering_order_line (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1264,6 +1309,8 @@ CREATE TABLE stock_transfer (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE INDEX stock_transfer_flight_idx ON stock_transfer (flight_id);
+
 CREATE TABLE stock_transfer_line (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   stock_transfer_id UUID NOT NULL REFERENCES stock_transfer (id),
@@ -1272,6 +1319,8 @@ CREATE TABLE stock_transfer_line (
   quantity          INTEGER NOT NULL CHECK (quantity > 0),
   FOREIGN KEY (stock_batch_id, product_id) REFERENCES stock_batch (id, product_id)
 );
+
+CREATE INDEX stock_transfer_line_transfer_idx ON stock_transfer_line (stock_transfer_id);
 
 -- Stock on the aircraft by batch, kept across flights. The expiry is the batch's (join stock_batch).
 CREATE TABLE aircraft_stock (
@@ -1285,16 +1334,21 @@ CREATE TABLE aircraft_stock (
   FOREIGN KEY (stock_batch_id, product_id) REFERENCES stock_batch (id, product_id)
 );
 
+CREATE INDEX aircraft_stock_batch_idx ON aircraft_stock (stock_batch_id);
+
 -- Flight report and on-board sales --------------------------------------------------------------------------
 
+-- One live report per flight. A wrong report is voided and kept, and the corrected one is a new row.
 CREATE TABLE flight_report (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  flight_id             UUID NOT NULL UNIQUE,                  -- feature 2's flight (cross-module FK)
+  flight_id             UUID NOT NULL,                         -- feature 2's flight (cross-module FK)
   status                TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted', 'void')),
   submitted_by_staff_id UUID NOT NULL REFERENCES staff (id),
   submitted_at          TIMESTAMPTZ NOT NULL,                  -- simulation clock
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX flight_report_flight_uq ON flight_report (flight_id) WHERE status <> 'void';
 
 -- sold must equal the on-board sales of that product on that flight (the backend refuses a report that disagrees).
 CREATE TABLE flight_report_line (
@@ -1354,13 +1408,19 @@ CREATE TABLE stock_movement (
   occurred_at         TIMESTAMPTZ NOT NULL,                    -- simulation clock
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (num_nonnulls(warehouse_id, aircraft_id) = 1),
-  CHECK (type <> 'adjust' OR reason IS NOT NULL)
+  CHECK (type <> 'adjust' OR reason IS NOT NULL),
+  -- Without the order, the index below cannot catch a retried reserve or release.
+  CONSTRAINT stock_movement_order_check CHECK (type NOT IN ('reserve', 'release') OR product_order_id IS NOT NULL)
 );
 
 CREATE UNIQUE INDEX stock_movement_order_once_uq
   ON stock_movement (product_order_id, product_id, type) WHERE type IN ('reserve', 'release');
 CREATE INDEX stock_movement_product_idx ON stock_movement (product_id, occurred_at);
 CREATE INDEX stock_movement_flight_idx ON stock_movement (flight_id) WHERE flight_id IS NOT NULL;
+CREATE INDEX stock_movement_warehouse_idx ON stock_movement (warehouse_id, occurred_at) WHERE warehouse_id IS NOT NULL;
+CREATE INDEX stock_movement_aircraft_idx ON stock_movement (aircraft_id, occurred_at) WHERE aircraft_id IS NOT NULL;
+CREATE INDEX stock_movement_batch_idx ON stock_movement (stock_batch_id) WHERE stock_batch_id IS NOT NULL;
+CREATE INDEX stock_movement_transfer_idx ON stock_movement (stock_transfer_id) WHERE stock_transfer_id IS NOT NULL;
 
 CREATE TRIGGER stock_movement_no_change
   BEFORE UPDATE OR DELETE ON stock_movement
@@ -1372,7 +1432,7 @@ CREATE TRIGGER stock_movement_no_truncate
 
 
 -- ======================================================================================================================
--- PART 8 of 8: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
+-- PART 8 of 9: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
 -- ======================================================================================================================
 
 -- Cross-module foreign keys for features 2, 4, 7, 9 and 12.
@@ -1414,3 +1474,60 @@ ALTER TABLE flight_report    ADD CONSTRAINT flight_report_flight_fk        FOREI
 ALTER TABLE product_sale     ADD CONSTRAINT product_sale_flight_fk         FOREIGN KEY (flight_id)    REFERENCES flight (id);
 ALTER TABLE stock_movement   ADD CONSTRAINT stock_movement_flight_fk       FOREIGN KEY (flight_id)    REFERENCES flight (id);
 ALTER TABLE stock_movement   ADD CONSTRAINT stock_movement_aircraft_fk     FOREIGN KEY (aircraft_id)  REFERENCES aircraft (id);
+
+
+-- ======================================================================================================================
+-- PART 9 of 9: updated_at TRIGGERS
+-- ======================================================================================================================
+
+-- updated_at is real time and must change on every UPDATE, raw SQL included, so a trigger sets it instead of each caller.
+-- Every table with an updated_at column has its line here; CI fails if one is missing.
+CREATE FUNCTION set_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER role_updated_at BEFORE UPDATE ON role FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER user_updated_at BEFORE UPDATE ON "user" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER staff_updated_at BEFORE UPDATE ON staff FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER disruption_reason_updated_at BEFORE UPDATE ON disruption_reason FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER partner_airline_updated_at BEFORE UPDATE ON partner_airline FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER airport_updated_at BEFORE UPDATE ON airport FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER airport_fee_updated_at BEFORE UPDATE ON airport_fee FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER route_updated_at BEFORE UPDATE ON route FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER flight_pattern_updated_at BEFORE UPDATE ON flight_pattern FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER flight_updated_at BEFORE UPDATE ON flight FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER airport_congestion_updated_at BEFORE UPDATE ON airport_congestion FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER schedule_conflict_updated_at BEFORE UPDATE ON schedule_conflict FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER flight_setting_updated_at BEFORE UPDATE ON flight_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_type_updated_at BEFORE UPDATE ON aircraft_type FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_updated_at BEFORE UPDATE ON aircraft FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_status_period_updated_at BEFORE UPDATE ON aircraft_status_period FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_maintenance_updated_at BEFORE UPDATE ON aircraft_maintenance FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER fleet_setting_updated_at BEFORE UPDATE ON fleet_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER fare_class_updated_at BEFORE UPDATE ON fare_class FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER base_fare_updated_at BEFORE UPDATE ON base_fare FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER pricing_rule_updated_at BEFORE UPDATE ON pricing_rule FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER seat_fee_updated_at BEFORE UPDATE ON seat_fee FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER overweight_baggage_rate_updated_at BEFORE UPDATE ON overweight_baggage_rate FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER tax_fee_updated_at BEFORE UPDATE ON tax_fee FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER currency_rate_updated_at BEFORE UPDATE ON currency_rate FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER promo_code_updated_at BEFORE UPDATE ON promo_code FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER pricing_setting_updated_at BEFORE UPDATE ON pricing_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER payment_schedule_updated_at BEFORE UPDATE ON payment_schedule FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER expense_updated_at BEFORE UPDATE ON expense FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER passenger_updated_at BEFORE UPDATE ON passenger FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER customer_updated_at BEFORE UPDATE ON customer FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER customer_passenger_updated_at BEFORE UPDATE ON customer_passenger FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER watchlist_entry_updated_at BEFORE UPDATE ON watchlist_entry FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER screen_updated_at BEFORE UPDATE ON screen FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER product_updated_at BEFORE UPDATE ON product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER product_offering_updated_at BEFORE UPDATE ON product_offering FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER cabin_setting_updated_at BEFORE UPDATE ON cabin_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER catering_setting_updated_at BEFORE UPDATE ON catering_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER product_order_updated_at BEFORE UPDATE ON product_order FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER warehouse_updated_at BEFORE UPDATE ON warehouse FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER warehouse_stock_updated_at BEFORE UPDATE ON warehouse_stock FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER catering_order_updated_at BEFORE UPDATE ON catering_order FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_stock_updated_at BEFORE UPDATE ON aircraft_stock FOR EACH ROW EXECUTE FUNCTION set_updated_at();
