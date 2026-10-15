@@ -93,16 +93,4 @@ npm run test:cov -w apps/backend
 
 See [`docs/branch-naming-and-workflow.md`](./docs/branch-naming-and-workflow.md).
 
-## Claude Code Setup (Optional, may use claude vscode extension)
-
-If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), this repo ships a `.claude/settings.example.json` template so teammates share a common permissions baseline. Copy it locally and customize:
-
-```bash
-cp .claude/settings.example.json .claude/settings.json
-```
-
-- The copied `.claude/settings.json` is gitignored, so personal `env` entries (custom API endpoint, keys, model overrides) stay local and out of git history.
-- Adjust the `permissions.allow` and `permissions.deny` lists to match your workflow.
-- Replace or remove the example `env` block if you don't use a custom model endpoint.
-
 _Last reviewed against the repository snapshot from September 28, 2026._

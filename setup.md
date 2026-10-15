@@ -34,7 +34,7 @@ Run once from the repo root — this installs and links `apps/backend`, `apps/cu
 npm install
 ```
 
-Run `npm install` again after every `git pull`; it also regenerates the Prisma client.
+Run `npm install` again after every `git pull`. It no longer generates the Prisma client; run `npm run db:generate` (see step 5).
 
 Before starting the apps for the first time, apply database migrations (see step 7):
 
@@ -44,7 +44,10 @@ npm run db:migrate
 
 ## 5. Start Everything (peak command)
 
+Generate the Prisma client first. Run it before the first `npm run dev` and again after every `git pull` that changes the schema, otherwise the backend fails to build with errors about missing tables or fields.
+
 ```bash
+npm run db:generate
 npm run dev
 ```
 
@@ -92,4 +95,20 @@ npm run db:studio
 npm run db:seed
 ```
 
+`npm run db:studio` opens Prisma Studio, a browser GUI (default `http://localhost:5555`) for browsing and editing rows in your local database. It needs PostgreSQL running (`npm run db:up`) and only touches your local data, not the schema.
+
+**Feature groups must not edit `src/db/prisma/schema.prisma` or create migrations.** The schema is owned by the Database Team. If you need a table or column changed, ask them; once their change is merged, pull and run `npm run db:generate` (and `npm run db:migrate`).
+
 See [`docs/infra-guide.md`](./docs/infra-guide.md) for the authentication flow and configuration rules.
+
+## 8. Claude Code Setup (Optional, may use claude vscode extension)
+
+If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), this repo ships a `.claude/settings.example.json` template so teammates share a common permissions baseline. Copy it locally and customize:
+
+```bash
+cp .claude/settings.example.json .claude/settings.json
+```
+
+- The copied `.claude/settings.json` is gitignored, so personal `env` entries (custom API endpoint, keys, model overrides) stay local and out of git history.
+- Adjust the `permissions.allow` and `permissions.deny` lists to match your workflow.
+- Replace or remove the example `env` block if you don't use a custom model endpoint.
