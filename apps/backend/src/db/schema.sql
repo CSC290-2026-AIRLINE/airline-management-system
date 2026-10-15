@@ -146,7 +146,8 @@ CREATE TABLE airport_fee (
   effective_from DATE NOT NULL,
   effective_to   DATE,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT airport_fee_effective_range_check CHECK (effective_to IS NULL OR effective_to >= effective_from)
 );
 
 CREATE INDEX airport_fee_lookup_idx ON airport_fee (airport, fee_type, applies_on, effective_from);
@@ -397,7 +398,8 @@ CREATE TABLE aircraft (
   base_airport_code       TEXT NOT NULL,                -- feature 2's airport (cross-module FK)
   created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at              TIMESTAMPTZ
+  deleted_at              TIMESTAMPTZ,
+  CONSTRAINT aircraft_retired_on_check CHECK (retired_on IS NULL OR retired_on >= entry_into_service_date)
 );
 
 CREATE UNIQUE INDEX aircraft_tail_number_uq ON aircraft (tail_number) WHERE deleted_at IS NULL;
@@ -445,6 +447,7 @@ CREATE TABLE aircraft_maintenance (
   CHECK (planned_end_date >= planned_start_date),
   -- A completed window must have its actual end: completing it shortens or extends the status period to that date.
   CHECK (status <> 'completed' OR actual_end_date IS NOT NULL),
+  CONSTRAINT aircraft_maintenance_actual_end_check CHECK (actual_end_date IS NULL OR actual_end_date >= planned_start_date),
   -- The period must be for the same aircraft. A period has one aircraft, so the pair still allows one window per period.
   UNIQUE (status_period_id, aircraft_id),
   FOREIGN KEY (status_period_id, aircraft_id) REFERENCES aircraft_status_period (id, aircraft_id)
@@ -1389,7 +1392,9 @@ CREATE TABLE stock_movement (
   occurred_at         TIMESTAMPTZ NOT NULL,                    -- simulation clock
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (num_nonnulls(warehouse_id, aircraft_id) = 1),
-  CHECK (type <> 'adjust' OR reason IS NOT NULL)
+  CHECK (type <> 'adjust' OR reason IS NOT NULL),
+  -- Without the order, the index below cannot catch a retried reserve or release.
+  CONSTRAINT stock_movement_order_check CHECK (type NOT IN ('reserve', 'release') OR product_order_id IS NOT NULL)
 );
 
 CREATE UNIQUE INDEX stock_movement_order_once_uq

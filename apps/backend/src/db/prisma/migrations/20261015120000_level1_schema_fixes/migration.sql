@@ -118,3 +118,15 @@ CREATE TRIGGER warehouse_updated_at BEFORE UPDATE ON warehouse FOR EACH ROW EXEC
 CREATE TRIGGER warehouse_stock_updated_at BEFORE UPDATE ON warehouse_stock FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER catering_order_updated_at BEFORE UPDATE ON catering_order FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER aircraft_stock_updated_at BEFORE UPDATE ON aircraft_stock FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Date ranges that could run backwards, unlike every other range in the schema.
+ALTER TABLE airport_fee
+  ADD CONSTRAINT airport_fee_effective_range_check CHECK (effective_to IS NULL OR effective_to >= effective_from);
+ALTER TABLE aircraft
+  ADD CONSTRAINT aircraft_retired_on_check CHECK (retired_on IS NULL OR retired_on >= entry_into_service_date);
+ALTER TABLE aircraft_maintenance
+  ADD CONSTRAINT aircraft_maintenance_actual_end_check CHECK (actual_end_date IS NULL OR actual_end_date >= planned_start_date);
+
+-- stock_movement_order_once_uq skips rows with no order, so a reserve or release without one could be recorded twice.
+ALTER TABLE stock_movement
+  ADD CONSTRAINT stock_movement_order_check CHECK (type NOT IN ('reserve', 'release') OR product_order_id IS NOT NULL);
