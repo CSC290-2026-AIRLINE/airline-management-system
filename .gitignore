@@ -40,6 +40,10 @@ Thumbs.db
 *.sln
 *.sw?
 
+# docs 
+feature-04-schema-review.md
+feature-04-fare-class-crud-guide.md
+
 # VS Code
 .vscode/*
 !.vscode/extensions.json
