@@ -14,7 +14,8 @@ Deeper docs are in `docs/` (`infra-guide.md`, `backend-structure.md`, `frontend-
 
 ```bash
 nvm use                 # Node 24, pinned in .nvmrc
-npm install             # also runs `prisma generate`; rerun after every git pull
+npm install             # rerun after every git pull
+npm run db:generate     # before `npm run dev`; rerun after schema changes
 npm run db:up           # PostgreSQL + SeaweedFS in Docker
 npm run dev             # backend + both web apps
 npm run db:migrate | db:seed | db:studio
