@@ -43,6 +43,7 @@ A feature module follows the standard shape: `<name>.module.ts`, `<name>.control
 - Use `DbService` (Prisma client over the `pg` adapter) via dependency injection. Never `new PrismaClient()`.
 - Do **not** edit `src/db/prisma/schema.prisma`, migrations, or `schema.sql` unless the task is a Database Team change. Propose the schema change in text instead.
 - Model and column names are `snake_case` (`user`, `refresh_token`, `created_at`). Soft delete uses `deleted_at`, so filter on it in queries.
+- A partial unique key (`@unique(where: ...)` in `schema.prisma`, such as `tail_number`, `sku` or `promo_code.code`) is unique among live rows only, but Prisma still accepts it in `findUnique`, which can then return a soft-deleted or voided row. Add the live filter: `findUnique({ where: { tail_number, deleted_at: null } })`. One-to-one relations over such keys (`flight.flight_report`, `flight.aircraft_turnaround`) have the same catch, so query that model with the filter instead of including the relation.
 - After pulling a schema change, run `npm run db:generate`. A stale client shows up as type errors about missing models or fields; fix it by regenerating, not by editing code.
 - Schema changes need `npm run db:migrate` and a committed migration; CI fails if `schema.prisma` and migrations drift.
 
