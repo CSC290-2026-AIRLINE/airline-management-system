@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        run: npm run db:generate
+
       - name: Audit production dependencies (high and critical)
         run: npm audit --omit=dev --audit-level=high
 
@@ -98,6 +101,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate
 
       - name: Apply migrations
         run: npm run db:migrate:deploy
