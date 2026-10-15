@@ -66,3 +66,55 @@ DROP INDEX screening_check_once_uq;
 CREATE UNIQUE INDEX screening_check_once_uq
   ON screening_check (passenger_id, flight_id, watchlist_entry_id, trigger_point)
   WHERE watchlist_entry_id IS NOT NULL AND trigger_point NOT IN ('identity_change', 'manual');
+
+-- Nothing kept updated_at current: no trigger and no @updatedAt, so every row kept its creation time. A trigger also covers
+-- raw SQL, such as the promo used_count increment.
+CREATE FUNCTION set_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER role_updated_at BEFORE UPDATE ON role FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER user_updated_at BEFORE UPDATE ON "user" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER staff_updated_at BEFORE UPDATE ON staff FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER disruption_reason_updated_at BEFORE UPDATE ON disruption_reason FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER partner_airline_updated_at BEFORE UPDATE ON partner_airline FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER airport_updated_at BEFORE UPDATE ON airport FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER airport_fee_updated_at BEFORE UPDATE ON airport_fee FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER route_updated_at BEFORE UPDATE ON route FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER flight_pattern_updated_at BEFORE UPDATE ON flight_pattern FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER flight_updated_at BEFORE UPDATE ON flight FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER airport_congestion_updated_at BEFORE UPDATE ON airport_congestion FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER schedule_conflict_updated_at BEFORE UPDATE ON schedule_conflict FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER flight_setting_updated_at BEFORE UPDATE ON flight_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_type_updated_at BEFORE UPDATE ON aircraft_type FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_updated_at BEFORE UPDATE ON aircraft FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_status_period_updated_at BEFORE UPDATE ON aircraft_status_period FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_maintenance_updated_at BEFORE UPDATE ON aircraft_maintenance FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER fleet_setting_updated_at BEFORE UPDATE ON fleet_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER fare_class_updated_at BEFORE UPDATE ON fare_class FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER base_fare_updated_at BEFORE UPDATE ON base_fare FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER pricing_rule_updated_at BEFORE UPDATE ON pricing_rule FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER seat_fee_updated_at BEFORE UPDATE ON seat_fee FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER overweight_baggage_rate_updated_at BEFORE UPDATE ON overweight_baggage_rate FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER tax_fee_updated_at BEFORE UPDATE ON tax_fee FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER currency_rate_updated_at BEFORE UPDATE ON currency_rate FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER promo_code_updated_at BEFORE UPDATE ON promo_code FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER pricing_setting_updated_at BEFORE UPDATE ON pricing_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER payment_schedule_updated_at BEFORE UPDATE ON payment_schedule FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER expense_updated_at BEFORE UPDATE ON expense FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER passenger_updated_at BEFORE UPDATE ON passenger FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER customer_updated_at BEFORE UPDATE ON customer FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER customer_passenger_updated_at BEFORE UPDATE ON customer_passenger FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER watchlist_entry_updated_at BEFORE UPDATE ON watchlist_entry FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER screen_updated_at BEFORE UPDATE ON screen FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER product_updated_at BEFORE UPDATE ON product FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER product_offering_updated_at BEFORE UPDATE ON product_offering FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER cabin_setting_updated_at BEFORE UPDATE ON cabin_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER catering_setting_updated_at BEFORE UPDATE ON catering_setting FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER product_order_updated_at BEFORE UPDATE ON product_order FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER warehouse_updated_at BEFORE UPDATE ON warehouse FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER warehouse_stock_updated_at BEFORE UPDATE ON warehouse_stock FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER catering_order_updated_at BEFORE UPDATE ON catering_order FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER aircraft_stock_updated_at BEFORE UPDATE ON aircraft_stock FOR EACH ROW EXECUTE FUNCTION set_updated_at();
