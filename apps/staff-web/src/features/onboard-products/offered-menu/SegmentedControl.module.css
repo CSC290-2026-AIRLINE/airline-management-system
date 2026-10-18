@@ -1,0 +1,45 @@
+.group {
+  display: inline-flex;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.segment,
+.segmentActive {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px;
+  background: #ffffff;
+  color: #0f172a;
+  border: none;
+  border-right: 1px solid #e2e8f0;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.segment:last-child,
+.segmentActive:last-child {
+  border-right: none;
+}
+
+.segment:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.segmentActive {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.segmentActive:hover:not(:disabled) {
+  background: #1e40af;
+}
+
+.segment:disabled,
+.segmentActive:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

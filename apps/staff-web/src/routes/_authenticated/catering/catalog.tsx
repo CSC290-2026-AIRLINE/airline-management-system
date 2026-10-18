@@ -1,5 +1,5 @@
 // Product Catalog page. Matches the prototype at f12-ref/staff uiux/1.png:
-// title, simulated-today badge, 4 stat cards, filter pills, products table
+// title, 4 stat cards, filter pills, products table
 // with photo/name/category/type-code/price/status/kebab, and add/edit/delete flows.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -15,7 +15,6 @@ import {
   type ToastData,
   type ToastKind,
 } from '@staff-web/features/onboard-products/catalog'
-import { formatSimulatedToday } from '@staff-web/features/onboard-products/mocks/clock'
 import styles from './CatalogPage.module.css'
 
 type Filter = 'all' | 'meals' | 'snacks-and-drinks' | 'duty-free'
@@ -154,9 +153,6 @@ function CatalogPage() {
           <p className={styles.subtitle}>
             Meals, snacks, drinks and duty-free items with their prices. What each route offers is set under Offered menu.
           </p>
-        </div>
-        <div className={styles.badge} aria-label="Simulated today">
-          Simulated today · {formatSimulatedToday()}
         </div>
       </header>
 

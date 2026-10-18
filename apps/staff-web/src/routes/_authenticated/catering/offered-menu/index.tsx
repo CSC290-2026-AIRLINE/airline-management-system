@@ -5,6 +5,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { OfferedMenuPage } from '@staff-web/features/onboard-products/offered-menu/OfferedMenuPage'
 
-export const Route = createFileRoute('/_authenticated/catering/offered-menu')({
+export const Route = createFileRoute('/_authenticated/catering/offered-menu/')({
   component: OfferedMenuPage,
 })

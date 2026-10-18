@@ -1,28 +1,39 @@
 // Route detail: edit a single route's menu and cabin rules. Three modes:
-// Whole route (default), Single flight, or Network default. The
-// segmented control + cabin tile header switches which set of values
-// the form edits.
+// Whole route (default), Single flight, or Network default. The layout
+// mirrors the prototype: three cabin tiles at the top, a "rules and menu"
+// panel below, with the settings on the left and the menu on the right.
 /* eslint-disable react-hooks/set-state-in-effect -- sync setState mirrors an external source */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import {
   createProductOffering,
   getRouteDetail,
+  listFlightExceptions,
   putCabinSettings,
   resetCabinSettingsToInherited,
   updateProductOffering,
+  type ProductOfferingInput,
 } from '@staff-web/features/onboard-products/api/offerings'
-import type { Cabin, CabinSetting, ProductOffering, RouteDetail, SettingPatch } from '@staff-web/features/onboard-products/api/types'
+import { mockRoutes } from '@staff-web/features/onboard-products/mocks/offerings'
+import type {
+  Cabin,
+  CabinSetting,
+  FlightException,
+  ProductOffering,
+  RouteDetail,
+  SettingPatch,
+} from '@staff-web/features/onboard-products/api/types'
 import { mockProducts } from '@staff-web/features/onboard-products/mocks/products'
-import { resolveCabinSettings, resolveMenu } from '@staff-web/features/onboard-products/offered-menu/resolve'
+import { resolveMenu } from '@staff-web/features/onboard-products/offered-menu/resolve'
 import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
+import { SegmentedControl } from './SegmentedControl'
+import { ToggleSwitch } from './ToggleSwitch'
 import styles from './RouteDetailPage.module.css'
 
 const CABINS: Cabin[] = ['economy', 'premium_economy', 'business']
 
 type Mode = 'route' | 'flight' | 'network'
-type Section = 'meals' | 'ordering' | 'extras'
 
 interface Draft {
   mealService: 'complimentary' | 'paid' | 'none'
@@ -71,23 +82,41 @@ function draftToPatch(d: Draft, original: Draft): SettingPatch {
   return patch
 }
 
+// Summarise a cabin's rules in a single line, e.g. "Complimentary · 1 included".
+function cabinSummary(s: CabinSetting | null): { headline: string; subline: string } {
+  if (!s) {
+    return { headline: 'Inheriting network default', subline: 'No settings set here yet' }
+  }
+  const service = s.mealService ?? 'paid'
+  const selection = s.mealSelection ?? 'choose'
+  const included = s.includedPerPassenger ?? 0
+  const headline =
+    service === 'complimentary'
+      ? `Complimentary · ${included} included`
+      : service === 'paid'
+        ? `Paid meals · ${selection === 'fixed' ? 'set meal' : 'passengers choose'}`
+        : 'No meal service'
+  const window = `order closes ${s.orderWindowHours ?? 48} h before`
+  return { headline, subline: window }
+}
+
 export function RouteDetailPage() {
   const params = useParams({ from: '/_authenticated/catering/offered-menu/$routeId' })
+  const search = useSearch({ from: '/_authenticated/catering/offered-menu/$routeId' })
   const routeId = params.routeId
   const navigate = useNavigate()
   const [detail, setDetail] = useState<RouteDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [mode, setMode] = useState<Mode>('route')
+  const [allExceptions, setAllExceptions] = useState<FlightException[]>([])
+  // Initial mode follows the URL: ?flight=... preselects Single flight mode.
+  const [mode, setMode] = useState<Mode>(search.flight ? 'flight' : 'route')
   const [flightId, setFlightId] = useState<string | null>(null)
   const [cabin, setCabin] = useState<Cabin>('economy')
-  const [section, setSection] = useState<Section>('meals')
   const [draft, setDraft] = useState<Draft | null>(null)
   const [original, setOriginal] = useState<Draft | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
-  const [menuActive, setMenuActive] = useState<Record<string, boolean>>({})
-  const [defaultOfferingId, setDefaultOfferingId] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastData | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
 
@@ -101,7 +130,9 @@ export function RouteDetailPage() {
       .then((d) => {
         if (cancelled) return
         setDetail(d)
-        if (d.flights.length > 0) setFlightId(d.flights[0]?.id ?? null)
+        // Honor the ?flight=… search param first; otherwise default to the first flight.
+        const wanted = search.flight && d.flights.some((f) => f.id === search.flight) ? search.flight : (d.flights[0]?.id ?? null)
+        setFlightId(wanted)
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -114,7 +145,23 @@ export function RouteDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [routeId])
+  }, [routeId, search.flight])
+
+  // Load every flight exception so the Single-flight picker can show all of them.
+  useEffect(() => {
+    let cancelled = false
+    listFlightExceptions({ search: '' })
+      .then((d) => {
+        if (cancelled) return
+        setAllExceptions(d.exceptions)
+      })
+      .catch(() => {
+        /* ignore — the picker will fall back to this route's flights */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Active setting row (the one to edit) — depends on mode + cabin.
   const activeRow = useMemo<CabinSetting | null>(() => {
@@ -128,44 +175,38 @@ export function RouteDetailPage() {
     return detail.cabinSettings.find((s) => s.scope === 'route' && s.routeId === routeId && s.cabin === cabin) ?? null
   }, [detail, mode, flightId, routeId, cabin])
 
-  // Resolved values, used for the "Inherited from ..." labels and warnings.
-  const resolved = useMemo(() => {
-    if (!detail) return null
-    return resolveCabinSettings(detail.cabinSettings, cabin, mode === 'route' ? routeId : null, mode === 'flight' ? flightId : null)
-  }, [detail, cabin, mode, routeId, flightId])
-
-  // The menu currently in effect, used for the Meals section chip list.
+  // The menu currently in effect, used for the chips and the default meal select.
   const effectiveMenu = useMemo(() => {
     if (!detail) return { menu: [] as ProductOffering[], defaultOfferingId: null as string | null, menuLevel: 'none' as const }
     return resolveMenu(detail.offerings, cabin, mode === 'route' ? routeId : null, mode === 'flight' ? flightId : null)
   }, [detail, cabin, mode, routeId, flightId])
 
+  // The route shown in the page header. In flight mode the selected flight
+  // may belong to a different route than the URL's `routeId`, so look it up
+  // from the flight exception (or fall back to the current route).
+  const headerRoute = useMemo(() => {
+    if (mode === 'network') return null
+    if (mode === 'flight' && flightId && detail) {
+      const ex = allExceptions.find((e) => e.id === flightId) ?? detail.flights.find((f) => f.id === flightId)
+      if (ex) {
+        const m = mockRoutes.find((r) => r.id === ex.routeId)
+        if (m) return m
+      }
+    }
+    return detail?.route ?? null
+  }, [mode, flightId, allExceptions, detail])
+
   // Initialize the draft when the active row or cabin changes. (Sync setState
   // is intentional here — the draft mirrors an external source.)
-
   useEffect(() => {
-    if (!activeRow && !resolved) return
     const d = settingToDraft(activeRow)
     setDraft(d)
     setOriginal(d)
     setErrors({})
-  }, [activeRow, resolved, cabin])
-
-  // Build the per-product active map whenever the menu changes. (Sync setState
-  // is intentional — menuActive mirrors an external source.)
-
-  useEffect(() => {
-    const map: Record<string, boolean> = {}
-    for (const o of effectiveMenu.menu) {
-      map[o.productId] = o.isActive
-    }
-    setMenuActive(map)
-    setDefaultOfferingId(effectiveMenu.defaultOfferingId)
-  }, [effectiveMenu])
+  }, [activeRow, cabin])
 
   // Surface the meal_service=none warning whenever the draft turns it on.
   // (Sync setState is intentional — mirrors a derivation of the draft state.)
-
   useEffect(() => {
     if (!draft) return
     if (draft.mealService === 'none' && draft.includedPerPassenger === 0) {
@@ -193,10 +234,26 @@ export function RouteDetailPage() {
   const route = detail.route
   const flights = detail.flights
   const isNetwork = mode === 'network'
+  const isFlight = mode === 'flight'
 
   function setField<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => (d ? { ...d, [key]: value } : d))
   }
+
+  // Decide which flights to show in the Single-flight picker: every flight
+  // exception across the network, or just this route's flights if the global
+  // list is still loading.
+  const flightPickerOptions: FlightException[] =
+    isFlight && allExceptions.length > 0
+      ? allExceptions
+      : flights.map((f) => ({
+          id: f.id,
+          flightNumber: f.flightNumber,
+          routeId: routeId,
+          scheduledDeparture: f.scheduledDeparture,
+          cabin: cabin,
+          changedSettings: [],
+        }))
 
   async function handleSave() {
     if (!draft || !original) return
@@ -254,44 +311,102 @@ export function RouteDetailPage() {
     }
   }
 
-  async function handleToggleOffering(productId: string, isActive: boolean) {
-    // Find or create the offering at the current scope for this product.
-    const existing = effectiveMenu.menu.find((o) => o.productId === productId)
-    try {
+  // Optimistic toggle: update the local offerings immediately so the chip
+  // changes without waiting for the round trip; revert on failure.
+  function handleToggleOffering(productId: string, isActive: boolean) {
+    if (!detail) return
+    const currentOfferings = detail.offerings
+    setDetail((d) => {
+      if (!d) return d
+      const existing = d.offerings.find((o) => o.productId === productId && o.cabin === cabin && matchesScope(o, mode, routeId, flightId))
+      let nextOfferings: ProductOffering[]
       if (existing) {
-        await updateProductOffering(existing.id, { isActive })
+        nextOfferings = d.offerings.map((o) => (o.id === existing.id ? { ...o, isActive } : o))
       } else {
-        await createProductOffering({
+        const input: ProductOfferingInput = {
           productId,
           scope: isNetwork ? 'network' : mode,
           routeId: isNetwork ? null : routeId,
           flightId: mode === 'flight' ? flightId : null,
           cabin,
-          isDefault: defaultOfferingId == null,
+          isDefault: d.offerings.find((o) => o.cabin === cabin && o.isActive) == null,
+          isActive,
+        }
+        nextOfferings = [...d.offerings, { id: `optimistic-${Date.now()}`, ...input }]
+      }
+      return { ...d, offerings: nextOfferings }
+    })
+
+    const existing = currentOfferings.find(
+      (o) => o.productId === productId && o.cabin === cabin && matchesScope(o, mode, routeId, flightId),
+    )
+    const work = existing
+      ? updateProductOffering(existing.id, { isActive })
+      : createProductOffering({
+          productId,
+          scope: isNetwork ? 'network' : mode,
+          routeId: isNetwork ? null : routeId,
+          flightId: mode === 'flight' ? flightId : null,
+          cabin,
+          isDefault: defaultMealId(effectiveMenu.menu) == null,
           isActive,
         })
-      }
-      const fresh = await getRouteDetail(routeId)
-      setDetail(fresh)
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Could not update menu.')
-    }
+
+    work
+      .then(() => getRouteDetail(routeId))
+      .then((fresh) => setDetail(fresh))
+      .catch((err: unknown) => {
+        setDetail((d) => {
+          if (!d) return d
+          const next = d.offerings.map((o) => (o.productId === productId && o.cabin === cabin ? { ...o, isActive: !isActive } : o))
+          return { ...d, offerings: next }
+        })
+        showToast('error', err instanceof Error ? err.message : 'Could not update menu.')
+      })
   }
 
-  async function handleSetDefault(productId: string) {
+  function handleSetDefault(productId: string) {
+    setDetail((d) => {
+      if (!d) return d
+      const next = d.offerings.map((o) => {
+        if (o.cabin !== cabin) return o
+        if (!matchesScope(o, mode, routeId, flightId)) return o
+        if (o.productId === productId) return { ...o, isDefault: true, isActive: true }
+        return { ...o, isDefault: false }
+      })
+      return { ...d, offerings: next }
+    })
+
     const existing = effectiveMenu.menu.find((o) => o.productId === productId)
     if (!existing) return
-    try {
-      await updateProductOffering(existing.id, { isDefault: true, isActive: true })
-      const fresh = await getRouteDetail(routeId)
-      setDetail(fresh)
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Could not change the default meal.')
-    }
+    updateProductOffering(existing.id, { isDefault: true, isActive: true })
+      .then(() => getRouteDetail(routeId))
+      .then((fresh) => setDetail(fresh))
+      .catch((err: unknown) => {
+        showToast('error', err instanceof Error ? err.message : 'Could not change the default meal.')
+      })
   }
 
-  const networkSetting = isNetwork ? activeRow : (detail.cabinSettings.find((s) => s.scope === 'network' && s.cabin === cabin) ?? null)
-  void networkSetting
+  // Helper: is the value at the current level or inherited?
+  // The summary text below each cabin tile: "5 meals · default Green curry chicken".
+  function cabinTileSubline(c: Cabin): string {
+    if (!detail) return ''
+    const m = resolveMenu(detail.offerings, c, mode === 'route' ? routeId : null, mode === 'flight' ? flightId : null)
+    if (m.menu.length === 0) return '0 meals · no menu set'
+    const def = m.menu.find((o) => o.id === m.defaultOfferingId)
+    const defName = def ? mockProducts.find((p) => p.id === def.productId)?.name : null
+    return defName ? `${m.menu.length} meals · default ${defName}` : `${m.menu.length} meals · standard menu`
+  }
+
+  // Whether the cabin's value is at the current level (route/flight) or inherited.
+  function isCustom(c: Cabin): boolean {
+    if (!detail) return false
+    if (mode === 'network') return false
+    if (mode === 'flight' && flightId) {
+      return detail.cabinSettings.some((s) => s.scope === 'flight' && s.flightId === flightId && s.cabin === c)
+    }
+    return detail.cabinSettings.some((s) => s.scope === 'route' && s.routeId === routeId && s.cabin === c)
+  }
 
   return (
     <div className={styles.page}>
@@ -300,14 +415,26 @@ export function RouteDetailPage() {
           <Link to="/catering/offered-menu" className={styles.backLink}>
             ← Back to offered menu
           </Link>
-          <h1 className={styles.title}>{route ? `${route.originAirport} → ${route.destinationAirport}` : 'Network default'}</h1>
-          {route && (
+          <h1 className={styles.title}>
+            {headerRoute ? `${headerRoute.originAirport} → ${headerRoute.destinationAirport}` : 'Network default'}
+          </h1>
+          {headerRoute && (
             <p className={styles.subtitle}>
-              {route.originCity} to {route.destinationCity}
+              {headerRoute.originCity} to {headerRoute.destinationCity}
             </p>
           )}
           {isNetwork && (
             <p className={styles.subtitle}>Starting rules that apply to every route until a route or single flight overrides them.</p>
+          )}
+          {isFlight && (
+            <p className={styles.subtitle}>
+              {flightId
+                ? (() => {
+                    const f = allExceptions.find((e) => e.id === flightId) ?? flights.find((x) => x.id === flightId)
+                    return f ? `${f.flightNumber} · ${formatDate(f.scheduledDeparture)}` : ''
+                  })()
+                : 'Pick a flight to edit its overrides.'}
+            </p>
           )}
         </div>
         <div className={styles.modeSwitch} role="tablist" aria-label="Mode">
@@ -317,7 +444,7 @@ export function RouteDetailPage() {
             aria-selected={mode === 'route'}
             className={mode === 'route' ? styles.modeActive : styles.modeButton}
             onClick={() => setMode('route')}
-            disabled={isNetwork || route == null}
+            disabled={route == null}
           >
             Whole route
           </button>
@@ -327,7 +454,6 @@ export function RouteDetailPage() {
             aria-selected={mode === 'flight'}
             className={mode === 'flight' ? styles.modeActive : styles.modeButton}
             onClick={() => setMode('flight')}
-            disabled={isNetwork || flights.length === 0}
           >
             Single flight
           </button>
@@ -345,134 +471,230 @@ export function RouteDetailPage() {
 
       {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
 
-      {mode === 'flight' && flights.length > 0 && (
+      {isFlight && flightPickerOptions.length > 0 && (
         <div className={styles.flightPicker}>
           <label className={styles.flightPickerLabel} htmlFor="flight-picker">
             Flight
           </label>
           <select id="flight-picker" className={styles.flightSelect} value={flightId ?? ''} onChange={(e) => setFlightId(e.target.value)}>
-            {flights.map((f) => (
+            {flightPickerOptions.map((f) => (
               <option key={f.id} value={f.id}>
-                {f.flightNumber} · {formatDate(f.scheduledDeparture)}
+                {f.flightNumber} · {formatDate(f.scheduledDeparture)} · {routeCodeFromId(f.routeId)}
               </option>
             ))}
           </select>
-          {flightId && <span className={styles.flightSummary}>{flights.find((f) => f.id === flightId)?.exceptionSummary}</span>}
+          {flightId && (
+            <span className={styles.flightSummary}>
+              {(() => {
+                const picked = flightPickerOptions.find((f) => f.id === flightId)
+                if (!picked) return ''
+                const labels = picked.changedSettings.map(humaniseField).filter(Boolean)
+                return labels.length > 0 ? `Overrides: ${labels.join(', ')}` : 'Standard flight'
+              })()}
+            </span>
+          )}
         </div>
       )}
 
-      <nav className={styles.cabinTabs} aria-label="Cabin">
-        {CABINS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            className={cabin === c ? styles.cabinTabActive : styles.cabinTab}
-            onClick={() => setCabin(c)}
-            aria-pressed={cabin === c}
-          >
-            {cabinLabel(c)}
-            {!isNetwork && activeCabinHasCustom(detail, c, mode, routeId, flightId) && (
-              <span className={styles.customDot} aria-label="Custom">
-                •
-              </span>
-            )}
-          </button>
-        ))}
-      </nav>
-
-      <nav className={styles.sections} aria-label="Section">
-        {(['meals', 'ordering', 'extras'] as const).map((s) => (
-          <button
-            key={s}
-            type="button"
-            className={section === s ? styles.sectionActive : styles.sectionButton}
-            onClick={() => setSection(s)}
-            aria-pressed={section === s}
-          >
-            {sectionLabel(s)}
-          </button>
-        ))}
-      </nav>
+      <div className={styles.cabinTiles}>
+        {CABINS.map((c) => {
+          const s = activeCabinSetting(detail, c, mode, routeId, flightId)
+          const summary = cabinSummary(s)
+          const sub = cabinTileSubline(c)
+          const custom = isCustom(c)
+          return (
+            <button
+              key={c}
+              type="button"
+              className={cabin === c ? styles.cabinTileActive : styles.cabinTile}
+              onClick={() => setCabin(c)}
+              aria-pressed={cabin === c}
+            >
+              <div className={styles.cabinTileHeader}>
+                <span className={styles.cabinTileName}>{cabinLabel(c)}</span>
+                {isNetwork ? (
+                  <span className={styles.inheritedBadge}>Default</span>
+                ) : custom ? (
+                  <span className={styles.customBadge}>Custom</span>
+                ) : (
+                  <span className={styles.inheritedBadge}>Inherited</span>
+                )}
+              </div>
+              <p className={styles.cabinTileHeadline}>{summary.headline}</p>
+              <p className={styles.cabinTileSubline}>{sub}</p>
+            </button>
+          )
+        })}
+      </div>
 
       {draft && (
         <section className={styles.panel}>
-          {section === 'meals' && (
-            <div className={styles.sectionBody}>
-              <div className={styles.fieldGroup}>
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Meal service</span>
-                  <select
-                    className={styles.input}
-                    value={draft.mealService}
-                    onChange={(e) => setField('mealService', e.target.value as Draft['mealService'])}
-                  >
-                    <option value="complimentary">Complimentary</option>
-                    <option value="paid">Paid</option>
-                    <option value="none">None</option>
-                  </select>
-                  {errors.mealService && <span className={styles.error}>{errors.mealService}</span>}
-                  {isNetwork && <span className={styles.fieldHint}>Affects every route until overridden.</span>}
-                </label>
+          <div className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>{cabinLabel(cabin)} · rules and menu</h2>
+            {!isNetwork && (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => void handleResetInherited()}
+                disabled={saving || !activeRow}
+              >
+                Reset to inherited
+              </button>
+            )}
+          </div>
 
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Meal selection</span>
-                  <select
-                    className={styles.input}
-                    value={draft.mealSelection}
-                    onChange={(e) => setField('mealSelection', e.target.value as Draft['mealSelection'])}
-                    disabled={draft.mealService === 'none'}
-                  >
-                    <option value="choose">Passengers choose</option>
-                    <option value="fixed">Set meal</option>
-                  </select>
-                </label>
+          <div className={styles.panelBody}>
+            <div className={styles.settingsColumn}>
+              <p className={styles.sectionHeader}>Meals</p>
+              <Field label="Meal service" description="Whether meals are free, paid or not served." error={errors.mealService}>
+                <SegmentedControl
+                  ariaLabel="Meal service"
+                  value={draft.mealService}
+                  onChange={(v) => setField('mealService', v as Draft['mealService'])}
+                  options={[
+                    { value: 'complimentary', label: 'Complimentary' },
+                    { value: 'paid', label: 'Paid' },
+                    { value: 'none', label: 'None' },
+                  ]}
+                />
+              </Field>
 
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Included meals per passenger</span>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={1}
-                    value={draft.includedPerPassenger}
-                    onChange={(e) => setField('includedPerPassenger', Number(e.target.value))}
-                  />
-                  {errors.includedPerPassenger && <span className={styles.error}>{errors.includedPerPassenger}</span>}
-                </label>
+              <Field label="Meal selection" description="Whether passengers pick their meal.">
+                <SegmentedControl
+                  ariaLabel="Meal selection"
+                  value={draft.mealSelection}
+                  onChange={(v) => setField('mealSelection', v as Draft['mealSelection'])}
+                  disabled={draft.mealService === 'none'}
+                  options={[
+                    { value: 'choose', label: 'Passengers choose' },
+                    { value: 'fixed', label: 'Fixed meal, no choice' },
+                  ]}
+                />
+              </Field>
+
+              <Field
+                label="Included meals per passenger"
+                description="Meals each passenger gets at no charge."
+                error={errors.includedPerPassenger}
+              >
+                <SegmentedControl
+                  ariaLabel="Included meals per passenger"
+                  value={draft.includedPerPassenger}
+                  onChange={(v) => setField('includedPerPassenger', v)}
+                  options={[
+                    { value: 0, label: '0' },
+                    { value: 1, label: '1' },
+                    { value: 2, label: '2' },
+                    { value: 3, label: '3' },
+                  ]}
+                />
+              </Field>
+
+              <p className={styles.sectionHeader}>Ordering</p>
+
+              <Field label="Pre-order in the shop" description="Let passengers buy before the flight.">
+                <ToggleSwitch
+                  ariaLabel="Pre-order in the shop"
+                  checked={draft.preorderEnabled}
+                  onChange={(v) => setField('preorderEnabled', v)}
+                />
+              </Field>
+
+              <Field label="Order closes before departure" description="Cutoff for the catering order." error={errors.orderWindowHours}>
+                <SegmentedControl
+                  ariaLabel="Order window"
+                  value={[24, 48, 72].includes(draft.orderWindowHours) ? draft.orderWindowHours : 48}
+                  onChange={(v) => setField('orderWindowHours', v)}
+                  options={[
+                    { value: 24, label: '24 hours' },
+                    { value: 48, label: '48 hours' },
+                    { value: 72, label: '72 hours' },
+                  ]}
+                />
+              </Field>
+
+              <Field label="On-board buffer" description="Extra meals loaded to cover no-shows." error={errors.onboardBufferPercent}>
+                <SegmentedControl
+                  ariaLabel="On-board buffer"
+                  value={[0, 5, 10, 15, 20].includes(draft.onboardBufferPercent) ? draft.onboardBufferPercent : 10}
+                  onChange={(v) => setField('onboardBufferPercent', v)}
+                  options={[
+                    { value: 0, label: '0%' },
+                    { value: 5, label: '5%' },
+                    { value: 10, label: '10%' },
+                    { value: 15, label: '15%' },
+                    { value: 20, label: '20%' },
+                  ]}
+                />
+              </Field>
+
+              <p className={styles.sectionHeader}>Extras</p>
+
+              <Field label="Snacks and drinks" description="Light snacks and beverages between meals.">
+                <ToggleSwitch ariaLabel="Snacks" checked={draft.snacksEnabled} onChange={(v) => setField('snacksEnabled', v)} />
+              </Field>
+
+              <Field label="Duty-free" description="Allow duty-free sales in this cabin.">
+                <ToggleSwitch ariaLabel="Duty-free" checked={draft.dutyFreeEnabled} onChange={(v) => setField('dutyFreeEnabled', v)} />
+              </Field>
+
+              <Field label="Premium meals allowed" description="Passengers can pick premium meals.">
+                <ToggleSwitch
+                  ariaLabel="Premium meals allowed"
+                  checked={draft.premiumMealsAllowed}
+                  onChange={(v) => setField('premiumMealsAllowed', v)}
+                />
+              </Field>
+            </div>
+
+            <div className={styles.menuColumn}>
+              <p className={styles.menuTitle}>Menu</p>
+              <p className={styles.menuSubtitle}>
+                {effectiveMenu.menu.length === 0
+                  ? 'No menu for this cabin — turn meals on below to add them.'
+                  : `${effectiveMenu.menu.length} of ${mockProducts.filter((p) => p.category === 'meal').length} meals offered. Tap a meal to offer or withdraw it.`}
+              </p>
+              <div className={styles.chips}>
+                {mockProducts
+                  .filter((p) => p.category === 'meal')
+                  .map((p) => {
+                    const active = effectiveMenu.menu.some((o) => o.productId === p.id && o.isActive)
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={active ? styles.chipActive : styles.chip}
+                        onClick={() => handleToggleOffering(p.id, !active)}
+                      >
+                        <span className={styles.chipIcon}>{active ? '✓' : '+'}</span>
+                        <span className={styles.chipName}>{p.name}</span>
+                        {p.isPremium && <span className={styles.premium}>Premium</span>}
+                      </button>
+                    )
+                  })}
               </div>
 
-              <div>
-                <p className={styles.subHeader}>Menu</p>
-                <p className={styles.subSubheader}>
-                  {effectiveMenu.menu.length === 0
-                    ? 'No menu for this cabin — turn meals on below to add them.'
-                    : `${effectiveMenu.menu.length} meals in this cabin.`}
-                </p>
-                <div className={styles.chips}>
-                  {mockProducts
-                    .filter((p) => p.category === 'meal')
-                    .map((p) => {
-                      const active = !!menuActive[p.id]
-                      const isDefault = effectiveMenu.menu.find((o) => o.productId === p.id)?.id === defaultOfferingId
-                      return (
-                        <div key={p.id} className={active ? styles.chipActive : styles.chip}>
-                          <label className={styles.chipRow}>
-                            <input type="checkbox" checked={active} onChange={(e) => void handleToggleOffering(p.id, e.target.checked)} />
-                            <span className={styles.chipName}>{p.name}</span>
-                            {p.isPremium && <span className={styles.premium}>Premium</span>}
-                          </label>
-                          {active && (
-                            <label className={styles.chipDefaultRow}>
-                              <input type="radio" name="default-meal" checked={isDefault} onChange={() => void handleSetDefault(p.id)} />
-                              <span>Default</span>
-                            </label>
-                          )}
-                        </div>
-                      )
-                    })}
-                </div>
-              </div>
+              <p className={styles.defaultMealHeader}>Default meal (if a passenger orders nothing)</p>
+              <select
+                className={styles.defaultMealSelect}
+                value={effectiveMenu.defaultOfferingId ?? ''}
+                onChange={(e) => {
+                  const productId = mockProducts.find(
+                    (p) => p.id === effectiveMenu.menu.find((o) => o.id === e.target.value)?.productId,
+                  )?.id
+                  if (productId) handleSetDefault(productId)
+                }}
+              >
+                {effectiveMenu.menu.length === 0 && <option value="">No meals offered</option>}
+                {effectiveMenu.menu.map((o) => {
+                  const p = mockProducts.find((mp) => mp.id === o.productId)
+                  return (
+                    <option key={o.id} value={o.id}>
+                      {p?.name ?? 'Unknown meal'}
+                    </option>
+                  )
+                })}
+              </select>
 
               {warning && (
                 <p className={styles.warning} role="alert">
@@ -480,84 +702,17 @@ export function RouteDetailPage() {
                 </p>
               )}
             </div>
-          )}
-
-          {section === 'ordering' && (
-            <div className={styles.sectionBody}>
-              <div className={styles.fieldGroup}>
-                <label className={styles.checkboxField}>
-                  <input type="checkbox" checked={draft.preorderEnabled} onChange={(e) => setField('preorderEnabled', e.target.checked)} />
-                  <span>Pre-order in the shop</span>
-                </label>
-
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>Order window (hours before departure)</span>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={draft.orderWindowHours}
-                    onChange={(e) => setField('orderWindowHours', Number(e.target.value))}
-                  />
-                  {errors.orderWindowHours && <span className={styles.error}>{errors.orderWindowHours}</span>}
-                </label>
-
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>On-board buffer (%)</span>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={draft.onboardBufferPercent}
-                    onChange={(e) => setField('onboardBufferPercent', Number(e.target.value))}
-                  />
-                  {errors.onboardBufferPercent && <span className={styles.error}>{errors.onboardBufferPercent}</span>}
-                </label>
-              </div>
-            </div>
-          )}
-
-          {section === 'extras' && (
-            <div className={styles.sectionBody}>
-              <div className={styles.fieldGroup}>
-                <label className={styles.checkboxField}>
-                  <input type="checkbox" checked={draft.snacksEnabled} onChange={(e) => setField('snacksEnabled', e.target.checked)} />
-                  <span>Snacks</span>
-                </label>
-                <label className={styles.checkboxField}>
-                  <input type="checkbox" checked={draft.dutyFreeEnabled} onChange={(e) => setField('dutyFreeEnabled', e.target.checked)} />
-                  <span>Duty-free</span>
-                </label>
-                <label className={styles.checkboxField}>
-                  <input
-                    type="checkbox"
-                    checked={draft.premiumMealsAllowed}
-                    onChange={(e) => setField('premiumMealsAllowed', e.target.checked)}
-                  />
-                  <span>Premium meals allowed</span>
-                </label>
-              </div>
-            </div>
-          )}
+          </div>
 
           <footer className={styles.actions}>
             <div className={styles.inheritanceInfo}>
-              {resolved && <span>{inheritanceLabel(resolved.mealService.level, mode, routeId, flightId)}</span>}
+              {!isNetwork && (
+                <span>
+                  {isCustom(cabin) ? 'Custom for this ' + mode : `Inherited from ${mode === 'flight' ? 'this flight' : 'network'}`}
+                </span>
+              )}
             </div>
             <div className={styles.actionButtons}>
-              {!isNetwork && (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => void handleResetInherited()}
-                  disabled={saving || !activeRow}
-                >
-                  Reset to inherited
-                </button>
-              )}
               <button type="button" className={styles.primaryButton} onClick={() => void handleSave()} disabled={saving}>
                 {saving ? 'Saving…' : 'Save'}
               </button>
@@ -577,27 +732,46 @@ export function RouteDetailPage() {
   )
 }
 
-function activeCabinHasCustom(detail: RouteDetail, c: Cabin, mode: Mode, routeId: string, flightId: string | null): boolean {
-  if (mode === 'network') return false
+interface FieldProps {
+  label: string
+  description: string
+  error?: string
+  children: React.ReactNode
+}
+
+function Field({ label, description, error, children }: FieldProps) {
+  // The per-field "Set here" / "Inherited from network" indicator was removed;
+  // a single status line at the bottom of the panel now tells the user
+  // whether the whole cabin is custom or inherited.
+  return (
+    <div className={styles.fieldRow}>
+      <div className={styles.fieldRowLabel}>
+        <span className={styles.fieldRowTitle}>{label}</span>
+        <span className={styles.fieldRowDescription}>{description}</span>
+        {error && <span className={styles.error}>{error}</span>}
+      </div>
+      <div className={styles.fieldRowControl}>{children}</div>
+    </div>
+  )
+}
+
+function activeCabinSetting(detail: RouteDetail, c: Cabin, mode: Mode, routeId: string, flightId: string | null): CabinSetting | null {
+  if (mode === 'network') return detail.cabinSettings.find((s) => s.scope === 'network' && s.cabin === c) ?? null
   if (mode === 'flight' && flightId) {
-    return detail.cabinSettings.some((s) => s.scope === 'flight' && s.flightId === flightId && s.cabin === c)
+    return detail.cabinSettings.find((s) => s.scope === 'flight' && s.flightId === flightId && s.cabin === c) ?? null
   }
-  return detail.cabinSettings.some((s) => s.scope === 'route' && s.routeId === routeId && s.cabin === c)
+  return detail.cabinSettings.find((s) => s.scope === 'route' && s.routeId === routeId && s.cabin === c) ?? null
 }
 
-function sectionLabel(s: Section): string {
-  if (s === 'meals') return 'Meals'
-  if (s === 'ordering') return 'Ordering'
-  return 'Extras'
+function matchesScope(o: ProductOffering, mode: Mode, routeId: string, flightId: string | null): boolean {
+  if (mode === 'network') return o.scope === 'network'
+  if (mode === 'flight') return o.scope === 'flight' && o.flightId === flightId
+  return o.scope === 'route' && o.routeId === routeId
 }
 
-function inheritanceLabel(level: 'flight' | 'route' | 'network' | 'none', mode: Mode, routeId: string, flightId: string | null): string {
-  if (level === 'flight') return 'Inherited from this flight'
-  if (level === 'route' && mode !== 'route') return `Inherited from route ${routeId}`
-  if (level === 'network') return 'Inherited from network default'
-  if (level === 'none') return 'No value set'
-  void flightId
-  return 'This value is set at the current level'
+function defaultMealId(menu: ProductOffering[]): string | null {
+  const d = menu.find((o) => o.isDefault)
+  return d ? d.id : null
 }
 
 function guessField(message: string): string | null {
@@ -612,4 +786,21 @@ function guessField(message: string): string | null {
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+}
+
+function humaniseField(name: string): string {
+  if (name === 'mealService') return 'meal service'
+  if (name === 'mealSelection') return 'meal selection'
+  if (name === 'includedPerPassenger') return 'included meals'
+  if (name === 'preorderEnabled') return 'pre-order'
+  if (name === 'orderWindowHours') return 'order window'
+  if (name === 'premiumMealsAllowed') return 'premium meals'
+  if (name === 'snacksEnabled') return 'snacks'
+  if (name === 'dutyFreeEnabled') return 'duty-free'
+  if (name === 'onboardBufferPercent') return 'on-board buffer'
+  return name
+}
+
+function routeCodeFromId(id: string): string {
+  return id.replace('r-', '').toUpperCase()
 }

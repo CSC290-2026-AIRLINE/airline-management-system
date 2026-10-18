@@ -24,7 +24,6 @@ import type {
   RouteSummary,
 } from '@staff-web/features/onboard-products/api/types'
 import { resolveCabinSettings } from '@staff-web/features/onboard-products/offered-menu/resolve'
-import { formatSimulatedToday } from '@staff-web/features/onboard-products/mocks/clock'
 import { ConfirmDialog } from '@staff-web/features/onboard-products/offered-menu/ConfirmDialog'
 import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
 import styles from './OfferedMenuPage.module.css'
@@ -200,10 +199,11 @@ export function OfferedMenuPage() {
     try {
       const result = kind === 'offer' ? await bulkOffer(filter, bulkMealId, bulkCabin) : await bulkWithdraw(filter, bulkMealId, bulkCabin)
       const meal = mockProducts.find((p) => p.id === bulkMealId)
+      const skip = result.skippedRoutes > 0 ? `, ${result.skippedRoutes} skipped` : ''
       if (kind === 'offer') {
-        showToast('success', `Offered ${meal?.name ?? 'meal'} on ${result.affectedRoutes} matching routes (${cabinLabel(bulkCabin)}).`)
+        showToast('success', `Offered ${meal?.name ?? 'meal'} on ${result.affectedRoutes} routes (${cabinLabel(bulkCabin)})${skip}.`)
       } else {
-        showToast('success', `Withdrew ${meal?.name ?? 'meal'} from ${result.affectedRoutes} matching routes (${cabinLabel(bulkCabin)}).`)
+        showToast('success', `Withdrew ${meal?.name ?? 'meal'} from ${result.affectedRoutes} routes (${cabinLabel(bulkCabin)})${skip}.`)
       }
       setBulkConfirm(null)
       await refreshRoutes()
@@ -231,7 +231,7 @@ export function OfferedMenuPage() {
     }
   }
 
-  const summary = routeRows == null ? '…' : `${routeRows.total} of ${routeRows.total} routes · ${routeRows.totalCustomized} customized`
+  const summary = routeRows == null ? '…' : `${routeRows.routes.length} routes shown · ${routeRows.totalCustomized} customized`
 
   if (loading && !network) {
     return <p className={styles.message}>Loading offered menu…</p>
@@ -254,9 +254,6 @@ export function OfferedMenuPage() {
             edit both.
           </p>
         </div>
-        <div className={styles.badge} aria-label="Simulated today">
-          Simulated today · {formatSimulatedToday()}
-        </div>
       </header>
 
       {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
@@ -267,7 +264,7 @@ export function OfferedMenuPage() {
             <div>
               <h2 className={styles.cardTitle}>Network default</h2>
               <p className={styles.cardSubtitle}>
-                The starting rules for all {routeRows?.total ?? ''} routes. A route or a single flight can override them.
+                The starting rules for all {routeRows?.total ?? ''} routes in the network. A route or a single flight can override them.
               </p>
             </div>
             <button type="button" className={styles.secondaryButton} onClick={() => navigate({ to: '/catering/offered-menu/network' })}>
@@ -363,7 +360,7 @@ export function OfferedMenuPage() {
         <div className={styles.bulkBar}>
           <div>
             <p className={styles.bulkTitle}>Bulk edit</p>
-            <p className={styles.bulkSubtitle}>Applies to all {routeRows?.total ?? 0} matching routes, not only this page.</p>
+            <p className={styles.bulkSubtitle}>Applies to all {routeRows?.routes.length ?? 0} matching routes, not only this page.</p>
           </div>
           <div className={styles.bulkControls}>
             <select className={styles.filterInput} value={bulkMealId} onChange={(e) => setBulkMealId(e.target.value)}>
@@ -385,7 +382,7 @@ export function OfferedMenuPage() {
               disabled={busy || !bulkMealId}
               onClick={() => setBulkConfirm({ kind: 'offer' })}
             >
-              {busy ? 'Working…' : `Offer on ${routeRows?.total ?? 0} routes`}
+              {busy ? 'Working…' : `Offer on ${routeRows?.routes.length ?? 0} routes`}
             </button>
             <button
               type="button"
@@ -393,7 +390,7 @@ export function OfferedMenuPage() {
               disabled={busy || !bulkMealId}
               onClick={() => setBulkConfirm({ kind: 'withdraw' })}
             >
-              Withdraw from {routeRows?.total ?? 0} routes
+              Withdraw from {routeRows?.routes.length ?? 0} routes
             </button>
           </div>
         </div>
@@ -414,7 +411,12 @@ export function OfferedMenuPage() {
               {visibleRoutes.map((r) => (
                 <tr key={r.id} className={styles.row}>
                   <td>
-                    <Link to="/catering/offered-menu/$routeId" params={{ routeId: r.id }} className={styles.routeLink}>
+                    <Link
+                      to="/catering/offered-menu/$routeId"
+                      params={{ routeId: r.id }}
+                      search={{ flight: null }}
+                      className={styles.routeLink}
+                    >
                       <span className={styles.routeCode}>
                         {r.originAirport} → {r.destinationAirport}
                       </span>
@@ -432,7 +434,12 @@ export function OfferedMenuPage() {
                     {r.cabinStatuses.business.state === 'custom' && <span className={styles.customBadge}>Custom</span>}
                   </td>
                   <td className={styles.tdActions}>
-                    <Link to="/catering/offered-menu/$routeId" params={{ routeId: r.id }} className={styles.editButton}>
+                    <Link
+                      to="/catering/offered-menu/$routeId"
+                      params={{ routeId: r.id }}
+                      search={{ flight: null }}
+                      className={styles.editButton}
+                    >
                       Edit
                     </Link>
                   </td>
@@ -522,7 +529,12 @@ export function OfferedMenuPage() {
                   <td className={styles.cabinName}>{cabinLabel(e.cabin)}</td>
                   <td>{e.changedSettings.join(', ')}</td>
                   <td className={styles.tdActions}>
-                    <Link to="/catering/offered-menu/$routeId" params={{ routeId: e.routeId }} className={styles.editButton}>
+                    <Link
+                      to="/catering/offered-menu/$routeId"
+                      params={{ routeId: e.routeId }}
+                      search={{ flight: e.id }}
+                      className={styles.editButton}
+                    >
                       Edit
                     </Link>
                     <button type="button" className={styles.dangerLink} onClick={() => setClearingException(e)}>

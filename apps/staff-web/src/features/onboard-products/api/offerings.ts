@@ -510,17 +510,28 @@ export async function deleteProductOffering(id: string): Promise<void> {
 
 export interface BulkOfferResult {
   affectedRoutes: number
+  skippedRoutes: number
   affectedCabins: number
+}
+
+// True when the meal is already in the effective menu of this route+cabin
+// (network-level or route-level row). Used by bulkOffer to skip duplicates.
+function routeHasMeal(routeId: string, cabin: Cabin, productId: string): boolean {
+  return offeringsStore.some(
+    (o) => o.cabin === cabin && o.productId === productId && o.isActive && (o.scope === 'network' || o.routeId === routeId),
+  )
 }
 
 export async function bulkOffer(filter: RouteFilter, productId: string, cabin: Cabin): Promise<BulkOfferResult> {
   await delay()
   const { routes } = await listRoutes(filter)
-  let affectedCabins = 0
+  let added = 0
+  let skipped = 0
   for (const r of routes) {
-    // Skip routes that already have a custom menu for this cabin? No — bulk
-    // means "add this meal to every matching route's network-replacing menu".
-    // For the prototype we add a route-level row.
+    if (routeHasMeal(r.id, cabin, productId)) {
+      skipped++
+      continue
+    }
     offeringsStore.push({
       id: nextId('po-rt'),
       productId,
@@ -532,9 +543,9 @@ export async function bulkOffer(filter: RouteFilter, productId: string, cabin: C
       isActive: true,
     })
     routeMenuOverrides.add(`${r.id}:${cabin}`)
-    affectedCabins++
+    added++
   }
-  return { affectedRoutes: routes.length, affectedCabins }
+  return { affectedRoutes: added, skippedRoutes: skipped, affectedCabins: added }
 }
 
 export async function bulkWithdraw(filter: RouteFilter, productId: string, cabin: Cabin): Promise<BulkOfferResult> {
@@ -550,7 +561,7 @@ export async function bulkWithdraw(filter: RouteFilter, productId: string, cabin
       removed++
     }
   }
-  return { affectedRoutes: routes.length, affectedCabins: removed }
+  return { affectedRoutes: removed, skippedRoutes: routes.length - removed, affectedCabins: removed }
 }
 
 export async function clearFlightException(flightId: string): Promise<void> {

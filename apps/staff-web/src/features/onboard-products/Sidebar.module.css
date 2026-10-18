@@ -6,6 +6,10 @@
   width: 260px;
   min-width: 260px;
   height: 100vh;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  overflow-y: auto;
   background: #0b1a3a;
   color: #e6ecf5;
   padding: 28px 18px 22px;
