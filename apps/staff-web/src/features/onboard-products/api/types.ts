@@ -104,6 +104,39 @@ export interface RouteSummary {
   cabinStatuses: Record<Cabin, RouteCabinStatus>
 }
 
+// Filter the routes table on the Offered menu page.
+export interface RouteFilter {
+  search: string
+  cabin: 'all' | Cabin
+  mealProductId: string | null
+  mealService: 'all' | MealService
+  status: 'all' | 'customized' | 'inherited'
+}
+
+// A single flight, used by Route detail's flight picker and the
+// Single-flight exceptions table on Offered menu.
+export interface FlightSummary {
+  id: string
+  flightNumber: string
+  routeId: string
+  scheduledDeparture: string
+  departureAirport: string
+  arrivalAirport: string
+  // True when this flight overrides its route with a non-empty cabin setting or offering.
+  hasException: boolean
+  exceptionSummary: string
+}
+
+// Detail for a single-flight exception row, what changed vs the route default.
+export interface FlightException {
+  id: string
+  routeId: string
+  flightNumber: string
+  scheduledDeparture: string
+  cabin: Cabin
+  changedSettings: string[]
+}
+
 export interface CateringOrderLine {
   id: string
   cabin: Cabin
@@ -181,4 +214,31 @@ export interface ApiError {
   code: string
   message: string
   details?: Record<string, unknown>
+}
+
+// Setting patch shape: every key is optional, and `null` is a valid value for
+// the route/flight scopes (it means "inherit from the next level up"). Re-
+// exported here so the UI can `import type { SettingPatch } from '.../types'`.
+export type SettingPatch = {
+  [
+    K in
+      | 'mealService'
+      | 'mealSelection'
+      | 'includedPerPassenger'
+      | 'preorderEnabled'
+      | 'orderWindowHours'
+      | 'premiumMealsAllowed'
+      | 'snacksEnabled'
+      | 'dutyFreeEnabled'
+      | 'onboardBufferPercent'
+  ]?: NonNullable<CabinSetting[K]>
+}
+
+// Route detail as returned by the API. Lives in types so the page can use
+// the same shape without re-importing the API module.
+export interface RouteDetail {
+  route: RouteSummary | null
+  cabinSettings: CabinSetting[]
+  offerings: ProductOffering[]
+  flights: FlightSummary[]
 }

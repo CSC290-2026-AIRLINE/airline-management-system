@@ -1,16 +1,10 @@
+// Route detail wrapper. Renders a single route's menu and cabin rules
+// in three modes (whole route / single flight / network default).
+// The network default mode is reached from /catering/offered-menu/network.
+
 import { createFileRoute } from '@tanstack/react-router'
+import { RouteDetailPage } from '@staff-web/features/onboard-products/offered-menu/RouteDetailPage'
 
 export const Route = createFileRoute('/_authenticated/catering/offered-menu/$routeId')({
-  component: RouteDetailPlaceholder,
+  component: RouteDetailPage,
 })
-
-function RouteDetailPlaceholder() {
-  const { routeId } = Route.useParams()
-
-  return (
-    <section>
-      <h1>Route detail</h1>
-      <p>Route id: {routeId}</p>
-    </section>
-  )
-}
