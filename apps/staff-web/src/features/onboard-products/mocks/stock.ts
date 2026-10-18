@@ -7,11 +7,14 @@
 import { addDays } from './clock'
 import type {
   AdjustStockInput,
+  AircraftStockRow,
   CreatePurchaseReceiptInput,
   Product,
   PurchaseReceipt,
   StockBatch,
   StockMovement,
+  StockTransfer,
+  StockTransferLine,
   Supplier,
   Warehouse,
   WarehouseStockRow,
@@ -47,6 +50,10 @@ interface StockStore {
   receipts: PurchaseReceipt[]
   // Counter for human-readable batch codes per warehouse (B-001, B-002, ...).
   batchCounters: Record<string, number>
+  // Per-aircraft stock. Keyed by (aircraftId, productId, batchId).
+  aircraftStock: AircraftStockRow[]
+  // The full transfer history; the lines are flat rows.
+  stockTransfers: StockTransfer[]
 }
 
 function nowIso(): string {
@@ -254,6 +261,8 @@ const store: StockStore = {
   // Resume counters from however many batches we seeded for BKK so the next
   // generated code is one above the last B-00N we wrote.
   batchCounters: { 'w-bkk': seededBkk.batches.length },
+  aircraftStock: [],
+  stockTransfers: [],
 }
 
 function nextId(prefix: string): string {
@@ -272,7 +281,6 @@ function nextBatchCode(warehouseId: string): string {
 export function snapshotWarehouses(): Warehouse[] {
   return mockWarehouses.map((w) => ({ ...w }))
 }
-
 export function snapshotSuppliers(airportCode?: string): Supplier[] {
   return mockSuppliers.filter((s) => (airportCode ? s.airportCode === airportCode : true)).map((s) => ({ ...s }))
 }
@@ -303,6 +311,15 @@ export function snapshotPurchaseReceipts(opts: { warehouseId?: string }): Purcha
   return store.receipts
     .filter((r) => (opts.warehouseId ? r.warehouseId === opts.warehouseId : true))
     .map((r) => ({ ...r, lines: r.lines.map((l) => ({ ...l })) }))
+}
+
+// Used by the Catering Orders page to show the "In warehouse" column and
+// to compute shortfalls. Always returns a non-negative integer (clamps at
+// zero so an over-reserved product still shows OK or zero, never negative).
+export function getAvailableStock(warehouseId: string, productId: string): number {
+  const row = findStockRow(warehouseId, productId)
+  if (!row) return 0
+  return Math.max(0, row.quantityOnHand - row.quantityReserved)
 }
 
 // -- Mutations ---------------------------------------------------------------
@@ -625,4 +642,166 @@ export function removeSupplier(id: string): void {
     throw new StockApiError('SUPPLIER_IN_USE', 'This supplier has past deliveries on record. Mark it inactive instead.')
   }
   mockSuppliers.splice(idx, 1)
+}
+
+// -- Aircraft stock + stock transfers --------------------------------------
+// Both arrays are module-level mutable. The Catering Orders page calls
+// createStockTransfer to move the earliest-expiring valid batches from
+// the flight's departure warehouse onto the aircraft. Each unit becomes
+// one stock_movement at the warehouse (negative) and one at the aircraft
+// (positive), and an aircraft_stock row per (aircraft, product, batch).
+
+export function snapshotAircraftStock(aircraftId: string): AircraftStockRow[] {
+  return store.aircraftStock.filter((r) => r.aircraftId === aircraftId).map((r) => ({ ...r }))
+}
+
+export function snapshotStockTransfers(opts: { flightId?: string } = {}): StockTransfer[] {
+  return store.stockTransfers
+    .filter((t) => (opts.flightId ? t.flightId === opts.flightId : true))
+    .map((t) => ({ ...t, lines: t.lines.map((l) => ({ ...l })) }))
+}
+
+interface TransferRequest {
+  flightId: string
+  aircraftId: string
+  warehouseId: string
+  // Each entry: product + the quantity to pull from this warehouse.
+  // The store takes earliest-expiry first across the warehouse's batches.
+  lines: Array<{ productId: string; quantity: number }>
+}
+
+function takeFromBatches(opts: { warehouseId: string; productId: string; quantity: number; nowIso: string }): {
+  taken: Array<{ batchId: string; quantity: number }>
+  remainingNeeded: number
+} {
+  const { warehouseId, productId, quantity, nowIso } = opts
+  // Earliest-expiring valid batch first; null expiry sorts last (duty-free).
+  // Damaged and already-expired batches are refused.
+  const candidates = store.batches
+    .filter((b) => b.warehouseId === warehouseId && b.productId === productId && b.quantityRemaining > 0)
+    .filter((b) => !b.isDamaged)
+    .filter((b) => b.expiresAt == null || b.expiresAt > nowIso)
+    .sort((a, b) => {
+      if (a.expiresAt == null && b.expiresAt == null) return 0
+      if (a.expiresAt == null) return 1
+      if (b.expiresAt == null) return -1
+      return a.expiresAt.localeCompare(b.expiresAt)
+    })
+  let remaining = quantity
+  const taken: Array<{ batchId: string; quantity: number }> = []
+  for (const batch of candidates) {
+    if (remaining <= 0) break
+    const take = Math.min(batch.quantityRemaining, remaining)
+    batch.quantityRemaining -= take
+    remaining -= take
+    taken.push({ batchId: batch.id, quantity: take })
+  }
+  return { taken, remainingNeeded: remaining }
+}
+
+export function transferToAircraft(req: TransferRequest): StockTransfer {
+  const nowIso = '2026-10-08T09:00:00Z'
+  const warehouse = mockWarehouses.find((w) => w.id === req.warehouseId)
+  if (!warehouse) throw new StockApiError('NO_WAREHOUSE_FOR_AIRPORT', 'No warehouse for this flight.')
+  const transferId = nextId('st')
+  const transferLines: StockTransferLine[] = []
+  const movements: StockMovement[] = []
+
+  for (const line of req.lines) {
+    if (line.quantity <= 0) continue
+    const { taken, remainingNeeded } = takeFromBatches({
+      warehouseId: req.warehouseId,
+      productId: line.productId,
+      quantity: line.quantity,
+      nowIso,
+    })
+    if (taken.length === 0 || remainingNeeded > 0) {
+      // Could not source a valid (unexpired, undamaged) batch for the line.
+      // Roll back the per-batch deductions we already made on previous lines
+      // by leaving them in place; they're harmless and the caller can retry.
+      throw new StockApiError(
+        'BATCH_EXPIRED',
+        remainingNeeded > 0
+          ? `No valid batch available for product ${line.productId} in ${warehouse.code}.`
+          : `No unexpired batch available for product ${line.productId} in ${warehouse.code}.`,
+      )
+    }
+    for (const piece of taken) {
+      transferLines.push({ productId: line.productId, stockBatchId: piece.batchId, quantity: piece.quantity })
+      // Bump aircraft stock. If a row for this batch already exists, add to it.
+      const existing = store.aircraftStock.find(
+        (r) => r.aircraftId === req.aircraftId && r.productId === line.productId && r.stockBatchId === piece.batchId,
+      )
+      if (existing) {
+        existing.quantity += piece.quantity
+      } else {
+        const batch = store.batches.find((b) => b.id === piece.batchId)
+        const product = productById(line.productId)
+        store.aircraftStock.push({
+          id: nextId('as'),
+          aircraftId: req.aircraftId,
+          productId: line.productId,
+          productName: product?.name ?? line.productId,
+          stockBatchId: piece.batchId,
+          batchCode: batch?.batchCode ?? '',
+          quantity: piece.quantity,
+          expiresAt: batch?.expiresAt ?? null,
+        })
+      }
+    }
+    // Lower warehouse stock for this line. Reserved goes down first
+    // (the order was already reserved), then on hand.
+    const stockRow = findStockRow(req.warehouseId, line.productId)
+    if (stockRow) {
+      const reservedDrop = Math.min(stockRow.quantityReserved, line.quantity)
+      stockRow.quantityReserved = Math.max(0, stockRow.quantityReserved - reservedDrop)
+      stockRow.quantityOnHand = Math.max(0, stockRow.quantityOnHand - line.quantity)
+    }
+    // Two movements per line: out at warehouse, in at aircraft.
+    const ts = nowIso
+    movements.push({
+      id: nextId('mv'),
+      productId: line.productId,
+      warehouseId: req.warehouseId,
+      aircraftId: null,
+      stockBatchId: null,
+      stockTransferId: transferId,
+      productOrderId: null,
+      flightId: req.flightId,
+      type: 'transfer',
+      quantity: -line.quantity,
+      reason: null,
+      note: null,
+      createdByStaffId: null,
+      occurredAt: ts,
+    })
+    movements.push({
+      id: nextId('mv'),
+      productId: line.productId,
+      warehouseId: null,
+      aircraftId: req.aircraftId,
+      stockBatchId: null,
+      stockTransferId: transferId,
+      productOrderId: null,
+      flightId: req.flightId,
+      type: 'transfer',
+      quantity: line.quantity,
+      reason: null,
+      note: null,
+      createdByStaffId: null,
+      occurredAt: ts,
+    })
+  }
+
+  for (const m of movements) store.movements.push(m)
+  const transfer: StockTransfer = {
+    id: transferId,
+    flightId: req.flightId,
+    aircraftId: req.aircraftId,
+    warehouseId: req.warehouseId,
+    transferredAt: nowIso,
+    lines: transferLines,
+  }
+  store.stockTransfers.push(transfer)
+  return { ...transfer, lines: transferLines.map((l) => ({ ...l })) }
 }

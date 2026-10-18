@@ -1,13 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { CateringOrdersPage } from '@staff-web/features/onboard-products/orders/CateringOrdersPage'
 
 export const Route = createFileRoute('/_authenticated/catering/orders')({
-  component: OrdersPlaceholder,
+  component: CateringOrdersPage,
+  validateSearch: (search: Record<string, unknown>): { flightId?: string } => ({
+    flightId: typeof search['flightId'] === 'string' ? (search['flightId'] as string) : undefined,
+  }),
 })
-
-function OrdersPlaceholder() {
-  return (
-    <section>
-      <h1>Catering Orders</h1>
-    </section>
-  )
-}

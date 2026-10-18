@@ -141,7 +141,9 @@ export interface FlightException {
 
 export interface CateringOrderLine {
   id: string
-  cabin: Cabin
+  // 'all' = available to every cabin (e.g. beverages). The four cabin
+  // values are the per-cabin lines.
+  cabin: Cabin | 'all'
   productId: string
   productName: string
   quantityRequired: number
@@ -160,8 +162,60 @@ export interface CateringOrder {
   status: CateringOrderStatus
   cutoffAt: string
   generatedAt: string
+  loadedAt: string | null
   warehouseId: string
+  aircraftId: string
   lines: CateringOrderLine[]
+}
+
+// A flight as the Catering Orders left-list and the right-card header
+// see it. status is the union of flight status and catering-order
+// status: 'open' = no catering order yet (before cutoff), then
+// 'generated' / 'loaded' / 'closed' / 'void' mirror CateringOrderStatus.
+export type FlightCateringStatus = 'open' | CateringOrderStatus
+
+export interface Flight {
+  id: string
+  flightNumber: string
+  routeId: string
+  scheduledDeparture: string
+  departureAirport: string
+  arrivalAirport: string
+  passengerCount: number
+  aircraftId: string
+  status: FlightCateringStatus
+  cabin: Cabin
+  cutoffAt: string
+  warehouseId: string
+  isCancelled: boolean
+}
+
+// What is on the aircraft after a transfer, per (aircraft, product, batch).
+// Expiry is the batch's expiry, joined in by the api.
+export interface AircraftStockRow {
+  id: string
+  aircraftId: string
+  productId: string
+  productName: string
+  stockBatchId: string
+  batchCode: string
+  quantity: number
+  expiresAt: string | null
+}
+
+export interface StockTransferLine {
+  productId: string
+  stockBatchId: string
+  quantity: number
+}
+
+export interface StockTransfer {
+  id: string
+  flightId: string
+  aircraftId: string
+  warehouseId: string
+  transferredAt: string
+  lines: StockTransferLine[]
 }
 
 export interface Warehouse {

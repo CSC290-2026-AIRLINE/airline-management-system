@@ -1,0 +1,676 @@
+/* Catering Orders master-detail layout. Full-width grid with a sticky
+   left list of flights and a right card that shows the selected
+   order's progress, facts, lines and actions. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1200px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: #0b1a3a;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  font-size: 15px;
+  color: #5d6a87;
+  margin: 0;
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* -- Left list card ------------------------------------------------------ */
+
+.listCard {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 18px 18px 14px;
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.listHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.listTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0b1a3a;
+  margin: 0;
+}
+
+.listCount {
+  font-size: 12px;
+  color: #5d6a87;
+  font-variant-numeric: tabular-nums;
+}
+
+.searchInput {
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid #c2cad9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+  width: 100%;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+
+.searchInput:focus-visible {
+  outline: none;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.15);
+}
+
+.filtersRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.filterSelect {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid #c2cad9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+}
+
+.filterSelect:focus-visible {
+  outline: none;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.15);
+}
+
+.flightList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-right: -4px;
+}
+
+.flightButton {
+  font: inherit;
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.flightButton:hover,
+.flightButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.flightButtonActive {
+  border-color: #0b1a3a;
+  background: #f4f6fb;
+  border-left: 4px solid #0b1a3a;
+  padding-left: 9px;
+}
+
+.flightTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.flightNumber {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0b1a3a;
+  font-variant-numeric: tabular-nums;
+}
+
+.flightRoute {
+  font-size: 13px;
+  color: #0b1a3a;
+  font-weight: 500;
+}
+
+.flightMeta {
+  font-size: 12px;
+  color: #5d6a87;
+  display: flex;
+  gap: 10px;
+}
+
+.chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.chipOpen {
+  background: #e8eefb;
+  color: #1a2d5a;
+  border-color: #c4d3ee;
+}
+
+.chipReady {
+  background: #f4f6fb;
+  color: #0b1a3a;
+  border-color: #c2cad9;
+}
+
+.chipShort {
+  background: #fdecea;
+  color: #8a1c14;
+  border-color: #f1b3ad;
+}
+
+.chipLoaded {
+  background: #e6f5ec;
+  color: #1f6b3a;
+  border-color: #b6dec4;
+}
+
+.chipClosed {
+  background: #eef1f7;
+  color: #5d6a87;
+  border-color: #d8dde7;
+}
+
+.chipVoid {
+  background: #f1f1f4;
+  color: #6b6b76;
+  border-color: #d4d4dc;
+  text-decoration: line-through;
+}
+
+.showMoreButton {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #c2cad9;
+  color: #0b1a3a;
+  cursor: pointer;
+}
+
+.showMoreButton:hover,
+.showMoreButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.showMoreButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.emptyList {
+  font-size: 13px;
+  color: #5d6a87;
+  padding: 12px;
+  text-align: center;
+}
+
+/* -- Right detail card --------------------------------------------------- */
+
+.rightCard {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 22px 24px 22px;
+}
+
+.rightHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.flightTitle {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #0b1a3a;
+}
+
+.flightSubtitle {
+  font-size: 14px;
+  color: #5d6a87;
+  margin: 0;
+}
+
+.rightActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.actionButton {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #c2cad9;
+  color: #0b1a3a;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.actionButton:hover,
+.actionButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.actionPrimary {
+  background: #0b1a3a;
+  border-color: #0b1a3a;
+  color: #ffffff;
+}
+
+.actionPrimary:hover,
+.actionPrimary:focus-visible {
+  background: #1a2d5a;
+  border-color: #1a2d5a;
+}
+
+.actionPrimary:disabled,
+.actionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.disabledNote {
+  font-size: 12px;
+  color: #5d6a87;
+  font-style: italic;
+  align-self: center;
+}
+
+.shortHint {
+  font-size: 12px;
+  color: #8a1c14;
+  align-self: center;
+}
+
+/* Progress bar ----------------------------------------------------------- */
+
+.progressRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  margin: 18px 0 20px;
+  border-top: 1px solid #e3e7ef;
+  border-bottom: 1px solid #e3e7ef;
+  padding: 14px 0;
+  position: relative;
+}
+
+.progressBar {
+  position: absolute;
+  top: 50%;
+  left: 12.5%;
+  right: 12.5%;
+  height: 3px;
+  background: #e3e7ef;
+  z-index: 0;
+  transform: translateY(-50%);
+}
+
+.progressStep {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  background: #ffffff;
+  padding: 0 6px;
+}
+
+.progressDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #c2cad9;
+  z-index: 2;
+}
+
+.progressDotDone {
+  background: #1f6b3a;
+  border-color: #1f6b3a;
+}
+
+.progressDotActive {
+  background: #0b1a3a;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 4px rgba(11, 26, 58, 0.12);
+}
+
+.progressLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5d6a87;
+}
+
+.progressLabelActive {
+  color: #0b1a3a;
+}
+
+.progressLabelDone {
+  color: #1f6b3a;
+}
+
+.progressVoid {
+  font-size: 13px;
+  color: #6b6b76;
+  background: repeating-linear-gradient(-45deg, #f1f1f4, #f1f1f4 6px, #ffffff 6px, #ffffff 12px);
+  border: 1px dashed #c2cad9;
+  padding: 10px 14px;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Facts grid ------------------------------------------------------------- */
+
+.factsRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 8px 0 18px;
+}
+
+@media (max-width: 720px) {
+  .factsRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.factCard {
+  background: #f4f6fb;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.factLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  margin: 0 0 4px;
+}
+
+.factValue {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0b1a3a;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.factValueSmall {
+  font-size: 13px;
+  font-weight: 500;
+  color: #0b1a3a;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Banners ---------------------------------------------------------------- */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  margin: 8px 0 18px;
+  border: 1px solid transparent;
+  flex-wrap: wrap;
+}
+
+.bannerShort {
+  background: #fdecea;
+  border-color: #f1b3ad;
+  color: #8a1c14;
+}
+
+.bannerNeutral {
+  background: #e8eefb;
+  border-color: #c4d3ee;
+  color: #1a2d5a;
+}
+
+.bannerButton {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #8a1c14;
+  color: #8a1c14;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.bannerButton:hover,
+.bannerButton:focus-visible {
+  background: #8a1c14;
+  color: #ffffff;
+  outline: none;
+}
+
+/* Lines table ------------------------------------------------------------ */
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+}
+
+.linesTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.linesTable thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  padding: 12px 14px;
+  background: #f4f6fb;
+  border-bottom: 1px solid #e3e7ef;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.linesTable th.numeric,
+.linesTable td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.linesTable tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef1f7;
+  vertical-align: middle;
+}
+
+.linesTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.cabinBadge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #f4f6fb;
+  color: #0b1a3a;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.sourceBadge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #eef1f7;
+  color: #5d6a87;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 6px;
+}
+
+.shortRow {
+  background: #fff5f3;
+}
+
+.shortValue {
+  color: #8a1c14;
+  font-weight: 700;
+}
+
+.linesFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #5d6a87;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.linesSummaryOk {
+  color: #1f6b3a;
+  font-weight: 700;
+}
+
+.linesSummaryShort {
+  color: #8a1c14;
+  font-weight: 700;
+}
+
+/* Special panels --------------------------------------------------------- */
+
+.voidPanel {
+  background: #f1f1f4;
+  border: 1px dashed #c2cad9;
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  color: #6b6b76;
+  font-size: 14px;
+  margin: 8px 0 16px;
+}
+
+.voidPanel strong {
+  display: block;
+  color: #0b1a3a;
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.orderingOpenPanel {
+  background: #f4f6fb;
+  border: 1px dashed #c2cad9;
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  color: #5d6a87;
+  font-size: 14px;
+  margin: 8px 0 16px;
+}
+
+.orderingOpenPanel strong {
+  display: block;
+  color: #0b1a3a;
+  font-size: 18px;
+  margin-bottom: 6px;
+}
+
+.errorMessage {
+  font-size: 14px;
+  color: #8a1c14;
+  background: #fdecea;
+  border: 1px solid #f1b3ad;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 16px;
+}
