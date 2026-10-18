@@ -21,6 +21,8 @@ export type FlightReportStatus = 'submitted' | 'void'
 
 export type StockMovementType = 'receive' | 'reserve' | 'release' | 'transfer' | 'discard' | 'adjust'
 
+export type StockMovementReason = 'spoilage' | 'damage' | 'expired' | 'count_correction' | null
+
 export interface Product {
   id: string
   sku: string
@@ -182,9 +184,90 @@ export interface WarehouseStockRow {
   warehouseId: string
   productId: string
   productName: string
+  productCategory: ProductCategory
   quantityOnHand: number
   quantityReserved: number
   reorderLevel: number
+}
+
+// A single batch of stock sitting in a warehouse. On hand always equals
+// the sum of a warehouse's batches per product; both move together.
+export interface StockBatch {
+  id: string
+  purchaseReceiptId: string
+  warehouseId: string
+  productId: string
+  batchCode: string
+  quantityReceived: number
+  quantityRemaining: number
+  unitCostAmount: number
+  receivedAt: string
+  expiresAt: string | null
+  isDamaged: boolean
+}
+
+// Append-only ledger row. Each row changes one place; a transfer is two rows.
+export interface StockMovement {
+  id: string
+  productId: string
+  warehouseId: string | null
+  aircraftId: string | null
+  stockBatchId: string | null
+  stockTransferId: string | null
+  productOrderId: string | null
+  flightId: string | null
+  type: StockMovementType
+  // Signed: positive for inbound (receive), negative for outbound
+  // (adjust, transfer out, reserve/release) and discard.
+  quantity: number
+  reason: StockMovementReason
+  note: string | null
+  createdByStaffId: string | null
+  occurredAt: string
+}
+
+export interface PurchaseReceipt {
+  id: string
+  supplierId: string
+  warehouseId: string
+  receivedAt: string
+  receivedByStaffId: string | null
+  lines: PurchaseReceiptLine[]
+}
+
+export interface PurchaseReceiptLine {
+  productId: string
+  productName: string
+  quantity: number
+  unitCostAmount: number
+  batchCode: string
+  expiresAt: string | null
+  lineTotal: number
+}
+
+// A draft row on the Receive delivery page. The form builds these before
+// they are sent to createPurchaseReceipt.
+export interface PurchaseReceiptDraftLine {
+  productId: string
+  quantity: number
+  unitCostAmount: number
+  // ISO date (YYYY-MM-DD) or null when the product has no expiry.
+  expiresAt: string | null
+}
+
+export interface CreatePurchaseReceiptInput {
+  supplierId: string
+  warehouseId: string
+  lines: PurchaseReceiptDraftLine[]
+}
+
+export interface AdjustStockInput {
+  warehouseId: string
+  productId: string
+  // Always positive -- the API negates it to write the movement.
+  quantity: number
+  reason: NonNullable<StockMovementReason>
+  note: string | null
 }
 
 export interface FlightReportLine {

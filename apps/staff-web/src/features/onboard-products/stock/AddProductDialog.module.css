@@ -1,0 +1,163 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 26, 58, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 60px 16px;
+  z-index: 100;
+  overflow-y: auto;
+}
+
+.dialog {
+  background: #ffffff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 540px;
+  padding: 24px 28px 20px;
+  box-shadow: 0 24px 64px rgba(11, 26, 58, 0.32);
+}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #0b1a3a;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #5d6a87;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  margin: 0;
+}
+
+.muted {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #8a93a8;
+}
+
+.input {
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid #c2cad9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.15);
+}
+
+.input:disabled {
+  background: #f4f6fb;
+  color: #8a93a8;
+  cursor: not-allowed;
+}
+
+.hint {
+  font-size: 12px;
+  color: #5d6a87;
+  margin: 0;
+}
+
+.error {
+  font-size: 12px;
+  color: #8a1c14;
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #e3e7ef;
+}
+
+.cancelButton,
+.saveButton {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.cancelButton {
+  background: #ffffff;
+  border-color: #c2cad9;
+  color: #0b1a3a;
+}
+
+.cancelButton:hover:not(:disabled),
+.cancelButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.saveButton {
+  background: #0b1a3a;
+  color: #ffffff;
+}
+
+.saveButton:hover:not(:disabled),
+.saveButton:focus-visible {
+  background: #1a2d5a;
+}
+
+.saveButton:disabled,
+.cancelButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

@@ -1,13 +1,16 @@
-import { createFileRoute } from '@tanstack/react-router'
+// Stock page. Mirrors the prototype: airport picker with Receive delivery
+// button, then a warehouse stock table with an Adjust stock dialog and a
+// recent movements list. Fills the full content width.
 
-export const Route = createFileRoute('/_authenticated/catering/stock/')({
-  component: StockPlaceholder,
+import { createFileRoute } from '@tanstack/react-router'
+import { z } from 'zod'
+import { StockPage } from '@staff-web/features/onboard-products/stock/StockPage'
+
+const stockSearchSchema = z.object({
+  airport: z.string().optional(),
 })
 
-function StockPlaceholder() {
-  return (
-    <section>
-      <h1>Stock</h1>
-    </section>
-  )
-}
+export const Route = createFileRoute('/_authenticated/catering/stock/')({
+  component: StockPage,
+  validateSearch: stockSearchSchema,
+})

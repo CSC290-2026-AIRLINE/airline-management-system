@@ -1,0 +1,423 @@
+/* Stock page layout: header, stats row, airport picker + Receive button,
+   warehouse table, and a recent movements list. Fills the full width. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1200px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: #0b1a3a;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  font-size: 15px;
+  color: #5d6a87;
+  margin: 0;
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.statCard {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.statLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  margin: 0 0 6px;
+}
+
+.statValue {
+  font-size: 30px;
+  font-weight: 700;
+  color: #0b1a3a;
+  margin: 0;
+  line-height: 1;
+}
+
+.pickerRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: end;
+  max-width: 480px;
+}
+
+@media (max-width: 600px) {
+  .pickerRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.airportField {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.manageButton {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #c2cad9;
+  color: #0b1a3a;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.manageButton:hover,
+.manageButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  margin: 0;
+}
+
+.select {
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid #c2cad9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+}
+
+.select:focus-visible {
+  outline: none;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.15);
+}
+
+.receiveButton {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 8px;
+  background: #0b1a3a;
+  color: #ffffff;
+  border: 1px solid #0b1a3a;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.receiveButton:hover,
+.receiveButton:focus-visible {
+  background: #1a2d5a;
+  border-color: #1a2d5a;
+  outline: none;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 22px 24px 18px;
+}
+
+.cardHeader {
+  margin-bottom: 4px;
+}
+
+.cardTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0b1a3a;
+  margin: 0 0 4px;
+}
+
+.cardSubtitle {
+  font-size: 13px;
+  color: #5d6a87;
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+/* Column widths via <colgroup>; matching classes on th/td let the cells
+   align to the same width regardless of content. Numeric + Actions have
+   fixed pixel widths so the header and body right edges line up; Item
+   takes the rest. */
+.colItem {
+  width: auto;
+}
+
+.colNumeric {
+  width: 130px;
+}
+
+.colActions {
+  width: 160px;
+}
+
+.table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  /* text-align is set per column (.thItem left, .thNumeric/.thActions right)
+     so the generic rule below doesn't override it. */
+  padding: 14px 18px;
+  background: #f4f6fb;
+  border-bottom: 1px solid #e3e7ef;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.thItem {
+  text-align: left;
+}
+
+.thNumeric {
+  text-align: right;
+}
+
+.thActions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table tbody td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #eef1f7;
+  vertical-align: middle;
+}
+
+.tdItem {
+  text-align: left;
+}
+
+.tdNumeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tdActions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.row:hover {
+  background: #f9fafc;
+}
+
+.itemName {
+  font-weight: 500;
+  color: #0b1a3a;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.availableCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.availablePositive {
+  color: #1f6b3a;
+  font-weight: 600;
+}
+
+.availableLow {
+  color: #8a1c14;
+  font-weight: 700;
+}
+
+.reorderBadge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: #fdecea;
+  color: #8a1c14;
+  border: 1px solid #f1b3ad;
+  border-radius: 999px;
+  padding: 2px 8px;
+  vertical-align: middle;
+}
+
+.adjustButton {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #c2cad9;
+  color: #0b1a3a;
+  cursor: pointer;
+}
+
+.adjustButton:hover,
+.adjustButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.message {
+  font-size: 14px;
+  color: #5d6a87;
+  margin: 16px 0;
+}
+
+.errorMessage {
+  font-size: 14px;
+  color: #8a1c14;
+  background: #fdecea;
+  border: 1px solid #f1b3ad;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 16px 0;
+}
+
+.movementsHeader {
+  margin: 24px 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0b1a3a;
+}
+
+.movementsList {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.movementRow {
+  display: grid;
+  grid-template-columns: 110px 1fr 90px 110px 1fr;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid #eef1f7;
+  align-items: center;
+}
+
+.movementRow:last-child {
+  border-bottom: none;
+}
+
+@media (max-width: 900px) {
+  .movementRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.movementType {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f4f6fb;
+  color: #0b1a3a;
+  text-align: center;
+  width: fit-content;
+}
+
+.movementTypeReceive {
+  background: #e6f5ec;
+  color: #1f6b3a;
+}
+
+.movementTypeAdjust {
+  background: #fdecea;
+  color: #8a1c14;
+}
+
+.movementQty {
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.movementQtyPositive {
+  color: #1f6b3a;
+}
+
+.movementQtyNegative {
+  color: #8a1c14;
+}
+
+.movementReason {
+  font-size: 12px;
+  color: #5d6a87;
+}
+
+.movementTime {
+  color: #5d6a87;
+  font-size: 12px;
+}

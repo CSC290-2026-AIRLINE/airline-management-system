@@ -433,12 +433,18 @@
 
 .rowsLabel {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #475569;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.rowsLabel > .filterInput {
+  min-width: 88px;
+  width: auto;
 }
 
 .pageOf {

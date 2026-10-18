@@ -1,0 +1,359 @@
+/* Receive delivery page: back link, header, two cards (details + items). */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1200px;
+}
+
+.backLink {
+  align-self: flex-start;
+  display: inline-block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: #1d4ed8;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: #0b1a3a;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  font-size: 15px;
+  color: #5d6a87;
+  margin: 0;
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 22px 24px 18px;
+}
+
+.cardHeader {
+  margin-bottom: 16px;
+}
+
+.cardTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0b1a3a;
+  margin: 0 0 4px;
+}
+
+.cardSubtitle {
+  font-size: 13px;
+  color: #5d6a87;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 600px) {
+  .fieldRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.supplierRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.supplierRow > .select {
+  flex: 1;
+}
+
+.manageButton {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #c2cad9;
+  color: #0b1a3a;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.manageButton:hover,
+.manageButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  margin: 0;
+}
+
+.select {
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid #c2cad9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+}
+
+.select:focus-visible {
+  outline: none;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.15);
+}
+
+.successBanner {
+  background: #e6f5ec;
+  border: 1px solid #b6dec4;
+  color: #1f6b3a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+
+.cardHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.addButton {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #c2cad9;
+  color: #0b1a3a;
+  cursor: pointer;
+}
+
+.addButton:hover,
+.addButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.addButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  text-align: left;
+  padding: 10px 12px;
+  background: #f4f6fb;
+  border-bottom: 1px solid #e3e7ef;
+}
+
+.table tbody td {
+  padding: 12px;
+  border-bottom: 1px solid #eef1f7;
+  vertical-align: middle;
+}
+
+.productCell {
+  min-width: 220px;
+}
+
+.qtyCell,
+.costCell,
+.totalCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.totalCell {
+  font-weight: 600;
+  color: #0b1a3a;
+}
+
+.input {
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 10px;
+  border: 1px solid #c2cad9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.15);
+}
+
+.expires {
+  color: #5d6a87;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.removeButton {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #f1b3ad;
+  color: #8a1c14;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.removeButton:hover,
+.removeButton:focus-visible {
+  border-color: #8a1c14;
+  outline: none;
+}
+
+.removeButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: #f4f6fb;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.footerSummary {
+  font-size: 14px;
+  color: #0b1a3a;
+  font-weight: 600;
+}
+
+.footerActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cancelButton,
+.confirmButton {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.cancelButton {
+  background: #ffffff;
+  border-color: #c2cad9;
+  color: #0b1a3a;
+}
+
+.cancelButton:hover,
+.cancelButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.confirmButton {
+  background: #0b1a3a;
+  color: #ffffff;
+}
+
+.confirmButton:hover:not(:disabled),
+.confirmButton:focus-visible:not(:disabled) {
+  background: #1a2d5a;
+  outline: none;
+}
+
+.confirmButton:disabled,
+.cancelButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  font-size: 13px;
+  color: #8a1c14;
+  background: #fdecea;
+  border: 1px solid #f1b3ad;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+
+.message {
+  font-size: 14px;
+  color: #5d6a87;
+  margin: 16px 0;
+}
