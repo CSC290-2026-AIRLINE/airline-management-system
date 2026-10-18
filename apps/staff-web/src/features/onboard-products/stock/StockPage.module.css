@@ -69,16 +69,29 @@
 }
 
 .pickerRow {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 16px;
-  align-items: end;
-  max-width: 480px;
+  flex-wrap: wrap;
+}
+
+.buttonGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 600px) {
   .pickerRow {
-    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .buttonGroup {
+    width: 100%;
+  }
+  .buttonGroup > button {
+    flex: 1 1 auto;
   }
 }
 
@@ -86,13 +99,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.airportField {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
+  min-width: 200px;
 }
 
 .manageButton {
@@ -204,11 +211,11 @@
 }
 
 .colNumeric {
-  width: 130px;
+  width: 100px;
 }
 
 .colActions {
-  width: 160px;
+  width: 150px;
 }
 
 .table thead th {

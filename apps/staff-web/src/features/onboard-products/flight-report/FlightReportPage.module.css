@@ -1,0 +1,688 @@
+/* Flight Report page: header, flight picker bar, two stacked cards
+   (Usage by product + Sales on this flight), plus the record-sale
+   dialog. Fills the full width. No "Simulated today" badge. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1200px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: #0b1a3a;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  font-size: 15px;
+  color: #5d6a87;
+  margin: 0;
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.policyChip {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0b1a3a;
+  background: #f4f6fb;
+  border: 1px solid #e3e7ef;
+  padding: 6px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* -- Picker bar --------------------------------------------------------- */
+
+.pickerBar {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+}
+
+.pickerChip {
+  font: inherit;
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  padding: 10px 14px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+  flex: 0 0 auto;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.pickerChip:hover,
+.pickerChip:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.pickerChipActive {
+  border-color: #0b1a3a;
+  background: #f4f6fb;
+  border-left: 4px solid #0b1a3a;
+  padding-left: 11px;
+}
+
+.pickerChipTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pickerChipCode {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0b1a3a;
+  font-variant-numeric: tabular-nums;
+}
+
+.pickerChipSubmitted {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #e6f5ec;
+  color: #1f6b3a;
+  border: 1px solid #b6dec4;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pickerChipRoute {
+  font-size: 13px;
+  color: #0b1a3a;
+  font-weight: 500;
+}
+
+.pickerChipMeta {
+  font-size: 12px;
+  color: #5d6a87;
+}
+
+/* -- Detail card -------------------------------------------------------- */
+
+.detailCard {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 22px 24px;
+}
+
+.detailHeader {
+  margin-bottom: 6px;
+}
+
+.detailSubtitle {
+  font-size: 14px;
+  color: #5d6a87;
+  margin: 0 0 14px;
+}
+
+.cardTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0b1a3a;
+  margin: 0 0 4px;
+}
+
+.cardSubtitle {
+  font-size: 13px;
+  color: #5d6a87;
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+
+/* -- Usage table -------------------------------------------------------- */
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  margin-top: 12px;
+}
+
+.usageTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.usageTable thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  padding: 12px 14px;
+  background: #f4f6fb;
+  border-bottom: 1px solid #e3e7ef;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.usageTable th.numeric,
+.usageTable td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.usageTable tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef1f7;
+  vertical-align: middle;
+}
+
+.usageTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.usageTable tbody tr.shortRow {
+  background: #fff5f3;
+}
+
+.itemCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemName {
+  color: #0b1a3a;
+  font-weight: 500;
+}
+
+.itemCategory {
+  font-size: 12px;
+  color: #5d6a87;
+}
+
+.numInput {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 10px;
+  border: 1px solid #c2cad9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+  width: 80px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+
+.numInput:focus-visible {
+  outline: none;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.15);
+}
+
+.numInput:disabled {
+  background: #f4f6fb;
+  color: #5d6a87;
+}
+
+.numInputShort {
+  border-color: #f1b3ad;
+  color: #8a1c14;
+  font-weight: 700;
+  background: #fdecea;
+}
+
+.remainingCell {
+  font-weight: 700;
+}
+
+.remainingShort {
+  color: #8a1c14;
+}
+
+.afterCell {
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 280px;
+}
+
+.afterDiscarded {
+  color: #8a1c14;
+  font-weight: 600;
+}
+
+.afterCarried {
+  color: #8a5a14;
+  font-weight: 600;
+}
+
+.afterKept {
+  color: #1f6b3a;
+  font-weight: 600;
+}
+
+/* -- Context banner ----------------------------------------------------- */
+
+.contextBanner {
+  background: #f4f6fb;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #5d6a87;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.submittedBanner {
+  background: #e6f5ec;
+  border: 1px solid #b6dec4;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #1f6b3a;
+  font-weight: 600;
+  margin: 16px 0;
+}
+
+.mismatchBanner {
+  background: #fdecea;
+  border: 1px solid #f1b3ad;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #8a1c14;
+  margin: 12px 0;
+  line-height: 1.5;
+}
+
+/* -- Action row --------------------------------------------------------- */
+
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.submitButton {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: #0b1a3a;
+  color: #ffffff;
+  border: 1px solid #0b1a3a;
+  cursor: pointer;
+}
+
+.submitButton:hover,
+.submitButton:focus-visible {
+  background: #1a2d5a;
+  border-color: #1a2d5a;
+  outline: none;
+}
+
+.submitButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.submitButtonDanger {
+  background: #8a1c14;
+  border-color: #8a1c14;
+}
+
+.submitButtonDanger:hover,
+.submitButtonDanger:focus-visible {
+  background: #6e160f;
+  border-color: #6e160f;
+  outline: none;
+}
+
+.resetButton {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+  border: 1px solid #c2cad9;
+  cursor: pointer;
+}
+
+.resetButton:hover,
+.resetButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.submittedBadge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #e6f5ec;
+  color: #1f6b3a;
+  border: 1px solid #b6dec4;
+  padding: 6px 14px;
+  border-radius: 999px;
+}
+
+/* -- Sales card --------------------------------------------------------- */
+
+.salesHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.recordButton {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: #0b1a3a;
+  color: #ffffff;
+  border: 1px solid #0b1a3a;
+  cursor: pointer;
+}
+
+.recordButton:hover,
+.recordButton:focus-visible {
+  background: #1a2d5a;
+  border-color: #1a2d5a;
+  outline: none;
+}
+
+.recordButton:disabled {
+  background: #e3e7ef;
+  border-color: #d0d6e0;
+  color: #8a93a8;
+  cursor: not-allowed;
+}
+
+.salesTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.salesTable thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  padding: 10px 14px;
+  background: #f4f6fb;
+  border-bottom: 1px solid #e3e7ef;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.salesTable th.numeric,
+.salesTable td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.salesTable th.actionsCol,
+.salesTable td.actionsCol {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.salesActions {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.salesActionButton {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0b1a3a;
+  border: 1px solid #c2cad9;
+  cursor: pointer;
+}
+
+.salesActionButton:hover:not(:disabled),
+.salesActionButton:focus-visible:not(:disabled) {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.salesActionButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.salesActionRemove {
+  color: #8a1c14;
+  border-color: #f1b3ad;
+}
+
+.salesActionRemove:hover:not(:disabled),
+.salesActionRemove:focus-visible:not(:disabled) {
+  background: #fdecea;
+  border-color: #8a1c14;
+}
+
+.salesTable tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef1f7;
+  vertical-align: middle;
+}
+
+.salesTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.salesEmpty {
+  font-size: 13px;
+  color: #5d6a87;
+  padding: 12px 0;
+}
+
+.salesTotals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+@media (max-width: 1000px) {
+  .salesTotals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .salesTotals {
+    grid-template-columns: 1fr;
+  }
+}
+
+.totalCard {
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: #ffffff;
+}
+
+.totalCardHighlight {
+  background: #0b1a3a;
+  border-color: #0b1a3a;
+  color: #ffffff;
+}
+
+.totalLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  margin: 0 0 4px;
+}
+
+.totalLabelHighlight {
+  color: #ffffff;
+  opacity: 0.85;
+}
+
+.totalValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0b1a3a;
+  margin: 0;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.totalValueHighlight {
+  color: #ffffff;
+}
+
+/* -- Dialog ------------------------------------------------------------- */
+
+.dialogOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 26, 58, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+}
+
+.dialog {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 24px 24px 20px;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+}
+
+.dialogTitle {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #0b1a3a;
+}
+
+.dialogSubtitle {
+  font-size: 13px;
+  color: #5d6a87;
+  margin: 0 0 16px;
+}
+
+.dialogRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.dialogLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6a87;
+}
+
+.dialogInput,
+.dialogSelect {
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid #c2cad9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+}
+
+.dialogInput:focus-visible,
+.dialogSelect:focus-visible {
+  outline: none;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.15);
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialogError {
+  font-size: 13px;
+  color: #8a1c14;
+  background: #fdecea;
+  border: 1px solid #f1b3ad;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+}
+
+/* -- Misc --------------------------------------------------------------- */
+
+.errorMessage {
+  font-size: 14px;
+  color: #8a1c14;
+  background: #fdecea;
+  border: 1px solid #f1b3ad;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 16px;
+}
+
+.message {
+  font-size: 14px;
+  color: #5d6a87;
+  margin: 12px 0;
+}

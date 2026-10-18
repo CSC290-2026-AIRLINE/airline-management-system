@@ -805,3 +805,149 @@ export function transferToAircraft(req: TransferRequest): StockTransfer {
   store.stockTransfers.push(transfer)
   return { ...transfer, lines: transferLines.map((l) => ({ ...l })) }
 }
+
+// -- Aircraft stock discard (completion rules) ----------------------------
+// Used by the Flight Report page to apply the spec's completion rules
+// (meals -> 0, snacks/beverages/duty-free -> keep unless batch invalid).
+// Decrements aircraft_stock across rows for the same product (earliest-
+// expiry first) and writes one discard stock_movement per call.
+
+export function discardAircraftStock(aircraftId: string, productId: string, quantity: number): number {
+  if (quantity <= 0) return 0
+  const nowIso = '2026-10-08T09:00:00Z'
+  const rows = store.aircraftStock
+    .filter((r) => r.aircraftId === aircraftId && r.productId === productId && r.quantity > 0)
+    .sort((a, b) => {
+      if (a.expiresAt == null && b.expiresAt == null) return 0
+      if (a.expiresAt == null) return 1
+      if (b.expiresAt == null) return -1
+      return a.expiresAt.localeCompare(b.expiresAt)
+    })
+  let remaining = quantity
+  for (const row of rows) {
+    if (remaining <= 0) break
+    const take = Math.min(row.quantity, remaining)
+    row.quantity -= take
+    remaining -= take
+    store.movements.push({
+      id: nextId('mv'),
+      productId,
+      warehouseId: null,
+      aircraftId,
+      stockBatchId: row.stockBatchId,
+      stockTransferId: null,
+      productOrderId: null,
+      flightId: null,
+      type: 'discard',
+      quantity: -take,
+      reason: null,
+      note: null,
+      createdByStaffId: null,
+      occurredAt: nowIso,
+    })
+  }
+  return quantity - remaining
+}
+
+// -- Aircraft stock seed ---------------------------------------------------
+// The Flight Report page needs aircraft stock rows for the reportable
+// flights. Real flows would go through Catering Orders -> Transfer to
+// aircraft, but the Flight Report needs something to report on without
+// forcing the user through that path first. Run once on module load.
+
+function seedAircraftStock(): AircraftStockRow[] {
+  const rows: AircraftStockRow[] = []
+  // Pick a batch for a warehouse + product; returns the first matching
+  // batch id (or null). Used to anchor the pre-seeded aircraft stock.
+  const pickBatch = (warehouseId: string, productId: string): { batchId: string; batchCode: string; expiresAt: string | null } | null => {
+    const batch = store.batches.find((b) => b.warehouseId === warehouseId && b.productId === productId)
+    if (!batch) return null
+    return { batchId: batch.id, batchCode: batch.batchCode, expiresAt: batch.expiresAt }
+  }
+
+  // f-401 (BKK → NRT, business). BKK warehouse, mirror the catering
+  // order lines: 22 p-002, 8 p-004, 30 p-009.
+  const f401Aircraft = 'a-fya'
+  const f401Lines: Array<{ productId: string; quantity: number }> = [
+    { productId: 'p-002', quantity: 22 },
+    { productId: 'p-004', quantity: 8 },
+    { productId: 'p-009', quantity: 30 },
+  ]
+  for (const l of f401Lines) {
+    const batch = pickBatch('w-bkk', l.productId)
+    if (!batch) continue
+    rows.push({
+      id: nextId('as'),
+      aircraftId: f401Aircraft,
+      productId: l.productId,
+      productName: mockProducts.find((p) => p.id === l.productId)?.name ?? l.productId,
+      stockBatchId: batch.batchId,
+      batchCode: batch.batchCode,
+      quantity: l.quantity,
+      expiresAt: batch.expiresAt,
+    })
+  }
+
+  // f-405 (SIN → BKK, economy). BKK warehouse. The eco lines for 135 pax
+  // are roughly: 68 p-001, 41 p-002, 9 p-004, 12 p-005, 12 p-002, 40 p-009.
+  const f405Aircraft = 'a-fya'
+  const f405Lines: Array<{ productId: string; quantity: number }> = [
+    { productId: 'p-001', quantity: 68 },
+    { productId: 'p-002', quantity: 53 }, // 41 economy + 12 business
+    { productId: 'p-004', quantity: 9 },
+    { productId: 'p-005', quantity: 12 },
+    { productId: 'p-009', quantity: 40 },
+  ]
+  for (const l of f405Lines) {
+    const batch = pickBatch('w-bkk', l.productId)
+    if (!batch) continue
+    rows.push({
+      id: nextId('as'),
+      aircraftId: f405Aircraft,
+      productId: l.productId,
+      productName: mockProducts.find((p) => p.id === l.productId)?.name ?? l.productId,
+      stockBatchId: batch.batchId,
+      batchCode: batch.batchCode,
+      quantity: l.quantity,
+      expiresAt: batch.expiresAt,
+    })
+  }
+
+  // f-308 (BKK → NRT, economy). BKK warehouse. Mirrors the FY307
+  // prototype: 96 p-001, 64 p-002, 14 p-004, 18 p-005, 12 p-007, 40 p-009.
+  // Add a small p-008 (snack) row so the read-only Sold column is
+  // non-empty when the user later records sales of p-008.
+  const f308Aircraft = 'a-fya'
+  const f308Lines: Array<{ productId: string; quantity: number }> = [
+    { productId: 'p-001', quantity: 96 },
+    { productId: 'p-002', quantity: 64 },
+    { productId: 'p-004', quantity: 14 },
+    { productId: 'p-005', quantity: 18 },
+    { productId: 'p-007', quantity: 12 },
+    { productId: 'p-008', quantity: 30 },
+    { productId: 'p-009', quantity: 40 },
+  ]
+  for (const l of f308Lines) {
+    const batch = pickBatch('w-bkk', l.productId)
+    if (!batch) continue
+    rows.push({
+      id: nextId('as'),
+      aircraftId: f308Aircraft,
+      productId: l.productId,
+      productName: mockProducts.find((p) => p.id === l.productId)?.name ?? l.productId,
+      stockBatchId: batch.batchId,
+      batchCode: batch.batchCode,
+      quantity: l.quantity,
+      expiresAt: batch.expiresAt,
+    })
+  }
+  return rows
+}
+
+// store is declared above as a const; mutate it in-place to add the
+// seed rows. The store literal is hoisted but its `aircraftStock`
+// array can be appended to from the IIFE below.
+;(function applyAircraftStockSeed() {
+  const seeded = seedAircraftStock()
+  for (const r of seeded) store.aircraftStock.push(r)
+})()

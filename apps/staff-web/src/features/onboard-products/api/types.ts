@@ -346,6 +346,53 @@ export interface FlightReport {
   lines: FlightReportLine[]
 }
 
+// One row per product per payment on a flight, recorded by staff at
+// flight level after F5 confirms payment. unit_cost_amount stays null
+// until the flight report is submitted, then is filled from the
+// earliest-expiring aircraft batch cost.
+export interface ProductSale {
+  id: string
+  flightId: string
+  productId: string
+  productName: string
+  quantity: number
+  unitPriceAmount: number
+  unitCostAmount: number | null
+  totalAmount: number
+  currency: string
+  paymentId: string
+  soldAt: string
+}
+
+// The page sends these for every product on the flight. sold is
+// read-only and computed from the product_sale rows.
+export interface SubmitFlightReportLineInput {
+  productId: string
+  served: number
+  wasted: number
+  damaged: number
+}
+
+export interface SubmitFlightReportInput {
+  flightId: string
+  lines: SubmitFlightReportLineInput[]
+}
+
+export interface CreateFlightSaleInput {
+  flightId: string
+  productId: string
+  // Quantity sold. The selling price can differ from the product's
+  // catalog price (e.g. a discount or a freebie), so the staff member
+  // enters it on the dialog and it is stored on the sale row.
+  quantity: number
+  unitPriceAmount: number
+}
+
+export interface UpdateFlightSaleInput {
+  quantity?: number
+  unitPriceAmount?: number
+}
+
 // A small shared error envelope matching the spec's `{ error: { code, message, details? } }`.
 export interface ApiError {
   code: string

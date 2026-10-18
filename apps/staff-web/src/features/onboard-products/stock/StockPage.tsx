@@ -7,6 +7,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import {
   createWarehouse,
   deleteWarehouse,
+  listStockBatches,
   listStockMovements,
   listWarehouses,
   listWarehouseStock,
@@ -17,7 +18,7 @@ import { mockProducts } from '@staff-web/features/onboard-products/mocks/product
 import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
 import { AdjustStockDialog } from './AdjustStockDialog'
 import { ManageListDialog, type ManageListItem } from './ManageListDialog'
-import type { StockMovement, Warehouse, WarehouseStockRow } from '@staff-web/features/onboard-products/api/types'
+import type { StockBatch, StockMovement, Warehouse, WarehouseStockRow } from '@staff-web/features/onboard-products/api/types'
 import styles from './StockPage.module.css'
 
 function nextToastId(): number {
@@ -26,6 +27,10 @@ function nextToastId(): number {
 
 function formatQuantity(n: number): string {
   return n.toLocaleString('en-US')
+}
+
+function formatMoney(n: number): string {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 }
 
 function formatDate(iso: string): string {
@@ -50,11 +55,29 @@ function reasonLabel(reason: StockMovement['reason']): string {
   return 'count correction'
 }
 
+// Roll up the per-batch unit cost (whatever the user typed in at receive
+// delivery) into a single number for the row. We weight by the quantity
+// each batch still holds, so a row with 80 units at $4 and 20 units at $5
+// shows $4.20 as the unit cost and $436 as the total cost.
+function summarizeBatches(batches: StockBatch[], productId: string): { unitCost: number; totalCost: number } | null {
+  const matching = batches.filter((b) => b.productId === productId && b.quantityRemaining > 0)
+  if (matching.length === 0) return null
+  let totalQty = 0
+  let totalCost = 0
+  for (const b of matching) {
+    totalQty += b.quantityRemaining
+    totalCost += b.quantityRemaining * b.unitCostAmount
+  }
+  if (totalQty === 0) return null
+  return { unitCost: totalCost / totalQty, totalCost }
+}
+
 export function StockPage() {
   const navigate = useNavigate()
   const search = useSearch({ from: '/_authenticated/catering/stock/' })
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [stock, setStock] = useState<WarehouseStockRow[]>([])
+  const [batches, setBatches] = useState<StockBatch[]>([])
   const [movements, setMovements] = useState<StockMovement[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -91,14 +114,15 @@ export function StockPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only set once from URL
   }, [])
 
-  // Load stock + movements for the chosen warehouse.
+  // Load stock + batches + movements for the chosen warehouse.
   useEffect(() => {
     if (warehouseId == null) return
     let cancelled = false
-    Promise.all([listWarehouseStock(warehouseId), listStockMovements({ warehouseId })])
-      .then(([stockData, movementData]) => {
+    Promise.all([listWarehouseStock(warehouseId), listStockBatches({ warehouseId }), listStockMovements({ warehouseId })])
+      .then(([stockData, batchData, movementData]) => {
         if (cancelled) return
         setStock(stockData)
+        setBatches(batchData)
         setMovements(movementData)
         setLoading(false)
       })
@@ -115,8 +139,13 @@ export function StockPage() {
   // Re-load everything after a mutation.
   async function refresh() {
     if (warehouseId == null) return
-    const [stockData, movementData] = await Promise.all([listWarehouseStock(warehouseId), listStockMovements({ warehouseId })])
+    const [stockData, batchData, movementData] = await Promise.all([
+      listWarehouseStock(warehouseId),
+      listStockBatches({ warehouseId }),
+      listStockMovements({ warehouseId }),
+    ])
     setStock(stockData)
+    setBatches(batchData)
     setMovements(movementData)
   }
 
@@ -238,33 +267,33 @@ export function StockPage() {
       </section>
 
       <div className={styles.pickerRow}>
-        <div className={styles.airportField}>
-          <div className={styles.field}>
-            <label htmlFor="stock-airport" className={styles.label}>
-              Airport
-            </label>
-            <select id="stock-airport" className={styles.select} value={warehouseId ?? ''} onChange={(e) => setWarehouseId(e.target.value)}>
-              {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.code}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className={styles.field}>
+          <label htmlFor="stock-airport" className={styles.label}>
+            Airport
+          </label>
+          <select id="stock-airport" className={styles.select} value={warehouseId ?? ''} onChange={(e) => setWarehouseId(e.target.value)}>
+            {warehouses.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.code}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className={styles.buttonGroup}>
           <button type="button" className={styles.manageButton} onClick={() => setManagingAirports(true)}>
             Manage airports
           </button>
+          <button
+            type="button"
+            className={styles.receiveButton}
+            onClick={() => {
+              const code = currentWarehouse?.code ?? 'BKK'
+              void navigate({ to: '/catering/stock/receive', search: { airport: code } })
+            }}
+          >
+            Receive delivery
+          </button>
         </div>
-        <button
-          type="button"
-          className={styles.receiveButton}
-          onClick={() => {
-            const code = currentWarehouse?.code ?? 'BKK'
-            void navigate({ to: '/catering/stock/receive', search: { airport: code } })
-          }}
-        >
-          Receive delivery
-        </button>
       </div>
 
       <section className={styles.card} aria-label={`${currentWarehouse?.code ?? ''} warehouse stock`}>
@@ -283,6 +312,8 @@ export function StockPage() {
               <table className={styles.table}>
                 <colgroup>
                   <col className={styles.colItem} />
+                  <col className={styles.colNumeric} />
+                  <col className={styles.colNumeric} />
                   <col className={styles.colNumeric} />
                   <col className={styles.colNumeric} />
                   <col className={styles.colNumeric} />
@@ -306,6 +337,12 @@ export function StockPage() {
                     <th scope="col" className={styles.thNumeric}>
                       Reorder at
                     </th>
+                    <th scope="col" className={styles.thNumeric}>
+                      Unit cost
+                    </th>
+                    <th scope="col" className={styles.thNumeric}>
+                      Total cost
+                    </th>
                     <th scope="col" className={styles.thActions}>
                       Actions
                     </th>
@@ -318,6 +355,7 @@ export function StockPage() {
                     // number to staff; the Reorder badge already flags them.
                     const available = Math.max(0, rawAvailable)
                     const low = rawAvailable < row.reorderLevel
+                    const summary = summarizeBatches(batches, row.productId)
                     return (
                       <tr key={row.id} className={styles.row}>
                         <td className={styles.tdItem}>
@@ -332,6 +370,8 @@ export function StockPage() {
                           </span>
                         </td>
                         <td className={styles.tdNumeric}>{formatQuantity(row.reorderLevel)}</td>
+                        <td className={styles.tdNumeric}>{summary ? formatMoney(summary.unitCost) : '—'}</td>
+                        <td className={styles.tdNumeric}>{summary ? formatMoney(summary.totalCost) : '—'}</td>
                         <td className={styles.tdActions}>
                           <button type="button" className={styles.adjustButton} onClick={() => setAdjusting(row)}>
                             Adjust stock
