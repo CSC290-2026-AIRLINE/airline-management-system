@@ -1,0 +1,321 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1200px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: #0b1a3a;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  font-size: 15px;
+  color: #5d6a87;
+  margin: 0;
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  color: #0b1a3a;
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 999px;
+  padding: 6px 14px;
+  white-space: nowrap;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.statCard {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.statLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  margin: 0 0 6px;
+}
+
+.statValue {
+  font-size: 30px;
+  font-weight: 700;
+  color: #0b1a3a;
+  margin: 0;
+  line-height: 1;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid #c2cad9;
+  background: #ffffff;
+  color: #0b1a3a;
+  cursor: pointer;
+}
+
+.pill:hover {
+  border-color: #0b1a3a;
+}
+
+.pillActive {
+  background: #0b1a3a;
+  border-color: #0b1a3a;
+  color: #ffffff;
+}
+
+.pillActive:hover {
+  background: #1a2d5a;
+}
+
+.addButton {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 8px;
+  background: #0b1a3a;
+  color: #ffffff;
+  border: 1px solid #0b1a3a;
+  cursor: pointer;
+}
+
+.addButton:hover,
+.addButton:focus-visible {
+  background: #1a2d5a;
+  border-color: #1a2d5a;
+  outline: none;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 22px 24px 18px;
+}
+
+.cardHeader {
+  margin-bottom: 16px;
+}
+
+.cardTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0b1a3a;
+  margin: 0 0 4px;
+}
+
+.cardSubtitle {
+  font-size: 13px;
+  color: #5d6a87;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.message {
+  font-size: 14px;
+  color: #5d6a87;
+  margin: 16px 0;
+}
+
+.errorMessage {
+  font-size: 14px;
+  color: #8a1c14;
+  background: #fdecea;
+  border: 1px solid #f1b3ad;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 16px 0;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  text-align: left;
+  padding: 10px 12px;
+  background: #f4f6fb;
+  border-bottom: 1px solid #e3e7ef;
+}
+
+.thPhoto {
+  width: 64px;
+}
+
+.thPrice {
+  text-align: right;
+}
+
+.thActions {
+  width: 48px;
+}
+
+.table tbody td {
+  padding: 14px 12px;
+  border-bottom: 1px solid #eef1f7;
+  vertical-align: middle;
+}
+
+.row:hover {
+  background: #f9fafc;
+}
+
+.tdPhoto {
+  width: 64px;
+}
+
+.tdPrice {
+  text-align: right;
+  font-weight: 600;
+  color: #0b1a3a;
+  white-space: nowrap;
+}
+
+.tdActions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.name {
+  font-weight: 500;
+  color: #0b1a3a;
+  margin-right: 8px;
+}
+
+.premiumBadge {
+  display: inline-block;
+  background: #fff4d6;
+  color: #8a6d1f;
+  border: 1px solid #f0d893;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.statusSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: #0b1a3a;
+}
+
+.statusSwitch:focus-visible {
+  outline: 2px solid #1a2d5a;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.statusTrack {
+  width: 36px;
+  height: 20px;
+  background: #c2cad9;
+  border-radius: 999px;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 120ms ease;
+}
+
+.statusThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 120ms ease;
+}
+
+.statusOn .statusTrack {
+  background: #0b1a3a;
+}
+
+.statusOn .statusThumb {
+  transform: translateX(16px);
+}
+
+.statusLabel {
+  font-weight: 500;
+  color: #0b1a3a;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

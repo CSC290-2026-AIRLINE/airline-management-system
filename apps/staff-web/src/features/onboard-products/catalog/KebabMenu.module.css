@@ -1,0 +1,65 @@
+.root {
+  position: relative;
+  display: inline-block;
+}
+
+.button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #0b1a3a;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.button:hover,
+.button:focus-visible {
+  background: #eef1f7;
+  border-color: #d6dbe6;
+  outline: none;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 140px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(11, 26, 58, 0.12);
+  z-index: 20;
+}
+
+.item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 14px;
+  color: #0b1a3a;
+  cursor: pointer;
+}
+
+.item:hover,
+.item:focus-visible {
+  background: #eef1f7;
+  outline: none;
+}
+
+.destructive {
+  color: #b3261e;
+}

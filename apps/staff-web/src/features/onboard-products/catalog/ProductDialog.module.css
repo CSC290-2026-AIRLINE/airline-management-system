@@ -1,0 +1,321 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 26, 58, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 60px 16px;
+  z-index: 100;
+  overflow-y: auto;
+}
+
+.dialog {
+  background: #ffffff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 540px;
+  padding: 24px 28px 20px;
+  box-shadow: 0 24px 64px rgba(11, 26, 58, 0.32);
+}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #0b1a3a;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #5d6a87;
+  margin: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.photoBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.photoRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.photoPreview {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  object-fit: cover;
+  box-shadow: inset 0 0 0 1px rgba(11, 26, 58, 0.08);
+}
+
+.photoButtons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.photoButton {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  background: #ffffff;
+  border: 1px solid #c2cad9;
+  color: #0b1a3a;
+  padding: 7px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.photoButton:hover,
+.photoButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.photoButtonDanger {
+  border-color: #f1b3ad;
+  color: #8a1c14;
+}
+
+.photoButtonDanger:hover,
+.photoButtonDanger:focus-visible {
+  border-color: #8a1c14;
+}
+
+.hint {
+  font-size: 12px;
+  color: #5d6a87;
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6a87;
+  margin: 0;
+}
+
+.input {
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid #c2cad9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0b1a3a;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: #0b1a3a;
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.15);
+}
+
+.input:disabled {
+  background: #f4f6fb;
+  color: #8a93a8;
+  cursor: not-allowed;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #c2cad9;
+  background: #ffffff;
+  color: #0b1a3a;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: #0b1a3a;
+}
+
+.chipActive {
+  background: #0b1a3a;
+  border-color: #0b1a3a;
+  color: #ffffff;
+}
+
+.chipActive:hover {
+  background: #1a2d5a;
+}
+
+.error {
+  font-size: 12px;
+  color: #8a1c14;
+  margin: 0;
+}
+
+.muted {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #8a93a8;
+}
+
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.switchControl {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.switchInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.switchTrack {
+  width: 40px;
+  height: 22px;
+  background: #c2cad9;
+  border-radius: 999px;
+  position: relative;
+  transition: background 120ms ease;
+}
+
+.switchThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 120ms ease;
+}
+
+.switchInput:checked + .switchTrack {
+  background: #0b1a3a;
+}
+
+.switchInput:checked + .switchTrack .switchThumb {
+  transform: translateX(18px);
+}
+
+.switchInput:focus-visible + .switchTrack {
+  box-shadow: 0 0 0 3px rgba(11, 26, 58, 0.25);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #e3e7ef;
+}
+
+.cancelButton,
+.saveButton {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.cancelButton {
+  background: #ffffff;
+  border-color: #c2cad9;
+  color: #0b1a3a;
+}
+
+.cancelButton:hover,
+.cancelButton:focus-visible {
+  border-color: #0b1a3a;
+  outline: none;
+}
+
+.saveButton {
+  background: #0b1a3a;
+  color: #ffffff;
+}
+
+.saveButton:hover,
+.saveButton:focus-visible {
+  background: #1a2d5a;
+  outline: none;
+}
+
+.saveButton:disabled,
+.cancelButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

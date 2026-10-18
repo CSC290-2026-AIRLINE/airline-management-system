@@ -1,0 +1,155 @@
+/* Dark navy left rail. F12 sidebar lives only inside /catering (the catering layout). */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  min-width: 260px;
+  height: 100vh;
+  background: #0b1a3a;
+  color: #e6ecf5;
+  padding: 28px 18px 22px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 28px;
+}
+
+.wordmark {
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.underline {
+  width: 56px;
+  height: 2px;
+  background: #c9a44a;
+  margin: 8px 0 10px;
+}
+
+.subtitle {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #9fb0cf;
+}
+
+.sectionLabel {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #6f80a3;
+  margin: 6px 0 10px;
+  padding: 0 8px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.link {
+  display: block;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: #d6dff0;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.link:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ffffff;
+}
+
+.linkActive {
+  background: #1a2d5a;
+  color: #ffffff;
+}
+
+.linkActive:hover {
+  background: #1a2d5a;
+}
+
+.spacer {
+  flex: 1 1 auto;
+  min-height: 16px;
+}
+
+.admin {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+
+.adminLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 4px;
+  padding: 0 8px;
+}
+
+.adminNote {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #9fb0cf;
+  margin: 0 0 12px;
+  padding: 0 8px;
+}
+
+.signOut {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e6ecf5;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.signOut:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.signOut:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Narrow screens: shrink the rail. */
+@media (max-width: 720px) {
+  .sidebar {
+    width: 200px;
+    min-width: 200px;
+    padding: 20px 14px 18px;
+  }
+  .wordmark {
+    font-size: 22px;
+  }
+  .link {
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+}

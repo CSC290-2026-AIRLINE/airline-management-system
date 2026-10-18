@@ -1,0 +1,21 @@
+/* Layout shell for the F12 catering area: sidebar on the left, page content on the right. */
+
+.shell {
+  display: flex;
+  min-height: 100vh;
+  background: #f4f6fb;
+}
+
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 32px 40px;
+  box-sizing: border-box;
+  color: #0b1a3a;
+}
+
+@media (max-width: 720px) {
+  .main {
+    padding: 20px 18px;
+  }
+}
