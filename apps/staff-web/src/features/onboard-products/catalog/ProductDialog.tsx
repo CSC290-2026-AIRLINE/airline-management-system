@@ -3,7 +3,7 @@
 // Saves via the api layer and reports success/failure to the parent.
 
 import { useId, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { createProduct, ImageInvalidError, ProductApiError, updateProduct } from '../api/products'
+import { ImageInvalidError, ProductApiError, useOnboardApi } from '../api'
 import type { DietaryAttribute, Product, ProductCategory, ProductInput, ProductPhoto, SpecialMealCode } from '../api/types'
 import { PhotoPlaceholder } from './PhotoPlaceholder'
 import { useDialogFocusTrap } from './useDialogFocusTrap'
@@ -74,7 +74,7 @@ function formFromProduct(p: Product): FormState {
     shelfLifeDays: p.shelfLifeDays == null ? '' : String(p.shelfLifeDays),
     isPremium: p.isPremium,
     isActive: p.isActive,
-    photo: null, // mock has no real image data, so we start blank even when editing
+    photo: null, // photo upload is a placeholder until the real image endpoint ships
   }
 }
 
@@ -141,6 +141,7 @@ function toInput(form: FormState): ProductInput {
 }
 
 export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
+  const api = useOnboardApi()
   const isEdit = product !== null
   const [form, setForm] = useState<FormState>(() => (product ? formFromProduct(product) : emptyForm()))
   const [errors, setErrors] = useState<FormErrors>({})
@@ -214,7 +215,7 @@ export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
 
     setSubmitting(true)
     try {
-      const saved = isEdit ? await updateProduct(product.id, toInput(form)) : await createProduct(toInput(form))
+      const saved = isEdit ? await api.products.update(product.id, toInput(form)) : await api.products.create(toInput(form))
       onSaved(saved, !isEdit)
     } catch (err) {
       if (err instanceof ImageInvalidError) {

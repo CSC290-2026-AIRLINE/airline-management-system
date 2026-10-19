@@ -8,17 +8,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import {
-  createSupplier,
-  createPurchaseReceipt,
-  deleteSupplier,
-  listSuppliers,
-  listWarehouses,
-  StockApiError,
-  updateSupplier,
-} from '@staff-web/features/onboard-products/api/stock'
-import { listProducts } from '@staff-web/features/onboard-products/api/products'
-import { addDays } from '@staff-web/features/onboard-products/mocks/clock'
+import { StockApiError, useOnboardApi } from '@staff-web/features/onboard-products/api'
+import { addDays } from '@staff-web/features/onboard-products/dates'
 import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
 import type {
   Product,
@@ -79,6 +70,7 @@ function parseNumber(s: string): number | null {
 export function ReceiveDeliveryPage() {
   const navigate = useNavigate()
   const search = useSearch({ from: '/_authenticated/catering/stock/receive' })
+  const api = useOnboardApi()
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -104,12 +96,11 @@ export function ReceiveDeliveryPage() {
   // Load warehouses + products once.
   useEffect(() => {
     let cancelled = false
-    Promise.all([listWarehouses(), listProducts()])
+    Promise.all([api.stock.listWarehouses(), api.products.list()])
       .then(([warehousesData, productsData]) => {
         if (cancelled) return
         setWarehouses(warehousesData)
         setProducts(productsData)
-        // ?airport=BKK preselects that airport's warehouse.
         if (warehousesData.length > 0) {
           const initial =
             search.airport != null ? (warehousesData.find((w) => w.code === search.airport) ?? warehousesData[0]) : warehousesData[0]
@@ -136,11 +127,11 @@ export function ReceiveDeliveryPage() {
     const wh = warehouses.find((w) => w.id === warehouseId)
     if (!wh) return
     let cancelled = false
-    listSuppliers(wh.airportCode)
+    api.stock
+      .listSuppliers(wh.airportCode)
       .then((data) => {
         if (cancelled) return
         setSuppliers(data)
-        // Default to the first active supplier when switching airports.
         const firstActive = data.find((s) => s.isActive) ?? data[0]
         setSupplierId(firstActive?.id ?? '')
       })
@@ -152,7 +143,7 @@ export function ReceiveDeliveryPage() {
     return () => {
       cancelled = true
     }
-  }, [warehouseId, warehouses])
+  }, [warehouseId, warehouses, api])
 
   // Seed an empty row once the products list is available.
   useEffect(() => {
@@ -258,7 +249,7 @@ export function ReceiveDeliveryPage() {
     })
     setSubmitting(true)
     try {
-      const receipt = await createPurchaseReceipt({ supplierId, warehouseId, lines })
+      const receipt = await api.stock.createPurchaseReceipt({ supplierId, warehouseId, lines }, products)
       const totalUnits = lines.reduce((acc, l) => acc + l.quantity, 0)
       const totalCost = lines.reduce((acc, l) => acc + l.quantity * l.unitCostAmount, 0)
       const supplierName = suppliers.find((s) => s.id === supplierId)?.name ?? 'supplier'
@@ -289,7 +280,7 @@ export function ReceiveDeliveryPage() {
       setSupplierId('')
       return
     }
-    const data = await listSuppliers(wh.airportCode)
+    const data = await api.stock.listSuppliers(wh.airportCode)
     setSuppliers(data)
     const stillThere = data.find((s) => s.id === supplierId)
     if (!stillThere) {
@@ -300,10 +291,10 @@ export function ReceiveDeliveryPage() {
 
   async function handleCreateSupplier(input: { name: string; secondary: string }) {
     const wh = warehouses.find((w) => w.id === warehouseId)
-    if (!wh) throw new StockApiError('SUPPLIER_INVALID', 'Pick an airport first.')
+    if (!wh) throw new StockApiError('SUPPLIER_INVALID', 'Pick an airport first.', 400)
     setSupplierManageBusy(true)
     try {
-      const created = await createSupplier({
+      const created = await api.stock.createSupplier({
         name: input.name,
         airportCode: wh.airportCode,
         contact: input.secondary === '' ? null : input.secondary,
@@ -324,7 +315,7 @@ export function ReceiveDeliveryPage() {
   async function handleUpdateSupplier(id: string, input: { name: string; secondary: string }) {
     setSupplierManageBusy(true)
     try {
-      const updated = await updateSupplier(id, { name: input.name, contact: input.secondary === '' ? null : input.secondary })
+      const updated = await api.stock.updateSupplier(id, { name: input.name, contact: input.secondary === '' ? null : input.secondary })
       await refreshSuppliers()
       showToast('success', `Updated ${updated.name}.`)
     } catch (err) {
@@ -339,7 +330,7 @@ export function ReceiveDeliveryPage() {
   async function handleDeleteSupplier(id: string) {
     setSupplierManageBusy(true)
     try {
-      await deleteSupplier(id)
+      await api.stock.deleteSupplier(id)
       await refreshSuppliers()
       showToast('success', 'Removed the supplier.')
     } catch (err) {
@@ -583,6 +574,10 @@ export function ReceiveDeliveryPage() {
           }}
           onSaved={(created) => {
             setProducts((prev) => [...prev.filter((p) => p.id !== created.id), created])
+            // The newly-created product doesn't have its name in the
+            // products list that was passed to createPurchaseReceipt
+            // yet, so refresh via the api to keep the two in sync.
+            void api.products.list().then(setProducts)
             patchRow(addingProductFor, {
               productId: created.id,
               expiresAt: defaultExpiryForCategory(created.category),

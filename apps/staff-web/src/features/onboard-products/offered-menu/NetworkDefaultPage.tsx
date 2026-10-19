@@ -6,15 +6,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
-import {
-  getNetworkDefault,
-  putCabinSettings,
-  createProductOffering,
-  updateProductOffering,
-  type ProductOfferingInput,
-} from '@staff-web/features/onboard-products/api/offerings'
-import type { Cabin, CabinSetting, ProductOffering, SettingPatch } from '@staff-web/features/onboard-products/api/types'
-import { mockProducts } from '@staff-web/features/onboard-products/mocks/products'
+import { useOnboardApi } from '@staff-web/features/onboard-products/api'
+import type { Cabin, CabinSetting, Product, ProductOffering, SettingPatch } from '@staff-web/features/onboard-products/api/types'
 import { resolveCabinSettings, resolveMenu } from '@staff-web/features/onboard-products/offered-menu/resolve'
 import { SegmentedControl } from './SegmentedControl'
 import { ToggleSwitch } from './ToggleSwitch'
@@ -87,8 +80,10 @@ function cabinSummary(s: CabinSetting | null): { headline: string; subline: stri
 }
 
 export function NetworkDefaultPage() {
+  const api = useOnboardApi()
   const [settings, setSettings] = useState<CabinSetting[] | null>(null)
   const [offerings, setOfferings] = useState<ProductOffering[] | null>(null)
+  const [mealProducts, setMealProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [cabin, setCabin] = useState<Cabin>('economy')
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -104,11 +99,12 @@ export function NetworkDefaultPage() {
 
   useEffect(() => {
     let cancelled = false
-    getNetworkDefault()
-      .then((d) => {
+    Promise.all([api.offerings.getNetworkDefault(), api.products.list()])
+      .then(([d, products]) => {
         if (cancelled) return
         setSettings(d.cabinSettings)
         setOfferings(d.offerings)
+        setMealProducts(products.filter((p) => p.category === 'meal'))
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -121,7 +117,7 @@ export function NetworkDefaultPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [api])
 
   const activeRow = settings?.find((s) => s.scope === 'network' && s.cabin === cabin) ?? null
   const effectiveMenu = useMemo(() => resolveMenu(offerings ?? [], cabin, null, null), [offerings, cabin])
@@ -161,7 +157,7 @@ export function NetworkDefaultPage() {
     const m = resolveMenu(offerings ?? [], c, null, null)
     if (m.menu.length === 0) return '0 meals · no menu set'
     const def = m.menu.find((o) => o.id === m.defaultOfferingId)
-    const defName = def ? mockProducts.find((p) => p.id === def.productId)?.name : null
+    const defName = def ? mealProducts.find((p) => p.id === def.productId)?.name : null
     return defName ? `${m.menu.length} meals · default ${defName}` : `${m.menu.length} meals · standard menu`
   }
 
@@ -175,12 +171,12 @@ export function NetworkDefaultPage() {
     }
     setSaving(true)
     try {
-      const result = await putCabinSettings('network', null, null, cabin, patch)
+      const result = await api.offerings.putCabinSettings('network', null, null, cabin, patch)
       showToast(
         'success',
         `Saved ${cabinLabel(cabin)} settings.${result.affectedOpenOrders > 0 ? ` ${result.affectedOpenOrders} open orders updated.` : ''}`,
       )
-      const fresh = await getNetworkDefault()
+      const fresh = await api.offerings.getNetworkDefault()
       setSettings(fresh.cabinSettings)
       setOfferings(fresh.offerings)
     } catch (err) {
@@ -208,9 +204,9 @@ export function NetworkDefaultPage() {
       if (existing) {
         return o.map((x) => (x.id === existing.id ? { ...x, isActive } : x))
       }
-      const input: ProductOfferingInput = {
+      const input = {
         productId,
-        scope: 'network',
+        scope: 'network' as const,
         routeId: null,
         flightId: null,
         cabin,
@@ -222,8 +218,8 @@ export function NetworkDefaultPage() {
 
     const existing = current.find((x) => x.productId === productId && x.cabin === cabin && x.scope === 'network')
     const work = existing
-      ? updateProductOffering(existing.id, { isActive })
-      : createProductOffering({
+      ? api.offerings.updateProductOffering(existing.id, { isActive })
+      : api.offerings.createProductOffering({
           productId,
           scope: 'network',
           routeId: null,
@@ -234,7 +230,7 @@ export function NetworkDefaultPage() {
         })
 
     work
-      .then(() => getNetworkDefault())
+      .then(() => api.offerings.getNetworkDefault())
       .then((fresh) => {
         setSettings(fresh.cabinSettings)
         setOfferings(fresh.offerings)
@@ -261,8 +257,9 @@ export function NetworkDefaultPage() {
 
     const existing = effectiveMenu.menu.find((o) => o.productId === productId)
     if (!existing) return
-    updateProductOffering(existing.id, { isDefault: true, isActive: true })
-      .then(() => getNetworkDefault())
+    api.offerings
+      .updateProductOffering(existing.id, { isDefault: true, isActive: true })
+      .then(() => api.offerings.getNetworkDefault())
       .then((fresh) => {
         setSettings(fresh.cabinSettings)
         setOfferings(fresh.offerings)
@@ -430,26 +427,24 @@ export function NetworkDefaultPage() {
               <p className={styles.menuSubtitle}>
                 {effectiveMenu.menu.length === 0
                   ? 'No menu for this cabin — turn meals on below to add them.'
-                  : `${effectiveMenu.menu.length} of ${mockProducts.filter((p) => p.category === 'meal').length} meals offered. Tap a meal to offer or withdraw it.`}
+                  : `${effectiveMenu.menu.length} of ${mealProducts.length} meals offered. Tap a meal to offer or withdraw it.`}
               </p>
               <div className={styles.chips}>
-                {mockProducts
-                  .filter((p) => p.category === 'meal')
-                  .map((p) => {
-                    const active = effectiveMenu.menu.some((o) => o.productId === p.id && o.isActive)
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={active ? styles.chipActive : styles.chip}
-                        onClick={() => handleToggleOffering(p.id, !active)}
-                      >
-                        <span className={styles.chipIcon}>{active ? '✓' : '+'}</span>
-                        <span className={styles.chipName}>{p.name}</span>
-                        {p.isPremium && <span className={styles.premium}>Premium</span>}
-                      </button>
-                    )
-                  })}
+                {mealProducts.map((p) => {
+                  const active = effectiveMenu.menu.some((o) => o.productId === p.id && o.isActive)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={active ? styles.chipActive : styles.chip}
+                      onClick={() => handleToggleOffering(p.id, !active)}
+                    >
+                      <span className={styles.chipIcon}>{active ? '✓' : '+'}</span>
+                      <span className={styles.chipName}>{p.name}</span>
+                      {p.isPremium && <span className={styles.premium}>Premium</span>}
+                    </button>
+                  )
+                })}
               </div>
 
               <p className={styles.defaultMealHeader}>Default meal (if a passenger orders nothing)</p>
@@ -458,13 +453,13 @@ export function NetworkDefaultPage() {
                 value={effectiveMenu.defaultOfferingId ?? ''}
                 onChange={(e) => {
                   const off = effectiveMenu.menu.find((o) => o.id === e.target.value)
-                  const productId = off ? mockProducts.find((p) => p.id === off.productId)?.id : undefined
+                  const productId = off ? mealProducts.find((p) => p.id === off.productId)?.id : undefined
                   if (productId) handleSetDefault(productId)
                 }}
               >
                 {effectiveMenu.menu.length === 0 && <option value="">No meals offered</option>}
                 {effectiveMenu.menu.map((o) => {
-                  const p = mockProducts.find((mp) => mp.id === o.productId)
+                  const p = mealProducts.find((mp) => mp.id === o.productId)
                   return (
                     <option key={o.id} value={o.id}>
                       {p?.name ?? 'Unknown meal'}

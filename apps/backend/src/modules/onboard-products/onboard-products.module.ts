@@ -25,6 +25,7 @@ import { StockTransfersModule } from './stock-transfers/stock-transfers.module'
 import { AircraftStockModule } from './aircraft-stock/aircraft-stock.module'
 import { FlightReportModule } from './flight-report/flight-report.module'
 import { SalesModule } from './sales/sales.module'
+import { RoutesModule } from './routes/routes.module'
 
 @Global()
 @Module({
@@ -42,6 +43,7 @@ import { SalesModule } from './sales/sales.module'
     AircraftStockModule,
     SalesModule,
     FlightReportModule,
+    RoutesModule,
   ],
   providers: [
     SystemClock,

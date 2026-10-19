@@ -5,6 +5,7 @@
 // so they can be unit-tested without booting Nest.
 
 import { Injectable } from '@nestjs/common'
+import type { Prisma } from '../../../db/generated/prisma/client'
 import { DbService } from '../../../db/db.service'
 import { ApiErrorException } from '../common/api-error'
 import {
@@ -83,26 +84,85 @@ export class CabinSettingsService {
         cabin: input.cabin,
       },
     })
-    const data = {
-      scope: input.scope,
-      route_id: input.scope === 'route' ? (input.routeId ?? null) : null,
-      flight_id: input.scope === 'flight' ? (input.flightId ?? null) : null,
-      cabin: input.cabin,
-      meal_service: input.mealService ?? null,
-      meal_selection: input.mealSelection ?? null,
-      included_per_passenger: input.includedPerPassenger ?? null,
-      preorder_enabled: input.preorderEnabled ?? null,
-      order_window_hours: input.orderWindowHours ?? null,
-      premium_meals_allowed: input.premiumMealsAllowed ?? null,
-      snacks_enabled: input.snacksEnabled ?? null,
-      duty_free_enabled: input.dutyFreeEnabled ?? null,
-      onboard_buffer_percent: input.onboardBufferPercent ?? null,
-      updated_by_staff_id: staffId,
-    }
+    // For the network scope every setting column is required (the
+    // cabin_setting_check1 constraint refuses nulls there), so an
+    // update of a network row must preserve the existing values
+    // when the caller did not pass them. Route/flight scopes are
+    // genuinely partial, so null is a legal "inherit" sentinel.
+    const data = existing ? this.buildPatch(input, staffId, existing) : this.buildCreate(input, staffId)
     const row = existing
       ? await this.db.cabin_setting.update({ where: { id: existing.id }, data })
       : await this.db.cabin_setting.create({ data })
     return this.toDto(row)
+  }
+
+  // For the create path we still honour the "only set what was
+  // passed" rule, but every key must be present in the object so the
+  // network-scope nullability check passes.
+  private buildCreate(input: CabinSettingInput, staffId: string): Prisma.cabin_settingUncheckedCreateInput {
+    return {
+      scope: input.scope,
+      route_id: input.scope === 'route' ? (input.routeId ?? null) : null,
+      flight_id: input.scope === 'flight' ? (input.flightId ?? null) : null,
+      cabin: input.cabin,
+      meal_service: this.coalesceForCreate(input.scope, input.mealService, 'complimentary'),
+      meal_selection: this.coalesceForCreate(input.scope, input.mealSelection, 'choose'),
+      included_per_passenger: this.coalesceForCreate(input.scope, input.includedPerPassenger, 0),
+      preorder_enabled: this.coalesceForCreate(input.scope, input.preorderEnabled, false),
+      order_window_hours: this.coalesceForCreate(input.scope, input.orderWindowHours, 48),
+      premium_meals_allowed: this.coalesceForCreate(input.scope, input.premiumMealsAllowed, false),
+      snacks_enabled: this.coalesceForCreate(input.scope, input.snacksEnabled, true),
+      duty_free_enabled: this.coalesceForCreate(input.scope, input.dutyFreeEnabled, true),
+      onboard_buffer_percent: this.coalesceForCreate(input.scope, input.onboardBufferPercent, 10),
+      updated_by_staff_id: staffId,
+    }
+  }
+
+  private coalesceForCreate<T>(scope: string, value: T | null | undefined, fallback: T): T | null {
+    if (scope !== 'network') return value ?? null
+    return value ?? fallback
+  }
+
+  // For the patch path only the keys explicitly passed by the caller
+  // are written; the others keep their current value. This keeps the
+  // network-scope NOT NULL constraint satisfied.
+  private buildPatch(
+    input: CabinSettingInput,
+    staffId: string,
+    existing: {
+      meal_service: string | null
+      meal_selection: string | null
+      included_per_passenger: number | null
+      preorder_enabled: boolean | null
+      order_window_hours: number | null
+      premium_meals_allowed: boolean | null
+      snacks_enabled: boolean | null
+      duty_free_enabled: boolean | null
+      onboard_buffer_percent: number | null
+    },
+    // Prisma's strict create vs update input unions make typing this
+    // a distraction; the keys we set are valid in both directions.
+  ): any {
+    const data: Record<string, unknown> = { updated_by_staff_id: staffId }
+    if (input.mealService !== undefined) data.meal_service = input.mealService
+    else if (input.scope === 'network') data.meal_service = existing.meal_service ?? 'complimentary'
+    if (input.mealSelection !== undefined) data.meal_selection = input.mealSelection
+    else if (input.scope === 'network') data.meal_selection = existing.meal_selection ?? 'choose'
+    if (input.includedPerPassenger !== undefined) data.included_per_passenger = input.includedPerPassenger
+    else if (input.scope === 'network') data.included_per_passenger = existing.included_per_passenger ?? 0
+    if (input.preorderEnabled !== undefined) data.preorder_enabled = input.preorderEnabled
+    else if (input.scope === 'network') data.preorder_enabled = existing.preorder_enabled ?? false
+    if (input.orderWindowHours !== undefined) data.order_window_hours = input.orderWindowHours
+    else if (input.scope === 'network') data.order_window_hours = existing.order_window_hours ?? 48
+    if (input.premiumMealsAllowed !== undefined) data.premium_meals_allowed = input.premiumMealsAllowed
+    else if (input.scope === 'network') data.premium_meals_allowed = existing.premium_meals_allowed ?? false
+    if (input.snacksEnabled !== undefined) data.snacks_enabled = input.snacksEnabled
+    else if (input.scope === 'network') data.snacks_enabled = existing.snacks_enabled ?? true
+    if (input.dutyFreeEnabled !== undefined) data.duty_free_enabled = input.dutyFreeEnabled
+    else if (input.scope === 'network') data.duty_free_enabled = existing.duty_free_enabled ?? true
+    if (input.onboardBufferPercent !== undefined) data.onboard_buffer_percent = input.onboardBufferPercent
+    else if (input.scope === 'network') data.onboard_buffer_percent = existing.onboard_buffer_percent ?? 10
+    return data
   }
 
   // Resolves a single cabin for a single flight. Reads every

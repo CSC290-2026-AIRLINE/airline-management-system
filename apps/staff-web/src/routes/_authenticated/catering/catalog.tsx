@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { deleteProduct, listProducts, ProductInUseError, setProductActive } from '@staff-web/features/onboard-products/api/products'
+import { ProductInUseError, useOnboardApi } from '@staff-web/features/onboard-products/api'
 import type { Product, ProductCategory, SpecialMealCode } from '@staff-web/features/onboard-products/api/types'
 import {
   ConfirmDeleteDialog,
@@ -51,6 +51,7 @@ export const Route = createFileRoute('/_authenticated/catering/catalog')({
 })
 
 function CatalogPage() {
+  const api = useOnboardApi()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -65,7 +66,8 @@ function CatalogPage() {
 
   useEffect(() => {
     let cancelled = false
-    listProducts()
+    api.products
+      .list()
       .then((data) => {
         if (cancelled) return
         setProducts(data)
@@ -81,7 +83,7 @@ function CatalogPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [api])
 
   const stats = useMemo(() => {
     const premium = products.filter((p) => p.isPremium).length
@@ -102,7 +104,7 @@ function CatalogPage() {
 
   async function handleToggle(product: Product) {
     try {
-      const updated = await setProductActive(product.id, !product.isActive)
+      const updated = await api.products.setActive(product.id, !product.isActive)
       setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
       showToast(
         'success',
@@ -130,7 +132,7 @@ function CatalogPage() {
     setDeleteBusy(true)
     setDeleteError(null)
     try {
-      await deleteProduct(deleting.id)
+      await api.products.delete(deleting.id)
       setProducts((prev) => prev.filter((p) => p.id !== deleting.id))
       showToast('success', `Deleted ${deleting.name}.`)
       setDeleting(null)

@@ -41,6 +41,7 @@ const IDS = {
   route: {
     BKKNRT: id('d00000000001'),
     SINBKK: id('d00000000002'),
+    NRTBKK: id('d00000000003'),
   },
   fareClass: {
     ECON: id('e00000000001'),
@@ -51,20 +52,21 @@ const IDS = {
     F405: id('f00000000002'),
     F308: id('f00000000003'),
     F220: id('f00000000004'),
+    F309: id('f00000000005'),
   },
   product: {
-    P001: id('100000000001'), // Beef stir-fry (meal)
-    P002: id('100000000002'), // Braised beef with rice (meal, premium)
+    P001: id('100000000001'), // Beef stir-fry (meal, STD)
+    P002: id('100000000002'), // Wagyu steak (meal, STD, premium)
     P003: id('100000000003'), // Mushroom risotto (meal, VGML)
-    P004: id('100000000004'), // Cold brew coffee (beverage)
-    P005: id('100000000005'), // Sparkling water (beverage)
-    P006: id('100000000006'), // Orange juice (beverage)
-    P007: id('100000000007'), // Mixed nuts (snack)
-    P008: id('100000000008'), // Crisps (snack)
-    P009: id('100000000009'), // Dark chocolate (snack)
-    P010: id('100000000010'), // Perfume 50ml (duty_free)
-    P011: id('100000000011'), // Whisky mini (duty_free)
-    P012: id('100000000012'), // Headphone set (duty_free)
+    P004: id('100000000004'), // Halal chicken biryani (meal, MOML)
+    P005: id('100000000005'), // Kosher-style beef stew (meal, KSML)
+    P006: id('100000000006'), // Cold brew coffee (beverage)
+    P007: id('100000000007'), // Sparkling water 330ml (beverage)
+    P008: id('100000000008'), // Fresh orange juice 200ml (beverage)
+    P009: id('100000000009'), // Mixed nuts 30g (snack)
+    P010: id('100000000010'), // Sea-salt crisps 40g (snack)
+    P011: id('100000000011'), // Dark chocolate 70% 30g (snack)
+    P012: id('100000000012'), // Eau de parfum 50ml (duty_free)
   },
   warehouse: {
     WHBKK: id('200000000001'),
@@ -100,10 +102,12 @@ const IDS = {
     CO405: id('600000000002'),
     CO308: id('600000000003'),
     COOLD: id('600000000004'),
+    CO309: id('600000000005'),
   },
   stockTransfer: {
     ST401: id('700000000001'),
     ST308: id('700000000002'),
+    ST405: id('700000000003'),
   },
   flightReport: {
     FR401: id('800000000001'),
@@ -137,6 +141,60 @@ function daysFromNow(d: number): Date {
 
 function hoursFromNow(h: number): Date {
   return new Date(nowMs() + h * 60 * 60 * 1000)
+}
+
+// Idempotently write a stock_batch. If a row already exists with the
+// same id but a different product_id, drop the dependent rows that
+// would otherwise violate the composite (batch, product) FK, then
+// update the batch. The later stock_transfer / stock_transfer_line /
+// aircraft_stock sections of this seed recreate those rows with the
+// new product_id.
+async function upsertStockBatch(
+  prisma: PrismaClient,
+  b: {
+    id: string
+    purchase_receipt_id: string
+    warehouse_id: string
+    product_id: string
+    batch_code: string
+    quantity_received: number
+    quantity_remaining: number
+    unit_cost_amount: string
+    received_at: Date
+    expires_at: Date | null
+  },
+): Promise<void> {
+  const existing = await prisma.stock_batch.findUnique({ where: { id: b.id } })
+  if (!existing) {
+    await prisma.stock_batch.create({ data: b })
+    return
+  }
+  if (existing.product_id !== b.product_id) {
+    await prisma.stock_transfer_line.deleteMany({
+      where: { stock_batch_id: b.id, product_id: existing.product_id },
+    })
+    await prisma.aircraft_stock.deleteMany({
+      where: { stock_batch_id: b.id, product_id: existing.product_id },
+    })
+    await prisma.stock_movement.updateMany({
+      where: { stock_batch_id: b.id, product_id: existing.product_id },
+      data: { product_id: b.product_id },
+    })
+  }
+  await prisma.stock_batch.update({
+    where: { id: b.id },
+    data: {
+      product_id: b.product_id,
+      purchase_receipt_id: b.purchase_receipt_id,
+      warehouse_id: b.warehouse_id,
+      batch_code: b.batch_code,
+      quantity_received: b.quantity_received,
+      quantity_remaining: b.quantity_remaining,
+      unit_cost_amount: b.unit_cost_amount,
+      received_at: b.received_at,
+      expires_at: b.expires_at,
+    },
+  })
 }
 
 export async function seedF12(prisma: PrismaClient): Promise<void> {
@@ -259,6 +317,17 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       block_time_min: 130,
     },
   })
+  await prisma.route.upsert({
+    where: { origin_destination: { origin: 'NRT', destination: 'BKK' } } as never,
+    update: {},
+    create: {
+      id: IDS.route.NRTBKK,
+      origin: 'NRT',
+      destination: 'BKK',
+      distance_km: 4600,
+      block_time_min: 390,
+    },
+  })
 
   // --- Fare classes ------------------------------------------------------
   await prisma.fare_class.upsert({
@@ -283,18 +352,24 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   })
 
   // --- Flights -----------------------------------------------------------
-  // f-401: BKK → NRT, business, departs in +5h, aircraft FYA (B777)
-  // f-405: BKK → NRT, economy, departs in +10h, aircraft FYB (A320)
-  // f-308: BKK → NRT, economy, departs in +25h, aircraft FYA (B777)
+  // f-401: BKK → NRT, business, departs in +5h, aircraft FYB (B777)
+  // f-405: BKK → NRT, economy, departs in +10h, aircraft FYA (A320)
+  // f-309: NRT → BKK, business, departs in +20h, aircraft FYA (A320) — return leg
+  // f-308: BKK → NRT, economy, departs in +25h, aircraft FYB (B777)
+  // f-220: SIN → BKK, economy, departs in +48h, aircraft FYA (A320) — void test case
+  // f-309 starts at +20h so it does not overlap with f-405 (which lands
+  // at +16.5h on the same aircraft). The flight_timetable_no_aircraft
+  // _overlap exclusion constraint would reject an overlap.
   const f401Dep = hoursFromNow(5)
   const f405Dep = hoursFromNow(10)
+  const f309Dep = hoursFromNow(20)
   const f308Dep = hoursFromNow(25)
   const f220Dep = hoursFromNow(48) // SIN → BKK, void test case
   const addMinutes = (d: Date, m: number) => new Date(d.getTime() + m * 60_000)
   const flightSeed = [
     {
       id: IDS.flight.F401,
-      flight_number: 'FY401',
+      flight_number: 'FL401',
       service_date: new Date(f401Dep.toISOString().slice(0, 10)),
       route_id: IDS.route.BKKNRT,
       scheduled_dep_at: f401Dep,
@@ -306,7 +381,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     },
     {
       id: IDS.flight.F405,
-      flight_number: 'FY405',
+      flight_number: 'FL405',
       service_date: new Date(f405Dep.toISOString().slice(0, 10)),
       route_id: IDS.route.BKKNRT,
       scheduled_dep_at: f405Dep,
@@ -317,8 +392,20 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       status: 'scheduled' as const,
     },
     {
+      id: IDS.flight.F309,
+      flight_number: 'FL309',
+      service_date: new Date(f309Dep.toISOString().slice(0, 10)),
+      route_id: IDS.route.NRTBKK,
+      scheduled_dep_at: f309Dep,
+      scheduled_arr_at: addMinutes(f309Dep, 390),
+      dep_at: f309Dep,
+      arr_at: addMinutes(f309Dep, 390),
+      aircraft_id: IDS.aircraft.FYA,
+      status: 'scheduled' as const,
+    },
+    {
       id: IDS.flight.F308,
-      flight_number: 'FY308',
+      flight_number: 'FL308',
       service_date: new Date(f308Dep.toISOString().slice(0, 10)),
       route_id: IDS.route.BKKNRT,
       scheduled_dep_at: f308Dep,
@@ -330,7 +417,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     },
     {
       id: IDS.flight.F220,
-      flight_number: 'FY220',
+      flight_number: 'FL220',
       service_date: new Date(f220Dep.toISOString().slice(0, 10)),
       route_id: IDS.route.SINBKK,
       scheduled_dep_at: f220Dep,
@@ -356,6 +443,11 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   }
 
   // --- Products (12) -----------------------------------------------------
+  // Meals cover the 3 special-meal codes (VGML/MOML/KSML) plus one
+  // regular STD meal and one premium Wagyu STD meal. Beverages, snacks
+  // and a single duty-free perfume round out the catalog. Photos and
+  // descriptions are seeded as null for now (photo upload is a UI
+  // placeholder).
   const productSeed = [
     {
       id: IDS.product.P001,
@@ -371,12 +463,12 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     },
     {
       id: IDS.product.P002,
-      sku: 'MEAL-BEEF-002',
+      sku: 'MEAL-WAGYU-001',
       category: 'meal' as const,
       type_code: 'STD',
-      name: 'Braised beef short rib with potato gratin',
-      price: '18.00',
-      cost: '6.50',
+      name: 'Wagyu steak with truffle mash',
+      price: '28.00',
+      cost: '11.00',
       shelf: 2,
       premium: true,
       is_active: true,
@@ -395,6 +487,30 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     },
     {
       id: IDS.product.P004,
+      sku: 'MEAL-MOML-001',
+      category: 'meal' as const,
+      type_code: 'MOML',
+      name: 'Halal chicken biryani',
+      price: '13.00',
+      cost: '4.20',
+      shelf: 2,
+      premium: false,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P005,
+      sku: 'MEAL-KSML-001',
+      category: 'meal' as const,
+      type_code: 'KSML',
+      name: 'Kosher-style beef stew',
+      price: '14.00',
+      cost: '4.80',
+      shelf: 2,
+      premium: false,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P006,
       sku: 'BEV-COFFEE-001',
       category: 'beverage' as const,
       name: 'Cold brew coffee',
@@ -404,7 +520,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       is_active: true,
     },
     {
-      id: IDS.product.P005,
+      id: IDS.product.P007,
       sku: 'BEV-WATER-001',
       category: 'beverage' as const,
       name: 'Sparkling water 330ml',
@@ -414,7 +530,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       is_active: true,
     },
     {
-      id: IDS.product.P006,
+      id: IDS.product.P008,
       sku: 'BEV-OJ-001',
       category: 'beverage' as const,
       name: 'Fresh orange juice 200ml',
@@ -424,7 +540,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       is_active: true,
     },
     {
-      id: IDS.product.P007,
+      id: IDS.product.P009,
       sku: 'SNK-NUTS-001',
       category: 'snack' as const,
       name: 'Mixed nuts 30g',
@@ -434,7 +550,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       is_active: true,
     },
     {
-      id: IDS.product.P008,
+      id: IDS.product.P010,
       sku: 'SNK-CRISPS-001',
       category: 'snack' as const,
       name: 'Sea-salt crisps 40g',
@@ -444,7 +560,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       is_active: true,
     },
     {
-      id: IDS.product.P009,
+      id: IDS.product.P011,
       sku: 'SNK-CHOC-001',
       category: 'snack' as const,
       name: 'Dark chocolate 70% 30g',
@@ -454,7 +570,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       is_active: true,
     },
     {
-      id: IDS.product.P010,
+      id: IDS.product.P012,
       sku: 'DF-PERFUME-001',
       category: 'duty_free' as const,
       name: 'Eau de parfum 50ml',
@@ -463,31 +579,14 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       shelf: null,
       is_active: true,
     },
-    {
-      id: IDS.product.P011,
-      sku: 'DF-WHISKY-001',
-      category: 'duty_free' as const,
-      name: 'Single malt whisky 200ml',
-      price: '46.00',
-      cost: '18.00',
-      shelf: null,
-      is_active: true,
-    },
-    {
-      id: IDS.product.P012,
-      sku: 'DF-HEADPH-001',
-      category: 'duty_free' as const,
-      name: 'Noise-cancelling headphones',
-      price: '320.00',
-      cost: '120.00',
-      shelf: null,
-      is_active: true,
-    },
   ]
   for (const p of productSeed) {
     await prisma.product.upsert({
       where: { id: p.id },
       update: {
+        sku: p.sku,
+        category: p.category,
+        type_code: p.type_code ?? 'STD',
         name: p.name,
         price_amount: p.price,
         purchase_cost_amount: p.cost,
@@ -680,23 +779,19 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     },
   })
   // Batch 001: P001 expires in 1 day (about to expire)
-  await prisma.stock_batch.upsert({
-    where: { warehouse_id_product_id_batch_code: { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P001, batch_code: 'B001' } },
-    update: { quantity_remaining: 200, expires_at: daysFromNow(1) },
-    create: {
-      id: IDS.batch.B001,
-      purchase_receipt_id: IDS.receipt.R001,
-      warehouse_id: IDS.warehouse.WHBKK,
-      product_id: IDS.product.P001,
-      batch_code: 'B001',
-      quantity_received: 200,
-      quantity_remaining: 200,
-      unit_cost_amount: '4.00',
-      received_at: daysFromNow(-3),
-      expires_at: daysFromNow(1),
-    },
+  await upsertStockBatch(prisma, {
+    id: IDS.batch.B001,
+    purchase_receipt_id: IDS.receipt.R001,
+    warehouse_id: IDS.warehouse.WHBKK,
+    product_id: IDS.product.P001,
+    batch_code: 'B001',
+    quantity_received: 200,
+    quantity_remaining: 200,
+    unit_cost_amount: '4.00',
+    received_at: daysFromNow(-3),
+    expires_at: daysFromNow(1),
   })
-  // Receipt 2: P002, P004, P007 @ BKK
+  // Receipt 2: P002 (Wagyu), P006 (cold brew), P009 (mixed nuts) @ BKK
   await prisma.purchase_receipt.upsert({
     where: { id: IDS.receipt.R002 },
     update: {},
@@ -708,10 +803,8 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       received_by_staff_id: staffId,
     },
   })
-  await prisma.stock_batch.upsert({
-    where: { warehouse_id_product_id_batch_code: { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P002, batch_code: 'B002' } },
-    update: { quantity_remaining: 120 },
-    create: {
+  for (const b of [
+    {
       id: IDS.batch.B002,
       purchase_receipt_id: IDS.receipt.R002,
       warehouse_id: IDS.warehouse.WHBKK,
@@ -719,19 +812,15 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       batch_code: 'B002',
       quantity_received: 120,
       quantity_remaining: 120,
-      unit_cost_amount: '6.50',
+      unit_cost_amount: '11.00',
       received_at: daysFromNow(-1),
       expires_at: daysFromNow(1),
     },
-  })
-  await prisma.stock_batch.upsert({
-    where: { warehouse_id_product_id_batch_code: { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P004, batch_code: 'B003' } },
-    update: { quantity_remaining: 300 },
-    create: {
+    {
       id: IDS.batch.B003,
       purchase_receipt_id: IDS.receipt.R002,
       warehouse_id: IDS.warehouse.WHBKK,
-      product_id: IDS.product.P004,
+      product_id: IDS.product.P006,
       batch_code: 'B003',
       quantity_received: 300,
       quantity_remaining: 300,
@@ -739,15 +828,11 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       received_at: daysFromNow(-1),
       expires_at: daysFromNow(20),
     },
-  })
-  await prisma.stock_batch.upsert({
-    where: { warehouse_id_product_id_batch_code: { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P007, batch_code: 'B004' } },
-    update: { quantity_remaining: 250 },
-    create: {
+    {
       id: IDS.batch.B004,
       purchase_receipt_id: IDS.receipt.R002,
       warehouse_id: IDS.warehouse.WHBKK,
-      product_id: IDS.product.P007,
+      product_id: IDS.product.P009,
       batch_code: 'B004',
       quantity_received: 250,
       quantity_remaining: 250,
@@ -755,8 +840,10 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       received_at: daysFromNow(-1),
       expires_at: daysFromNow(150),
     },
-  })
-  // Receipt 3: P010, P011 @ BKK (duty-free, no expiry)
+  ]) {
+    await upsertStockBatch(prisma, b)
+  }
+  // Receipt 3: P012 (perfume) @ BKK (duty-free, no expiry)
   await prisma.purchase_receipt.upsert({
     where: { id: IDS.receipt.R003 },
     update: {},
@@ -768,39 +855,19 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       received_by_staff_id: staffId,
     },
   })
-  await prisma.stock_batch.upsert({
-    where: { warehouse_id_product_id_batch_code: { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P010, batch_code: 'B005' } },
-    update: { quantity_remaining: 50 },
-    create: {
-      id: IDS.batch.B005,
-      purchase_receipt_id: IDS.receipt.R003,
-      warehouse_id: IDS.warehouse.WHBKK,
-      product_id: IDS.product.P010,
-      batch_code: 'B005',
-      quantity_received: 50,
-      quantity_remaining: 50,
-      unit_cost_amount: '24.00',
-      received_at: daysFromNow(-7),
-      expires_at: null,
-    },
+  await upsertStockBatch(prisma, {
+    id: IDS.batch.B005,
+    purchase_receipt_id: IDS.receipt.R003,
+    warehouse_id: IDS.warehouse.WHBKK,
+    product_id: IDS.product.P012,
+    batch_code: 'B005',
+    quantity_received: 50,
+    quantity_remaining: 50,
+    unit_cost_amount: '24.00',
+    received_at: daysFromNow(-7),
+    expires_at: null,
   })
-  await prisma.stock_batch.upsert({
-    where: { warehouse_id_product_id_batch_code: { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P011, batch_code: 'B006' } },
-    update: { quantity_remaining: 60 },
-    create: {
-      id: IDS.batch.B006,
-      purchase_receipt_id: IDS.receipt.R003,
-      warehouse_id: IDS.warehouse.WHBKK,
-      product_id: IDS.product.P011,
-      batch_code: 'B006',
-      quantity_received: 60,
-      quantity_remaining: 60,
-      unit_cost_amount: '18.00',
-      received_at: daysFromNow(-7),
-      expires_at: null,
-    },
-  })
-  // Receipt 4: P005, P009 @ BKK (beverage, snack — long shelf life)
+  // Receipt 4: P007 (water), P011 (dark chocolate) @ BKK (beverage, snack — long shelf life)
   await prisma.purchase_receipt.upsert({
     where: { id: IDS.receipt.R004 },
     update: {},
@@ -812,49 +879,43 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       received_by_staff_id: staffId,
     },
   })
-  await prisma.stock_batch.upsert({
-    where: { warehouse_id_product_id_batch_code: { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P005, batch_code: 'B007' } },
-    update: { quantity_remaining: 400 },
-    create: {
-      id: IDS.batch.B007,
-      purchase_receipt_id: IDS.receipt.R004,
-      warehouse_id: IDS.warehouse.WHBKK,
-      product_id: IDS.product.P005,
-      batch_code: 'B007',
-      quantity_received: 400,
-      quantity_remaining: 400,
-      unit_cost_amount: '0.60',
-      received_at: daysFromNow(-5),
-      expires_at: daysFromNow(300),
-    },
+  await upsertStockBatch(prisma, {
+    id: IDS.batch.B007,
+    purchase_receipt_id: IDS.receipt.R004,
+    warehouse_id: IDS.warehouse.WHBKK,
+    product_id: IDS.product.P007,
+    batch_code: 'B007',
+    quantity_received: 400,
+    quantity_remaining: 400,
+    unit_cost_amount: '0.60',
+    received_at: daysFromNow(-5),
+    expires_at: daysFromNow(300),
   })
-  await prisma.stock_batch.upsert({
-    where: { warehouse_id_product_id_batch_code: { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P009, batch_code: 'B008' } },
-    update: { quantity_remaining: 180 },
-    create: {
-      id: IDS.batch.B008,
-      purchase_receipt_id: IDS.receipt.R004,
-      warehouse_id: IDS.warehouse.WHBKK,
-      product_id: IDS.product.P009,
-      batch_code: 'B008',
-      quantity_received: 180,
-      quantity_remaining: 180,
-      unit_cost_amount: '1.10',
-      received_at: daysFromNow(-5),
-      expires_at: daysFromNow(200),
-    },
+  await upsertStockBatch(prisma, {
+    id: IDS.batch.B008,
+    purchase_receipt_id: IDS.receipt.R004,
+    warehouse_id: IDS.warehouse.WHBKK,
+    product_id: IDS.product.P011,
+    batch_code: 'B008',
+    quantity_received: 180,
+    quantity_remaining: 180,
+    unit_cost_amount: '1.10',
+    received_at: daysFromNow(-5),
+    expires_at: daysFromNow(200),
   })
 
   // --- Warehouse stock (one row per warehouse×product we delivered) -----
+  // Drop any legacy rows first; the compound unique key would otherwise
+  // leave orphan rows with old product_ids sitting in the table.
+  await prisma.warehouse_stock.deleteMany({ where: { warehouse_id: IDS.warehouse.WHBKK } })
   const whStock = [
     { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P001, qty: 200 },
     { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P002, qty: 120 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P004, qty: 300 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P005, qty: 400 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P007, qty: 250 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P009, qty: 180 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P010, qty: 50 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P011, qty: 60 },
+    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P006, qty: 300 },
+    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P007, qty: 400 },
+    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P009, qty: 250 },
+    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P011, qty: 180 },
+    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P012, qty: 50 },
   ]
   for (const ws of whStock) {
     await prisma.warehouse_stock.upsert({
@@ -865,18 +926,19 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   }
 
   // --- Catering orders --------------------------------------------------
-  // co-401: business, generated
+  // co-401: business, loaded (transfer already on the aircraft)
   await prisma.catering_order.upsert({
     where: { id: IDS.cateringOrder.CO401 },
-    update: { status: 'generated' },
+    update: { status: 'loaded', loaded_at: hoursFromNow(-1) },
     create: {
       id: IDS.cateringOrder.CO401,
       flight_id: IDS.flight.F401,
       warehouse_id: IDS.warehouse.WHBKK,
-      status: 'generated',
+      status: 'loaded',
       cutoff_at: hoursFromNow(1),
       generated_at: daysFromNow(-1),
       generated_by_staff_id: staffId,
+      loaded_at: hoursFromNow(-1),
     },
   })
   // co-405: economy, loaded (ready to be loaded from a transfer)
@@ -923,13 +985,27 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       generated_at: daysFromNow(-2),
     },
   })
+  // co-309: business, generated (FL309 NRT-BKK, no transfer yet)
+  await prisma.catering_order.upsert({
+    where: { id: IDS.cateringOrder.CO309 },
+    update: { status: 'generated' },
+    create: {
+      id: IDS.cateringOrder.CO309,
+      flight_id: IDS.flight.F309,
+      warehouse_id: IDS.warehouse.WHNRT,
+      status: 'generated',
+      cutoff_at: hoursFromNow(8),
+      generated_at: daysFromNow(-1),
+      generated_by_staff_id: staffId,
+    },
+  })
 
   // Catering order lines (one per cabin+product for f-401 business)
   for (const line of [
     { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P001, qty: 40, source: 'order' as const },
-    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P002, qty: 30, source: 'order' as const },
-    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P004, qty: 80, source: 'order' as const },
-    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P009, qty: 60, source: 'order' as const },
+    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P002, qty: 20, source: 'order' as const },
+    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P006, qty: 80, source: 'order' as const },
+    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P011, qty: 60, source: 'order' as const },
   ]) {
     const existing = await prisma.catering_order_line.findFirst({
       where: { catering_order_id: line.catering_order_id, cabin: line.cabin, product_id: line.product_id, source: line.source },
@@ -952,7 +1028,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   }
 
   // --- Stock transfers + aircraft stock ----------------------------------
-  // Transfer for f-401: 30 P002 + 60 P009 + 40 P001
+  // Transfer for f-401: 20 P002 (Wagyu) + 60 P011 (chocolate) + 40 P001 (beef stir-fry)
   await prisma.stock_transfer.upsert({
     where: { id: IDS.stockTransfer.ST401 },
     update: {},
@@ -966,8 +1042,8 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     },
   })
   for (const tl of [
-    { stock_transfer_id: IDS.stockTransfer.ST401, product_id: IDS.product.P002, batch_id: IDS.batch.B002, qty: 30 },
-    { stock_transfer_id: IDS.stockTransfer.ST401, product_id: IDS.product.P009, batch_id: IDS.batch.B008, qty: 60 },
+    { stock_transfer_id: IDS.stockTransfer.ST401, product_id: IDS.product.P002, batch_id: IDS.batch.B002, qty: 20 },
+    { stock_transfer_id: IDS.stockTransfer.ST401, product_id: IDS.product.P011, batch_id: IDS.batch.B008, qty: 60 },
     { stock_transfer_id: IDS.stockTransfer.ST401, product_id: IDS.product.P001, batch_id: IDS.batch.B001, qty: 40 },
   ]) {
     const existingLine = await prisma.stock_transfer_line.findFirst({
@@ -993,7 +1069,49 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     })
   }
 
-  // Transfer for f-308: 20 P005 + 50 P009
+  // Transfer for f-405: 30 P007 (water) + 40 P011 (chocolate) on aircraft FYA
+  // (CO405 is loaded; this puts a few lines on FYA so the Flight Report
+  // page can show f-405 in the reportable picker.)
+  await prisma.stock_transfer.upsert({
+    where: { id: IDS.stockTransfer.ST405 },
+    update: {},
+    create: {
+      id: IDS.stockTransfer.ST405,
+      flight_id: IDS.flight.F405,
+      aircraft_id: IDS.aircraft.FYA,
+      warehouse_id: IDS.warehouse.WHBKK,
+      transferred_at: hoursFromNow(-1),
+      staff_id: staffId,
+    },
+  })
+  for (const tl of [
+    { stock_transfer_id: IDS.stockTransfer.ST405, product_id: IDS.product.P007, batch_id: IDS.batch.B007, qty: 30 },
+    { stock_transfer_id: IDS.stockTransfer.ST405, product_id: IDS.product.P011, batch_id: IDS.batch.B008, qty: 40 },
+  ]) {
+    const existingLine = await prisma.stock_transfer_line.findFirst({
+      where: { stock_transfer_id: tl.stock_transfer_id, product_id: tl.product_id, stock_batch_id: tl.batch_id },
+    })
+    if (existingLine) {
+      await prisma.stock_transfer_line.update({ where: { id: existingLine.id }, data: { quantity: tl.qty } })
+    } else {
+      await prisma.stock_transfer_line.create({
+        data: {
+          id: ruid(),
+          stock_transfer_id: tl.stock_transfer_id,
+          product_id: tl.product_id,
+          stock_batch_id: tl.batch_id,
+          quantity: tl.qty,
+        },
+      })
+    }
+    await prisma.aircraft_stock.upsert({
+      where: { aircraft_id_stock_batch_id: { aircraft_id: IDS.aircraft.FYA, stock_batch_id: tl.batch_id } },
+      update: { quantity: tl.qty },
+      create: { aircraft_id: IDS.aircraft.FYA, product_id: tl.product_id, stock_batch_id: tl.batch_id, quantity: tl.qty },
+    })
+  }
+
+  // Transfer for f-308: 20 P007 (water) + 50 P011 (chocolate) on aircraft FYB
   await prisma.stock_transfer.upsert({
     where: { id: IDS.stockTransfer.ST308 },
     update: {},
@@ -1007,8 +1125,8 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     },
   })
   for (const tl of [
-    { stock_transfer_id: IDS.stockTransfer.ST308, product_id: IDS.product.P005, batch_id: IDS.batch.B007, qty: 20 },
-    { stock_transfer_id: IDS.stockTransfer.ST308, product_id: IDS.product.P009, batch_id: IDS.batch.B008, qty: 50 },
+    { stock_transfer_id: IDS.stockTransfer.ST308, product_id: IDS.product.P007, batch_id: IDS.batch.B007, qty: 20 },
+    { stock_transfer_id: IDS.stockTransfer.ST308, product_id: IDS.product.P011, batch_id: IDS.batch.B008, qty: 50 },
   ]) {
     const existingLine = await prisma.stock_transfer_line.findFirst({
       where: { stock_transfer_id: tl.stock_transfer_id, product_id: tl.product_id, stock_batch_id: tl.batch_id },
@@ -1047,8 +1165,8 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   })
   for (const rl of [
     { product_id: IDS.product.P001, initial: 40, served: 35, sold: 0, wasted: 2, damaged: 0 },
-    { product_id: IDS.product.P002, initial: 30, served: 25, sold: 0, wasted: 1, damaged: 0 },
-    { product_id: IDS.product.P009, initial: 60, served: 0, sold: 0, wasted: 0, damaged: 0 },
+    { product_id: IDS.product.P002, initial: 20, served: 16, sold: 0, wasted: 1, damaged: 0 },
+    { product_id: IDS.product.P011, initial: 60, served: 0, sold: 0, wasted: 0, damaged: 0 },
   ]) {
     const remaining = rl.initial - rl.served - rl.sold - rl.wasted - rl.damaged
     const existingLine = await prisma.flight_report_line.findFirst({
@@ -1076,16 +1194,14 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     }
   }
 
-  // --- On-board product sales (3 rows for f-401) -----------------------
+  // --- On-board product sales (2 rows for f-401: perfume + chocolate) -
+  // payment_id must be a UUID. Build a deterministic one from the
+  // product_id so the upsert stays idempotent.
   for (const s of [
-    { flight_id: IDS.flight.F401, product_id: IDS.product.P010, qty: 2, price: '78.00', total: '156.00', currency: 'USD' },
-    { flight_id: IDS.flight.F401, product_id: IDS.product.P011, qty: 3, price: '46.00', total: '138.00', currency: 'USD' },
-    { flight_id: IDS.flight.F401, product_id: IDS.product.P009, qty: 5, price: '4.00', total: '20.00', currency: 'USD' },
+    { flight_id: IDS.flight.F401, product_id: IDS.product.P012, qty: 2, price: '78.00', total: '156.00', currency: 'USD' },
+    { flight_id: IDS.flight.F401, product_id: IDS.product.P011, qty: 5, price: '4.00', total: '20.00', currency: 'USD' },
   ]) {
-    // product_sale unique on (payment_id, product_id). We pick a
-    // deterministic payment_id per (flight, product) so the second
-    // run is idempotent.
-    const paymentId = ruid()
+    const paymentId = `00000000-0000-0000-0000-f4010000${s.product_id.slice(-4)}`
     const existingSale = await prisma.product_sale.findFirst({
       where: { flight_id: s.flight_id, product_id: s.product_id, payment_id: paymentId },
     })
@@ -1118,17 +1234,18 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   const customerId = customer.id
   for (const po of [
     { id: IDS.productOrder.PO1, status: 'pending_payment' as const, total: '18.00', payment: null },
-    { id: IDS.productOrder.PO2, status: 'confirmed' as const, total: '46.00', payment: ruid() },
+    { id: IDS.productOrder.PO2, status: 'confirmed' as const, total: '46.00', payment: '00000000-0000-0000-0000-0000000000a2' },
     { id: IDS.productOrder.PO3, status: 'cancelled' as const, total: '12.50', payment: null },
     { id: IDS.productOrder.PO4, status: 'expired' as const, total: '4.50', payment: null },
   ]) {
+    const bookingId = `00000000-0000-0000-0000-beef0000000${po.id.slice(-1)}`
     await prisma.product_order.upsert({
       where: { id: po.id },
       update: { status: po.status },
       create: {
         id: po.id,
         customer_id: customerId,
-        booking_id: ruid(),
+        booking_id: bookingId,
         flight_id: IDS.flight.F401,
         cabin: 'business',
         status: po.status,

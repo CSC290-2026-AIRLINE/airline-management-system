@@ -1,8 +1,18 @@
-// Barrel for the onboard-products api layer. Real pages import from here.
+// Barrel for the F12 staff-web api layer. Real pages import the
+// `useOnboardApi` hook and the typed errors from here.
 
 export * from './types'
-export * as productsApi from './products'
-export * as offeringsApi from './offerings'
-export * as ordersApi from './orders'
-export * as stockApi from './stock'
-export * as flightReportApi from './flight-report'
+export { ApiError, NetworkError } from './client'
+export {
+  ProductApiError,
+  ImageInvalidError,
+  ProductInUseError,
+  StockApiError,
+  CateringApiError,
+  OfferingsApiError,
+  SettingInvalidError,
+  MealPolicyInvalidError,
+  FlightReportApiError,
+  asApiError,
+} from './errors'
+export { useOnboardApi, type OnboardApi } from './useOnboardApi'

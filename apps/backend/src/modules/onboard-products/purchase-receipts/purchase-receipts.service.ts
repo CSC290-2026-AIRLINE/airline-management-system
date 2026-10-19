@@ -121,7 +121,11 @@ export class PurchaseReceiptsService {
       })
       for (const line of input.lines) {
         const product = productMap.get(line.productId)!
-        await tx.stock_batch.create({
+        // Create the batch first so the movement can point to it.
+        // stock_movement is append-only (a trigger raises
+        // "stock_movement is append-only" on UPDATE), so the row has
+        // to be written once with the right stock_batch_id.
+        const batch = await tx.stock_batch.create({
           data: {
             purchase_receipt_id: receipt.id,
             warehouse_id: input.warehouseId,
@@ -149,7 +153,7 @@ export class PurchaseReceiptsService {
           data: {
             product_id: line.productId,
             warehouse_id: input.warehouseId,
-            stock_batch_id: undefined, // set after batch create; we re-use the create result below
+            stock_batch_id: batch.id,
             type: 'receive',
             quantity: line.quantity,
             reason: null,
@@ -157,22 +161,6 @@ export class PurchaseReceiptsService {
             created_by_staff_id: staffId,
             occurred_at: receivedAt,
           },
-        })
-        // Re-do the movement so the stock_batch_id is filled. Pull the
-        // latest batch row (id is uuid, fresh each create).
-        const latestBatch = await tx.stock_batch.findFirstOrThrow({
-          where: { purchase_receipt_id: receipt.id, product_id: line.productId, batch_code: line.batchCode },
-          orderBy: { received_at: 'desc' },
-        })
-        await tx.stock_movement.updateMany({
-          where: {
-            warehouse_id: input.warehouseId,
-            product_id: line.productId,
-            type: 'receive',
-            stock_batch_id: null,
-            occurred_at: receivedAt,
-          },
-          data: { stock_batch_id: latestBatch.id },
         })
         void product // mark used
       }

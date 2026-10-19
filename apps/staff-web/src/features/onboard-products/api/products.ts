@@ -1,125 +1,91 @@
-// API for the product catalog. Mirrors /staff/products.
-//
-// The mock layer keeps an in-memory store keyed by id. Adds, edits, toggles and
-// deletes persist while the user navigates between pages, and reset on page
-// reload. When the real backend lands, replace each function body with a
-// fetchWithAuth call to the matching route -- the public signatures match the
-// spec so the page does not change.
+// Products API: real backend wiring. Each function is a thin wrapper
+// around `ApiClient` calls, with input mapping (UI → wire) and output
+// mapping (wire → UI) in `mappers.ts`. Typed errors come from
+// `errors.ts` and surface the spec code to the pages.
 
-import { delay } from '../mocks/delay'
-import { mockProducts } from '../mocks/products'
-import type { Product, ProductInput } from './types'
+import { useMemo } from 'react'
+import { useAppAuth } from '@staff-web/auth/AuthProvider'
+import { ApiClient, ApiError, type ApiFetch } from './client'
+import { ImageInvalidError, ProductApiError, ProductInUseError } from './errors'
+import { mapProduct, toProductDraft, type ProductDraftInput } from './mappers'
+import type { Product } from './types'
 
-// Module-level mutable store. Cloned so callers can't mutate it by reference.
-const store: Product[] = mockProducts.map((p) => ({ ...p, dietaryAttributes: [...p.dietaryAttributes] }))
-
-function snapshot(): Product[] {
-  return store.map((p) => ({ ...p, dietaryAttributes: [...p.dietaryAttributes] }))
+export interface ProductsApi {
+  list: () => Promise<Product[]>
+  get: (id: string) => Promise<Product | null>
+  create: (input: ProductDraftInput) => Promise<Product>
+  update: (id: string, input: ProductDraftInput) => Promise<Product>
+  delete: (id: string) => Promise<void>
+  setActive: (id: string, isActive: boolean) => Promise<Product>
 }
 
-function nextId(): string {
-  return `p-${String(store.length + 1).padStart(3, '0')}-${Date.now().toString(36)}`
-}
-
-// -- Typed errors -------------------------------------------------------------
-// These mirror the spec's `{ error: { code, message } }` envelope so swapping
-// in the real backend is a one-file change.
-
-export class ProductApiError extends Error {
-  readonly code: string
-  constructor(code: string, message: string) {
-    super(message)
-    this.code = code
-    this.name = 'ProductApiError'
+function rethrow(err: unknown, fallback: ProductApiError): never {
+  if (err instanceof ProductApiError) throw err
+  if (err instanceof ApiError) {
+    if (err.code === 'IMAGE_INVALID') throw new ImageInvalidError(err.message, err.details)
+    if (err.code === 'PRODUCT_IN_USE') throw new ProductInUseError(err.message, err.details)
+    throw new ProductApiError(err.code, err.message, err.status, err.details)
   }
+  throw fallback
 }
 
-export class ImageInvalidError extends ProductApiError {
-  constructor(message = 'Photo must be JPEG, PNG or WebP and at most 5 MB.') {
-    super('IMAGE_INVALID', message)
-    this.name = 'ImageInvalidError'
-  }
-}
-
-export class ProductInUseError extends ProductApiError {
-  constructor(message = 'This product has stock or open orders, so it cannot be deleted.') {
-    super('PRODUCT_IN_USE', message)
-    this.name = 'ProductInUseError'
-  }
-}
-
-// -- Read ---------------------------------------------------------------------
-
-export async function listProducts(): Promise<Product[]> {
-  await delay()
-  return snapshot()
-}
-
-export async function getProduct(id: string): Promise<Product | null> {
-  await delay()
-  const found = store.find((p) => p.id === id)
-  return found ? { ...found, dietaryAttributes: [...found.dietaryAttributes] } : null
-}
-
-// -- Mutations ----------------------------------------------------------------
-
-function toEntity(input: ProductInput, prev?: Product): Product {
-  // The photo's data URL is stored as the imageKey for the mock; the real backend
-  // would replace it with an object-storage key after resize.
-  const imageKey = input.photo ? input.photo.dataUrl : (prev?.imageKey ?? null)
+export function createProductsApi(client: ApiClient): ProductsApi {
   return {
-    id: prev?.id ?? nextId(),
-    sku: input.sku.trim(),
-    name: input.name.trim(),
-    category: input.category,
-    typeCode: input.typeCode,
-    dietaryAttributes: [...input.dietaryAttributes],
-    priceAmount: input.priceAmount,
-    purchaseCostAmount: input.purchaseCostAmount,
-    shelfLifeDays: input.category === 'duty_free' ? null : input.shelfLifeDays,
-    isPremium: input.isPremium,
-    isActive: input.isActive,
-    imageKey,
-    description: prev?.description ?? null,
+    async list() {
+      try {
+        const wire = await client.get<unknown[]>('/api/staff/products')
+        return (wire ?? []).map((w) => mapProduct(w as never))
+      } catch (err) {
+        rethrow(err, new ProductApiError('UNKNOWN', err instanceof Error ? err.message : 'Could not load products.', 0))
+      }
+    },
+    async get(id) {
+      try {
+        const wire = await client.get<unknown>(`/api/staff/products/${id}`)
+        return wire ? mapProduct(wire as never) : null
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null
+        rethrow(err, new ProductApiError('NOT_FOUND', 'Product not found.', 0))
+      }
+    },
+    async create(input) {
+      try {
+        const body = await client.put<{ product: unknown }>('/api/staff/products', toProductDraft(input))
+        return mapProduct(body.product as never)
+      } catch (err) {
+        rethrow(err, new ProductApiError('UNKNOWN', 'Could not save the product.', 0))
+      }
+    },
+    async update(id, input) {
+      try {
+        const body = await client.put<{ product: unknown }>(`/api/staff/products/${id}`, toProductDraft(input))
+        return mapProduct(body.product as never)
+      } catch (err) {
+        rethrow(err, new ProductApiError('UNKNOWN', 'Could not save the product.', 0))
+      }
+    },
+    async delete(id) {
+      try {
+        await client.delete(`/api/staff/products/${id}`)
+      } catch (err) {
+        rethrow(err, new ProductApiError('UNKNOWN', 'Could not delete the product.', 0))
+      }
+    },
+    async setActive(id, isActive) {
+      try {
+        const body = await client.put<{ product: unknown }>(`/api/staff/products/${id}`, { isActive })
+        return mapProduct(body.product as never)
+      } catch (err) {
+        rethrow(err, new ProductApiError('UNKNOWN', 'Could not change the status.', 0))
+      }
+    },
   }
 }
 
-export async function createProduct(input: ProductInput): Promise<Product> {
-  await delay()
-  const created = toEntity(input)
-  store.push(created)
-  return { ...created, dietaryAttributes: [...created.dietaryAttributes] }
-}
+// Re-exports so the page can keep its named imports working.
+export { ImageInvalidError, ProductApiError, ProductInUseError }
 
-export async function updateProduct(id: string, input: ProductInput): Promise<Product> {
-  await delay()
-  const idx = store.findIndex((p) => p.id === id)
-  if (idx === -1) {
-    throw new ProductApiError('NOT_FOUND', 'Product not found.')
-  }
-  const updated = toEntity(input, store[idx])
-  store[idx] = updated
-  return { ...updated, dietaryAttributes: [...updated.dietaryAttributes] }
-}
-
-export async function deleteProduct(id: string): Promise<void> {
-  await delay()
-  const idx = store.findIndex((p) => p.id === id)
-  if (idx === -1) {
-    throw new ProductApiError('NOT_FOUND', 'Product not found.')
-  }
-  if (store[idx].isInUse) {
-    throw new ProductInUseError()
-  }
-  store.splice(idx, 1)
-}
-
-export async function setProductActive(id: string, isActive: boolean): Promise<Product> {
-  await delay()
-  const idx = store.findIndex((p) => p.id === id)
-  if (idx === -1) {
-    throw new ProductApiError('NOT_FOUND', 'Product not found.')
-  }
-  store[idx] = { ...store[idx], isActive }
-  return { ...store[idx], dietaryAttributes: [...store[idx].dietaryAttributes] }
+export function useProductsApi(): ProductsApi {
+  const { fetchWithAuth } = useAppAuth()
+  return useMemo(() => createProductsApi(new ApiClient(fetchWithAuth as ApiFetch)), [fetchWithAuth])
 }

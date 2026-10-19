@@ -8,21 +8,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearch } from '@tanstack/react-router'
-import {
-  createFlightSaleApi,
-  deleteFlightSaleApi,
-  FlightReportApiError,
-  getFlightReport,
-  listFlightSales,
-  listReportableFlights,
-  submitFlightReportApi,
-  updateFlightSaleApi,
-  type ReportableFlight,
-} from '@staff-web/features/onboard-products/api/flight-report'
-import { snapshotAircraftStock } from '@staff-web/features/onboard-products/mocks/stock'
-import { mockProducts } from '@staff-web/features/onboard-products/mocks/products'
+import { useOnboardApi } from '@staff-web/features/onboard-products/api'
+import { FlightReportApiError } from '@staff-web/features/onboard-products/api/errors'
 import { Toast, useDialogFocusTrap, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
-import type { FlightReport, Product, ProductSale, ProductCategory } from '@staff-web/features/onboard-products/api/types'
+import type { FlightReport, Product, ProductCategory, ProductSale } from '@staff-web/features/onboard-products/api/types'
+import type { ReportableFlight } from '@staff-web/features/onboard-products/api/flight-report'
 import styles from './FlightReportPage.module.css'
 
 // -- helpers --------------------------------------------------------------
@@ -69,8 +59,8 @@ function parseNonNegativeNumber(s: string): number {
   return n
 }
 
-function getProductPrice(productId: string): number {
-  return mockProducts.find((p) => p.id === productId)?.priceAmount ?? 0
+function getProductPrice(products: Product[], productId: string): number {
+  return products.find((p) => p.id === productId)?.priceAmount ?? 0
 }
 
 // What the completion rules will do with the leftover stock for a
@@ -81,16 +71,7 @@ interface AfterFlight {
   detail: string
 }
 
-const NOW_ISO = '2026-10-08T09:00:00Z'
-
-function computeAfterFlight(productId: string, initial: number): AfterFlight {
-  const product: Product | undefined = mockProducts.find((p) => p.id === productId)
-  const category = product?.category ?? 'meal'
-  // We don't have access to the aircraft rows from here; just use the
-  // category rule and the initial to render the preview. The "valid
-  // batch" detail for snacks is best-effort: assume the batch is valid
-  // when the row was seeded (which is the case for all 3 reportable
-  // flights since their batches were just received).
+function computeAfterFlight(category: ProductCategory, initial: number): AfterFlight {
   if (category === 'meal') {
     return {
       text: `Discarded: aircraft stock becomes 0 (${formatQuantity(initial)} thrown away)`,
@@ -99,8 +80,6 @@ function computeAfterFlight(productId: string, initial: number): AfterFlight {
     }
   }
   if (category === 'snack') {
-    // Assume batch is valid for the prototype seed; the actual stock
-    // state is checked on submit.
     return {
       text: `Carried over: ${formatQuantity(initial)} stay on board while the batch is valid`,
       kind: 'carried',
@@ -128,9 +107,13 @@ interface UsageRow {
   after: AfterFlight
 }
 
-function buildUsageRows(_flightId: string, aircraftId: string, sales: ProductSale[], report: FlightReport | null): UsageRow[] {
+function buildUsageRows(
+  products: Product[],
+  aircraftRows: Array<{ productId: string; quantity: number }>,
+  sales: ProductSale[],
+  report: FlightReport | null,
+): UsageRow[] {
   const rows: UsageRow[] = []
-  const aircraftRows = snapshotAircraftStock(aircraftId)
   const byProduct = new Map<string, number>()
   for (const r of aircraftRows) {
     byProduct.set(r.productId, (byProduct.get(r.productId) ?? 0) + r.quantity)
@@ -140,7 +123,7 @@ function buildUsageRows(_flightId: string, aircraftId: string, sales: ProductSal
     soldByProduct.set(s.productId, (soldByProduct.get(s.productId) ?? 0) + s.quantity)
   }
   for (const [productId, initial] of byProduct) {
-    const product = mockProducts.find((p) => p.id === productId)
+    const product = products.find((p) => p.id === productId)
     if (!product) continue
     const saved = report?.lines.find((l) => l.productId === productId)
     const sold = soldByProduct.get(productId) ?? 0
@@ -154,7 +137,7 @@ function buildUsageRows(_flightId: string, aircraftId: string, sales: ProductSal
       served: saved?.served ?? 0,
       wasted: saved?.wasted ?? 0,
       damaged: saved?.damaged ?? 0,
-      after: computeAfterFlight(productId, initialClamped),
+      after: computeAfterFlight(product.category, initialClamped),
     })
   }
   // Sort: meals first, then snack, beverage, duty-free, then by name.
@@ -180,12 +163,14 @@ function emptyInputs(rows: UsageRow[]): Record<string, { served: string; wasted:
 
 export function FlightReportPage() {
   const search = useSearch({ from: '/_authenticated/catering/flight-report' }) as { flightId?: string }
+  const api = useOnboardApi()
 
   const [flights, setFlights] = useState<ReportableFlight[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [aircraftId, setAircraftId] = useState<string | null>(null)
   const [report, setReport] = useState<FlightReport | null>(null)
   const [sales, setSales] = useState<ProductSale[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [rows, setRows] = useState<UsageRow[]>([])
   const [inputs, setInputs] = useState<Record<string, { served: string; wasted: string; damaged: string }>>({})
   const [loading, setLoading] = useState(true)
@@ -221,7 +206,8 @@ export function FlightReportPage() {
   // Initial load: list reportable flights, preselect from URL or first.
   useEffect(() => {
     let cancelled = false
-    listReportableFlights()
+    api.flightReport
+      .listReportableFlights()
       .then(async (data) => {
         if (cancelled) return
         setFlights(data)
@@ -240,25 +226,45 @@ export function FlightReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only set once on mount
   }, [])
 
+  // Load products once. Used by `getProductPrice` and category lookups.
+  useEffect(() => {
+    let cancelled = false
+    api.products
+      .list()
+      .then((data) => {
+        if (cancelled) return
+        setProducts(data)
+      })
+      .catch(() => {
+        // Non-fatal: prices and categories fall back to zero/'meal'.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [api])
+
   // Load the selected flight's report + sales + aircraft stock.
   useEffect(() => {
     if (selectedId == null) return
     let cancelled = false
     setLoading(true)
-    Promise.all([getFlightReport(selectedId), listFlightSales(selectedId)])
-      .then(async ([reportData, salesData]) => {
+    const flight = flights.find((f) => f.id === selectedId)
+    const aId = flight?.aircraftId ?? null
+    setAircraftId(aId)
+    Promise.all([
+      api.flightReport.getFlightReport(selectedId),
+      api.flightReport.listFlightSales(selectedId),
+      aId != null
+        ? api.flightReport.getAircraftStock(aId).then((rows) => rows.map((r) => ({ productId: r.productId, quantity: r.quantity })))
+        : Promise.resolve([] as Array<{ productId: string; quantity: number }>),
+    ])
+      .then(async ([reportData, salesData, stockData]) => {
         if (cancelled) return
         setReport(reportData)
         setSales(salesData)
-        const flight = flights.find((f) => f.id === selectedId)
-        const aId = flight?.aircraftId ?? null
-        setAircraftId(aId)
-        if (aId != null) {
-          // Re-render the rows now that we have the data.
-          const built = buildUsageRows(selectedId, aId, salesData, reportData)
-          setRows(built)
-          setInputs(emptyInputs(built))
-        }
+        const built = buildUsageRows(products, stockData, salesData, reportData)
+        setRows(built)
+        setInputs(emptyInputs(built))
         setLoading(false)
       })
       .catch((err: unknown) => {
@@ -270,22 +276,26 @@ export function FlightReportPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedId, flights])
+  }, [selectedId, flights, api, products])
 
   async function refreshAfterMutation() {
     if (selectedId == null) return
-    const [reportData, salesData] = await Promise.all([getFlightReport(selectedId), listFlightSales(selectedId)])
+    const [reportData, salesData, stockData] = await Promise.all([
+      api.flightReport.getFlightReport(selectedId),
+      api.flightReport.listFlightSales(selectedId),
+      aircraftId != null
+        ? api.flightReport.getAircraftStock(aircraftId).then((rows) => rows.map((r) => ({ productId: r.productId, quantity: r.quantity })))
+        : Promise.resolve([] as Array<{ productId: string; quantity: number }>),
+    ])
     setReport(reportData)
     setSales(salesData)
-    if (aircraftId != null) {
-      const built = buildUsageRows(selectedId, aircraftId, salesData, reportData)
-      setRows(built)
-      setInputs(emptyInputs(built))
-    }
+    const built = buildUsageRows(products, stockData, salesData, reportData)
+    setRows(built)
+    setInputs(emptyInputs(built))
   }
 
   async function handleRefreshFlights() {
-    const data = await listReportableFlights()
+    const data = await api.flightReport.listReportableFlights()
     setFlights(data)
   }
 
@@ -307,7 +317,7 @@ export function FlightReportPage() {
   }
 
   async function handleSubmit() {
-    if (selectedId == null || aircraftId == null) return
+    if (selectedId == null) return
     setBusy(true)
     try {
       const lines = rows.map((r) => ({
@@ -316,7 +326,7 @@ export function FlightReportPage() {
         wasted: parseNonNegativeInt(inputs[r.productId]?.wasted ?? '0'),
         damaged: parseNonNegativeInt(inputs[r.productId]?.damaged ?? '0'),
       }))
-      const result = await submitFlightReportApi({ flightId: selectedId, lines })
+      const result = await api.flightReport.submitFlightReportApi({ flightId: selectedId, lines })
       setReport(result)
       showToast('success', 'Report submitted. Aircraft stock is updated and the catering order is closed.')
       await refreshAfterMutation()
@@ -342,7 +352,7 @@ export function FlightReportPage() {
     setEditingSale(null)
     setRecordProductId(first.productId)
     setRecordQty('1')
-    setRecordUnitPrice(String(getProductPrice(first.productId)))
+    setRecordUnitPrice(String(getProductPrice(products, first.productId)))
     setRecordError(null)
     setRecordOpen(true)
   }
@@ -376,10 +386,10 @@ export function FlightReportPage() {
         return
       }
       if (editingSale) {
-        await updateFlightSaleApi(editingSale.id, { quantity: qty, unitPriceAmount: unitPrice })
+        await api.flightReport.updateFlightSaleApi(editingSale.id, { quantity: qty, unitPriceAmount: unitPrice })
         showToast('success', 'Sale updated.')
       } else {
-        await createFlightSaleApi({
+        await api.flightReport.createFlightSaleApi({
           flightId: selectedId,
           productId: recordProductId,
           quantity: qty,
@@ -407,7 +417,7 @@ export function FlightReportPage() {
     const id = confirmDelete.id
     setConfirmDelete(null)
     try {
-      await deleteFlightSaleApi(id)
+      await api.flightReport.deleteFlightSaleApi(id)
       showToast('success', 'Sale removed.')
       await refreshAfterMutation()
     } catch (err) {
@@ -676,7 +686,7 @@ export function FlightReportPage() {
                     </button>
                   </>
                 ) : (
-                  <span className={styles.submittedBadge}>Submitted · {formatDateTime(report?.submittedAt ?? NOW_ISO)}</span>
+                  <span className={styles.submittedBadge}>Submitted · {report?.submittedAt ? formatDateTime(report.submittedAt) : ''}</span>
                 )}
               </div>
             </>

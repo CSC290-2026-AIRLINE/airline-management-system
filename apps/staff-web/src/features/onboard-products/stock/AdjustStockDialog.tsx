@@ -5,7 +5,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useDialogFocusTrap } from '../catalog/useDialogFocusTrap'
-import { createStockMovement, StockApiError } from '../api/stock'
+import { StockApiError, useOnboardApi } from '../api'
 import type { AdjustStockInput, StockMovementReason, WarehouseStockRow } from '../api/types'
 import styles from './AdjustStockDialog.module.css'
 
@@ -24,6 +24,7 @@ interface Props {
 }
 
 export function AdjustStockDialog({ row, onClose, onSaved, onError }: Props) {
+  const api = useOnboardApi()
   const headingId = useId()
   const dialogRef = useRef<HTMLDivElement | null>(null)
   useDialogFocusTrap(true, dialogRef, onClose)
@@ -78,7 +79,7 @@ export function AdjustStockDialog({ row, onClose, onSaved, onError }: Props) {
         reason: reason as NonNullable<StockMovementReason>,
         note: note.trim() === '' ? null : note.trim(),
       }
-      await createStockMovement(input)
+      await api.stock.createStockMovement(input)
       onSaved(`Removed ${input.quantity} of ${row.productName}.`)
     } catch (err) {
       if (err instanceof StockApiError) {

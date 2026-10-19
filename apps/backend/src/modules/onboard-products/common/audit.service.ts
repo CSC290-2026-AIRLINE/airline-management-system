@@ -38,7 +38,12 @@ export class AuditService implements AuditPort {
         actor_id: input.actorId,
         actor_role: input.actorRole,
         source_feature: input.sourceFeature,
-        action: input.action,
+        // The audit_log action column is constrained to a small enum
+        // owned by the Auth/Audit team. F12 writes its own
+        // entity-qualified action ("purchase_receipt.create",
+        // "stock_movement.adjust", ...) which we map onto the closest
+        // allowed verb here.
+        action: mapAction(input.action),
         entity_type: input.entityType,
         entity_id: input.entityId,
         summary: input.summary,
@@ -47,4 +52,27 @@ export class AuditService implements AuditPort {
       },
     })
   }
+}
+
+// Map an F12 action to the closest audit_log action enum value. The
+// entity is already recorded separately in entity_type, so collapsing
+// the dotted form onto the verb is safe.
+function mapAction(action: string): string {
+  const verb = action.split('.').pop() ?? action
+  if (verb === 'create' || verb === 'update' || verb === 'delete' || verb === 'view_sensitive') {
+    return verb
+  }
+  if (
+    verb === 'refresh' ||
+    verb === 'load' ||
+    verb === 'close' ||
+    verb === 'void' ||
+    verb === 'submit' ||
+    verb === 'write_off_expired' ||
+    verb === 'to_aircraft' ||
+    verb === 'adjust'
+  ) {
+    return 'update'
+  }
+  return 'update'
 }

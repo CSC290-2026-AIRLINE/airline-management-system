@@ -5,20 +5,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import {
-  bulkOffer,
-  bulkWithdraw,
-  clearFlightException,
-  getNetworkDefault,
-  getOfferedMenu,
-  listFlightExceptions,
-  listRoutes,
-} from '@staff-web/features/onboard-products/api/offerings'
-import { mockProducts } from '@staff-web/features/onboard-products/mocks/products'
+import { useOnboardApi } from '@staff-web/features/onboard-products/api'
 import type {
   Cabin,
   CabinSetting,
   FlightException,
+  Product,
   ProductOffering,
   RouteFilter,
   RouteSummary,
@@ -27,8 +19,6 @@ import { resolveCabinSettings } from '@staff-web/features/onboard-products/offer
 import { ConfirmDialog } from '@staff-web/features/onboard-products/offered-menu/ConfirmDialog'
 import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
 import styles from './OfferedMenuPage.module.css'
-
-const MEAL_PRODUCTS = mockProducts.filter((p) => p.category === 'meal')
 
 const PAGE_SIZE = 15
 
@@ -66,6 +56,9 @@ function summariseCabin(
 
 export function OfferedMenuPage() {
   const navigate = useNavigate()
+  const api = useOnboardApi()
+  const [mealProducts, setMealProducts] = useState<Product[]>([])
+  const [allProducts, setAllProducts] = useState<Product[]>([])
   const [network, setNetwork] = useState<{ cabinSettings: CabinSetting[]; offerings: ProductOffering[] } | null>(null)
   const [routeRows, setRouteRows] = useState<{ total: number; totalCustomized: number; routes: RouteSummary[] } | null>(null)
   const [exceptions, setExceptions] = useState<FlightException[]>([])
@@ -98,12 +91,14 @@ export function OfferedMenuPage() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([getNetworkDefault(), getOfferedMenu()])
-      .then(([net, menu]) => {
+    Promise.all([api.offerings.getNetworkDefault(), api.offerings.getOfferedMenu(), api.products.list()])
+      .then(([net, menu, productsData]) => {
         if (cancelled) return
         setNetwork(net)
         setExceptions(menu.flightExceptions)
         setExceptionTotal(menu.flightExceptions.length)
+        setAllProducts(productsData)
+        setMealProducts(productsData.filter((p) => p.category === 'meal'))
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -116,7 +111,7 @@ export function OfferedMenuPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [api])
 
   const filter: RouteFilter = useMemo(
     () => ({
@@ -131,7 +126,8 @@ export function OfferedMenuPage() {
 
   useEffect(() => {
     let cancelled = false
-    listRoutes(filter)
+    api.offerings
+      .listRoutes(filter)
       .then((data) => {
         if (cancelled) return
         setRouteRows(data)
@@ -144,11 +140,12 @@ export function OfferedMenuPage() {
     return () => {
       cancelled = true
     }
-  }, [filter])
+  }, [filter, api])
 
   useEffect(() => {
     let cancelled = false
-    listFlightExceptions({ search: exceptionSearch })
+    api.offerings
+      .listFlightExceptions({ search: exceptionSearch })
       .then((data) => {
         if (cancelled) return
         setExceptions(data.exceptions)
@@ -161,7 +158,7 @@ export function OfferedMenuPage() {
     return () => {
       cancelled = true
     }
-  }, [exceptionSearch])
+  }, [exceptionSearch, api])
 
   const visibleRoutes = useMemo(() => {
     if (!routeRows) return []
@@ -186,7 +183,7 @@ export function OfferedMenuPage() {
   }
 
   async function refreshRoutes() {
-    const data = await listRoutes(filter)
+    const data = await api.offerings.listRoutes(filter)
     setRouteRows(data)
   }
 
@@ -197,8 +194,11 @@ export function OfferedMenuPage() {
     }
     setBusy(true)
     try {
-      const result = kind === 'offer' ? await bulkOffer(filter, bulkMealId, bulkCabin) : await bulkWithdraw(filter, bulkMealId, bulkCabin)
-      const meal = mockProducts.find((p) => p.id === bulkMealId)
+      const result =
+        kind === 'offer'
+          ? await api.offerings.bulkOffer(filter, bulkMealId, bulkCabin)
+          : await api.offerings.bulkWithdraw(filter, bulkMealId, bulkCabin)
+      const meal = allProducts.find((p) => p.id === bulkMealId)
       const skip = result.skippedRoutes > 0 ? `, ${result.skippedRoutes} skipped` : ''
       if (kind === 'offer') {
         showToast('success', `Offered ${meal?.name ?? 'meal'} on ${result.affectedRoutes} routes (${cabinLabel(bulkCabin)})${skip}.`)
@@ -218,10 +218,10 @@ export function OfferedMenuPage() {
     if (!clearingException) return
     setBusy(true)
     try {
-      await clearFlightException(clearingException.id)
+      await api.offerings.clearFlightException(clearingException.id)
       showToast('success', `Cleared ${clearingException.flightNumber} exception.`)
       setClearingException(null)
-      const data = await listFlightExceptions({ search: exceptionSearch })
+      const data = await api.offerings.listFlightExceptions({ search: exceptionSearch })
       setExceptions(data.exceptions)
       setExceptionTotal(data.total)
     } catch (err) {
@@ -320,7 +320,7 @@ export function OfferedMenuPage() {
             <span className={styles.filterLabel}>Offers meal</span>
             <select className={styles.filterInput} value={mealFilter} onChange={(e) => setMealFilter(e.target.value)}>
               <option value="">Any meal</option>
-              {MEAL_PRODUCTS.map((p) => (
+              {mealProducts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
@@ -365,7 +365,7 @@ export function OfferedMenuPage() {
           <div className={styles.bulkControls}>
             <select className={styles.filterInput} value={bulkMealId} onChange={(e) => setBulkMealId(e.target.value)}>
               <option value="">Pick a meal</option>
-              {MEAL_PRODUCTS.map((p) => (
+              {mealProducts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
@@ -584,10 +584,10 @@ export function OfferedMenuPage() {
           body={
             bulkConfirm.kind === 'offer'
               ? `This adds ${
-                  mockProducts.find((p) => p.id === bulkMealId)?.name ?? 'the meal'
+                  allProducts.find((p) => p.id === bulkMealId)?.name ?? 'the meal'
                 } to the ${cabinLabel(bulkCabin)} menu of every route matching the current filters (${routeRows.routes.length} routes), not only the current page. Routes with a custom menu are included.`
               : `This removes ${
-                  mockProducts.find((p) => p.id === bulkMealId)?.name ?? 'the meal'
+                  allProducts.find((p) => p.id === bulkMealId)?.name ?? 'the meal'
                 } from the ${cabinLabel(bulkCabin)} menu of every route matching the current filters (${routeRows.routes.length} routes).`
           }
           confirmLabel={bulkConfirm.kind === 'offer' ? 'Offer' : 'Withdraw'}

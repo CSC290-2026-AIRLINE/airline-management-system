@@ -37,14 +37,13 @@ export interface Product {
   isActive: boolean
   imageKey: string | null
   dietaryAttributes: DietaryAttribute[]
-  // Mock-only flag: true when the product has stock or open orders, so the
-  // backend would refuse DELETE with PRODUCT_IN_USE. Remove when wiring the
-  // real backend (the real error comes back over the wire).
+  // Backend flag: true when the product has stock or open orders, so
+  // DELETE returns PRODUCT_IN_USE.
   isInUse?: boolean
 }
 
-// A locally-staged photo. The mock store keeps the data URL so the page
-// can preview it; the real backend stores the resized image under imageKey.
+// A locally-staged photo. The data URL is held in form state so the
+// page can preview it; the backend stores the resized image under imageKey.
 export interface ProductPhoto {
   dataUrl: string
   fileName: string

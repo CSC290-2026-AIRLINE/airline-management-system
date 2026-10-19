@@ -6,8 +6,8 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useDialogFocusTrap } from '../catalog/useDialogFocusTrap'
-import { createProduct, ProductApiError } from '../api/products'
-import { addDays } from '../mocks/clock'
+import { ProductApiError, useOnboardApi } from '../api'
+import { addDays } from '../dates'
 import type { Product, ProductCategory, ProductInput } from '../api/types'
 import styles from './AddProductDialog.module.css'
 
@@ -64,6 +64,7 @@ interface Props {
 export function AddProductDialog({ onClose, onSaved, onError }: Props) {
   const dialogRef = useRef<HTMLDivElement | null>(null)
   const headingId = useId()
+  const api = useOnboardApi()
   useDialogFocusTrap(true, dialogRef, onClose)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [errors, setErrors] = useState<FormErrors>({})
@@ -121,7 +122,7 @@ export function AddProductDialog({ onClose, onSaved, onError }: Props) {
     }
     setSubmitting(true)
     try {
-      const created = await createProduct(input)
+      const created = await api.products.create(input)
       onSaved(created)
     } catch (err) {
       if (err instanceof ProductApiError) {

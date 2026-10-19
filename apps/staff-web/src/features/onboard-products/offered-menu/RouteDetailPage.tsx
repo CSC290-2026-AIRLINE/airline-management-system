@@ -6,25 +6,17 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import {
-  createProductOffering,
-  getRouteDetail,
-  listFlightExceptions,
-  putCabinSettings,
-  resetCabinSettingsToInherited,
-  updateProductOffering,
-  type ProductOfferingInput,
-} from '@staff-web/features/onboard-products/api/offerings'
-import { mockRoutes } from '@staff-web/features/onboard-products/mocks/offerings'
+import { useOnboardApi } from '@staff-web/features/onboard-products/api'
 import type {
   Cabin,
   CabinSetting,
   FlightException,
+  Product,
   ProductOffering,
   RouteDetail,
+  RouteSummary,
   SettingPatch,
 } from '@staff-web/features/onboard-products/api/types'
-import { mockProducts } from '@staff-web/features/onboard-products/mocks/products'
 import { resolveMenu } from '@staff-web/features/onboard-products/offered-menu/resolve'
 import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
 import { SegmentedControl } from './SegmentedControl'
@@ -105,10 +97,13 @@ export function RouteDetailPage() {
   const search = useSearch({ from: '/_authenticated/catering/offered-menu/$routeId' })
   const routeId = params.routeId
   const navigate = useNavigate()
+  const api = useOnboardApi()
   const [detail, setDetail] = useState<RouteDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [allExceptions, setAllExceptions] = useState<FlightException[]>([])
+  const [allRoutes, setAllRoutes] = useState<RouteSummary[]>([])
+  const [mealProducts, setMealProducts] = useState<Product[]>([])
   // Initial mode follows the URL: ?flight=... preselects Single flight mode.
   const [mode, setMode] = useState<Mode>(search.flight ? 'flight' : 'route')
   const [flightId, setFlightId] = useState<string | null>(null)
@@ -126,11 +121,11 @@ export function RouteDetailPage() {
 
   useEffect(() => {
     let cancelled = false
-    getRouteDetail(routeId)
-      .then((d) => {
+    Promise.all([api.offerings.getRouteDetail(routeId), api.products.list()])
+      .then(([d, products]) => {
         if (cancelled) return
         setDetail(d)
-        // Honor the ?flight=… search param first; otherwise default to the first flight.
+        setMealProducts(products.filter((p) => p.category === 'meal'))
         const wanted = search.flight && d.flights.some((f) => f.id === search.flight) ? search.flight : (d.flights[0]?.id ?? null)
         setFlightId(wanted)
       })
@@ -145,15 +140,19 @@ export function RouteDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [routeId, search.flight])
+  }, [routeId, search.flight, api])
 
   // Load every flight exception so the Single-flight picker can show all of them.
   useEffect(() => {
     let cancelled = false
-    listFlightExceptions({ search: '' })
-      .then((d) => {
+    Promise.all([
+      api.offerings.listFlightExceptions({ search: '' }),
+      api.offerings.listRoutes({ search: '', cabin: 'all', mealProductId: null, mealService: 'all', status: 'all' }),
+    ])
+      .then(([d, r]) => {
         if (cancelled) return
         setAllExceptions(d.exceptions)
+        setAllRoutes(r.routes)
       })
       .catch(() => {
         /* ignore — the picker will fall back to this route's flights */
@@ -161,7 +160,7 @@ export function RouteDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [api])
 
   // Active setting row (the one to edit) — depends on mode + cabin.
   const activeRow = useMemo<CabinSetting | null>(() => {
@@ -189,12 +188,12 @@ export function RouteDetailPage() {
     if (mode === 'flight' && flightId && detail) {
       const ex = allExceptions.find((e) => e.id === flightId) ?? detail.flights.find((f) => f.id === flightId)
       if (ex) {
-        const m = mockRoutes.find((r) => r.id === ex.routeId)
+        const m = allRoutes.find((r) => r.id === ex.routeId)
         if (m) return m
       }
     }
     return detail?.route ?? null
-  }, [mode, flightId, allExceptions, detail])
+  }, [mode, flightId, allExceptions, allRoutes, detail])
 
   // Initialize the draft when the active row or cabin changes. (Sync setState
   // is intentional here — the draft mirrors an external source.)
@@ -265,7 +264,7 @@ export function RouteDetailPage() {
     }
     setSaving(true)
     try {
-      const result = await putCabinSettings(
+      const result = await api.offerings.putCabinSettings(
         isNetwork ? 'network' : mode,
         isNetwork ? null : routeId,
         mode === 'flight' ? flightId : null,
@@ -276,8 +275,7 @@ export function RouteDetailPage() {
         'success',
         `Saved ${cabinLabel(cabin)} settings.${result.affectedOpenOrders > 0 ? ` ${result.affectedOpenOrders} open orders updated.` : ''}`,
       )
-      // Reload the detail to reflect merged state.
-      const fresh = await getRouteDetail(routeId)
+      const fresh = await api.offerings.getRouteDetail(routeId)
       setDetail(fresh)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not save.'
@@ -300,9 +298,9 @@ export function RouteDetailPage() {
     if (mode === 'flight' && !flightId) return
     setSaving(true)
     try {
-      await resetCabinSettingsToInherited(mode, mode === 'route' ? routeId : null, mode === 'flight' ? flightId : null, cabin)
+      await api.offerings.resetCabinSettingsToInherited(mode, mode === 'route' ? routeId : null, mode === 'flight' ? flightId : null, cabin)
       showToast('success', `${cabinLabel(cabin)} reset to inherited.`)
-      const fresh = await getRouteDetail(routeId)
+      const fresh = await api.offerings.getRouteDetail(routeId)
       setDetail(fresh)
     } catch (err) {
       showToast('error', err instanceof Error ? err.message : 'Could not reset.')
@@ -323,7 +321,7 @@ export function RouteDetailPage() {
       if (existing) {
         nextOfferings = d.offerings.map((o) => (o.id === existing.id ? { ...o, isActive } : o))
       } else {
-        const input: ProductOfferingInput = {
+        const input: Omit<ProductOffering, 'id'> = {
           productId,
           scope: isNetwork ? 'network' : mode,
           routeId: isNetwork ? null : routeId,
@@ -341,8 +339,8 @@ export function RouteDetailPage() {
       (o) => o.productId === productId && o.cabin === cabin && matchesScope(o, mode, routeId, flightId),
     )
     const work = existing
-      ? updateProductOffering(existing.id, { isActive })
-      : createProductOffering({
+      ? api.offerings.updateProductOffering(existing.id, { isActive })
+      : api.offerings.createProductOffering({
           productId,
           scope: isNetwork ? 'network' : mode,
           routeId: isNetwork ? null : routeId,
@@ -353,7 +351,7 @@ export function RouteDetailPage() {
         })
 
     work
-      .then(() => getRouteDetail(routeId))
+      .then(() => api.offerings.getRouteDetail(routeId))
       .then((fresh) => setDetail(fresh))
       .catch((err: unknown) => {
         setDetail((d) => {
@@ -379,8 +377,9 @@ export function RouteDetailPage() {
 
     const existing = effectiveMenu.menu.find((o) => o.productId === productId)
     if (!existing) return
-    updateProductOffering(existing.id, { isDefault: true, isActive: true })
-      .then(() => getRouteDetail(routeId))
+    api.offerings
+      .updateProductOffering(existing.id, { isDefault: true, isActive: true })
+      .then(() => api.offerings.getRouteDetail(routeId))
       .then((fresh) => setDetail(fresh))
       .catch((err: unknown) => {
         showToast('error', err instanceof Error ? err.message : 'Could not change the default meal.')
@@ -394,7 +393,7 @@ export function RouteDetailPage() {
     const m = resolveMenu(detail.offerings, c, mode === 'route' ? routeId : null, mode === 'flight' ? flightId : null)
     if (m.menu.length === 0) return '0 meals · no menu set'
     const def = m.menu.find((o) => o.id === m.defaultOfferingId)
-    const defName = def ? mockProducts.find((p) => p.id === def.productId)?.name : null
+    const defName = def ? mealProducts.find((p) => p.id === def.productId)?.name : null
     return defName ? `${m.menu.length} meals · default ${defName}` : `${m.menu.length} meals · standard menu`
   }
 
@@ -652,26 +651,24 @@ export function RouteDetailPage() {
               <p className={styles.menuSubtitle}>
                 {effectiveMenu.menu.length === 0
                   ? 'No menu for this cabin — turn meals on below to add them.'
-                  : `${effectiveMenu.menu.length} of ${mockProducts.filter((p) => p.category === 'meal').length} meals offered. Tap a meal to offer or withdraw it.`}
+                  : `${effectiveMenu.menu.length} of ${mealProducts.length} meals offered. Tap a meal to offer or withdraw it.`}
               </p>
               <div className={styles.chips}>
-                {mockProducts
-                  .filter((p) => p.category === 'meal')
-                  .map((p) => {
-                    const active = effectiveMenu.menu.some((o) => o.productId === p.id && o.isActive)
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={active ? styles.chipActive : styles.chip}
-                        onClick={() => handleToggleOffering(p.id, !active)}
-                      >
-                        <span className={styles.chipIcon}>{active ? '✓' : '+'}</span>
-                        <span className={styles.chipName}>{p.name}</span>
-                        {p.isPremium && <span className={styles.premium}>Premium</span>}
-                      </button>
-                    )
-                  })}
+                {mealProducts.map((p) => {
+                  const active = effectiveMenu.menu.some((o) => o.productId === p.id && o.isActive)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={active ? styles.chipActive : styles.chip}
+                      onClick={() => handleToggleOffering(p.id, !active)}
+                    >
+                      <span className={styles.chipIcon}>{active ? '✓' : '+'}</span>
+                      <span className={styles.chipName}>{p.name}</span>
+                      {p.isPremium && <span className={styles.premium}>Premium</span>}
+                    </button>
+                  )
+                })}
               </div>
 
               <p className={styles.defaultMealHeader}>Default meal (if a passenger orders nothing)</p>
@@ -679,7 +676,7 @@ export function RouteDetailPage() {
                 className={styles.defaultMealSelect}
                 value={effectiveMenu.defaultOfferingId ?? ''}
                 onChange={(e) => {
-                  const productId = mockProducts.find(
+                  const productId = mealProducts.find(
                     (p) => p.id === effectiveMenu.menu.find((o) => o.id === e.target.value)?.productId,
                   )?.id
                   if (productId) handleSetDefault(productId)
@@ -687,7 +684,7 @@ export function RouteDetailPage() {
               >
                 {effectiveMenu.menu.length === 0 && <option value="">No meals offered</option>}
                 {effectiveMenu.menu.map((o) => {
-                  const p = mockProducts.find((mp) => mp.id === o.productId)
+                  const p = mealProducts.find((mp) => mp.id === o.productId)
                   return (
                     <option key={o.id} value={o.id}>
                       {p?.name ?? 'Unknown meal'}

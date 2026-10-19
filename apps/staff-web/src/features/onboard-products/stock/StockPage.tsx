@@ -4,21 +4,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import {
-  createWarehouse,
-  deleteWarehouse,
-  listStockBatches,
-  listStockMovements,
-  listWarehouses,
-  listWarehouseStock,
-  StockApiError,
-  updateWarehouse,
-} from '@staff-web/features/onboard-products/api/stock'
-import { mockProducts } from '@staff-web/features/onboard-products/mocks/products'
+import { StockApiError, useOnboardApi } from '@staff-web/features/onboard-products/api'
 import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
 import { AdjustStockDialog } from './AdjustStockDialog'
 import { ManageListDialog, type ManageListItem } from './ManageListDialog'
-import type { StockBatch, StockMovement, Warehouse, WarehouseStockRow } from '@staff-web/features/onboard-products/api/types'
+import type { Product, StockBatch, StockMovement, Warehouse, WarehouseStockRow } from '@staff-web/features/onboard-products/api/types'
 import styles from './StockPage.module.css'
 
 function nextToastId(): number {
@@ -59,7 +49,10 @@ function reasonLabel(reason: StockMovement['reason']): string {
 // delivery) into a single number for the row. We weight by the quantity
 // each batch still holds, so a row with 80 units at $4 and 20 units at $5
 // shows $4.20 as the unit cost and $436 as the total cost.
-function summarizeBatches(batches: StockBatch[], productId: string): { unitCost: number; totalCost: number } | null {
+function summarizeBatches(batches: StockBatch[], productId: string, _products: Product[]): { unitCost: number; totalCost: number } | null {
+  // Roll up the per-batch unit cost into a single number for the row. Weighted
+  // by the quantity each batch still holds.
+  void _products
   const matching = batches.filter((b) => b.productId === productId && b.quantityRemaining > 0)
   if (matching.length === 0) return null
   let totalQty = 0
@@ -75,6 +68,13 @@ function summarizeBatches(batches: StockBatch[], productId: string): { unitCost:
 export function StockPage() {
   const navigate = useNavigate()
   const search = useSearch({ from: '/_authenticated/catering/stock/' })
+  const api = useOnboardApi()
+  // Products are loaded once and reused so the warehouse stock rows can
+  // resolve product names; useOnboardApi re-creates a stock api that
+  // needs the product list to derive names. Pass a stable ref.
+  const [products, setProducts] = useState<Product[]>([])
+  const productsRef = () => products
+  const stockApi = useOnboardApi(productsRef).stock
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [stock, setStock] = useState<WarehouseStockRow[]>([])
   const [batches, setBatches] = useState<StockBatch[]>([])
@@ -91,14 +91,31 @@ export function StockPage() {
     setToast({ id: nextToastId(), kind, message })
   }
 
+  // Load products once for the warehouse stock derivation.
+  useEffect(() => {
+    let cancelled = false
+    api.products
+      .list()
+      .then((data) => {
+        if (cancelled) return
+        setProducts(data)
+      })
+      .catch(() => {
+        /* surfaced through other loads; non-fatal */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [api])
+
   // Load warehouses once.
   useEffect(() => {
     let cancelled = false
-    listWarehouses()
+    stockApi
+      .listWarehouses()
       .then((data) => {
         if (cancelled) return
         setWarehouses(data)
-        // ?airport=BKK preselects that airport's warehouse.
         if (data.length > 0) {
           const initial = search.airport != null ? (data.find((w) => w.code === search.airport) ?? data[0]) : data[0]
           setWarehouseId(initial.id)
@@ -118,7 +135,11 @@ export function StockPage() {
   useEffect(() => {
     if (warehouseId == null) return
     let cancelled = false
-    Promise.all([listWarehouseStock(warehouseId), listStockBatches({ warehouseId }), listStockMovements({ warehouseId })])
+    Promise.all([
+      stockApi.listWarehouseStock(warehouseId),
+      stockApi.listStockBatches({ warehouseId }),
+      stockApi.listStockMovements({ warehouseId }),
+    ])
       .then(([stockData, batchData, movementData]) => {
         if (cancelled) return
         setStock(stockData)
@@ -134,15 +155,15 @@ export function StockPage() {
     return () => {
       cancelled = true
     }
-  }, [warehouseId])
+  }, [warehouseId, stockApi])
 
   // Re-load everything after a mutation.
   async function refresh() {
     if (warehouseId == null) return
     const [stockData, batchData, movementData] = await Promise.all([
-      listWarehouseStock(warehouseId),
-      listStockBatches({ warehouseId }),
-      listStockMovements({ warehouseId }),
+      stockApi.listWarehouseStock(warehouseId),
+      stockApi.listStockBatches({ warehouseId }),
+      stockApi.listStockMovements({ warehouseId }),
     ])
     setStock(stockData)
     setBatches(batchData)
@@ -150,7 +171,7 @@ export function StockPage() {
   }
 
   async function refreshWarehouses() {
-    const data = await listWarehouses()
+    const data = await stockApi.listWarehouses()
     setWarehouses(data)
     if (data.length > 0) {
       const stillThere = data.find((w) => w.id === warehouseId)
@@ -165,11 +186,9 @@ export function StockPage() {
     setManageBusy(true)
     try {
       const code = input.secondary === '' ? input.name : input.secondary
-      await createWarehouse({ code, name: input.name, airportCode: code })
+      await stockApi.createWarehouse({ code, name: input.name, airportCode: code })
       const data = await refreshWarehouses()
       showToast('success', `Added ${code} to the airport list.`)
-      // If a stock row was being viewed for the deleted warehouse,
-      // refreshWarehouses already switched to the first available.
       void data
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not add the airport.'
@@ -184,7 +203,7 @@ export function StockPage() {
     setManageBusy(true)
     try {
       const code = input.secondary === '' ? input.name : input.secondary
-      await updateWarehouse(id, { code, name: input.name, airportCode: code })
+      await stockApi.updateWarehouse(id, { code, name: input.name, airportCode: code })
       await refreshWarehouses()
       showToast('success', `Updated airport details.`)
     } catch (err) {
@@ -199,13 +218,12 @@ export function StockPage() {
   async function handleDeleteAirport(id: string) {
     setManageBusy(true)
     try {
-      await deleteWarehouse(id)
+      await stockApi.deleteWarehouse(id)
       await refreshWarehouses()
       showToast('success', 'Removed the airport.')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not remove the airport.'
       if (err instanceof StockApiError) {
-        // The dialog shows the error inline; rethrow so the dialog can keep it open.
         throw err
       }
       showToast('error', message)
@@ -355,7 +373,7 @@ export function StockPage() {
                     // number to staff; the Reorder badge already flags them.
                     const available = Math.max(0, rawAvailable)
                     const low = rawAvailable < row.reorderLevel
-                    const summary = summarizeBatches(batches, row.productId)
+                    const summary = summarizeBatches(batches, row.productId, products)
                     return (
                       <tr key={row.id} className={styles.row}>
                         <td className={styles.tdItem}>
@@ -394,7 +412,7 @@ export function StockPage() {
                   .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
                   .slice(0, 12)
                   .map((m) => {
-                    const product = mockProducts.find((p) => p.id === m.productId)
+                    const product = products.find((p) => p.id === m.productId)
                     return (
                       <div key={m.id} className={styles.movementRow}>
                         <span

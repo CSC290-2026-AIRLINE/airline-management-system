@@ -7,19 +7,17 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import {
-  CateringApiError2,
-  closeCateringOrderApi,
-  createStockTransfer,
-  getCateringOrder,
-  listCateringOrders,
-  markCateringOrderLoadedApi,
-  refreshCateringOrderApi,
-} from '@staff-web/features/onboard-products/api/orders'
-import { inWarehouse } from '@staff-web/features/onboard-products/api/orders'
-import { mockWarehouses } from '@staff-web/features/onboard-products/mocks/stock'
+import { CateringApiError, useOnboardApi } from '@staff-web/features/onboard-products/api'
 import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
-import type { Cabin, CateringOrder, CateringOrderLine, Flight, FlightCateringStatus } from '@staff-web/features/onboard-products/api/types'
+import type {
+  Cabin,
+  CateringOrder,
+  CateringOrderLine,
+  Flight,
+  FlightCateringStatus,
+  StockBatch,
+  Warehouse,
+} from '@staff-web/features/onboard-products/api/types'
 import styles from './CateringOrdersPage.module.css'
 
 // -- helpers ---------------------------------------------------------------
@@ -119,12 +117,13 @@ function groupByCabin(lines: CateringOrderLine[]): { cabin: Cabin | 'all'; lines
 
 export function CateringOrdersPage() {
   const navigate = useNavigate()
-  // The route declares the search shape: { flightId?: string }.
-  // If a flight is selected, the search param sticks to it across reloads.
   const search = useSearch({ from: '/_authenticated/catering/orders' }) as { flightId?: string }
+  const api = useOnboardApi()
 
   const [flights, setFlights] = useState<Flight[]>([])
   const [orders, setOrders] = useState<Record<string, CateringOrder | null>>({})
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
+  const [batches, setBatches] = useState<StockBatch[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -142,16 +141,22 @@ export function CateringOrdersPage() {
   // Initial load: list flights, preselect the first (or the one in the URL).
   useEffect(() => {
     let cancelled = false
-    listCateringOrders()
-      .then(async (data) => {
+    Promise.all([api.orders.listCateringOrders(), api.stock.listWarehouses()])
+      .then(async ([flightsData, warehousesData]) => {
         if (cancelled) return
-        setFlights(data)
-        const initial = search.flightId != null ? (data.find((f) => f.id === search.flightId) ?? data[0]) : data[0]
+        setFlights(flightsData)
+        setWarehouses(warehousesData)
+        const initial = search.flightId != null ? (flightsData.find((f) => f.id === search.flightId) ?? flightsData[0]) : flightsData[0]
         setSelectedId(initial?.id ?? null)
-        // Eagerly load the first flight's order so the right card renders.
         if (initial) {
-          const o = await getCateringOrder(initial.id)
-          if (!cancelled) setOrders((prev) => ({ ...prev, [initial.id]: o }))
+          const o = await api.orders.getCateringOrder(initial.id)
+          if (!cancelled) {
+            setOrders((prev) => ({ ...prev, [initial.id]: o }))
+            if (o) {
+              const bs = await api.stock.listStockBatches({ warehouseId: o.warehouseId })
+              if (!cancelled) setBatches(bs)
+            }
+          }
         }
         setLoading(false)
       })
@@ -171,10 +176,15 @@ export function CateringOrdersPage() {
     if (selectedId == null) return
     if (orders[selectedId] !== undefined) return
     let cancelled = false
-    getCateringOrder(selectedId)
-      .then((o) => {
+    api.orders
+      .getCateringOrder(selectedId)
+      .then(async (o) => {
         if (cancelled) return
         setOrders((prev) => ({ ...prev, [selectedId]: o }))
+        if (o) {
+          const bs = await api.stock.listStockBatches({ warehouseId: o.warehouseId })
+          if (!cancelled) setBatches(bs)
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -184,17 +194,17 @@ export function CateringOrdersPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedId, orders])
+  }, [selectedId, orders, api])
 
   // Re-fetch the flight list (e.g. after a load/close that flips a chip).
   async function refreshFlights() {
-    const data = await listCateringOrders()
+    const data = await api.orders.listCateringOrders()
     setFlights(data)
   }
 
   async function refreshSelectedOrder(): Promise<void> {
     if (selectedId == null) return
-    const o = await getCateringOrder(selectedId)
+    const o = await api.orders.getCateringOrder(selectedId)
     setOrders((prev) => ({ ...prev, [selectedId]: o }))
   }
   void refreshSelectedOrder
@@ -205,11 +215,11 @@ export function CateringOrdersPage() {
     if (selectedId == null) return
     setBusy(true)
     try {
-      const order = await refreshCateringOrderApi(selectedId)
+      const order = await api.orders.refreshCateringOrderApi(selectedId)
       setOrders((prev) => ({ ...prev, [selectedId]: order }))
       showToast('success', 'Order refreshed against current warehouse stock.')
     } catch (err) {
-      if (err instanceof CateringApiError2) {
+      if (err instanceof CateringApiError) {
         showToast('error', err.message)
       } else {
         const message = err instanceof Error ? err.message : 'Could not refresh the order.'
@@ -224,13 +234,13 @@ export function CateringOrdersPage() {
     if (selectedId == null) return
     setBusy(true)
     try {
-      await createStockTransfer(selectedId)
-      const order = await markCateringOrderLoadedApi(selectedId)
+      await api.orders.createStockTransfer(selectedId)
+      const order = await api.orders.markCateringOrderLoadedApi(selectedId)
       setOrders((prev) => ({ ...prev, [selectedId]: order }))
       await refreshFlights()
       showToast('success', 'Stock transferred to the aircraft. Order loaded.')
     } catch (err) {
-      if (err instanceof CateringApiError2) {
+      if (err instanceof CateringApiError) {
         showToast('error', err.message)
       } else {
         const message = err instanceof Error ? err.message : 'Could not transfer the stock.'
@@ -245,12 +255,12 @@ export function CateringOrdersPage() {
     if (selectedId == null) return
     setBusy(true)
     try {
-      const order = await closeCateringOrderApi(selectedId)
+      const order = await api.orders.closeCateringOrderApi(selectedId)
       setOrders((prev) => ({ ...prev, [selectedId]: order }))
       await refreshFlights()
       showToast('success', 'Catering order closed out.')
     } catch (err) {
-      if (err instanceof CateringApiError2) {
+      if (err instanceof CateringApiError) {
         showToast('error', err.message)
       } else {
         const message = err instanceof Error ? err.message : 'Could not close out the order.'
@@ -289,7 +299,7 @@ export function CateringOrdersPage() {
   const selectedFlight = flights.find((f) => f.id === selectedId) ?? null
   const selectedOrder = selectedId ? (orders[selectedId] ?? null) : null
   const selectedStatus: UiStatus | null = selectedFlight ? uiStatus(selectedFlight, selectedOrder) : null
-  const selectedWarehouse = selectedFlight ? (mockWarehouses.find((w) => w.id === selectedFlight.warehouseId) ?? null) : null
+  const selectedWarehouse = selectedFlight ? (warehouses.find((w) => w.id === selectedFlight.warehouseId) ?? null) : null
   const shortLineCount = selectedOrder ? selectedOrder.lines.filter(lineIsShort).length : 0
   const totalUnits = selectedOrder ? selectedOrder.lines.reduce((acc, l) => acc + l.quantityRequired, 0) : 0
   const totalShort = selectedOrder ? selectedOrder.lines.reduce((acc, l) => acc + l.quantityShort, 0) : 0
@@ -528,7 +538,9 @@ export function CateringOrdersPage() {
                       <tbody>
                         {groupByCabin(selectedOrder.lines).flatMap((group) =>
                           group.lines.map((line) => {
-                            const inWh = inWarehouse(selectedOrder.warehouseId, line.productId)
+                            const inWh = batches
+                              .filter((b) => b.warehouseId === selectedOrder.warehouseId && b.productId === line.productId)
+                              .reduce((acc, b) => acc + b.quantityRemaining, 0)
                             const short = line.quantityShort
                             return (
                               <tr key={line.id} className={short > 0 ? styles.shortRow : ''}>
