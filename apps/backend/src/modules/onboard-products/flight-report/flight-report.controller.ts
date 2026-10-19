@@ -1,8 +1,8 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Put, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Put } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
 import type { StaffContext } from '../common/staff.guard'
-import { StaffGuard } from '../common/staff.guard'
 import { FlightReportService, type SubmitFlightReportInput, type SubmitFlightReportLineInput } from './flight-report.service'
 
 function parseInput(body: unknown): SubmitFlightReportInput {
@@ -28,7 +28,7 @@ function parseInput(body: unknown): SubmitFlightReportInput {
 }
 
 @Controller('staff/flight-reports')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class FlightReportController {
   constructor(private readonly reports: FlightReportService) {}
 

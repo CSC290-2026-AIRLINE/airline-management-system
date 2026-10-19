@@ -1,6 +1,9 @@
 // Tests the API error envelope: every exception type maps to the
 // spec-mandated { error: { code, message, details? } } shape with the
-// right HTTP status.
+// right HTTP status. The defaultCodeForStatus map is tested in
+// particular because a previous version returned NOT_FOUND for every
+// status, which masked a real 401 returned to clients as
+// { error: { code: "NOT_FOUND", message: "Unauthorized" } }.
 
 import { ApiErrorException, F12_ERROR_CODES } from './api-error'
 import { F12ExceptionFilter } from './exception.filter'
@@ -56,11 +59,67 @@ describe('F12ExceptionFilter', () => {
     const ex = Object.assign(new Error('nope'), { getStatus: () => HttpStatus.BAD_REQUEST })
     filter.catch(ex, host)
     const arg = res.json.mock.calls[0][0]
-    expect(arg.error.code).toBe('LINE_INVALID')
+    expect(arg.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  it('maps a 401 HttpException to UNAUTHORIZED, not NOT_FOUND', () => {
+    // Regression: a missing/invalid token used to come out as
+    // { error: { code: "NOT_FOUND", message: "Unauthorized" } } which
+    // is impossible to distinguish from a real 404.
+    const filter = new F12ExceptionFilter()
+    const { res, host } = makeHost()
+    const ex = Object.assign(new Error('Unauthorized'), { getStatus: () => HttpStatus.UNAUTHORIZED })
+    filter.catch(ex, host)
+    expect(res.status).toHaveBeenCalledWith(401)
+    const arg = res.json.mock.calls[0][0]
+    expect(arg).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } })
+  })
+
+  it('maps a 403 HttpException to FORBIDDEN', () => {
+    const filter = new F12ExceptionFilter()
+    const { res, host } = makeHost()
+    const ex = Object.assign(new Error('Forbidden'), { getStatus: () => HttpStatus.FORBIDDEN })
+    filter.catch(ex, host)
+    const arg = res.json.mock.calls[0][0]
+    expect(arg).toEqual({ error: { code: 'FORBIDDEN', message: 'Forbidden' } })
+  })
+
+  it('maps a 404 HttpException to NOT_FOUND', () => {
+    const filter = new F12ExceptionFilter()
+    const { res, host } = makeHost()
+    const ex = Object.assign(new Error('not here'), { getStatus: () => HttpStatus.NOT_FOUND })
+    filter.catch(ex, host)
+    const arg = res.json.mock.calls[0][0]
+    expect(arg).toEqual({ error: { code: 'NOT_FOUND', message: 'not here' } })
+  })
+
+  it('maps a 409 HttpException to CONFLICT', () => {
+    const filter = new F12ExceptionFilter()
+    const { res, host } = makeHost()
+    const ex = Object.assign(new Error('dup'), { getStatus: () => HttpStatus.CONFLICT })
+    filter.catch(ex, host)
+    const arg = res.json.mock.calls[0][0]
+    expect(arg).toEqual({ error: { code: 'CONFLICT', message: 'dup' } })
+  })
+
+  it('maps an unhandled error to 500 INTERNAL_ERROR, not NOT_FOUND', () => {
+    // Regression: the catch-all used to send HTTP 500 with code
+    // NOT_FOUND, which masked every 5xx as a 404 on the client.
+    const filter = new F12ExceptionFilter()
+    const { res, host } = makeHost()
+    filter.catch(new Error('kaboom'), host)
+    expect(res.status).toHaveBeenCalledWith(500)
+    const arg = res.json.mock.calls[0][0]
+    expect(arg).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error.' } })
   })
 
   it('exposes the full set of spec error codes', () => {
     for (const code of [
+      'UNAUTHORIZED',
+      'FORBIDDEN',
+      'VALIDATION_ERROR',
+      'CONFLICT',
+      'INTERNAL_ERROR',
       'REPORT_MISMATCH',
       'REPORT_ALREADY_SUBMITTED',
       'REPORT_INVALID',

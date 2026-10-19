@@ -31,14 +31,20 @@ export class StaffGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request & { user?: { id: string; email: string }; staff?: StaffContext }>()
     if (!req.user) {
-      throw new ApiErrorException('NOT_FOUND', 'Authentication required.', 401)
+      // The global JwtAuthGuard has already rejected unauthenticated
+      // requests with a 401 before we get here. This branch only
+      // fires if someone wired StaffGuard without JwtAuthGuard, in
+      // which case we still want a clean 401, not a 500.
+      throw new ApiErrorException('UNAUTHORIZED', 'Authentication required.', 401)
     }
     const staff = await this.db.staff.findFirst({
       where: { user_id: req.user.id, deleted_at: null },
       select: { id: true, user_id: true, first_name: true, last_name: true, role_id: true },
     })
     if (!staff) {
-      throw new ApiErrorException('NOT_FOUND', 'Staff record not found.', 403)
+      // Authenticated, but the user has no staff row (e.g. a
+      // customer account hitting a /api/staff route). 403.
+      throw new ApiErrorException('FORBIDDEN', 'Staff record not found.', 403)
     }
     req.staff = {
       id: staff.id,

@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Put, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
-import { StaffGuard } from '../common/staff.guard'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { SuppliersService, type SupplierInput } from './suppliers.service'
 
 function parseInput(body: unknown): SupplierInput {
@@ -40,7 +40,7 @@ function parsePatch(body: unknown): Partial<SupplierInput> {
 }
 
 @Controller('staff/suppliers')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class SuppliersController {
   constructor(private readonly suppliers: SuppliersService) {}
 

@@ -1,13 +1,13 @@
 // OnboardProductsModule: F12 root module. Wires every sub-module and
 // the cross-module ports (ClockPort, FlightsPort, BookingsPort,
-// PaymentsPort, TierPort, StoragePort, AuditPort). The F12
-// exception filter is registered globally here so every sub-route
-// emits the spec-mandated { error: { code, message, details? } }
-// envelope.
+// PaymentsPort, TierPort, StoragePort, AuditPort).
+//
+// This module does NOT register any APP_FILTER / APP_GUARD /
+// APP_INTERCEPTOR / APP_PIPE provider. The F12 exception filter is
+// applied per-controller via @StaffAuth; the JWT auth guard is
+// registered globally in AuthModule and is not our concern.
 
 import { Global, Module } from '@nestjs/common'
-import { APP_FILTER } from '@nestjs/core'
-import { F12ExceptionFilter } from './common/exception.filter'
 import { SystemClock } from './common/clock'
 import { AuditService } from './common/audit.service'
 import { FlightsService } from './common/flights.service'
@@ -45,16 +45,7 @@ import { RoutesModule } from './routes/routes.module'
     FlightReportModule,
     RoutesModule,
   ],
-  providers: [
-    SystemClock,
-    AuditService,
-    FlightsService,
-    NoopStorageService,
-    StubBookingsService,
-    StubPaymentsService,
-    StubTierService,
-    { provide: APP_FILTER, useClass: F12ExceptionFilter },
-  ],
+  providers: [SystemClock, AuditService, FlightsService, NoopStorageService, StubBookingsService, StubPaymentsService, StubTierService],
   exports: [SystemClock, AuditService, FlightsService, NoopStorageService, StubBookingsService, StubPaymentsService, StubTierService],
 })
 export class OnboardProductsModule {}

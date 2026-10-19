@@ -3,9 +3,9 @@
 // menu page; the F12 module didn't ship this endpoint because routes
 // are F1's domain. The response is intentionally minimal.
 
-import { Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common'
+import { Controller, Get, NotFoundException, Param } from '@nestjs/common'
 import { DbService } from '../../../db/db.service'
-import { StaffGuard } from '../common/staff.guard'
+import { StaffAuth } from '../common/staff-auth.decorator'
 
 interface RouteDto {
   id: string
@@ -24,7 +24,7 @@ interface RouteFlightDto {
   status: string
 }
 
-@UseGuards(StaffGuard)
+@StaffAuth()
 @Controller('staff/routes')
 export class RoutesController {
   constructor(private readonly db: DbService) {}

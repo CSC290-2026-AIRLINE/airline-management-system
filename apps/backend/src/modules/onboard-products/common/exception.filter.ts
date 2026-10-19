@@ -1,7 +1,13 @@
-// Global error filter that translates anything our code throws (an
-// ApiErrorException, a Nest HttpException, or a Prisma known error) into
-// the spec-mandated { error: { code, message, details? } } envelope.
-// Staff-web error mappers rely on this shape.
+// F12-scoped error filter. Translates anything an F12 controller or
+// its service throws (an ApiErrorException, a Nest HttpException, or
+// a Prisma known error) into the spec-mandated
+// { error: { code, message, details? } } envelope. The HTTP status
+// is preserved from the original exception; only the code is
+// defaulted when the caller threw a generic HttpException.
+//
+// This filter is NOT registered globally. It is applied per-controller
+// via @StaffAuth (the F12 composite decorator), so non-F12 modules
+// keep Nest's default error shape.
 
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common'
 import type { Request, Response } from 'express'
@@ -42,7 +48,7 @@ export class F12ExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       const status = mapPrismaStatus(exception.code)
-      const code: F12ErrorCode = status === HttpStatus.CONFLICT ? 'DUPLICATE_PRODUCT' : 'NOT_FOUND'
+      const code: F12ErrorCode = status === HttpStatus.CONFLICT ? 'CONFLICT' : 'VALIDATION_ERROR'
       res.status(status).json({
         error: {
           code,
@@ -54,20 +60,20 @@ export class F12ExceptionFilter implements ExceptionFilter {
 
     this.logger.error(`Unhandled error on ${req.method} ${req.url}`, exception instanceof Error ? exception.stack : String(exception))
     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-      error: { code: 'NOT_FOUND', message: 'Internal server error.' },
+      error: { code: 'INTERNAL_ERROR', message: 'Internal server error.' },
     })
   }
 }
 
 function defaultCodeForStatus(status: number): F12ErrorCode {
   /* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
+  if (status === HttpStatus.UNAUTHORIZED) return 'UNAUTHORIZED'
+  if (status === HttpStatus.FORBIDDEN) return 'FORBIDDEN'
   if (status === HttpStatus.NOT_FOUND) return 'NOT_FOUND'
-  if (status === HttpStatus.CONFLICT) return 'DUPLICATE_PRODUCT'
-  if (status === HttpStatus.BAD_REQUEST) return 'LINE_INVALID'
-  if (status === HttpStatus.FORBIDDEN) return 'NOT_FOUND'
-  if (status === HttpStatus.UNAUTHORIZED) return 'NOT_FOUND'
+  if (status === HttpStatus.BAD_REQUEST) return 'VALIDATION_ERROR'
+  if (status === HttpStatus.CONFLICT) return 'CONFLICT'
   /* eslint-enable @typescript-eslint/no-unsafe-enum-comparison */
-  return 'NOT_FOUND'
+  return 'INTERNAL_ERROR'
 }
 
 function mapPrismaStatus(code: string): HttpStatus {

@@ -1,12 +1,12 @@
-import { Body, Controller, Get, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
 import type { StaffContext } from '../common/staff.guard'
-import { StaffGuard } from '../common/staff.guard'
 import { StockBatchesService } from './stock-batches.service'
 
 @Controller('staff/stock-batches')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class StockBatchesController {
   constructor(private readonly batches: StockBatchesService) {}
 

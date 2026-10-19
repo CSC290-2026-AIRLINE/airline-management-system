@@ -1,9 +1,9 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common'
-import { StaffGuard } from '../common/staff.guard'
+import { Controller, Get, Param } from '@nestjs/common'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { StockTransfersService } from './stock-transfers.service'
 
 @Controller('staff/stock-transfers')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class StockTransfersController {
   constructor(private readonly transfers: StockTransfersService) {}
 

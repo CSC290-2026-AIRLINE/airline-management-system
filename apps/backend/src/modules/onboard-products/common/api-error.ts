@@ -6,6 +6,14 @@
 import { HttpException } from '@nestjs/common'
 
 export const F12_ERROR_CODES = [
+  // Auth + transport codes (used by the F12 exception filter's
+  // defaultCodeForStatus() when it sees a generic HttpException).
+  'UNAUTHORIZED',
+  'FORBIDDEN',
+  'VALIDATION_ERROR',
+  'CONFLICT',
+  'INTERNAL_ERROR',
+  // Spec-mandated domain codes.
   'REPORT_MISMATCH',
   'REPORT_ALREADY_SUBMITTED',
   'REPORT_INVALID',

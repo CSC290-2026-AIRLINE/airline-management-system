@@ -2,9 +2,9 @@
 // PUT-only mutations per the F12 spec. Toggle a single offering via
 // /:id (isActive and/or isDefault). Soft delete via DELETE.
 
-import { Body, Controller, Delete, Get, HttpCode, Param, Put, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Put } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
-import { StaffGuard } from '../common/staff.guard'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { OfferingsService, type OfferingInput } from './offerings.service'
 
 function parseUpsert(body: unknown): OfferingInput {
@@ -57,7 +57,7 @@ function parseToggle(body: unknown): { isActive?: boolean; isDefault?: boolean }
 }
 
 @Controller('staff/product-offerings')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class OfferingsController {
   constructor(private readonly offerings: OfferingsService) {}
 

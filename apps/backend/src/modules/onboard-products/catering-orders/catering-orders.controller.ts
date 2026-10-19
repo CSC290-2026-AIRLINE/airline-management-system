@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Put } from '@nestjs/common'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
 import type { StaffContext } from '../common/staff.guard'
-import { StaffGuard } from '../common/staff.guard'
 import { CateringOrdersService } from './catering-orders.service'
 
 @Controller('staff/catering-orders')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class CateringOrdersController {
   constructor(private readonly orders: CateringOrdersService) {}
 

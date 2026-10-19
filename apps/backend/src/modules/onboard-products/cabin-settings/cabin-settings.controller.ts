@@ -2,11 +2,11 @@
 // Supports upserting at any scope (network/route/flight) and
 // resolving the effective values for a single flight.
 
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
 import type { StaffContext } from '../common/staff.guard'
-import { StaffGuard } from '../common/staff.guard'
 import { CabinSettingsService, type CabinSettingInput } from './cabin-settings.service'
 
 const ALLOWED_CABINS = ['economy', 'premium_economy', 'business', 'first'] as const
@@ -98,7 +98,7 @@ function parseInput(body: unknown): CabinSettingInput {
 }
 
 @Controller('staff/cabin-settings')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class CabinSettingsController {
   constructor(private readonly settings: CabinSettingsService) {}
 

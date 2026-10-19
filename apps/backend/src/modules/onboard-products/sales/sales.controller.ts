@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
-import { StaffGuard } from '../common/staff.guard'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { SalesService } from './sales.service'
 
 function parseCreate(body: unknown): { productId: string; quantity: number; unitPriceAmount: number } {
@@ -32,7 +32,7 @@ function parsePatch(body: unknown): { quantity?: number; unitPriceAmount?: numbe
 }
 
 @Controller('staff/sales')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class SalesController {
   constructor(private readonly sales: SalesService) {}
 

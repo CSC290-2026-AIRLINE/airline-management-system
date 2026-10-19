@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
 import type { StaffContext } from '../common/staff.guard'
-import { StaffGuard } from '../common/staff.guard'
 import { PurchaseReceiptsService, type CreatePurchaseReceiptInput, type PurchaseReceiptLineInput } from './purchase-receipts.service'
 
 function parseLine(line: unknown): PurchaseReceiptLineInput {
@@ -35,7 +35,7 @@ function parseInput(body: unknown): CreatePurchaseReceiptInput {
 }
 
 @Controller('staff/purchase-receipts')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class PurchaseReceiptsController {
   constructor(private readonly receipts: PurchaseReceiptsService) {}
 

@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
 import type { StaffContext } from '../common/staff.guard'
-import { StaffGuard } from '../common/staff.guard'
 import { StockMovementsService, type AdjustStockInput } from './stock-movements.service'
 
 const REASONS = ['spoilage', 'damage', 'expired', 'count_correction'] as const
@@ -29,7 +29,7 @@ function parseInput(body: unknown): AdjustStockInput {
 }
 
 @Controller('staff/stock-movements')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class StockMovementsController {
   constructor(private readonly movements: StockMovementsService) {}
 

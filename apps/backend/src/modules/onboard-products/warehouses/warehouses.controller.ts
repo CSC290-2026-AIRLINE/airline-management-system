@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Put, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Put } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
-import { StaffGuard } from '../common/staff.guard'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { WarehousesService, type WarehouseInput } from './warehouses.service'
 
 function parseInput(body: unknown): WarehouseInput {
@@ -36,7 +36,7 @@ function parsePatch(body: unknown): Partial<WarehouseInput> {
 }
 
 @Controller('staff/warehouses')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class WarehousesController {
   constructor(private readonly warehouses: WarehousesService) {}
 

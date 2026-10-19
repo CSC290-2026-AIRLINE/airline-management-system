@@ -3,14 +3,14 @@
 // } on body) is rejected in favor of the dedicated DELETE. Image
 // upload is encoded in the same JSON body as a base64 data URL.
 
-import { Body, Controller, Delete, Get, HttpCode, Param, Put, UseGuards } from '@nestjs/common'
-import { StaffGuard } from '../common/staff.guard'
+import { Body, Controller, Delete, Get, HttpCode, Param, Put } from '@nestjs/common'
+import { StaffAuth } from '../common/staff-auth.decorator'
 import { NoopStorageService } from '../common/cross-module-ports'
 import { ProductsService } from './products.service'
 import { parseProductDraft, parseProductPatch } from './dto/product.dto'
 
 @Controller('staff/products')
-@UseGuards(StaffGuard)
+@StaffAuth()
 export class ProductsController {
   constructor(
     private readonly products: ProductsService,
