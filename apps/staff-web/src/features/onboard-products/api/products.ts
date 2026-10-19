@@ -7,6 +7,7 @@ import { useMemo } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { ApiClient, ApiError, type ApiFetch } from './client'
 import { ImageInvalidError, ProductApiError, ProductInUseError } from './errors'
+import { MissingIdError, requireId } from './guards'
 import { mapProduct, toProductDraft, type ProductDraftInput } from './mappers'
 import type { Product } from './types'
 
@@ -41,9 +42,11 @@ export function createProductsApi(client: ApiClient): ProductsApi {
     },
     async get(id) {
       try {
+        requireId('GET /api/staff/products/:id', 'id', id)
         const wire = await client.get<unknown>(`/api/staff/products/${id}`)
         return wire ? mapProduct(wire as never) : null
       } catch (err) {
+        if (err instanceof MissingIdError) return null
         if (err instanceof ApiError && err.status === 404) return null
         rethrow(err, new ProductApiError('NOT_FOUND', 'Product not found.', 0))
       }
@@ -58,24 +61,36 @@ export function createProductsApi(client: ApiClient): ProductsApi {
     },
     async update(id, input) {
       try {
+        requireId('PUT /api/staff/products/:id', 'id', id)
         const body = await client.put<{ product: unknown }>(`/api/staff/products/${id}`, toProductDraft(input))
         return mapProduct(body.product as never)
       } catch (err) {
+        if (err instanceof MissingIdError) {
+          rethrow(err, new ProductApiError('NOT_FOUND', 'Product not found.', 0))
+        }
         rethrow(err, new ProductApiError('UNKNOWN', 'Could not save the product.', 0))
       }
     },
     async delete(id) {
       try {
+        requireId('DELETE /api/staff/products/:id', 'id', id)
         await client.delete(`/api/staff/products/${id}`)
       } catch (err) {
+        if (err instanceof MissingIdError) {
+          rethrow(err, new ProductApiError('NOT_FOUND', 'Product not found.', 0))
+        }
         rethrow(err, new ProductApiError('UNKNOWN', 'Could not delete the product.', 0))
       }
     },
     async setActive(id, isActive) {
       try {
+        requireId('PUT /api/staff/products/:id (setActive)', 'id', id)
         const body = await client.put<{ product: unknown }>(`/api/staff/products/${id}`, { isActive })
         return mapProduct(body.product as never)
       } catch (err) {
+        if (err instanceof MissingIdError) {
+          rethrow(err, new ProductApiError('NOT_FOUND', 'Product not found.', 0))
+        }
         rethrow(err, new ProductApiError('UNKNOWN', 'Could not change the status.', 0))
       }
     },

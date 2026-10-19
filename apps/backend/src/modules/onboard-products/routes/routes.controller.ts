@@ -15,6 +15,15 @@ interface RouteDto {
   destinationCity: string
 }
 
+interface RouteFlightDto {
+  id: string
+  flightNumber: string
+  routeId: string
+  scheduledDeparture: string
+  aircraftId: string
+  status: string
+}
+
 @UseGuards(StaffGuard)
 @Controller('staff/routes')
 export class RoutesController {
@@ -48,5 +57,26 @@ export class RoutesController {
       originCity: r.airport_route_originToairport?.city ?? r.origin,
       destinationCity: r.airport_route_destinationToairport?.city ?? r.destination,
     }
+  }
+
+  // Flights on a given route. Returns the minimum shape the staff-web
+  // route-detail page needs (id, flightNumber, scheduledDeparture,
+  // aircraftId, status). Ordered by scheduledDeparture ascending.
+  @Get(':routeId/flights')
+  async listFlights(@Param('routeId') routeId: string): Promise<RouteFlightDto[]> {
+    const route = await this.db.route.findUnique({ where: { id: routeId } })
+    if (!route) throw new NotFoundException('Route not found.')
+    const rows = await this.db.flight.findMany({
+      where: { route_id: routeId },
+      orderBy: { scheduled_dep_at: 'asc' },
+    })
+    return rows.map((f) => ({
+      id: f.id,
+      flightNumber: f.flight_number,
+      routeId: f.route_id,
+      scheduledDeparture: f.scheduled_dep_at.toISOString(),
+      aircraftId: f.aircraft_id,
+      status: f.status,
+    }))
   }
 }

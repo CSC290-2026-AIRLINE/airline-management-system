@@ -106,6 +106,11 @@ async function main() {
   await call('sales.list-f401', `/api/staff/sales/flight/${IDS.flightF401}`)
   await call('flight-report.list-reportable', '/api/staff/flight-reports/reportable-flights')
   await call('flight-report.get-f401', `/api/staff/flight-reports/flight/${IDS.flightF401}`)
+  // routes.list + routes.flights: the new /api/staff/routes/:routeId/flights
+  // endpoint that backs the route-detail page's "Single-flight picker".
+  // F401 is on the BKK→NRT route; its id is the routeId below.
+  await call('routes.list', '/api/staff/routes')
+  await call('routes.flights-bkk-nrt', '/api/staff/routes/00000000-0000-0000-0000-d00000000001/flights')
 
   // ============================================================
   // WRITE endpoints

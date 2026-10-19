@@ -22,7 +22,9 @@ import styles from './OfferedMenuPage.module.css'
 
 const PAGE_SIZE = 15
 
-const CABINS: Cabin[] = ['economy', 'premium_economy', 'business']
+const CABINS: Cabin[] = ['economy', 'premium_economy', 'business', 'first']
+
+const ROUTE_TABLE_CABINS: Cabin[] = ['economy', 'premium_economy', 'business', 'first']
 
 function nextToastId(): number {
   return Date.now() + Math.floor(Math.random() * 1000)
@@ -314,6 +316,7 @@ export function OfferedMenuPage() {
               <option value="economy">Economy</option>
               <option value="premium_economy">Premium economy</option>
               <option value="business">Business</option>
+              <option value="first">First</option>
             </select>
           </label>
           <label className={styles.filterField}>
@@ -375,6 +378,7 @@ export function OfferedMenuPage() {
               <option value="economy">Economy</option>
               <option value="premium_economy">Premium economy</option>
               <option value="business">Business</option>
+              <option value="first">First</option>
             </select>
             <button
               type="button"
@@ -400,8 +404,11 @@ export function OfferedMenuPage() {
             <thead>
               <tr>
                 <th scope="col">Route</th>
-                <th scope="col">Economy</th>
-                <th scope="col">Business</th>
+                {ROUTE_TABLE_CABINS.map((c) => (
+                  <th scope="col" key={c}>
+                    {cabinLabel(c)}
+                  </th>
+                ))}
                 <th scope="col" className={styles.thActions}>
                   <span className={styles.srOnly}>Actions</span>
                 </th>
@@ -425,14 +432,22 @@ export function OfferedMenuPage() {
                       </span>
                     </Link>
                   </td>
-                  <td>
-                    <span className={styles.cabinName}>{capitalize(r.cabinStatuses.economy.mealService)}</span>
-                    {r.cabinStatuses.economy.state === 'custom' && <span className={styles.customBadge}>Custom</span>}
-                  </td>
-                  <td>
-                    <span className={styles.cabinName}>{capitalize(r.cabinStatuses.business.mealService)}</span>
-                    {r.cabinStatuses.business.state === 'custom' && <span className={styles.customBadge}>Custom</span>}
-                  </td>
+                  {ROUTE_TABLE_CABINS.map((c) => {
+                    const status = r.cabinStatuses[c]
+                    if (!status) {
+                      return (
+                        <td key={c}>
+                          <span className={styles.cabinName}>—</span>
+                        </td>
+                      )
+                    }
+                    return (
+                      <td key={c}>
+                        <span className={styles.cabinName}>{capitalize(status.mealService)}</span>
+                        {status.state === 'custom' && <span className={styles.customBadge}>Custom</span>}
+                      </td>
+                    )
+                  })}
                   <td className={styles.tdActions}>
                     <Link
                       to="/catering/offered-menu/$routeId"
@@ -523,7 +538,7 @@ export function OfferedMenuPage() {
                   <td>
                     <span className={styles.flightCode}>{e.flightNumber}</span>
                     <span className={styles.routeSub}>
-                      {e.routeId.replace('r-', '').toUpperCase()} · {formatDate(e.scheduledDeparture)}
+                      {e.routeId ? e.routeId.replace('r-', '').toUpperCase() : '—'} · {formatDate(e.scheduledDeparture)}
                     </span>
                   </td>
                   <td className={styles.cabinName}>{cabinLabel(e.cabin)}</td>

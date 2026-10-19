@@ -1,5 +1,7 @@
 // Shared types for the onboard-products feature.
-// Field names follow the snake_case tables in the F12 spec, exposed in camelCase for the UI.
+// Field names follow the camelCase shape emitted by the F12 backend
+// (see the auth module's `{ accessToken, user: { id, email, type } }`
+// for the repo's reference).
 
 export type Cabin = 'economy' | 'premium_economy' | 'business' | 'first'
 

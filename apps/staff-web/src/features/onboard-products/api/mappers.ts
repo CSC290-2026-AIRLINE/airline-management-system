@@ -1,8 +1,9 @@
-// Per-area mappers: wire format (snake_case, ISO dates, decimal strings)
-// → frontend types (camelCase, ISO strings, numbers). Each `mapXxx`
-// accepts the snake_case shape and returns the camelCase UI shape; the
-// inverse `toXxxInput` maps the UI shape back to the wire shape for
-// PUT/POST bodies.
+// Per-area mappers: wire format (camelCase, ISO dates, decimal strings)
+// → frontend types (camelCase, ISO strings, numbers). Backend emits
+// camelCase (see the auth module's `{ accessToken, user: { id, email, type } }`
+// for reference). Each `mapXxx` accepts the camelCase wire shape and
+// returns the camelCase UI shape; the inverse `toXxxInput` maps the UI
+// shape back to the wire shape for PUT/POST bodies.
 
 import type {
   AircraftStockRow,
@@ -37,6 +38,26 @@ import type {
   Warehouse,
   WarehouseStockRow,
 } from './types'
+
+// -- Error: required field is missing on the wire -----------------------
+
+export class MapperError extends Error {
+  readonly endpoint: string
+  readonly field: string
+  constructor(endpoint: string, field: string) {
+    super(`Mapper for ${endpoint} received undefined for required field "${field}"`)
+    this.name = 'MapperError'
+    this.endpoint = endpoint
+    this.field = field
+  }
+}
+
+function required<T>(endpoint: string, field: string, value: T | undefined | null): T {
+  if (value === undefined || value === null || value === '') {
+    throw new MapperError(endpoint, field)
+  }
+  return value as T
+}
 
 // -- Helpers ------------------------------------------------------------------
 
@@ -81,35 +102,35 @@ interface WireProduct {
   id: string
   sku: string
   category: string
-  type_code: string
+  typeCode: string
   name: string
   description?: string | null
-  price_amount: number | string | { toNumber: () => number }
-  purchase_cost_amount?: number | string | { toNumber: () => number } | null
-  shelf_life_days?: number | null
-  is_premium: boolean
-  is_active: boolean
-  image_key?: string | null
-  dietary_attributes?: string[]
-  is_in_use?: boolean
+  priceAmount: number | string | { toNumber: () => number }
+  purchaseCostAmount?: number | string | { toNumber: () => number } | null
+  shelfLifeDays?: number | null
+  isPremium: boolean
+  isActive: boolean
+  imageKey?: string | null
+  dietaryAttributes?: string[]
+  isInUse?: boolean
 }
 
 export function mapProduct(wire: WireProduct): Product {
   return {
-    id: wire.id,
-    sku: wire.sku,
-    category: (wire.category as ProductCategory) ?? 'meal',
-    typeCode: ((wire.type_code as SpecialMealCode) ?? 'STD') as SpecialMealCode,
-    name: wire.name,
+    id: required('GET /api/staff/products', 'id', wire.id),
+    sku: required('GET /api/staff/products', 'sku', wire.sku),
+    category: required('GET /api/staff/products', 'category', wire.category) as ProductCategory,
+    typeCode: required('GET /api/staff/products', 'typeCode', wire.typeCode) as SpecialMealCode,
+    name: required('GET /api/staff/products', 'name', wire.name),
     description: wire.description ?? null,
-    priceAmount: toNumber(wire.price_amount),
-    purchaseCostAmount: toNullableNumber(wire.purchase_cost_amount),
-    shelfLifeDays: wire.shelf_life_days == null ? null : Number(wire.shelf_life_days),
-    isPremium: Boolean(wire.is_premium),
-    isActive: Boolean(wire.is_active),
-    imageKey: wire.image_key ?? null,
-    dietaryAttributes: toDietary(wire.dietary_attributes),
-    isInUse: wire.is_in_use,
+    priceAmount: toNumber(wire.priceAmount),
+    purchaseCostAmount: toNullableNumber(wire.purchaseCostAmount),
+    shelfLifeDays: wire.shelfLifeDays == null ? null : Number(wire.shelfLifeDays),
+    isPremium: Boolean(wire.isPremium),
+    isActive: Boolean(wire.isActive),
+    imageKey: wire.imageKey ?? null,
+    dietaryAttributes: toDietary(wire.dietaryAttributes),
+    isInUse: wire.isInUse,
   }
 }
 
@@ -152,28 +173,33 @@ interface WireWarehouse {
   id: string
   code: string
   name: string
-  airport_code: string
+  airportCode: string
 }
 
 export function mapWarehouse(wire: WireWarehouse): Warehouse {
-  return { id: wire.id, code: wire.code, name: wire.name, airportCode: wire.airport_code }
+  return {
+    id: required('GET /api/staff/warehouses', 'id', wire.id),
+    code: required('GET /api/staff/warehouses', 'code', wire.code),
+    name: required('GET /api/staff/warehouses', 'name', wire.name),
+    airportCode: required('GET /api/staff/warehouses', 'airportCode', wire.airportCode),
+  }
 }
 
 interface WireSupplier {
   id: string
   name: string
-  airport_code: string
+  airportCode: string
   contact?: string | null
-  is_active?: boolean
+  isActive?: boolean
 }
 
 export function mapSupplier(wire: WireSupplier): Supplier {
   return {
-    id: wire.id,
-    name: wire.name,
-    airportCode: wire.airport_code,
+    id: required('GET /api/staff/suppliers', 'id', wire.id),
+    name: required('GET /api/staff/suppliers', 'name', wire.name),
+    airportCode: required('GET /api/staff/suppliers', 'airportCode', wire.airportCode),
     contact: wire.contact ?? null,
-    isActive: wire.is_active ?? true,
+    isActive: wire.isActive ?? true,
   }
 }
 
@@ -199,31 +225,31 @@ export function toWarehouseInput(input: { code: string; name: string; airportCod
 
 interface WireStockBatch {
   id: string
-  purchase_receipt_id: string
-  warehouse_id: string
-  product_id: string
-  batch_code: string
-  quantity_received: number
-  quantity_remaining: number
-  unit_cost_amount: number | string | { toNumber: () => number }
-  received_at: string
-  expires_at: string | null
-  is_damaged: boolean
+  purchaseReceiptId: string
+  warehouseId: string
+  productId: string
+  batchCode: string
+  quantityReceived: number
+  quantityRemaining: number
+  unitCostAmount: number | string | { toNumber: () => number }
+  receivedAt: string
+  expiresAt: string | null
+  isDamaged: boolean
 }
 
 export function mapStockBatch(wire: WireStockBatch): StockBatch {
   return {
-    id: wire.id,
-    purchaseReceiptId: wire.purchase_receipt_id,
-    warehouseId: wire.warehouse_id,
-    productId: wire.product_id,
-    batchCode: wire.batch_code,
-    quantityReceived: Number(wire.quantity_received),
-    quantityRemaining: Number(wire.quantity_remaining),
-    unitCostAmount: toNumber(wire.unit_cost_amount),
-    receivedAt: toIsoString(wire.received_at),
-    expiresAt: toNullableIsoString(wire.expires_at),
-    isDamaged: Boolean(wire.is_damaged),
+    id: required('GET /api/staff/stock-batches', 'id', wire.id),
+    purchaseReceiptId: required('GET /api/staff/stock-batches', 'purchaseReceiptId', wire.purchaseReceiptId),
+    warehouseId: required('GET /api/staff/stock-batches', 'warehouseId', wire.warehouseId),
+    productId: required('GET /api/staff/stock-batches', 'productId', wire.productId),
+    batchCode: required('GET /api/staff/stock-batches', 'batchCode', wire.batchCode),
+    quantityReceived: Number(wire.quantityReceived),
+    quantityRemaining: Number(wire.quantityRemaining),
+    unitCostAmount: toNumber(wire.unitCostAmount),
+    receivedAt: toIsoString(wire.receivedAt),
+    expiresAt: toNullableIsoString(wire.expiresAt),
+    isDamaged: Boolean(wire.isDamaged),
   }
 }
 
@@ -231,37 +257,37 @@ export function mapStockBatch(wire: WireStockBatch): StockBatch {
 
 interface WireStockMovement {
   id: string
-  product_id: string
-  warehouse_id: string | null
-  aircraft_id: string | null
-  stock_batch_id: string | null
-  stock_transfer_id: string | null
-  product_order_id: string | null
-  flight_id: string | null
+  productId: string
+  warehouseId: string | null
+  aircraftId: string | null
+  stockBatchId: string | null
+  stockTransferId: string | null
+  productOrderId: string | null
+  flightId: string | null
   type: string
   quantity: number
   reason: string | null
   note: string | null
-  created_by_staff_id: string | null
-  occurred_at: string
+  createdByStaffId: string | null
+  occurredAt: string
 }
 
 export function mapStockMovement(wire: WireStockMovement): StockMovement {
   return {
-    id: wire.id,
-    productId: wire.product_id,
-    warehouseId: wire.warehouse_id,
-    aircraftId: wire.aircraft_id,
-    stockBatchId: wire.stock_batch_id,
-    stockTransferId: wire.stock_transfer_id,
-    productOrderId: wire.product_order_id,
-    flightId: wire.flight_id,
-    type: (wire.type as StockMovementType) ?? 'adjust',
+    id: required('GET /api/staff/stock-movements', 'id', wire.id),
+    productId: required('GET /api/staff/stock-movements', 'productId', wire.productId),
+    warehouseId: wire.warehouseId,
+    aircraftId: wire.aircraftId,
+    stockBatchId: wire.stockBatchId,
+    stockTransferId: wire.stockTransferId,
+    productOrderId: wire.productOrderId,
+    flightId: wire.flightId,
+    type: required('GET /api/staff/stock-movements', 'type', wire.type) as StockMovementType,
     quantity: Number(wire.quantity),
     reason: (wire.reason as StockMovement['reason']) ?? null,
     note: wire.note,
-    createdByStaffId: wire.created_by_staff_id,
-    occurredAt: toIsoString(wire.occurred_at),
+    createdByStaffId: wire.createdByStaffId,
+    occurredAt: toIsoString(wire.occurredAt),
   }
 }
 
@@ -284,44 +310,44 @@ export function toStockMovementInput(input: {
 // -- Purchase receipts --------------------------------------------------------
 
 interface WirePurchaseReceiptLine {
-  product_id: string
-  product_name: string
+  productId: string
+  productName: string
   quantity: number
-  unit_cost_amount: number | string | { toNumber: () => number }
-  batch_code: string
-  expires_at: string | null
-  line_total?: number | string | { toNumber: () => number }
+  unitCostAmount: number | string | { toNumber: () => number }
+  batchCode: string
+  expiresAt: string | null
+  lineTotal?: number | string | { toNumber: () => number }
 }
 
 interface WirePurchaseReceipt {
   id: string
-  supplier_id: string
-  warehouse_id: string
-  received_at: string
-  received_by_staff_id: string | null
+  supplierId: string
+  warehouseId: string
+  receivedAt: string
+  receivedByStaffId: string | null
   lines: WirePurchaseReceiptLine[]
 }
 
 export function mapPurchaseReceipt(wire: WirePurchaseReceipt): PurchaseReceipt {
   return {
-    id: wire.id,
-    supplierId: wire.supplier_id,
-    warehouseId: wire.warehouse_id,
-    receivedAt: toIsoString(wire.received_at),
-    receivedByStaffId: wire.received_by_staff_id,
+    id: required('GET /api/staff/purchase-receipts', 'id', wire.id),
+    supplierId: required('GET /api/staff/purchase-receipts', 'supplierId', wire.supplierId),
+    warehouseId: required('GET /api/staff/purchase-receipts', 'warehouseId', wire.warehouseId),
+    receivedAt: toIsoString(wire.receivedAt),
+    receivedByStaffId: wire.receivedByStaffId,
     lines: wire.lines.map(mapPurchaseReceiptLine),
   }
 }
 
 export function mapPurchaseReceiptLine(wire: WirePurchaseReceiptLine): PurchaseReceiptLine {
   return {
-    productId: wire.product_id,
-    productName: wire.product_name,
+    productId: required('POST /api/staff/purchase-receipts', 'productId', wire.productId),
+    productName: required('POST /api/staff/purchase-receipts', 'productName', wire.productName),
     quantity: Number(wire.quantity),
-    unitCostAmount: toNumber(wire.unit_cost_amount),
-    batchCode: wire.batch_code,
-    expiresAt: toNullableIsoString(wire.expires_at),
-    lineTotal: wire.line_total == null ? Number(wire.quantity) * toNumber(wire.unit_cost_amount) : toNumber(wire.line_total),
+    unitCostAmount: toNumber(wire.unitCostAmount),
+    batchCode: required('POST /api/staff/purchase-receipts', 'batchCode', wire.batchCode),
+    expiresAt: toNullableIsoString(wire.expiresAt),
+    lineTotal: wire.lineTotal == null ? Number(wire.quantity) * toNumber(wire.unitCostAmount) : toNumber(wire.lineTotal),
   }
 }
 
@@ -344,25 +370,25 @@ export function toPurchaseReceiptInput(input: CreatePurchaseReceiptInput, produc
 
 interface WireOffering {
   id: string
-  product_id: string
+  productId: string
   scope: string
-  route_id: string | null
-  flight_id: string | null
+  routeId: string | null
+  flightId: string | null
   cabin: string
-  is_default: boolean
-  is_active: boolean
+  isDefault: boolean
+  isActive: boolean
 }
 
 export function mapOffering(wire: WireOffering): ProductOffering {
   return {
-    id: wire.id,
-    productId: wire.product_id,
-    scope: (wire.scope as ProductOffering['scope']) ?? 'network',
-    routeId: wire.route_id,
-    flightId: wire.flight_id,
-    cabin: (wire.cabin as ProductOffering['cabin']) ?? 'economy',
-    isDefault: Boolean(wire.is_default),
-    isActive: Boolean(wire.is_active),
+    id: required('GET /api/staff/product-offerings', 'id', wire.id),
+    productId: required('GET /api/staff/product-offerings', 'productId', wire.productId),
+    scope: required('GET /api/staff/product-offerings', 'scope', wire.scope) as ProductOffering['scope'],
+    routeId: wire.routeId,
+    flightId: wire.flightId,
+    cabin: required('GET /api/staff/product-offerings', 'cabin', wire.cabin) as ProductOffering['cabin'],
+    isDefault: Boolean(wire.isDefault),
+    isActive: Boolean(wire.isActive),
   }
 }
 
@@ -391,37 +417,54 @@ export function toOfferingInput(input: {
 interface WireCabinSetting {
   id: string
   scope: string
-  route_id: string | null
-  flight_id: string | null
+  routeId: string | null
+  flightId: string | null
   cabin: string
-  meal_service: string | null
-  meal_selection: string | null
-  included_per_passenger: number | null
-  preorder_enabled: boolean | null
-  order_window_hours: number | null
-  premium_meals_allowed: boolean | null
-  snacks_enabled: boolean | null
-  duty_free_enabled: boolean | null
-  onboard_buffer_percent: number | null
+  mealService: string | null
+  mealSelection: string | null
+  includedPerPassenger: number | null
+  preorderEnabled: boolean | null
+  orderWindowHours: number | null
+  premiumMealsAllowed: boolean | null
+  snacksEnabled: boolean | null
+  dutyFreeEnabled: boolean | null
+  onboardBufferPercent: number | null
+  // Backend may return how many open orders this upsert affected; the
+  // previous frontend hardcoded this to 0. Surface whatever the wire
+  // says; fall back to 0 only if the field is genuinely absent.
+  affectedOpenOrders?: number
 }
 
 export function mapCabinSetting(wire: WireCabinSetting): CabinSetting {
   return {
-    id: wire.id,
-    scope: (wire.scope as CabinSetting['scope']) ?? 'network',
-    routeId: wire.route_id,
-    flightId: wire.flight_id,
-    cabin: (wire.cabin as CabinSetting['cabin']) ?? 'economy',
-    mealService: (wire.meal_service as CabinSetting['mealService']) ?? null,
-    mealSelection: (wire.meal_selection as CabinSetting['mealSelection']) ?? null,
-    includedPerPassenger: wire.included_per_passenger == null ? null : Number(wire.included_per_passenger),
-    preorderEnabled: wire.preorder_enabled,
-    orderWindowHours: wire.order_window_hours == null ? null : Number(wire.order_window_hours),
-    premiumMealsAllowed: wire.premium_meals_allowed,
-    snacksEnabled: wire.snacks_enabled,
-    dutyFreeEnabled: wire.duty_free_enabled,
-    onboardBufferPercent: wire.onboard_buffer_percent == null ? null : Number(wire.onboard_buffer_percent),
+    id: required('GET /api/staff/cabin-settings', 'id', wire.id),
+    scope: required('GET /api/staff/cabin-settings', 'scope', wire.scope) as CabinSetting['scope'],
+    routeId: wire.routeId,
+    flightId: wire.flightId,
+    cabin: required('GET /api/staff/cabin-settings', 'cabin', wire.cabin) as CabinSetting['cabin'],
+    mealService: (wire.mealService as CabinSetting['mealService']) ?? null,
+    mealSelection: (wire.mealSelection as CabinSetting['mealSelection']) ?? null,
+    includedPerPassenger: wire.includedPerPassenger == null ? null : Number(wire.includedPerPassenger),
+    preorderEnabled: wire.preorderEnabled,
+    orderWindowHours: wire.orderWindowHours == null ? null : Number(wire.orderWindowHours),
+    premiumMealsAllowed: wire.premiumMealsAllowed,
+    snacksEnabled: wire.snacksEnabled,
+    dutyFreeEnabled: wire.dutyFreeEnabled,
+    onboardBufferPercent: wire.onboardBufferPercent == null ? null : Number(wire.onboardBufferPercent),
   } as CabinSetting
+}
+
+/**
+ * Pull the affected-open-orders count off the cabin-setting response.
+ * The wire may name this `affectedOpenOrders`; if the backend hasn't
+ * started returning it yet this returns 0.
+ */
+export function readAffectedOpenOrders(wire: unknown): number {
+  if (wire && typeof wire === 'object' && 'affectedOpenOrders' in wire) {
+    const v = (wire as { affectedOpenOrders: unknown }).affectedOpenOrders
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+  }
+  return 0
 }
 
 export function toCabinSettingInput(input: {
@@ -444,32 +487,35 @@ export function toCabinSettingInput(input: {
 
 interface WireRoute {
   id: string
-  origin_airport: string
-  destination_airport: string
-  origin_city: string
-  destination_city: string
+  originAirport: string
+  destinationAirport: string
+  originCity: string
+  destinationCity: string
 }
 
 export function mapRoute(wire: WireRoute): RouteSummary {
+  // cabinStatuses is filled in by the caller from cabin_settings rows via
+  // `applyRouteOverrides`. Keep it empty here so the route's state is
+  // never silently hardcoded; if the caller forgets to apply overrides,
+  // the page will see an empty object and the row will render as '—'
+  // instead of lying with a fake 'paid' value.
   return {
-    id: wire.id,
-    originAirport: wire.origin_airport,
-    destinationAirport: wire.destination_airport,
-    originCity: wire.origin_city,
-    destinationCity: wire.destination_city,
-    // Status flags get filled in by the caller from cabin_settings rows.
-    cabinStatuses: {
-      economy: { state: 'inherited', mealService: 'paid' },
-      premium_economy: { state: 'inherited', mealService: 'paid' },
-      business: { state: 'inherited', mealService: 'paid' },
-      first: { state: 'inherited', mealService: 'paid' },
-    },
+    id: required('GET /api/staff/routes', 'id', wire.id),
+    originAirport: required('GET /api/staff/routes', 'originAirport', wire.originAirport),
+    destinationAirport: required('GET /api/staff/routes', 'destinationAirport', wire.destinationAirport),
+    originCity: required('GET /api/staff/routes', 'originCity', wire.originCity),
+    destinationCity: required('GET /api/staff/routes', 'destinationCity', wire.destinationCity),
+    cabinStatuses: {} as RouteSummary['cabinStatuses'],
   }
 }
 
 export function applyRouteOverrides(route: RouteSummary, settings: CabinSetting[]): RouteSummary {
-  const out: RouteSummary = { ...route, cabinStatuses: { ...route.cabinStatuses } }
-  for (const cabin of Object.keys(out.cabinStatuses) as Array<keyof typeof out.cabinStatuses>) {
+  const CABIN_KEYS: Array<keyof RouteSummary['cabinStatuses']> = ['economy', 'premium_economy', 'business', 'first']
+  const out: RouteSummary = {
+    ...route,
+    cabinStatuses: { ...route.cabinStatuses } as RouteSummary['cabinStatuses'],
+  }
+  for (const cabin of CABIN_KEYS) {
     const row = settings.find((s) => s.scope === 'route' && s.routeId === route.id && s.cabin === cabin)
     const net = settings.find((s) => s.scope === 'network' && s.cabin === cabin)
     out.cabinStatuses[cabin] = {
@@ -482,25 +528,53 @@ export function applyRouteOverrides(route: RouteSummary, settings: CabinSetting[
 
 interface WireFlightSummary {
   id: string
-  flight_number: string
-  route_id: string
-  scheduled_departure: string
-  departure_airport?: string
-  arrival_airport?: string
-  has_exception?: boolean
-  exception_summary?: string
+  flightNumber: string
+  routeId: string
+  scheduledDeparture: string
+  departureAirport?: string
+  arrivalAirport?: string
+  hasException?: boolean
+  exceptionSummary?: string
 }
 
 export function mapFlightSummary(wire: WireFlightSummary): FlightSummary {
   return {
-    id: wire.id,
-    flightNumber: wire.flight_number,
-    routeId: wire.route_id,
-    scheduledDeparture: toIsoString(wire.scheduled_departure),
-    departureAirport: wire.departure_airport ?? '',
-    arrivalAirport: wire.arrival_airport ?? '',
-    hasException: Boolean(wire.has_exception),
-    exceptionSummary: wire.exception_summary ?? '',
+    id: required('GET /api/staff/routes/:routeId/flights', 'id', wire.id),
+    flightNumber: required('GET /api/staff/routes/:routeId/flights', 'flightNumber', wire.flightNumber),
+    routeId: required('GET /api/staff/routes/:routeId/flights', 'routeId', wire.routeId),
+    scheduledDeparture: toIsoString(wire.scheduledDeparture),
+    departureAirport: wire.departureAirport ?? '',
+    arrivalAirport: wire.arrivalAirport ?? '',
+    hasException: Boolean(wire.hasException),
+    exceptionSummary: wire.exceptionSummary ?? '',
+  }
+}
+
+// One row of the new GET /api/staff/routes/:routeId/flights endpoint.
+export interface RouteFlight {
+  id: string
+  flightNumber: string
+  routeId: string
+  scheduledDeparture: string
+  aircraftId: string
+  status: string
+}
+
+export function mapRouteFlight(wire: {
+  id: string
+  flightNumber: string
+  routeId: string
+  scheduledDeparture: string
+  aircraftId: string
+  status: string
+}): RouteFlight {
+  return {
+    id: required('GET /api/staff/routes/:routeId/flights', 'id', wire.id),
+    flightNumber: required('GET /api/staff/routes/:routeId/flights', 'flightNumber', wire.flightNumber),
+    routeId: required('GET /api/staff/routes/:routeId/flights', 'routeId', wire.routeId),
+    scheduledDeparture: toIsoString(wire.scheduledDeparture),
+    aircraftId: required('GET /api/staff/routes/:routeId/flights', 'aircraftId', wire.aircraftId),
+    status: required('GET /api/staff/routes/:routeId/flights', 'status', wire.status),
   }
 }
 
@@ -515,19 +589,19 @@ export function mapRouteDetail(
 
 export function mapFlightException(wire: {
   id: string
-  route_id: string
-  flight_number: string
-  scheduled_departure: string
+  routeId: string
+  flightNumber: string
+  scheduledDeparture: string
   cabin: string
-  changed_settings: string[]
+  changedSettings: string[]
 }): FlightException {
   return {
-    id: wire.id,
-    routeId: wire.route_id,
-    flightNumber: wire.flight_number,
-    scheduledDeparture: toIsoString(wire.scheduled_departure),
-    cabin: (wire.cabin as FlightException['cabin']) ?? 'economy',
-    changedSettings: wire.changed_settings ?? [],
+    id: required('GET /api/staff/flight-exceptions', 'id', wire.id),
+    routeId: required('GET /api/staff/flight-exceptions', 'routeId', wire.routeId),
+    flightNumber: required('GET /api/staff/flight-exceptions', 'flightNumber', wire.flightNumber),
+    scheduledDeparture: toIsoString(wire.scheduledDeparture),
+    cabin: required('GET /api/staff/flight-exceptions', 'cabin', wire.cabin) as FlightException['cabin'],
+    changedSettings: Array.isArray(wire.changedSettings) ? wire.changedSettings : [],
   }
 }
 
@@ -536,59 +610,59 @@ export function mapFlightException(wire: {
 interface WireCateringOrderLine {
   id: string
   cabin: string
-  product_id: string
-  product_name: string
-  quantity_required: number
-  quantity_short: number
+  productId: string
+  productName: string
+  quantityRequired: number
+  quantityShort: number
   source?: string
 }
 
 interface WireCateringOrder {
   id: string
-  flight_id: string
-  flight_number: string
+  flightId: string
+  flightNumber: string
   route?: string
-  departure_airport: string
-  arrival_airport: string
-  scheduled_departure: string
-  passenger_count?: number
+  departureAirport: string
+  arrivalAirport: string
+  scheduledDeparture: string
+  passengerCount?: number
   status: string
-  cutoff_at: string
-  generated_at: string
-  loaded_at: string | null
-  warehouse_id: string
-  aircraft_id: string
+  cutoffAt: string
+  generatedAt: string
+  loadedAt: string | null
+  warehouseId: string
+  aircraftId: string
   cabin?: string
   lines: WireCateringOrderLine[]
 }
 
 export function mapCateringOrderLine(wire: WireCateringOrderLine): CateringOrderLine {
   return {
-    id: wire.id,
-    cabin: (wire.cabin as CateringOrderLine['cabin']) ?? 'all',
-    productId: wire.product_id,
-    productName: wire.product_name,
-    quantityRequired: Number(wire.quantity_required),
-    quantityShort: Number(wire.quantity_short),
-    source: (wire.source as CateringOrderLine['source']) ?? 'order',
+    id: required('GET /api/staff/catering-orders/flight/:id', 'id', wire.id),
+    cabin: required('GET /api/staff/catering-orders/flight/:id', 'cabin', wire.cabin) as CateringOrderLine['cabin'],
+    productId: required('GET /api/staff/catering-orders/flight/:id', 'productId', wire.productId),
+    productName: required('GET /api/staff/catering-orders/flight/:id', 'productName', wire.productName),
+    quantityRequired: Number(wire.quantityRequired),
+    quantityShort: Number(wire.quantityShort),
+    source: ((wire.source as CateringOrderLine['source']) ?? 'order') as CateringOrderLine['source'],
   }
 }
 
 export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
   return {
-    id: wire.id,
-    flightId: wire.flight_id,
-    flightNumber: wire.flight_number,
-    departureAirport: wire.departure_airport,
-    arrivalAirport: wire.arrival_airport,
-    scheduledDeparture: toIsoString(wire.scheduled_departure),
-    passengerCount: wire.passenger_count == null ? 0 : Number(wire.passenger_count),
-    status: (wire.status as CateringOrder['status']) ?? 'generated',
-    cutoffAt: toIsoString(wire.cutoff_at),
-    generatedAt: toIsoString(wire.generated_at),
-    loadedAt: toNullableIsoString(wire.loaded_at),
-    warehouseId: wire.warehouse_id,
-    aircraftId: wire.aircraft_id,
+    id: required('GET /api/staff/catering-orders/flight/:id', 'id', wire.id),
+    flightId: required('GET /api/staff/catering-orders/flight/:id', 'flightId', wire.flightId),
+    flightNumber: required('GET /api/staff/catering-orders/flight/:id', 'flightNumber', wire.flightNumber),
+    departureAirport: required('GET /api/staff/catering-orders/flight/:id', 'departureAirport', wire.departureAirport),
+    arrivalAirport: required('GET /api/staff/catering-orders/flight/:id', 'arrivalAirport', wire.arrivalAirport),
+    scheduledDeparture: toIsoString(wire.scheduledDeparture),
+    passengerCount: wire.passengerCount == null ? 0 : Number(wire.passengerCount),
+    status: required('GET /api/staff/catering-orders/flight/:id', 'status', wire.status) as CateringOrder['status'],
+    cutoffAt: toIsoString(wire.cutoffAt),
+    generatedAt: toIsoString(wire.generatedAt),
+    loadedAt: toNullableIsoString(wire.loadedAt),
+    warehouseId: required('GET /api/staff/catering-orders/flight/:id', 'warehouseId', wire.warehouseId),
+    aircraftId: required('GET /api/staff/catering-orders/flight/:id', 'aircraftId', wire.aircraftId),
     lines: wire.lines.map(mapCateringOrderLine),
   }
 }
@@ -597,35 +671,35 @@ export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
 
 interface WireFlight {
   id: string
-  flight_number: string
-  route_id: string
-  scheduled_departure: string
-  departure_airport: string
-  arrival_airport: string
-  passenger_count?: number
-  aircraft_id: string
+  flightNumber: string
+  routeId: string
+  scheduledDeparture: string
+  departureAirport: string
+  arrivalAirport: string
+  passengerCount?: number
+  aircraftId: string
   status?: string
   cabin?: string
-  cutoff_at?: string
-  warehouse_id?: string
-  is_cancelled?: boolean
+  cutoffAt?: string
+  warehouseId?: string
+  isCancelled?: boolean
 }
 
 export function mapFlight(wire: WireFlight): Flight {
   return {
-    id: wire.id,
-    flightNumber: wire.flight_number,
-    routeId: wire.route_id,
-    scheduledDeparture: toIsoString(wire.scheduled_departure),
-    departureAirport: wire.departure_airport,
-    arrivalAirport: wire.arrival_airport,
-    passengerCount: wire.passenger_count == null ? 0 : Number(wire.passenger_count),
-    aircraftId: wire.aircraft_id,
-    status: (wire.status as FlightCateringStatus) ?? 'open',
-    cabin: (wire.cabin as Flight['cabin']) ?? 'economy',
-    cutoffAt: toIsoString(wire.cutoff_at ?? wire.scheduled_departure),
-    warehouseId: wire.warehouse_id ?? '',
-    isCancelled: Boolean(wire.is_cancelled),
+    id: required('GET /api/staff/catering-orders', 'id', wire.id),
+    flightNumber: required('GET /api/staff/catering-orders', 'flightNumber', wire.flightNumber),
+    routeId: required('GET /api/staff/catering-orders', 'routeId', wire.routeId),
+    scheduledDeparture: toIsoString(wire.scheduledDeparture),
+    departureAirport: required('GET /api/staff/catering-orders', 'departureAirport', wire.departureAirport),
+    arrivalAirport: required('GET /api/staff/catering-orders', 'arrivalAirport', wire.arrivalAirport),
+    passengerCount: wire.passengerCount == null ? 0 : Number(wire.passengerCount),
+    aircraftId: required('GET /api/staff/catering-orders', 'aircraftId', wire.aircraftId),
+    status: (required('GET /api/staff/catering-orders', 'status', wire.status) as FlightCateringStatus) ?? 'open',
+    cabin: (required('GET /api/staff/catering-orders', 'cabin', wire.cabin ?? 'economy') as Flight['cabin']) ?? 'economy',
+    cutoffAt: toIsoString(wire.cutoffAt ?? wire.scheduledDeparture),
+    warehouseId: required('GET /api/staff/catering-orders', 'warehouseId', wire.warehouseId ?? ''),
+    isCancelled: Boolean(wire.isCancelled),
   }
 }
 
@@ -633,48 +707,48 @@ export function mapFlight(wire: WireFlight): Flight {
 
 interface WireAircraftStockRow {
   id: string
-  aircraft_id: string
-  product_id: string
-  product_name: string
-  stock_batch_id: string
-  batch_code: string
+  aircraftId: string
+  productId: string
+  productName: string
+  stockBatchId: string
+  batchCode: string
   quantity: number
-  expires_at: string | null
+  expiresAt: string | null
 }
 
 export function mapAircraftStockRow(wire: WireAircraftStockRow): AircraftStockRow {
   return {
-    id: wire.id,
-    aircraftId: wire.aircraft_id,
-    productId: wire.product_id,
-    productName: wire.product_name,
-    stockBatchId: wire.stock_batch_id,
-    batchCode: wire.batch_code,
+    id: required('GET /api/staff/aircraft-stock/:id', 'id', wire.id),
+    aircraftId: required('GET /api/staff/aircraft-stock/:id', 'aircraftId', wire.aircraftId),
+    productId: required('GET /api/staff/aircraft-stock/:id', 'productId', wire.productId),
+    productName: required('GET /api/staff/aircraft-stock/:id', 'productName', wire.productName),
+    stockBatchId: required('GET /api/staff/aircraft-stock/:id', 'stockBatchId', wire.stockBatchId),
+    batchCode: required('GET /api/staff/aircraft-stock/:id', 'batchCode', wire.batchCode),
     quantity: Number(wire.quantity),
-    expiresAt: toNullableIsoString(wire.expires_at),
+    expiresAt: toNullableIsoString(wire.expiresAt),
   }
 }
 
 interface WireStockTransfer {
   id: string
-  flight_id: string
-  aircraft_id: string
-  warehouse_id: string
-  transferred_at: string
-  staff_id?: string
-  lines: Array<{ id: string; product_id: string; stock_batch_id: string; quantity: number }>
+  flightId: string
+  aircraftId: string
+  warehouseId: string
+  transferredAt: string
+  staffId?: string
+  lines: Array<{ id: string; productId: string; stockBatchId: string; quantity: number }>
 }
 
 export function mapStockTransfer(wire: WireStockTransfer): StockTransfer {
   return {
-    id: wire.id,
-    flightId: wire.flight_id,
-    aircraftId: wire.aircraft_id,
-    warehouseId: wire.warehouse_id,
-    transferredAt: toIsoString(wire.transferred_at),
+    id: required('GET /api/staff/stock-transfers/flight/:id', 'id', wire.id),
+    flightId: required('GET /api/staff/stock-transfers/flight/:id', 'flightId', wire.flightId),
+    aircraftId: required('GET /api/staff/stock-transfers/flight/:id', 'aircraftId', wire.aircraftId),
+    warehouseId: required('GET /api/staff/stock-transfers/flight/:id', 'warehouseId', wire.warehouseId),
+    transferredAt: toIsoString(wire.transferredAt),
     lines: wire.lines.map((l): StockTransferLine => ({
-      productId: l.product_id,
-      stockBatchId: l.stock_batch_id,
+      productId: l.productId,
+      stockBatchId: l.stockBatchId,
       quantity: Number(l.quantity),
     })),
   }
@@ -682,31 +756,31 @@ export function mapStockTransfer(wire: WireStockTransfer): StockTransfer {
 
 interface WireProductSale {
   id: string
-  flight_id: string
-  product_id: string
-  product_name: string
+  flightId: string
+  productId: string
+  productName: string
   quantity: number
-  unit_price_amount: number | string | { toNumber: () => number }
-  unit_cost_amount?: number | string | { toNumber: () => number } | null
-  total_amount: number | string | { toNumber: () => number }
+  unitPriceAmount: number | string | { toNumber: () => number }
+  unitCostAmount?: number | string | { toNumber: () => number } | null
+  totalAmount: number | string | { toNumber: () => number }
   currency: string
-  payment_id: string
-  sold_at: string
+  paymentId: string
+  soldAt: string
 }
 
 export function mapProductSale(wire: WireProductSale): ProductSale {
   return {
-    id: wire.id,
-    flightId: wire.flight_id,
-    productId: wire.product_id,
-    productName: wire.product_name,
+    id: required('GET /api/staff/sales/flight/:id', 'id', wire.id),
+    flightId: required('GET /api/staff/sales/flight/:id', 'flightId', wire.flightId),
+    productId: required('GET /api/staff/sales/flight/:id', 'productId', wire.productId),
+    productName: required('GET /api/staff/sales/flight/:id', 'productName', wire.productName),
     quantity: Number(wire.quantity),
-    unitPriceAmount: toNumber(wire.unit_price_amount),
-    unitCostAmount: toNullableNumber(wire.unit_cost_amount),
-    totalAmount: toNumber(wire.total_amount),
-    currency: wire.currency,
-    paymentId: wire.payment_id,
-    soldAt: toIsoString(wire.sold_at),
+    unitPriceAmount: toNumber(wire.unitPriceAmount),
+    unitCostAmount: toNullableNumber(wire.unitCostAmount),
+    totalAmount: toNumber(wire.totalAmount),
+    currency: required('GET /api/staff/sales/flight/:id', 'currency', wire.currency),
+    paymentId: required('GET /api/staff/sales/flight/:id', 'paymentId', wire.paymentId),
+    soldAt: toIsoString(wire.soldAt),
   }
 }
 
@@ -722,9 +796,9 @@ export function toCreateSaleInput(input: CreateFlightSaleInput): Record<string, 
 
 interface WireFlightReportLine {
   id: string
-  product_id: string
-  product_name: string
-  initial_quantity: number
+  productId: string
+  productName: string
+  initialQuantity: number
   served: number
   sold: number
   wasted: number
@@ -734,33 +808,96 @@ interface WireFlightReportLine {
 
 interface WireFlightReport {
   id: string
-  flight_id: string
-  flight_number: string
+  flightId: string
+  flightNumber: string
   route: string
   status: string
-  submitted_at: string | null
+  submittedAt: string | null
   lines: WireFlightReportLine[]
 }
 
 export function mapFlightReport(wire: WireFlightReport): FlightReport {
   return {
-    id: wire.id,
-    flightId: wire.flight_id,
-    flightNumber: wire.flight_number,
-    route: wire.route,
-    status: (wire.status as FlightReportStatus) ?? 'submitted',
-    submittedAt: toNullableIsoString(wire.submitted_at),
+    id: required('GET /api/staff/flight-reports/flight/:id', 'id', wire.id),
+    flightId: required('GET /api/staff/flight-reports/flight/:id', 'flightId', wire.flightId),
+    flightNumber: required('GET /api/staff/flight-reports/flight/:id', 'flightNumber', wire.flightNumber),
+    route: required('GET /api/staff/flight-reports/flight/:id', 'route', wire.route),
+    status: required('GET /api/staff/flight-reports/flight/:id', 'status', wire.status) as FlightReportStatus,
+    submittedAt: toNullableIsoString(wire.submittedAt),
     lines: wire.lines.map((l): FlightReportLine => ({
       id: l.id,
-      productId: l.product_id,
-      productName: l.product_name,
-      initialQuantity: Number(l.initial_quantity),
+      productId: required('GET /api/staff/flight-reports/flight/:id', 'productId', l.productId),
+      productName: required('GET /api/staff/flight-reports/flight/:id', 'productName', l.productName),
+      initialQuantity: Number(l.initialQuantity),
       served: Number(l.served),
       sold: Number(l.sold),
       wasted: Number(l.wasted),
       damaged: Number(l.damaged),
       remaining: Number(l.remaining),
     })),
+  }
+}
+
+// -- Write-off (response of PUT /api/staff/stock-batches/write-off-expired) --
+
+interface WireWriteOffBatch {
+  id: string
+  productId: string
+  batchCode: string
+  quantityRemaining: number
+  expiresAt: string | null
+  warehouseId: string
+}
+
+export interface WriteOffBatch {
+  id: string
+  productId: string
+  batchCode: string
+  quantityRemaining: number
+  expiresAt: string | null
+  warehouseId: string
+}
+
+export function mapWriteOffBatch(wire: WireWriteOffBatch): WriteOffBatch {
+  return {
+    id: required('PUT /api/staff/stock-batches/write-off-expired', 'id', wire.id),
+    productId: required('PUT /api/staff/stock-batches/write-off-expired', 'productId', wire.productId),
+    batchCode: required('PUT /api/staff/stock-batches/write-off-expired', 'batchCode', wire.batchCode),
+    quantityRemaining: Number(wire.quantityRemaining),
+    expiresAt: toNullableIsoString(wire.expiresAt),
+    warehouseId: required('PUT /api/staff/stock-batches/write-off-expired', 'warehouseId', wire.warehouseId),
+  }
+}
+
+// -- Reportable flights (response of /api/staff/flight-reports/reportable-flights) --
+
+export interface ReportableFlight {
+  id: string
+  flightNumber: string
+  departureAirport: string
+  arrivalAirport: string
+  scheduledDeparture: string
+  aircraftId: string
+  reportSubmitted: boolean
+}
+
+export function mapReportableFlight(wire: {
+  id: string
+  flightNumber: string
+  departureAirport: string
+  arrivalAirport: string
+  scheduledDeparture: string
+  aircraftId: string
+  reportSubmitted: boolean
+}): ReportableFlight {
+  return {
+    id: required('GET /api/staff/flight-reports/reportable-flights', 'id', wire.id),
+    flightNumber: required('GET /api/staff/flight-reports/reportable-flights', 'flightNumber', wire.flightNumber),
+    departureAirport: required('GET /api/staff/flight-reports/reportable-flights', 'departureAirport', wire.departureAirport),
+    arrivalAirport: required('GET /api/staff/flight-reports/reportable-flights', 'arrivalAirport', wire.arrivalAirport),
+    scheduledDeparture: toIsoString(wire.scheduledDeparture),
+    aircraftId: required('GET /api/staff/flight-reports/reportable-flights', 'aircraftId', wire.aircraftId),
+    reportSubmitted: Boolean(wire.reportSubmitted),
   }
 }
 

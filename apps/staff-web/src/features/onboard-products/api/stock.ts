@@ -7,17 +7,20 @@ import { useMemo } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { ApiClient, ApiError, type ApiFetch } from './client'
 import { StockApiError } from './errors'
+import { MissingIdError, requireId } from './guards'
 import {
   mapPurchaseReceipt,
   mapStockBatch,
   mapStockMovement,
   mapSupplier,
   mapWarehouse,
+  mapWriteOffBatch,
   summarizeWarehouseStock,
   toPurchaseReceiptInput,
   toStockMovementInput,
   toSupplierInput,
   toWarehouseInput,
+  type WriteOffBatch,
 } from './mappers'
 import type {
   CreatePurchaseReceiptInput,
@@ -57,7 +60,7 @@ export interface StockApi {
     reason: NonNullable<StockMovementReason>
     note: string | null
   }) => Promise<StockMovement>
-  writeOffExpiredBatchesNow: (warehouseId?: string) => Promise<StockMovement[]>
+  writeOffExpiredBatchesNow: (warehouseId?: string) => Promise<WriteOffBatch[]>
 }
 
 function rethrow(err: unknown, fallback: StockApiError): never {
@@ -86,16 +89,24 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
     },
     async updateWarehouse(id, input) {
       try {
+        requireId('PUT /api/staff/warehouses/:id', 'id', id)
         const wire = await client.put<unknown>(`/api/staff/warehouses/${id}`, toWarehouseInput(input as never))
         return mapWarehouse(wire as never)
       } catch (err) {
+        if (err instanceof MissingIdError) {
+          rethrow(err, new StockApiError('NOT_FOUND', 'Warehouse not found.', 0))
+        }
         rethrow(err, new StockApiError('UNKNOWN', 'Could not save the warehouse.', 0))
       }
     },
     async deleteWarehouse(id) {
       try {
+        requireId('DELETE /api/staff/warehouses/:id', 'id', id)
         await client.delete(`/api/staff/warehouses/${id}`)
       } catch (err) {
+        if (err instanceof MissingIdError) {
+          rethrow(err, new StockApiError('NOT_FOUND', 'Warehouse not found.', 0))
+        }
         rethrow(err, new StockApiError('UNKNOWN', 'Could not remove the warehouse.', 0))
       }
     },
@@ -118,31 +129,47 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
     },
     async updateSupplier(id, input) {
       try {
+        requireId('PUT /api/staff/suppliers/:id', 'id', id)
         const wire = await client.put<unknown>(`/api/staff/suppliers/${id}`, input as Record<string, unknown>)
         return mapSupplier(wire as never)
       } catch (err) {
+        if (err instanceof MissingIdError) {
+          rethrow(err, new StockApiError('NOT_FOUND', 'Supplier not found.', 0))
+        }
         rethrow(err, new StockApiError('UNKNOWN', 'Could not save the supplier.', 0))
       }
     },
     async deleteSupplier(id) {
       try {
+        requireId('DELETE /api/staff/suppliers/:id', 'id', id)
         await client.delete(`/api/staff/suppliers/${id}`)
       } catch (err) {
+        if (err instanceof MissingIdError) {
+          rethrow(err, new StockApiError('NOT_FOUND', 'Supplier not found.', 0))
+        }
         rethrow(err, new StockApiError('UNKNOWN', 'Could not remove the supplier.', 0))
       }
     },
 
     async listWarehouseStock(warehouseId) {
       try {
+        requireId('GET /api/staff/stock-batches (listWarehouseStock)', 'warehouseId', warehouseId)
         const batches = await client.get<unknown[]>('/api/staff/stock-batches', { warehouseId })
         const list = (batches ?? []).map((b) => mapStockBatch(b as never))
         return summarizeWarehouseStock(warehouseId, productsRef(), list)
       } catch (err) {
+        if (err instanceof MissingIdError) return []
         rethrow(err, new StockApiError('UNKNOWN', 'Could not load stock.', 0))
       }
     },
     async listStockBatches(opts) {
       try {
+        if (opts.warehouseId !== undefined) {
+          requireId('GET /api/staff/stock-batches', 'warehouseId', opts.warehouseId)
+        }
+        if (opts.productId !== undefined) {
+          requireId('GET /api/staff/stock-batches', 'productId', opts.productId)
+        }
         const wire = await client.get<unknown[]>('/api/staff/stock-batches', {
           warehouseId: opts.warehouseId,
           productId: opts.productId,
@@ -150,11 +177,21 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
         })
         return (wire ?? []).map((b) => mapStockBatch(b as never))
       } catch (err) {
+        if (err instanceof MissingIdError) return []
         rethrow(err, new StockApiError('UNKNOWN', 'Could not load stock batches.', 0))
       }
     },
     async listStockMovements(opts) {
       try {
+        if (opts.warehouseId !== undefined) {
+          requireId('GET /api/staff/stock-movements', 'warehouseId', opts.warehouseId)
+        }
+        if (opts.productId !== undefined) {
+          requireId('GET /api/staff/stock-movements', 'productId', opts.productId)
+        }
+        if (opts.flightId !== undefined) {
+          requireId('GET /api/staff/stock-movements', 'flightId', opts.flightId)
+        }
         const wire = await client.get<unknown[]>('/api/staff/stock-movements', {
           warehouseId: opts.warehouseId,
           productId: opts.productId,
@@ -162,14 +199,19 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
         })
         return (wire ?? []).map((m) => mapStockMovement(m as never))
       } catch (err) {
+        if (err instanceof MissingIdError) return []
         rethrow(err, new StockApiError('UNKNOWN', 'Could not load stock movements.', 0))
       }
     },
     async listPurchaseReceipts(opts) {
       try {
+        if (opts.warehouseId !== undefined) {
+          requireId('GET /api/staff/purchase-receipts', 'warehouseId', opts.warehouseId)
+        }
         const wire = await client.get<unknown[]>('/api/staff/purchase-receipts', { warehouseId: opts.warehouseId })
         return (wire ?? []).map((r) => mapPurchaseReceipt(r as never))
       } catch (err) {
+        if (err instanceof MissingIdError) return []
         rethrow(err, new StockApiError('UNKNOWN', 'Could not load purchase receipts.', 0))
       }
     },
@@ -192,11 +234,15 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
     },
     async writeOffExpiredBatchesNow(warehouseId) {
       try {
+        if (warehouseId !== undefined) {
+          requireId('PUT /api/staff/stock-batches/write-off-expired', 'warehouseId', warehouseId)
+        }
         const wire = await client.put<unknown[]>('/api/staff/stock-batches/write-off-expired', { warehouseId })
-        // The endpoint returns the batches that were touched, not movements.
-        // Movements are visible in the next list call.
-        return (wire ?? []).map((m) => mapStockMovement(m as never))
+        // The endpoint returns the batches that were touched, not
+        // movements. Movements become visible in the next list call.
+        return (wire ?? []).map((m) => mapWriteOffBatch(m as never))
       } catch (err) {
+        if (err instanceof MissingIdError) return []
         rethrow(err, new StockApiError('UNKNOWN', 'Could not write off expired batches.', 0))
       }
     },
