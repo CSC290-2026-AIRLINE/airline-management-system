@@ -2,6 +2,7 @@ import path from 'node:path'
 import { faker } from '@faker-js/faker'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
+import { seedF12 } from './seed-f12'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -112,6 +113,8 @@ async function main() {
     const user = await seedStaff(roleIds)
     await seedRefreshTokens(user.id)
   }
+
+  await seedF12(prisma)
 
   console.log('Seeding complete.')
 }

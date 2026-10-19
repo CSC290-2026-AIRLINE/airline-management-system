@@ -7,6 +7,10 @@ export interface EnvConfig {
   REFRESH_TOKEN_TTL_DAYS: number
   CLERK_SECRET_KEY_CUSTOMER: string
   CLERK_SECRET_KEY_STAFF: string
+  // Optional. When set, every F12 timestamp uses this fixed point in
+  // time so the seed data (relative to "now") is deterministic across
+  // runs. The /api/staff routes read this via SystemClock.
+  SIMULATION_NOW_ISO?: string
 }
 
 const REQUIRED_KEYS = [
@@ -35,5 +39,6 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
     REFRESH_TOKEN_TTL_DAYS: Number(rawConfig.REFRESH_TOKEN_TTL_DAYS),
     CLERK_SECRET_KEY_CUSTOMER: String(rawConfig.CLERK_SECRET_KEY_CUSTOMER),
     CLERK_SECRET_KEY_STAFF: String(rawConfig.CLERK_SECRET_KEY_STAFF),
+    SIMULATION_NOW_ISO: rawConfig.SIMULATION_NOW_ISO ? String(rawConfig.SIMULATION_NOW_ISO) : undefined,
   }
 }
