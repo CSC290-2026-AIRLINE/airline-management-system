@@ -7,6 +7,17 @@
 
 import type { AuditPage, RoleScreensResponse, RoleSummary, ScreenDto, ScreenGroup } from './types'
 
+/* ----- /me/screens preview --------------------------------------------------- */
+
+/**
+ * Mirrors what `GET /api/me/screens` returns for an admin user in design preview — every `core` + `admin` screen
+ * plus the F15-owned `assignable` screens. Used by the sidebar footer widget so designers can see how the badge
+ * reads without seeding real DB rows.
+ */
+export const previewMyScreens: { screen_codes: string[] } = {
+  screen_codes: ['core.home', 'core.my_profile', 'f15.staff_roles', 'f15.role_access', 'f15.audit_log'],
+}
+
 /* ----- Role access preview --------------------------------------------------- */
 
 export const previewScreenGroups: { groups: ScreenGroup[] } = {
@@ -21,7 +32,7 @@ export const previewScreenGroups: { groups: ScreenGroup[] } = {
       screens: [assignable('06', 'check_in_counter', 'Check-in counter'), assignable('06', 'gate_screen', 'Gate screen')],
     },
     { feature_no: '02', screens: [assignable('02', 'flight_schedule', 'Flight schedule')] },
-    { feature_no: '08', screens: [assignable('08', 'crew', 'Crew')] },
+    { feature_no: '08', screens: [assignable('08', 'pairings', 'Pairings'), assignable('08', 'crew_roster', 'Crew roster')] },
     { feature_no: '10', screens: [assignable('10', 'baggage_tracking', 'Baggage tracking')] },
     { feature_no: '09', screens: [assignable('09', 'aircraft_maintenance', 'Aircraft maintenance')] },
     {

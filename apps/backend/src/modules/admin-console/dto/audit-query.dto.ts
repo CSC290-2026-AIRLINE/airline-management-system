@@ -29,7 +29,7 @@ export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number]
 const DIGITS = /^\d+$/
 
 /**
- * Query string for `GET /api/admin/audit`. All fields are optional. Cursor is the `seq` of the last row of the
+ * Query string for `GET /api/admin/audit-log`. All fields are optional. Cursor is the `seq` of the last row of the
  * previous page; pass it back to fetch the next page (newest first).
  */
 export class AuditQueryDto {

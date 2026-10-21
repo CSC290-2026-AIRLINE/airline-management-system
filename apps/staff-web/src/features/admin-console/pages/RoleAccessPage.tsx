@@ -197,24 +197,35 @@ export function RoleAccessPage() {
             </p>
           </div>
           <div className="role-access-controls">
-            <button type="button" className="btn-ghost" onClick={() => setPreviewOpen(true)}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8Z" />
-                <circle cx="8" cy="8" r="1.8" />
-              </svg>
-              Preview as user
-            </button>
             <div className="role-picker">
-              <label className="role-picker-label" htmlFor="role-select">
-                Role
-              </label>
-              <select id="role-select" className="role-select" value={roleId ?? ''} onChange={(e) => selectRole(e.target.value || null)}>
-                {registry.roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
+              <div className="role-picker-row">
+                <button type="button" className="btn-ghost" onClick={() => setPreviewOpen(true)}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                    <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8Z" />
+                    <circle cx="8" cy="8" r="1.8" />
+                  </svg>
+                  Preview as user
+                </button>
+                {/* The label keeps its stacked position directly above the select. It has to live inside the field
+                    group rather than the row, or it would caption the button that now comes first in the row. */}
+                <div className="role-picker-field">
+                  <label className="role-picker-label" htmlFor="role-select">
+                    Role
+                  </label>
+                  <select
+                    id="role-select"
+                    className="role-select"
+                    value={roleId ?? ''}
+                    onChange={(e) => selectRole(e.target.value || null)}
+                  >
+                    {registry.roles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <p className="role-stats">
                 {currentRole?.staff_count ?? 0} staff with this role ·{' '}
                 {dirty ? `${diff.added.length + diff.removed.length} unsaved changes` : '0 unsaved changes'}

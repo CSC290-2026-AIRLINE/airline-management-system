@@ -35,7 +35,7 @@ export interface RoleScreensDto {
   screen_ids: string[]
 }
 
-/** One row in the `GET /admin/audit` response. `seq` is `BigInt.toString()`. */
+/** One row in the `GET /admin/audit-log` response. `seq` is `BigInt.toString()`. */
 export interface AuditEntryDto {
   seq: string
   id: string

@@ -6,20 +6,20 @@ import type { AuditQueryDto } from './dto/audit-query.dto'
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
 interface DbMock {
-  screen: { findMany: jest.Mock; upsert: jest.Mock }
+  screen: { findMany: jest.Mock; upsert: jest.Mock; findUnique: jest.Mock }
   role: { findMany: jest.Mock; findUnique: jest.Mock }
   role_screen: { findMany: jest.Mock }
-  staff: { groupBy: jest.Mock; count: jest.Mock }
-  audit_log: { findMany: jest.Mock }
+  staff: { groupBy: jest.Mock; count: jest.Mock; findFirst: jest.Mock }
+  audit_log: { findMany: jest.Mock; findUnique: jest.Mock }
 }
 
 function makeDb(): { db: DbMock; svc: AdminConsoleService } {
   const db: DbMock = {
-    screen: { findMany: jest.fn(), upsert: jest.fn() },
+    screen: { findMany: jest.fn(), upsert: jest.fn(), findUnique: jest.fn() },
     role: { findMany: jest.fn(), findUnique: jest.fn() },
     role_screen: { findMany: jest.fn() },
-    staff: { groupBy: jest.fn(), count: jest.fn() },
-    audit_log: { findMany: jest.fn() },
+    staff: { groupBy: jest.fn(), count: jest.fn(), findFirst: jest.fn() },
+    audit_log: { findMany: jest.fn(), findUnique: jest.fn() },
   }
   const svc = new AdminConsoleService(db as never)
   return { db, svc }
@@ -349,5 +349,108 @@ describe('AdminConsoleService.listAudit', () => {
     expect(page.has_more).toBe(true)
     expect(page.next_cursor).toBe('2') // seq of items[9] = 11 - 9 = 2
     expect(page.items).toHaveLength(10)
+  })
+})
+
+describe('AdminConsoleService.getAuditEntry', () => {
+  it('returns null when no row matches the id', async () => {
+    const { db, svc } = makeDb()
+    db.audit_log.findUnique.mockResolvedValue(null)
+    expect(await svc.getAuditEntry('nope')).toBeNull()
+  })
+
+  it('returns the row with seq as a decimal string and the sensitive mask applied', async () => {
+    const { db, svc } = makeDb()
+    db.audit_log.findUnique.mockResolvedValue({
+      id: 'a1',
+      seq: 7n,
+      occurred_at: new Date('2026-10-01T00:00:00Z'),
+      recorded_at: new Date('2026-10-01T00:00:01Z'),
+      actor_type: 'staff',
+      actor_id: 'u1',
+      actor_role: 'admin',
+      source_feature: '15',
+      action: 'view_sensitive',
+      entity_type: 'payment',
+      entity_id: 'p1',
+      summary: 'view',
+      reason: null,
+      before: { pan: '4111-…' },
+      after: { pan: '4111-…' },
+      is_sensitive: true,
+    })
+    const entry = await svc.getAuditEntry('a1')
+    expect(entry).not.toBeNull()
+    expect(entry!.seq).toBe('7')
+    expect(entry!.before).toBeNull()
+    expect(entry!.after).toBeNull()
+    expect(entry!.is_sensitive).toBe(true)
+  })
+
+  it('keeps before/after when is_sensitive is false', async () => {
+    const { db, svc } = makeDb()
+    db.audit_log.findUnique.mockResolvedValue({
+      id: 'a2',
+      seq: 42n,
+      occurred_at: new Date(),
+      recorded_at: new Date(),
+      actor_type: 'staff',
+      actor_id: 'u1',
+      actor_role: 'admin',
+      source_feature: '15',
+      action: 'create',
+      entity_type: null,
+      entity_id: null,
+      summary: 'create',
+      reason: null,
+      before: null,
+      after: { id: 't1' },
+      is_sensitive: false,
+    })
+    const entry = await svc.getAuditEntry('a2')
+    expect(entry!.after).toEqual({ id: 't1' })
+  })
+})
+
+describe('AdminConsoleService.getMyScreens', () => {
+  it('returns [] when the user has no staff row', async () => {
+    const { db, svc } = makeDb()
+    db.staff.findFirst.mockResolvedValue(null)
+    expect(await svc.getMyScreens('missing')).toEqual([])
+    // No further queries should run once we know there's no staff row.
+    expect(db.role_screen.findMany).not.toHaveBeenCalled()
+  })
+
+  it('returns core + admin screens for an admin role, plus grants', async () => {
+    const { db, svc } = makeDb()
+    db.staff.findFirst.mockResolvedValue({ role_id: 'r-admin', role: { is_admin: true } })
+    db.role_screen.findMany.mockResolvedValue([{ screen_id: 's-grant' }])
+    db.screen.findMany
+      .mockResolvedValueOnce([{ code: 'core.home' }, { code: 'f15.role_access' }])
+      .mockResolvedValueOnce([{ code: 'f05.payments' }])
+    expect(await svc.getMyScreens('u-1').then((c) => [...c].sort())).toEqual(['core.home', 'f05.payments', 'f15.role_access'])
+    // Two calls: first with kind in (core, admin), second with id in grants.
+    expect(db.screen.findMany.mock.calls[0][0].where).toEqual({ is_active: true, kind: { in: ['core', 'admin'] } })
+    expect(db.screen.findMany.mock.calls[1][0].where).toEqual({ id: { in: ['s-grant'] }, is_active: true })
+  })
+
+  it('returns only core screens for a non-admin role', async () => {
+    const { db, svc } = makeDb()
+    db.staff.findFirst.mockResolvedValue({ role_id: 'r-gate', role: { is_admin: false } })
+    db.role_screen.findMany.mockResolvedValue([{ screen_id: 's-grant' }])
+    db.screen.findMany.mockResolvedValueOnce([{ code: 'core.home' }]).mockResolvedValueOnce([{ code: 'f06.gate' }])
+    expect(await svc.getMyScreens('u-2').then((c) => [...c].sort())).toEqual(['core.home', 'f06.gate'])
+    // Admin screens are NOT auto-granted to a non-admin role.
+    expect(db.screen.findMany.mock.calls[0][0].where).toEqual({ is_active: true, kind: { in: ['core'] } })
+  })
+
+  it('skips the grants query when there are no grants', async () => {
+    const { db, svc } = makeDb()
+    db.staff.findFirst.mockResolvedValue({ role_id: 'r-empty', role: { is_admin: false } })
+    db.role_screen.findMany.mockResolvedValue([])
+    db.screen.findMany.mockResolvedValueOnce([{ code: 'core.home' }, { code: 'core.my_profile' }])
+    const codes = await svc.getMyScreens('u-3')
+    expect(codes.sort()).toEqual(['core.home', 'core.my_profile'])
+    expect(db.screen.findMany).toHaveBeenCalledTimes(1)
   })
 })

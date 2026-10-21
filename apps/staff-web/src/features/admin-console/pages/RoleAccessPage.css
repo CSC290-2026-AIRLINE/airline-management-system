@@ -4,8 +4,11 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: 32px;
   margin-bottom: 20px;
+  /* The intro needs ~660px to stay on one line. Once that plus the controls no longer fit side by side, the
+     controls drop to their own row instead of squeezing the sentence into a two-line wrap. */
+  flex-wrap: wrap;
 }
 .role-access-header h2 {
   margin: 0 0 4px;
@@ -13,24 +16,27 @@
   font-weight: 600;
   color: #111827;
 }
-.role-access-header .small {
-  font-size: 13px;
+/* No `.small` size override here on purpose — the console-wide `.page-body .small` in AdminShell.css governs it.
+   An override would tie-break on stylesheet order, which is not guaranteed across the route split. */
+.role-access-intro {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .role-access-intro p {
-  max-width: 460px;
+  /* Sized to the rendered width of the sentence at 13px, so it holds one line at full desktop width. */
+  max-width: 700px;
   line-height: 1.5;
   margin: 0;
 }
 
 .role-access-controls {
   display: flex;
-  gap: 16px;
   align-items: flex-start;
-  flex-wrap: wrap;
   justify-content: flex-end;
+  flex: 0 0 auto;
 }
 
-/* Role picker stacks the label above the select and the staff/change counts below it. */
+/* Role picker stacks the label above the control row and the staff/change counts below it. */
 .role-picker {
   display: flex;
   flex-direction: column;
@@ -40,6 +46,35 @@
   font-size: 12px;
   color: #6b7280;
   margin-bottom: 4px;
+}
+/* The button and the labelled select share one row. As a sibling of the whole picker the button used to align
+   with the "Role" label instead, so it floated above the control it acts on. */
+.role-picker-row {
+  display: flex;
+  /* Bottom-aligned so the button lines up with the select, not with the label sitting above it. */
+  align-items: flex-end;
+  gap: 10px;
+  /* On a phone the select is forced to `width: 100%`, so let the button wrap onto its own line rather than
+     squeeze the select to nothing. */
+  flex-wrap: wrap;
+}
+/* Label + select travel together, so "Role" stays directly above the select even though the button now sits to
+   its left in the row. */
+.role-picker-field {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.role-picker-row .role-select {
+  flex: 1 1 auto;
+}
+.role-picker-row .btn-ghost {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 .role-stats {
   margin: 6px 0 0;
@@ -134,7 +169,7 @@
 .screen-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32px;
+  gap: 24px;
   align-items: start;
 }
 .screen-column {
@@ -145,13 +180,13 @@
   border: 1px solid #e6e8ef;
   border-radius: 8px;
   overflow: hidden;
-  margin: 0 0 20px;
+  margin: 0 0 16px;
 }
 .group-header {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  padding: 10px 16px;
+  padding: 9px 16px;
   background: #eef1f8;
   border-bottom: 1px solid #e6e8ef;
   font-size: 11px;
@@ -170,27 +205,31 @@
 .group-cols,
 .screen-rows li {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  /* 60px, not 44px: at 44px the "CAN SEE" header broke into "CAN" / "SEE". The wider track also gives the locked
+     core rows' tick more room. */
+  grid-template-columns: 60px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
 }
 /* CAN SEE / SCREEN / NOTE — sits above the column, not inside a card, so it carries the card's 1px border + 16px
    row padding to line up with the checkboxes and names below. */
 .group-cols {
-  padding: 0 17px 8px;
+  padding: 0 17px 6px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #94a3b8;
+  /* Fixed short labels — never let them wrap, even if the font renders wider than expected. */
+  white-space: nowrap;
 }
 .screen-rows {
   list-style: none;
   margin: 0;
-  padding: 0 16px 8px;
+  padding: 0 16px 6px;
 }
 .screen-rows li {
-  padding: 7px 0;
+  padding: 6px 0;
   border-top: 1px solid #f1f2f6;
   font-size: 14px;
   color: #111827;
@@ -232,10 +271,12 @@
 
 /* ----- Save panel ----- */
 
+/* Full-bleed against the card's own padding box so the sticky panel lines up with the card border. These values
+   must track `.page-body`'s padding (32px sides, 24px bottom) — they were stale from before the card existed. */
 .save-panel {
   position: sticky;
   bottom: 0;
-  margin: 24px -40px -60px;
+  margin: 24px -32px -24px;
   background: #fff8e6;
   border: 1px solid #e5b86a;
   border-radius: 8px;

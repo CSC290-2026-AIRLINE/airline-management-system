@@ -1,8 +1,10 @@
 /* AdminShell — sidebar + main area + tab bar. */
 
 .admin-shell {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  /* Flex, not grid: `grid-template-columns` does not interpolate when a track list mixes `px` with
+     `minmax(0, 1fr)`, so the collapse snapped instead of animating. With flex the sidebar's own `width` is the
+     animated value, and `.admin-main` fills the rest. */
+  display: flex;
   min-height: 100vh;
   font-family: var(--sans);
 }
@@ -17,14 +19,20 @@
   flex-direction: column;
   position: sticky;
   top: 0;
+  /* `flex: 0 0 auto` keeps the sidebar at exactly its own width instead of letting `flex-shrink` squeeze it, so
+     this `width` is the single source of truth for the collapsed state. */
+  flex: 0 0 auto;
   width: 260px;
   /* Figma height, clamped to the viewport so the footer stays on the first screen without scrolling. The footer
      below relies on `margin-top: auto`, so it pins to the bottom of whatever height this resolves to. */
   height: min(1225.4px, 100vh);
   box-sizing: border-box;
   overflow-y: auto;
+  overflow-x: hidden;
   transform: rotate(0deg);
   opacity: 1;
+  /* The single animated property for the collapse — see the `.is-collapsed` rules below. */
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .admin-sidebar .brand {
@@ -41,6 +49,9 @@
   position: relative;
   padding-bottom: 18px;
   display: inline-block;
+  transition:
+    font-size 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    padding-bottom 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 /* The gold rule is drawn on the letters it underlines rather than as a percentage of the whole word, so it stays
    flush with the final glyph even when the wordmark font changes.
@@ -59,6 +70,20 @@
   height: 0.11em;
   background: #f2a800;
   border-radius: 999px;
+  transition:
+    left 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    right 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Neutral wrapper so the drawer can be positioned on mobile while leaving the desktop column untouched.
+   `display: contents` drops the box entirely, promoting nav/footer/label straight into the sidebar's flex column. */
+.sidebar-drawer {
+  display: contents;
+}
+
+/* Mobile-only bar toggle — hidden on desktop, where `.btn-collapse` does the job. */
+.admin-sidebar .btn-mobile-nav {
+  display: none;
 }
 
 .admin-sidebar .workspace-label {
@@ -135,7 +160,9 @@
 }
 
 /* Collapse button — sits at the top-right of the sidebar, aligned with the brand row.
-   Border in #6E87B2 at 80% alpha; the inside is a hazy wash so the navy shows through softly. */
+   Border in #6E87B2 at 80% alpha; the inside is a hazy wash so the navy shows through softly.
+   Position and size are overridden in the collapsed state below, where the column is too narrow for a
+   side-by-side layout with the monogram. */
 .admin-sidebar .btn-collapse {
   position: absolute;
   top: 28px;
@@ -153,6 +180,13 @@
   padding: 0;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   z-index: 2;
+  transition:
+    top 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    right 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 .admin-sidebar .btn-collapse:hover {
   background: rgba(255, 255, 255, 0.12);
@@ -160,25 +194,32 @@
 }
 
 /* Collapsed state — sidebar shrinks to icon-only column, brand switches to "A". */
-.admin-shell.is-collapsed {
-  grid-template-columns: 64px minmax(0, 1fr);
-}
 .admin-shell.is-collapsed .admin-sidebar {
-  padding-left: 0;
-  padding-right: 0;
+  width: 64px;
   overflow: hidden;
 }
+/* The monogram centres in the narrow column, and the gold rule under it widens to nearly the full glyph —
+   `right: 0.236em` is tuned for the 3-letter wordmark, not for a lone "A". */
 .admin-shell.is-collapsed .admin-sidebar .brand {
-  padding: 0 16px 18px;
+  padding: 0 0 18px;
+  text-align: center;
 }
 .admin-shell.is-collapsed .admin-sidebar .brand-word {
   font-size: 28px;
   padding-bottom: 14px;
 }
 .admin-shell.is-collapsed .admin-sidebar .brand-ink--rule::after {
-  left: 0;
-  right: 64%;
+  left: 0.08em;
+  right: 0.08em;
   bottom: -0.175em;
+}
+/* The toggle drops below the monogram instead of sharing the top row with it. 14px right offset centres the
+   36px square inside the 64px column ((64 - 36) / 2 = 14). */
+.admin-shell.is-collapsed .admin-sidebar .btn-collapse {
+  top: 92px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
 }
 .admin-shell.is-collapsed .admin-sidebar .workspace-label,
 .admin-shell.is-collapsed .admin-sidebar .sidebar-item,
@@ -190,11 +231,14 @@
 
 .admin-main {
   background: #f6f7fb;
+  /* Takes whatever the sidebar leaves behind. `min-width: 0` stops wide tables from forcing the flex row wider
+     than the viewport. */
+  flex: 1 1 auto;
   min-width: 0;
 }
 
 .shell-header {
-  padding: 32px 40px 20px;
+  padding: 32px 56px 20px;
   background: #ffffff;
   border-bottom: 1px solid #e6e8ef;
 }
@@ -216,7 +260,7 @@
 /* The three tabs share one light strip; the active one is a filled navy pill inside it. */
 .tab-bar {
   display: flex;
-  padding: 6px 40px;
+  padding: 6px 56px;
   background: #eef1f7;
 }
 .tab {
@@ -242,47 +286,129 @@
   color: #ffffff;
 }
 
+/* Horizontal padding is shared by the header, the tab strip and the page card so their left edges stay flush at
+   every breakpoint — the only thing that changes is how wide the gutter gets. */
 .page-body-host {
-  padding: 24px 40px 60px;
+  padding: 24px 56px 60px;
+}
+
+/* White card wrapper for every page body — Role access, Audit log, Staff roles, plus error fallback. Matches the
+   visual weight of an individual screen-group card so the whole content block reads as one unit. */
+.page-body {
+  background: #ffffff;
+  border: 1px solid #e6e8ef;
+  border-radius: 8px;
+  padding: 24px 32px;
+}
+
+/* Secondary text helpers for every console page. These two class names are used throughout the admin pages but
+   were never actually defined — only `.admin-sidebar .muted` and `.role-access-header .small` existed — so outside
+   those two spots they resolved to nothing and the text fell back to the 18px size on :root. */
+.page-body .muted {
+  color: #6b7280;
+}
+.page-body .small {
+  font-size: 12px;
 }
 
 /* ----- Responsive ----- */
 
 @media (max-width: 1024px) {
-  .admin-shell {
-    grid-template-columns: 200px minmax(0, 1fr);
+  .admin-sidebar {
+    width: 200px;
   }
   .shell-header,
   .tab-bar,
   .page-body-host {
-    padding-left: 24px;
-    padding-right: 24px;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+  .page-body {
+    padding: 24px;
   }
 }
 
 @media (max-width: 768px) {
+  /* Sidebar becomes a slim top bar — brand on the left, "ADMIN ☰" on the right. The nav and footer drop into a
+     drawer that the toggle reveals; the collapsed 64px rule would otherwise win on specificity and leave a sliver
+     across the top, so it is overridden here too. */
   .admin-shell {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+  .admin-sidebar,
+  .admin-shell.is-collapsed .admin-sidebar {
+    width: 100%;
   }
   .admin-sidebar {
-    position: relative;
-    height: auto;
-    padding: 14px 0;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: 64px;
+    padding: 0 16px;
+    overflow: visible;
   }
   .admin-sidebar .brand {
-    padding-bottom: 12px;
+    padding: 0;
   }
-  .admin-sidebar .workspace-label {
-    margin: 0 16px 12px;
+  /* The collapsed monogram switch is a desktop-only affordance — the bar has no room for a 64px column. */
+  .admin-shell.is-collapsed .admin-sidebar .brand {
+    text-align: left;
   }
-  .admin-sidebar .sidebar-footer {
-    padding: 12px 16px 0;
+  .admin-shell.is-collapsed .admin-sidebar .brand-word,
+  .admin-shell.is-collapsed .admin-sidebar .brand-ink--rule::after {
+    font-size: 28px;
+  }
+  .admin-shell.is-collapsed .admin-sidebar .brand-ink--rule::after {
+    left: 0;
+    right: 0.236em;
+  }
+
+  /* The bar toggle replaces the collapse button at this width. */
+  .admin-sidebar .btn-mobile-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 0;
+    cursor: pointer;
   }
   .admin-sidebar .btn-collapse {
-    right: 12px;
-    top: 14px;
-    width: 32px;
-    height: 32px;
+    display: none;
+  }
+
+  /* Drawer: a panel under the bar. Hidden until `.is-nav-open`, and it overlays the page rather than pushing it,
+     so opening the menu never reflows the content below. */
+  .sidebar-drawer {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    padding: 4px 0 16px;
+    background: #14213d;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: none;
+  }
+  .admin-shell.is-nav-open .sidebar-drawer {
+    display: block;
+  }
+  .admin-sidebar .workspace-label {
+    margin: 12px 16px 8px;
+  }
+  .admin-sidebar .sidebar-nav {
+    padding: 0 12px;
+  }
+  .admin-sidebar .sidebar-footer {
+    margin-top: 8px;
+    padding: 12px 16px 0;
   }
   .shell-header {
     padding: 20px 20px 14px;
@@ -293,18 +419,30 @@
   .shell-header p {
     font-size: 13px;
   }
+  /* All three tabs stay on one row — the labels are short enough to fit a phone. */
   .tab-bar {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 4px;
-    padding: 8px 20px;
+    padding: 8px 16px;
   }
   .tab {
-    flex: 1 1 100%;
-    padding: 8px 12px;
-    font-size: 13px;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .page-body-host {
     padding: 20px 20px 60px;
+  }
+  /* Track `.page-body`'s padding at each breakpoint so the panel stays flush with the card border. */
+  .save-panel {
+    margin: 24px -20px -20px;
+  }
+  .page-body {
+    padding: 20px;
   }
 }
 
@@ -324,13 +462,30 @@
   .page-body-host {
     padding: 16px 16px 60px;
   }
+  .page-body {
+    padding: 16px;
+  }
   .role-access-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 12px;
+    gap: 14px;
   }
   .role-access-controls {
     justify-content: flex-start;
+  }
+  /* Button and select each take a full row instead of sharing one — at this width they would each be squeezed to
+     an unusable size side by side. */
+  .role-picker-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .role-picker-row .btn-ghost {
+    width: 100%;
+    justify-content: center;
+    padding: 11px 14px;
+  }
+  .role-stats {
+    text-align: left;
   }
   .filter-input,
   .role-select,
@@ -339,25 +494,11 @@
     min-width: 0;
   }
   .save-panel {
-    margin-left: -16px;
-    margin-right: -16px;
+    margin: 24px -16px -16px;
     border-radius: 0;
   }
   .audit-filters {
     flex-direction: column;
     align-items: stretch;
-  }
-  .audit-filters .filter-input,
-  .audit-filters .role-select {
-    width: 100%;
-  }
-  .audit-table {
-    font-size: 12px;
-  }
-  .audit-table .ellipsis {
-    max-width: 140px;
-  }
-  .detail-grid {
-    grid-template-columns: 1fr;
   }
 }

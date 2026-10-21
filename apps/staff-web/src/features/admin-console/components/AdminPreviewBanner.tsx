@@ -2,14 +2,13 @@ import { togglePreviewModeInUrl } from '../hooks/usePreviewMode'
 import './AdminPreviewBanner.css'
 
 /**
- * Sticky amber strip rendered at the top of admin pages when `?preview=1` is active. Reminds the user that nothing is
- * real and gives them a one-click way to flip back to live data.
+ * Compact amber chip pinned to the top-right of admin pages when `?preview=1` is active. Just enough to surface
+ * "you're looking at sample data" and offer one-click exit.
  */
 export function AdminPreviewBanner() {
   return (
     <div className="admin-preview-banner" role="status">
       <span className="badge">PREVIEW</span>
-      <p>Design-preview mode — page is showing sample data, not the live backend. None of these rows are persisted.</p>
       <button
         type="button"
         className="btn-link"

@@ -18,6 +18,6 @@ export function useListAudit() {
     if (query.cursor) params.set('cursor', query.cursor)
     if (query.limit !== undefined) params.set('limit', String(query.limit))
     const qs = params.toString()
-    return fetchJson<AuditPage>(qs ? `/api/admin/audit?${qs}` : '/api/admin/audit')
+    return fetchJson<AuditPage>(qs ? `/api/admin/audit-log?${qs}` : '/api/admin/audit-log')
   }
 }

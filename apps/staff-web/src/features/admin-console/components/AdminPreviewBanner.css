@@ -1,46 +1,47 @@
+/* Compact amber chip pinned to the top-right corner of the viewport. Floats above page content so it doesn't push
+   anything down — just signals "you're in preview mode" + offers an exit. */
+
 .admin-preview-banner {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  top: 16px;
+  right: 24px;
   z-index: 30;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 24px;
+  gap: 10px;
+  padding: 6px 12px;
   background: #fff8e6;
-  border-bottom: 1px solid #e5b86a;
+  border: 1px solid #e5b86a;
+  border-radius: 999px;
   color: #92400e;
-  font-size: 13px;
+  font-size: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .admin-preview-banner .badge {
   display: inline-block;
   background: #f59e0b;
   color: #ffffff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
   flex-shrink: 0;
-}
-
-.admin-preview-banner p {
-  margin: 0;
-  flex: 1;
-  line-height: 1.4;
 }
 
 .admin-preview-banner .btn-link {
   background: transparent;
   border: 1px solid #92400e;
   color: #92400e;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
 }
+
 .admin-preview-banner .btn-link:hover {
   background: rgba(146, 64, 14, 0.08);
 }

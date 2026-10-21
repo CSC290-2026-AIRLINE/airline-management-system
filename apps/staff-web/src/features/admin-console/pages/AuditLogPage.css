@@ -10,39 +10,51 @@
   color: #111827;
 }
 
+/* Five labelled stacks on one row. `flex-end` puts the unlabelled "Clear filters" button on the input line
+   instead of letting it float up beside the labels. */
 .audit-filters {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 12px;
+  align-items: flex-end;
   flex-wrap: wrap;
-  background: #ffffff;
-  padding: 12px 16px;
-  border: 1px solid #e6e8ef;
-  border-radius: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
-.audit-filters .filter-input {
-  min-width: 140px;
+.audit-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
 }
-.audit-filters .role-select {
-  min-width: 140px;
-}
-.date-label {
-  font-size: 12px;
+.audit-filter-label {
+  font-size: 11px;
   color: #6b7280;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
-.date-label input {
-  padding: 6px 10px;
+/* One sizing rule for all five controls so the selects and the two date inputs share a height and baseline. */
+.audit-filter select,
+.audit-filter input {
+  min-width: 150px;
+  padding: 8px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #111827;
+}
+.audit-filter select:focus,
+.audit-filter input:focus {
+  outline: none;
+  border-color: #0a1424;
+  box-shadow: 0 0 0 2px rgba(10, 20, 36, 0.12);
 }
 
+/* Counts on the left, coverage note on the right — both drop to their own line when the row runs out of width. */
 .audit-summary {
-  margin: 12px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 16px 0 12px;
   font-size: 13px;
 }
 
@@ -163,9 +175,157 @@
   margin: 0;
 }
 
-@media (max-width: 700px) {
+/* The mobile toggle row is hidden on desktop, where the five fields are always on show. */
+.audit-filters-bar {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+/* Desktop users get the column headers instead; mobile users need to be told the rows are tappable. */
+.audit-hint {
+  display: none;
+  margin: -4px 0 10px;
+}
+.audit-filters-chip {
+  padding: 7px 12px;
+  background: #eef1f8;
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  /* ----- Filters collapse behind a toggle ----- */
+
+  .audit-filters-bar {
+    display: flex;
+  }
+  .audit-filters-toggle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 16px;
+    font-weight: 600;
+    background: #ffffff;
+  }
+  .audit-filters {
+    display: none;
+    margin-bottom: 4px;
+  }
+  .audit-filters.is-open {
+    display: flex;
+  }
+  .audit-filter,
+  .audit-filter select,
+  .audit-filter input {
+    width: 100%;
+  }
+
+  /* ----- Table becomes a stack of cards ----- */
+
+  /* A seven-column table cannot fit a phone, so the header is dropped and each row becomes a card. The `c-*`
+     classes let the cells be reordered into time / action / actor / feature / summary; `#seq` and the target id
+     are the two that carry no meaning without a header to anchor them. */
+  .audit-table {
+    display: block;
+    min-width: 0;
+  }
+  .audit-table thead {
+    display: none;
+  }
+  .audit-table tbody,
+  .audit-table tbody tr {
+    display: block;
+  }
+  .audit-table td {
+    display: block;
+    padding: 0;
+    border-bottom: none;
+    text-align: left;
+  }
+  .audit-table tbody tr:not(.detail-row) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px 12px;
+    padding: 12px 14px;
+    border: 1px solid #e6e8ef;
+    border-radius: 8px;
+    background: #ffffff;
+    margin-bottom: 10px;
+  }
+  .audit-table tbody tr:not(.detail-row):hover,
+  .audit-table tbody tr:not(.detail-row).is-open {
+    background: #ffffff;
+  }
+  .audit-table tbody tr:not(.detail-row).is-open {
+    border-color: #0a1424;
+  }
+  .audit-table .c-time {
+    order: 1;
+    font-size: 12px;
+  }
+  .audit-table .c-action {
+    order: 2;
+  }
+  .audit-table .c-actor {
+    order: 3;
+    width: 100%;
+    margin-top: 4px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .audit-table .c-feature {
+    order: 4;
+    width: 100%;
+    color: #6b7280;
+    font-size: 12px;
+  }
+  .audit-table .c-summary {
+    order: 5;
+    width: 100%;
+    max-width: none;
+    white-space: normal;
+    font-size: 13px;
+  }
+  .audit-table .c-seq,
+  .audit-table .c-target {
+    display: none;
+  }
+
+  /* The detail row spans the table, which is now a block, so it needs its own box back. It is pulled up against the
+     card above it and rounded only at the bottom, so an expanded entry reads as one panel. */
+  .audit-table tbody tr.detail-row {
+    border: 1px solid #0a1424;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    margin: -10px 0 10px;
+    background: #f9fafb;
+  }
+  .audit-table tbody tr.detail-row td {
+    padding: 12px 14px;
+  }
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Rows are the only tap target here, so say so — the table header that used to explain it is gone. */
+  .audit-hint {
+    display: block;
+  }
+
+  /* ----- Footer stacks ----- */
+
+  .audit-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .audit-pagination {
+    flex-wrap: wrap;
   }
 }
 
@@ -187,13 +347,37 @@
 .audit-pagination label {
   font-size: 12px;
   color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 .audit-pagination select {
-  padding: 4px 8px;
+  padding: 8px 12px;
   border: 1px solid #d1d5db;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #ffffff;
+}
+/* Standalone page counter between the two nav buttons — not a button, so it carries no chrome. */
+.page-of {
+  font-size: 13px;
+  color: #111827;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+/* `.btn-ghost` has no disabled styling of its own, so Previous/Next need one to read as unavailable. */
+.audit-pagination .btn-ghost:disabled {
+  color: #9ca3af;
+  border-color: #e5e7eb;
+  cursor: not-allowed;
+}
+.audit-pagination .btn-ghost:disabled:hover {
+  background: transparent;
+}
+/* The read-only note sits under the footer rather than in the header, so it reads as a caption for the whole
+   table instead of as a subtitle. */
+.audit-footnote {
+  margin: 12px 0 0;
 }

@@ -4,6 +4,7 @@ import { DbService } from '@backend/db/db.service'
 import type { AuditEntryDto, AuditPage, RoleScreensDto, RoleSummary, ScreenDto, ScreenGroup } from './dto/admin-console.types'
 import type { AuditQueryDto } from './dto/audit-query.dto'
 import type { RegisterScreenDto } from './dto/register-screen.dto'
+import type { ScreenKind } from './dto/register-screen.dto'
 import type { SelfRegisterScreen } from './dto/admin-console.types'
 
 const DEFAULT_AUDIT_LIMIT = 50
@@ -170,6 +171,54 @@ export class AdminConsoleService {
   /*  Audit log (read) */
   /* ──────────────────────────────────────────────────────────────────────────── */
 
+  /**
+   * One audit entry by id, used by `GET /admin/audit-log/:id`. Returns `null` when no such row — the controller turns
+   * that into a 404. Sensitive-masking rules match `listAudit`: the `before`/`after` payloads are hidden when
+   * `is_sensitive` is true, regardless of who is asking. (Admin role does not unmask sensitive rows.)
+   */
+  async getAuditEntry(id: string): Promise<AuditEntryDto | null> {
+    const row = await this.db.audit_log.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        seq: true,
+        occurred_at: true,
+        recorded_at: true,
+        actor_type: true,
+        actor_id: true,
+        actor_role: true,
+        source_feature: true,
+        action: true,
+        entity_type: true,
+        entity_id: true,
+        summary: true,
+        reason: true,
+        before: true,
+        after: true,
+        is_sensitive: true,
+      },
+    })
+    if (!row) return null
+    return {
+      seq: row.seq.toString(),
+      id: row.id,
+      occurred_at: row.occurred_at.toISOString(),
+      recorded_at: row.recorded_at.toISOString(),
+      actor_type: row.actor_type as AuditEntryDto['actor_type'],
+      actor_id: row.actor_id,
+      actor_role: row.actor_role,
+      source_feature: row.source_feature,
+      action: row.action,
+      entity_type: row.entity_type,
+      entity_id: row.entity_id,
+      summary: row.summary,
+      reason: row.reason,
+      before: row.is_sensitive ? null : row.before,
+      after: row.is_sensitive ? null : row.after,
+      is_sensitive: row.is_sensitive,
+    }
+  }
+
   async listAudit(query: AuditQueryDto): Promise<AuditPage> {
     // Defence for non-HTTP callers (tests, future internal callers): the DTO already caps at 200, so this clamp is
     // only effective when the DTO isn't used.
@@ -244,5 +293,51 @@ export class AdminConsoleService {
       next_cursor: hasMore ? items[items.length - 1].seq : null,
       has_more: hasMore,
     }
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  Self-service: which screens can the signed-in user open? */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * Returns the codes of every active screen the signed-in user can open. Used by `GET /me/screens` so each feature
+   * (gate agent, finance, etc.) can filter its own nav. Policy:
+   *
+   *   - Every active `core` screen — these are always-on for everyone (e.g. Home, My profile).
+   *   - Every active `admin` screen — only if the user's role is `is_admin`.
+   *   - Every active `assignable` screen the role has a `role_screen` grant for.
+   *
+   * Anonymous calls (no `staff` row linked to the token) get `[]`. We never throw 403 here — the global `JwtAuthGuard`
+   * already rejected unauthenticated requests before reaching us.
+   */
+  async getMyScreens(userId: string): Promise<string[]> {
+    const staff = await this.db.staff.findFirst({
+      where: { user_id: userId, deleted_at: null },
+      select: { role_id: true, role: { select: { is_admin: true } } },
+    })
+    if (!staff) return []
+
+    const grants = await this.db.role_screen.findMany({
+      where: { role_id: staff.role_id },
+      select: { screen_id: true },
+    })
+
+    const wantedKinds: ScreenKind[] = staff.role.is_admin ? ['core', 'admin'] : ['core']
+    const allowedAuto = await this.db.screen.findMany({
+      where: { is_active: true, kind: { in: wantedKinds } },
+      select: { code: true },
+    })
+
+    if (grants.length === 0) return allowedAuto.map((s) => s.code)
+
+    const allowedGranted = await this.db.screen.findMany({
+      where: { id: { in: grants.map((g) => g.screen_id) }, is_active: true },
+      select: { code: true },
+    })
+
+    const codes = new Set<string>()
+    for (const s of allowedAuto) codes.add(s.code)
+    for (const s of allowedGranted) codes.add(s.code)
+    return [...codes]
   }
 }

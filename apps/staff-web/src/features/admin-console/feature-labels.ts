@@ -20,3 +20,6 @@ const FEATURE_LABELS: Record<string, string> = {
 export function featureLabel(featureNo: string): string {
   return FEATURE_LABELS[featureNo] ?? `FEATURE ${featureNo}`
 }
+
+/** Every feature number that has a display label, ascending — powers the audit log's Feature filter dropdown. */
+export const FEATURE_NUMBERS: string[] = Object.keys(FEATURE_LABELS).sort()

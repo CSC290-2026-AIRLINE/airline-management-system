@@ -1,6 +1,6 @@
 # Admin Console — Public contract (G15 → other feature teams)
 
-This document describes the two endpoints every feature team needs to call so the
+This document describes the endpoints every feature team needs to call so the
 admin console can manage their screens and show their activity in the audit log.
 
 Everything below assumes you already use `AuthProvider.fetchWithAuth()` from
@@ -15,11 +15,10 @@ the frontend, or you have a Bearer token on the backend.
 Authorization: Bearer <accessToken>
 ```
 
-The frontend wraps this for you via `useAppAuth().fetchWithAuth`. There is no
-separate admin token — the same logged-in user is used, with the additional check
-that their `staff.role.is_admin` is true. **Only admins** can register screens or
-read the role/audit endpoints; non-admins get `403 Admin role required` from the
-backend guard.
+The frontend wraps this for you via `useAppAuth().fetchWithAuth`.
+
+- `/api/admin/*` endpoints are admin-only. Non-admin staff get `403 Admin role required`.
+- `/api/me/*` endpoints accept **any signed-in user** — no admin role required.
 
 ---
 
@@ -55,11 +54,14 @@ calls are a no-op except that an existing row's `kind` is never mutated.
 
 ```json
 {
-  "id": "5fd1…",
-  "code": "f03.seat_hold",
-  "name": "Seat hold",
-  "kind": "assignable",
-  "feature_no": 3
+  "ok": true,
+  "screen": {
+    "id": "5fd1…",
+    "code": "f03.seat_hold",
+    "name": "Seat hold",
+    "kind": "assignable",
+    "feature_no": "3"
+  }
 }
 ```
 
@@ -99,7 +101,50 @@ admin reloads the Role access tab (no backend restart required).
 
 ---
 
-## 3. Reading screens (admin-only)
+## 3. `GET /api/me/screens` — which screens can the signed-in user open?
+
+```
+GET /api/me/screens
+```
+
+Returns the **codes** of every active screen the caller can open. Call this on
+app boot to filter your own nav (hide menu items the user has no access to).
+No admin role required — any signed-in staff or customer can call it.
+
+```json
+{ "screen_codes": ["core.home", "core.my_profile", "f06.gate_screen"] }
+```
+
+### Policy
+
+| Screen kind  | Who sees it                                                   |
+| ------------ | ------------------------------------------------------------- |
+| `core`       | Everyone (always-on, e.g. Home, My profile).                  |
+| `admin`      | Only when the caller's role is `is_admin`.                    |
+| `assignable` | Only when the caller's role has a `role_screen` grant for it. |
+
+Anonymous or no-staff-row callers receive `{ "screen_codes": [] }`.
+
+#### Staff-web React helper
+
+If you're working in `apps/staff-web`, use the bundled hook instead of writing your own fetch:
+
+```ts
+import { useMyScreens } from '@staff-web/features/admin-console/hooks/useMyScreens'
+
+const { codes, loading, error, source } = useMyScreens()
+// `source` is 'live' | 'preview' | 'pending' — `preview` is set when the URL
+// has ?preview=1 so designers can see the widget render without DB rows.
+```
+
+The bundled hook is mounted in the `AdminShell` sidebar footer as a working
+demonstration (`components/MyAccessWidget.tsx`). Don't import that widget for
+your feature — copy-paste it into your own component if you want a similar
+visible indicator.
+
+---
+
+## 4. Reading screens (admin-only)
 
 ```
 GET /api/admin/screens
@@ -113,55 +158,79 @@ reads it directly.
 {
   "groups": [
     {
-      "feature_no": 15,
-      "feature_name": "Admin Console",
-      "screens": [{ "id": "5fd1…", "code": "f15.audit_log", "name": "Audit log", "kind": "admin", "feature_no": 15 }]
+      "feature_no": "15",
+      "screens": [{ "id": "5fd1…", "code": "f15.audit_log", "name": "Audit log", "kind": "admin" }]
     }
   ]
 }
 ```
 
+`GET /api/admin/roles` returns `{ roles: [{ id, code, name, is_admin, staff_count }] }` for the
+admin Role-access tab.
+
+`GET /api/admin/roles/:id/screens` returns `{ screen_ids: string[] }` — only `assignable` screens
+that role has been granted. `core` and `admin` screens are **not** included (they are always-on
+or admin-only respectively).
+
 ---
 
-## 4. Audit log — your writes appear automatically
+## 5. Audit log
+
+### `GET /api/admin/audit-log` — admin reads the log
+
+```
+GET /api/admin/audit-log?source_feature=3&action=update&from=2026-10-01&limit=50
+```
+
+Cursor-paginated newest-first (cursor is the last row's `seq`, a decimal string).
+
+Filters: `source_feature`, `actor_type` ∈ {`staff`,`customer`,`system`}, `actor_id`, `action`,
+`from`, `to` (ISO-8601). `before` / `after` are returned as `null` for sensitive rows.
+
+### `GET /api/admin/audit-log/:id` — single entry
+
+Returns the same row by id, 404 if not found. Same sensitive-masking rules.
+
+### What to write
 
 Once you have a `source_feature` (your 2-digit feature number) and start
 producing user actions, write to `audit_log` with these fields:
 
 | Field                                  | Type         | Notes                                                                                           |
 | -------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
-| `source_feature`                       | smallint     | Your feature number (e.g. `3`).                                                                 |
+| `source_feature`                       | text         | Your feature number (e.g. `'3'`).                                                               |
 | `action`                               | text         | Must be one of the 11 strings below.                                                            |
 | `entity_type`                          | text         | e.g. `seat_hold`, `booking`, `staff`.                                                           |
 | `entity_id`                            | text         | The row's ID (uuid / serial as text).                                                           |
-| `summary`                              | text         | One-line human description.                                                                     |
+| `summary`                              | text?        | One-line human description.                                                                     |
 | `reason`                               | text?        | Optional. Required for access changes.                                                          |
 | `before`                               | jsonb?       | Optional. Previous state. **Set `is_sensitive=true` to mask in the UI.**                        |
 | `after`                                | jsonb?       | Optional. New state.                                                                            |
-| `is_sensitive`                         | boolean      | When true, `before` and `after` come back as `null` in `GET /admin/audit`.                      |
+| `is_sensitive`                         | boolean      | When true, `before` and `after` come back as `null` in the audit endpoints.                     |
 | `occurred_at`                          | timestamptz? | Defaults to the simulation clock's `now()`. Leave unset unless your business timestamp differs. |
 | `recorded_at`                          | timestamptz  | Defaults to real DB `now()`. **Do not set manually.**                                           |
 | `actor_id`, `actor_role`, `actor_type` | text / enum  | The authenticated user. The audit write helper (PR 2 of F15) sets these for you.                |
 
-### Allowed `action` values (DB CHECK — keep this list in sync)
+### Allowed `action` values — keep in sync with `AUDIT_ACTIONS`
 
 ```
+sign_in
+sign_out
+sign_in_blocked
+access_denied
 create
 update
 delete
-login
-logout
+view_sensitive
 role_change
+status_change
 screen_access_change
-staff_status_change
-payment_capture
-payment_refund
-booking_lifecycle
 ```
 
 If you need a new action, **open a DB-Team ticket** — adding a value is a
 schema change (the `audit_log_action_check` constraint) and not something you
-should DDL directly.
+should DDL directly. Update the matching array in
+`apps/backend/src/modules/admin-console/dto/audit-query.dto.ts` in the same PR.
 
 ### Triggers
 
@@ -173,27 +242,24 @@ Two triggers are installed at the DB level:
 So do not try to amend entries. If something went wrong, write a corrective
 entry with a clear `summary` such as "correcting booking#1234 status (was X)".
 
-### What the admin console reads
+---
 
-`GET /api/admin/audit?source_feature=<your no>` returns your rows automatically,
-no extra wiring. `actor_email` is joined for you so admins don't need a separate
-staff lookup. `before` / `after` are returned as `null` for sensitive rows — the
-console renders them as "sensitive — hidden".
+## 6. Quick reference — what calls what
+
+| Caller                           | Endpoint                           | Auth      | Purpose                                              |
+| -------------------------------- | ---------------------------------- | --------- | ---------------------------------------------------- |
+| Your feature (frontend, on boot) | `POST /api/admin/screens`          | admin     | Register the screens your feature exposes.           |
+| Admin console (frontend)         | `GET /api/admin/screens`           | admin     | Render the matrix.                                   |
+| Admin console (frontend)         | `GET /api/admin/roles`             | admin     | Render the role selector and staff count.            |
+| Admin console (frontend)         | `GET /api/admin/roles/:id/screens` | admin     | Show which `assignable` screens a role has.          |
+| Your feature (frontend, on boot) | `GET /api/me/screens`              | signed-in | Filter your nav to what the signed-in user can open. |
+| Your feature (backend service)   | `insert into audit_log (...)`      | n/a       | Record a sensitive / important action.               |
+| Admin console (frontend)         | `GET /api/admin/audit-log`         | admin     | Show the audit log, optionally filtered by feature.  |
+| Admin console (frontend)         | `GET /api/admin/audit-log/:id`     | admin     | Show one entry's full payload.                       |
 
 ---
 
-## 5. Quick reference — what calls what
-
-| Caller                           | Endpoint                                           | Purpose                                               |
-| -------------------------------- | -------------------------------------------------- | ----------------------------------------------------- |
-| Your feature (frontend, on boot) | `POST /api/admin/screens`                          | Register the screens your feature exposes.            |
-| Admin console (frontend)         | `GET /api/admin/screens`                           | Render the matrix.                                    |
-| Your feature (backend service)   | `insert into audit_log (...)` (via helper in PR 2) | Record a sensitive / important action.                |
-| Admin console (frontend)         | `GET /api/admin/audit`                             | Show the audit log filtered by your `source_feature`. |
-
----
-
-## 6. Things that break if you skip this
+## 7. Things that break if you skip this
 
 - Your screens won't appear in the Role access tab → admins can't grant your feature to any role.
 - Your audit writes will still work (the `audit_log` table is open to features) but no one will be able to find them by feature number if you use a number that hasn't been documented here.
@@ -202,4 +268,4 @@ If you're starting a new feature, file an issue/PR to update this contract with 
 
 ---
 
-_Maintained by G15. Last updated: PR 1 of Feature 15 (read-only console)._
+_Maintained by G15. Last updated: PR 1 of Feature 15 (Iteration 02 — read-only console + `/me/screens`)._

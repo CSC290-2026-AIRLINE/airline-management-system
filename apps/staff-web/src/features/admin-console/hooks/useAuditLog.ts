@@ -21,13 +21,16 @@ export function useAuditLog(
   enabled: boolean = true,
 ) {
   const filtersKey = stableKeyOf(filters)
-  const [request, setRequest] = useState({ filtersKey, cursor: null as string | null, limit })
+  /* `pageIndex` and `rowsBefore` are navigation bookkeeping, not fetch inputs — they are deliberately left out of
+     the effect's dependency list below. `rowsBefore` is how many rows sit on the pages ahead of this one, so the
+     page can render "Showing 26–50 of N entries" without a total-count endpoint. */
+  const [request, setRequest] = useState({ filtersKey, cursor: null as string | null, limit, pageIndex: 0, rowsBefore: 0 })
   const [state, setState] = useState<UseAuditLogState>({ loading: enabled, error: null, page: null })
 
   // Render-time comparison — see hook header. If inputs drifted, schedule a fresh request and let React re-render
   // with the new request before the effect below fetches.
   if (request.filtersKey !== filtersKey || request.limit !== limit) {
-    setRequest({ filtersKey, cursor: null, limit })
+    setRequest({ filtersKey, cursor: null, limit, pageIndex: 0, rowsBefore: 0 })
   }
 
   // `enabled=false` simply parks the hook: the effect returns early and state keeps its last value. The consumer
@@ -54,23 +57,32 @@ export function useAuditLog(
   }, [enabled, request.filtersKey, request.cursor, request.limit])
 
   const nextPage = useCallback(() => {
-    setRequest((prev) => {
-      const next = state.page?.next_cursor
-      if (!next) return prev
-      return { ...prev, cursor: next }
-    })
+    const next = state.page?.next_cursor
+    if (!next) return
+    // Capture the page we are leaving so its row count can be added to the running offset.
+    const leaving = state.page?.items.length ?? 0
+    setRequest((prev) => ({ ...prev, cursor: next, pageIndex: prev.pageIndex + 1, rowsBefore: prev.rowsBefore + leaving }))
   }, [state.page])
 
+  /* Going back rewinds to the first page rather than stepping one cursor back — the endpoint only hands out a
+     "next" cursor, so an arbitrary page can't be re-requested. Page index and offset reset with it. */
   const prevPage = useCallback(() => {
-    setRequest((prev) => (prev.cursor === null ? prev : { ...prev, cursor: null }))
+    setRequest((prev) => (prev.cursor === null ? prev : { ...prev, cursor: null, pageIndex: 0, rowsBefore: 0 }))
   }, [])
 
   const hasPrev = request.cursor !== null
 
   return useMemo(
-    () => ({ ...state, nextPage, prevPage, hasPrev }),
+    () => ({
+      ...state,
+      nextPage,
+      prevPage,
+      hasPrev,
+      pageIndex: request.pageIndex,
+      rowsBefore: request.rowsBefore,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.loading, state.error, state.page, hasPrev],
+    [state.loading, state.error, state.page, hasPrev, request.pageIndex, request.rowsBefore],
   )
 }
 

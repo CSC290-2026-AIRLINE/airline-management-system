@@ -1,8 +1,22 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common'
 import { AdminConsoleService } from './admin-console.service'
 import { AdminConsoleGuard } from './guards/admin-console.guard'
 import { RegisterScreenDto } from './dto/register-screen.dto'
 import { AuditQueryDto } from './dto/audit-query.dto'
+import type { AuditEntryDto } from './dto/admin-console.types'
 import type { ScreenKind } from './dto/register-screen.dto'
 
 /**
@@ -56,10 +70,21 @@ export class AdminConsoleController {
     return { screen_ids: result.screen_ids }
   }
 
-  /** Cursor-paginated audit log (newest first). */
-  @Get('audit')
+  /** Cursor-paginated audit log (newest first). Spec path: `/api/admin/audit-log`. */
+  @Get('audit-log')
   listAudit(@Query() query: AuditQueryDto): Promise<unknown> {
     return this.svc.listAudit(query)
+  }
+
+  /**
+   * Single audit entry by id. Mirrors the list endpoint's sensitive-masking rules so a sensitive row returns
+   * `before`/`after` as `null`. 404 when the id does not exist.
+   */
+  @Get('audit-log/:id')
+  async getAuditEntry(@Param('id', new ParseUUIDPipe()) id: string): Promise<AuditEntryDto> {
+    const entry = await this.svc.getAuditEntry(id)
+    if (!entry) throw new NotFoundException(`Audit entry ${id} not found`)
+    return entry
   }
 }
 

@@ -3,25 +3,27 @@ import { useListAudit } from '../api/audit'
 import { useAuditLog } from '../hooks/useAuditLog'
 import { usePreviewMode } from '../hooks/usePreviewMode'
 import { previewAudit } from '../preview-data'
+import { FEATURE_NUMBERS, featureLabel } from '../feature-labels'
 import { AdminErrorCard } from '../components/AdminErrorCard'
 import { AdminPreviewBanner } from '../components/AdminPreviewBanner'
 import type { AuditEntry, AuditFilters, AuditPage } from '../types'
 import './AuditLogPage.css'
 
-/* Filter dropdowns mirror the AUDIT_ACTIONS check in the DB. Keep these in sync with
- * apps/backend/src/modules/admin-console/dto/audit-query.dto.ts. */
+/* Filter dropdowns mirror the AUDIT_ACTIONS check in the DB. Keep these in lockstep with
+ * apps/backend/src/modules/admin-console/dto/audit-query.dto.ts — the backend rejects anything not in the list, so
+ * a mismatched set on this side silently filters out every row. */
 const ACTION_TYPES = [
+  'sign_in',
+  'sign_out',
+  'sign_in_blocked',
+  'access_denied',
   'create',
   'update',
   'delete',
-  'login',
-  'logout',
+  'view_sensitive',
   'role_change',
+  'status_change',
   'screen_access_change',
-  'staff_status_change',
-  'payment_capture',
-  'payment_refund',
-  'booking_lifecycle',
 ] as const
 type ActionType = (typeof ACTION_TYPES)[number]
 
@@ -34,6 +36,14 @@ function formatDate(iso: string | null | undefined): string {
   } catch {
     return iso
   }
+}
+
+/** `2026-10-10` → `10 Oct`. Date-only, so a plain string split avoids the timezone shift `new Date()` introduces. */
+function shortDate(iso: string | undefined): string {
+  if (!iso) return '…'
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return iso
+  return `${Number(d)} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m) - 1]}`
 }
 
 function actionClass(action: string): string {
@@ -66,6 +76,9 @@ export function AuditLogPage() {
   })
   const [limit, setLimit] = useState(25)
   const [expanded, setExpanded] = useState<string | null>(null)
+  /* Only read below the 768px breakpoint, where the filter fields collapse behind a toggle. Desktop always shows
+     them, so this staying false there costs nothing. */
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const liveHook = useAuditLog(
     filters,
@@ -83,17 +96,13 @@ export function AuditLogPage() {
   const loading = !isPreview && liveHook.loading
   const error = !isPreview ? liveHook.error : null
 
-  /* The "best-effort" feature inventory: list of distinct action_types + source_features across all returned rows.
-   * This is what the summary line in the screenshots reads. */
+  /* Best-effort action inventory across the rows currently loaded — "best-effort" because the endpoint is
+   * cursor-paginated, so this counts the page in view, not the whole log. */
   const summary = useMemo(() => {
-    if (!page) return { entries: 0, actionTypes: 0, features: 0 }
+    if (!page) return { entries: 0, actionTypes: 0 }
     const a = new Set<string>()
-    const f = new Set<string>()
-    for (const e of page.items) {
-      a.add(e.action)
-      f.add(e.source_feature)
-    }
-    return { entries: page.items.length, actionTypes: a.size, features: f.size }
+    for (const e of page.items) a.add(e.action)
+    return { entries: page.items.length, actionTypes: a.size }
   }, [page])
 
   function clear() {
@@ -106,12 +115,25 @@ export function AuditLogPage() {
     })
   }
 
+  /* One-line description of what is narrowing the log, for the mobile chip. Unset filters are summarised as
+     "All features" so the chip always reads as a sentence rather than as an empty pill. */
+  const filterSummary = useMemo(() => {
+    const parts: string[] = []
+    if (filters.source_feature) parts.push(`F${filters.source_feature}`)
+    if (filters.actor_type) parts.push(filters.actor_type)
+    if (filters.action) parts.push(filters.action.replace(/_/g, ' '))
+    if (filters.from || filters.to) parts.push(`${shortDate(filters.from)}–${shortDate(filters.to)}`)
+    return parts.length ? parts.join(' · ') : 'All features'
+  }, [filters])
+
   function renderRow(e: AuditEntry) {
     const isOpen = expanded === e.seq
     return (
+      // The `c-*` classes name each cell so the mobile card layout can reorder and restyle them; nth-child would
+      // break the moment a column is added or moved.
       <tr key={e.seq} className={isOpen ? 'is-open' : ''} onClick={() => setExpanded(isOpen ? null : e.seq)}>
-        <td className="mono small">#{e.seq}</td>
-        <td>
+        <td className="c-seq mono small">#{e.seq}</td>
+        <td className="c-actor">
           <span className="email">{e.actor_id ?? '—'}</span>
           <span className="muted small">
             {' '}
@@ -119,19 +141,19 @@ export function AuditLogPage() {
             {e.actor_role ? ` (${e.actor_role})` : ''}
           </span>
         </td>
-        <td>
+        <td className="c-feature">
           <span className="feature-tag">F{String(e.source_feature).padStart(2, '0')}</span>
         </td>
-        <td>
-          <span className={`action-pill ${actionClass(e.action)}`}>{e.action}</span>
+        <td className="c-action">
+          <span className={`action-pill ${actionClass(e.action)}`}>{e.action.replace(/_/g, ' ')}</span>
         </td>
-        <td>
+        <td className="c-target">
           <span className="mono small">
             {e.entity_type}#{e.entity_id}
           </span>
         </td>
-        <td className="ellipsis">{e.summary}</td>
-        <td className="muted small">{formatDate(e.occurred_at ?? e.recorded_at)}</td>
+        <td className="c-summary ellipsis">{e.summary}</td>
+        <td className="c-time muted small">{formatDate(e.occurred_at ?? e.recorded_at)}</td>
       </tr>
     )
   }
@@ -148,64 +170,100 @@ export function AuditLogPage() {
     if (!isPreview) liveHook.prevPage()
   }
 
+  /* Cursor pagination has no total-count endpoint, so the footer reports the range it can actually prove and marks
+     an open end with "+" rather than inventing a number. */
+  const pageSize = page?.items.length ?? 0
+  const hasMore = page?.has_more ?? false
+  const rowsBefore = isPreview ? 0 : liveHook.rowsBefore
+  const pageIndex = isPreview ? 0 : liveHook.pageIndex
+
   return (
     <>
       {isPreview && <AdminPreviewBanner />}
       <section className="page-body">
         <header className="audit-header">
           <h2>Audit log</h2>
-          <p className="muted">Read only. Entries can’t be edited or deleted. Times use the simulation clock.</p>
         </header>
 
         {/* Filter row ----------------------------------------------- */}
-        <div className="audit-filters">
-          <input
-            className="filter-input"
-            placeholder="Feature (e.g. 15)"
-            value={filters.source_feature ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                source_feature: e.target.value || undefined,
-              }))
-            }
-          />
-          <select
-            className="role-select"
-            value={filters.actor_type ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                actor_type: (e.target.value || undefined) as AuditFilters['actor_type'],
-              }))
-            }
+        {/* Below 768px the five fields collapse behind this toggle — a phone has no width to lay them out in — and
+            the chip beside it says what is currently narrowing the log. */}
+        <div className="audit-filters-bar">
+          <button
+            type="button"
+            className="btn-ghost audit-filters-toggle"
+            onClick={() => setFiltersOpen((o) => !o)}
+            aria-expanded={filtersOpen}
           >
-            <option value="">All actors</option>
-            {ACTOR_TYPES.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-          <select
-            className="role-select"
-            value={filters.action ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                action: (e.target.value || undefined) as ActionType | undefined,
-              }))
-            }
-          >
-            <option value="">All actions</option>
-            {ACTION_TYPES.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-          <label className="date-label">
-            From{' '}
+            Filters
+          </button>
+          <span className="audit-filters-chip muted small">{filterSummary}</span>
+        </div>
+        {/* Each control is a labelled stack so the five fields share one baseline, and the unlabelled "Clear
+            filters" button lines up with the inputs rather than floating at the top of the row. */}
+        <div className={`audit-filters${filtersOpen ? ' is-open' : ''}`}>
+          <label className="audit-filter">
+            <span className="audit-filter-label">Feature</span>
+            <select
+              className="role-select"
+              value={filters.source_feature ?? ''}
+              onChange={(e) =>
+                setFilters((f) => ({
+                  ...f,
+                  source_feature: e.target.value || undefined,
+                }))
+              }
+            >
+              <option value="">All features</option>
+              {FEATURE_NUMBERS.map((n) => (
+                <option key={n} value={n}>
+                  F{n} · {featureLabel(n)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="audit-filter">
+            <span className="audit-filter-label">Actor</span>
+            <select
+              className="role-select"
+              value={filters.actor_type ?? ''}
+              onChange={(e) =>
+                setFilters((f) => ({
+                  ...f,
+                  actor_type: (e.target.value || undefined) as AuditFilters['actor_type'],
+                }))
+              }
+            >
+              <option value="">All actors</option>
+              {ACTOR_TYPES.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="audit-filter">
+            <span className="audit-filter-label">Action type</span>
+            <select
+              className="role-select"
+              value={filters.action ?? ''}
+              onChange={(e) =>
+                setFilters((f) => ({
+                  ...f,
+                  action: (e.target.value || undefined) as ActionType | undefined,
+                }))
+              }
+            >
+              <option value="">All actions</option>
+              {ACTION_TYPES.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="audit-filter">
+            <span className="audit-filter-label">From</span>
             <input
               type="date"
               value={filters.from ?? ''}
@@ -217,8 +275,8 @@ export function AuditLogPage() {
               }
             />
           </label>
-          <label className="date-label">
-            To{' '}
+          <label className="audit-filter">
+            <span className="audit-filter-label">To</span>
             <input
               type="date"
               value={filters.to ?? ''}
@@ -236,10 +294,18 @@ export function AuditLogPage() {
         </div>
 
         {/* Summary line --------------------------------------------- */}
-        <p className="audit-summary muted">
-          {summary.entries} entries · {summary.actionTypes} action types · {summary.features} features
-          {loading ? ' · loading…' : ''}
-        </p>
+        <div className="audit-summary">
+          <span className="muted">
+            {summary.entries} entries · {summary.actionTypes} action types
+            {loading ? ' · loading…' : ''}
+          </span>
+          <span className="muted">
+            {summary.actionTypes >= ACTION_TYPES.length
+              ? `All ${ACTION_TYPES.length} audit action types are represented.`
+              : `${summary.actionTypes} of ${ACTION_TYPES.length} audit action types are represented.`}
+          </span>
+        </div>
+        <p className="audit-hint muted small">Tap a row to see before and after values.</p>
 
         {/* Table --------------------------------------------------- */}
         <div className="audit-table-wrap">
@@ -303,12 +369,13 @@ export function AuditLogPage() {
         {/* Pagination ---------------------------------------------- */}
         <div className="audit-footer">
           <span className="muted small">
-            {page && page.items.length > 0 ? `Showing up to ${page.items.length} entries` : 'No entries'}
-            {page?.has_more ? ' · more available' : ''}
+            {pageSize === 0
+              ? 'No entries'
+              : `Showing ${rowsBefore + 1}–${rowsBefore + pageSize} of ${hasMore ? `${rowsBefore + pageSize}+` : rowsBefore + pageSize} entries`}
           </span>
           <div className="audit-pagination">
             <label>
-              Rows{' '}
+              Rows
               <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
                 <option value={25}>25</option>
                 <option value={50}>50</option>
@@ -316,13 +383,18 @@ export function AuditLogPage() {
               </select>
             </label>
             <button type="button" className="btn-ghost" disabled={!hasPrev} onClick={() => prevPage()}>
-              Prev
+              Previous
             </button>
-            <button type="button" className="btn-primary" disabled={!page?.has_more} onClick={() => nextPage()}>
+            <span className="page-of">
+              Page {pageIndex + 1} of {hasMore ? `${pageIndex + 1}+` : pageIndex + 1}
+            </span>
+            <button type="button" className="btn-ghost" disabled={!hasMore} onClick={() => nextPage()}>
               Next
             </button>
           </div>
         </div>
+
+        <p className="audit-footnote muted small">Read only. Entries can’t be edited or deleted. Times use the simulation clock.</p>
       </section>
     </>
   )
