@@ -1,0 +1,367 @@
+import { useMemo, useState } from 'react'
+import { useListScreens } from '../api/screens'
+import { useListRoles, useGetRoleScreens, useReplaceRoleScreens } from '../api/roles'
+import { useRoleAccess } from '../hooks/useRoleAccess'
+import { usePreviewMode } from '../hooks/usePreviewMode'
+import { previewRoleScreens, previewRoles, previewScreenGroups } from '../preview-data'
+import { featureLabel } from '../feature-labels'
+import { AdminErrorCard } from '../components/AdminErrorCard'
+import { AdminPreviewBanner } from '../components/AdminPreviewBanner'
+import type { ScreenDto } from '../types'
+import './RoleAccessPage.css'
+
+/* Helpers --------------------------------------------------------------- */
+
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const v of a) if (!b.has(v)) return false
+  return true
+}
+
+function setsDiff(a: Set<string>, b: Set<string>): { added: string[]; removed: string[] } {
+  const added: string[] = []
+  const removed: string[] = []
+  for (const v of a) if (!b.has(v)) added.push(v)
+  for (const v of b) if (!a.has(v)) removed.push(v)
+  return { added, removed }
+}
+
+/** Look for a numeric HTTP status in a thrown error message — `401 Unauthorized: {…}` from the API wrapper. */
+function statusFromError(msg: string): number | undefined {
+  const m = /(\b\d{3}\b)/.exec(msg)
+  if (!m) return undefined
+  const n = Number(m[1])
+  return n >= 100 && n < 600 ? n : undefined
+}
+
+/** Synthesize the same registry shape that `useRoleAccess` returns, but from sample data. */
+function computePreviewRegistry(roleId: string | null) {
+  return {
+    loading: false,
+    error: null,
+    screens: previewScreenGroups.groups,
+    roles: previewRoles.roles,
+    granted: new Set<string>(roleId ? (previewRoleScreens[roleId]?.screen_ids ?? []) : []),
+  }
+}
+
+/** One card in the matrix: a header bar plus its screen rows. */
+interface DisplayGroup {
+  key: string
+  title: string
+  /** Set when every screen in the group is `admin` — the header then carries the lock note. */
+  locked: boolean
+  screens: ScreenDto[]
+}
+
+/**
+ * Core screens are lifted into their own "CORE (EVERYONE)" group ahead of the per-feature groups, matching the design.
+ * Feature groups follow in the order the API returned them.
+ */
+function buildGroups(groups: { feature_no: string; screens: ScreenDto[] }[]): DisplayGroup[] {
+  const coreScreens: ScreenDto[] = []
+  const byFeature = new Map<string, ScreenDto[]>()
+  for (const g of groups) {
+    for (const s of g.screens) {
+      if (s.kind === 'core') {
+        coreScreens.push(s)
+        continue
+      }
+      const list = byFeature.get(g.feature_no) ?? []
+      list.push(s)
+      byFeature.set(g.feature_no, list)
+    }
+  }
+
+  const out: DisplayGroup[] = []
+  if (coreScreens.length > 0) {
+    out.push({ key: 'core', title: 'CORE (EVERYONE)', locked: true, screens: coreScreens })
+  }
+  for (const [featureNo, screens] of byFeature) {
+    out.push({
+      key: featureNo,
+      title: `F${featureNo.padStart(2, '0')} ${featureLabel(featureNo)}`,
+      locked: screens.every((s) => s.kind === 'admin'),
+      screens,
+    })
+  }
+  return out
+}
+
+/**
+ * Split the groups across two explicit columns rather than using CSS multi-column, so each column can carry its own
+ * "Can see / Screen / Note" header. The split is by group count — left gets the extra group when the total is odd.
+ */
+function splitColumns(groups: DisplayGroup[]): DisplayGroup[][] {
+  const half = Math.ceil(groups.length / 2)
+  return [groups.slice(0, half), groups.slice(half)]
+}
+
+/* Component ------------------------------------------------------------- */
+
+/**
+ * Role access page. Read-only in PR 1: the dirty banner and Save panel still appear so the UI is complete, but the
+ * Save button is inert — the PUT endpoint is part of PR 2.
+ *
+ * When the URL has `?preview=1` the page renders against `preview-data.ts` instead of the live API. This is purely a
+ * design-review aid and never affects the production path.
+ */
+export function RoleAccessPage() {
+  const isPreview = usePreviewMode()
+
+  const listScreens = useListScreens()
+  const listRoles = useListRoles()
+  const getRoleScreens = useGetRoleScreens()
+  // Wired in PR 2; left in place so the click handler is already pointed at the real endpoint shape.
+  const replaceRoleScreens = useReplaceRoleScreens()
+
+  /* Role selection. Preview mode never flips mid-session — `AdminPreviewBanner` reloads the page to toggle it —
+     so the initial value is computed once here instead of being synced from an effect. */
+  const [roleId, setRoleId] = useState<string | null>(() => (isPreview ? previewRoles.roles[0].id : null))
+
+  /* Edit state — pending = null means "no unsaved changes" */
+  const [pending, setPending] = useState<Set<string> | null>(null)
+  const [reason, setReason] = useState('')
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewStaff, setPreviewStaff] = useState<string | null>(null)
+
+  const liveRegistry = useRoleAccess(roleId, listScreens, listRoles, getRoleScreens, !isPreview)
+  const registry = isPreview ? computePreviewRegistry(roleId) : liveRegistry
+  const groups = useMemo(() => buildGroups(registry.screens), [registry.screens])
+  const columns = useMemo(() => splitColumns(groups), [groups])
+
+  const dirty = pending !== null && !setsEqual(pending, registry.granted)
+  const diff = useMemo(() => {
+    if (pending === null) return { added: [], removed: [] }
+    return setsDiff(registry.granted, pending)
+  }, [pending, registry.granted])
+
+  /* Pick first role once roles load — render-time adjustment. */
+  if (roleId === null && !registry.loading && registry.roles.length > 0) {
+    setRoleId(registry.roles[0].id)
+  }
+
+  const currentRole = registry.roles.find((r) => r.id === roleId) ?? null
+
+  /* Pick a role: wraps setRoleId + reset-the-edits so it can be called from one place. */
+  function selectRole(newRoleId: string | null) {
+    setRoleId(newRoleId)
+    setPending(null)
+    setReason('')
+  }
+
+  /* Toggle a screen */
+  function toggle(screenId: string, kind: ScreenDto['kind']) {
+    if (kind !== 'assignable' || !roleId) return
+    const base = pending ?? new Set(registry.granted)
+    const next = new Set(base)
+    if (next.has(screenId)) next.delete(screenId)
+    else next.add(screenId)
+    setPending(next)
+  }
+
+  /* Apply / undo */
+  function undo() {
+    setPending(null)
+    setReason('')
+  }
+  function apply() {
+    setPending(null)
+    setReason('')
+  }
+
+  /* Render ------------------------------------------------------------ */
+
+  if (registry.loading) return <p className="muted">Loading role access…</p>
+  if (registry.error) {
+    return (
+      <AdminErrorCard
+        page="Role access"
+        error={registry.error}
+        status={statusFromError(registry.error)}
+        onRetry={() => window.location.reload()}
+      />
+    )
+  }
+
+  return (
+    <>
+      {isPreview && <AdminPreviewBanner />}
+      <section className="page-body">
+        {/* Header row --------------------------------------------------- */}
+        <div className="role-access-header">
+          <div className="role-access-intro">
+            <h2>Screens for {currentRole?.name ?? '—'}</h2>
+            <p className="muted small">
+              Pick which screens each role can see. Screen access only: what a screen allows is set by its own feature.
+            </p>
+          </div>
+          <div className="role-access-controls">
+            <button type="button" className="btn-ghost" onClick={() => setPreviewOpen(true)}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8Z" />
+                <circle cx="8" cy="8" r="1.8" />
+              </svg>
+              Preview as user
+            </button>
+            <div className="role-picker">
+              <label className="role-picker-label" htmlFor="role-select">
+                Role
+              </label>
+              <select id="role-select" className="role-select" value={roleId ?? ''} onChange={(e) => selectRole(e.target.value || null)}>
+                {registry.roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+              <p className="role-stats">
+                {currentRole?.staff_count ?? 0} staff with this role ·{' '}
+                {dirty ? `${diff.added.length + diff.removed.length} unsaved changes` : '0 unsaved changes'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Screen matrix ----------------------------------------------- */}
+        {registry.screens.length === 0 ? (
+          <div className="empty-card">
+            <h3>No screens registered yet</h3>
+            <p className="muted">
+              Features self-register their screens via <code>POST /api/admin/screens</code>. As soon as feature teams register theirs, they
+              will appear here grouped by feature.
+            </p>
+          </div>
+        ) : (
+          <div className="screen-columns">
+            {columns.map((column, ci) => (
+              <div className="screen-column" key={ci}>
+                {/* Column headers sit once at the top of each column, not on every group. */}
+                <div className="group-cols" aria-hidden="true">
+                  <span>Can see</span>
+                  <span>Screen</span>
+                  <span>Note</span>
+                </div>
+
+                {column.map((group) => (
+                  <section className="screen-group" key={group.key}>
+                    <header className="group-header">
+                      <span>{group.title}</span>
+                      {group.locked && <span className="group-lock">· ADMIN ONLY — LOCKED</span>}
+                    </header>
+
+                    <ul className="screen-rows">
+                      {group.screens.map((s) => {
+                        const inPending = pending ?? registry.granted
+                        const checked = inPending.has(s.id)
+                        const locked = s.kind !== 'assignable'
+                        return (
+                          <li className={locked ? 'row-locked' : ''} key={s.id}>
+                            <input type="checkbox" checked={checked} disabled={locked || !roleId} onChange={() => toggle(s.id, s.kind)} />
+                            <span className="screen-name">{s.name}</span>
+                            <span className="screen-note">{s.kind === 'core' ? <span className="note-pill">{s.kind}</span> : null}</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="footnote muted">
+          Core and Admin screens are locked; only <strong>assignable</strong> screens can change.
+        </p>
+
+        {/* Save panel (sticky) ---------------------------------------- */}
+        {roleId && dirty && (
+          <div className="save-panel" role="region" aria-label="Unsaved changes">
+            <div className="save-panel-body">
+              <div>
+                <p className="save-summary">
+                  {diff.added.length} to grant, {diff.removed.length} to revoke
+                </p>
+                <input
+                  className="reason-input"
+                  placeholder="Reason (required, ≥ 10 chars) — coming in PR 2"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </div>
+              <div className="save-actions">
+                <button type="button" className="btn-ghost" onClick={undo}>
+                  Undo changes
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled
+                  title="Available in the next release — backend PUT lands in PR 2."
+                  onClick={() => {
+                    /* PR 2: real PUT. */
+                    void replaceRoleScreens(roleId, { screen_ids: [...(pending ?? new Set())], reason })
+                      .then(() => apply())
+                      .catch(() => undefined)
+                  }}
+                >
+                  Save access
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Preview modal ---------------------------------------------- */}
+        {previewOpen && (
+          <div
+            className="modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Preview as user"
+            onClick={() => setPreviewOpen(false)}
+          >
+            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+              <header>
+                <h3>Preview as user</h3>
+                <button type="button" className="btn-ghost" onClick={() => setPreviewOpen(false)}>
+                  Close
+                </button>
+              </header>
+              <p className="muted small">
+                Staff management ships with feature 15’s companion PR — until then this preview lists the screens granted by the selected
+                role.
+              </p>
+              <select className="role-select" value={previewStaff ?? ''} onChange={(e) => setPreviewStaff(e.target.value || null)}>
+                <option value="">No staff selected</option>
+                <option value="placeholder">(friend's PR will populate this)</option>
+              </select>
+              <h4 className="preview-sees-label">THEY SEE</h4>
+              <ul className="preview-list">
+                {registry.granted.size === 0 ? (
+                  <li className="muted">No screens currently granted.</li>
+                ) : (
+                  registry.screens.flatMap((g) =>
+                    g.screens
+                      .filter((s) => registry.granted.has(s.id) || (pending ?? registry.granted).has(s.id))
+                      .map((s) => (
+                        <li key={s.id}>
+                          <span className="mono">{s.code}</span> · {s.name}
+                        </li>
+                      )),
+                  )
+                )}
+              </ul>
+              <footer>
+                <button type="button" className="btn-primary" onClick={() => setPreviewOpen(false)}>
+                  Done
+                </button>
+              </footer>
+            </div>
+          </div>
+        )}
+      </section>
+    </>
+  )
+}

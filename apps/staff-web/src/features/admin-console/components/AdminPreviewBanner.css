@@ -1,0 +1,46 @@
+.admin-preview-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  background: #fff8e6;
+  border-bottom: 1px solid #e5b86a;
+  color: #92400e;
+  font-size: 13px;
+}
+
+.admin-preview-banner .badge {
+  display: inline-block;
+  background: #f59e0b;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.admin-preview-banner p {
+  margin: 0;
+  flex: 1;
+  line-height: 1.4;
+}
+
+.admin-preview-banner .btn-link {
+  background: transparent;
+  border: 1px solid #92400e;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.admin-preview-banner .btn-link:hover {
+  background: rgba(146, 64, 14, 0.08);
+}

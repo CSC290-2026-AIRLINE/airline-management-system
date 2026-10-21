@@ -1,0 +1,199 @@
+/* AuditLogPage — filter row, table, pagination. */
+
+.audit-header {
+  margin-bottom: 16px;
+}
+.audit-header h2 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.audit-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: #ffffff;
+  padding: 12px 16px;
+  border: 1px solid #e6e8ef;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.audit-filters .filter-input {
+  min-width: 140px;
+}
+.audit-filters .role-select {
+  min-width: 140px;
+}
+.date-label {
+  font-size: 12px;
+  color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.date-label input {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.audit-summary {
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.audit-table-wrap {
+  background: #ffffff;
+  border: 1px solid #e6e8ef;
+  border-radius: 8px;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+.audit-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.audit-table th,
+.audit-table td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid #f1f2f6;
+  vertical-align: middle;
+}
+.audit-table th {
+  background: #f9fafb;
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.audit-table tbody tr {
+  cursor: pointer;
+}
+.audit-table tbody tr:hover {
+  background: #f9fafb;
+}
+.audit-table tbody tr.is-open {
+  background: #f3f4f6;
+}
+.audit-table tbody tr.detail-row {
+  cursor: default;
+  background: #f9fafb;
+}
+.audit-table tbody tr.detail-row:hover {
+  background: #f9fafb;
+}
+.audit-table .ellipsis {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.audit-table td.empty {
+  text-align: center;
+  padding: 32px;
+  color: #6b7280;
+}
+
+.email {
+  font-weight: 500;
+  color: #111827;
+}
+
+/* Action pills --------------------------------------------------- */
+
+.action-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.action-pill.a-green {
+  background: #e5f3e8;
+  color: #166534;
+}
+.action-pill.a-red {
+  background: #fbe6e6;
+  color: #991b1b;
+}
+.action-pill.a-amber {
+  background: #fff1d6;
+  color: #92400e;
+}
+.action-pill.a-blue {
+  background: #e6eefb;
+  color: #1e3a8a;
+}
+
+/* Detail row ----------------------------------------------------- */
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.detail-grid h5 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: #6b7280;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.detail-grid pre {
+  margin: 0;
+  padding: 8px 12px;
+  background: #ffffff;
+  border: 1px solid #e6e8ef;
+  border-radius: 4px;
+  font-size: 12px;
+  max-height: 160px;
+  overflow: auto;
+}
+.detail-grid p {
+  margin: 0;
+}
+
+@media (max-width: 700px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Footer / pagination ------------------------------------------- */
+
+.audit-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.audit-pagination {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.audit-pagination label {
+  font-size: 12px;
+  color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.audit-pagination select {
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 12px;
+}
