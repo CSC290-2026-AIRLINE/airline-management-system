@@ -8,29 +8,29 @@
 
 ### 5.1 Statements embedded in `schema.sql`
 
-| Target table | Defined inserted values | Notes |
-|---|---|---|
-| `flight_setting` | `holding_limit_minutes = 30` | Actual SQL insert; separate `airline_code` is still required. |
-| `fleet_setting` | `reserve_ratio = 1.10` | Actual SQL insert, string value. |
-| `cabin_setting` | Four network rows: economy, premium economy, business, first | Marked **placeholder / confirm with F12 owner**. Economy and premium economy are paid with zero included meals; business/first complimentary with one included meal; all show 48-hour order window. |
-| `catering_setting` | `payment_hold_minutes = 30` | Actual SQL insert. |
+| Target table       | Defined inserted values                                      | Notes                                                                                                                                                                                               |
+| ------------------ | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `flight_setting`   | `holding_limit_minutes = 30`                                 | Actual SQL insert; separate `airline_code` is still required.                                                                                                                                       |
+| `fleet_setting`    | `reserve_ratio = 1.10`                                       | Actual SQL insert, string value.                                                                                                                                                                    |
+| `cabin_setting`    | Four network rows: economy, premium economy, business, first | Marked **placeholder / confirm with F12 owner**. Economy and premium economy are paid with zero included meals; business/first complimentary with one included meal; all show 48-hour order window. |
+| `catering_setting` | `payment_hold_minutes = 30`                                  | Actual SQL insert.                                                                                                                                                                                  |
 
 ### 5.2 Migration-only bootstrap row
 
-| Target | Insertion | Notes |
-|---|---|---|
+| Target | Insertion                             | Notes                                                                                                                                                |
+| ------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `role` | `admin` / `Admin` / `is_admin = true` | Inserted by the **merged Level 1 migration** after the copied schema via `ON CONFLICT (code) DO NOTHING`. Needed so staff sign-in can find its role. |
 
 ### 5.3 `seed.ts`: Faker-generated development records
 
-| Target table | Per execution on a fresh DB | Meaning / caveat |
-|---|---:|---|
-| `role` | 4 role codes (upsert) | `check-in`, `gate`, `baggage`, `admin` (admin has `is_admin=true`). Already-existing rows are preserved. |
-| `user` | 5 new rows | 3 customer-type users + 2 staff-type users. |
-| `passenger` | 3 new rows | One for each generated customer user. |
-| `customer` | 3 new rows | Each links a user and their passenger. |
-| `staff` | 2 new rows | Each links to a generated staff-type user and picks a role at random. |
-| `refresh_token` | 10 new rows | Two generated token hashes for each of the five created users. |
+| Target table    | Per execution on a fresh DB | Meaning / caveat                                                                                         |
+| --------------- | --------------------------: | -------------------------------------------------------------------------------------------------------- |
+| `role`          |       4 role codes (upsert) | `check-in`, `gate`, `baggage`, `admin` (admin has `is_admin=true`). Already-existing rows are preserved. |
+| `user`          |                  5 new rows | 3 customer-type users + 2 staff-type users.                                                              |
+| `passenger`     |                  3 new rows | One for each generated customer user.                                                                    |
+| `customer`      |                  3 new rows | Each links a user and their passenger.                                                                   |
+| `staff`         |                  2 new rows | Each links to a generated staff-type user and picks a role at random.                                    |
+| `refresh_token` |                 10 new rows | Two generated token hashes for each of the five created users.                                           |
 
 **Repeatability:** `role` uses `upsert` to avoid duplicate role codes. The random user/profile/token rows are created anew per execution; **do not describe the whole seed as fully idempotent**. Exact generated names, nationality, birthdays, and hashes vary each run; no fixed values should be documented as if guaranteed.
 

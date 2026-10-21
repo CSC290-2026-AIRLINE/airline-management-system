@@ -20,33 +20,33 @@
 
 ## 7. Proposed, pending, and confirmed decisions
 
-| Topic | Current evidence / status | Who should confirm |
-|---|---|---|
-| Level 1 DDL | **Merged into `dev` on 2026-10-12 16:54 UTC**, following review; schema, Prisma and migration are present. This confirms repository merge only, not DB deployment. | Remaining code owners / DB Leads + feature owners |
-| F1 shared identity baseline | Schema explicitly says owner must confirm or replace. | F1 owner / Auth |
-| Cross-feature FKs (Part 8) | Present in merged Level 1 SQL and migration; an earlier proposal called them optional. | DB Leads + affected feature owners |
-| F4 cash-basis summary/refund treatment | `finance_monthly_summary` uses capture/revenue and incurred costs; refund definition is noted as an assumption. | F4 and F5a/F5b owners |
-| F9 aircraft layout versioning | Current DDL forbids in-place `layout` changes and requires a new aircraft type code such as `A320-V2`. | F9 owner |
-| F12 network cabin defaults | Four inserted rows labelled provisional. | F12 owner |
-| F12 product-sale unit cost timing | Source comment asks whether cost is set at sale or at report. | F12/F4 owners |
-| Missing full reference seeds | Full `level1-seed.sql` not on inspected `dev`; current `seed.ts` contains test data only plus roles. | DB/Infra + feature owners |
-| F3b/F5 foreign keys | Some booking/payment references intentionally lack FKs until those schemas exist. | F3b, F5 and DB Leads |
-| Sign-in authorization/security | Review previously flagged disabled-account guards and default-admin staff accounts. Reviewed auth changes check disabled/deleted at sign-in/refresh, but access-token guard is not DB-checked and new staff still default to admin. Approval required. | Auth/Dev Leads |
-| `CODEOWNERS` route | PR notes `/apps/backend/` ownership may override DB-specific path. | Infrastructure Leads |
-| Existing `docs/database-structure.md` | Still describes the former four-model scaffold; **now outdated because PR #14 merged**. | Docs + Maintain / DB Leads |
+| Topic                                  | Current evidence / status                                                                                                                                                                                                                              | Who should confirm                                |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| Level 1 DDL                            | **Merged into `dev` on 2026-10-12 16:54 UTC**, following review; schema, Prisma and migration are present. This confirms repository merge only, not DB deployment.                                                                                     | Remaining code owners / DB Leads + feature owners |
+| F1 shared identity baseline            | Schema explicitly says owner must confirm or replace.                                                                                                                                                                                                  | F1 owner / Auth                                   |
+| Cross-feature FKs (Part 8)             | Present in merged Level 1 SQL and migration; an earlier proposal called them optional.                                                                                                                                                                 | DB Leads + affected feature owners                |
+| F4 cash-basis summary/refund treatment | `finance_monthly_summary` uses capture/revenue and incurred costs; refund definition is noted as an assumption.                                                                                                                                        | F4 and F5a/F5b owners                             |
+| F9 aircraft layout versioning          | Current DDL forbids in-place `layout` changes and requires a new aircraft type code such as `A320-V2`.                                                                                                                                                 | F9 owner                                          |
+| F12 network cabin defaults             | Four inserted rows labelled provisional.                                                                                                                                                                                                               | F12 owner                                         |
+| F12 product-sale unit cost timing      | Source comment asks whether cost is set at sale or at report.                                                                                                                                                                                          | F12/F4 owners                                     |
+| Missing full reference seeds           | Full `level1-seed.sql` not on inspected `dev`; current `seed.ts` contains test data only plus roles.                                                                                                                                                   | DB/Infra + feature owners                         |
+| F3b/F5 foreign keys                    | Some booking/payment references intentionally lack FKs until those schemas exist.                                                                                                                                                                      | F3b, F5 and DB Leads                              |
+| Sign-in authorization/security         | Review previously flagged disabled-account guards and default-admin staff accounts. Reviewed auth changes check disabled/deleted at sign-in/refresh, but access-token guard is not DB-checked and new staff still default to admin. Approval required. | Auth/Dev Leads                                    |
+| `CODEOWNERS` route                     | PR notes `/apps/backend/` ownership may override DB-specific path.                                                                                                                                                                                     | Infrastructure Leads                              |
+| Existing `docs/database-structure.md`  | Still describes the former four-model scaffold; **now outdated because PR #14 merged**.                                                                                                                                                                | Docs + Maintain / DB Leads                        |
 
 **Review note:** Zayar originally requested changes concerning migrations, bootstrap seeds and authentication behavior. Freddie then added the Level 1 migration and auth revisions at commit `3d51fe76`, after which the PR merged into `dev` on 12 Oct 2026. **The merge does not confirm bootstrap completeness, applied database state, auth security, or feature-owner assumptions.**
 
 ### F8 Iteration-02 — proposed, not in `dev`
 
-| Topic | Status / owner | Decision needed |
-|---|---|---|
-| F8 crew, pairing, roster schema | Group 1 specification dated 11 Oct 2026; 10 requested tables **not merged** | DB Leads review FKs, uniqueness, soft deletes and migrations |
-| Aircraft type and cabin staffing | F9 (same wave) | Supply required cabin count per type; decide type ID vs code strategy |
-| `country_language` / per-country legality | F8 + F2 | Normalize `airport.country` and approve country/legal rule sources and overrides |
-| Rosters and assignment revisions | F8 + DB Leads | Scope `pairing_leg_assignment` to a roster run and preserve published history |
-| Police passenger/seat handling | F8 + F3 + F6 | Booking/seat/boarding integration, policy and safety review |
-| Duty hours for overtime and notices | F8 + F5 + F13 | Define duty-hour event, calculation source and notification contract |
+| Topic                                     | Status / owner                                                              | Decision needed                                                                  |
+| ----------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| F8 crew, pairing, roster schema           | Group 1 specification dated 11 Oct 2026; 10 requested tables **not merged** | DB Leads review FKs, uniqueness, soft deletes and migrations                     |
+| Aircraft type and cabin staffing          | F9 (same wave)                                                              | Supply required cabin count per type; decide type ID vs code strategy            |
+| `country_language` / per-country legality | F8 + F2                                                                     | Normalize `airport.country` and approve country/legal rule sources and overrides |
+| Rosters and assignment revisions          | F8 + DB Leads                                                               | Scope `pairing_leg_assignment` to a roster run and preserve published history    |
+| Police passenger/seat handling            | F8 + F3 + F6                                                                | Booking/seat/boarding integration, policy and safety review                      |
+| Duty hours for overtime and notices       | F8 + F5 + F13                                                               | Define duty-hour event, calculation source and notification contract             |
 
 ## 8. Maintenance workflow and change record
 
