@@ -638,18 +638,16 @@ body:has(.sq-app) {
 .sq-history-note {
   margin-top: 16px !important;
 }
-.sq-review-history-note summary {
+.sq-app .sq-history-review-link {
   cursor: pointer;
-  list-style: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
-.sq-review-history-note summary::-webkit-details-marker {
-  display: none;
-}
-.sq-review-history-note summary:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 3px;
-}
-.sq-review-history-note[open] p {
+.sq-review-history-note p {
   padding-top: 6px;
   line-height: 16px;
   overflow-wrap: anywhere;
