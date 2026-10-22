@@ -4,6 +4,8 @@ import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.er
 import { CreateFareClassDto } from './dto/create-fare-class.dto'
 import { UpdateFareClassDto } from './dto/update-fare-class.dto'
 
+
+// fare services
 @Injectable()
 export class FareClassService {
   constructor(private readonly db: DbService) {}
