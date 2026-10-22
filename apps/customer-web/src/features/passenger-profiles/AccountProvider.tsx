@@ -28,13 +28,14 @@ export default function AccountProvider({ children }: { children: ReactNode }) {
 
   const load = useEffectEvent(async (signal: AbortSignal) => {
     try {
-      const current = await request<ProfileResponse>('/me/sync-identity', { method: 'POST', signal })
+      // Read persisted data without waiting for an external identity-provider request on every page load.
+      const current = await request<ProfileResponse>('/me', { signal })
       const saved: Passenger[] = []
       let cursor: string | null = null
       if (!current.needsIdentitySetup)
         do {
           const page: { items: PassengerResponse[]; nextCursor: string | null } = await request(
-            `/passengers?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+            `/me/passengers?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
             { signal },
           )
           saved.push(...page.items.map(passengerView))
@@ -147,7 +148,7 @@ export default function AccountProvider({ children }: { children: ReactNode }) {
             ...(changes.nationality ? { nationality: changes.nationality } : {}),
           }
           const result = await request<ProfileResponse>('/me', {
-            method: 'PATCH',
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
           })
@@ -156,7 +157,8 @@ export default function AccountProvider({ children }: { children: ReactNode }) {
             if (!clerkUser) throw new Error('Your details were saved. Sign in again to update your photo.')
             try {
               await clerkUser.setProfileImage({ file: photoFile })
-              await syncIdentity()
+              const updated = await request<ProfileResponse>('/me/photo', { method: 'PUT' })
+              setProfile(profileView(updated))
             } catch (failure) {
               throw new Error(`Your details were saved, but your photo could not be synchronized. Retry saving. ${errorMessage(failure)}`, {
                 cause: failure,
@@ -166,8 +168,8 @@ export default function AccountProvider({ children }: { children: ReactNode }) {
         },
         savePassenger: async (passenger) => {
           const editing = passengers.some((item) => item.id === passenger.id)
-          const result = await request<PassengerResponse>(`/passengers${editing ? `/${passenger.id}` : ''}`, {
-            method: editing ? 'PATCH' : 'POST',
+          const result = await request<PassengerResponse>(`/me/passengers${editing ? `/${passenger.id}` : ''}`, {
+            method: editing ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(passengerBody(passenger, editing)),
           })
@@ -175,7 +177,7 @@ export default function AccountProvider({ children }: { children: ReactNode }) {
           setPassengers((previous) => (editing ? previous.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...previous]))
         },
         removePassenger: async (id) => {
-          await request<void>(`/passengers/${id}`, { method: 'DELETE' })
+          await request<void>(`/me/passengers/${id}`, { method: 'DELETE' })
           setPassengers((previous) => previous.filter((item) => item.id !== id))
         },
       }}
