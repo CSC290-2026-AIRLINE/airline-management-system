@@ -1,9 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { FLIGHT_STATUSES, FlightStatus, ListFlightsQueryDto } from './dto/list-flights-query.dto'
-import { parseLimit, UUID } from './pagination'
-
-const DATE = /^\d{4}-\d{2}-\d{2}$/
+import { parseDate, parseLimit, UUID } from './pagination'
 
 @Injectable()
 export class FlightSchedulingService {
@@ -17,11 +15,7 @@ export class FlightSchedulingService {
     if (route_id !== undefined && !UUID.test(route_id)) throw new BadRequestException('route_id must be a UUID')
     if (cursor !== undefined && !UUID.test(cursor)) throw new BadRequestException('cursor must be a UUID')
 
-    let date: Date | undefined
-    if (service_date !== undefined) {
-      date = new Date(`${service_date}T00:00:00Z`)
-      if (!DATE.test(service_date) || Number.isNaN(date.getTime())) throw new BadRequestException('service_date must be YYYY-MM-DD')
-    }
+    const date = service_date === undefined ? undefined : parseDate(service_date, 'service_date')
 
     const limit = parseLimit(query.limit)
 

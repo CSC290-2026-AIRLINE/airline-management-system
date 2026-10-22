@@ -5,10 +5,12 @@ import { FlightSchedulingController } from './flight-scheduling.controller'
 import { FlightSchedulingService } from './flight-scheduling.service'
 import { RouteController } from './route.controller'
 import { RouteService } from './route.service'
+import { TimetableController } from './timetable.controller'
+import { TimetableService } from './timetable.service'
 
 @Module({
-  controllers: [FlightSchedulingController, AirportController, RouteController],
-  providers: [FlightSchedulingService, AirportService, RouteService],
-  exports: [FlightSchedulingService, AirportService, RouteService],
+  controllers: [FlightSchedulingController, AirportController, RouteController, TimetableController],
+  providers: [FlightSchedulingService, AirportService, RouteService, TimetableService],
+  exports: [FlightSchedulingService, AirportService, RouteService, TimetableService],
 })
 export class FlightSchedulingModule {}

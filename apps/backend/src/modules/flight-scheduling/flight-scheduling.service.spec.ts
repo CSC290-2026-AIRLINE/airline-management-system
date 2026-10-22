@@ -16,6 +16,7 @@ describe('FlightSchedulingService.listFlights', () => {
     { route_id: 'nope' },
     { cursor: 'nope' },
     { service_date: '2026-13-40' },
+    { service_date: '2026-02-30' },
     { service_date: '22-10-2026' },
     { limit: '0' },
     { limit: '101' },
