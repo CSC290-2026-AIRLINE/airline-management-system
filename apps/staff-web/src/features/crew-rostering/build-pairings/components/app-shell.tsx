@@ -9,7 +9,7 @@
  */
 import type { ReactNode } from 'react'
 import { formatDateRange } from '../types/format'
-import { ChevronLeftIcon } from './ui'
+import { CheckIcon, ChevronLeftIcon } from './ui'
 
 export type WizardStep = 'build-pairings' | 'assign-crew' | 'fix-publish'
 
@@ -108,7 +108,7 @@ export function RosterRunBadge({ base, dateFrom, dateTo, status }: { base: strin
   )
 }
 
-/** Three-step wizard strip. Only `build-pairings` is reachable so far. */
+/** Three-step wizard strip. A step behind the active one is shown as a tick. */
 export function WizardSteps({ active }: { active: WizardStep }) {
   const activeIndex = WIZARD_STEPS.findIndex((step) => step.id === active)
   return (
@@ -125,7 +125,7 @@ export function WizardSteps({ active }: { active: WizardStep }) {
                   current ? 'bg-btn-navy text-white' : done ? 'bg-valid text-white' : 'bg-primary/15 text-primary/60'
                 }`}
               >
-                {index + 1}
+                {done ? <CheckIcon className="h-3.5 w-3.5" /> : index + 1}
               </span>
               <span className={`text-sm ${current ? 'font-bold text-primary' : 'font-medium text-primary/50'}`}>{step.label}</span>
             </div>
