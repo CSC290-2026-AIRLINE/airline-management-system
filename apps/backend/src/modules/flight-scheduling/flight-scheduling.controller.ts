@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common'
+import { Controller, Get, Param, Query } from '@nestjs/common'
 import type { ListFlightsQueryDto } from './dto/list-flights-query.dto'
 import { FlightSchedulingService } from './flight-scheduling.service'
 
@@ -9,5 +9,10 @@ export class FlightSchedulingController {
   @Get('flights')
   listFlights(@Query() query: ListFlightsQueryDto) {
     return this.flightSchedulingService.listFlights(query)
+  }
+
+  @Get('flights/:id')
+  getFlight(@Param('id') id: string) {
+    return this.flightSchedulingService.getFlight(id)
   }
 }
