@@ -66,9 +66,15 @@ export function MobileBottomBar({ breakCount, onBack, onOpenFix }: { breakCount:
   )
 }
 
-/** Centred column wrapper so the page never stretches past a readable measure. */
+/**
+ * The narrow-screen stack: roster-run card, picker, rules, results.
+ *
+ * `lg:hidden` lives here rather than at the call site so the two layouts can never
+ * both render — the desktop stack hides itself at `lg`, and this one hides itself back,
+ * so exactly one is on screen at every width.
+ */
 export function PageColumn({ children }: { children: ReactNode }) {
-  return <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4">{children}</div>
+  return <div className="flex w-full flex-col gap-4 lg:hidden">{children}</div>
 }
 
 function MenuIcon({ className = 'h-4 w-4' }: { className?: string }) {
