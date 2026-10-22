@@ -42,7 +42,7 @@ apps/backend/
 └── package.json
 ```
 
-The feature-module directory has **not yet been scaffolded in this repository snapshot**. When the Dev Leads add it, the intended layout is:
+The feature-module directory currently contains `passenger-profiles`, registered in AppModule. It provides customer profile, identity setup and saved-passenger APIs using the existing global JWT guard and DbService. Booking, screening and simulation-clock services are not implemented yet. See `apps/backend/src/modules/passenger-profiles/README.md` for the API contract. The full intended layout is:
 
 ```text
 apps/backend/src/modules/
