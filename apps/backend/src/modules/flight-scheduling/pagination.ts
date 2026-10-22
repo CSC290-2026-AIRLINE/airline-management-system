@@ -12,3 +12,6 @@ export function parseLimit(raw: string | undefined): number {
   }
   return limit
 }
+
+// Prisma error codes are duck-typed so unit tests need not load the generated client.
+export const prismaCode = (e: unknown) => (e as { code?: string } | null)?.code
