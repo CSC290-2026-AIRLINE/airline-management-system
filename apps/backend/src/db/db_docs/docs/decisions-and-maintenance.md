@@ -62,7 +62,7 @@ When a DB PR changes the schema, the Docs + Maintain owner should:
 ### Change log
 
 | Date (UTC+7) | Basis | Documentation note | Status |
-|---|---|---|
+|---|---|---|---|
 | 2026-10-12 | [PR #14](https://github.com/CSC290-2026-AIRLINE/airline-management-system/pull/14), branch head `3d51fe76` | Level 1 schema, Prisma and migration, 69 tables; merged into `dev` at 16:54 UTC. | **Merged** |
 | 2026-10-21 | `dev` at `752428e732` + Group 1 F8 Iteration-02 (11 Oct) | Corrected merged status and dictionary wording; drafted F8 (10 proposed tables) with compatibility gaps; no database code changes. | **Docs ZIP for review** |
 
