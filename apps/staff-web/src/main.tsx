@@ -5,6 +5,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import './index.css'
 import './App.css'
 import { router } from './router'
+import { WatchlistView } from './features/watchlist/WatchlistView'
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 const root = createRoot(document.getElementById('root')!)
@@ -19,7 +20,14 @@ function InnerApp() {
   return <RouterProvider router={router} context={{ auth: { isLoaded, isSignedIn: !!isSignedIn } }} />
 }
 
-if (!clerkPublishableKey) {
+// The Watchlist prototype uses sample data and does not require an auth session.
+if (['/', '/watchlist', '/watchlist/'].includes(window.location.pathname)) {
+  root.render(
+    <StrictMode>
+      <WatchlistView />
+    </StrictMode>,
+  )
+} else if (!clerkPublishableKey) {
   root.render(
     <StrictMode>
       <p style={{ padding: 24, fontFamily: 'sans-serif' }}>

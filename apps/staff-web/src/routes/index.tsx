@@ -16,7 +16,7 @@ function HomePage() {
         <Link to="/login">Sign in</Link>
       </SignedOut>
       <SignedIn>
-        <Link to="/dashboard">Go to dashboard</Link>
+        <Link to="/watchlist">Go to watchlist</Link>
       </SignedIn>
     </section>
   )
