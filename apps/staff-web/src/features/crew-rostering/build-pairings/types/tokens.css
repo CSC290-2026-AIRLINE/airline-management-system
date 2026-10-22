@@ -1,0 +1,67 @@
+/**
+ * Design tokens from `context-AI/design/ui-style.md`.
+ *
+ * Tailwind v4 turns every `--color-*` / `--font-*` entry here into utility
+ * classes (`bg-navy`, `text-valid`, `font-display`, ...), so the palette is
+ * declared once and never hardcoded in a component.
+ */
+@import 'tailwindcss';
+
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/inter/800.css';
+@import '@fontsource/merriweather/700.css';
+@import '@fontsource/merriweather/900.css';
+
+@theme {
+  /* Theme color palette */
+  --color-primary-text: #010101;
+  --color-primary: #0f203e;
+  --color-secondary: #ff9f00;
+  --color-card-bg: #ffffff;
+  --color-border-desc: #c4c6c5;
+  --color-page-bg: #f4f6f8;
+  --color-valid: #059669;
+  --color-invalid: #b8171f;
+
+  /* Button hover states */
+  --color-btn-navy: #14213d;
+  --color-btn-navy-hover: #0a152b;
+  --color-btn-yellow: #fca311;
+  --color-btn-yellow-hover: #c27d0c;
+  --color-btn-red-hover: #8e1017;
+
+  /* Tinted surfaces derived from the status colors */
+  --color-valid-bg: rgb(5 150 105 / 0.3);
+  --color-invalid-bg: rgb(184 23 31 / 0.3);
+  --color-info-bg: #eef3fb;
+
+  /* Typography */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Merriweather', ui-serif, Georgia, serif;
+
+  /* Motion */
+  --animate-fade-in: fade-in 160ms ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
