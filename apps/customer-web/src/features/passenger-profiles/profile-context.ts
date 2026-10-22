@@ -1,6 +1,10 @@
 import { createContext, useContext } from 'react'
 
 export interface Profile {
+  needsIdentitySetup: boolean
+  localFirstName: string
+  localLastName: string
+  passportNumber: string
   firstName: string
   lastName: string
   email: string
@@ -11,6 +15,7 @@ export interface Profile {
   photo: string | null
 }
 export interface Passenger {
+  nationalityCode?: string
   firstName?: string
   lastName?: string
   localFirstName?: string
@@ -24,11 +29,19 @@ export interface Passenger {
   nationality: string
 }
 export interface AccountState {
+  completeIdentitySetup: (details: {
+    firstName: string
+    lastName: string
+    dateOfBirth: string
+    gender: string
+    nationality: string
+  }) => Promise<void>
   profile: Profile
   passengers: Passenger[]
-  updateProfile: (changes: Partial<Profile>) => void
-  savePassenger: (passenger: Passenger) => void
-  removePassenger: (id: string) => void
+  updateProfile: (changes: Partial<Profile>, photoFile?: File | null) => Promise<void>
+  savePassenger: (passenger: Passenger) => Promise<void>
+  removePassenger: (id: string) => Promise<void>
+  syncIdentity: () => Promise<void>
 }
 export const ProfileContext = createContext<AccountState | null>(null)
 export function useProfile() {

@@ -1,5 +1,5 @@
-import ProfileDialog from './ProfileDialog'
-import removeIcon from '../assets/remove.svg'
+import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
+import removeIcon from '@customer-web/features/passenger-profiles/assets/remove.svg'
 export default function RemovePhotoDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: () => void }) {
   return (
     <ProfileDialog title="Remove profile photo?" onClose={onClose} kind="profile-dialog--remove">
