@@ -67,10 +67,11 @@ export class CreateSavedPassengerDto {
   @IsString()
   @MaxLength(80)
   localLastName?: string | null
+  @IsOptional()
   @IsIn(RELATIONSHIPS, {
     message: 'relationship must be spouse, parent, child, sibling, guardian, companion or other; use /me for yourself',
   })
-  relationship!: string
+  relationship?: string | null
   @Validate(BirthDateValidator)
   dateOfBirth!: string
   @IsIn(GENDERS)
@@ -111,9 +112,9 @@ export class UpdateSavedPassengerDto {
   @IsString()
   @MaxLength(80)
   localLastName?: string | null
-  @ValidateIf(defined)
+  @IsOptional()
   @IsIn(RELATIONSHIPS)
-  relationship?: string
+  relationship?: string | null
   @Transform(passport)
   @IsOptional()
   @IsString()

@@ -63,6 +63,16 @@ describe('Passenger profile DTO validation', () => {
     await expect(pipe.transform({ ...valid, ...changes }, metadata(CreateSavedPassengerDto))).rejects.toBeInstanceOf(BadRequestException)
   })
 
+  it.each([undefined, null])('allows an unspecified relationship: %p', async (relationship) => {
+    const result = await pipe.transform({ ...valid, relationship }, metadata(CreateSavedPassengerDto))
+    expect(result.relationship).toBe(relationship)
+  })
+
+  it('allows clearing a saved passenger relationship', async () => {
+    const result = await pipe.transform({ relationship: null }, metadata(UpdateSavedPassengerDto))
+    expect(result.relationship).toBeNull()
+  })
+
   it('accepts a real leap-day birth date and optional local names', async () => {
     const result = (await pipe.transform(
       { ...valid, dateOfBirth: '2000-02-29', localFirstName: ' สมชาย ' },
