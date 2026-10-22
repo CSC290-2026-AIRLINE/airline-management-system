@@ -48,12 +48,14 @@ function Facts({ items }: { items: [string, string][] }) {
   )
 }
 
-function ReviewHistoryNote({ review, text }: { review?: Decision; text: string }) {
+function ReviewHistoryNote({ review, text, expanded, id }: { review?: Decision; text: string; expanded: boolean; id: string }) {
   return review ? (
-    <details className="sq-review-history-note">
-      <summary title="Open the original review note">By {review.by}</summary>
-      <p>{review.note}</p>
-    </details>
+    <div className="sq-review-history-note">
+      <span>By {review.by}</span>
+      <p id={id} hidden={!expanded}>
+        {review.note}
+      </p>
+    </div>
   ) : (
     <>{text}</>
   )
@@ -69,6 +71,28 @@ export function ScreeningReview({
   onSave: (draft: ReviewDraft) => void
 }) {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [expandedReviews, setExpandedReviews] = useState<Set<string>>(() => new Set())
+  function toggleReview(id: string) {
+    setExpandedReviews((previous) => {
+      const expanded = new Set(previous)
+      if (expanded.has(id)) expanded.delete(id)
+      else expanded.add(id)
+      return expanded
+    })
+  }
+  function reviewLink(review: Decision, noteId: string) {
+    return (
+      <button
+        type="button"
+        className="sq-history-review-link"
+        aria-expanded={expandedReviews.has(review.id)}
+        aria-controls={noteId}
+        onClick={() => toggleReview(review.id)}
+      >
+        Review
+      </button>
+    )
+  }
   const decision = latestReview(record)
   const history = reviewHistory(record)
   const orderedReviews = [...record.reviews].sort((a, b) => Date.parse(a.reviewedAt) - Date.parse(b.reviewedAt))
@@ -221,32 +245,51 @@ export function ScreeningReview({
                 </tr>
               </thead>
               <tbody>
-                {history.map((row, i) => (
-                  <tr key={i}>
-                    {row.map((cell, j) => (
-                      <td key={j}>
-                        {j === 4 ? <ReviewHistoryNote review={orderedReviews[i - record.history.length]} text={cell} /> : cell}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {history.map((row, i) => {
+                  const review = orderedReviews[i - record.history.length]
+                  const noteId = `sq-review-note-desktop-${review?.id ?? i}`
+                  return (
+                    <tr key={i}>
+                      {row.map((cell, j) => (
+                        <td key={j}>
+                          {j === 1 && review ? (
+                            reviewLink(review, noteId)
+                          ) : j === 4 ? (
+                            <ReviewHistoryNote
+                              review={review}
+                              text={cell}
+                              id={noteId}
+                              expanded={!!review && expandedReviews.has(review.id)}
+                            />
+                          ) : (
+                            cell
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
             <div className="sq-history-mobile">
-              {history.map((row, i) => (
-                <div key={i}>
-                  <div>
-                    <span>
-                      {row[0]} · {row[1]}
-                    </span>
-                    <Badge tone={row[2]}>{row[2]}</Badge>
-                    <Badge tone={row[3]}>{row[3]}</Badge>
+              {history.map((row, i) => {
+                const review = orderedReviews[i - record.history.length]
+                const noteId = `sq-review-note-mobile-${review?.id ?? i}`
+                return (
+                  <div key={i}>
+                    <div>
+                      <span>
+                        {row[0]} · {review ? reviewLink(review, noteId) : row[1]}
+                      </span>
+                      <Badge tone={row[2]}>{row[2]}</Badge>
+                      <Badge tone={row[3]}>{row[3]}</Badge>
+                    </div>
+                    <div>
+                      <ReviewHistoryNote review={review} text={row[4]} id={noteId} expanded={!!review && expandedReviews.has(review.id)} />
+                    </div>
                   </div>
-                  <div>
-                    <ReviewHistoryNote review={orderedReviews[i - record.history.length]} text={row[4]} />
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
             {history.length === 1 && <p className="sq-fine-print sq-history-note">No earlier decision for this passenger on this entry.</p>}
           </InfoCard>

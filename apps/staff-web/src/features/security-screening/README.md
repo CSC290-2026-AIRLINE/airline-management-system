@@ -14,7 +14,7 @@ The user supplied **Feature 7 — Customer & Passenger Profiles (Iteration-03)**
 | Departure          | Copy departure into screening check      | Receive current flight departure data; do not copy it into the immutable check       |
 | Re-screen triggers | No `entry_change`                        | Support `booking`, `check_in`, `new_entry`, `entry_change`, `identity_change`        |
 
-The Figma layout and concise interface copy are retained. The demo-clock banner and implementation details are kept out of the page. History uses the design's compact `By <reviewer>` text; clicking it expands the complete original note without changing or dropping any reviews. Simulation times, counts, and sorting remain data-driven rather than hardcoded to a screenshot.
+The Figma layout and concise interface copy are retained. The demo-clock banner and implementation details are kept out of the page. In history, the underlined `Review` button expands/collapses the complete original note for that row; `By <reviewer>` is plain text. This works on desktop, mobile, and keyboard, without changing or dropping any reviews. Simulation times, counts, and sorting remain data-driven rather than hardcoded to a screenshot.
 
 Small copy differences are intentional where the design abbreviates a rule: the queue does not say held checks always come first (nearest-departure sorting is authoritative), the short Probable legend also mentions passport matches, and Strong/Probable flags never claim check-in is held. Longer rule explanations are available as tooltips rather than extra page sections. Audit/authority wording follows the Figma prototype; these integrations remain mocked as documented below.
 
