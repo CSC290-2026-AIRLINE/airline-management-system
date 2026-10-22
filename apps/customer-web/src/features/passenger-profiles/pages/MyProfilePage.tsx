@@ -63,9 +63,9 @@ export default function MyProfilePage() {
                   </div>
                   <div className="profile-email-row">
                     <dt>Email</dt>
-                    <dd>{profile.email}</dd>
+                    <dd title={profile.email}>{profile.email}</dd>
                     <button className="profile-link" onClick={() => setChangeEmail(true)}>
-                      Change<span className="profile-desktop"> email</span>
+                      Change<span className="profile-email-action-suffix"> email</span>
                     </button>
                   </div>
                   <div className="profile-phone-row">
