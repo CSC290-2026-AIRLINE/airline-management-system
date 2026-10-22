@@ -7,9 +7,17 @@ import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { validateEnv } from './config/env.validation'
 import { PricingModule } from './modules/pricing/pricing.module'
+import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), DbModule, AuthModule, AdminConsoleModule, PricingModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    DbModule,
+    AuthModule,
+    AdminConsoleModule,
+    PricingModule,
+    PassengerProfilesModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
