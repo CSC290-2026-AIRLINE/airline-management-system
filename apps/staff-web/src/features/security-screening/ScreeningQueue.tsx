@@ -1,7 +1,8 @@
 import { Component, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import type { Decision, Filter } from './types'
+import type { ReviewDraft } from './types'
+import { appendReview, latestReview, queueCounts, selectQueue } from './screening-model'
 import { sortLabels, sortValues, statusFilters } from './queue-search'
 import { screeningFixtures } from './mock-data'
 import { QueueToolbar } from './components/QueueToolbar'
@@ -47,58 +48,27 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
   const [banner, setBanner] = useState('')
   const [watchlistNotice, setWatchlistNotice] = useState(false)
   const selected = records.find((record) => record.id === selectedId)
-  const pending = records.filter((record) => !record.decisions.length)
-  const counts: Record<Filter, number> = {
-    'Needs review': pending.length,
-    Held: pending.filter((record) => record.status === 'Held').length,
-    Flagged: pending.filter((record) => record.status === 'Flagged').length,
-    'Decided today': records.length - pending.length,
-  }
+  const counts = queueCounts(records)
   const decided = filter === 'Decided today'
-  const visible = records.filter(
-    (record) =>
-      (decided ? record.decisions.length > 0 : !record.decisions.length && (filter === 'Needs review' || record.status === filter)) &&
-      `${record.name} ${record.flight}`.toLowerCase().includes(search.trim().toLowerCase()),
-  )
-  // The initial decided list follows the exact Figma order; selecting a sort applies it explicitly.
-  if (!decided || query.sort)
-    visible.sort((a, b) =>
-      sort === 'Nearest departure'
-        ? (decided ? 0 : Number(b.status === 'Held') - Number(a.status === 'Held')) || a.departureOrder - b.departureOrder
-        : sort === 'Waiting longest'
-          ? a.waitingOrder - b.waitingOrder
-          : { Strong: 0, Probable: 1, Weak: 2 }[a.match] - { Strong: 0, Probable: 1, Weak: 2 }[b.match],
-    )
+  const visible = selectQueue(records, filter, search, sort)
   function goToQueue() {
     void navigate({ search: (previous) => ({ ...previous, review: undefined }) })
   }
-  function save(decision: Decision) {
+  function save(draft: ReviewDraft) {
     if (!selected) return
-    setRecords((current) =>
-      current.map((record) =>
-        record.id === selected.id
-          ? {
-              ...record,
-              status: decision.status,
-              urgent: false,
-              decisions: [...record.decisions, decision],
-              history: [...record.history, [`Today ${decision.at}`, 'Review', '—', decision.status, `By ${decision.by}`]],
-            }
-          : record,
-      ),
-    )
+    setRecords((current) => current.map((record) => (record.id === selected.id ? appendReview(record, draft) : record)))
     setBanner(
-      decision.status === 'Confirmed'
+      draft.decision === 'confirmed'
         ? `Match confirmed · ${selected.displayName} — check-in stays denied and the authority has been notified (Feature 13). The review is logged in Feature 15.`
-        : selected.match === 'Weak'
-          ? `Decision saved · ${selected.displayName}’s flag cleared.`
-          : `Decision saved · ${selected.displayName} released, check-in can continue.`,
+        : selected.outcome === 'held'
+          ? `Decision saved · ${selected.displayName} released, check-in can continue.`
+          : `Decision saved · ${selected.displayName}’s flag cleared.`,
     )
     void navigate({ search: { status: 'needs-review' } })
   }
   return (
     <ScreeningShell
-      reviewing={!!selected && !selected.decisions.length}
+      reviewing={!!selected && !latestReview(selected)}
       held={counts.Held}
       onQueue={goToQueue}
       onSignOut={onSignOut}
@@ -116,6 +86,14 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
         <div className="sq-empty" role="status">
           <h2>Review not found</h2>
           <p>This review is not available in the current queue.</p>
+          <button className="sq-button" onClick={goToQueue}>
+            Back to queue
+          </button>
+        </div>
+      ) : selected?.outcome === 'clear' ? (
+        <div className="sq-empty" role="status">
+          <h2>No review needed</h2>
+          <p>This check is clear and cannot be reviewed.</p>
           <button className="sq-button" onClick={goToQueue}>
             Back to queue
           </button>
@@ -155,9 +133,9 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
             ) : (
               <>
                 <span className="sq-desktop-only">
-                  Everything waiting for a decision: held check-ins first, then flags from booking or new entries.
+                  Everything waiting for a decision: held check-ins and flags from booking or new entries.
                 </span>
-                <span className="sq-mobile-only">Everything waiting for a decision: held check-ins first, then flags.</span>
+                <span className="sq-mobile-only">Everything waiting for a decision: held check-ins and flags.</span>
               </>
             )}
           </p>
@@ -172,8 +150,17 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
             Held = check-in is blocked until you decide. Flagged = found at booking or after a new entry; nothing is blocked yet. Rows due
             within 3 hours are highlighted.
           </p>
-          <p className="sq-legend">
-            Strong = passport + nationality match · Probable = name + date of birth match · Weak = similar name only (doesn’t hold check-in)
+          <p
+            className="sq-legend"
+            title="Probable also includes a matching passport with different or missing nationality. Name similarity thresholds: Probable ≥ 0.5 with the same DOB; Weak ≥ 0.6 with different or missing DOB. Only check-in can hold; booking never blocks."
+          >
+            <span className="sq-desktop-only">
+              Strong = passport + nationality match · Probable = passport or name + date of birth match · Weak = similar name only (doesn’t
+              hold check-in)
+            </span>
+            <span className="sq-mobile-only">
+              Strong = passport + nationality · Probable = passport or name + date of birth · Weak = similar name only
+            </span>
           </p>
         </>
       )}

@@ -18,22 +18,22 @@ const comparisons = (
   ['Gender', gender, gender],
 ]
 
-// Figma fixtures only. Decisions live in component state and reset on reload.
-export const screeningFixtures: ScreeningRecord[] = [
+// Display snapshots from Figma. Typed check/review data uses Iteration-03 semantics.
+// One simulation day: 05 Nov 2026, 08:30 in Asia/Bangkok; reload restores the fixtures.
+type Fixture = Omit<ScreeningRecord, 'runId' | 'passengerId' | 'watchlistEntryId' | 'matchReason'>
+
+const fixtures: Fixture[] = [
   {
     id: 'C-F731',
     name: 'SOMSAK JAIDEE',
     displayName: 'Somsak Jaidee',
-    source: 'check-in',
-    status: 'Held',
+    triggerPoint: 'check_in',
+    outcome: 'held',
     match: 'Probable',
-    flight: 'FD 641 · BKK → NRT',
-    departs: 'Today 10:40',
-    departureOrder: 1040,
-    since: '08:12',
-    waitingOrder: 812,
-    remaining: '2 h 28 m',
-    urgent: true,
+    flight: { id: 'FD641-2026-11-05', label: 'FD 641 · BKK → NRT', departureAt: '2026-11-05T10:40:00+07:00' },
+
+    occurredAt: '2026-11-05T08:12:00+07:00',
+
     similarity: '0.92',
     comparison: comparisons('SOMSAK JAIDEE', 'SOMSAK JAIDEE', '02 Jul 1985', '02 Jul 1985', '4821', '9037'),
     booking: 'ABC123',
@@ -46,21 +46,19 @@ export const screeningFixtures: ScreeningRecord[] = [
       ['01 Nov 14:05', 'Booking', 'Probable', 'Flagged', 'No review yet'],
       ['Today 08:12', 'Check-in', 'Probable', 'Held', 'This check'],
     ],
-    decisions: [],
+    reviews: [],
   },
   {
     id: 'C-F735',
     name: 'ARTHIT WONGSA',
     displayName: 'Arthit Wongsa',
-    source: 'check-in',
-    status: 'Held',
+    triggerPoint: 'check_in',
+    outcome: 'held',
     match: 'Strong',
-    flight: 'FD 212 · BKK → SIN',
-    departs: 'Today 14:20',
-    departureOrder: 1420,
-    since: '08:25',
-    waitingOrder: 825,
-    remaining: '5 h 55 m',
+    flight: { id: 'FD212-2026-11-05', label: 'FD 212 · BKK → SIN', departureAt: '2026-11-05T14:20:00+07:00' },
+
+    occurredAt: '2026-11-05T08:25:00+07:00',
+
     similarity: '1.00',
     comparison: comparisons('ARTHIT WONGSA', 'ARTHIT WONGSA', '19 Feb 1979', '19 Feb 1979', '6630', '6630'),
     booking: 'QW7T2M',
@@ -73,21 +71,19 @@ export const screeningFixtures: ScreeningRecord[] = [
       ['28 Oct 09:15', 'Booking', 'Strong', 'Flagged', 'No review yet'],
       ['Today 08:25', 'Check-in', 'Strong', 'Held', 'This check'],
     ],
-    decisions: [],
+    reviews: [],
   },
   {
     id: 'C-F702',
     name: 'MAYA KORNSIRI',
     displayName: 'Maya Kornsiri',
-    source: 'booking',
-    status: 'Flagged',
+    triggerPoint: 'booking',
+    outcome: 'flagged',
     match: 'Weak',
-    flight: 'FD 330 · BKK → RGN',
-    departs: 'Today 16:05',
-    departureOrder: 1605,
-    since: '02 Nov',
-    waitingOrder: -200,
-    remaining: '7 h 40 m',
+    flight: { id: 'FD330-2026-11-05', label: 'FD 330 · BKK → RGN', departureAt: '2026-11-05T16:05:00+07:00' },
+
+    occurredAt: '2026-11-02T10:20:00+07:00',
+
     similarity: '0.64',
     comparison: comparisons(
       'MAYA KORNSIRI',
@@ -107,22 +103,21 @@ export const screeningFixtures: ScreeningRecord[] = [
     reason: 'Demo case 2026-021',
     listed: '21 Jan 2026',
     history: [['02 Nov 10:20', 'Booking', 'Weak', 'Flagged', 'This check']],
-    decisions: [],
+    reviews: [],
   },
   ...decidedFixtures(),
 ]
 
-function decidedFixtures(): ScreeningRecord[] {
+function decidedFixtures(): Fixture[] {
   const rows = [
     {
       id: 'C-F719',
       name: 'KANYA THONG',
       displayName: 'Kanya Thong',
       match: 'Probable' as const,
-      flight: 'FD 118 · BKK → HKG',
-      departs: 'Today 09:10',
-      departureOrder: 910,
-      since: '07:31',
+      flight: { id: 'FD118-2026-11-05', label: 'FD 118 · BKK → HKG', departureAt: '2026-11-05T09:10:00+07:00' },
+
+      occurredAt: '2026-11-05T07:31:00+07:00',
       similarity: '0.94',
       comparison: comparisons(
         'KANYA THONG',
@@ -143,7 +138,7 @@ function decidedFixtures(): ScreeningRecord[] {
       at: '07:52',
       note: 'Passport at the counter has a different number from the entry and the photo doesn’t match. Not the same person.',
       history: [
-        ['05 Nov 10:30', 'Booking', 'Probable', 'Flagged', 'No review'],
+        ['04 Nov 10:30', 'Booking', 'Probable', 'Flagged', 'No review'],
         ['Today 07:31', 'Check-in', 'Probable', 'Held', 'This check'],
       ] as HistoryRow[],
     },
@@ -152,10 +147,9 @@ function decidedFixtures(): ScreeningRecord[] {
       name: 'NATTAPON CHAI',
       displayName: 'Nattapon Chai',
       match: 'Probable' as const,
-      flight: 'FD 641 · BKK → NRT',
-      departs: 'Today 10:40',
-      departureOrder: 1040,
-      since: '07:18',
+      flight: { id: 'FD641-2026-11-05', label: 'FD 641 · BKK → NRT', departureAt: '2026-11-05T10:40:00+07:00' },
+
+      occurredAt: '2026-11-05T07:18:00+07:00',
       similarity: '0.81',
       comparison: comparisons('NATTAPON CHAI', 'NATTAPON CHAIYA', '27 May 1983', '27 May 1983', '6105', '4473'),
       booking: 'ZT9K1P',
@@ -172,10 +166,9 @@ function decidedFixtures(): ScreeningRecord[] {
       name: 'PREECHA SUKSAN',
       displayName: 'Preecha Suksan',
       match: 'Strong' as const,
-      flight: 'FD 402 · BKK → ICN',
-      departs: 'Today 09:50',
-      departureOrder: 950,
-      since: '06:58',
+      flight: { id: 'FD402-2026-11-05', label: 'FD 402 · BKK → ICN', departureAt: '2026-11-05T09:50:00+07:00' },
+
+      occurredAt: '2026-11-05T06:58:00+07:00',
       similarity: '1.00',
       comparison: comparisons('PREECHA SUKSAN', 'PREECHA SUKSAN', '08 Dec 1976', '08 Dec 1976', '5518', '5518'),
       booking: 'RM3V8S',
@@ -195,10 +188,9 @@ function decidedFixtures(): ScreeningRecord[] {
       name: 'LEE MIN',
       displayName: 'Lee Min',
       match: 'Weak' as const,
-      flight: 'FD 212 · BKK → SIN',
-      departs: 'Today 14:20',
-      departureOrder: 1420,
-      since: '06:30',
+      flight: { id: 'FD212-2026-11-05', label: 'FD 212 · BKK → SIN', departureAt: '2026-11-05T14:20:00+07:00' },
+
+      occurredAt: '2026-11-05T06:30:00+07:00',
       similarity: '0.67',
       comparison: comparisons(
         'LEE MIN',
@@ -224,10 +216,9 @@ function decidedFixtures(): ScreeningRecord[] {
       name: 'ARUN DEE',
       displayName: 'Arun Dee',
       match: 'Weak' as const,
-      flight: 'FD 330 · BKK → RGN',
-      departs: '15 Nov 07:30',
-      departureOrder: 9999,
-      since: '03 Nov',
+      flight: { id: 'FD330-2026-11-15', label: 'FD 330 · BKK → RGN', departureAt: '2026-11-15T07:30:00+07:00' },
+
+      occurredAt: '2026-11-03T11:05:00+07:00',
       similarity: '0.62',
       comparison: comparisons('ARUN DEE', 'ARUN DEEPAK', '09 Sep 1992', '30 Dec 1984', '3344', '8120', 'Thai (th)', 'Myanmar (mm)'),
       booking: 'RG7D3A',
@@ -241,16 +232,35 @@ function decidedFixtures(): ScreeningRecord[] {
     },
   ]
   return rows.map((row, index) => {
-    const status = index === 2 ? 'Confirmed' : 'Released'
+    const decision = index === 2 ? ('confirmed' as const) : ('false_positive' as const)
+    const reviewedAt = `2026-11-05T${row.at}:00+07:00`
     const by = index < 3 ? 'Nida P.' : 'Ton W.'
     return {
       ...row,
-      status,
-      source: index < 3 ? 'check-in' : index === 3 ? 'new entry' : 'booking',
-      waitingOrder: index,
+      outcome: index < 3 ? 'held' : 'flagged',
+      triggerPoint: index < 3 ? 'check_in' : index === 3 ? 'new_entry' : 'booking',
+
       bookedBy: `${row.displayName} (own account)`,
-      history: [...row.history, [`Today ${row.at}`, 'Review', '—', status, `By ${by}`]],
-      decisions: [{ status, by, at: row.at, note: row.note }],
+      history: row.history,
+      reviews: [
+        {
+          id: `R-${row.id}-1`,
+          decision,
+          by,
+          reviewedAt,
+          note: row.note,
+          passportCompared: true,
+          ...(decision === 'confirmed' ? { authorityNotifiedAt: reviewedAt } : {}),
+        },
+      ],
     }
   })
 }
+
+export const screeningFixtures: ScreeningRecord[] = fixtures.map((record) => ({
+  ...record,
+  runId: `RUN-${record.id}`,
+  passengerId: `P-${record.id}`,
+  watchlistEntryId: `W-${record.id}`,
+  matchReason: record.match === 'Strong' ? 'passport_and_nationality' : record.match === 'Probable' ? 'name_and_dob' : 'similar_name',
+}))
