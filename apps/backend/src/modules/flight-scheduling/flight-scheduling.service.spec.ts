@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { FlightSchedulingService } from './flight-scheduling.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -45,5 +45,64 @@ describe('FlightSchedulingService.listFlights', () => {
         take: 21,
       }),
     )
+  })
+})
+
+describe('FlightSchedulingService.getFlight', () => {
+  const db = { flight: { findUnique: jest.fn() }, airport: { findMany: jest.fn() } }
+  const service = new FlightSchedulingService(db as never)
+
+  const route = { id: ID(5), origin: 'AAA', destination: 'BBB', distance_km: 900, block_time_min: 130 }
+  const flight = (over: object = {}) => ({
+    id: ID(1),
+    flight_number: 'FL123',
+    status: 'scheduled',
+    scheduled_dep_at: new Date('2026-11-02T03:00:00Z'),
+    dep_at: new Date('2026-11-02T03:00:00Z'),
+    actual_destination: null,
+    route,
+    ...over,
+  })
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    db.airport.findMany.mockResolvedValue([
+      { iata_code: 'AAA', name: 'A', city: 'a', country: 'x', timezone: 'Asia/Bangkok' },
+      { iata_code: 'BBB', name: 'B', city: 'b', country: 'y', timezone: 'Asia/Tokyo' },
+    ])
+  })
+
+  it('400s on a bad id and 404s on a missing flight', async () => {
+    await expect(service.getFlight('nope')).rejects.toBeInstanceOf(BadRequestException)
+    db.flight.findUnique.mockResolvedValue(null)
+    await expect(service.getFlight(ID(1))).rejects.toBeInstanceOf(NotFoundException)
+  })
+
+  it('returns the flight with route and airports, no delay, planned destination', async () => {
+    db.flight.findUnique.mockResolvedValue(flight())
+    const result = await service.getFlight(ID(1))
+    expect(result).toMatchObject({
+      id: ID(1),
+      delay_minutes: 0,
+      effective_destination: 'BBB',
+      route: {
+        id: ID(5),
+        distance_km: 900,
+        block_time_min: 130,
+        origin: { iata_code: 'AAA', timezone: 'Asia/Bangkok' },
+        destination: { iata_code: 'BBB' },
+      },
+    })
+    expect(result).not.toHaveProperty('route.origin.created_at')
+    expect(db.flight.findUnique).toHaveBeenCalledWith({ where: { id: ID(1) }, include: { route: true } })
+  })
+
+  it('computes the total delay and uses the diversion airport', async () => {
+    db.flight.findUnique.mockResolvedValue(
+      flight({ dep_at: new Date('2026-11-02T04:25:00Z'), actual_destination: 'CCC', status: 'diverted' }),
+    )
+    const result = await service.getFlight(ID(1))
+    expect(result.delay_minutes).toBe(85)
+    expect(result.effective_destination).toBe('CCC')
   })
 })

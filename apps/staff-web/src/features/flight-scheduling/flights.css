@@ -1,0 +1,49 @@
+.fs-page {
+  text-align: left;
+  padding: 24px;
+}
+
+.fs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.fs-filters label {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.fs-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.fs-table th,
+.fs-table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.fs-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--code-bg);
+  color: var(--text-h);
+}
+
+.fs-status-delayed,
+.fs-status-holding,
+.fs-status-diverted {
+  background: var(--accent-bg);
+}
+
+.fs-status-cancelled {
+  text-decoration: line-through;
+}
