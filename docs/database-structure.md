@@ -25,14 +25,9 @@ There is **no root-level `/db` directory in the current repository**.
 
 `apps/backend/src/db/prisma/schema.prisma` is the centralized Prisma schema for the project.
 
-The current scaffold contains these models:
+The centralized schema now includes models across the planned features, beyond the original `user`, `refresh_token`, `customer` and `staff` scaffold. Feature 7 uses `passenger`, `customer`, `customer_passenger`, `watchlist_entry`, `screening_check` and `screening_review`, with shared `user` and `audit_log` records. A table existing in the schema does not mean its feature service is implemented.
 
-- `user`
-- `refresh_token`
-- `customer`
-- `staff`
-
-Future feature models will be added to this same centralized schema.
+Feature 7 currently implements customer profile and saved-passenger operations only. Screening services and cross-feature booking integration remain pending. The existing screening schema follows the first fixes-and-suggestions proposal (copied `flight_dep_at`, one review per check); the different Iteration-03 proposal is not the baseline for this customer task. Schema changes and data-moving migrations still belong to the Database Team.
 
 ## Migration workflow
 
