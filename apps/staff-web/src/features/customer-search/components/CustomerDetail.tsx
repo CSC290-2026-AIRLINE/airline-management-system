@@ -1,7 +1,7 @@
 import type { Person } from '../types'
 import { EM_DASH, formatDateOfBirth, genderLabel, maskPassport, nationalityLabel, personName } from '../lib/format'
 import { ArrowRightIcon, ChevronLeftIcon, CloseIcon, PencilIcon } from './Icons'
-import { Avatar, DetailSection, InfoNote, ReadOnlyPill, TypeBadge } from './shared'
+import { Avatar, DetailSection, ReadOnlyPill, TypeBadge } from './shared'
 
 /**
  * Read-only profile for a selected person, loaded from `GET /api/passengers/:id`.
@@ -117,56 +117,61 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
               ))}
             </ul>
           ) : (
-            <table className="cs-relations-table">
-              <caption className="cs-visually-hidden">Travellers saved on this account</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Relationship</th>
-                  <th scope="col">Date of birth</th>
-                  <th scope="col">Nationality</th>
-                  <th scope="col">
-                    <span className="cs-visually-hidden">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {person.savedTravellers.map((saved) => (
-                  <tr key={saved.person.id} className="cs-relations-table__row" onClick={() => onSelectPerson(saved.person.id)}>
-                    <td>
-                      <button
-                        type="button"
-                        className="cs-relations-table__link"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onSelectPerson(saved.person.id)
-                        }}
-                      >
-                        {personName(saved.person)}
-                      </button>
-                    </td>
-                    <td>
-                      {saved.relationship ? <span className={relationshipClass(saved.relationship)}>{saved.relationship}</span> : null}
-                    </td>
-                    <td>{formatDateOfBirth(saved.person.dateOfBirth)}</td>
-                    <td>{nationalityLabel(saved.person.nationality)}</td>
-                    <td className="cs-relations-table__action">
-                      <button
-                        type="button"
-                        className="cs-link"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onSelectPerson(saved.person.id)
-                        }}
-                      >
-                        View
-                        <ArrowRightIcon />
-                      </button>
-                    </td>
+            /* Five columns do not fit the narrow profile panel, so the table
+               keeps its natural width and this wrapper scrolls it sideways
+               rather than letting the columns overlap. */
+            <div className="cs-table-scroll">
+              <table className="cs-relations-table">
+                <caption className="cs-visually-hidden">Travellers saved on this account</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Relationship</th>
+                    <th scope="col">Date of birth</th>
+                    <th scope="col">Nationality</th>
+                    <th scope="col">
+                      <span className="cs-visually-hidden">Actions</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {person.savedTravellers.map((saved) => (
+                    <tr key={saved.person.id} className="cs-relations-table__row" onClick={() => onSelectPerson(saved.person.id)}>
+                      <td>
+                        <button
+                          type="button"
+                          className="cs-relations-table__link"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onSelectPerson(saved.person.id)
+                          }}
+                        >
+                          {personName(saved.person)}
+                        </button>
+                      </td>
+                      <td>
+                        {saved.relationship ? <span className={relationshipClass(saved.relationship)}>{saved.relationship}</span> : null}
+                      </td>
+                      <td>{formatDateOfBirth(saved.person.dateOfBirth)}</td>
+                      <td>{nationalityLabel(saved.person.nationality)}</td>
+                      <td className="cs-relations-table__action">
+                        <button
+                          type="button"
+                          className="cs-link"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onSelectPerson(saved.person.id)
+                          }}
+                        >
+                          View
+                          <ArrowRightIcon />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </DetailSection>
       ) : null}
@@ -200,10 +205,12 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
         </DetailSection>
       ) : null}
 
-      {/* The desktop sentence about the audit log and passport masking has been
-          removed. The mobile copy stays: it is the one the design shows, and
-          the note is the last child here, so dropping it leaves no gap. */}
-      {isMobile ? <InfoNote>Read-only. Opening this profile is recorded in the Feature 15 audit log.</InfoNote> : null}
+      {/* Both informational sentences are gone: the desktop one about the audit
+          log and passport masking, and the mobile one this replaced. The
+          read-only behaviour they described is unchanged — this panel still
+          cannot be edited, and opening a profile is still recorded by Feature
+          15. The note was the last child of a column flex container, so its
+          `gap` went with it and nothing is left dangling here. */}
     </article>
   )
 }

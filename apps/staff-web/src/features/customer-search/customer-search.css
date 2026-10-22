@@ -457,7 +457,13 @@
 }
 
 .cs-layout.is-split {
-  grid-template-columns: 360px minmax(0, 1fr);
+  /* The results list tracks the design's 360px reference but is bounded, and the
+     profile beside it gets a floor. With `minmax(0, 1fr)` that column was free
+     to collapse to nothing, and in a narrow window the profile header and field
+     grid then overlapped inside a ~100px panel. Below 1200px — where 360px of
+     list, the 260px sidebar and the main padding leave too little — the split
+     stacks instead; see the 768–1199px block at the end of this file. */
+  grid-template-columns: minmax(300px, 360px) minmax(440px, 1fr);
   align-items: start;
 }
 
@@ -625,8 +631,28 @@
 
 /* ── Desktop table ──────────────────────────────────────────────────────── */
 
+/* A four-column table cannot reflow, so the panel scrolls sideways rather than
+   crushing a column until its content paints over the next one. `width: 100%`
+   on the table plus this floor keeps the columns fluid at desktop widths and
+   switches to scrolling only when the container genuinely cannot fit them. */
+.cs-table-scroll {
+  /* Load-bearing. A flex item's `min-width: auto` resolves to its content's
+     min-content size, which for these tables is their `min-width` — so without
+     this the wrapper grows to fit the table and `overflow-x: auto` never has
+     anything to scroll, pushing the whole page sideways instead. */
+  min-width: 0;
+  overflow-x: auto;
+  /* Keeps the scrollbar from repainting the sticky first column on macOS. */
+  overscroll-behavior-x: contain;
+}
+
 .cs-table {
   width: 100%;
+  /* The floor that makes `table-layout: fixed` safe. Columns 2–4 are fixed, so
+     NAME absorbs the remainder; without a floor a narrow panel drives that
+     remainder to ~0 and the name cell's content paints over DATE OF BIRTH.
+     `overflow-wrap` on the cells handles long values inside the column. */
+  min-width: 620px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -645,17 +671,21 @@
   color: var(--cs-text-2);
 }
 
+/* NAME takes the remainder — it holds the avatar, the name and the badge, so it
+   needs the most room. The other three are fixed, and sized to their longest
+   realistic value: a full date of birth, a country name, and half of a UUID
+   (which then wraps inside the column rather than past it). */
 .cs-table th:nth-child(1) {
   width: auto;
 }
 .cs-table th:nth-child(2) {
-  width: 150px;
-}
-.cs-table th:nth-child(3) {
   width: 140px;
 }
-.cs-table th:nth-child(4) {
+.cs-table th:nth-child(3) {
   width: 130px;
+}
+.cs-table th:nth-child(4) {
+  width: 170px;
 }
 
 .cs-table__row {
@@ -669,6 +699,13 @@
 
 .cs-table td {
   padding: 10px 16px;
+  /* `table-layout: fixed` gives each column a width whether or not its content
+     fits, so every cell has to break its own long values. Without this a UUID
+     or a long name runs past the column border and over its neighbour. */
+  overflow-wrap: anywhere;
+  /* Middle alignment: the NAME cell is taller (avatar beside a wrapped name and
+     a badge), and the other three would otherwise sit on its first baseline. */
+  vertical-align: middle;
   font-size: 13px;
   font-weight: 500;
   color: var(--cs-text);
@@ -679,6 +716,10 @@
   align-items: center;
   gap: 12px;
   width: 100%;
+  /* A button is a flex item's most common culprit: it refuses to shrink below
+     its content's intrinsic width by default, which pushed the name cell wider
+     than its column. `min-width: 0` lets the inner rows wrap instead. */
+  min-width: 0;
   padding: 0;
   border: 0;
   background: none;
@@ -692,17 +733,23 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
+  flex: 1;
   min-width: 0;
 }
 
 .cs-table__name-row {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  /* The Thai name drops below the Latin one rather than sitting beside it once
+     the two together exceed the column. */
+  flex-wrap: wrap;
+  gap: 2px 6px;
   min-width: 0;
 }
 
 .cs-table__fullname {
+  /* Long names wrap inside the NAME column instead of overrunning it. */
+  overflow-wrap: anywhere;
   font-size: 14px;
   font-weight: 700;
   color: var(--cs-text);
@@ -711,6 +758,12 @@
 .cs-table__thai {
   font-size: 11px;
   color: var(--cs-text-2);
+}
+
+.cs-table__badge {
+  /* `Account holder` is two words; on one line it is the widest thing in the
+     cell, and letting it wrap doubled the height of every row. */
+  white-space: nowrap;
 }
 
 .cs-table__cell--id {
@@ -807,6 +860,9 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  /* The READ ONLY pill and the close button move to their own line rather than
+     sitting on top of the name when the panel is narrow. */
+  flex-wrap: wrap;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--cs-border);
 }
@@ -815,11 +871,16 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* `flex-basis` sets the width the heading would *like*; below it, the wrap
+     above hands the rest of the row to the pill and the close button. */
+  flex: 1 1 220px;
   min-width: 0;
-  flex: 1;
 }
 
 .cs-detail__name {
+  /* A long name or a Thai name without spaces breaks inside the heading rather
+     than pushing the row wider than the panel. */
+  overflow-wrap: anywhere;
   font-size: 24px;
   font-weight: 700;
   line-height: 1.2;
@@ -835,10 +896,16 @@
 .cs-detail__meta {
   display: flex;
   align-items: center;
+  /* The Customer ID line is long, so it wraps rather than overlapping the pill. */
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .cs-detail__meta-text {
+  /* A UUID has no break opportunity until `anywhere` supplies one. */
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 12px;
   color: var(--cs-text-2);
 }
@@ -846,6 +913,8 @@
 .cs-detail__close {
   display: grid;
   place-items: center;
+  /* Keeps the button beside the pill when the heading wraps below them. */
+  margin-left: auto;
   width: 24px;
   height: 24px;
   padding: 0;
@@ -866,6 +935,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Keeps the "Correct identity" button beside the heading where it fits and
+     below it where it does not, rather than overlapping it. */
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -877,9 +949,13 @@
   color: var(--cs-text-2);
 }
 
+/* Two columns while each is wide enough for a full value such as an email
+   address, one below that. `auto-fit` + `minmax` is what makes this responsive
+   to the *panel* rather than to the viewport: the panel is the narrower box in
+   the split layout, so a viewport media query cannot see the squeeze. */
 .cs-detail__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   column-gap: 32px;
   row-gap: 16px;
 }
@@ -894,6 +970,10 @@
 
 .cs-detail__value {
   margin-top: 4px;
+  /* Same reason as the table cells: `auto-fit` gives the column a width whether
+     or not the value fits, so long values break rather than overrun. */
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 15px;
   font-weight: 500;
   color: var(--cs-text);
@@ -911,7 +991,37 @@
 
 .cs-relations-table {
   width: 100%;
+  /* Five columns of names, dates and nationalities do not fit the narrow profile
+     panel, and the wrapper around this table scrolls it sideways instead.
+     Fixed layout gives NAME a width decided here rather than one derived from
+     whatever the longest name happens to be, so the column wraps at a stable
+     point and never widens into Relationship. Column widths are below. */
+  min-width: 620px;
   border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* NAME takes what is left; the other four are sized for their widest content —
+   an uppercase header, or the value/badge it holds. Actions is wide enough that
+   "View" and its chevron stay on one line. */
+.cs-relations-table th:nth-child(2),
+.cs-relations-table td:nth-child(2) {
+  width: 122px;
+}
+
+.cs-relations-table th:nth-child(3),
+.cs-relations-table td:nth-child(3) {
+  width: 128px;
+}
+
+.cs-relations-table th:nth-child(4),
+.cs-relations-table td:nth-child(4) {
+  width: 118px;
+}
+
+.cs-relations-table th:nth-child(5),
+.cs-relations-table td:nth-child(5) {
+  width: 84px;
 }
 
 .cs-relations-table th {
@@ -951,6 +1061,14 @@
   font-weight: 500;
   color: var(--cs-text);
   cursor: pointer;
+  /* A button is inline-block and centred by the UA stylesheet, so a name that
+     fits shrinks to its own width and looks left-aligned while one that wraps
+     fills the cell and centres both lines. Pinning it left makes every name
+     start at the same edge of the column. */
+  text-align: left;
+  /* Names are user data and may arrive as a single long unbroken token, which
+     under fixed layout would otherwise run under the next column. */
+  overflow-wrap: anywhere;
 }
 
 .cs-relations-table__action {
@@ -1020,7 +1138,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  /* Below the width where the range and the controls fit on one line, the
+     controls wrap as one block rather than breaking apart or overflowing. */
+  flex-wrap: wrap;
+  gap: 10px 16px;
   padding: 12px 0;
   margin-top: 6px;
 }
@@ -1030,13 +1151,19 @@
   color: var(--cs-text-2);
 }
 
+/* One flex row: `wrap` keeps all five parts together as a group when there is
+   room, and stacks them inside the group when there is not. */
 .cs-pagination__controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .cs-pagination__page {
+  /* Keeps "Page 1 of 161" on one line — it must not break mid-number or be
+     squeezed into the Next button. */
+  white-space: nowrap;
   font-size: 13px;
   font-weight: 500;
   color: var(--cs-primary);
@@ -1053,19 +1180,35 @@
   font-weight: 600;
   letter-spacing: 0.4px;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--cs-text-2);
 }
 
+/* Sized and bordered to match the design's dropdown rather than the browser's
+   default, and given the same 8px radius and 38px height as the buttons beside
+   it so the five pager controls read as one row. */
 .cs-select select {
+  appearance: none;
   height: 38px;
-  padding: 0 10px;
+  min-width: 72px;
+  padding: 0 32px 0 12px;
   border: 1px solid var(--cs-border-input);
   border-radius: 8px;
-  background: var(--cs-surface);
+  background-color: var(--cs-surface);
+  /* The design draws a caret inside the control; `appearance: none` removes the
+     native one, so it is supplied here as a background image. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 6l4.5 4.5L12.5 6' stroke='%23677287' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
   font: inherit;
   font-size: 13px;
   color: var(--cs-primary);
   cursor: pointer;
+}
+
+.cs-select select:focus-visible {
+  outline: 2px solid var(--cs-link);
+  outline-offset: 2px;
 }
 
 /* ── Empty / loading ────────────────────────────────────────────────────── */
@@ -2109,7 +2252,11 @@
 }
 
 /* Two-column grids collapse before the table does, on tablet widths. */
-@media (max-width: 1023px) and (min-width: 768px) {
+/* Below this the split cannot hold both floors: 300px of list plus 440px of
+   profile is 740px, and the 260px sidebar and the main padding take a further
+   ~104px on top. Rather than let the profile be squeezed until its header and
+   fields overlap, the panels stack and the profile gets the full column. */
+@media (max-width: 1279px) {
   .cs-layout.is-split {
     grid-template-columns: minmax(0, 1fr);
   }
