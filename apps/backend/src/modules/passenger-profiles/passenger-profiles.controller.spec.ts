@@ -60,16 +60,33 @@ describe('Passenger profile HTTP boundary', () => {
 
   it('synchronizes only the authenticated identity, ignoring browser-supplied IDs and emails', async () => {
     await request(app.getHttpServer() as Server)
-      .post('/api/passenger-profiles/me/sync-identity')
+      .post('/api/customers/me/sync-identity')
       .set('Authorization', 'Bearer valid')
       .send({ userId: 'another-user', email: 'fake@example.com' })
       .expect(200)
     expect(identity.sync).toHaveBeenCalledWith('authenticated-user')
   })
 
+  it('syncs the authenticated owner photo through the PUT photo route', async () => {
+    await request(app.getHttpServer() as Server)
+      .put('/api/customers/me/photo')
+      .set('Authorization', 'Bearer valid')
+      .expect(200)
+    expect(identity.sync).toHaveBeenCalledWith('authenticated-user')
+  })
+
+  it('updates profile details through PUT', async () => {
+    await request(app.getHttpServer() as Server)
+      .put('/api/customers/me')
+      .set('Authorization', 'Bearer valid')
+      .send({ phone: '+66812345678' })
+      .expect(200)
+    expect(service.updateProfile).toHaveBeenCalledWith('authenticated-user', expect.objectContaining({ phone: '+66812345678' }))
+  })
+
   it('requires the existing Bearer authentication guard', async () => {
     await request(app.getHttpServer() as Server)
-      .get('/api/passenger-profiles/me')
+      .get('/api/customers/me')
       .expect(401)
     expect(service.getProfile).not.toHaveBeenCalled()
   })
@@ -121,21 +138,21 @@ describe('Passenger profile HTTP boundary', () => {
   it('rejects invalid tokens before accessing profile data', async () => {
     jwt.verifyAsync.mockRejectedValueOnce(new Error('invalid'))
     await request(app.getHttpServer() as Server)
-      .get('/api/passenger-profiles/me')
+      .get('/api/customers/me')
       .set('Authorization', 'Bearer invalid')
       .expect(401)
     expect(service.getProfile).not.toHaveBeenCalled()
   })
   it('uses the authenticated user ID for profile reads', async () => {
     await request(app.getHttpServer() as Server)
-      .get('/api/passenger-profiles/me')
+      .get('/api/customers/me')
       .set('Authorization', 'Bearer valid')
       .expect(200, { id: 'owned-profile' })
     expect(service.getProfile).toHaveBeenCalledWith('authenticated-user')
   })
   it('rejects user-ID injection and email changes at the HTTP boundary', async () => {
     await request(app.getHttpServer() as Server)
-      .patch('/api/passenger-profiles/me')
+      .put('/api/customers/me')
       .set('Authorization', 'Bearer valid')
       .send({ userId: 'another-user', email: 'changed@example.com' })
       .expect(400)
@@ -143,7 +160,7 @@ describe('Passenger profile HTTP boundary', () => {
   })
   it('validates and normalizes create data before invoking the service', async () => {
     await request(app.getHttpServer() as Server)
-      .post('/api/passenger-profiles/passengers')
+      .post('/api/customers/me/passengers')
       .set('Authorization', 'Bearer valid')
       .send({
         firstName: ' SOMCHAI ',
@@ -161,7 +178,7 @@ describe('Passenger profile HTTP boundary', () => {
   })
   it('rejects locked saved-passenger fields before invoking the service', async () => {
     await request(app.getHttpServer() as Server)
-      .patch(`/api/passenger-profiles/passengers/${passengerId}`)
+      .put(`/api/customers/me/passengers/${passengerId}`)
       .set('Authorization', 'Bearer valid')
       .send({ gender: 'F' })
       .expect(400)
@@ -169,14 +186,14 @@ describe('Passenger profile HTTP boundary', () => {
   })
   it('rejects malformed passenger IDs', async () => {
     await request(app.getHttpServer() as Server)
-      .delete('/api/passenger-profiles/passengers/not-a-uuid')
+      .delete('/api/customers/me/passengers/not-a-uuid')
       .set('Authorization', 'Bearer valid')
       .expect(400)
     expect(service.removePassenger).not.toHaveBeenCalled()
   })
   it('returns 204 when removing the authenticated customer’s saved passenger', async () => {
     await request(app.getHttpServer() as Server)
-      .delete(`/api/passenger-profiles/passengers/${passengerId}`)
+      .delete(`/api/customers/me/passengers/${passengerId}`)
       .set('Authorization', 'Bearer valid')
       .expect(204)
     expect(service.removePassenger).toHaveBeenCalledWith('authenticated-user', passengerId)

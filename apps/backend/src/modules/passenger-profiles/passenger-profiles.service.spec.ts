@@ -98,6 +98,16 @@ describe('PassengerProfilesService', () => {
     expect(result).not.toHaveProperty('clerk_user_id')
   })
 
+  it('clears a relationship without deleting the saved passenger', async () => {
+    await service.updatePassenger('user-1', 'saved-1', { relationship: null })
+    expect(db.customer_passenger.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ relationship_type: null }) }),
+    )
+    expect(db.customer_passenger.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ is_saved: false }) }),
+    )
+  })
+
   it('rejects staff, deleted users and missing customer accounts without writing', async () => {
     db.customer.findFirst.mockResolvedValue(null)
     await expect(service.createPassenger('staff-1', createBody)).rejects.toBeInstanceOf(ForbiddenException)

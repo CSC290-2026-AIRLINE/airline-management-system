@@ -1,11 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreateSavedPassengerDto, ProfileUpdateDto, SavedPassengerQueryDto, UpdateSavedPassengerDto } from './dto/passenger-profiles.dto'
 import { PassengerProfilesService } from './passenger-profiles.service'
 import { ProfileIdentityService } from './profile-identity.service'
 
-@Controller('passenger-profiles')
+@Controller('customers')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true, forbidUnknownValues: true }))
 export class PassengerProfilesController {
   constructor(
@@ -24,9 +24,14 @@ export class PassengerProfilesController {
     return this.profiles.getProfile(user.id)
   }
 
-  @Patch('me')
+  @Put('me')
   updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() body: ProfileUpdateDto) {
     return this.profiles.updateProfile(user.id, body)
+  }
+
+  @Put('me/photo')
+  syncPhoto(@CurrentUser() user: AuthenticatedUser) {
+    return this.identity.sync(user.id)
   }
 
   @Delete('me/photo')
@@ -35,17 +40,17 @@ export class PassengerProfilesController {
     await this.profiles.updateProfile(user.id, { profilePhotoUrl: null })
   }
 
-  @Get('passengers')
+  @Get('me/passengers')
   getPassengers(@CurrentUser() user: AuthenticatedUser, @Query() query: SavedPassengerQueryDto) {
     return this.profiles.listPassengers(user.id, query)
   }
 
-  @Post('passengers')
+  @Post('me/passengers')
   createPassenger(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateSavedPassengerDto) {
     return this.profiles.createPassenger(user.id, body)
   }
 
-  @Patch('passengers/:passengerId')
+  @Put('me/passengers/:passengerId')
   updatePassenger(
     @CurrentUser() user: AuthenticatedUser,
     @Param('passengerId', new ParseUUIDPipe()) passengerId: string,
@@ -54,7 +59,7 @@ export class PassengerProfilesController {
     return this.profiles.updatePassenger(user.id, passengerId, body)
   }
 
-  @Delete('passengers/:passengerId')
+  @Delete('me/passengers/:passengerId')
   @HttpCode(204)
   async removePassenger(@CurrentUser() user: AuthenticatedUser, @Param('passengerId', new ParseUUIDPipe()) passengerId: string) {
     await this.profiles.removePassenger(user.id, passengerId)
