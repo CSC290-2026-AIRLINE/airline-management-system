@@ -11,7 +11,7 @@ export default function SavedPassengers() {
       <header className="profile-card-header">
         <div>
           <h2 id="passengers-title">Saved Passengers</h2>
-          <p>Family and companions you book for. Their names appear as you type when booking.</p>
+          <p>Family and companions you book for.</p>
         </div>
         <button className="profile-button profile-add" onClick={() => setDialog({ type: 'edit' })}>
           <span className="profile-desktop">+ Add passenger</span>
@@ -29,7 +29,7 @@ export default function SavedPassengers() {
           <div className="profile-passenger-info">
             <div className="profile-passenger-name">
               <strong>{passenger.name}</strong>
-              <span className="profile-chip">{passenger.relationship}</span>
+              {passenger.relationship && <span className="profile-chip">{passenger.relationship}</span>}
             </div>
             <p>
               <span className="profile-desktop">DOB </span>

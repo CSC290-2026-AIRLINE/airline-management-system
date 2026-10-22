@@ -102,19 +102,16 @@ export default function PassengerDialog({
       }}
       kind="profile-dialog--passenger"
     >
-      <p className="passenger-intro">Saved passengers appear as you type a name when booking.</p>
+      <p className="passenger-intro">Save family and companions you book for.</p>
       <form className="profile-passenger-form" onSubmit={submit}>
         <label className="profile-field">
-          Passenger’s relationship to you
+          Passenger’s relationship to you (optional)
           <select
-            required
             value={draft.relationship}
             onChange={(event) => change('relationship', event.target.value)}
             aria-describedby="passenger-relationship-hint"
           >
-            <option value="" disabled>
-              Select relationship ▾
-            </option>
+            <option value="">Not specified</option>
             {relationships.map((item) => (
               <option key={item}>{item}</option>
             ))}

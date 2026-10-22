@@ -115,7 +115,7 @@ export function profileView(value: ProfileResponse): Profile {
 }
 export function passengerView(value: PassengerResponse): Passenger {
   const local = [value.localFirstName, value.localLastName].filter(Boolean).join(' ')
-  const relationship = value.relationship ?? 'other'
+  const relationship = value.relationship ?? ''
   return {
     ...identityView(value),
     id: value.id,
@@ -134,7 +134,7 @@ export function passengerBody(passenger: Passenger, editing: boolean) {
     localFirstName: passenger.localFirstName || null,
     localLastName: passenger.localLastName || null,
     passportNumber: passenger.passportNumber || null,
-    relationship: passenger.relationship.toLowerCase(),
+    relationship: passenger.relationship.toLowerCase() || null,
     ...(!editing
       ? {
           dateOfBirth: passenger.dateOfBirth,
@@ -161,7 +161,7 @@ export async function profileRequest<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetchWithAuth(`/api/passenger-profiles${path}`, init)
+  const response = await fetchWithAuth(`/api/customers${path}`, init)
   if (!response.ok) {
     const data: unknown = await response.json().catch(() => null)
     const message = data && typeof data === 'object' && 'message' in data ? data.message : null
