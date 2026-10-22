@@ -87,7 +87,7 @@ export function AssignCrewPage() {
           <header className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase lg:text-3xl">Assign crew</h1>
-              <p className="mt-1 text-sm text-primary-text/60">Crew are assigned to every leg automatically.</p>
+              <p className="mt-1 text-sm text-primary-text/60 lg:hidden">Crew are assigned to every leg automatically.</p>
               <p className="mt-1 hidden text-sm text-primary-text/60 lg:block">
                 Crew are assigned to every leg automatically, then checked against the rules.
               </p>
