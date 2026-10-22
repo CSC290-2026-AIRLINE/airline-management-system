@@ -1,31 +1,10 @@
 import { useState, type FormEvent } from 'react'
-import ProfileDialog from './ProfileDialog'
-import { birthDateLabel, type Passenger } from '../profile-context'
+import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
+import BirthDateInput from '@customer-web/features/passenger-profiles/components/BirthDateInput'
+import { birthDateLabel, type Passenger } from '@customer-web/features/passenger-profiles/profile-context'
+import { errorMessage, nationalityOptions, nationalityCode, nationalityLabel } from '../profile-api'
 
-const relationships = ['Self', 'Spouse', 'Parent', 'Child', 'Sibling', 'Guardian', 'Companion', 'Other']
-const nationalities = [
-  'Thai',
-  'American',
-  'Australian',
-  'British',
-  'Canadian',
-  'Chinese',
-  'Filipino',
-  'French',
-  'German',
-  'Indian',
-  'Indonesian',
-  'Italian',
-  'Japanese',
-  'Lao',
-  'Malaysian',
-  'Myanmar',
-  'New Zealander',
-  'Singaporean',
-  'South Korean',
-  'Vietnamese',
-  'Other',
-]
+const relationships = ['Spouse', 'Parent', 'Child', 'Sibling', 'Guardian', 'Companion', 'Other']
 
 export default function PassengerDialog({
   passenger,
@@ -34,7 +13,7 @@ export default function PassengerDialog({
 }: {
   passenger?: Passenger
   onClose: () => void
-  onSave: (passenger: Passenger) => void
+  onSave: (passenger: Passenger) => Promise<void>
 }) {
   const [draft, setDraft] = useState(() => {
     const [englishName = '', localName = ''] = passenger?.name.split(' · ') ?? []
@@ -49,16 +28,19 @@ export default function PassengerDialog({
       dateOfBirth: passenger ? birthDateLabel(passenger.dateOfBirth) : '',
       gender: passenger?.gender ?? '',
       nationality: passenger?.nationality ?? '',
+      nationalityCode: passenger?.nationalityCode ?? nationalityCode(passenger?.nationality ?? ''),
       passportNumber: passenger?.passportNumber ?? '',
     }
   })
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
   function change(field: keyof typeof draft, value: string) {
     setDraft((previous) => ({ ...previous, [field]: value }))
     setError('')
   }
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (saving) return
     if (!draft.firstName.trim() || !draft.lastName.trim()) {
       setError('Enter the first and last name as shown on the passport.')
       return
@@ -89,26 +71,41 @@ export default function PassengerDialog({
     const localFirstName = draft.localFirstName.trim()
     const localLastName = draft.localLastName.trim()
     const localName = [localFirstName, localLastName].filter(Boolean).join(' ')
-    onSave({
-      id: passenger?.id ?? crypto.randomUUID(),
-      firstName,
-      lastName,
-      localFirstName,
-      localLastName,
-      name: `${firstName} ${lastName}${localName ? ` · ${localName}` : ''}`,
-      relationship: draft.relationship,
-      dateOfBirth,
-      gender: passenger?.gender ?? draft.gender,
-      nationality: passenger?.nationality ?? draft.nationality,
-      passportNumber: draft.passportNumber.trim(),
-    })
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({
+        id: passenger?.id ?? crypto.randomUUID(),
+        firstName,
+        lastName,
+        localFirstName,
+        localLastName,
+        name: `${firstName} ${lastName}${localName ? ` · ${localName}` : ''}`,
+        relationship: draft.relationship,
+        dateOfBirth,
+        gender: passenger?.gender ?? draft.gender,
+        nationality: passenger?.nationality ?? nationalityLabel(draft.nationalityCode),
+        nationalityCode: draft.nationalityCode,
+        passportNumber: draft.passportNumber.trim(),
+      })
+    } catch (failure) {
+      setError(errorMessage(failure))
+    } finally {
+      setSaving(false)
+    }
   }
   return (
-    <ProfileDialog title={passenger ? 'Edit saved passenger' : 'Add saved passenger'} onClose={onClose} kind="profile-dialog--passenger">
+    <ProfileDialog
+      title={passenger ? 'Edit saved passenger' : 'Add saved passenger'}
+      onClose={() => {
+        if (!saving) onClose()
+      }}
+      kind="profile-dialog--passenger"
+    >
       <p className="passenger-intro">Saved passengers appear as you type a name when booking.</p>
       <form className="profile-passenger-form" onSubmit={submit}>
         <label className="profile-field">
-          Relationship to you
+          Passenger’s relationship to you
           <select
             required
             value={draft.relationship}
@@ -122,7 +119,9 @@ export default function PassengerDialog({
               <option key={item}>{item}</option>
             ))}
           </select>
-          <small id="passenger-relationship-hint">Self, spouse, parent, child, sibling, guardian, companion or other</small>
+          <small id="passenger-relationship-hint">
+            For example, Parent means this passenger is your parent. Your own details are in My Profile.
+          </small>
         </label>
         <div className="passenger-form-row">
           <label className="profile-field">
@@ -148,6 +147,7 @@ export default function PassengerDialog({
             />
           </label>
         </div>
+        <p className="profile-fine">Use the Latin names printed on their passport. Thai names belong in the optional local-name fields.</p>
         <div className="passenger-form-row">
           <label className="profile-field">
             Local first name (optional)
@@ -171,13 +171,12 @@ export default function PassengerDialog({
         <div className="passenger-form-row passenger-form-row--three">
           <label className="profile-field">
             Date of birth
-            <input
-              required
-              readOnly={!!passenger}
-              placeholder="DD / MM / YYYY"
+            <BirthDateInput
               value={draft.dateOfBirth}
-              onChange={(event) => change('dateOfBirth', event.target.value)}
-              aria-describedby="passenger-lock-note"
+              onChange={(dateOfBirth) => change('dateOfBirth', dateOfBirth)}
+              onError={setError}
+              readOnly={!!passenger}
+              describedBy="passenger-lock-note"
             />
           </label>
           <label className="profile-field">
@@ -202,15 +201,22 @@ export default function PassengerDialog({
             <select
               required
               disabled={!!passenger}
-              value={draft.nationality}
-              onChange={(event) => change('nationality', event.target.value)}
+              value={draft.nationalityCode}
+              onChange={(event) => change('nationalityCode', event.target.value)}
               aria-describedby="passenger-lock-note"
             >
               <option value="" disabled>
                 Select ▾
               </option>
-              {[...new Set([...nationalities, ...(draft.nationality ? [draft.nationality] : [])])].map((item) => (
-                <option key={item}>{item}</option>
+              {[
+                ...nationalityOptions,
+                ...(!nationalityOptions.some(([code]) => code === draft.nationalityCode) && draft.nationalityCode
+                  ? [[draft.nationalityCode, draft.nationality]]
+                  : []),
+              ].map(([code, label]) => (
+                <option key={code} value={code}>
+                  {label}
+                </option>
               ))}
             </select>
           </label>
@@ -234,11 +240,11 @@ export default function PassengerDialog({
           </p>
         )}
         <footer>
-          <button type="button" className="profile-button" onClick={onClose}>
+          <button type="button" className="profile-button" disabled={saving} onClick={onClose}>
             Cancel
           </button>
-          <button className="profile-button profile-button--primary" type="submit">
-            Save passenger
+          <button className="profile-button profile-button--primary" type="submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Save passenger'}
           </button>
         </footer>
       </form>

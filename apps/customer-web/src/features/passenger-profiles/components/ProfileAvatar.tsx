@@ -1,4 +1,4 @@
-import { initials } from '../profile-context'
+import { initials } from '@customer-web/features/passenger-profiles/profile-context'
 export default function ProfileAvatar({ name, photo }: { name: string; photo: string | null }) {
   return (
     <div className="profile-avatar">

@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import ProfileDialog from './ProfileDialog'
-export default function UploadPhotoDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: (photo: string) => void }) {
+import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
+export default function UploadPhotoDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: (photo: string, file: File) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const reader = useRef<FileReader | null>(null)
   const [photo, setPhoto] = useState('')
   const [error, setError] = useState('')
   const [reading, setReading] = useState(false)
+  const [file, setFile] = useState<File | null>(null)
   useEffect(() => () => reader.current?.abort(), [])
   function chooseFile(file?: File) {
     reader.current?.abort()
     setPhoto('')
+    setFile(null)
     setError('')
     setReading(false)
     if (!file) return
@@ -31,6 +33,7 @@ export default function UploadPhotoDialog({ onClose, onConfirm }: { onClose: () 
       image.onload = () => {
         if (reader.current === nextReader) {
           setPhoto(result)
+          setFile(file)
           setReading(false)
         }
       }
@@ -90,7 +93,13 @@ export default function UploadPhotoDialog({ onClose, onConfirm }: { onClose: () 
         <button className="profile-button" onClick={onClose}>
           Cancel
         </button>
-        <button className="profile-button profile-button--primary" disabled={!photo || reading} onClick={() => onConfirm(photo)}>
+        <button
+          className="profile-button profile-button--primary"
+          disabled={!photo || !file || reading}
+          onClick={() => {
+            if (file) onConfirm(photo, file)
+          }}
+        >
           Upload<span className="profile-desktop"> photo</span>
         </button>
       </footer>

@@ -1,30 +1,32 @@
 import { useState } from 'react'
-import EditProfile from './edit profile'
-import { birthDateLabel, useProfile } from './profile-context'
-import ProfileAvatar from './components/ProfileAvatar'
-import SavedPassengers from './components/SavedPassengers'
-import ChangeEmailDialog from './components/ChangeEmailDialog'
-import editIcon from './assets/edit-profile.svg'
+import EditProfileForm from '@customer-web/features/passenger-profiles/components/EditProfileForm'
+import CustomerNavigation from '@customer-web/features/passenger-profiles/components/CustomerNavigation'
+import { birthDateLabel, useProfile } from '@customer-web/features/passenger-profiles/profile-context'
+import ProfileAvatar from '@customer-web/features/passenger-profiles/components/ProfileAvatar'
+import SavedPassengers from '@customer-web/features/passenger-profiles/components/SavedPassengers'
+import ChangeEmailDialog from '@customer-web/features/passenger-profiles/components/ChangeEmailDialog'
+import editIcon from '@customer-web/features/passenger-profiles/assets/edit-profile.svg'
 
-export default function MyProfile() {
+export default function MyProfilePage() {
   const { profile } = useProfile()
   const [changeEmail, setChangeEmail] = useState(false)
   const [editing, setEditing] = useState(false)
   const fullName = `${profile.firstName} ${profile.lastName}`
   const lockedRows = [
     ['Date of birth', birthDateLabel(profile.dateOfBirth)],
-    ['Nationality', profile.nationality],
-    ['Gender', profile.gender],
+    ['Nationality', profile.nationality || 'Not set'],
+    ['Gender', profile.gender || 'Not set'],
   ]
   return (
     <main className="account-page">
+      <CustomerNavigation />
       <div className="account-content">
         <header className="account-heading">
           <h1>My Profile</h1>
           <p>Manage your details, saved passengers and profile photo.</p>
         </header>
         {editing ? (
-          <EditProfile onDone={() => setEditing(false)} />
+          <EditProfileForm onDone={() => setEditing(false)} />
         ) : (
           <section className="profile-card profile-details" aria-labelledby="profile-title">
             <header className="profile-card-header profile-details-header">
@@ -70,15 +72,31 @@ export default function MyProfile() {
                     <dt>Phone</dt>
                     <dd>{profile.phone || 'Not set'}</dd>
                   </div>
+                  {(profile.localFirstName || profile.localLastName) && (
+                    <div>
+                      <dt>Local name</dt>
+                      <dd>{[profile.localFirstName, profile.localLastName].filter(Boolean).join(' ')}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt>Passport</dt>
+                    <dd>
+                      {profile.passportNumber
+                        ? `${'•'.repeat(Math.max(profile.passportNumber.length - 4, 0))}${profile.passportNumber.slice(-4)}`
+                        : 'Not set'}
+                    </dd>
+                  </div>
                 </dl>
                 <dl className="profile-info">
                   {lockedRows.map(([label, value]) => (
                     <div key={label}>
                       <dt>{label}</dt>
                       <dd>{value}</dd>
-                      <span className="profile-lock" aria-label="Locked">
-                        🔒<span className="profile-desktop"> locked</span>
-                      </span>
+                      {value !== 'Not set' && (
+                        <span className="profile-lock" aria-label="Locked">
+                          🔒<span className="profile-desktop"> locked</span>
+                        </span>
+                      )}
                     </div>
                   ))}
                 </dl>

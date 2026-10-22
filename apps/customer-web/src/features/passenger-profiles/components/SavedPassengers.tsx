@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { birthDateLabel, initials, useProfile, type Passenger } from '../profile-context'
-import RemovePassengerDialog from './RemovePassengerDialog'
-import PassengerDialog from './PassengerDialog'
-import editIcon from '../assets/edit.svg'
+import { birthDateLabel, initials, useProfile, type Passenger } from '@customer-web/features/passenger-profiles/profile-context'
+import RemovePassengerDialog from '@customer-web/features/passenger-profiles/components/RemovePassengerDialog'
+import PassengerDialog from '@customer-web/features/passenger-profiles/components/PassengerDialog'
+import editIcon from '@customer-web/features/passenger-profiles/assets/edit.svg'
 export default function SavedPassengers() {
   const { passengers, savePassenger, removePassenger } = useProfile()
   const [dialog, setDialog] = useState<{ type: 'remove'; passenger: Passenger } | { type: 'edit'; passenger?: Passenger } | null>(null)
@@ -54,8 +54,8 @@ export default function SavedPassengers() {
         <RemovePassengerDialog
           name={dialog.passenger.name}
           onClose={() => setDialog(null)}
-          onConfirm={() => {
-            removePassenger(dialog.passenger.id)
+          onConfirm={async () => {
+            await removePassenger(dialog.passenger.id)
             setDialog(null)
           }}
         />
@@ -64,8 +64,8 @@ export default function SavedPassengers() {
         <PassengerDialog
           passenger={dialog.passenger}
           onClose={() => setDialog(null)}
-          onSave={(passenger) => {
-            savePassenger(passenger)
+          onSave={async (passenger) => {
+            await savePassenger(passenger)
             setDialog(null)
           }}
         />

@@ -7,6 +7,7 @@ export default function ProfileDialog({
   kind = '',
   closeButton = false,
   steps,
+  suspended = false,
 }: {
   title: ReactNode
   onClose: () => void
@@ -14,6 +15,7 @@ export default function ProfileDialog({
   kind?: string
   closeButton?: boolean
   steps?: ReactNode
+  suspended?: boolean
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const titleId = useId()
@@ -29,6 +31,10 @@ export default function ProfileDialog({
       previousFocus?.focus()
     }
   }, [])
+  useEffect(() => {
+    if (suspended) ref.current?.close()
+    else if (!ref.current?.open) ref.current?.showModal()
+  }, [suspended])
   return (
     <dialog
       ref={ref}
