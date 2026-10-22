@@ -25,16 +25,23 @@ const WIZARD_STEPS: { id: WizardStep; label: string }[] = [
   { id: 'fix-publish', label: 'Fix & publish' },
 ]
 
-/** Left navigation. `activeItem` highlights one entry. */
+/**
+ * Left navigation. `activeItem` highlights one entry.
+ *
+ * `onSignOut` is optional: a page with the account available passes it, one without
+ * keeps the inert button the mockups describe.
+ */
 export function SidebarNav({
   activeItem,
   simulationClock,
   userName,
+  onSignOut,
   children,
 }: {
   activeItem: string
   simulationClock: string
   userName: string
+  onSignOut?: () => void
   children?: ReactNode
 }) {
   return (
@@ -85,7 +92,7 @@ export function SidebarNav({
         <div>
           <p className="font-display text-lg font-bold">{userName}</p>
           <p className="mt-1 max-w-[190px] text-xs leading-relaxed text-white/55">Navigation follows assigned staff permissions.</p>
-          <button type="button" className="mt-3 text-sm font-medium text-white/80 underline-offset-4 hover:underline">
+          <button type="button" onClick={onSignOut} className="mt-3 text-sm font-medium text-white/80 underline-offset-4 hover:underline">
             Sign out
           </button>
         </div>
