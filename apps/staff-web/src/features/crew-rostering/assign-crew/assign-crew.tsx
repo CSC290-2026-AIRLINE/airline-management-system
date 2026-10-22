@@ -12,6 +12,7 @@
  */
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useAppAuth } from '../../../auth/AuthProvider'
 import { MOCK_ROSTER_RUN, MOCK_SIMULATION_CLOCK } from './types/mock-data'
 import { useAssignCrew } from './types/use-assign-crew'
 import type { AssignmentSummary } from './types/types'
@@ -30,10 +31,33 @@ const SHORT_CLOCK = MOCK_SIMULATION_CLOCK.replace(/^\w{3}\s/, '')
   .split(' · ')[0]
   .replace(/\s\d{4}$/, '')
 
+/**
+ * The account line under the sidebar wordmark.
+ *
+ * The backend creates every staff sign-in as `admin`, so the role is a label for now,
+ * not a permission check — the backend is what enforces access. An unrecognised type
+ * falls back to itself rather than to a guess. `short` is the same role squeezed into
+ * the mobile account chip.
+ */
+const ROLE_LABELS: Record<string, { full: string; short: string }> = {
+  admin: { full: 'Administrator', short: 'ADMIN' },
+}
+
+function roleLabel(type: string): { full: string; short: string } {
+  return ROLE_LABELS[type] ?? { full: type, short: type.toUpperCase() }
+}
+
 export function AssignCrewPage() {
   const state = useAssignCrew()
   const navigate = useNavigate()
+  const { user, logout } = useAppAuth()
   const [confirming, setConfirming] = useState(false)
+
+  // This page sits behind `_authenticated`, so a signed-out visitor never reaches it.
+  // `user === null` therefore means the `/api/auth/session` exchange is still in
+  // flight, not that anyone signed out — show the mockup's role in that brief window
+  // rather than a claim that is not true.
+  const role = roleLabel(user?.type ?? 'admin')
 
   const canRun = state.selectedPairings.length > 0 && state.dateError === null
   const summary = state.summary
@@ -77,11 +101,11 @@ export function AssignCrewPage() {
       {/* `contents` keeps the sidebar a direct flex child, so its own `mt-auto`
           footer still pins to the bottom of the viewport on desktop. */}
       <div className="hidden lg:contents">
-        <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName="Administrator" />
+        <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={role.full} onSignOut={() => void logout()} />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileTopBar simulationClockShort={SHORT_CLOCK} accountLabel="ADMIN" />
+        <MobileTopBar simulationClockShort={SHORT_CLOCK} accountLabel={role.short} />
 
         <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 pb-28 lg:px-8 lg:py-7 lg:pb-8">
           <header className="flex flex-wrap items-start justify-between gap-4">
