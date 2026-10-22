@@ -1,18 +1,41 @@
-import { Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
-import type { AuditEntryDto, AuditPage, RoleScreensDto, RoleSummary, ScreenDto, ScreenGroup } from './dto/admin-console.types'
+import type {
+  AuditEntryDto,
+  AuditPage,
+  MyScreensDto,
+  ReplaceRoleScreensResult,
+  RoleScreensDto,
+  RoleSummary,
+  ScreenDto,
+  ScreenGroup,
+} from './dto/admin-console.types'
 import type { AuditQueryDto } from './dto/audit-query.dto'
 import type { RegisterScreenDto } from './dto/register-screen.dto'
 import type { ScreenKind } from './dto/register-screen.dto'
 import type { SelfRegisterScreen } from './dto/admin-console.types'
+import type { AdminPrincipal } from './guards/admin-console.guard'
+import { SimulationClock } from './simulation-clock'
 
 const DEFAULT_AUDIT_LIMIT = 50
 const MAX_AUDIT_LIMIT = 200
 
+/** Feature number written on every audit row this module creates. Mirrors `SOURCE_FEATURE` in the self-registration. */
+const SOURCE_FEATURE = '15'
+
+/** Mirrors `ReplaceRoleScreensDto`'s `MinLength`. Re-checked in the service so non-HTTP callers are covered too. */
+const MIN_REASON_LENGTH = 10
+
+/** Order-insensitive set comparison — the caller's ordering carries no meaning, only membership does. */
+function sameIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const set = new Set(a)
+  return b.every((id) => set.has(id))
+}
+
 /**
- * All admin-console queries. The PUT that mutates role→screen grants lives in `replace-role-screens.ts` (PR 2) — this
- * file is intentionally read-only so PR 1 stays small and reviewable.
+ * All admin-console queries, plus the one write path (`replaceRoleScreens`).
  *
  * Invariants enforced here (NOT elsewhere):
  * 1. Sensitive masking: if `is_sensitive` is set on an audit row, `before`/`after` come back as `null` in the list.
@@ -27,7 +50,10 @@ const MAX_AUDIT_LIMIT = 200
  */
 @Injectable()
 export class AdminConsoleService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly clock: SimulationClock,
+  ) {}
 
   /* ──────────────────────────────────────────────────────────────────────────── */
   /*  Self-registration (called by OnModuleInit and by POST /admin/screens) */
@@ -165,6 +191,103 @@ export class AdminConsoleService {
       select: { screen_id: true },
     })
     return { role_id: roleId, screen_ids: grants.map((g) => g.screen_id) }
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  Full replace of a role's grants (PUT /admin/roles/:id/screens)
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * Replaces every `role_screen` grant on `roleId` with `screenIds`, and records the change in `audit_log` inside the
+   * same transaction. A partial write would leave the log claiming a change that did not happen (or the reverse), so
+   * both halves commit or neither does.
+   *
+   * Invariants this enforces:
+   *   1. **Only `assignable` screens may be granted.** `role_screen` has a composite FK on `(screen_id, screen_kind)`
+   *      and `schema.sql` adds `CHECK (screen_kind = 'assignable')`; filtering here turns what would be a 500 from
+   *      Postgres into a 400 that names the offending ids. Core and admin screens are implicitly held by every role
+   *      (or by admin roles) — see `getMyScreens` — so granting them would be meaningless anyway.
+   *   2. **`actor_id` comes from the token, never the body.** An admin cannot forge who made a change.
+   *   3. **`recorded_at` is never set** — the DB default `now()` is what keeps real time real even if the simulation
+   *      clock is later rewound. Only `occurred_at` (business time) comes from `SimulationClock`.
+   */
+  async replaceRoleScreens(admin: AdminPrincipal, roleId: string, screenIds: string[], reason: string): Promise<ReplaceRoleScreensResult> {
+    // Defence for non-HTTP callers (tests, future internal callers): the DTO guards the HTTP path only.
+    const trimmedReason = reason.trim()
+    if (trimmedReason.length < MIN_REASON_LENGTH) {
+      throw new BadRequestException(`reason must be at least ${MIN_REASON_LENGTH} characters`)
+    }
+
+    const role = await this.db.role.findUnique({ where: { id: roleId }, select: { id: true, code: true } })
+    if (!role) {
+      throw new NotFoundException(`Role ${roleId} not found`)
+    }
+
+    // De-duplicate before comparing, so a client that sends the same id twice gets the same result as one that does
+    // not — otherwise `changed` would flip on every save.
+    const wanted = [...new Set(screenIds)]
+    const before = await this.db.role_screen.findMany({
+      where: { role_id: roleId },
+      orderBy: [{ screen_id: 'asc' }],
+      select: { screen_id: true },
+    })
+    const beforeIds = before.map((g) => g.screen_id)
+    const unchanged = sameIds(beforeIds, wanted)
+    if (unchanged) {
+      // Nothing to write, so there is nothing to audit. Returning early also keeps a no-op save from appending a row
+      // to the audit log every time somebody clicks Save twice.
+      return { role_id: roleId, screen_ids: beforeIds, changed: false }
+    }
+
+    // An empty list is legal (revoke everything) and must not hit the lookup at all.
+    if (wanted.length > 0) {
+      const found = await this.db.screen.findMany({
+        where: { id: { in: wanted }, kind: 'assignable', is_active: true },
+        select: { id: true },
+      })
+      const foundIds = new Set(found.map((s) => s.id))
+      const rejected = wanted.filter((id) => !foundIds.has(id))
+      if (rejected.length > 0) {
+        throw new BadRequestException(
+          `Only active assignable screens can be granted; rejected ${rejected.length} id(s): ${rejected.slice(0, 5).join(', ')}`,
+        )
+      }
+    }
+
+    const occurredAt = this.clock.now()
+    const inserted = await this.db.$transaction(async (tx) => {
+      await tx.role_screen.deleteMany({ where: { role_id: roleId } })
+      if (wanted.length > 0) {
+        await tx.role_screen.createMany({
+          data: wanted.map((screenId) => ({ role_id: roleId, screen_id: screenId, screen_kind: 'assignable' })),
+          // `role_id + screen_id` is the composite primary key; `wanted` is already de-duplicated so skipIfDuplicates
+          // would never fire, but leaving it off keeps a future caller from tripping the PK on a retry.
+          skipDuplicates: true,
+        })
+      }
+
+      const audit = await tx.audit_log.create({
+        data: {
+          occurred_at: occurredAt,
+          actor_type: 'staff',
+          actor_id: admin.id,
+          actor_role: admin.roleCode,
+          source_feature: SOURCE_FEATURE,
+          action: 'screen_access_change',
+          entity_type: 'role',
+          entity_id: roleId,
+          summary: `Replaced screen access for role ${role.code}: ${beforeIds.length} → ${wanted.length} screen(s)`,
+          reason: trimmedReason,
+          before: { screen_ids: beforeIds },
+          after: { screen_ids: wanted },
+          is_sensitive: false,
+        },
+        select: { seq: true },
+      })
+      return audit
+    })
+
+    return { role_id: roleId, screen_ids: [...wanted].sort(), changed: true, audit_seq: inserted.seq.toString() }
   }
 
   /* ──────────────────────────────────────────────────────────────────────────── */
@@ -307,15 +430,19 @@ export class AdminConsoleService {
    *   - Every active `admin` screen — only if the user's role is `is_admin`.
    *   - Every active `assignable` screen the role has a `role_screen` grant for.
    *
-   * Anonymous calls (no `staff` row linked to the token) get `[]`. We never throw 403 here — the global `JwtAuthGuard`
-   * already rejected unauthenticated requests before reaching us.
+   * `provisioned` is the signal that separates "signed in, but nobody created a staff account yet" from "has a staff
+   * account whose role happens to hold no screens" — both produce an empty `screen_codes`, and only the former should
+   * send the user to the "ask an Admin" screen.
+   *
+   * Anonymous calls (no `staff` row linked to the token) come back `provisioned: false`. We never throw 403 here — the
+   * global `JwtAuthGuard` already rejected unauthenticated requests before reaching us.
    */
-  async getMyScreens(userId: string): Promise<string[]> {
+  async getMyScreens(userId: string): Promise<MyScreensDto> {
     const staff = await this.db.staff.findFirst({
       where: { user_id: userId, deleted_at: null },
       select: { role_id: true, role: { select: { is_admin: true } } },
     })
-    if (!staff) return []
+    if (!staff) return { screen_codes: [], provisioned: false }
 
     const grants = await this.db.role_screen.findMany({
       where: { role_id: staff.role_id },
@@ -328,7 +455,9 @@ export class AdminConsoleService {
       select: { code: true },
     })
 
-    if (grants.length === 0) return allowedAuto.map((s) => s.code)
+    if (grants.length === 0) {
+      return { screen_codes: allowedAuto.map((s) => s.code), provisioned: true }
+    }
 
     const allowedGranted = await this.db.screen.findMany({
       where: { id: { in: grants.map((g) => g.screen_id) }, is_active: true },
@@ -338,6 +467,6 @@ export class AdminConsoleService {
     const codes = new Set<string>()
     for (const s of allowedAuto) codes.add(s.code)
     for (const s of allowedGranted) codes.add(s.code)
-    return [...codes]
+    return { screen_codes: [...codes], provisioned: true }
   }
 }

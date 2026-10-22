@@ -5,6 +5,7 @@ import { usePreviewMode } from '../hooks/usePreviewMode'
 import { previewAudit } from '../preview-data'
 import { FEATURE_NUMBERS, featureLabel } from '../feature-labels'
 import { AdminErrorCard } from '../components/AdminErrorCard'
+import { NoAccessScreen } from '../components/NoAccessScreen'
 import { AdminPreviewBanner } from '../components/AdminPreviewBanner'
 import type { AuditEntry, AuditFilters, AuditPage } from '../types'
 import './AuditLogPage.css'
@@ -63,6 +64,11 @@ function statusFromError(msg: string): number | undefined {
   return n >= 100 && n < 600 ? n : undefined
 }
 
+/**
+ * Audit log page. Both access gates live in `routes/_authenticated/admin/route.tsx`, one level up: it owns
+ * `RequireStaff` (one `GET /api/me/screens` for all three tabs) and the `?preview=1&denied=1` /
+ * `?preview=1&unprovisioned=1` design-review flags. Do not add either back in here.
+ */
 export function AuditLogPage() {
   const isPreview = usePreviewMode()
   const listAudit = useListAudit()
@@ -158,7 +164,14 @@ export function AuditLogPage() {
     )
   }
 
+  /* A user with no staff row never reaches this point — the layout route answers that case first. */
+
   if (error) {
+    /* A non-admin reaching the audit log is the common case during rollout, and the setup checklist inside
+       AdminErrorCard is noise for them — they are not misconfigured, they simply lack the screen. */
+    if (statusFromError(error) === 403) {
+      return <NoAccessScreen screenName="Audit log" homeTo="/admin/roles" />
+    }
     return <AdminErrorCard page="Audit log" error={error} status={statusFromError(error)} onRetry={() => window.location.reload()} />
   }
 
@@ -340,7 +353,7 @@ export function AuditLogPage() {
                             </div>
                             <div>
                               <h5>Reason</h5>
-                              <p className="muted small">{e.reason ?? '—'}</p>
+                              <p className="muted small detail-reason">{e.reason ?? '—'}</p>
                             </div>
                             <div>
                               <h5>Meta</h5>

@@ -300,6 +300,22 @@
   display: flex;
   gap: 8px;
 }
+/* Sits above the sticky panel and outlives it, so it carries the outcome of a save once the panel unmounts. The
+   colours match the audit-log action pills. */
+.save-feedback {
+  margin: 16px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #e5f3e8;
+  border: 1px solid #b7dcc1;
+  color: #14532d;
+  font-size: 13px;
+}
+.save-feedback.is-error {
+  background: #fbe6e6;
+  border-color: #f0b4b4;
+  color: #7f1d1d;
+}
 
 /* ----- Modal ----- */
 

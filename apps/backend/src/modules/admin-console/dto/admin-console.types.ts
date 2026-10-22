@@ -35,6 +35,20 @@ export interface RoleScreensDto {
   screen_ids: string[]
 }
 
+/**
+ * Response of `PUT /admin/roles/:id/screens`.
+ *
+ * `changed: false` means the request was a no-op — the role already held exactly these screens — and no audit row was
+ * written. `audit_seq` is only present when `changed` is true.
+ */
+export interface ReplaceRoleScreensResult {
+  role_id: string
+  /** Sorted, de-duplicated. */
+  screen_ids: string[]
+  changed: boolean
+  audit_seq?: string
+}
+
 /** One row in the `GET /admin/audit-log` response. `seq` is `BigInt.toString()`. */
 export interface AuditEntryDto {
   seq: string
@@ -75,4 +89,17 @@ export interface SelfRegisterScreen {
   name: string
   kind: ScreenKind
   feature_no: string
+}
+
+/** Response of `GET /api/me/screens`. */
+export interface MyScreensDto {
+  screen_codes: string[]
+  /**
+   * `false` when the signed-in user has no `staff` row — they authenticated successfully but nobody created their staff
+   * account yet.
+   *
+   * This exists because an empty `screen_codes` is ambiguous on its own: a provisioned user whose role holds no screens
+   * looks identical. Only `provisioned: false` should send someone to the "ask an Admin" screen.
+   */
+  provisioned: boolean
 }

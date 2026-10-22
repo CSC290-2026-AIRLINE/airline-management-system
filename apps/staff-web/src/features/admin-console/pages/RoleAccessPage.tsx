@@ -6,11 +6,15 @@ import { usePreviewMode } from '../hooks/usePreviewMode'
 import { previewRoleScreens, previewRoles, previewScreenGroups } from '../preview-data'
 import { featureLabel } from '../feature-labels'
 import { AdminErrorCard } from '../components/AdminErrorCard'
+import { NoAccessScreen } from '../components/NoAccessScreen'
 import { AdminPreviewBanner } from '../components/AdminPreviewBanner'
 import type { ScreenDto } from '../types'
 import './RoleAccessPage.css'
 
 /* Helpers --------------------------------------------------------------- */
+
+/** Mirrors `MIN_REASON_LENGTH` in the backend's `ReplaceRoleScreensDto` — the same number, checked on both sides. */
+const MIN_REASON_LENGTH = 10
 
 function setsEqual(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) return false
@@ -100,19 +104,22 @@ function splitColumns(groups: DisplayGroup[]): DisplayGroup[][] {
 /* Component ------------------------------------------------------------- */
 
 /**
- * Role access page. Read-only in PR 1: the dirty banner and Save panel still appear so the UI is complete, but the
- * Save button is inert — the PUT endpoint is part of PR 2.
+ * Role access page. The amber panel only appears once the checkboxes are dirty; saving it PUTs the whole grant set for
+ * the selected role and the backend writes the audit row in the same transaction.
+ *
+ * Both access gates live in `routes/_authenticated/admin/route.tsx`, one level up: it owns `RequireStaff` (one
+ * `GET /api/me/screens` for all three tabs) and the `?preview=1&denied=1` / `?preview=1&unprovisioned=1`
+ * design-review flags. Do not add either back in here.
  *
  * When the URL has `?preview=1` the page renders against `preview-data.ts` instead of the live API. This is purely a
- * design-review aid and never affects the production path.
+ * design-review aid and never affects the production path — saving is disabled there, since the mock role ids do not
+ * exist in the database.
  */
 export function RoleAccessPage() {
   const isPreview = usePreviewMode()
-
   const listScreens = useListScreens()
   const listRoles = useListRoles()
   const getRoleScreens = useGetRoleScreens()
-  // Wired in PR 2; left in place so the click handler is already pointed at the real endpoint shape.
   const replaceRoleScreens = useReplaceRoleScreens()
 
   /* Role selection. Preview mode never flips mid-session — `AdminPreviewBanner` reloads the page to toggle it —
@@ -125,6 +132,12 @@ export function RoleAccessPage() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewStaff, setPreviewStaff] = useState<string | null>(null)
 
+  /* Save state. The notice/error lives outside the save panel because the panel unmounts the moment `dirty` goes
+     false — a success message rendered inside it would never be seen. */
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveNotice, setSaveNotice] = useState<string | null>(null)
+
   const liveRegistry = useRoleAccess(roleId, listScreens, listRoles, getRoleScreens, !isPreview)
   const registry = isPreview ? computePreviewRegistry(roleId) : liveRegistry
   const groups = useMemo(() => buildGroups(registry.screens), [registry.screens])
@@ -136,6 +149,15 @@ export function RoleAccessPage() {
     return setsDiff(registry.granted, pending)
   }, [pending, registry.granted])
 
+  /* The backend rejects a shorter reason with a 400 (`MIN_REASON_LENGTH` in the DTO). Mirror it here so the button
+     disables itself instead of sending a request that can only fail. */
+  const reasonOk = reason.trim().length >= MIN_REASON_LENGTH
+  const saveTitle = isPreview
+    ? 'Preview mode renders sample data — switch off ?preview=1 to save.'
+    : reasonOk
+      ? 'Write these screen grants and record the change in the audit log.'
+      : `Give a reason of at least ${MIN_REASON_LENGTH} characters — it is stored on the audit entry.`
+
   /* Pick first role once roles load — render-time adjustment. */
   if (roleId === null && !registry.loading && registry.roles.length > 0) {
     setRoleId(registry.roles[0].id)
@@ -143,11 +165,18 @@ export function RoleAccessPage() {
 
   const currentRole = registry.roles.find((r) => r.id === roleId) ?? null
 
+  /* Reset the edit state. Shared by undo, role switch, and a successful save. */
+  function resetEdits() {
+    setPending(null)
+    setReason('')
+    setSaveError(null)
+    setSaveNotice(null)
+  }
+
   /* Pick a role: wraps setRoleId + reset-the-edits so it can be called from one place. */
   function selectRole(newRoleId: string | null) {
     setRoleId(newRoleId)
-    setPending(null)
-    setReason('')
+    resetEdits()
   }
 
   /* Toggle a screen */
@@ -158,22 +187,54 @@ export function RoleAccessPage() {
     if (next.has(screenId)) next.delete(screenId)
     else next.add(screenId)
     setPending(next)
+    // A "Saved" or a failed-save message no longer describes what is on screen once a box moves.
+    setSaveError(null)
+    setSaveNotice(null)
   }
 
-  /* Apply / undo */
+  /* Undo */
   function undo() {
-    setPending(null)
-    setReason('')
+    resetEdits()
   }
-  function apply() {
-    setPending(null)
-    setReason('')
+
+  /* Save — the whole grant set goes to the server; there is no per-screen PATCH. */
+  async function save() {
+    if (!roleId || !pending || saving) return
+    setSaving(true)
+    setSaveError(null)
+    setSaveNotice(null)
+    try {
+      const res = await replaceRoleScreens(roleId, { screen_ids: [...pending], reason: reason.trim() })
+      // Take the server's set rather than our own: it is de-duplicated and sorted, and `changed: false` means the
+      // role already matched, in which case no audit row was written.
+      liveRegistry.setGranted(res.role_id, res.screen_ids)
+      setPending(null)
+      setReason('')
+      setSaveNotice(
+        res.changed
+          ? res.audit_seq
+            ? `Saved. Recorded in the audit log as #${res.audit_seq}.`
+            : 'Saved.'
+          : 'No changes to save — this role already had exactly those screens.',
+      )
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
   }
 
   /* Render ------------------------------------------------------------ */
 
+  /* A user with no staff row never reaches this point — the layout route answers that case first. */
+
   if (registry.loading) return <p className="muted">Loading role access…</p>
   if (registry.error) {
+    /* A signed-in non-admin gets 403 from AdminConsoleGuard. That is an authorization answer, not a broken setup,
+       so it renders the shared access-denied card rather than the setup checklist. */
+    if (statusFromError(registry.error) === 403) {
+      return <NoAccessScreen screenName="Role access" homeTo="/" />
+    }
     return (
       <AdminErrorCard
         page="Role access"
@@ -286,6 +347,13 @@ export function RoleAccessPage() {
           Core and Admin screens are locked; only <strong>assignable</strong> screens can change.
         </p>
 
+        {/* Save feedback sits above the panel so it survives the panel unmounting when `dirty` flips back to false. */}
+        {(saveError || saveNotice) && (
+          <p className={saveError ? 'save-feedback is-error' : 'save-feedback'} role="status">
+            {saveError ?? saveNotice}
+          </p>
+        )}
+
         {/* Save panel (sticky) ---------------------------------------- */}
         {roleId && dirty && (
           <div className="save-panel" role="region" aria-label="Unsaved changes">
@@ -296,28 +364,25 @@ export function RoleAccessPage() {
                 </p>
                 <input
                   className="reason-input"
-                  placeholder="Reason (required, ≥ 10 chars) — coming in PR 2"
+                  placeholder="Reason (required, ≥ 10 chars)"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                 />
               </div>
               <div className="save-actions">
-                <button type="button" className="btn-ghost" onClick={undo}>
+                <button type="button" className="btn-ghost" onClick={undo} disabled={saving}>
                   Undo changes
                 </button>
                 <button
                   type="button"
                   className="btn-primary"
-                  disabled
-                  title="Available in the next release — backend PUT lands in PR 2."
+                  disabled={!reasonOk || saving || isPreview}
+                  title={saveTitle}
                   onClick={() => {
-                    /* PR 2: real PUT. */
-                    void replaceRoleScreens(roleId, { screen_ids: [...(pending ?? new Set())], reason })
-                      .then(() => apply())
-                      .catch(() => undefined)
+                    void save()
                   }}
                 >
-                  Save access
+                  {saving ? 'Saving…' : 'Save access'}
                 </button>
               </div>
             </div>

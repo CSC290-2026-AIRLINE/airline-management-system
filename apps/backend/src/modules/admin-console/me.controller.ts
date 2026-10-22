@@ -1,6 +1,7 @@
 import { Controller, Get, Req, UseGuards } from '@nestjs/common'
 import type { Request } from 'express'
 import { AdminConsoleService } from './admin-console.service'
+import type { MyScreensDto } from './dto/admin-console.types'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 
 type MeRequest = Request & { user?: AuthenticatedUser }
@@ -18,13 +19,14 @@ export class MeController {
   constructor(private readonly svc: AdminConsoleService) {}
 
   /**
-   * `GET /api/me/screens` — the codes of every active screen the signed-in caller can open. Each frontend feature can
-   * call this on mount to filter its nav. See `AdminConsoleService.getMyScreens` for the policy.
+   * `GET /api/me/screens` — the codes of every active screen the signed-in caller can open, plus whether they have a
+   * staff account at all. Each frontend feature can call this on mount to filter its nav. See
+   * `AdminConsoleService.getMyScreens` for the policy.
    */
   @Get('screens')
-  async myScreens(@Req() req: MeRequest): Promise<{ screen_codes: string[] }> {
+  async myScreens(@Req() req: MeRequest): Promise<MyScreensDto> {
     const user = req.user
-    if (!user) return { screen_codes: [] }
-    return { screen_codes: await this.svc.getMyScreens(user.id) }
+    if (!user) return { screen_codes: [], provisioned: false }
+    return this.svc.getMyScreens(user.id)
   }
 }

@@ -1,0 +1,40 @@
+/* Page frame for the refusal screens — see `RefusalScreen.tsx`.
+   #F7F9FC is the same literal `.admin-main` uses, so a card looks identical whether it was reached through the admin
+   workspace or refused before the shell could render. Repeated rather than shared because `.admin-main` is scoped to
+   the shell and these screens deliberately do not mount it. */
+
+.refusal-screen {
+  /* These screens replace the whole app, but they do not mount `.admin-shell`, so the app-wide
+     `#root:has(.admin-shell) { width: 100% }` override in `src/index.css` does not match them and `#root`
+     stays clamped to its 1126px column with vertical borders. Taking the frame out of flow is what makes
+     these fill the viewport without editing that shared rule. `inset: 0` sizes against the viewport minus
+     the scrollbar, so it cannot create the horizontal overflow a `width: 100vw` breakout would. */
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  background: #f7f9fc;
+  font-family: var(--sans);
+  /* Column flex so the bar can claim its strip and the card can centre itself in what is left. */
+  display: flex;
+  flex-direction: column;
+  /* Above `#root`'s own borders, which stay painted underneath it at `z-index: auto`. */
+  z-index: 1;
+}
+
+/* The card is centred on the whole viewport, not on the grey area under the bar — `align-items: center` from
+   StatusCard.css centres whatever box it is given, and the box below the bar is not the screen. Taking it out of the
+   column and giving it `inset: 0` makes that box the whole viewport, bar included, so the card sits on the screen's
+   centre line. `.refusal-screen` is the containing block because it is the nearest positioned ancestor.
+   `overflow-y: auto` replaces the scrollbar on `.refusal-screen` — the card is out of flow now, so it no longer
+   contributes to its height and could not make it scroll. */
+.refusal-screen .status-wrap {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .refusal-screen {
+    background: #101116;
+  }
+}

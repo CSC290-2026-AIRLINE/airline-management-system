@@ -95,5 +95,18 @@ export function useRoleAccess(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, roleId, loadedRoleId])
 
-  return state
+  /**
+   * Adopt the server's answer as the new saved set, right after a successful `PUT /admin/roles/:id/screens`. The
+   * response already carries the authoritative de-duplicated `screen_ids`, so refetching would only add a round trip
+   * and a window where the checkboxes flash the stale set.
+   *
+   * The `roleId` argument is checked against `loadedRoleId` so a response that lands after the admin has switched
+   * roles cannot overwrite the newly-selected role's grants with the previous role's.
+   */
+  function setGranted(roleId: string, screenIds: string[]): void {
+    if (roleId !== loadedRoleId) return
+    setState((prev) => ({ ...prev, granted: new Set(screenIds) }))
+  }
+
+  return { ...state, setGranted }
 }

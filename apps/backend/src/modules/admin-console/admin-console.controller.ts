@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   UseGuards,
   UsePipes,
@@ -14,9 +15,12 @@ import {
 } from '@nestjs/common'
 import { AdminConsoleService } from './admin-console.service'
 import { AdminConsoleGuard } from './guards/admin-console.guard'
+import { Admin } from './decorators/admin.decorator'
+import type { AdminPrincipal } from './guards/admin-console.guard'
 import { RegisterScreenDto } from './dto/register-screen.dto'
+import { ReplaceRoleScreensDto } from './dto/replace-role-screens.dto'
 import { AuditQueryDto } from './dto/audit-query.dto'
-import type { AuditEntryDto } from './dto/admin-console.types'
+import type { AuditEntryDto, ReplaceRoleScreensResult } from './dto/admin-console.types'
 import type { ScreenKind } from './dto/register-screen.dto'
 
 /**
@@ -68,6 +72,22 @@ export class AdminConsoleController {
     const result = await this.svc.getRoleScreens(id)
     if (!result) return null
     return { screen_ids: result.screen_ids }
+  }
+
+  /**
+   * Full replace of one role's grants, with the audit row written in the same transaction.
+   *
+   * Declared after the `@Get` on the same path on purpose: Nest matches per-method, but putting the write next to the
+   * read it mirrors makes the pair easy to find and keeps `GET` untouched for anyone reading the controller top-down.
+   */
+  @Put('roles/:id/screens')
+  @HttpCode(200)
+  replaceRoleScreens(
+    @Admin() admin: AdminPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ReplaceRoleScreensDto,
+  ): Promise<ReplaceRoleScreensResult> {
+    return this.svc.replaceRoleScreens(admin, id, dto.screen_ids, dto.reason)
   }
 
   /** Cursor-paginated audit log (newest first). Spec path: `/api/admin/audit-log`. */

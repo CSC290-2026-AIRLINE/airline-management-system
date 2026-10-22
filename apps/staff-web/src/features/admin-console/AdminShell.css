@@ -230,11 +230,17 @@
 /* ----- Main area ----- */
 
 .admin-main {
-  background: #f6f7fb;
+  background: #f7f9fc;
   /* Takes whatever the sidebar leaves behind. `min-width: 0` stops wide tables from forcing the flex row wider
      than the viewport. */
   flex: 1 1 auto;
   min-width: 0;
+  /* Column flex so `.page-body-host` can take the leftover height. The access-denied card centres itself at 100% of
+     that box; in block layout the percentage would have no height to resolve against and collapse to the card's own
+     size, stranding it at the top of the page. `flex-basis: auto` rather than 0 so a page taller than the viewport
+     still pushes the shell taller instead of overflowing it. */
+  display: flex;
+  flex-direction: column;
 }
 
 .shell-header {
@@ -290,6 +296,10 @@
    every breakpoint — the only thing that changes is how wide the gutter gets. */
 .page-body-host {
   padding: 24px 56px 60px;
+  /* Absorbs the height the header and tab bar leave, so a card inside can centre itself in the visible area. */
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /* White card wrapper for every page body — Role access, Audit log, Staff roles, plus error fallback. Matches the

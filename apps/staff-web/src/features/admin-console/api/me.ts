@@ -4,6 +4,12 @@ import { useFetchJson } from './fetch'
  * match their own nav against these strings. */
 export interface MyScreensResponse {
   screen_codes: string[]
+  /**
+   * `false` when the signed-in user has no staff account yet. Never infer this from an empty `screen_codes` — a real
+   * staff member whose role holds no screens returns the same empty list, and telling that person to go ask an admin
+   * for an account they already have would be worse than showing them nothing.
+   */
+  provisioned: boolean
 }
 
 /**

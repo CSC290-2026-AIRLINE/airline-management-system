@@ -84,6 +84,8 @@ function admin(name: string, label: string): ScreenDto {
 
 /* ----- Audit log preview ----------------------------------------------------- */
 
+/* Every entry carries a reason, matching the rule in `contracts/README.md` — an audit row that cannot say why it
+   exists is not worth reading. The card renders `—` for a missing one, but nothing should reach it. */
 export const previewAudit: AuditPage = {
   items: [
     {
@@ -135,7 +137,7 @@ export const previewAudit: AuditPage = {
       entity_type: 'staff',
       entity_id: 's-302',
       summary: 'Created staff account for Pichaya Lim',
-      reason: null,
+      reason: 'New starter — onboarding request HR-1043',
       before: null,
       after: { email: 'pichaya.lim@example.com', role: 'staff' },
       is_sensitive: false,
@@ -153,7 +155,7 @@ export const previewAudit: AuditPage = {
       entity_type: 'booking',
       entity_id: 'b-77128',
       summary: 'Booking #b-77128 confirmed (BKK → NRT, 2 pax)',
-      reason: null,
+      reason: 'Card payment received — card ending 4417',
       before: { status: 'pending_payment' },
       after: { status: 'confirmed' },
       is_sensitive: false,
@@ -171,7 +173,7 @@ export const previewAudit: AuditPage = {
       entity_type: 'seat_hold',
       entity_id: 'sh-1192',
       summary: 'Released seat 14C after no-show',
-      reason: null,
+      reason: 'Passenger did not board — hold expired at the gate',
       before: { state: 'held' },
       after: { state: 'released' },
       is_sensitive: false,
@@ -189,7 +191,7 @@ export const previewAudit: AuditPage = {
       entity_type: 'session',
       entity_id: 'ses-40911',
       summary: 'Sign-in via web — 192.168.4.21 (Bangkok)',
-      reason: null,
+      reason: 'Routine staff sign-in',
       before: null,
       after: null,
       is_sensitive: false,
@@ -207,7 +209,7 @@ export const previewAudit: AuditPage = {
       entity_type: 'payment',
       entity_id: 'pay-2208',
       summary: 'Captured ฿12,400 for booking #b-77128',
-      reason: null,
+      reason: 'Gateway capture confirmed — settlement T+1',
       before: { status: 'authorized' },
       after: { status: 'captured' },
       is_sensitive: false,

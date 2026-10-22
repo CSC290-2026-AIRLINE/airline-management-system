@@ -22,14 +22,14 @@ export interface ReplaceRoleScreensBody {
 
 export interface ReplaceRoleScreensResponse {
   role_id: string
+  /** Sorted, de-duplicated. Use this as the new saved set — don't assume the request order survived. */
   screen_ids: string[]
+  /** False means the role already held exactly these screens: nothing was written and no audit row exists. */
   changed: boolean
+  /** Decimal-string `audit_log.seq` of the row this write produced. Absent when `changed` is false. */
+  audit_seq?: string
 }
 
-/**
- * PUT is wired in PR 2 — this wrapper exists so the page can already show what will be sent. The UI keeps the request
- * inert until PR 2 lands; clicking Save without a backend endpoint surfaces a clear network error.
- */
 export function useReplaceRoleScreens() {
   const fetchJson = useFetchJson()
   return (roleId: string, body: ReplaceRoleScreensBody) =>
