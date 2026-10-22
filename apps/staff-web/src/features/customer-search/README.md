@@ -83,6 +83,39 @@ Two consequences worth knowing:
 'passenger-profiles'`, `is_sensitive: true`). The old and new values, the
   actor and the reason are recorded server-side, not in the browser.
 
+## Live search
+
+Typing filters the list without touching the Search button. A debounced effect
+(`SEARCH_DEBOUNCE_MS`, 250ms) pushes the trimmed draft into the `q` search param
+once typing pauses, and the existing fetch effect re-runs against the server.
+
+- **Filtering is server-side.** The page never filters the rows it happens to
+  hold — that would only ever cover one page and would desync `total` from the
+  pager. `GET /api/passengers?q=…` is the single source of matches.
+- **The draft is trimmed before it is sent**, so the URL, the request and the
+  Search button all carry the same value, and a stray space does not narrow the
+  result set. The URL parser trims again on the way back in.
+- **The Search button still works** and does the same thing without the wait, so
+  the control is never decorative.
+- **`withCustomerSearch` handles the rest**: changing `q` resets to page 1 and
+  clears `person`, because the open profile is usually not in the new result set.
+  `type` and `size` are carried through untouched, so the All / Account holders
+  / Travellers filter and the page size survive a new term.
+- Back/Forward still drives the input: the render-time sync in the page rewrites
+  the draft from `q`, so the field follows the URL rather than the other way round.
+
+`GET /api/passengers` splits `q` on whitespace and requires **every** term to
+match, so a full name like `Anabel Effertz` works — one term hits the first name,
+the other the surname. Each term is a case-insensitive substring of either name
+spelling, the passport number, the account holder's email, or the date of birth
+(`YYYY`, `YYYY-MM` or `YYYY-MM-DD`, matched as a date range because the column is
+a `DATE`). The passenger id is compared when the term is a UUID.
+
+A substring test includes every prefix match, so typing `A` surfaces `Anabel
+Effertz` and typing `An` narrows further, while still finding `Effertz` from
+`ertz`. This is what the placeholder promises, and it is all the server matches on
+— see `apps/backend/src/modules/passenger-profiles/README.md` for the exact rules.
+
 ## Concurrency
 
 Each request carries its own `AbortController`, so typing a new term cancels the

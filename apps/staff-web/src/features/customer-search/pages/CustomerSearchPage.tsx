@@ -63,6 +63,14 @@ const SEARCH_PLACEHOLDER_MOBILE = 'Name, email, ID, DOB or passport'
 const SUBTITLE = 'Search account holders and linked travellers. Open a person to view details. Read-only by default.'
 const SUBTITLE_MOBILE = 'Search account holders and linked travellers. Tap a person for details. Read-only by default.'
 
+/**
+ * How long typing pauses before the URL is rewritten and the server is asked
+ * again. Long enough that a normal query is one request rather than one per
+ * keystroke, short enough that the list still feels attached to the keyboard.
+ * The Search button skips the wait entirely.
+ */
+const SEARCH_DEBOUNCE_MS = 250
+
 function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
@@ -113,6 +121,26 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
 
     return () => controller.abort()
   }, [api, listKey, pageSize, search.page, search.q, search.type])
+
+  /**
+   * Live filtering. The URL is the source of truth, so the draft is pushed into
+   * it once typing pauses and the fetch effect above re-runs against the server.
+   * Filtering stays server-side — the page never filters the rows it happens to
+   * hold, which would only ever cover one page.
+   *
+   * Trimming here means the URL, the request and the Search button all carry the
+   * same value. `withCustomerSearch` resets to page 1 and closes any open profile,
+   * because both are wrong the moment the result set underneath them changes.
+   */
+  useEffect(() => {
+    if (draftQuery.trim() === search.q) return
+
+    const timer = setTimeout(() => {
+      onSearchChange(withCustomerSearch(search, { q: draftQuery.trim(), page: 1, person: null }))
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(timer)
+  }, [draftQuery, onSearchChange, search])
 
   useEffect(() => {
     // No person open means no profile to fetch; the keyed result simply goes unread.
