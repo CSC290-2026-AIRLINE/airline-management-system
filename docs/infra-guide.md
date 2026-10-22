@@ -120,7 +120,7 @@ For a clean CI-style install:
 npm ci
 ```
 
-Run `npm install` again **every time you pull** changes. It also regenerates the Prisma client from `schema.prisma`; a stale client shows up as backend build errors about missing tables or fields.
+Run `npm install` again **every time you pull** changes. Then run `npm run db:generate` to regenerate the Prisma client from `schema.prisma`; a stale client shows up as backend build errors about missing tables or fields.
 
 ### Configure local environment variables
 
@@ -177,7 +177,7 @@ Where the values come from:
 | Symptom | Cause and fix |
 | --- | --- |
 | `npm install` fails with `EBADENGINE` | Wrong Node version. Run `nvm use`, then install again. |
-| Backend build errors about missing tables or fields | Stale Prisma client after a pull. Run `npm install`. |
+| Backend build errors about missing tables or fields | Stale Prisma client after a pull. Run `npm run db:generate`. |
 | A frontend shows a **blank page** | Check the browser console. A placeholder or wrong `VITE_CLERK_PUBLISHABLE_KEY` makes Clerk throw before anything renders. |
 | Two `401` errors from `*.clerk.accounts.dev` in the console on the first page load | Harmless. Both apps run on `localhost`, so their Clerk dev cookies collide; Clerk recovers by itself. Does not happen in production. |
 
@@ -504,13 +504,13 @@ Do not tell feature groups that deployment is fully automated until these pieces
 All feature development starts from `dev`.
 
 ```text
-<type>/<team-id>-<short-description>
+feat-<feature-number>-<feature-name>
 ```
 
-`type` is one of `feature`, `fix`, `refactor`, `chore`, `docs`, `test`. Example:
+`feature-number` is the feature number assigned by the Dev Leads; `feature-name` is lowercase and hyphen-separated (no camelCase). Example:
 
 ```text
-feature/g03-seat-hold-ttl
+feat-03-seat-hold-ttl
 ```
 
 Commits use:
