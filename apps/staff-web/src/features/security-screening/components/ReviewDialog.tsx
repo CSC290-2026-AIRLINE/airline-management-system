@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import type { Decision, ScreeningRecord } from '../types'
+import type { ReviewDraft, ScreeningRecord } from '../types'
+import { decisionLabel, latestReview, reviewStatus } from '../screening-model'
 import { Badge } from './Badge'
 import { DecisionForm } from './DecisionForm'
 
@@ -10,7 +11,7 @@ export function ReviewDialog({
 }: {
   record: ScreeningRecord
   onClose: () => void
-  onSave: (decision: Decision) => void
+  onSave: (draft: ReviewDraft) => void
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
@@ -18,7 +19,7 @@ export function ReviewDialog({
     dialog?.showModal()
     return () => dialog?.close()
   }, [])
-  const decision = record.decisions.at(-1)!
+  const decision = latestReview(record)!
   return (
     <dialog
       ref={ref}
@@ -43,13 +44,10 @@ export function ReviewDialog({
       </div>
       <div className="sq-current-decision">
         <h3>CURRENT DECISION</h3>
-        <Badge tone={decision.status}>
-          {decision.status} ·{' '}
-          {decision.status === 'Confirmed' ? 'authority notified' : record.match === 'Weak' ? 'flag cleared' : 'not the same person'}
-        </Badge>
+        <Badge tone={reviewStatus(decision)}>{decisionLabel(record, decision)}</Badge>
         <p>“{decision.note}”</p>
       </div>
-      <DecisionForm weak={record.match === 'Weak'} onSave={onSave} modal />
+      <DecisionForm outcome={record.outcome} onSave={onSave} modal />
     </dialog>
   )
 }

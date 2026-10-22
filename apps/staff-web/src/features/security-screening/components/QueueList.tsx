@@ -1,4 +1,5 @@
 import type { ScreeningRecord } from '../types'
+import { displayStatus, formatDeparture, formatOccurredAt, formatTime, isUrgent, latestReview, sourceLabel } from '../screening-model'
 import { Badge } from './Badge'
 
 export function QueueList({ records, decided, onOpen }: { records: ScreeningRecord[]; decided: boolean; onOpen: (id: string) => void }) {
@@ -29,26 +30,26 @@ export function QueueList({ records, decided, onOpen }: { records: ScreeningReco
           </thead>
           <tbody>
             {records.map((record) => (
-              <tr key={record.id} className={record.urgent && !decided ? 'sq-urgent' : ''}>
+              <tr key={record.id} className={isUrgent(record) && !decided ? 'sq-urgent' : ''}>
                 <td>
                   <strong>{record.name}</strong>
                   <small>
-                    from {record.source}
-                    {decided ? ` · by ${record.decisions.at(-1)?.by}` : ''}
+                    from {sourceLabel(record.triggerPoint)}
+                    {decided ? ` · by ${latestReview(record)?.by}` : ''}
                   </small>
                 </td>
                 <td>
-                  <Badge tone={record.status}>{record.status}</Badge>
+                  <Badge tone={displayStatus(record)}>{displayStatus(record)}</Badge>
                 </td>
                 <td>
                   <Badge tone={record.match}>{record.match}</Badge>
                 </td>
-                <td>{record.flight}</td>
-                <td className={record.urgent && !decided ? 'sq-depart-urgent' : ''}>{record.departs}</td>
-                <td className="sq-muted">{decided ? record.decisions.at(-1)?.at : record.since}</td>
+                <td>{record.flight.label}</td>
+                <td className={isUrgent(record) && !decided ? 'sq-depart-urgent' : ''}>{formatDeparture(record.flight.departureAt)}</td>
+                <td className="sq-muted">{decided ? formatTime(latestReview(record)!.reviewedAt) : formatOccurredAt(record.occurredAt)}</td>
                 <td>
                   <button
-                    className={`sq-button ${!decided && record.status === 'Held' ? 'sq-primary' : ''}`}
+                    className={`sq-button ${!decided && displayStatus(record) === 'Held' ? 'sq-primary' : ''}`}
                     onClick={() => onOpen(record.id)}
                   >
                     {decided ? 'View' : 'Review'}
@@ -63,27 +64,30 @@ export function QueueList({ records, decided, onOpen }: { records: ScreeningReco
         {records.map((record) => (
           <button
             key={record.id}
-            className={`sq-queue-card ${record.urgent && !decided ? 'sq-urgent' : ''}`}
+            className={`sq-queue-card ${isUrgent(record) && !decided ? 'sq-urgent' : ''}`}
             onClick={() => onOpen(record.id)}
           >
             <span className="sq-card-line">
               <span>
                 <strong>{record.name}</strong>
                 <small>
-                  from {record.source}
-                  {decided ? ` · by ${record.decisions.at(-1)?.by}` : ''}
+                  from {sourceLabel(record.triggerPoint)}
+                  {decided ? ` · by ${latestReview(record)?.by}` : ''}
                 </small>
               </span>
-              <Badge tone={record.status}>{record.status}</Badge>
+              <Badge tone={displayStatus(record)}>{displayStatus(record)}</Badge>
             </span>
             <span className="sq-card-line">
-              <span>{record.flight}</span>
+              <span>{record.flight.label}</span>
               <Badge tone={record.match}>{record.match}</Badge>
             </span>
             <span className="sq-card-times">
-              <span className={record.urgent && !decided ? 'sq-depart-urgent' : ''}>Departs {record.departs}</span>
+              <span className={isUrgent(record) && !decided ? 'sq-depart-urgent' : ''}>
+                Departs {formatDeparture(record.flight.departureAt)}
+              </span>
               <span>
-                {decided ? 'Decided' : 'Since'} {decided ? record.decisions.at(-1)?.at : record.since}
+                {decided ? 'Decided' : 'Since'}{' '}
+                {decided ? formatTime(latestReview(record)!.reviewedAt) : formatOccurredAt(record.occurredAt)}
               </span>
               <b>{decided ? 'View' : 'Review'} →</b>
             </span>

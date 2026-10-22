@@ -613,6 +613,9 @@ body:has(.sq-app) {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.sq-history-table {
+  table-layout: fixed;
+}
 .sq-history-table th {
   height: 35px;
   font-size: 10px;
@@ -635,6 +638,22 @@ body:has(.sq-app) {
 .sq-history-note {
   margin-top: 16px !important;
 }
+.sq-review-history-note summary {
+  cursor: pointer;
+  list-style: none;
+}
+.sq-review-history-note summary::-webkit-details-marker {
+  display: none;
+}
+.sq-review-history-note summary:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+.sq-review-history-note[open] p {
+  padding-top: 6px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
 .sq-decision-column h4 {
   font-size: 14px;
   line-height: 18px;
@@ -642,7 +661,7 @@ body:has(.sq-app) {
   margin: 0 0 14px;
 }
 .sq-match-notice {
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: 8px;
   font-size: 12px;
   line-height: 15px;
@@ -681,7 +700,7 @@ body:has(.sq-app) {
   resize: vertical;
   width: 100%;
   min-height: 84px;
-  padding: 12px;
+  padding: 10px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   font-weight: 400;

@@ -1,50 +1,57 @@
 import { useState } from 'react'
-import type { Decision, Match } from '../types'
+import type { ReviewDecision, ReviewDraft, ScreeningOutcome, ScreeningRecord } from '../types'
 
-export function MatchNotice({ match }: { match: Match }) {
-  const messages = {
-    Probable: [
-      'Probable match · check-in is held',
-      'Name and date of birth match, but the passport number is different. Check the passport in person before you decide.',
-    ],
-    Strong: [
-      'Strong match · check-in is held',
-      'Passport number and nationality equal an active watchlist entry. Only release the hold if the passport in person shows otherwise.',
-    ],
-    Weak: [
-      'Weak match · check-in is not held',
-      'Only the name is similar. Choosing “Same person” confirms the match, so her check-in will be denied.',
-    ],
-  }
+export function MatchNotice({ record }: { record: ScreeningRecord }) {
+  if (record.outcome === 'clear') return null
+  const { match, outcome } = record
+  const description =
+    match === 'Strong'
+      ? outcome === 'held'
+        ? 'Passport number and nationality equal an active watchlist entry. Only release the hold if the passport in person shows otherwise.'
+        : 'Passport number and nationality equal an active watchlist entry. Nothing is held yet. Check the passport in person before you decide.'
+      : match === 'Probable'
+        ? record.matchReason === 'passport'
+          ? 'Passport number matches, but nationality is different or missing. Check the passport in person before you decide.'
+          : 'Name and date of birth match, but the passport number is different. Check the passport in person before you decide.'
+        : 'Only the name is similar. Choosing “Same person” confirms the match, so check-in will be denied.'
+  const mobileDescription =
+    record.matchReason === 'name_and_dob'
+      ? 'Name and date of birth match, but the passport number is different. Check the passport in person.'
+      : description
   return (
     <div className={`sq-match-notice sq-notice-${match.toLowerCase()}`}>
-      <strong>{messages[match][0]}</strong>
+      <strong>
+        {match} match · {outcome === 'held' ? 'check-in is held' : 'check-in is not held'}
+      </strong>
       <p>
-        <span className="sq-desktop-only">{messages[match][1]}</span>
-        <span className="sq-mobile-only">
-          {match === 'Probable'
-            ? 'Name and date of birth match, but the passport number is different. Check the passport in person.'
-            : messages[match][1]}
-        </span>
+        <span className="sq-desktop-only">{description}</span>
+        <span className="sq-mobile-only">{mobileDescription}</span>
       </p>
     </div>
   )
 }
 
-export function DecisionForm({ weak, onSave, modal = false }: { weak: boolean; onSave: (decision: Decision) => void; modal?: boolean }) {
+export function DecisionForm({
+  outcome,
+  onSave,
+  modal = false,
+}: {
+  outcome: ScreeningOutcome
+  onSave: (draft: ReviewDraft) => void
+  modal?: boolean
+}) {
   const [note, setNote] = useState('')
   const [checked, setChecked] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const noteInvalid = submitted && !note.trim()
   const checkInvalid = submitted && !checked
-  function submit(status: Decision['status']) {
+  function submit(decision: ReviewDecision) {
     setSubmitted(true)
     if (!note.trim() || !checked) return
     onSave({
-      status,
+      decision,
       note: note.trim(),
-      by: 'Administrator',
-      at: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }).format(new Date()),
+      passportCompared: checked,
     })
   }
   return (
@@ -81,19 +88,32 @@ export function DecisionForm({ weak, onSave, modal = false }: { weak: boolean; o
         </p>
       )}
       <div className="sq-decision-actions">
-        <button type="button" className="sq-button" onClick={() => submit('Released')}>
-          Not the same person{!modal && ` · ${weak ? 'clear flag' : 'release hold'}`}
+        <button type="button" className="sq-button" onClick={() => submit('false_positive')}>
+          Not the same person{!modal && ` · ${outcome === 'held' ? 'release hold' : 'clear flag'}`}
         </button>
-        <button type="button" className="sq-button sq-danger" onClick={() => submit('Confirmed')}>
+        <button type="button" className="sq-button sq-danger" onClick={() => submit('confirmed')}>
           Same person{!modal && ' · confirm match'}
         </button>
       </div>
-      <p className="sq-fine-print">
-        {modal
-          ? '“Same person” denies check-in and notifies the authority. Logged in Feature 15.'
-          : weak
-            ? 'Clearing the flag is remembered for this identity, flight and entry, so it isn’t flagged again.'
-            : 'Same person keeps check-in denied and notifies the authority (Feature 13). Not the same person releases the hold and check-in continues.'}
+      <p
+        className="sq-fine-print"
+        title="Frontend prototype: notification delivery and audit integration are mocked. A review applies to this check only; other unresolved matches may still block check-in."
+      >
+        {modal ? (
+          '“Same person” denies check-in and notifies the authority. Logged in Feature 15.'
+        ) : outcome === 'flagged' ? (
+          'Clearing the flag is remembered for this identity, flight and entry, so it isn’t flagged again.'
+        ) : (
+          <>
+            <span className="sq-desktop-only">
+              Same person keeps check-in denied and notifies the authority (Feature 13). Not the same person releases the hold and check-in
+              continues.
+            </span>
+            <span className="sq-mobile-only">
+              Same person keeps check-in denied and notifies the authority. Not the same person releases the hold.
+            </span>
+          </>
+        )}
       </p>
     </form>
   )
