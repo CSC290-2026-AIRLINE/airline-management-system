@@ -15,3 +15,12 @@ export function parseLimit(raw: string | undefined): number {
 
 // Prisma error codes are duck-typed so unit tests need not load the generated client.
 export const prismaCode = (e: unknown) => (e as { code?: string } | null)?.code
+
+// Strict YYYY-MM-DD; the round trip rejects dates that Date would silently roll over, such as 2026-02-30.
+export function parseDate(raw: string, name: string): Date {
+  const date = new Date(`${raw}T00:00:00Z`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== raw) {
+    throw new BadRequestException(`${name} must be YYYY-MM-DD`)
+  }
+  return date
+}
