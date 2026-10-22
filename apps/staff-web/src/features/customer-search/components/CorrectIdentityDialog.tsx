@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Gender, IdentityCorrection, Person } from '../types'
-import { NATIONALITY_CODES } from '../types'
 import { EM_DASH, formatDateOfBirth, genderLabel, nationalityWithCode, parseInputDate, toInputDate } from '../lib/format'
+import { COUNTRY_OPTIONS } from '../lib/countries'
 import { Select } from './Select'
 
 /**
@@ -24,8 +24,10 @@ const GENDER_OPTIONS = [
 
 const NATIONALITY_DROPDOWN = [
   { value: 'nochange' as const, label: 'No change' },
-  // Every option must be a code the API will accept — see NATIONALITY_CODES.
-  ...NATIONALITY_CODES.map((code) => ({ value: code, label: nationalityWithCode(code) })),
+  // Every country, each carrying the lower-case two-letter code the API stores.
+  // There is no free-text "Other…": the API only accepts a country code, and every
+  // code is listed — see `lib/countries.ts`.
+  ...COUNTRY_OPTIONS,
 ]
 
 const REASON_MIN_LENGTH = 10
@@ -262,12 +264,6 @@ export function CorrectIdentityDialog({ person, variant, saving = false, saveErr
             </label>
             {errors.confirmed ? <FieldError message={errors.confirmed} /> : null}
             {errors.change ? <FieldError message={errors.change} /> : null}
-
-            <p className="cs-note">
-              {isMobile
-                ? "Saving logs the old and new values, your name and the reason in Feature 15's audit log, and re-screens upcoming flights."
-                : "Saving logs the old and new values, your name and the reason in Feature 15's audit log, and re-screens this passenger's upcoming flights against the watchlist."}
-            </p>
 
             {/* A rejected save is the API's message, not a field error: the dialog stays open with everything typed in. */}
             {saveError ? <FieldError message={saveError} /> : null}

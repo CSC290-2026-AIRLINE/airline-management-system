@@ -200,11 +200,10 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
         </DetailSection>
       ) : null}
 
-      <InfoNote>
-        {isMobile
-          ? 'Read-only. Opening this profile is recorded in the Feature 15 audit log.'
-          : 'Opening these details is recorded in the Feature 15 audit log. Passport numbers stay masked.'}
-      </InfoNote>
+      {/* The desktop sentence about the audit log and passport masking has been
+          removed. The mobile copy stays: it is the one the design shows, and
+          the note is the last child here, so dropping it leaves no gap. */}
+      {isMobile ? <InfoNote>Read-only. Opening this profile is recorded in the Feature 15 audit log.</InfoNote> : null}
     </article>
   )
 }

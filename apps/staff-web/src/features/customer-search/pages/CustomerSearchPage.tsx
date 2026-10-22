@@ -264,7 +264,7 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
 
   const panelHead = (
     <header className="cs-panel__head">
-      <div>
+      <div className="cs-panel__heading">
         <h2 className="cs-panel__title">{TITLE_LABEL[search.type]}</h2>
         <p className="cs-panel__subtitle">
           {isMobile

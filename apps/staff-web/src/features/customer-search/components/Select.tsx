@@ -24,7 +24,14 @@ interface SelectProps<T extends string> {
   onChange: (value: T) => void
   ariaLabel: string
   invalid?: boolean
+  /**
+   * Show a filter box once the list is at least this long. A handful of options is
+   * faster to scan than to type into; a list of every country is not.
+   */
+  filterThreshold?: number
 }
+
+const DEFAULT_FILTER_THRESHOLD = 12
 
 interface MenuPosition {
   left: number
@@ -62,9 +69,18 @@ function measureMenu(trigger: HTMLElement): MenuPosition {
   }
 }
 
-export function Select<T extends string>({ value, options, onChange, ariaLabel, invalid = false }: SelectProps<T>) {
+export function Select<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  invalid = false,
+  filterThreshold = DEFAULT_FILTER_THRESHOLD,
+}: SelectProps<T>) {
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const filterRef = useRef<HTMLInputElement>(null)
   const listId = useId()
 
   const [open, setOpen] = useState(false)
@@ -75,6 +91,17 @@ export function Select<T extends string>({ value, options, onChange, ariaLabel, 
       options.findIndex((option) => option.value === value),
     ),
   )
+  const [filter, setFilter] = useState('')
+
+  const filterable = options.length >= filterThreshold
+
+  // Recomputed per render rather than memoised: it only runs while the menu is open,
+  // and a few hundred `includes` calls per keystroke is not a cost worth caching.
+  const needle = filter.trim().toLowerCase()
+  const visible =
+    filterable && needle !== ''
+      ? options.filter((option) => option.label.toLowerCase().includes(needle) || option.value.toLowerCase().includes(needle))
+      : options
 
   const selected = options.find((option) => option.value === value) ?? options[0]!
 
@@ -90,14 +117,28 @@ export function Select<T extends string>({ value, options, onChange, ariaLabel, 
         options.findIndex((option) => option.value === value),
       ),
     )
+    setFilter('')
     setOpen(true)
   }, [options, value])
+
+  // A long list is unusable by scrolling alone, so the filter takes focus as soon
+  // as the menu opens. A short list keeps focus on the trigger, where the arrow
+  // keys already navigate.
+  useEffect(() => {
+    if (open && filterable) {
+      filterRef.current?.focus()
+    }
+  }, [open, filterable])
 
   useEffect(() => {
     if (!open) return
 
     function isInside(target: Node) {
-      return triggerRef.current?.contains(target) === true || listRef.current?.contains(target) === true
+      return (
+        triggerRef.current?.contains(target) === true ||
+        menuRef.current?.contains(target) === true ||
+        listRef.current?.contains(target) === true
+      )
     }
     function onPointerDown(event: MouseEvent) {
       if (!isInside(event.target as Node)) setOpen(false)
@@ -127,12 +168,59 @@ export function Select<T extends string>({ value, options, onChange, ariaLabel, 
     }
   }, [open])
 
+  /** Keeps the highlighted option in view — the list can be far longer than the menu. */
+  function scrollActiveIntoView(index: number) {
+    requestAnimationFrame(() => {
+      listRef.current?.children[index]?.scrollIntoView({ block: 'nearest' })
+    })
+  }
+
   function choose(index: number) {
-    const option = options[index]
+    const option = visible[index]
     if (option) {
       onChange(option.value)
     }
     setOpen(false)
+  }
+
+  /**
+   * Arrow/Home/End/Enter handling, shared by the trigger and the option list so both
+   * behave identically. The bound is the last *visible* option, which is not
+   * `options.length` once a filter has narrowed the list.
+   */
+  function move(event: React.KeyboardEvent, current: number, select: (index: number) => void) {
+    const last = Math.max(0, visible.length - 1)
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault()
+        step(Math.min(last, current + 1))
+        break
+      case 'ArrowUp':
+        event.preventDefault()
+        step(Math.max(0, current - 1))
+        break
+      case 'Home':
+        event.preventDefault()
+        step(0)
+        break
+      case 'End':
+        event.preventDefault()
+        step(last)
+        break
+      case 'Enter':
+      case ' ':
+        event.preventDefault()
+        select(current)
+        break
+      default:
+        break
+    }
+
+    function step(index: number) {
+      setActiveIndex(index)
+      scrollActiveIntoView(index)
+    }
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
@@ -142,68 +230,92 @@ export function Select<T extends string>({ value, options, onChange, ariaLabel, 
       return
     }
     if (!open) return
+    move(event, activeIndex, choose)
+  }
 
-    switch (event.key) {
-      case 'ArrowDown':
-        event.preventDefault()
-        setActiveIndex((index) => Math.min(options.length - 1, index + 1))
-        break
-      case 'ArrowUp':
-        event.preventDefault()
-        setActiveIndex((index) => Math.max(0, index - 1))
-        break
-      case 'Home':
-        event.preventDefault()
-        setActiveIndex(0)
-        break
-      case 'End':
-        event.preventDefault()
-        setActiveIndex(options.length - 1)
-        break
-      case 'Enter':
-      case ' ':
-        event.preventDefault()
-        choose(activeIndex)
-        break
-      default:
-        break
+  /** Arrows/Enter while the option list itself has focus, which is where a long list moves focus. */
+  function handleListKeyDown(event: React.KeyboardEvent<HTMLUListElement>) {
+    // No `stopPropagation` here: the document listener closes the menu on Escape,
+    // and React dispatches at the root container before the document phase, so
+    // stopping it would make Escape stop working once the list has focus.
+    move(event, activeIndex, choose)
+  }
+
+  /** Enter or ArrowDown in the filter box: jump into the options, or take the first match. */
+  function handleFilterKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'ArrowDown' || event.key === 'Enter') {
+      event.preventDefault()
+      if (visible.length === 0) return
+      setActiveIndex(0)
+      if (event.key === 'Enter') {
+        choose(0)
+      } else {
+        listRef.current?.focus()
+      }
     }
   }
 
+  const menuStyle = position
+    ? {
+        left: position.left,
+        width: position.width,
+        maxHeight: position.maxHeight,
+        // Anchored by whichever edge faces away from the trigger, so the menu
+        // never grows across it.
+        ...(position.above ? { bottom: position.bottom } : { top: position.top }),
+      }
+    : undefined
+
   const menu =
     open && position ? (
-      <ul
-        className="cs-selectfield__list is-portal"
-        style={{
-          left: position.left,
-          width: position.width,
-          maxHeight: position.maxHeight,
-          // Anchored by whichever edge faces away from the trigger, so the menu
-          // never grows across it.
-          ...(position.above ? { bottom: position.bottom } : { top: position.top }),
-        }}
-        id={listId}
-        role="listbox"
-        aria-label={ariaLabel}
-        aria-activedescendant={`${listId}-${activeIndex}`}
-        ref={listRef}
-        tabIndex={-1}
-      >
-        {options.map((option, index) => (
-          <li
-            key={option.value}
-            id={`${listId}-${index}`}
-            role="option"
-            aria-selected={option.value === value}
-            className={`cs-selectfield__option ${index === activeIndex ? 'is-active' : ''}`}
-            onMouseEnter={() => setActiveIndex(index)}
-            onClick={() => choose(index)}
-          >
-            {option.value === value ? <CheckIcon className="cs-selectfield__check" /> : null}
-            <span>{option.label}</span>
-          </li>
-        ))}
-      </ul>
+      <div className="cs-selectfield__menu is-portal" style={menuStyle} ref={menuRef}>
+        {filterable ? (
+          <input
+            ref={filterRef}
+            type="text"
+            className="cs-selectfield__filter"
+            value={filter}
+            placeholder="Type to filter…"
+            aria-label={`Filter ${ariaLabel}`}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => {
+              setFilter(event.target.value)
+              setActiveIndex(0)
+            }}
+            onKeyDown={handleFilterKeyDown}
+          />
+        ) : null}
+
+        <ul
+          className="cs-selectfield__list"
+          id={listId}
+          role="listbox"
+          aria-label={ariaLabel}
+          // Only points at a real option; an empty filtered list has none.
+          aria-activedescendant={visible.length > 0 ? `${listId}-${activeIndex}` : undefined}
+          ref={listRef}
+          tabIndex={-1}
+          onKeyDown={handleListKeyDown}
+        >
+          {visible.map((option, index) => (
+            <li
+              key={option.value}
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={option.value === value}
+              className={`cs-selectfield__option ${index === activeIndex ? 'is-active' : ''}`}
+              onMouseEnter={() => setActiveIndex(index)}
+              onClick={() => choose(index)}
+            >
+              {option.value === value ? <CheckIcon className="cs-selectfield__check" /> : null}
+              <span>{option.label}</span>
+            </li>
+          ))}
+        </ul>
+
+        {visible.length === 0 ? <p className="cs-selectfield__empty">No match for “{filter.trim()}”</p> : null}
+      </div>
     ) : null
 
   return (

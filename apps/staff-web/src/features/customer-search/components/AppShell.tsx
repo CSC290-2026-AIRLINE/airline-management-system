@@ -115,10 +115,13 @@ export function AppShell({ children }: AppShellProps) {
 
       <div className="cs-shell">
         <header className="cs-mobile-header">
+          {/* The badge is a sibling of the brand, not one of its children: the design
+              puts it to the right of the wordmark, next to the menu button, and a
+              nested span would have to fight the flex gap to get there. */}
           <div className="cs-mobile-header__brand">
             <Brand />
-            <span className="cs-mobile-header__badge">Staff</span>
           </div>
+          <span className="cs-mobile-header__badge">Staff</span>
           <button
             type="button"
             className="cs-mobile-header__menu"

@@ -104,6 +104,30 @@ once typing pauses, and the existing fetch effect re-runs against the server.
 - Back/Forward still drives the input: the render-time sync in the page rewrites
   the draft from `q`, so the field follows the URL rather than the other way round.
 
+## Nationality options
+
+The "Correct identity" dropdown offers every assigned ISO 3166-1 alpha-2 country
+(249 of them) from `lib/countries.ts`, plus `No change`. Each option's **value**
+is the lower-case two-letter code, which is exactly what the API stores —
+`nationality must be a two-letter country code in lower case` — so nothing is
+translated on save and the stored format is unchanged.
+
+Labels come from `format.nationalityWithCode` rather than being written out
+again, so the dropdown and the dialog's `Now:` column can never disagree. That
+formatter keeps the design's demonyms for the codes it already knew (`Thai`,
+`Myanmar`) and falls back to `Intl.DisplayNames` for the rest, which is why the
+list mixes `Thai (th)` with `Thailand`-style region names. Making the naming
+uniform would change how existing nationalities render in the table and cards
+too, so it is left as a deliberate inconsistency rather than a silent change.
+
+There is still **no `Other…` option**, for the same reason as before: the API
+only accepts a two-letter country code, and every code that could be stored is
+now in the list.
+
+`Select` shows a filter box once a list reaches 12 options, because scrolling
+249 of them on a phone is not usable. The menu is still portalled to `<body>` and
+measured against the viewport, so it is not clipped by the dialog or the screen.
+
 `GET /api/passengers` splits `q` on whitespace and requires **every** term to
 match, so a full name like `Anabel Effertz` works — one term hits the first name,
 the other the surname. Each term is a case-insensitive substring of either name

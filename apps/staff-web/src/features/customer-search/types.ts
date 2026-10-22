@@ -80,12 +80,7 @@ export interface IdentityCorrection {
 }
 
 /**
- * Nationality codes offered in the correction dialog.
- *
- * The design's last option was a free-text `Other…`, but the API only accepts a
- * two-letter lower-case code (`nationality must be a two-letter country code in
- * lower case`), so there is no value `Other…` could store. It is left out rather
- * than offered as an option the server would reject. The displayed label comes
- * from `format.nationalityLabel`, not from here.
+ * Nationality has no hand-maintained list here any more: the correction dialog
+ * offers every ISO 3166-1 alpha-2 country from `lib/countries.ts`. Read the
+ * stored format from that file rather than adding codes to a constant here.
  */
-export const NATIONALITY_CODES = ['th', 'mm'] as const

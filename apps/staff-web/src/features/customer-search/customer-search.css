@@ -490,6 +490,13 @@
   line-height: 1.2;
 }
 
+/* Title and count sit together; on mobile they read as one line, so the pair is
+   grouped here rather than relying on the title being inline (an `h2` is a block,
+   and making it inline would break the document outline). */
+.cs-panel__heading {
+  min-width: 0;
+}
+
 .cs-panel__subtitle {
   margin-top: 2px;
   font-size: 12px;
@@ -1385,6 +1392,52 @@
   transform: rotate(180deg);
 }
 
+/* Portalled to `<body>` and positioned from the trigger's viewport rect, so it
+   is not clipped by the dialog's `overflow-y: auto`. Above the overlay's z-index
+   so the menu floats over the dialog the way the design shows it. The wrapper
+   owns the box so the filter input can sit outside the `role="listbox"` while
+   still scrolling with it. */
+.cs-selectfield__menu.is-portal {
+  position: fixed;
+  z-index: 60;
+  top: auto;
+  left: auto;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: 10px;
+  box-shadow: var(--cs-shadow-pop);
+}
+
+.cs-selectfield__filter {
+  flex: none;
+  height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--cs-border);
+  background: var(--cs-surface);
+  font: inherit;
+  font-size: 13px;
+  color: var(--cs-text);
+}
+
+.cs-selectfield__filter:focus-visible {
+  outline: 2px solid var(--cs-primary);
+  outline-offset: -2px;
+}
+
+.cs-selectfield__empty {
+  margin: 0;
+  padding: 12px 10px;
+  font-size: 13px;
+  color: var(--cs-text-2);
+}
+
 .cs-selectfield__list {
   position: absolute;
   z-index: 2;
@@ -1401,17 +1454,18 @@
   box-shadow: var(--cs-shadow-pop);
 }
 
-/* Portalled to `<body>` and positioned from the trigger's viewport rect, so it
-   is not clipped by the dialog's `overflow-y: auto`. Above the overlay's z-index
-   so the menu floats over the dialog the way the design shows it. */
-.cs-selectfield__list.is-portal {
-  position: fixed;
-  z-index: 60;
-  top: auto;
-  left: auto;
+/* Inside the portalled wrapper the list is the scrolling region; the wrapper
+   keeps the border, radius and shadow. */
+.cs-selectfield__menu .cs-selectfield__list {
+  position: static;
+  z-index: auto;
   width: auto;
   min-width: 0;
-  margin: 0;
+  flex: 1 1 auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1552,27 +1606,50 @@
     display: none;
   }
 
+  /* Compact mobile header. `box-sizing: border-box` means the content box is
+     `height` less the vertical padding and border, so the menu button has to fit
+     inside what is left — 52 − 14 − 2 = 36px. The previous 64/10/44 combination
+     left a 42px box for a 44px button, which spilled outside the header. */
   .cs-mobile-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    height: 64px;
-    margin: 14px 24px 0;
-    padding: 10px 10px 10px 16px;
+    height: 52px;
+    margin: 10px 16px 0;
+    padding: 7px 8px 7px 12px;
     background: var(--cs-surface);
     border: 1px solid #e5e9f0;
-    border-radius: 12px;
+    border-radius: 10px;
   }
 
   .cs-mobile-header__brand {
     display: flex;
     align-items: center;
-    gap: 8px;
+    /* Without this the wordmark refuses to shrink and pushes the badge and the
+       menu button off the right edge at narrow widths. */
+    min-width: 0;
+    /* The brand takes the slack, which parks the badge and the menu button
+       together against the right edge as the design shows them. */
+    flex: 1;
+  }
+
+  .cs-mobile-header__badge {
+    flex: none;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: #fff4cc;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: 0.3px;
+    color: #6b4503;
+    /* The badge sits beside the menu button and must not wrap onto a second line. */
+    white-space: nowrap;
   }
 
   .cs-mobile-header__brand .cs-brand__word {
-    font-size: 28px;
+    font-size: 20px;
     color: var(--cs-primary);
   }
 
@@ -1580,45 +1657,54 @@
     display: none;
   }
 
-  .cs-mobile-header__badge {
-    padding: 3px 8px;
-    border-radius: 6px;
-    background: #fff4cc;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.4px;
-    color: #6b4503;
-  }
-
+  /* `flex: none` is load-bearing: without it the 36px button is a shrinkable flex
+     item, and a long wordmark would squeeze it out of shape. */
   .cs-mobile-header__menu {
     display: grid;
     place-items: center;
-    width: 44px;
-    height: 44px;
+    flex: none;
+    width: 36px;
+    height: 36px;
     padding: 0;
     border: 0;
-    border-radius: 10px;
+    border-radius: 9px;
     background: var(--cs-primary);
-    font-size: 18px;
+    font-size: 16px;
     color: #fff;
     cursor: pointer;
   }
 
+  /* Matches the header's own side margin, so the heading's left edge lines up
+     with the wordmark rather than sitting further in. */
   .cs-main {
-    padding: 14px 24px 24px;
+    padding: 12px 16px 20px;
   }
 
   .cs-page__title {
-    font-size: 24px;
+    font-size: 19px;
   }
 
+  /* The mobile copy is three clauses long, so it is given room to wrap over a
+     couple of lines. `overflow-wrap` is the guard for any single long token; the
+     width itself is bounded by `.cs-page`, so it cannot push the layout wider. */
   .cs-page__subtitle {
-    font-size: 13px;
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: break-word;
+  }
+
+  .cs-searchbar {
+    margin-top: 12px;
   }
 
   .cs-searchbar__field {
-    height: 43px;
-    padding: 0 12px;
+    height: 40px;
+    padding: 0 10px;
+  }
+
+  .cs-searchbar__input {
+    font-size: 13px;
   }
 
   .cs-searchbar__submit {
@@ -1647,11 +1733,25 @@
     font-size: 13px;
   }
 
-  /* Mobile reads as one line: `All people · 1,284`. The separator is rendered
-     by the page so this rule can drop the desktop-only leading gap. */
+  /* Mobile reads as one line: `All people · 1,284`. The title and the count are
+     laid out as a row rather than relying on the `h2` becoming inline, and the
+     count is bold to match the title. `nowrap` keeps a long count from dropping
+     onto its own line. */
+  .cs-panel__heading {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
   .cs-panel__subtitle {
-    display: inline;
-    margin-left: 0;
+    margin-top: 0;
+    font-weight: 700;
+    color: var(--cs-text);
+    text-overflow: ellipsis;
+    overflow: hidden;
   }
 
   .cs-panel--list {
@@ -1692,19 +1792,223 @@
     gap: 5px;
   }
 
-  /* Detail */
+  /* Detail — Figma "Mobile · Customer search: Customer detail" (2557:17085),
+     393px frame with 14px between blocks.
+
+     The design draws `Card / Customer` (2557:17094) as ONE card: 14px radius,
+     1px #dbe2ea border, 16px padding, holding the name row and then the six
+     field rows. Here the header and the field block are two sibling elements,
+     so they are styled as two halves of one card — the header keeps the top
+     corners and no bottom border, the section it is followed by keeps the
+     bottom corners and supplies the rule between them. `.cs-detail`'s own gap
+     is zeroed for the same reason: a gap would tear the halves apart. */
   .cs-detail {
+    gap: 0;
     padding: 0;
-    gap: 14px;
+  }
+
+  .cs-detail__back {
+    margin-bottom: 10px;
+  }
+
+  .cs-detail__header,
+  .cs-detail__section {
+    padding: 16px;
+    border: 1px solid var(--cs-border);
+    background: var(--cs-surface);
+  }
+
+  .cs-detail__section {
+    gap: 8px;
+    margin-top: 14px;
+    border-radius: 14px;
+  }
+
+  .cs-detail__header {
+    align-items: center;
+    gap: 12px;
+    /* The card's 16px padding, then the design's 10px gap before the first
+       field's rule. */
+    padding-bottom: 10px;
+    border-radius: 14px 14px 0 0;
+    border-bottom: 0;
+  }
+
+  /* The first section completes the header's card rather than starting one, so
+     it drops its own top margin and square top corners. The sibling selector
+     outranks the plain `.cs-detail__section` rule above.
+
+     Its gap goes to zero because the heading below is only hidden, not removed:
+     the empty box is still a flex child, and its 8px would land on top of the
+     10px the header already reserves. */
+  .cs-detail__header + .cs-detail__section {
+    margin-top: 0;
+    padding-top: 0;
+    border-radius: 0 0 14px 14px;
+    gap: 0;
+  }
+
+  /* In that first card the name already says whose details these are, so the
+     design drops the section heading. Only the title goes: a traveller's
+     "Correct identity" action shares this header and has to survive. */
+  .cs-detail__header + .cs-detail__section .cs-detail__section-title {
+    display: none;
+  }
+
+  /* The traveller card is the one with an action in that heading, and with the
+     gap gone it needs its own room above the button and above the fields. */
+  .cs-detail__header + .cs-detail__section:has(.cs-btn) .cs-detail__section-head,
+  .cs-detail__header + .cs-detail__section:has(.cs-btn) .cs-detail__grid {
+    margin-top: 12px;
+  }
+
+  /* Avatar: 48px, #dbeafe, initials in 15.36px bold #1d4ed8. The radius in the
+     design (24px on a 48px box) is a circle, which `.cs-avatar` already is. */
+  .cs-detail__header .cs-avatar.is-lg {
+    width: 48px;
+    height: 48px;
+    font-size: 15px;
+  }
+
+  .cs-detail__heading {
+    gap: 3px;
   }
 
   .cs-detail__name {
-    font-size: 22px;
+    font-size: 16px;
+    line-height: 1.3;
+    overflow-wrap: break-word;
+  }
+
+  .cs-detail__thai {
+    margin-left: 0;
+    font-size: 13px;
+  }
+
+  .cs-detail__meta {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* "Account holder" wraps onto two lines inside a flex row otherwise, which
+     doubled the height of the name block. */
+  .cs-detail__meta .cs-badge {
+    flex: none;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  /* The account-holder card carries no Customer ID line and no READ ONLY chip.
+     The traveller card keeps its chip, which `:has()` on the badge picks out. */
+  .cs-detail__meta-text {
+    display: none;
+  }
+
+  .cs-detail__header:has(.cs-badge.is-accountHolder) .cs-pill {
+    display: none;
   }
 
   .cs-detail__grid {
     grid-template-columns: minmax(0, 1fr);
-    row-gap: 14px;
+    row-gap: 0;
+  }
+
+  /* Field rows: label left at a fixed 100px, value beside it, hairline above.
+     The design pins the value flush left in the space the label leaves — the
+     spacer after it is what pushes nothing anywhere — so the value is not
+     right-aligned here either. */
+  .cs-detail__field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--cs-border);
+  }
+
+  .cs-detail__field:last-child {
+    border-bottom: 0;
+  }
+
+  .cs-detail__label {
+    flex: none;
+    width: 100px;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--cs-text-2);
+  }
+
+  .cs-detail__value {
+    flex: 1;
+    margin-top: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cs-text);
+    /* At 320px a long email has ~156px here. `min-width: 0` plus `anywhere`
+       wrapping is what stops it overflowing instead of scrolling the page. */
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* SAVED TRAVELLERS (2557:17129): 14px radius, 16px padding, 8px between the
+     heading and each row. The rows carry no rules of their own. */
+  .cs-detail__section-title {
+    font-size: 10px;
+    letter-spacing: 0;
+    color: var(--cs-text-2);
+  }
+
+  .cs-relations__item {
+    padding: 8px 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  .cs-relations .cs-avatar.is-sm {
+    width: 30px;
+    height: 30px;
+    font-size: 10px;
+  }
+
+  .cs-relations__name {
+    font-size: 13px;
+    /* The design sets `whitespace-nowrap`, which a long name would turn into a
+       sideways scroll. `min-width: 0` lets the flex item shrink instead; long
+       single tokens still break rather than pushing the row wide. */
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+
+  .cs-relations .cs-badge.is-relationship {
+    flex: none;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  /* The design's chevron is an 18px #677287 `›`. */
+  .cs-relations__chevron {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    color: var(--cs-text-2);
+  }
+
+  /* The design closes the profile with a plain muted 12px line, not a filled
+     note, and lets it wrap rather than truncating. */
+  .cs-detail .cs-note {
+    margin-top: 14px;
+    padding: 0;
+    background: none;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--cs-text-2);
+    overflow-wrap: break-word;
   }
 
   /* Dialog becomes a near-full-width card, still centred, not a bottom sheet. */
@@ -1808,5 +2112,29 @@
 @media (max-width: 1023px) and (min-width: 768px) {
   .cs-layout.is-split {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The 767px rules are already compact, so they apply unchanged at 320, 375 and
+   390. This only tightens the side margins on the narrowest phones, where 16px
+   either side starts to crowd the wordmark and badge. */
+@media (max-width: 360px) {
+  .cs-mobile-header {
+    margin: 8px 12px 0;
+    padding: 7px 6px 7px 10px;
+  }
+
+  .cs-mobile-header__brand .cs-brand__word {
+    font-size: 18px;
+  }
+
+  .cs-main {
+    padding: 10px 12px 18px;
+  }
+
+  /* The filter box follows the mobile trigger height so the two read as one control. */
+  .cs-overlay.is-sheet .cs-selectfield__filter {
+    height: 42px;
+    font-size: 14px;
   }
 }
