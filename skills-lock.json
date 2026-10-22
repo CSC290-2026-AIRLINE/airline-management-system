@@ -19,6 +19,12 @@
       "skillPath": "skills/soft-skill/SKILL.md",
       "computedHash": "ff7257d91fa767a37b200b4bd6682fae614009c586433122e57c322823ad8f25"
     },
+    "imagegen-frontend-web": {
+      "source": "Leonxlnx/imagegen-skills",
+      "sourceType": "github",
+      "skillPath": "skills/imagegen-frontend-web/SKILL.md",
+      "computedHash": "65f5ae59fa317567809438310b1c54f78cd133426deb43e4d3d4ca4c8f541628"
+    },
     "implement": {
       "source": "mattpocock/skills",
       "sourceType": "github",
