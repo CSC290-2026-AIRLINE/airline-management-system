@@ -1288,23 +1288,3 @@ model watchlist_entry {
 
   @@index([passport_number], map: "watchlist_entry_passport_idx", where: raw("((status = 'active'::text) AND (passport_number IS NOT NULL))"))
 }
-
-
-
-model fare_class {
-  id                        String    @id @default(uuid()) @db.Uuid
-  code                      String  // class code
-  cabin                     String
-  name                      String
-  min_advance_purchase_days Int       @default(0)
-  refundable                Boolean   @default(false)
-  changeable                Boolean   @default(false)
-  cancel_fee_flat           Decimal   @default(0) @db.Decimal(12, 2)
-  cancel_fee_pct            Decimal   @default(0) @db.Decimal(5, 2)
-  change_fee_flat           Decimal   @default(0) @db.Decimal(12, 2)
-  change_fee_pct            Decimal   @default(0) @db.Decimal(5, 2)
-  is_active                 Boolean   @default(true)
-  created_at                DateTime  @default(now()) @db.Timestamptz
-  updated_at                DateTime  @default(now()) @db.Timestamptz
-  deleted_at                DateTime? @db.Timestamptz
-}
