@@ -373,6 +373,32 @@
 .profile-info {
   min-width: 0;
 }
+.profile-contact-info {
+  container-type: inline-size;
+}
+.profile-info > .profile-email-row {
+  flex-wrap: nowrap;
+}
+.profile-email-row dd {
+  flex: 1;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+.profile-email-row .profile-link {
+  white-space: nowrap;
+}
+@container (max-width: 450px) {
+  .profile-email-action-suffix {
+    display: none;
+  }
+  .profile-info > .profile-email-row {
+    gap: 8px;
+  }
+  .profile-info .profile-email-row dt {
+    width: auto;
+  }
+}
 .profile-info > div {
   display: flex;
   align-items: center;
@@ -556,7 +582,12 @@
 .profile-readonly-email > span {
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.profile-mobile-identity p {
+  white-space: nowrap;
+  overflow-x: auto;
 }
 .profile-readonly-email button {
   flex-shrink: 0;
@@ -789,8 +820,17 @@
 }
 @media (max-width: 700px) {
   .account-page {
-    background-image: url('./assets/aurora-mesh-orange-lessgray-mobile-bg 2.png');
+    isolation: isolate;
+    background: transparent;
     padding: 87px 24px 52px;
+  }
+  .account-page::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: #fff url('./assets/aurora-mesh-orange-lessgray-mobile-bg 2.png') center / cover no-repeat;
   }
   .account-content {
     gap: 16px;
