@@ -21,7 +21,9 @@ interface SummaryRow {
   gender: string | null
   nationality: string | null
   passport_number: string | null
-  customer: { id: string; phone: string | null; created_at: Date; user: { email: string } } | null
+  /** Always null: every fixture here is a live row, which is what the search's own filter asserts. */
+  deleted_at: Date | null
+  customer: { id: string; phone: string | null; created_at: Date; deleted_at: Date | null; user: { email: string } } | null
 }
 
 function travellerRow(overrides: Partial<SummaryRow> = {}): SummaryRow {
@@ -35,6 +37,7 @@ function travellerRow(overrides: Partial<SummaryRow> = {}): SummaryRow {
     gender: 'F',
     nationality: 'th',
     passport_number: 'AB1234567',
+    deleted_at: null,
     customer: null,
     ...overrides,
   }
@@ -49,6 +52,7 @@ function holderRow(overrides: Partial<SummaryRow> = {}): SummaryRow {
       id: 'c1',
       phone: '+66 2 000 0000',
       created_at: new Date('2021-04-01T00:00:00.000Z'),
+      deleted_at: null,
       user: { email: 'somchai@example.com' },
     },
     ...overrides,
@@ -82,6 +86,7 @@ let db: {
   user: { findUnique: jest.Mock }
   audit_log: { create: jest.Mock }
   $transaction: jest.Mock
+  $queryRawUnsafe: jest.Mock
 }
 let service: PassengerProfilesService
 
@@ -98,6 +103,9 @@ beforeEach(() => {
     audit_log: { create: jest.fn().mockResolvedValue({ seq: 1n }) },
     // The real client takes PrismaPromises; the mocks resolve eagerly, so awaiting the array is enough.
     $transaction: jest.fn(async (operations: unknown[]) => Promise.all(operations)),
+    // Only a term Prisma cannot filter itself reaches this. Empty by default, so a term that
+    // needs the cast matches nothing through it — which is what an empty result set means.
+    $queryRawUnsafe: jest.fn().mockResolvedValue([]),
   }
   service = new PassengerProfilesService(db as never)
 })
@@ -190,6 +198,107 @@ function alternativesFor(where: SearchWhere): Record<string, unknown>[] {
 /** The alternatives matched by the n-th term of a multi-term query. */
 function groupFor(where: SearchWhere, index: number): Record<string, unknown>[] {
   return where.AND?.[index]?.OR ?? []
+}
+
+/**
+ * The half-open day range a date token turned into, as ISO strings. The `where` Prisma is
+ * handed holds real `Date` objects — a mocked client does not serialise them — so they are
+ * normalised here rather than compared by identity.
+ */
+function dobRange(where: SearchWhere): { gte: string; lt: string } | undefined {
+  const clause = alternativesFor(where).find((alt) => 'date_of_birth' in alt)
+  const range = (clause?.date_of_birth ?? null) as { gte: Date; lt: Date } | null
+  return range ? { gte: range.gte.toISOString(), lt: range.lt.toISOString() } : undefined
+}
+
+/** The statement and the values bound into it, for the n-th raw-SQL lookup the service made. */
+function rawSqlAt(call = 0): { sql: string; values: unknown[] } {
+  const [statement, ...values] = db.$queryRawUnsafe.mock.calls[call]
+  return { sql: (statement as string).replace(/\s+/g, ' ').trim(), values }
+}
+
+/** Makes the raw lookup return these ids. The service reads `row.id` off what Postgres returns. */
+function rawReturnsIds(ids: string[]) {
+  db.$queryRawUnsafe.mockResolvedValue(ids.map((id) => ({ id })))
+}
+
+type Clause = Record<string, unknown>
+
+/**
+ * A miniature model of what Postgres does with the filter this service builds.
+ *
+ * Asserting the *shape* of a `where` proves the intent but not the outcome: `DbService` is
+ * mocked, so nothing executes the query and no row ever comes back. This applies the generated
+ * filter to fixture rows, so a test can say which people a search actually returns — the only
+ * way to prove that one query matches a field *and* another, rather than stopping at the first
+ * it recognises.
+ *
+ * It understands only the operators the search builds. Anything else throws rather than passing
+ * quietly, so a filter this module grows later cannot slip past these tests unexamined.
+ */
+function matches(clause: object, row: SummaryRow): boolean {
+  return Object.entries(clause).every(([key, value]) => {
+    if (key === 'OR') {
+      return (value as Clause[]).some((alternative) => matches(alternative, row))
+    }
+    if (key === 'AND') {
+      return (value as Clause[]).every((group) => matches(group, row))
+    }
+    if (key === 'NOT') {
+      return !matches(value as Clause, row)
+    }
+    if (key === 'customer') {
+      return matchesCustomer(value as { is?: Clause }, row)
+    }
+    return matchesColumn(key, value, (row as unknown as Clause)[key])
+  })
+}
+
+/** `{ customer: { is: … } }` is an existence test first and a filter second: a null relation never satisfies it. */
+function matchesCustomer(clause: { is?: Clause }, row: SummaryRow): boolean {
+  const holder = row.customer
+  if (!holder) {
+    return false
+  }
+  const inner = clause.is
+  if (!inner || Object.keys(inner).length === 0) {
+    return true
+  }
+  return Object.entries(inner).every(([key, value]) =>
+    key === 'user'
+      ? matches(value as Clause, holder.user as unknown as SummaryRow)
+      : matchesColumn(key, value, (holder as unknown as Clause)[key]),
+  )
+}
+
+function matchesColumn(column: string, filter: unknown, actual: unknown): boolean {
+  if (actual === undefined) {
+    throw new Error(`The search evaluator does not know the column "${column}".`)
+  }
+  if (filter === null || typeof filter !== 'object') {
+    return actual === filter
+  }
+
+  const { contains, mode, in: list, gte, lt } = filter as { contains?: string; mode?: string; in?: string[]; gte?: Date; lt?: Date }
+
+  if (list !== undefined) {
+    return typeof actual === 'string' && list.includes(actual)
+  }
+  if (contains !== undefined) {
+    // A null column compares as unknown rather than false in SQL, and an unknown is what an
+    // `OR` discards — so a passenger with no Thai name is simply not a match, not an error.
+    if (typeof actual !== 'string') {
+      return false
+    }
+    // `mode: 'insensitive'` is the only case Prisma is asked for here, and it lowers both sides.
+    return (mode === 'insensitive' ? actual.toLowerCase() : actual).includes(contains)
+  }
+  if (gte !== undefined || lt !== undefined) {
+    const at = (actual as Date | null)?.getTime()
+    return typeof at === 'number' && (gte === undefined || at >= gte.getTime()) && (lt === undefined || at < lt.getTime())
+  }
+
+  throw new Error(`The search evaluator cannot read the filter on "${column}": ${JSON.stringify(filter)}`)
 }
 
 describe('PassengerProfilesService.search — how q is matched', () => {
@@ -333,6 +442,879 @@ describe('PassengerProfilesService.search — how q is matched', () => {
         take: 20,
       }),
     )
+  })
+})
+
+/**
+ * The Feature 7 search contract, field by field.
+ *
+ * The Artifact requires `q` to match the Latin name, the local/Thai name, the account
+ * holder's email, the person id, the date of birth and the passport number, across both
+ * account holders and travellers. Each case below asserts the `where` Prisma is handed,
+ * because that is the actual contract with the database — a mocked `DbService` cannot
+ * decide whether `contains` really filters, but it can prove the filter was asked for.
+ */
+describe('Customer Search — every field the Artifact requires q to match', () => {
+  const ci = (term: string) => ({ contains: term, mode: 'insensitive' })
+
+  describe('1. Latin name', () => {
+    it('matches a partial first name, case-insensitively', async () => {
+      const where = await whereFor('anab')
+
+      expect(alternativesFor(where)).toContainEqual({ first_name: ci('anab') })
+      expect(alternativesFor(where)).toContainEqual({ last_name: ci('anab') })
+    })
+
+    it('matches the same term whatever case it is typed in', async () => {
+      for (const term of ['ANYA', 'anya', 'AnYa']) {
+        expect(alternativesFor(await whereFor(term))).toContainEqual({ first_name: ci(term) })
+      }
+    })
+
+    it('matches a partial surname from the middle of it', async () => {
+      // "Effertz" contains "ertz"; a staff member remembers part of a name.
+      expect(alternativesFor(await whereFor('ertz'))).toContainEqual({ last_name: ci('ertz') })
+    })
+
+    it('requires every term of a multi-word name, across columns', async () => {
+      const where = await whereFor('Anabel Effertz')
+
+      expect(where.AND).toHaveLength(2)
+      expect(alternativesFor(where)).toContainEqual({ first_name: ci('Anabel') })
+      expect(groupFor(where, 1)).toContainEqual({ last_name: ci('Effertz') })
+    })
+  })
+
+  describe('2. local / Thai name', () => {
+    const thai = { local_first_name: 'สมชาย', local_last_name: 'วงศ์ไพศาล' }
+
+    it('matches the local first and last name when they are recorded', async () => {
+      const where = await whereFor('สมชาย')
+
+      expect(alternativesFor(where)).toContainEqual({ local_first_name: ci('สมชาย') })
+      expect(alternativesFor(where)).toContainEqual({ local_last_name: ci('สมชาย') })
+    })
+
+    it('matches the local name even when the Latin name does not contain the term', async () => {
+      // The row's Latin name is "Somchai Wong"; only the Thai spelling carries this term, so
+      // the local columns are what make it findable. Every term is offered against every
+      // column — matching is decided per row, not by the shape of the query — so what this
+      // pins is that both local columns are searched at all.
+      const alts = alternativesFor(await whereFor('ไพศาล'))
+
+      expect(alts).toContainEqual({ local_first_name: ci('ไพศาล') })
+      expect(alts).toContainEqual({ local_last_name: ci('ไพศาล') })
+    })
+
+    it('finds the row by its Thai name alone', async () => {
+      db.passenger.findMany.mockResolvedValue([holderRow(thai)])
+      const result = await service.search({ q: 'ไพศาล', type: 'all', page: 1, size: 20 })
+
+      expect(result.total).toBe(1)
+      expect(result.items[0]).toMatchObject({ firstName: 'Somchai', localLastName: 'วงศ์ไพศาล' })
+    })
+
+    it('carries a recorded Thai name through to the response', async () => {
+      db.passenger.findMany.mockResolvedValue([holderRow(thai)])
+      const result = await service.search({ q: 'สมชาย', type: 'all', page: 1, size: 20 })
+
+      expect(result.items[0]).toMatchObject({ localFirstName: 'สมชาย', localLastName: 'วงศ์ไพศาล' })
+    })
+  })
+
+  describe('3. account holder email', () => {
+    it('matches the email of the holder the account belongs to', async () => {
+      expect(alternativesFor(await whereFor('somchai@example.com'))).toContainEqual({
+        customer: { is: { deleted_at: null, user: { email: ci('somchai@example.com') } } },
+      })
+    })
+
+    it('matches part of an email, case-insensitively', async () => {
+      expect(alternativesFor(await whereFor('SOMCHAI@EXAM'))).toContainEqual({
+        customer: { is: { deleted_at: null, user: { email: ci('SOMCHAI@EXAM') } } },
+      })
+    })
+
+    it('does not match the email of a soft-deleted account', async () => {
+      // The clause is scoped to `deleted_at: null` so an old address never resurfaces a row.
+      expect(alternativesFor(await whereFor('somchai@example.com'))).toContainEqual({
+        customer: { is: { deleted_at: null, user: { email: ci('somchai@example.com') } } },
+      })
+      expect(JSON.stringify(await whereFor('somchai@example.com'))).not.toMatch(/deleted_at":\s*(?!null)/)
+    })
+
+    it('returns no email for a traveller, who has no account', async () => {
+      db.passenger.findMany.mockResolvedValue([travellerRow()])
+      const result = await service.search({ q: 'anya', type: 'traveller', page: 1, size: 20 })
+
+      expect(result.items[0]).toMatchObject({ type: 'traveller', email: null })
+    })
+  })
+
+  describe('4. person id', () => {
+    const ID = '11111111-1111-4111-8111-111111111111'
+
+    it('matches the id exactly', async () => {
+      expect(alternativesFor(await whereFor(ID))).toContainEqual({ id: ID })
+    })
+
+    it('matches only the id, not the name or email columns', async () => {
+      // A uuid cannot be a name, an email or a passport, so searching those is wasted work
+      // and risks a false positive on a name that happens to contain the digits.
+      expect(alternativesFor(await whereFor(ID))).toEqual([{ id: ID }])
+    })
+
+    it('does not send a non-uuid to the uuid column, which Postgres could not cast', async () => {
+      const where = await whereFor('anya')
+
+      // An id alternative may only ever be a real uuid equality or the `in` list the cast
+      // produced — never the term itself handed to the column as a value.
+      expect(alternativesFor(where).some((alt) => typeof alt.id === 'string')).toBe(false)
+      // A 4-digit number is a year, not an id.
+      expect(alternativesFor(await whereFor('1992')).some((alt) => typeof alt.id === 'string')).toBe(false)
+    })
+  })
+
+  describe('5. date of birth', () => {
+    it('reads the format the staff UI actually displays', async () => {
+      // `formatDateOfBirth` renders `03 Aug 1992`; searching what is on screen must work.
+      const where = await whereFor('03 Aug 1992')
+
+      expect(dobRange(where)).toEqual({ gte: '1992-08-03T00:00:00.000Z', lt: '1992-08-04T00:00:00.000Z' })
+    })
+
+    it('keeps a written-out date as ONE term rather than three', async () => {
+      // The bug this pins: split on whitespace, `03` and `Aug` each had to match a name,
+      // so nothing ever matched and a date off the screen found nobody.
+      const where = await whereFor('03 Aug 1992')
+
+      expect(where.AND).toHaveLength(1)
+    })
+
+    it('reads the month name whatever case it is typed in', async () => {
+      for (const term of ['03 aug 1992', '03 AUG 1992', '03 AuG 1992']) {
+        expect(dobRange(await whereFor(term))).toEqual({ gte: '1992-08-03T00:00:00.000Z', lt: '1992-08-04T00:00:00.000Z' })
+      }
+    })
+
+    it('reads the ISO form', async () => {
+      expect(dobRange(await whereFor('1992-08-03'))).toEqual({ gte: '1992-08-03T00:00:00.000Z', lt: '1992-08-04T00:00:00.000Z' })
+      expect(dobRange(await whereFor('1992-08'))).toEqual({ gte: '1992-08-01T00:00:00.000Z', lt: '1992-09-01T00:00:00.000Z' })
+      expect(dobRange(await whereFor('1992'))).toEqual({ gte: '1992-01-01T00:00:00.000Z', lt: '1993-01-01T00:00:00.000Z' })
+    })
+
+    it('reads day-first with a slash or a dash, the order the UI input uses', async () => {
+      for (const term of ['03/08/1992', '03-08-1992', '3/8/1992']) {
+        expect(dobRange(await whereFor(term))).toEqual({ gte: '1992-08-03T00:00:00.000Z', lt: '1992-08-04T00:00:00.000Z' })
+      }
+    })
+
+    it('reads a month name with a year, and rolls December into the next year', async () => {
+      expect(dobRange(await whereFor('Aug 1992'))).toEqual({ gte: '1992-08-01T00:00:00.000Z', lt: '1992-09-01T00:00:00.000Z' })
+      expect(dobRange(await whereFor('Dec 1992'))).toEqual({ gte: '1992-12-01T00:00:00.000Z', lt: '1993-01-01T00:00:00.000Z' })
+    })
+
+    it('rolls a year over into the next one', async () => {
+      expect(dobRange(await whereFor('Dec 1992'))?.lt).toBe('1993-01-01T00:00:00.000Z')
+    })
+
+    it('does not read an arbitrary number as a date', async () => {
+      // The user's rule: only treat a number as a date when the format supports it.
+      for (const term of ['12', '03', '199', '1234', '9999']) {
+        expect(dobRange(await whereFor(term))).toBeUndefined()
+      }
+    })
+
+    it('does not read an impossible or misspelt date as one', async () => {
+      for (const term of ['2023-02-30', '30 Feb 1992', '2023-13-01', '03 Junk 1992', '03 Zzz 1992', 'Ju 1992']) {
+        expect(dobRange(await whereFor(term))).toBeUndefined()
+      }
+    })
+
+    it('needs three letters before a month prefix is a month', async () => {
+      // Two letters cannot separate March/May or June/July, so they are not read as a month.
+      expect(dobRange(await whereFor('Ma 1992'))).toBeUndefined()
+      expect(dobRange(await whereFor('Ju 1992'))).toBeUndefined()
+      expect(dobRange(await whereFor('Mar 1992'))).toEqual({ gte: '1992-03-01T00:00:00.000Z', lt: '1992-04-01T00:00:00.000Z' })
+    })
+
+    it('leaves a name that merely contains a number alone', async () => {
+      // "May" is a month name but with no year it is not a date, so it stays a name term.
+      const where = await whereFor('May')
+
+      expect(dobRange(where)).toBeUndefined()
+      expect(alternativesFor(where)).toContainEqual({ first_name: ci('May') })
+    })
+
+    /**
+     * The regression this pins. `formatDateOfBirth` renders with `Intl`'s `en-GB` short month,
+     * and that abbreviation is not uniform: CLDR spells September `Sept`, four letters, so the
+     * date on screen for September is `03 Sept 2012`. A parser written against three-letter
+     * abbreviations silently fails on that month and finds nobody.
+     *
+     * Building the strings with the same `Intl` configuration the UI uses means this test
+     * tracks the browser rather than restating today's answer, so a future CLDR change fails
+     * here instead of in a staff member's face.
+     */
+    it('reads every month in the format the staff UI actually renders', async () => {
+      const formatter = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+
+      for (let month = 0; month < 12; month += 1) {
+        const displayed = formatter.format(new Date(Date.UTC(2012, month, 3)))
+        const where = await whereFor(displayed)
+
+        // One term, not three, and the exact day it names.
+        expect(where.AND).toHaveLength(1)
+        expect(dobRange(where)).toEqual({
+          gte: new Date(Date.UTC(2012, month, 3)).toISOString(),
+          lt: new Date(Date.UTC(2012, month, 4)).toISOString(),
+        })
+      }
+    })
+
+    it('reads the September abbreviation the browser renders', async () => {
+      const displayed = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(
+        new Date(Date.UTC(2012, 8, 3)),
+      )
+
+      expect(displayed).toBe('03 Sept 2012')
+      expect(dobRange(await whereFor('03 Sept 2012'))).toEqual({ gte: '2012-09-03T00:00:00.000Z', lt: '2012-09-04T00:00:00.000Z' })
+      // The three-letter form and the full name work too.
+      expect(dobRange(await whereFor('03 Sep 2012'))).toEqual({ gte: '2012-09-03T00:00:00.000Z', lt: '2012-09-04T00:00:00.000Z' })
+      expect(dobRange(await whereFor('03 September 2012'))).toEqual({ gte: '2012-09-03T00:00:00.000Z', lt: '2012-09-04T00:00:00.000Z' })
+    })
+  })
+
+  describe('6. passport number', () => {
+    it('matches against the stored value, which the response never carries', async () => {
+      db.passenger.findMany.mockResolvedValue([travellerRow()])
+      const result = await service.search({ q: 'AB1234567', type: 'all', page: 1, size: 20 })
+
+      expect(alternativesFor(await whereFor('AB1234567'))).toContainEqual({ passport_number: ci('AB1234567') })
+      // Matching happens in SQL, so a staff member can still type the real number…
+      expect(result.items[0].passportNumber).toBe('•••• 4567')
+      // …but the full number is not in the response anywhere.
+      expect(JSON.stringify(result)).not.toContain('AB1234567')
+    })
+
+    it('matches a part of the number, since only the last four are ever on screen', async () => {
+      expect(alternativesFor(await whereFor('4567'))).toContainEqual({ passport_number: ci('4567') })
+    })
+  })
+
+  describe('7. the three tabs', () => {
+    it('All matches both sides and filters neither', async () => {
+      const where = await whereFor('anya', 'all')
+
+      expect(where.AND).toHaveLength(1)
+      expect(where.customer).toBeUndefined()
+      expect(where.NOT).toBeUndefined()
+    })
+
+    it('Account holders requires an account that is not soft-deleted', async () => {
+      expect((await whereFor('somchai', 'accountHolder')).customer).toEqual({ is: { deleted_at: null } })
+    })
+
+    it('Travellers is the exact complement, so a soft-deleted account is not left looking like a traveller', async () => {
+      const where = await whereFor('anya', 'traveller')
+
+      expect(where.NOT).toEqual({ customer: { is: { deleted_at: null } } })
+      expect(where.customer).toBeUndefined()
+    })
+
+    it('an empty query filters on nothing and returns everything', async () => {
+      const where = await whereFor('')
+
+      expect(where.AND).toBeUndefined()
+    })
+  })
+
+  describe('8. no match, and paging', () => {
+    it('a term nothing matches yields a real empty page, not an error', async () => {
+      db.passenger.findMany.mockResolvedValue([])
+      db.passenger.count.mockResolvedValue(0)
+
+      const result = await service.search({ q: 'zzzznomatch', type: 'all', page: 1, size: 20 })
+
+      expect(result).toEqual({ items: [], total: 0, page: 1, size: 20 })
+    })
+
+    it('paginates with the same filter, and reports a total that is not the page length', async () => {
+      db.passenger.findMany.mockResolvedValue([travellerRow()])
+      db.passenger.count.mockResolvedValue(57)
+
+      const result = await service.search({ q: 'anya', type: 'all', page: 3, size: 20 })
+      const call = db.passenger.findMany.mock.calls[0][0] as { skip: number; take: number; where: { AND: unknown[] } }
+
+      expect(call.skip).toBe(40)
+      expect(call.take).toBe(20)
+      // The filter travels with the page, so page 3 is the third page of matches, not of everything.
+      expect(call.where.AND).toHaveLength(1)
+      expect(result).toMatchObject({ total: 57, page: 3, size: 20 })
+      expect(result.items).toHaveLength(1)
+    })
+
+    it('counts with the same filter as the page it counts', async () => {
+      await service.search({ q: 'anya', type: 'all', page: 1, size: 20 })
+      const countWhere = db.passenger.count.mock.calls[0][0] as { where: { AND: unknown[] } }
+      const pageWhere = db.passenger.findMany.mock.calls[0][0] as { where: { AND: unknown[] } }
+
+      expect(countWhere.where).toEqual(pageWhere.where)
+    })
+  })
+})
+
+describe('Customer Search — a partial term matches across every field', () => {
+  const ci = (term: string) => ({ contains: term, mode: 'insensitive' })
+
+  /** An id carrying `08`, as the results table displays it. */
+  const ID_WITH_08 = '5a08bd81-2604-4446-930e-9edebebdd596'
+  const ID_WITHOUT_08 = 'edead110-a5d3-4cfa-a6c6-eecdec4406ce'
+
+  /**
+   * Seven people, each reached by `08` through a different field, plus one that it does not
+   * reach at all. The field each row is here to prove is noted beside it.
+   */
+  const population: SummaryRow[] = [
+    // id
+    travellerRow({
+      id: ID_WITH_08,
+      first_name: 'Maleya',
+      last_name: 'Stone',
+      passport_number: 'T3456789',
+      date_of_birth: new Date('2018-06-21T00:00:00.000Z'),
+    }),
+    // day of birth
+    travellerRow({
+      id: 'c1e7ebca-601e-4336-8ccd-02c95606020d',
+      first_name: 'Claire',
+      passport_number: 'P7654321',
+      date_of_birth: new Date('1991-11-08T00:00:00.000Z'),
+    }),
+    // month of birth
+    travellerRow({
+      id: 'ab649c51-2e4d-45ca-899c-8e9e7f86824e',
+      first_name: 'Boris',
+      passport_number: null,
+      date_of_birth: new Date('1966-08-23T00:00:00.000Z'),
+    }),
+    // passport number
+    travellerRow({
+      id: 'b3dedd4e-de67-4e97-9767-3615df785a1d',
+      first_name: 'Niran',
+      passport_number: 'TZ0848210',
+      date_of_birth: new Date('1988-03-14T00:00:00.000Z'),
+    }),
+    // account holder email
+    holderRow({
+      id: 'd16cf400-dca5-4d57-a499-135186940ad1',
+      first_name: 'Pimchanok',
+      passport_number: 'BR1904552',
+      date_of_birth: new Date('1995-11-02T00:00:00.000Z'),
+      customer: {
+        id: 'c2',
+        phone: null,
+        created_at: new Date('2020-01-01T00:00:00.000Z'),
+        deleted_at: null,
+        user: { email: 'pim08@example.com' },
+      },
+    }),
+    // name
+    travellerRow({
+      id: '4959c860-2278-47d0-97da-0d0734e449df',
+      first_name: 'An080bel',
+      last_name: 'Stone',
+      passport_number: 'T1234567',
+      date_of_birth: new Date('1985-04-12T00:00:00.000Z'),
+    }),
+    // Nothing here carries `08`, and the search must leave them out.
+    travellerRow({
+      id: ID_WITHOUT_08,
+      first_name: 'Edith',
+      last_name: 'Marsh',
+      passport_number: 'V1234567',
+      date_of_birth: new Date('1979-02-02T00:00:00.000Z'),
+    }),
+  ]
+
+  const names = (rows: SummaryRow[]) => rows.map((row) => row.first_name)
+
+  /** Each predicate the search can ask Postgres for, capturing the calendar part and its `$n`. */
+  const PREDICATE = /EXTRACT\((YEAR|MONTH|DAY) FROM date_of_birth\) = \$(\d+)|id::text ILIKE \$(\d+)/g
+
+  type Bound = { kind: 'YEAR' | 'MONTH' | 'DAY' | 'id'; value: unknown }
+
+  /** Splits on a separator that is not inside parentheses, so `A OR (B AND C)` becomes two alternatives. */
+  function splitTopLevel(text: string, separator: string): string[] {
+    const parts: string[] = []
+    let depth = 0
+    let start = 0
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index]
+      if (character === '(') {
+        depth += 1
+      } else if (character === ')') {
+        depth -= 1
+      } else if (depth === 0 && text.startsWith(separator, index)) {
+        parts.push(text.slice(start, index))
+        start = index + separator.length
+        index += separator.length - 1
+      }
+    }
+    parts.push(text.slice(start))
+    return parts
+  }
+
+  function holds(row: SummaryRow, bound: Bound): boolean {
+    if (bound.kind === 'id') {
+      return row.id.includes(String(bound.value).replace(/^%|%$/g, ''))
+    }
+    const dob = row.date_of_birth
+    if (!dob) {
+      return false
+    }
+    if (bound.kind === 'YEAR') return dob.getUTCFullYear() === bound.value
+    if (bound.kind === 'MONTH') return dob.getUTCMonth() + 1 === bound.value
+    return dob.getUTCDate() === bound.value
+  }
+
+  /**
+   * Answers the raw lookup by reading the statement the service actually sent.
+   *
+   * `DbService` is mocked, so nothing runs this SQL. Rather than hand-write a stand-in for it
+   * — which would keep answering "yes" to a predicate the service had stopped sending — this
+   * takes the predicates out of the statement it was handed, pairs each with the value its own
+   * `$n` names, and returns the rows that satisfy them, honouring `AND` inside an alternative
+   * and `OR` between them. Drop a predicate and its rows disappear, which is what makes the
+   * row-level assertions below real rather than circular.
+   *
+   * Pairing by `$n` rather than by position is deliberate: it is the only way this mock can
+   * notice a statement whose placeholders are numbered wrongly, which Postgres would reject
+   * and a positional pairing would happily wave through.
+   */
+  function rawAnswersWith(rows: SummaryRow[]) {
+    db.$queryRawUnsafe.mockImplementation((statement: string, ...values: unknown[]) => {
+      const inner = /AND \((.*)\)$/.exec(statement.trim())?.[1] ?? ''
+
+      // Every predicate, keyed by the `$n` it occupies, so an alternative can claim its own.
+      const byOrdinal = new Map<number, Bound>()
+      for (const match of inner.matchAll(PREDICATE)) {
+        // Only the calendar branch captures a part; the id branch is the fallback.
+        const part = match[1] === undefined ? undefined : (match[1] as 'YEAR' | 'MONTH' | 'DAY')
+        const ordinal = Number(part === undefined ? match[3] : match[2])
+        byOrdinal.set(ordinal, { kind: part ?? 'id', value: values[ordinal - 1] })
+      }
+
+      // Each side of an `AND` carries its own `$n`, so the number in the text says which value
+      // belongs to it — no counting, and nothing to get out of step with the statement.
+      const ordinalIn = (predicate: string): number | null => {
+        const match = /\$(\d+)/.exec(predicate)
+        return match === null ? null : Number(match[1])
+      }
+
+      const alternatives = splitTopLevel(inner, ' OR ').map((group) =>
+        splitTopLevel(group.replace(/[()]/g, ''), ' AND ')
+          .map((predicate) => {
+            const ordinal = ordinalIn(predicate)
+            return ordinal === null ? undefined : byOrdinal.get(ordinal)
+          })
+          .filter((entry): entry is Bound => entry !== undefined),
+      )
+
+      return Promise.resolve(
+        rows
+          .filter((row) => alternatives.some((alternative) => alternative.every((entry) => holds(row, entry))))
+          .map((row) => ({ id: row.id })),
+      )
+    })
+  }
+
+  it('one query returns a match from every field, not only the first one it finds', async () => {
+    rawAnswersWith(population)
+    const where = await whereFor('08')
+
+    expect(names(population.filter((row) => matches(where, row)))).toEqual([
+      'Maleya', // id
+      'Claire', // day
+      'Boris', // month
+      'Niran', // passport
+      'Pimchanok', // email
+      'An080bel', // name
+    ])
+  })
+
+  it('returns all of them through the real response shape, so one search page carries every match', async () => {
+    rawAnswersWith(population)
+    const where = await whereFor('08')
+    const found = population.filter((row) => matches(where, row))
+    db.passenger.findMany.mockResolvedValue(found)
+    db.passenger.count.mockResolvedValue(found.length)
+
+    const result = await service.search({ q: '08', type: 'all', page: 1, size: 20 })
+
+    expect(result.total).toBe(6)
+    expect(result.items.map((item) => item.firstName)).toEqual(['Maleya', 'Claire', 'Boris', 'Niran', 'Pimchanok', 'An080bel'])
+    expect(result.items.map((item) => item.id)).toEqual(found.map((row) => row.id))
+  })
+
+  it('asks Postgres for exactly the two things Prisma cannot filter, and nothing else', async () => {
+    db.$queryRawUnsafe.mockResolvedValue([])
+    await whereFor('08')
+
+    expect(rawSqlAt()).toEqual({
+      sql: 'SELECT id FROM passenger WHERE deleted_at IS NULL AND ((EXTRACT(DAY FROM date_of_birth) = $1) OR (EXTRACT(MONTH FROM date_of_birth) = $2) OR id::text ILIKE $3)',
+      values: [8, 8, '%08%'],
+    })
+  })
+
+  it('never puts the search term into the statement text', async () => {
+    db.$queryRawUnsafe.mockResolvedValue([])
+    await whereFor('08')
+    const { sql, values } = rawSqlAt()
+
+    expect(sql).not.toContain('08')
+    expect(values).toEqual([8, 8, '%08%'])
+  })
+
+  it('numbers its placeholders the way Postgres does, so the statement is valid SQL', async () => {
+    // `DbService` is mocked, so nothing here would have caught a placeholder Postgres rejects:
+    // `?` is what Prisma's own `sql` tag emits and rewrites, but `$queryRawUnsafe` does no such
+    // rewriting and `pg` passes the text straight through, so a `?` is a syntax error and every
+    // term needing SQL fails with a 500. `$1..$n` is what the driver actually speaks.
+    db.$queryRawUnsafe.mockResolvedValue([])
+    await whereFor('08')
+
+    const { sql, values } = rawSqlAt()
+    expect(sql).not.toContain('?')
+    expect([...sql.matchAll(/\$(\d+)/g)].map((match) => Number(match[1]))).toEqual([1, 2, 3])
+    expect(values).toHaveLength(3)
+  })
+
+  it("numbers each term's statement from one again", async () => {
+    db.$queryRawUnsafe.mockResolvedValue([])
+    await whereFor('Sept 08 ab08')
+
+    // Each term gets its own statement, so numbering must restart per call — a counter carried
+    // across statements would ask for `$3` with only one value bound, and Postgres rejects that.
+    const second = rawSqlAt(1)
+    expect(second.sql).toContain('$1')
+    expect(second.sql).not.toMatch(/\$[2-9]/)
+    expect(second.values).toHaveLength(1)
+  })
+
+  it('adds the cast matches to the same alternatives, so a term still reaches every column', async () => {
+    rawReturnsIds([ID_WITH_08])
+    const where = await whereFor('08')
+
+    // Every text column is still offered…
+    expect(alternativesFor(where)).toEqual(
+      expect.arrayContaining([
+        { first_name: ci('08') },
+        { last_name: ci('08') },
+        { local_first_name: ci('08') },
+        { local_last_name: ci('08') },
+        { passport_number: ci('08') },
+        { customer: { is: { deleted_at: null, user: { email: ci('08') } } } },
+      ]),
+    )
+    // …and the ids sit beside them rather than narrowing them.
+    expect(alternativesFor(where)).toContainEqual({ id: { in: [ID_WITH_08] } })
+    expect(alternativesFor(where).filter((alt) => 'id' in alt)).toHaveLength(1)
+  })
+
+  it('matches nothing through the cast when the cast returns nothing', async () => {
+    db.$queryRawUnsafe.mockResolvedValue([])
+    const where = await whereFor('08')
+
+    // An empty `in` is a real filter, not an absent one: it must not read as "no constraint".
+    expect(alternativesFor(where)).toContainEqual({ id: { in: [] } })
+  })
+
+  it('still matches a person whose id carries the term, with no other field involved', async () => {
+    rawAnswersWith(population)
+    const where = await whereFor('08')
+
+    const matched = population.filter((row) => matches(where, row))
+    expect(names(matched)).toContain('Maleya')
+    expect(names(matched)).not.toContain('Edith')
+  })
+
+  describe('what the id cast is allowed to run for', () => {
+    it('tries the id for a fragment of a uuid', async () => {
+      rawReturnsIds([ID_WITH_08])
+      await whereFor('08')
+
+      expect(rawSqlAt().sql).toContain('id::text ILIKE $3')
+      expect(rawSqlAt().values).toContain('%08%')
+    })
+
+    it('does not cast for a name, a word that only looks like hex, or a single character', async () => {
+      // `cafe` is hex-looking but carries no digit, and one character would match nearly every
+      // uuid — neither is worth a round trip.
+      for (const term of ['anya', 'Anabel', 'cafe', 'deadbeef', 'a', '0', 'Somchai']) {
+        db.$queryRawUnsafe.mockClear()
+        await whereFor(term)
+        expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+      }
+    })
+
+    it('leaves a whole uuid to the equality that already existed', async () => {
+      const where = await whereFor(ID_WITH_08)
+
+      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+      expect(alternativesFor(where)).toEqual([{ id: ID_WITH_08 }])
+    })
+
+    it('costs an ordinary name search nothing', async () => {
+      await whereFor('Anabel Effertz')
+
+      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+    })
+
+    it('costs an empty search nothing', async () => {
+      await whereFor('')
+
+      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('partial dates', () => {
+    it('reads a bare number as the day *or* the month, never as a range', async () => {
+      db.$queryRawUnsafe.mockResolvedValue([])
+      const where = await whereFor('08')
+
+      // A range needs a year to anchor to, and `08` has none.
+      expect(dobRange(where)).toBeUndefined()
+      expect(rawSqlAt().sql).toContain('(EXTRACT(DAY FROM date_of_birth) = $1) OR (EXTRACT(MONTH FROM date_of_birth) = $2)')
+    })
+
+    it('reads a month name on its own, in any year', async () => {
+      db.$queryRawUnsafe.mockResolvedValue([])
+      await whereFor('Sept')
+
+      expect(rawSqlAt()).toEqual({
+        sql: 'SELECT id FROM passenger WHERE deleted_at IS NULL AND ((EXTRACT(MONTH FROM date_of_birth) = $1))',
+        values: [9],
+      })
+    })
+
+    it('reads a year on its own as a range, which Prisma can filter on its own', async () => {
+      const where = await whereFor('2012')
+
+      expect(dobRange(where)).toEqual({ gte: '2012-01-01T00:00:00.000Z', lt: '2013-01-01T00:00:00.000Z' })
+    })
+
+    it('keeps a day and a month with no year together as ONE term', async () => {
+      db.$queryRawUnsafe.mockResolvedValue([])
+      const where = await whereFor('03 Sept')
+
+      // Split in two, `03` and `Sept` would each have to match a name as well, which nothing does.
+      expect(where.AND).toHaveLength(1)
+      expect(dobRange(where)).toBeUndefined()
+      expect(rawSqlAt()).toEqual({
+        sql: 'SELECT id FROM passenger WHERE deleted_at IS NULL AND ((EXTRACT(MONTH FROM date_of_birth) = $1 AND EXTRACT(DAY FROM date_of_birth) = $2))',
+        values: [9, 3],
+      })
+    })
+
+    it('reads the month name in either order', async () => {
+      db.$queryRawUnsafe.mockResolvedValue([])
+      await whereFor('Sept 03')
+
+      expect(rawSqlAt().values).toEqual([9, 3])
+    })
+
+    it('reads a day inside a named year', async () => {
+      db.$queryRawUnsafe.mockResolvedValue([])
+      await whereFor('03 2012')
+
+      expect(rawSqlAt()).toEqual({
+        sql: 'SELECT id FROM passenger WHERE deleted_at IS NULL AND ((EXTRACT(YEAR FROM date_of_birth) = $1 AND EXTRACT(DAY FROM date_of_birth) = $2))',
+        values: [2012, 3],
+      })
+    })
+
+    it('finds the person born on the third of September whatever their year', async () => {
+      const anong = travellerRow({ id: ID_WITHOUT_08, first_name: 'Anong', date_of_birth: new Date('2012-09-03T00:00:00.000Z') })
+      // The same day in another year is still a match; a different day of a different month is not.
+      const alsoSeptember = travellerRow({
+        id: 'c1e7ebca-601e-4336-8ccd-02c95606020d',
+        first_name: 'Older',
+        date_of_birth: new Date('1991-09-03T00:00:00.000Z'),
+      })
+      const october = travellerRow({
+        id: 'ab649c51-2e4d-45ca-899c-8e9e7f86824e',
+        first_name: 'October',
+        date_of_birth: new Date('2012-10-03T00:00:00.000Z'),
+      })
+      const rows = [anong, alsoSeptember, october]
+      rawAnswersWith(rows)
+
+      const where = await whereFor('03 Sept')
+
+      expect(names(rows.filter((row) => matches(where, row)))).toEqual(['Anong', 'Older'])
+    })
+
+    it('still refuses a number that cannot be a date', async () => {
+      // `0` is neither a day nor a month, `199` is too long to be either, and `32` is past the
+      // last day of the month — none may turn into a calendar part. `00` and `32` are still
+      // tried against the id, because they are valid hex; what matters is that no `EXTRACT`
+      // is ever asked for.
+      for (const term of ['0', '199', '32', '00']) {
+        db.$queryRawUnsafe.mockClear()
+        await whereFor(term)
+        const statements = db.$queryRawUnsafe.mock.calls.map((call) => (call[0] as string).replace(/\s+/g, ' '))
+        expect(statements.filter((sql) => sql.includes('EXTRACT'))).toEqual([])
+      }
+      // And `0` is a single character, so it never reaches the id either.
+      db.$queryRawUnsafe.mockClear()
+      await whereFor('0')
+      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+    })
+
+    it('still refuses a month prefix shorter than three letters', async () => {
+      db.$queryRawUnsafe.mockClear()
+      await whereFor('Ju')
+
+      // Two letters cannot separate March/May or June/July, so `Ju` is not read as July and
+      // the cast never sees a month that is not one.
+      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+    })
+
+    it('leaves a name that is also a month alone as far as the range goes', async () => {
+      // "May" is a month name, but with no year it is not a range — it stays a name term.
+      const where = await whereFor('May')
+
+      expect(dobRange(where)).toBeUndefined()
+      expect(alternativesFor(where)).toContainEqual({ first_name: ci('May') })
+    })
+  })
+
+  describe('what must not change', () => {
+    it('keeps paging, ordering and the account-holder split on the same single query', async () => {
+      rawReturnsIds([ID_WITH_08])
+
+      await service.search({ q: '08', type: 'traveller', page: 3, size: 20 })
+
+      const call = db.passenger.findMany.mock.calls[0][0]
+      expect(call.skip).toBe(40)
+      expect(call.take).toBe(20)
+      expect(call.orderBy).toEqual([{ last_name: 'asc' }, { first_name: 'asc' }, { id: 'asc' }])
+      expect((call.where as SearchWhere).NOT).toEqual({ customer: { is: { deleted_at: null } } })
+      expect(db.passenger.count.mock.calls[0][0].where).toEqual(call.where)
+    })
+
+    it('keeps one lookup per term that needs one, so every term still has to match', async () => {
+      // `Sept 08` is one partial date; `ab08` is a separate id fragment, so there are two terms
+      // and two lookups. Every term still has to match, so the two id sets intersect.
+      db.$queryRawUnsafe.mockResolvedValueOnce([{ id: ID_WITH_08 }]).mockResolvedValueOnce([])
+
+      const where = await whereFor('Sept 08 ab08')
+
+      expect(db.$queryRawUnsafe).toHaveBeenCalledTimes(2)
+      expect(where.AND).toHaveLength(2)
+      expect(alternativesFor(where)).toContainEqual({ id: { in: [ID_WITH_08] } })
+      expect(groupFor(where, 1)).toContainEqual({ id: { in: [] } })
+    })
+
+    it('asks for one lookup only, not one per term', async () => {
+      db.$queryRawUnsafe.mockClear()
+
+      // `08` needs a cast; `Ana` is a name and needs none.
+      await whereFor('08 Ana')
+
+      expect(db.$queryRawUnsafe).toHaveBeenCalledTimes(1)
+    })
+
+    it('never widens what the response exposes in order to make searching work', async () => {
+      rawAnswersWith(population)
+      db.passenger.findMany.mockResolvedValue([travellerRow({ passport_number: 'TZ0848210' })])
+
+      const result = await service.search({ q: '08', type: 'all', page: 1, size: 20 })
+
+      // The full number is what the search matched on and what the response must not carry.
+      expect(result.items[0].passportNumber).toBe('•••• 8210')
+      expect(JSON.stringify(result)).not.toContain('TZ0848210')
+    })
+
+    it('gives the account-holder route the same matching', async () => {
+      db.$queryRawUnsafe.mockResolvedValue([])
+      db.passenger.findMany.mockClear()
+
+      const where = (await service.searchAccountHolders({ q: 'Sept', page: 1, size: 20 }), db.passenger.findMany.mock.calls[0][0].where)
+
+      expect(rawSqlAt().values).toEqual([9])
+      expect(where).toMatchObject({ customer: { is: { deleted_at: null } } })
+    })
+
+    it('never returns a soft-deleted row through the cast', async () => {
+      db.$queryRawUnsafe.mockResolvedValue([])
+      await whereFor('08')
+
+      expect(rawSqlAt().sql).toContain('WHERE deleted_at IS NULL')
+    })
+  })
+
+  describe('the account-holder route, which the Account holders tab reads', () => {
+    it('matches the same partial term across every field the passenger route does', async () => {
+      // The tab calls a different URL, so the same query has to be proved on both. A change to
+      // one path that quietly narrowed the other would show up here rather than in the browser.
+      rawAnswersWith(population)
+      const anyType = await whereFor('08')
+      const where = await whereFor('08', 'accountHolder')
+      const found = population.filter((row) => matches(where, row))
+      db.passenger.findMany.mockResolvedValue(found)
+      db.passenger.count.mockResolvedValue(found.length)
+
+      const result = await service.searchAccountHolders({ q: '08', page: 1, size: 20 })
+
+      // The cast and the date parts are on this route exactly as on the passenger route — the id
+      // row, the day row, the month row, the passport row and the name row all carry `08`. Only
+      // `Pimchanok`, the account holder matched by email, survives this route's own split.
+      expect(names(population.filter((row) => matches(anyType, row)))).toEqual([
+        'Maleya',
+        'Claire',
+        'Boris',
+        'Niran',
+        'Pimchanok',
+        'An080bel',
+      ])
+      expect(result.total).toBe(1)
+      expect(result.items.map((item) => item.firstName)).toEqual(['Pimchanok'])
+    })
+
+    it('keeps the same cast statement, so the tab costs the same and cannot diverge', async () => {
+      db.$queryRawUnsafe.mockResolvedValue([])
+      await service.searchAccountHolders({ q: '08', page: 1, size: 20 })
+
+      expect(rawSqlAt().sql).toBe(
+        'SELECT id FROM passenger WHERE deleted_at IS NULL AND ((EXTRACT(DAY FROM date_of_birth) = $1) OR (EXTRACT(MONTH FROM date_of_birth) = $2) OR id::text ILIKE $3)',
+      )
+      expect(rawSqlAt().values).toEqual([8, 8, '%08%'])
+    })
+
+    it('still masks the passport, on this route as much as the other', async () => {
+      db.$queryRawUnsafe.mockResolvedValue([])
+      db.passenger.findMany.mockResolvedValue([travellerRow({ passport_number: 'TZ0848210' })])
+      db.passenger.count.mockResolvedValue(1)
+
+      const result = await service.searchAccountHolders({ q: '08', page: 1, size: 20 })
+
+      expect(result.items[0].passportNumber).toBe('•••• 8210')
+      expect(JSON.stringify(result)).not.toContain('TZ0848210')
+    })
+
+    it('reads the September abbreviation the UI renders, on this route too', async () => {
+      const anong = travellerRow({ id: ID_WITHOUT_08, first_name: 'Anong', date_of_birth: new Date('2012-09-03T00:00:00.000Z') })
+      rawAnswersWith([anong])
+      db.passenger.findMany.mockResolvedValue([anong])
+      db.passenger.count.mockResolvedValue(1)
+
+      // `03 Sept 2012` is exactly what `formatDateOfBirth` puts on screen for that person.
+      const result = await service.searchAccountHolders({ q: '03 Sept 2012', page: 1, size: 20 })
+
+      expect(result.items.map((item) => item.firstName)).toEqual(['Anong'])
+    })
   })
 })
 
