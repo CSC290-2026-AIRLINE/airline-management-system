@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common'
+import { Public } from '@backend/auth/decorators/public.decorator'
 import type { ListRoutesQueryDto } from './dto/route.dto'
 import { RouteService } from './route.service'
 
@@ -6,6 +7,8 @@ import { RouteService } from './route.service'
 export class RouteController {
   constructor(private readonly routeService: RouteService) {}
 
+  // ponytail: TEMP public, see FlightSchedulingController.listFlights.
+  @Public()
   @Get()
   list(@Query() query: ListRoutesQueryDto) {
     return this.routeService.list(query)
