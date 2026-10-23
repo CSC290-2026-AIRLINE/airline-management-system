@@ -1495,13 +1495,14 @@ CREATE TRIGGER stock_movement_no_truncate
 -- Settings and rules ------------------------------------------------------------------------------------
 
 -- Default limits for every country. Feature 8 keeps its own settings, like features 2, 4, 9 and 12.
--- Values are validated by the backend. seats_per_cabin_crew, report_minutes and release_minutes await the Feature 8
--- owner's confirmation: cabin crew per leg = ceil(seats in the aircraft layout / seats_per_cabin_crew), a duty starts
--- report_minutes before its first departure and ends release_minutes after its last arrival.
+-- Values are validated by the backend. Cabin crew per leg = ceil(seats in the aircraft layout / seats_per_cabin_crew),
+-- a duty starts report_minutes before its first departure and ends release_minutes after its last arrival, and a
+-- licence or certification shows as expiring soon from expiry_warning_days before it expires.
 CREATE TABLE crew_setting (
   key        TEXT PRIMARY KEY CHECK (key IN (
                'min_rest_hours', 'max_duty_hours', 'max_flights_per_duty', 'max_pairing_days', 'max_flight_hours_28d',
-               'min_local_crew', 'min_police_international', 'seats_per_cabin_crew', 'report_minutes', 'release_minutes')),
+               'min_local_crew', 'min_police_international', 'seats_per_cabin_crew', 'report_minutes', 'release_minutes',
+               'expiry_warning_days')),
   value      TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_by UUID REFERENCES staff (id)
@@ -1517,7 +1518,8 @@ INSERT INTO crew_setting (key, value) VALUES
   ('min_police_international', '2'),
   ('seats_per_cabin_crew', '50'),
   ('report_minutes', '60'),
-  ('release_minutes', '0');
+  ('release_minutes', '0'),
+  ('expiry_warning_days', '30');
 
 -- A destination with stricter rest or duty limits. The backend refuses a looser value on save and, when checking,
 -- applies the stricter of this row and the default (more rest, less duty), so a row can never loosen a limit,
