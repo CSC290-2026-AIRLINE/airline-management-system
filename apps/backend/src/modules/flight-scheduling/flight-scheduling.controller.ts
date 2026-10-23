@@ -3,6 +3,8 @@ import { Public } from '@backend/auth/decorators/public.decorator'
 import type { ListFlightsQueryDto } from './dto/list-flights-query.dto'
 import { FlightSchedulingService } from './flight-scheduling.service'
 
+// TEMP-NO-LOGIN: every route here is open for local testing; remove this @Public() before committing.
+@Public()
 @Controller('flight-scheduling')
 export class FlightSchedulingController {
   constructor(private readonly flightSchedulingService: FlightSchedulingService) {}
