@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from '@tanstack/react-router';
 
 export interface Aircraft {
   id: string;
@@ -86,20 +87,17 @@ export function AircraftManagementPage() {
   const [selectedAircraft, setSelectedAircraft] = useState<Aircraft | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Set Status Modal State (ใช้รูปแบบ YYYY-MM-DD เพื่อรองรับ input type="date")
   const [isSetStatusOpen, setIsSetStatusOpen] = useState<boolean>(false);
   const [modalStatus, setModalStatus] = useState<'In service' | 'In maintenance' | 'Grounded'>('In service');
   const [modalReason, setModalReason] = useState<string>('');
   const [modalStartDate, setModalStartDate] = useState<string>('2026-10-10');
   const [modalEndDate, setModalEndDate] = useState<string>('2026-10-14');
 
-  // Schedule Maintenance Modal State
   const [isScheduleOpen, setIsScheduleOpen] = useState<boolean>(false);
   const [scheduleCheckType, setScheduleCheckType] = useState<string>('A check');
   const [scheduleStart, setScheduleStart] = useState<string>('2026-10-10');
   const [scheduleEnd, setScheduleEnd] = useState<string>('2026-10-14');
 
-  // Register Aircraft Modal State
   const [isRegisterOpen, setIsRegisterOpen] = useState<boolean>(false);
   const [newTailNumber, setNewTailNumber] = useState<string>('');
   const [newModel, setNewModel] = useState<string>('A320');
@@ -246,8 +244,18 @@ export function AircraftManagementPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #ddd', paddingBottom: '12px' }}>
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Flython Ops</h2>
-          <span style={{ backgroundColor: '#e8f0fe', color: '#1a73e8', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer' }}>Fleet</span>
-          <span style={{ color: '#5f6368', cursor: 'pointer', fontSize: '14px' }}>Aircraft Types</span>
+          <Link 
+  to="/aircraft" 
+  style={{ backgroundColor: '#e8f0fe', color: '#1a73e8', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px', textDecoration: 'none' }}
+>
+  Fleet
+</Link>
+<Link 
+  to="/aircraft-types" 
+  style={{ color: '#5f6368', fontSize: '14px', textDecoration: 'none' }}
+>
+  Aircraft Types
+</Link>
           <span style={{ color: '#5f6368', cursor: 'pointer', fontSize: '14px' }}>Readiness</span>
         </div>
         <div style={{ fontSize: '13px', color: '#5f6368' }}>Staff · admin</div>
@@ -413,7 +421,6 @@ export function AircraftManagementPage() {
         </div>
       </div>
 
-      {/* Set Status Modal (เปลี่ยนช่องวันที่เป็น type="date") */}
       {isSetStatusOpen && selectedAircraft && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', width: '420px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
@@ -484,7 +491,6 @@ export function AircraftManagementPage() {
         </div>
       )}
 
-      {/* Schedule Maintenance Modal (เปลี่ยนช่องวันที่เป็น type="date") */}
       {isScheduleOpen && selectedAircraft && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', width: '420px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
@@ -545,7 +551,6 @@ export function AircraftManagementPage() {
         </div>
       )}
 
-      {/* Register Aircraft Modal (เปลี่ยนช่องวันที่ Entry into service เป็น type="date") */}
       {isRegisterOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', width: '420px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
