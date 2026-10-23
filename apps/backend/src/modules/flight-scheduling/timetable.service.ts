@@ -3,15 +3,19 @@ import { DbService } from '@backend/db/db.service'
 import { ListTimetablesQueryDto, parseTimetableBody } from './dto/timetable.dto'
 import { parseDate, parseLimit, prismaCode, UUID } from './pagination'
 
-type Row = { dep_time_local: Date; valid_from: Date; valid_to: Date }
+type Row = { dep_time_local: Date; valid_from: Date; valid_to: Date; _count?: { flight: number } }
 
 // The API speaks HH:MM and YYYY-MM-DD; Prisma hands back Dates for TIME and DATE columns.
-const view = <T extends Row>(row: T) => ({
+// `generated_flights` is how many flights were generated from the timetable; present when the query counted them.
+const view = <T extends Row>({ _count, ...row }: T) => ({
   ...row,
   dep_time_local: row.dep_time_local.toISOString().slice(11, 16),
   valid_from: row.valid_from.toISOString().slice(0, 10),
   valid_to: row.valid_to.toISOString().slice(0, 10),
+  ...(_count && { generated_flights: _count.flight }),
 })
+
+const withCount = { _count: { select: { flight: true } } } as const
 
 const parseId = (raw: string) => {
   if (!UUID.test(raw)) throw new BadRequestException('id must be a UUID')
@@ -36,6 +40,7 @@ export class TimetableService {
         flight_number: flight_number?.trim().toUpperCase() || undefined,
         ...(day && { valid_from: { lte: day }, valid_to: { gte: day } }),
       },
+      include: withCount,
       orderBy: [{ flight_number: 'asc' }, { id: 'asc' }],
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
@@ -45,7 +50,7 @@ export class TimetableService {
   }
 
   async get(id: string) {
-    const timetable = await this.db.flight_pattern.findUnique({ where: { id: parseId(id) } })
+    const timetable = await this.db.flight_pattern.findUnique({ where: { id: parseId(id) }, include: withCount })
     if (!timetable) throw new NotFoundException('timetable not found')
     return view(timetable)
   }
