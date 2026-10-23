@@ -16,6 +16,23 @@ const valid = {
 const metadata = (metatype: ArgumentMetadata['metatype']): ArgumentMetadata => ({ type: 'body', metatype })
 
 describe('Passenger profile DTO validation', () => {
+  it.each([IdentitySetupDto, CreateSavedPassengerDto])(
+    'checks today and tomorrow at the DTO boundary using real time for %p',
+    async (metatype) => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-01-01T23:59:59.000Z'))
+      try {
+        const body = { firstName: 'Anya', lastName: 'Saranpat', gender: 'F', nationality: 'th' }
+        await expect(pipe.transform({ ...body, dateOfBirth: '2026-01-01' }, metadata(metatype))).resolves.toHaveProperty(
+          'dateOfBirth',
+          '2026-01-01',
+        )
+        await expect(pipe.transform({ ...body, dateOfBirth: '2026-01-02' }, metadata(metatype))).rejects.toBeInstanceOf(BadRequestException)
+      } finally {
+        jest.useRealTimers()
+      }
+    },
+  )
+
   it.each([
     { firstName: undefined },
     { lastName: undefined },
