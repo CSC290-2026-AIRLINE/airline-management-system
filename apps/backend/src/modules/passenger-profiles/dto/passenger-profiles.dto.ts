@@ -19,6 +19,7 @@ import {
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { normalizePassportName, normalizePassportNumber } from '../identity-normalization'
+import { isValidBirthDate } from '../birth-date'
 
 export const GENDERS = ['M', 'F', 'X'] as const
 export const RELATIONSHIPS = ['spouse', 'parent', 'child', 'sibling', 'guardian', 'companion', 'other'] as const
@@ -32,12 +33,8 @@ const passportName = /^[A-Za-z][A-Za-z .'-]*$/
 @ValidatorConstraint({ name: 'birthDate', async: false })
 export class BirthDateValidator implements ValidatorConstraintInterface {
   validate(value: unknown) {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-    const [year, month, day] = value.split('-').map(Number)
-    const date = new Date(Date.UTC(year, month - 1, day))
-    return (
-      year >= 1900 && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day && date <= new Date()
-    )
+    // Use real time until the shared clock is available; replace only this source when it lands.
+    return isValidBirthDate(value, new Date())
   }
   defaultMessage() {
     return 'dateOfBirth must be a real date in YYYY-MM-DD format between 1900-01-01 and today'
