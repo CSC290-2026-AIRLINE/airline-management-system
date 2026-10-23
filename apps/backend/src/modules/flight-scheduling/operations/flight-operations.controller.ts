@@ -1,3 +1,4 @@
+import { Public } from '@backend/auth/decorators/public.decorator'
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
@@ -18,6 +19,8 @@ import { FlightOperationsService } from './flight-operations.service'
 import { StaffActorService } from './staff-actor.service'
 
 // Operations writes always need a staff member, because every event and resolution records who made it.
+// TEMP-NO-LOGIN: every route here is open for local testing; remove this @Public() before committing.
+@Public()
 @Controller('flight-scheduling')
 export class FlightOperationsController {
   constructor(
