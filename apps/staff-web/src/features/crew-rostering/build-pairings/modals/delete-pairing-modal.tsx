@@ -12,15 +12,7 @@ import { BaseModalOverlay, Button } from '../components/ui'
  * a read-only "Can't delete" message with a single OK button. Otherwise it shows
  * the standard confirm with the consequences and a `Delete pairing` button.
  */
-export function DeletePairingModal({
-  pairing,
-  onCancel,
-  onConfirm,
-}: {
-  pairing: Pairing
-  onCancel: () => void
-  onConfirm: () => void
-}) {
+export function DeletePairingModal({ pairing, onCancel, onConfirm }: { pairing: Pairing; onCancel: () => void; onConfirm: () => void }) {
   const blocked = pairing.published
   const evaluation = useMemo(() => validatePairing(pairing), [pairing])
   const days = useMemo(() => new Set(pairing.legs.map((leg) => leg.departureAt.slice(0, 10))).size, [pairing.legs])
@@ -69,10 +61,7 @@ export function DeletePairingModal({
           <span className="text-base font-bold text-primary-text">{formatRoute(evaluation.route)}</span>
           <span className="flex flex-wrap items-center gap-1.5">
             {pairing.legs.map((leg) => (
-              <span
-                key={leg.flightId}
-                className="rounded-md bg-info-bg px-2 py-1 text-[11px] font-bold text-primary"
-              >
+              <span key={leg.flightId} className="rounded-md bg-info-bg px-2 py-1 text-[11px] font-bold text-primary">
                 {leg.flightNumber}
               </span>
             ))}

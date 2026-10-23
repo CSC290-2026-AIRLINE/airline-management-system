@@ -20,6 +20,7 @@ import type {
   CommittedLeg,
   CommittedPairing,
   CrewMember,
+  CrewRole,
   IsoInstant,
   LegAssignment,
   RuleBreak,
@@ -186,11 +187,23 @@ interface Duty {
   departureAt: number
 }
 
+/**
+ * Roles the duty rules do not apply to.
+ *
+ * A police escort is booked with the station per flight rather than rostered as duty:
+ * the officer is released when the aircraft lands, and who covers the next sector is
+ * the station's booking, not this roster's. Rule 5 still counts police, because that
+ * rule is about how many officers are on the aircraft rather than how long they have
+ * been on it.
+ */
+const DUTY_RULE_EXEMPT: readonly CrewRole[] = ['police']
+
 function dutiesByMember(assignments: readonly LegAssignment[]): { member: CrewMember; duties: Duty[]; chains: Duty[][] }[] {
   const byMember = new Map<string, { member: CrewMember; duties: Duty[] }>()
   for (const assignment of assignments) {
     const window = dutyWindow(assignment.leg)
     for (const member of assignedCrew(assignment)) {
+      if (DUTY_RULE_EXEMPT.includes(member.role)) continue
       const entry = byMember.get(member.id) ?? { member, duties: [] }
       entry.duties.push({
         leg: assignment.leg,

@@ -31,6 +31,14 @@ export interface CrewMember {
   id: string
   /** Display name, e.g. `S. Kittipong`. */
   name: string
+  /**
+   * Given and family name, e.g. `Somsak Kittipong`.
+   *
+   * Optional because tables and rules use the short form everywhere it is ambiguous
+   * which of two people is meant — but a roster a crew member has to act on spells them
+   * out, because that is the name on their licence.
+   */
+  fullName?: string
   role: CrewRole
   /** Nationality badge shown beside local crew, e.g. `JP`. */
   nationality: string
