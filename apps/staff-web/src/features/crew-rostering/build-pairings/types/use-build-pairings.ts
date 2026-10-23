@@ -97,7 +97,15 @@ export function useBuildPairings(): BuildPairingsState {
       const flightNumbers = target.legs.map((leg) => leg.flightNumber)
       setPairings((current) =>
         current.map((pairing) =>
-          pairing.id === id ? { ...pairing, legs: [], deleted: true, releasedFlightIds: target.legs.map((leg) => leg.flightId) } : pairing,
+          pairing.id === id
+            ? {
+                ...pairing,
+                legs: [],
+                deleted: true,
+                releasedFlightIds: target.legs.map((leg) => leg.flightId),
+                releasedFlightNumbers: flightNumbers,
+              }
+            : pairing,
         ),
       )
       setSelectedId(null)
@@ -156,7 +164,15 @@ function isRangeInverted(params: BuildPairingParams): boolean {
 }
 
 function describeOutcome(legs: readonly FlightLeg[], base: string): string {
-  const draft: Pairing = { id: 'draft', base, legs: [...legs], deleted: false, releasedFlightIds: [], published: false }
+  const draft: Pairing = {
+    id: 'draft',
+    base,
+    legs: [...legs],
+    deleted: false,
+    releasedFlightIds: [],
+    releasedFlightNumbers: [],
+    published: false,
+  }
   const evaluation = validatePairing(draft)
   return evaluation.status === 'passed'
     ? `Valid (${describeDays(legs)}, max ${evaluation.checks[2]?.value} duty a day)`

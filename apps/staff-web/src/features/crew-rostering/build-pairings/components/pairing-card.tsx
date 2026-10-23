@@ -1,6 +1,6 @@
 import { nightStopLabel } from '../types/pairing-engine'
 import type { Pairing, PairingEvaluation } from '../types/types'
-import { StatusBadge } from './ui'
+import { StatusBadge } from '../../shared/ui'
 
 /**
  * One generated pairing in the results grid: id, route, status badge and the
@@ -27,16 +27,22 @@ export function PairingCard({
       type="button"
       onClick={onSelect}
       aria-pressed={isSelected}
-      className={`flex w-full flex-col gap-4 rounded-2xl bg-card-bg px-6 py-5 text-left transition-shadow ${
+      className={`flex w-full flex-col gap-4 rounded-2xl bg-card-bg px-4 py-4 text-left transition-shadow sm:px-6 sm:py-5 ${
         isSelected
           ? 'border-2 border-primary shadow-[0_2px_10px_rgb(15_32_62/0.12)]'
           : 'border border-border-desc/30 hover:border-primary/40'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-extrabold text-primary-text">{pairing.id}</h3>
-          <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-base font-bold text-primary-text">
+        <div className="min-w-0">
+          {/* Small screens fold the route onto the id line; wider ones stack it. */}
+          <h3 className="text-base font-extrabold text-primary-text sm:text-lg">
+            <span className="sm:mr-1.5">{pairing.id}</span>
+            <span className="text-primary/50 sm:hidden"> · </span>
+            <span className="hidden sm:inline">· </span>
+            <span className="font-bold">{routeNodes(evaluation.route)}</span>
+          </h3>
+          <p className="mt-1.5 hidden items-center gap-1.5 text-base font-bold text-primary-text sm:flex">
             {evaluation.route.map((airport, index) => (
               <span key={`${airport}-${index}`} className="flex items-center gap-1.5">
                 {index > 0 && (
@@ -52,7 +58,7 @@ export function PairingCard({
         <StatusBadge status={evaluation.status} />
       </div>
 
-      <table className="w-full border-collapse text-sm">
+      <table className="hidden w-full border-collapse text-sm sm:table">
         <thead>
           <tr className="text-left text-[11px] font-semibold tracking-wider text-primary-text/45 uppercase">
             <th scope="col" className="pb-2 font-semibold">
@@ -107,16 +113,29 @@ export function PairingCard({
   )
 }
 
+/** `BKK ➔ NRT ➔ BKK` for the inline mobile heading. */
+function routeNodes(route: readonly string[]): string {
+  return route.join(' ➔ ')
+}
+
 /** Placeholder left behind by a deleted pairing; its flights return to the unpaired pool. */
 function DeletedPairingCard({ pairing }: { pairing: Pairing }) {
+  const released = pairing.releasedFlightNumbers
   return (
-    <div className="flex min-h-[140px] w-full flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-border-desc/40 bg-white/60 px-6 py-6 text-center">
-      <h3 className="text-sm font-bold text-primary-text/70">{pairing.id} deleted</h3>
-      <p className="text-xs text-primary-text/50">
-        {pairing.releasedFlightIds.length} {pairing.releasedFlightIds.length === 1 ? 'flight is' : 'flights are'} now unpaired
+    <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl border border-border-desc/30 bg-card-bg px-4 py-4 sm:px-6 sm:py-5">
+      <h3 className="text-base font-extrabold text-primary-text/70 sm:text-lg">{pairing.id} deleted</h3>
+      <p className="text-sm font-semibold text-invalid">
+        {released.length > 0
+          ? `${listFlightNumbers(released)} ${released.length === 1 ? 'is' : 'are'} now unpaired`
+          : 'Flights are now unpaired'}
       </p>
     </div>
   )
+}
+
+/** `FD620 and FD621`, matching the notice copy in `use-build-pairings`. */
+function listFlightNumbers(numbers: readonly string[]): string {
+  return numbers.join(' and ')
 }
 
 /** Section label above the results grid, e.g. `GENERATED PAIRINGS`. */

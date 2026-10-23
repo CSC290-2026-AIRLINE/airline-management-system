@@ -79,6 +79,7 @@ export function generatePairings(flights: readonly ScheduledFlight[], base: stri
       legs,
       deleted: false,
       releasedFlightIds: [],
+      releasedFlightNumbers: [],
       // The first pairing stands in for one a published roster already uses, so
       // the "can't delete" path is reachable without a backend.
       published: pairings.length === 0,

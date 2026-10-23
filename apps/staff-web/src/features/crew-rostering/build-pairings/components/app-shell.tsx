@@ -9,7 +9,7 @@
  */
 import type { ReactNode } from 'react'
 import { formatDateRange } from '../types/format'
-import { CheckIcon, ChevronLeftIcon } from './ui'
+import { CheckIcon, ChevronLeftIcon } from '../../shared/ui'
 
 export type WizardStep = 'build-pairings' | 'assign-crew' | 'fix-publish'
 

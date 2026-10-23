@@ -7,16 +7,16 @@
  * beyond replacing the hook's internals.
  */
 import { useMemo, useState } from 'react'
-import { MOCK_ROSTER_RUN, MOCK_SIMULATION_CLOCK } from './types/mock-data'
+import { MOCK_ROSTER_RUN, MOCK_SIMULATION_CLOCK, MOCK_SIMULATION_CLOCK_SHORT } from './types/mock-data'
 import { validatePairing } from './types/pairing-engine'
 import { useBuildPairings } from './types/use-build-pairings'
 import type { FlightLeg, Pairing } from './types/types'
-import { RosterRunBadge, SidebarNav, WizardSteps } from './components/app-shell'
+import { RosterRunBadge, SidebarNav, WizardSteps, MobileTopBar } from '../shared/app-shell'
 import { BuildSettingsCard, NoPairingsEmptyState, NoSelectionEmptyState } from './components/build-settings-card'
 import { GeneratedPairingsLabel, PairingCard } from './components/pairing-card'
 import { PairingDetailInspector } from './components/pairing-detail-inspector'
-import { SummaryMetricsBar } from './components/summary-metrics-bar'
-import { AlertBanner } from './components/ui'
+import { CommitFooter, SummaryMetricsBar } from './components/summary-metrics-bar'
+import { AlertBanner } from '../shared/ui'
 import { EditLegsModal } from './modals/edit-legs-modal'
 import { DeletePairingModal } from './modals/delete-pairing-modal'
 
@@ -39,13 +39,15 @@ export function BuildPairingsPage() {
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-page-bg">
+    <div className="flex min-h-screen w-full flex-col bg-page-bg lg:flex-row">
       <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName="Administrator" />
+      <MobileTopBar simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT} userName="Administrator" activeItem="roster-runs" />
 
-      <main className="flex min-w-0 flex-1 flex-col gap-5 px-8 py-7">
+      {/* Bottom padding clears the fixed commit footer on small screens. */}
+      <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8 lg:pb-7">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase">Build pairings</h1>
+            <h1 className="text-xl font-extrabold tracking-tight text-primary-text uppercase sm:text-2xl">Build pairings</h1>
             <p className="mt-1 text-sm text-primary-text/60">
               Turn scheduled flights into pairings that start and end at base. Only valid pairings move on.
             </p>
@@ -88,8 +90,9 @@ export function BuildPairingsPage() {
             <GeneratedPairingsLabel />
 
             {/* Without a selection the cards fill a 2-up grid; with one, the
-                left column narrows to a single list beside the inspector. */}
-            <div className={`grid items-start gap-5 ${showInspector ? 'grid-cols-2' : ''}`}>
+                left column narrows to a single list beside the inspector.
+                Below `xl` the inspector stacks underneath in both cases. */}
+            <div className={`grid items-start gap-5 ${showInspector ? 'xl:grid-cols-2' : ''}`}>
               <div className={`grid content-start grid-cols-1 gap-5 ${showInspector ? '' : 'xl:grid-cols-2'}`}>
                 {state.pairings.map((pairing) => (
                   <PairingCard
@@ -122,6 +125,8 @@ export function BuildPairingsPage() {
           </>
         )}
       </main>
+
+      {state.hasGenerated && state.pairings.length > 0 && <CommitFooter metrics={state.metrics} onCommit={() => undefined} />}
 
       {editing && <EditLegsModal pairing={editing} allFlights={state.flights} onCancel={() => setEditing(null)} onSave={handleSaveLegs} />}
 

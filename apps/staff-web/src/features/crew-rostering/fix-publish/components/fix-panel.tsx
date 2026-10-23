@@ -7,7 +7,7 @@
  * on the left cannot describe the same break two different ways.
  */
 import type { ReactNode } from 'react'
-import { Button, CheckIcon, EmptyFaceIcon, InfoBox } from '../../build-pairings/components/ui'
+import { Button, CheckIcon, EmptyFaceIcon, InfoBox } from '../../shared/ui'
 import { ReplacementPicker } from './replacement-picker'
 import type { FixBreak, RosterFact } from '../types/types'
 

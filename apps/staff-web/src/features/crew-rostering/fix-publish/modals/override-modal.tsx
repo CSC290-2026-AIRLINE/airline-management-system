@@ -8,7 +8,7 @@
  * the copy names the audit log rather than implying the break is gone.
  */
 import { useState } from 'react'
-import { BaseModalOverlay, Button } from '../../build-pairings/components/ui'
+import { BaseModalOverlay, Button } from '../../shared/ui'
 import { formatFullDay, formatTime } from '../../build-pairings/types/format'
 import { breakNoun } from '../types/break-descriptions'
 import type { FixBreak, LegAssignment } from '../types/types'

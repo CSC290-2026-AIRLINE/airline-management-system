@@ -7,7 +7,7 @@
  * reasons to take somebody off, and the audit log (Feature 15) has to record which.
  */
 import { useState } from 'react'
-import { BaseModalOverlay, Button } from '../../build-pairings/components/ui'
+import { BaseModalOverlay, Button } from '../../shared/ui'
 import { formatFullDay, formatTime } from '../../build-pairings/types/format'
 import { crewOn } from '../types/break-descriptions'
 import type { CrewRole, LegAssignment } from '../types/types'

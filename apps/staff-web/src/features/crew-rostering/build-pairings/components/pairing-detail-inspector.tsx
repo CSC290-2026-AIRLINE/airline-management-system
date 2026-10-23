@@ -1,6 +1,6 @@
 import type { Pairing, PairingEvaluation } from '../types/types'
 import { formatRoute, formatTime } from '../types/format'
-import { Button, CrossIcon, CheckIcon, PencilIcon, StatusBadge, TrashIcon } from './ui'
+import { Button, CrossIcon, CheckIcon, PencilIcon, StatusBadge, TrashIcon } from '../../shared/ui'
 
 /**
  * Right-hand inspector for the selected pairing: full route, the flight

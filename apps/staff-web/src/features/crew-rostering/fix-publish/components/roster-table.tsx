@@ -8,7 +8,7 @@
  * blank, because a blank cell in a roster table reads as "nobody looked".
  */
 import type { ReactNode } from 'react'
-import { Button } from '../../build-pairings/components/ui'
+import { Button } from '../../shared/ui'
 import { formatTime } from '../../build-pairings/types/format'
 import { dayMonth } from '../types/break-descriptions'
 import { CABIN_CREW_PER_LEG } from '../../assign-crew/types/mock-data'

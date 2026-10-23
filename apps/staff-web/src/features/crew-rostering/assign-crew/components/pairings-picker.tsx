@@ -6,7 +6,7 @@
  * the same selection and call the same handlers; only the presentation differs.
  */
 import { formatDateRange, formatRoute, localDateKey, pluralise } from '../../build-pairings/types/format'
-import { Button, StatusBadge } from '../../build-pairings/components/ui'
+import { Button, StatusBadge } from '../../shared/ui'
 import type { CommittedPairing, ExcludedPairing } from '../types/types'
 
 export interface PairingsPickerProps {

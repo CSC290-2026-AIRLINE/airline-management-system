@@ -4,7 +4,7 @@
  * Auto-assign overwrites every assignment on the selected pairings, so the modal
  * spells out exactly which legs are about to be touched before anything happens.
  */
-import { BaseModalOverlay, Button } from '../../build-pairings/components/ui'
+import { BaseModalOverlay, Button } from '../../shared/ui'
 import { formatDateRange, localDateKey, pluralise } from '../../build-pairings/types/format'
 import type { CommittedPairing } from '../types/types'
 

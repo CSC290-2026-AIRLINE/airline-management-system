@@ -1,7 +1,7 @@
 import { validatePairing } from '../types/pairing-engine'
 import { formatRemoveLegDay, formatRoute, formatTime } from '../types/format'
 import type { FlightLeg, Pairing } from '../types/types'
-import { BaseModalOverlay, Button } from '../components/ui'
+import { BaseModalOverlay, Button } from '../../shared/ui'
 
 /**
  * Confirms removing one leg and spells out the consequence before it happens,

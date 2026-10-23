@@ -5,7 +5,7 @@
  * into two, because the picker is its own block of content on a phone. The fields
  * themselves are rendered once and placed differently by each layout.
  */
-import { InputField, SelectDropdown } from '../../build-pairings/components/ui'
+import { InputField, SelectDropdown } from '../../shared/ui'
 import type { AssignCrewParams } from '../types/types'
 
 export interface RosterRunFieldsProps {

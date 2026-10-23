@@ -7,7 +7,7 @@
  * counts as closed here, because it is: the point of the table is what publishing will
  * do, not what the rules say.
  */
-import { InfoBox } from '../../build-pairings/components/ui'
+import { InfoBox } from '../../shared/ui'
 import type { PublishCheck } from '../types/types'
 
 interface PublishChecksProps {
