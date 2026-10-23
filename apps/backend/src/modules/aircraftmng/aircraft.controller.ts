@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param } from '@nestjs/common';
 import { AircraftService } from './aircraft.service';
 import { CreateAircraftDto } from '../dto/create-aircraft.dto';
 import { CreateAircraftStatusDto } from '../dto/create-aircraft-status.dto';
 import { CreateAircraftMaintenanceDto } from '../dto/create-aircraft-maintenance.dto';
 import { UpdateAircraftMaintenanceDto } from '../dto/update-aircraft-maintenance.dto';
+import { CreateTurnaroundDto, UpdateTaskStatusDto } from '../dto/turnaround.dto';
+import { CreateRouteDto } from '../dto/create-route.dto'; 
 import { Public } from '../../auth/decorators/public.decorator'; 
 
 @Controller('aircraft')
@@ -23,6 +25,14 @@ export class AircraftController {
   create(@Body() createAircraftDto: CreateAircraftDto) {
     return this.aircraftService.create(createAircraftDto);
   }
+
+  @Public()
+  @Post('routes')
+  createRoute(@Body() dto: CreateRouteDto) {
+    return this.aircraftService.createRoute(dto);
+  }
+  // ----------------------------------------
+
   @Public()
   @Get(':id/status/history')
   getStatusHistory(@Param('id') id: string) {
@@ -52,6 +62,12 @@ export class AircraftController {
   createMaintenance(@Param('id') id: string, @Body() dto: CreateAircraftMaintenanceDto) {
     return this.aircraftService.createMaintenance(id, dto, this.MOCK_STAFF_ID);
   }
+  
+  @Public()
+  @Post('flights')
+  createFlight(@Body() dto: any) {
+    return this.aircraftService.createFlight(dto);
+  }
 
   @Public()
   @Put(':id/maintenance/:maintenanceId')
@@ -61,5 +77,24 @@ export class AircraftController {
     @Body() dto: UpdateAircraftMaintenanceDto
   ) {
     return this.aircraftService.updateMaintenance(id, maintenanceId, dto);
+  }
+
+  @Public()
+  @Post(':id/turnaround')
+  createTurnaround(
+    @Param('id') aircraftId: string,
+    @Body() dto: CreateTurnaroundDto,
+  ) {
+    return this.aircraftService.createTurnaround(aircraftId, dto);
+  }
+
+  @Public()
+  @Patch('turnaround/:turnaroundId/tasks/:taskType')
+  updateTurnaroundTask(
+    @Param('turnaroundId') turnaroundId: string,
+    @Param('taskType') taskType: string,
+    @Body() dto: UpdateTaskStatusDto,
+  ) {
+    return this.aircraftService.updateTurnaroundTask(turnaroundId, taskType, dto);
   }
 }

@@ -4,6 +4,8 @@ import { CreateAircraftDto } from '../dto/create-aircraft.dto';
 import { CreateAircraftStatusDto } from '../dto/create-aircraft-status.dto';
 import { CreateAircraftMaintenanceDto } from '../dto/create-aircraft-maintenance.dto';
 import { UpdateAircraftMaintenanceDto } from '../dto/update-aircraft-maintenance.dto';
+import { CreateTurnaroundDto, UpdateTaskStatusDto } from '../dto/turnaround.dto';
+import { CreateRouteDto } from '../dto/create-route.dto'; // เพิ่ม Import DTO Route
 
 @Injectable()
 export class AircraftService {
@@ -32,7 +34,6 @@ export class AircraftService {
       } as any, 
     });
   }
-
 
   async getStatusHistory(aircraftId: string) {
     return this.db.aircraft_status_period.findMany({
@@ -120,6 +121,78 @@ export class AircraftService {
     return this.db.aircraft_maintenance.update({
       where: { id: maintenanceId },
       data: dto as any,
+    });
+  }
+
+  async createFlight(dto: {
+    flight_number: string;
+    service_date: string;
+    scheduled_dep_at: string;
+    scheduled_arr_at: string;
+    dep_at?: string;
+    arr_at?: string;
+    route_id: string;
+    aircraft_id: string;
+  }) {
+    return this.db.flight.create({
+      data: {
+        flight_number: dto.flight_number,
+        service_date: new Date(dto.service_date),
+        scheduled_dep_at: new Date(dto.scheduled_dep_at),
+        scheduled_arr_at: new Date(dto.scheduled_arr_at),
+        dep_at: dto.dep_at ? new Date(dto.dep_at) : new Date(dto.scheduled_dep_at),
+        arr_at: dto.arr_at ? new Date(dto.arr_at) : new Date(dto.scheduled_arr_at),
+        route_id: dto.route_id,
+        aircraft_id: dto.aircraft_id,
+      },
+    });
+  }
+
+  async createTurnaround(aircraftId: string, dto: CreateTurnaroundDto) {
+    return this.db.aircraft_turnaround.create({
+      data: {
+        aircraft_id: aircraftId,
+        flight_id: dto.flight_id,
+        airport_code: dto.airport_code,
+        arrived_at: new Date(dto.arrived_at),
+        aircraft_turnaround_task: {
+          create: dto.tasks?.map(task => ({
+            task_type: task.task_type,
+            status: task.status || 'pending',
+          })) || [],
+        },
+      },
+      include: {
+        aircraft_turnaround_task: true,
+      },
+    });
+  }
+
+  async updateTurnaroundTask(turnaroundId: string, taskType: string, dto: UpdateTaskStatusDto) {
+    return this.db.aircraft_turnaround_task.update({
+      where: {
+        turnaround_id_task_type: {
+          turnaround_id: turnaroundId,
+          task_type: taskType,
+        }
+      },
+      data: {
+        status: dto.status,
+        started_at: dto.started_at ? new Date(dto.started_at) : undefined,
+        completed_at: dto.completed_at ? new Date(dto.completed_at) : undefined,
+      },
+    });
+  }
+
+  async createRoute(dto: CreateRouteDto) {
+    return this.db.route.create({
+      data: {
+        origin: dto.origin,
+        destination: dto.destination,
+        distance_km: Number(dto.distance_km),
+        block_time_min: Number(dto.block_time_min),
+        is_active: true,
+      },
     });
   }
 }
