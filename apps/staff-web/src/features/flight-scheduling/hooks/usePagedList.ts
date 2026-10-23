@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { useAppAuth } from '@staff-web/auth/AuthProvider'
 
 interface Page<T> {
   data: T[]
@@ -13,33 +12,41 @@ interface State<T> {
   error: string | null
 }
 
-const BASE = '/api/flight-scheduling'
+// Takes a path under the API root, like AppAuthProvider's fetchWithAuth.
+export type Fetcher = (path: string, init?: RequestInit) => Promise<Response>
 
-// Message from a Nest error body ({ message: string | string[] }), else the HTTP status.
-async function errorMessage(res: Response) {
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+export const BASE = '/api/flight-scheduling'
+
+// ponytail: TEMP plain fetch for the schedule board, whose list endpoints are public for now.
+// Pass useAppAuth().fetchWithAuth for endpoints that need sign-in.
+const publicFetch: Fetcher = (path, init) => fetch(`${API_URL}${path}`, init)
+
+// "400 Bad Request. icao_code must be 4 letters" from a Nest error body ({ error, message: string | string[] }), else the HTTP status.
+export async function errorMessage(res: Response) {
   try {
-    const body = (await res.json()) as { message?: string | string[] }
-    if (body.message) return [body.message].flat().join(', ')
+    const body = (await res.json()) as { error?: string; message?: string | string[] }
+    if (body.message) return `${res.status} ${body.error ?? 'Error'}. ${[body.message].flat().join('; ')}`
   } catch {
     // body was not JSON
   }
   return `HTTP ${res.status}`
 }
 
-// GET a cursor-paged list from the flight-scheduling API; `loadMore` appends the next page.
+// GET a cursor-paged list from the flight-scheduling API; `loadMore` appends the next page and `reload` starts over.
 // ponytail: local to this feature, no cache. Swap for TanStack Query once the Dev Leads add the shared setup.
-export function usePagedList<T>(path: string) {
-  const { fetchWithAuth } = useAppAuth()
-  const fetchRef = useRef(fetchWithAuth)
+export function usePagedList<T>(path: string, fetcher: Fetcher = publicFetch) {
+  const fetchRef = useRef(fetcher)
   useEffect(() => {
-    fetchRef.current = fetchWithAuth
+    fetchRef.current = fetcher
   })
 
   const [state, setState] = useState<State<T> | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [version, setVersion] = useState(0)
 
   async function fetchPage(cursor: string | null): Promise<Page<T>> {
-    const url = cursor ? `${BASE}${path}${path.includes('?') ? '&' : '?'}cursor=${cursor}` : `${BASE}${path}`
+    const url = `${BASE}${path}${cursor ? `${path.includes('?') ? '&' : '?'}cursor=${cursor}` : ''}`
     const res = await fetchRef.current(url)
     if (!res.ok) throw new Error(await errorMessage(res))
     return (await res.json()) as Page<T>
@@ -53,9 +60,9 @@ export function usePagedList<T>(path: string) {
     return () => {
       stale = true
     }
-    // fetchPage only reads `path` and the ref, so `path` is the whole dependency.
+    // fetchPage only reads `path` and the ref; `version` is the reload trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path])
+  }, [path, version])
 
   async function loadMore() {
     if (!state?.next) return
@@ -78,5 +85,6 @@ export function usePagedList<T>(path: string) {
     hasMore: state?.path === path && state.next !== null,
     loadingMore,
     loadMore,
+    reload: () => setVersion((v) => v + 1),
   }
 }
