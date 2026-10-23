@@ -20,7 +20,7 @@ export const BASE = '/api/flight-scheduling'
 
 // ponytail: TEMP plain fetch for the schedule board, whose list endpoints are public for now.
 // Pass useAppAuth().fetchWithAuth for endpoints that need sign-in.
-const publicFetch: Fetcher = (path, init) => fetch(`${API_URL}${path}`, init)
+export const publicFetch: Fetcher = (path, init) => fetch(`${API_URL}${path}`, init)
 
 // "400 Bad Request. icao_code must be 4 letters" from a Nest error body ({ error, message: string | string[] }), else the HTTP status.
 export async function errorMessage(res: Response) {

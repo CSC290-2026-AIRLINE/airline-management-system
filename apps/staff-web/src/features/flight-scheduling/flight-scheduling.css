@@ -1893,7 +1893,7 @@ a.fs-button-light {
     grid-area: 2 / 7 / 3 / 13;
   }
 
-  .fs-t-routes td[data-label='Partner airlines (demo)'] {
+  .fs-t-routes td[data-label='Partner airlines'] {
     grid-area: 3 / 1 / 4 / 7;
   }
 

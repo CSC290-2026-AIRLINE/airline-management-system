@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useRef, useState, type ReactNode } from 'react'
-import { MOCK_OPEN_CONFLICTS } from '../mocks/cross-feature'
+import { openConflictCount } from '../connected'
 import { useShowCongestion } from '../hooks/useShowCongestion'
 import { useTableLabels } from '../hooks/useTableLabels'
 import { TopBar } from './TopBar'
@@ -59,6 +59,7 @@ export function StaffShell({ children }: { children: ReactNode }) {
   const content = useRef<HTMLDivElement>(null)
   useTableLabels(content)
   const [showCongestion, setShowCongestion] = useShowCongestion()
+  const openConflicts = openConflictCount()
 
   return (
     <div className="fs-shell">
@@ -83,10 +84,10 @@ export function StaffShell({ children }: { children: ReactNode }) {
                     onClick={() => setOpen(false)}
                   >
                     {item.label}
-                    {item.to === '/conflicts' && (
+                    {item.to === '/conflicts' && openConflicts !== null && (
                       <>
-                        <span className="fs-nav-badge">{MOCK_OPEN_CONFLICTS}</span>
-                        <span className="fs-nav-open">· {MOCK_OPEN_CONFLICTS} open</span>
+                        <span className="fs-nav-badge">{openConflicts}</span>
+                        <span className="fs-nav-open">· {openConflicts} open</span>
                       </>
                     )}
                   </Link>

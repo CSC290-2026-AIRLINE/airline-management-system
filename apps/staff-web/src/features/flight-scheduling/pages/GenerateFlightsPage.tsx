@@ -4,7 +4,7 @@ import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { Callout } from '../components/Callout'
 import { FormField } from '../components/FormField'
 import { ListState } from '../components/ListState'
-import { MockNotice } from '../components/MockNotice'
+import { NotConnected } from '../components/NotConnected'
 import { PageHeader } from '../components/PageHeader'
 import { SelectField } from '../components/SelectField'
 import { StaffShell } from '../components/StaffShell'
@@ -15,8 +15,14 @@ import { TableWrap } from '../components/TableWrap'
 import { clockOf, formatServiceDate, minutesOf } from '../format'
 import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
-import { MOCK_AIRCRAFT, mockCheckGates, mockRequestApproval, type Approval } from '../mocks/cross-feature'
-import type { RouteRow, TimetableRow } from '../types'
+import {
+  AIRCRAFT,
+  checkGates as runGateCheck,
+  confirmApproved as sendConfirm,
+  CONNECTED,
+  requestApproval as sendApprovalRequests,
+} from '../connected'
+import type { Approval, RouteRow, TimetableRow } from '../types'
 import '../flight-scheduling.css'
 
 interface PlannedFlight {
@@ -40,7 +46,8 @@ interface Preview {
   flights: PlannedFlight[]
 }
 
-// One line of the unsaved preview. ponytail: the aircraft, check and approval columns are MOCK (F9, Person B, approval flow); the rest is real.
+// One line of the unsaved preview. The aircraft, check and approval columns and their actions are hidden until F9, the gate check and
+// the approval flow exist (see connected.ts); the preview itself is real.
 interface Row {
   key: string
   flight: string
@@ -57,6 +64,7 @@ interface Row {
   checkText: string
   approval: Approval
   answer: string
+  slots: string[] // departures the approver offered
 }
 
 const time = (local: string) => local.slice(11, 16)
@@ -133,6 +141,7 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
               checkText: '',
               approval: 'none',
               answer: '',
+              slots: [],
             })),
           )
           .sort((a, b) => a.date.localeCompare(b.date) || a.departs.localeCompare(b.departs)),
@@ -161,7 +170,13 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
         update(new Set([r.key]), () => ({ check: 'none', checkText: 'Assign an aircraft first' }))
         continue
       }
-      const result = await mockCheckGates(r.aircraft)
+      let result
+      try {
+        result = await runGateCheck(r.aircraft)
+      } catch (e) {
+        say(e instanceof Error ? e.message : String(e))
+        return
+      }
       update(new Set([r.key]), () => ({
         check: result.passed ? 'passed' : 'failed',
         checkText: result.text,
@@ -173,10 +188,19 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
 
   async function requestApproval() {
     const ready = chosen.filter((r) => r.check === 'passed')
-    const answers = await mockRequestApproval(ready.map((r) => r.origin))
+    let answers
+    try {
+      answers = await sendApprovalRequests(ready.map((r) => r.origin))
+    } catch (e) {
+      say(e instanceof Error ? e.message : String(e))
+      return
+    }
     const byKey = new Map(ready.map((r, i) => [r.key, answers[i]]))
     setRows((all) =>
-      all.map((r) => (byKey.has(r.key) ? { ...r, approval: byKey.get(r.key)!.approval, answer: byKey.get(r.key)!.text } : r)),
+      all.map((r) => {
+        const a = byKey.get(r.key)
+        return a ? { ...r, approval: a.approval, answer: a.text, slots: a.slots } : r
+      }),
     )
     const count = (a: Approval) => answers.filter((x) => x.approval === a).length
     say(
@@ -184,22 +208,27 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
     )
   }
 
-  const OFFERED_SLOTS = ['10:00', '10:30', '11:00']
-
   // The row keeps its flight time; only the departure moves, and the arrival follows from the same block time.
   function pickSlot(r: Row, slot: string) {
     const block = (minutesOf(r.arrives) - minutesOf(r.departs) + 24 * 60) % (24 * 60)
     update(new Set([r.key]), () => ({
       departs: slot,
       arrives: clockOf(minutesOf(slot) + block),
-      approval: 'approved',
-      answer: `${r.origin} slot coordinator · revision 2, ${slot} chosen`,
+      approval: 'not_requested',
+      answer: `${slot} chosen; request approval again`,
+      slots: [],
     }))
     say(`${r.flight} on ${r.date} moved to ${slot}.`)
   }
 
-  function confirmApproved() {
+  async function confirmApproved() {
     const ok = chosen.filter((r) => r.approval === 'approved')
+    try {
+      await sendConfirm(ok.map((r) => r.key))
+    } catch (e) {
+      say(e instanceof Error ? e.message : String(e))
+      return
+    }
     setConfirmed(ok)
     setRows((all) => all.filter((r) => !ok.some((o) => o.key === r.key)))
     setPicked(new Set())
@@ -207,7 +236,7 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
   }
 
   function assign() {
-    update(picked, () => ({ aircraft: assignTo, check: 'none', checkText: '', approval: 'none', answer: '' }))
+    update(picked, () => ({ aircraft: assignTo, check: 'none', checkText: '', approval: 'none', answer: '', slots: [] }))
     setAssigning(false)
   }
 
@@ -238,6 +267,7 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
       checkText: '',
       approval: 'none',
       answer: '',
+      slots: [],
     }
     setRows((all) => [...all.filter((r) => r.key !== row.key), row])
     setPreviews((p) => p ?? [])
@@ -383,10 +413,12 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
 
         {previews && (
           <>
-            <MockNotice>
-              The previewed flights are real. The aircraft list, gate checks, approval answers and the confirm step are simulated until F9,
-              Person B and the approval flow are connected.
-            </MockNotice>
+            {!(CONNECTED.aircraft && CONNECTED.gates && CONNECTED.approvals) && (
+              <NotConnected>
+                The previewed flights are real. Assigning aircraft, the gate checks, approval and confirm are hidden until feature 9, the
+                gate check and the approval flow exist.
+              </NotConnected>
+            )}
             {previews.length > 0 && (
               <Card>
                 <h2>Preview report</h2>
@@ -434,18 +466,26 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
                     {picked.size} preview {picked.size === 1 ? 'flight' : 'flights'} selected
                   </span>
                   <span className="fs-actions">
-                    <button type="button" className="fs-button" disabled={approvedCount === 0} onClick={confirmApproved}>
-                      Confirm approved ({approvedCount})
-                    </button>
-                    <button type="button" className="fs-button-light" disabled={passedCount === 0} onClick={() => void requestApproval()}>
-                      Request approval ({passedCount})
-                    </button>
-                    <button type="button" className="fs-button-light" onClick={() => void checkGates()}>
-                      Check gates ({picked.size})
-                    </button>
-                    <button type="button" className="fs-button-light" onClick={() => setAssigning(true)}>
-                      Assign aircraft…
-                    </button>
+                    {CONNECTED.approvals && (
+                      <button type="button" className="fs-button" disabled={approvedCount === 0} onClick={() => void confirmApproved()}>
+                        Confirm approved ({approvedCount})
+                      </button>
+                    )}
+                    {CONNECTED.approvals && (
+                      <button type="button" className="fs-button-light" disabled={passedCount === 0} onClick={() => void requestApproval()}>
+                        Request approval ({passedCount})
+                      </button>
+                    )}
+                    {CONNECTED.gates && (
+                      <button type="button" className="fs-button-light" onClick={() => void checkGates()}>
+                        Check gates ({picked.size})
+                      </button>
+                    )}
+                    {CONNECTED.aircraft && (
+                      <button type="button" className="fs-button-light" onClick={() => setAssigning(true)}>
+                        Assign aircraft…
+                      </button>
+                    )}
                     <button type="button" className="fs-button-light" onClick={() => discard(picked)}>
                       Discard selected
                     </button>
@@ -458,7 +498,7 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
                   <div className="fs-batch-form">
                     <SelectField label="Aircraft for all selected flights" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
                       <option value="">Choose an aircraft</option>
-                      {MOCK_AIRCRAFT.map((a) => (
+                      {AIRCRAFT.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.label}
                         </option>
@@ -479,7 +519,7 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
             {confirmed && (
               <Card>
                 <div className="fs-result-head">
-                  <h2>Confirm result (demo)</h2>
+                  <h2>Confirm result</h2>
                   <StatusPill status="ok" label={`207 Multi-Status · ${confirmed.length} ok, 0 failed`} />
                 </div>
                 <TableWrap>
@@ -500,9 +540,7 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
                           <td>
                             <StatusPill status="ok" label="OK" />
                           </td>
-                          <td>
-                            Saved as scheduled on {r.aircraft}. Approval consumed; flight.created published. (Demo: nothing was saved.)
-                          </td>
+                          <td>Saved as scheduled on {r.aircraft}. Approval consumed; flight.created published.</td>
                         </tr>
                       ))}
                     </tbody>
@@ -529,9 +567,9 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
                       <th>Date</th>
                       <th>Departs</th>
                       <th>Arrives</th>
-                      <th>Aircraft</th>
-                      <th>Check result</th>
-                      <th>Approval</th>
+                      {CONNECTED.aircraft && <th>Aircraft</th>}
+                      {CONNECTED.gates && <th>Check result</th>}
+                      {CONNECTED.approvals && <th>Approval</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -556,56 +594,62 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
                           {r.arrives}
                           {r.overnight && ' +1'}
                         </td>
-                        <td>
-                          {r.aircraft ? (
-                            MOCK_AIRCRAFT.find((a) => a.id === r.aircraft)
-                              ?.label.split(' · ')
-                              .slice(0, 2)
-                              .join(' · ')
-                          ) : (
-                            <span className="fs-to">No aircraft</span>
-                          )}
-                        </td>
-                        <td>
-                          {r.skipped ? (
-                            <span className="fs-to">Already exists, skipped</span>
-                          ) : r.check === 'none' ? (
-                            <span className="fs-to">{r.checkText || 'Not checked'}</span>
-                          ) : (
-                            <>
-                              <StatusPill
-                                status={r.check === 'passed' ? 'ok' : 'failed'}
-                                label={r.check === 'passed' ? 'Passed' : 'Failed'}
-                              />
-                              {r.check === 'failed' && <div className="fs-sub fs-sub-crit">{r.checkText}</div>}
-                            </>
-                          )}
-                        </td>
-                        <td>
-                          {r.approval === 'none' ? (
-                            <span className="fs-to">
-                              {r.check === 'failed'
-                                ? 'Not requested: fix the failing gate first'
-                                : r.aircraft
-                                  ? '—'
-                                  : 'Assign an aircraft first'}
-                            </span>
-                          ) : (
-                            <>
-                              <StatusPill status={APPROVAL_PILL[r.approval].status} label={APPROVAL_PILL[r.approval].label} />
-                              <div className="fs-sub">{r.approval === 'not_requested' ? 'Gates passed' : r.answer}</div>
-                              {r.approval === 'offered' && (
-                                <span className="fs-actions fs-start">
-                                  {OFFERED_SLOTS.map((slot) => (
-                                    <button key={slot} type="button" className="fs-button-light" onClick={() => pickSlot(r, slot)}>
-                                      {slot}
-                                    </button>
-                                  ))}
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </td>
+                        {CONNECTED.aircraft && (
+                          <td>
+                            {r.aircraft ? (
+                              AIRCRAFT.find((a) => a.id === r.aircraft)
+                                ?.label.split(' · ')
+                                .slice(0, 2)
+                                .join(' · ')
+                            ) : (
+                              <span className="fs-to">No aircraft</span>
+                            )}
+                          </td>
+                        )}
+                        {CONNECTED.gates && (
+                          <td>
+                            {r.skipped ? (
+                              <span className="fs-to">Already exists, skipped</span>
+                            ) : r.check === 'none' ? (
+                              <span className="fs-to">{r.checkText || 'Not checked'}</span>
+                            ) : (
+                              <>
+                                <StatusPill
+                                  status={r.check === 'passed' ? 'ok' : 'failed'}
+                                  label={r.check === 'passed' ? 'Passed' : 'Failed'}
+                                />
+                                {r.check === 'failed' && <div className="fs-sub fs-sub-crit">{r.checkText}</div>}
+                              </>
+                            )}
+                          </td>
+                        )}
+                        {CONNECTED.approvals && (
+                          <td>
+                            {r.approval === 'none' ? (
+                              <span className="fs-to">
+                                {r.check === 'failed'
+                                  ? 'Not requested: fix the failing gate first'
+                                  : r.aircraft
+                                    ? '—'
+                                    : 'Assign an aircraft first'}
+                              </span>
+                            ) : (
+                              <>
+                                <StatusPill status={APPROVAL_PILL[r.approval].status} label={APPROVAL_PILL[r.approval].label} />
+                                <div className="fs-sub">{r.approval === 'not_requested' ? 'Gates passed' : r.answer}</div>
+                                {r.approval === 'offered' && (
+                                  <span className="fs-actions fs-start">
+                                    {r.slots.map((slot) => (
+                                      <button key={slot} type="button" className="fs-button-light" onClick={() => pickSlot(r, slot)}>
+                                        {slot}
+                                      </button>
+                                    ))}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

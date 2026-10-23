@@ -3,7 +3,7 @@ import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { SegmentedControl } from '../components/SegmentedControl'
 import { Callout } from '../components/Callout'
 import { FormField } from '../components/FormField'
-import { MockNotice } from '../components/MockNotice'
+import { NotConnected } from '../components/NotConnected'
 import { PageHeader } from '../components/PageHeader'
 import { StaffShell } from '../components/StaffShell'
 import { Toast } from '../components/Toast'
@@ -11,6 +11,7 @@ import { Card } from '../components/Card'
 import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage } from '../hooks/usePagedList'
 import { useResource } from '../hooks/useResource'
+import { CONNECTED } from '../connected'
 import '../flight-scheduling.css'
 
 interface Saved {
@@ -25,9 +26,10 @@ interface ApiSettings {
   airline_code: string | null
 }
 
-// ponytail: MOCK. Approval mode and response delay belong to the approval flow, which has no table (flight_setting only holds the two
-// keys below); they start from the Figma values and live in memory. The holding limit and airline code are real.
-const MOCK_APPROVAL = { mode: 'Manual', delay: '0' }
+// Approval mode and response delay belong to the approval flow, which has no table yet (flight_setting only holds the two keys below),
+// so their card is hidden (see connected.ts). The holding limit and airline code are real.
+// ponytail: load these with the approval settings once they have a table.
+const APPROVAL_SETTINGS = { mode: '', delay: '' }
 
 export function SettingsPage() {
   const { fetchWithAuth } = useAppAuth()
@@ -35,7 +37,7 @@ export function SettingsPage() {
   const loaded: Saved | null = settings.data && {
     holding: settings.data.holding_limit_minutes === null ? '' : String(settings.data.holding_limit_minutes),
     airline: settings.data.airline_code ?? '',
-    ...MOCK_APPROVAL,
+    ...APPROVAL_SETTINGS,
   }
   return (
     <StaffShell>
@@ -43,9 +45,9 @@ export function SettingsPage() {
         <PageHeader title="Settings">
           Feature 2 keeps its own settings in the flight_setting table. Each value is checked for its key before it is saved.
         </PageHeader>
-        <MockNotice>
-          Approval mode and response delay are simulated until the approval flow exists. The other two settings are saved.
-        </MockNotice>
+        {!CONNECTED.approvals && (
+          <NotConnected>Approval mode and response delay are hidden until the approval flow has a table and an API.</NotConnected>
+        )}
         {settings.error && <p className="fs-error">{settings.error}</p>}
         {settings.loading && <p className="fs-sub">Loading settings…</p>}
         {loaded && <SettingsForm initial={loaded} />}
@@ -65,7 +67,7 @@ function SettingsForm({ initial }: { initial: Saved }) {
   const errors: string[] = []
   if (!/^\d+$/.test(form.holding) || Number(form.holding) < 1) errors.push('holding_limit_min must be a whole number of minutes')
   if (!/^[A-Za-z0-9]{2}$/.test(form.airline)) errors.push('airline_code must be two letters')
-  if (!/^\d+$/.test(form.delay)) errors.push('approval_response_delay_min must be a whole number of minutes')
+  if (CONNECTED.approvals && !/^\d+$/.test(form.delay)) errors.push('approval_response_delay_min must be a whole number of minutes')
   const changed = JSON.stringify(form) !== JSON.stringify(saved)
 
   async function save() {
@@ -108,23 +110,25 @@ function SettingsForm({ initial }: { initial: Saved }) {
         </div>
       </Card>
 
-      <Card>
-        <h2>Schedule approval</h2>
-        <div className="fs-setting">
-          <div>
-            <p className="fs-field-label fs-flush">Approval mode</p>
-            <SegmentedControl options={['Auto', 'Manual']} value={form.mode} onChange={(m) => setForm({ ...form, mode: m })} />
+      {CONNECTED.approvals && (
+        <Card>
+          <h2>Schedule approval</h2>
+          <div className="fs-setting">
+            <div>
+              <p className="fs-field-label fs-flush">Approval mode</p>
+              <SegmentedControl options={['Auto', 'Manual']} value={form.mode} onChange={(m) => setForm({ ...form, mode: m })} />
+            </div>
+            <p className="fs-sub">
+              Auto: the system answers by each airport's approval policy. Manual: requests wait on the Approver console until a team member
+              answers.
+            </p>
           </div>
-          <p className="fs-sub">
-            Auto: the system answers by each airport's approval policy. Manual: requests wait on the Approver console until a team member
-            answers.
-          </p>
-        </div>
-        <div className="fs-setting">
-          <FormField label="Response delay (minutes)" value={form.delay} onChange={(e) => setForm({ ...form, delay: e.target.value })} />
-          <p className="fs-sub">How long the automatic approver waits on the simulation clock before it answers. 0 answers at once.</p>
-        </div>
-      </Card>
+          <div className="fs-setting">
+            <FormField label="Response delay (minutes)" value={form.delay} onChange={(e) => setForm({ ...form, delay: e.target.value })} />
+            <p className="fs-sub">How long the automatic approver waits on the simulation clock before it answers. 0 answers at once.</p>
+          </div>
+        </Card>
+      )}
 
       {failure && (
         <Callout tone="crit">

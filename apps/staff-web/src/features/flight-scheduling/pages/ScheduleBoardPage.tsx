@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { BatchActions } from '../components/BatchActions'
 import { ListState } from '../components/ListState'
-import { MockNotice } from '../components/MockNotice'
 import { PageHeader } from '../components/PageHeader'
 import { RouteCodes } from '../components/RouteCodes'
 import { StaffShell } from '../components/StaffShell'
@@ -10,8 +9,8 @@ import { StatusPill } from '../components/StatusPill'
 import { Stats } from '../components/Stats'
 import { TableWrap } from '../components/TableWrap'
 import { capitalize } from '../format'
-import { usePagedList } from '../hooks/usePagedList'
-import { MOCK_OPEN_CONFLICTS } from '../mocks/cross-feature'
+import { publicFetch, usePagedList } from '../hooks/usePagedList'
+import { openConflictCount } from '../connected'
 import { FLIGHT_STATUSES, type FlightRow, type RouteRow } from '../types'
 import '../flight-scheduling.css'
 
@@ -31,8 +30,6 @@ export function ScheduleBoardPage() {
   const [status, setStatus] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
-  // ponytail: MOCK. What the demo batch actions changed, shown on top of the real rows; reloading the page drops it.
-  const [changes, setChanges] = useState<Record<string, Partial<FlightRow>>>({})
 
   const query = new URLSearchParams({
     ...(routeId && { route_id: routeId }),
@@ -51,7 +48,8 @@ export function ScheduleBoardPage() {
     setStatus('')
   }
 
-  const rows = flights.rows.map((f) => ({ ...f, ...changes[f.id] }))
+  const rows = flights.rows
+  const openConflicts = openConflictCount()
   const selected = rows.filter((f) => picked.has(f.id))
   const allPicked = rows.length > 0 && selected.length === rows.length
   const togglePicked = (id: string) => {
@@ -88,11 +86,6 @@ export function ScheduleBoardPage() {
           approval and you confirm them.
         </PageHeader>
 
-        <MockNotice>
-          The simulation clock, the open conflict count, the aircraft list, and the Change aircraft and Delay actions are simulated until
-          the other features are connected.
-        </MockNotice>
-
         <Stats
           items={[
             {
@@ -106,7 +99,7 @@ export function ScheduleBoardPage() {
             },
             { value: disrupted, label: 'delayed, holding or diverted' },
             { value: cancelled, label: 'cancelled' },
-            { value: MOCK_OPEN_CONFLICTS, label: 'open conflict' },
+            ...(openConflicts === null ? [] : [{ value: openConflicts, label: 'open conflict' }]),
           ]}
         />
 
@@ -158,8 +151,10 @@ export function ScheduleBoardPage() {
 
         <BatchActions
           selected={selected}
+          // ponytail: the board is outside the signed-in layout, so this is a plain fetch; move the board under routes/_authenticated/ and pass useAppAuth().fetchWithAuth once the TEMP public routes are removed.
+          fetcher={publicFetch}
           onClear={() => setPicked(new Set())}
-          onApply={(applied) => setChanges((current) => ({ ...current, ...applied }))}
+          onApply={flights.reload}
         />
 
         <ListState
