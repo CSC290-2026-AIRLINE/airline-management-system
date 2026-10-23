@@ -114,12 +114,14 @@ CREATE TABLE partner_airline (
 
 -- Network master data ------------------------------------------------------------------------------
 
+-- country is the 2-letter lower-case country code (th, jp), the format of Feature 7's nationality, so Feature 8's
+-- local-crew and international rules can compare it. Screens show the country name.
 CREATE TABLE airport (
   iata_code          TEXT PRIMARY KEY,
   icao_code          TEXT NOT NULL UNIQUE,
   name               TEXT NOT NULL,
   city               TEXT NOT NULL,
-  country            TEXT NOT NULL,
+  country            TEXT NOT NULL CHECK (country ~ '^[a-z]{2}$'),
   timezone           TEXT NOT NULL,
   min_turnaround_min INTEGER NOT NULL CHECK (min_turnaround_min > 0),
   is_active          BOOLEAN NOT NULL DEFAULT true,

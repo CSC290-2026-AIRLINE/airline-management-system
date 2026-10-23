@@ -1,5 +1,5 @@
 -- Feature 2 Iteration-03: the schedule approval tables, partner routes, the departed and arrived event types and the
--- approval settings. New tables, plus two checks that now allow more values; nothing existing is removed.
+-- approval settings. New tables, two checks that now allow more values, and a country code check on airport.
 -- Staff foreign keys are inline (staff is in the baseline); the aircraft foreign key is in the cross-module part.
 
 -- Which partner airline flies which route (a mocked list). Rebooking with a partner is offered only where a row exists.
@@ -100,7 +100,11 @@ CREATE TABLE schedule_approval_offer (
   CHECK (ends_at IS NULL OR ends_at > starts_at)
 );
 
--- Changes to existing feature 2 tables (they only allow more values) ------------------------------------
+-- Changes to existing feature 2 tables ------------------------------------------------------------------
+
+-- The 2-letter lower-case country code (th, jp), the format of Feature 7's nationality, so Feature 8's local-crew and
+-- international rules can compare it. Screens show the country name.
+ALTER TABLE airport ADD CONSTRAINT airport_country_check CHECK (country ~ '^[a-z]{2}$');
 
 -- departed and arrived are written by the simulation-clock job as system events (actor_id NULL).
 ALTER TABLE flight_event DROP CONSTRAINT flight_event_type_check,
