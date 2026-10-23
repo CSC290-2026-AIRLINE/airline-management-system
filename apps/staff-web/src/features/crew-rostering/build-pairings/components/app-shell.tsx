@@ -115,26 +115,56 @@ export function RosterRunBadge({ base, dateFrom, dateTo, status }: { base: strin
   )
 }
 
-/** Three-step wizard strip. A step behind the active one is shown as a tick. */
-export function WizardSteps({ active }: { active: WizardStep }) {
+/**
+ * Three-step wizard strip. A step behind the active one is shown as a tick.
+ *
+ * The active step is a solid navy block holding its circle and its label together, not
+ * a navy circle sitting on the band. The label is what tells the operator where they
+ * are, so it has to move into the block with the number — a tinted circle alone reads as
+ * a dot on a stepper rather than as the step you are on.
+ *
+ * `allDone` is the finished state: every step ticked and none highlighted. Step 3 needs
+ * it because publishing is the thing the strip is tracking — on a live roster there is
+ * no further step to move to, so leaving step 3 highlighted would imply work still to do.
+ */
+export function WizardSteps({ active, allDone = false }: { active: WizardStep; allDone?: boolean }) {
   const activeIndex = WIZARD_STEPS.findIndex((step) => step.id === active)
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-primary/6 px-6 py-3.5">
+    <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-band-bg px-4 py-3 sm:gap-3 sm:px-6 sm:py-4">
       {WIZARD_STEPS.map((step, index) => {
-        const done = index < activeIndex
-        const current = index === activeIndex
+        const done = allDone || index < activeIndex
+        const current = !allDone && index === activeIndex
         return (
-          <div key={step.id} className="flex items-center gap-3">
-            {index > 0 && <span className="h-px w-8 bg-primary/15" />}
-            <div className="flex items-center gap-2.5">
+          <div key={step.id} className="flex items-center gap-2 sm:gap-3">
+            {index > 0 && <span aria-hidden="true" className="h-1 w-6 shrink-0 rounded-full bg-border-desc sm:w-10" />}
+            <div
+              aria-current={current ? 'step' : undefined}
+              className={`flex items-center gap-2 rounded-2xl py-1 pr-3.5 transition-colors sm:gap-3 sm:py-1.5 sm:pr-4.5 ${
+                current ? 'bg-btn-navy pl-2 sm:pl-3' : 'pl-0.5'
+              }`}
+            >
               <span
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                  current ? 'bg-btn-navy text-white' : done ? 'bg-valid text-white' : 'bg-primary/15 text-primary/60'
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold sm:h-8 sm:w-8 sm:text-[13px] ${
+                  current
+                    ? 'bg-card-bg text-btn-navy'
+                    : done
+                      ? 'bg-valid text-white'
+                      : 'bg-card-bg/70 text-primary-text/45 ring-1 ring-border-desc/60 ring-inset'
                 }`}
               >
                 {done ? <CheckIcon className="h-3.5 w-3.5" /> : index + 1}
               </span>
-              <span className={`text-sm ${current ? 'font-bold text-primary' : 'font-medium text-primary/50'}`}>{step.label}</span>
+              {/* The three labels together are wider than a phone, and the row has no
+                  room to wrap — a stepper that wraps loses the line it is drawing. So
+                  below `sm` the numbers carry the position and the labels go; the
+                  current step still names itself further down the page. */}
+              <span
+                className={`hidden text-sm whitespace-nowrap sm:inline sm:text-base ${
+                  current ? 'font-bold text-white' : done ? 'font-semibold text-primary-text' : 'font-medium text-primary-text/45'
+                }`}
+              >
+                {step.label}
+              </span>
             </div>
           </div>
         )
