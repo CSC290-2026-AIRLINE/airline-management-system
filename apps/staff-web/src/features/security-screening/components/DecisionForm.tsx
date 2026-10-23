@@ -95,26 +95,16 @@ export function DecisionForm({
           Same person{!modal && ' · confirm match'}
         </button>
       </div>
-      <p
-        className="sq-fine-print"
-        title="Frontend prototype: notification delivery and audit integration are mocked. A review applies to this check only; other unresolved matches may still block check-in."
-      >
-        {modal ? (
-          '“Same person” denies check-in and notifies the authority. Logged in Feature 15.'
-        ) : outcome === 'flagged' ? (
-          'Clearing the flag is remembered for this identity, flight and entry, so it isn’t flagged again.'
-        ) : (
-          <>
-            <span className="sq-desktop-only">
-              Same person keeps check-in denied and notifies the authority (Feature 13). Not the same person releases the hold and check-in
-              continues.
-            </span>
-            <span className="sq-mobile-only">
-              Same person keeps check-in denied and notifies the authority. Not the same person releases the hold.
-            </span>
-          </>
-        )}
-      </p>
+      {(modal || outcome === 'flagged') && (
+        <p
+          className="sq-fine-print"
+          title="Frontend prototype: notification delivery and audit integration are mocked. A review applies to this check only; other unresolved matches may still block check-in."
+        >
+          {modal
+            ? '“Same person” denies check-in and notifies the authority. Logged in Feature 15.'
+            : 'Clearing the flag is remembered for this identity, flight and entry, so it isn’t flagged again.'}
+        </p>
+      )}
     </form>
   )
 }

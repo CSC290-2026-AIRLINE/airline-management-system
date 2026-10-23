@@ -18,19 +18,10 @@ import { Badge } from './Badge'
 import { DecisionForm, MatchNotice } from './DecisionForm'
 import { ReviewDialog } from './ReviewDialog'
 
-function InfoCard({ title, children }: { title: string; children: ReactNode }) {
+function InfoCard({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <section className="sq-panel">
-      <h3>
-        {title === 'PASSENGER (AS SCREENED) VS WATCHLIST ENTRY' ? (
-          <>
-            <span className="sq-desktop-only">{title}</span>
-            <span className="sq-mobile-only">PASSENGER VS WATCHLIST ENTRY</span>
-          </>
-        ) : (
-          title
-        )}
-      </h3>
+      {title && <h3>{title}</h3>}
       {children}
     </section>
   )
@@ -117,7 +108,6 @@ export function ScreeningReview({
       ) : (
         <div className="sq-mobile-review-heading">
           <h2>Screening Review</h2>
-          <p>Compare the passenger with the watchlist entry, then decide.</p>
         </div>
       )}
       <section className="sq-passenger-summary">
@@ -150,16 +140,7 @@ export function ScreeningReview({
       )}
       <div className="sq-review-grid">
         <div className="sq-review-information">
-          <InfoCard title="PASSENGER (AS SCREENED) VS WATCHLIST ENTRY">
-            <p className="sq-snapshot">
-              <span className="sq-desktop-only">
-                Snapshot taken at screening, not today’s profile · Name similarity {record.similarity}
-                {!decision && record.match !== 'Strong' ? ' (best of both name orders)' : ''} · Passports show the last 4 digits.
-              </span>
-              <span className="sq-mobile-only">
-                Snapshot at screening · Name similarity {record.similarity} · Passports show the last 4 digits.
-              </span>
-            </p>
+          <InfoCard>
             <table className="sq-comparison-table">
               <thead>
                 <tr>
@@ -328,14 +309,15 @@ export function ScreeningReview({
               Add a new review
             </button>
           )}
-          <p
-            className="sq-fine-print"
-            title="Frontend prototype: reviews are stored locally; notification and audit services are not connected."
-          >
-            {decision
-              ? 'Read-only. Reviews are append-only: if a decision was wrong, a new review is added and the latest one wins. Logged in Feature 15’s audit log.'
-              : 'Your decision is added as a new review (the latest wins, earlier ones are kept) and logged in Feature 15’s audit log.'}
-          </p>
+          {decision && (
+            <p
+              className="sq-fine-print"
+              title="Frontend prototype: reviews are stored locally; notification and audit services are not connected."
+            >
+              Read-only. Reviews are append-only: if a decision was wrong, a new review is added and the latest one wins. Logged in Feature
+              15’s audit log.
+            </p>
+          )}
         </aside>
       </div>
       {dialogOpen && <ReviewDialog record={record} onClose={() => setDialogOpen(false)} onSave={onSave} />}

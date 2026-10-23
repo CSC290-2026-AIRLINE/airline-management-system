@@ -46,11 +46,17 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
   const sort = sortLabels[query.sort ?? 'departure']
   const selectedId = query.review
   const [banner, setBanner] = useState('')
-  const [watchlistNotice, setWatchlistNotice] = useState(false)
   const selected = records.find((record) => record.id === selectedId)
   const counts = queueCounts(records)
   const decided = filter === 'Decided today'
   const visible = selectQueue(records, filter, search, sort)
+  const description = decided
+    ? 'Decisions made today. A read-only record; every decision is also logged in Feature 15’s audit log.'
+    : filter === 'Held'
+      ? 'Check-ins blocked until a security decision is recorded.'
+      : filter === 'Flagged'
+        ? 'Possible matches from booking or new watchlist entries. Check-in is not held.'
+        : null
   function goToQueue() {
     void navigate({ search: (previous) => ({ ...previous, review: undefined }) })
   }
@@ -67,21 +73,7 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
     void navigate({ search: { status: 'needs-review' } })
   }
   return (
-    <ScreeningShell
-      reviewing={!!selected && !latestReview(selected)}
-      held={counts.Held}
-      onQueue={goToQueue}
-      onSignOut={onSignOut}
-      onWatchlist={() => setWatchlistNotice(!watchlistNotice)}
-    >
-      {watchlistNotice && (
-        <div className="sq-info-banner" role="status">
-          Watchlist management is outside this Screening Queue prototype.
-          <button aria-label="Dismiss watchlist message" onClick={() => setWatchlistNotice(false)}>
-            ×
-          </button>
-        </div>
-      )}
+    <ScreeningShell reviewing={!!selected && !latestReview(selected)} held={counts.Held} onQueue={goToQueue} onSignOut={onSignOut}>
       {selectedId && !selected ? (
         <div className="sq-empty" role="status">
           <h2>Review not found</h2>
@@ -123,22 +115,7 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
               void navigate({ search: (previous) => ({ ...previous, sort: sortValues[value] }), resetScroll: false })
             }}
           />
-          <p className="sq-queue-description">
-            {decided ? (
-              'Decisions made today. A read-only record; every decision is also logged in Feature 15’s audit log.'
-            ) : filter === 'Held' ? (
-              'Check-ins blocked until a security decision is recorded.'
-            ) : filter === 'Flagged' ? (
-              'Possible matches from booking or new watchlist entries. Check-in is not held.'
-            ) : (
-              <>
-                <span className="sq-desktop-only">
-                  Everything waiting for a decision: held check-ins and flags from booking or new entries.
-                </span>
-                <span className="sq-mobile-only">Everything waiting for a decision: held check-ins and flags.</span>
-              </>
-            )}
-          </p>
+          {description && <p className="sq-queue-description">{description}</p>}
           <QueueList
             records={visible}
             decided={decided}
@@ -146,22 +123,6 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
               void navigate({ search: (previous) => ({ ...previous, review: id }) })
             }}
           />
-          <p className="sq-legend">
-            Held = check-in is blocked until you decide. Flagged = found at booking or after a new entry; nothing is blocked yet. Rows due
-            within 3 hours are highlighted.
-          </p>
-          <p
-            className="sq-legend"
-            title="Probable also includes a matching passport with different or missing nationality. Name similarity thresholds: Probable ≥ 0.5 with the same DOB; Weak ≥ 0.6 with different or missing DOB. Only check-in can hold; booking never blocks."
-          >
-            <span className="sq-desktop-only">
-              Strong = passport + nationality match · Probable = passport or name + date of birth match · Weak = similar name only (doesn’t
-              hold check-in)
-            </span>
-            <span className="sq-mobile-only">
-              Strong = passport + nationality · Probable = passport or name + date of birth · Weak = similar name only
-            </span>
-          </p>
         </>
       )}
     </ScreeningShell>

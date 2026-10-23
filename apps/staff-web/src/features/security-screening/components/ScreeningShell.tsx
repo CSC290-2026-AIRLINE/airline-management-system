@@ -10,14 +10,12 @@ export function ScreeningShell({
   held,
   onQueue,
   onSignOut,
-  onWatchlist,
 }: {
   children: ReactNode
   reviewing: boolean
   held: number
   onQueue: () => void
   onSignOut: () => void
-  onWatchlist: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   return (
@@ -57,15 +55,9 @@ export function ScreeningShell({
           </div>
           <div className="sq-heading sq-desktop-heading">
             <h1>{reviewing ? 'Screening review' : 'Security Screening'}</h1>
-            <p>
-              {reviewing
-                ? 'Compare the passenger with the watchlist entry, then record your decision.'
-                : 'Review possible watchlist matches or manage watchlist entries. Security role only.'}
-            </p>
           </div>
           <div className="sq-heading sq-mobile-heading">
             <h1>Security Screening</h1>
-            <p>Review possible watchlist matches or manage watchlist entries. Security role only.</p>
           </div>
           <nav className="sq-tabs" aria-label="Security screening">
             <button className="sq-tab-active" onClick={onQueue}>
@@ -76,7 +68,7 @@ export function ScreeningShell({
                 <span className="sq-desktop-only"> held</span>
               </span>
             </button>
-            <button onClick={onWatchlist}>
+            <button>
               <img src={watchlistIcon} alt="" />
               Watchlist
             </button>
