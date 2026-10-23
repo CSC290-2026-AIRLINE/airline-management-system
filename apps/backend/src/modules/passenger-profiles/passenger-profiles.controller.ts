@@ -1,67 +1,71 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes, ValidationPipe } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
-import { CreateSavedPassengerDto, ProfileUpdateDto, SavedPassengerQueryDto, UpdateSavedPassengerDto } from './dto/passenger-profiles.dto'
+import { CorrectIdentityDto } from './dto/correct-identity.dto'
+import { CreatePassengerDto } from './dto/create-passenger.dto'
+import { SearchPassengersDto } from './dto/search-passengers.dto'
 import { PassengerProfilesService } from './passenger-profiles.service'
-import { ProfileIdentityService } from './profile-identity.service'
 
-@Controller('customers')
-@UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true, forbidUnknownValues: true }))
+/**
+ * `passenger.id` is a `@db.Uuid`, so a bad one is a client error rather than a Postgres
+ * cast failure. Unversioned, because the seeded and shared ids are not all v4.
+ */
+const PASSENGER_ID_PIPE = new ParseUUIDPipe({ errorHttpStatusCode: 400 })
+
+/**
+ * Validates and normalises this module's bodies and queries. Scoped to the controller
+ * rather than registered in `main.ts`, so it cannot affect another team's routes; a
+ * controller without its own `@UsePipes` is simply unvalidated.
+ *
+ * `whitelist` drops properties the DTO does not declare, so a body cannot set fields the
+ * route never reads — `PUT .../identity` relies on that to keep the correction to the
+ * three identity-lock columns.
+ */
+const PASSENGER_VALIDATION_PIPE = new ValidationPipe({ transform: true, whitelist: true })
+
+/**
+ * Staff-facing passenger and customer-holder profiles.
+ *
+ * Mounted at `staff/passengers`, matching the Artifact's route table. The global prefix
+ * `/api` supplies the leading `/api`.
+ *
+ * The global `JwtAuthGuard` already requires a Bearer token on every route here, so there
+ * is no `@Public()` and no token handling of our own. The Artifact's `S` guard label is a
+ * staff-role check; there is no role guard in this codebase and adding one is a
+ * cross-cutting auth change, so every authenticated caller reaches these routes today.
+ * That gap is reported in the module README rather than papered over here.
+ *
+ * Because of {@link PASSENGER_VALIDATION_PIPE} the parameters below are already-validated,
+ * normalised DTO instances rather than raw request values.
+ */
+@UsePipes(PASSENGER_VALIDATION_PIPE)
+@Controller('staff/passengers')
 export class PassengerProfilesController {
-  constructor(
-    private readonly profiles: PassengerProfilesService,
-    private readonly identity: ProfileIdentityService,
-  ) {}
+  constructor(private readonly passengerProfiles: PassengerProfilesService) {}
 
-  @Post('me/sync-identity')
-  @HttpCode(200)
-  syncIdentity(@CurrentUser() user: AuthenticatedUser) {
-    return this.identity.sync(user.id)
+  @Get()
+  search(@Query() query: SearchPassengersDto) {
+    return this.passengerProfiles.search(query)
   }
 
-  @Get('me')
-  getProfile(@CurrentUser() user: AuthenticatedUser) {
-    return this.profiles.getProfile(user.id)
+  @Post()
+  @HttpCode(201)
+  create(@Body() body: CreatePassengerDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.passengerProfiles.create(body, actor)
   }
 
-  @Put('me')
-  updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() body: ProfileUpdateDto) {
-    return this.profiles.updateProfile(user.id, body)
+  @Get(':id')
+  getProfile(@Param('id', PASSENGER_ID_PIPE) id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.passengerProfiles.getProfile(id, actor)
   }
 
-  @Put('me/photo')
-  syncPhoto(@CurrentUser() user: AuthenticatedUser) {
-    return this.identity.sync(user.id)
-  }
-
-  @Delete('me/photo')
-  @HttpCode(204)
-  async removePhoto(@CurrentUser() user: AuthenticatedUser) {
-    await this.profiles.updateProfile(user.id, { profilePhotoUrl: null })
-  }
-
-  @Get('me/passengers')
-  getPassengers(@CurrentUser() user: AuthenticatedUser, @Query() query: SavedPassengerQueryDto) {
-    return this.profiles.listPassengers(user.id, query)
-  }
-
-  @Post('me/passengers')
-  createPassenger(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateSavedPassengerDto) {
-    return this.profiles.createPassenger(user.id, body)
-  }
-
-  @Put('me/passengers/:passengerId')
-  updatePassenger(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('passengerId', new ParseUUIDPipe()) passengerId: string,
-    @Body() body: UpdateSavedPassengerDto,
-  ) {
-    return this.profiles.updatePassenger(user.id, passengerId, body)
-  }
-
-  @Delete('me/passengers/:passengerId')
-  @HttpCode(204)
-  async removePassenger(@CurrentUser() user: AuthenticatedUser, @Param('passengerId', new ParseUUIDPipe()) passengerId: string) {
-    await this.profiles.removePassenger(user.id, passengerId)
+  /**
+   * The Artifact writes updates with `PUT`, not `PATCH`, so this is `PUT`. The previous
+   * `PATCH` route is gone rather than kept as an alias, so there is one documented shape
+   * for the correction rather than two that can drift.
+   */
+  @Put(':id/identity')
+  correctIdentity(@Param('id', PASSENGER_ID_PIPE) id: string, @Body() body: CorrectIdentityDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.passengerProfiles.correctIdentity(id, body, actor)
   }
 }
