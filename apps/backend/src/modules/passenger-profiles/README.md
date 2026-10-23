@@ -1,16 +1,16 @@
 # Passenger profiles API
 
-See [My Profile alignment](my-profile-alignment.md) for the supplied Feature 7 requirements, implemented customer changes, and explicit booking/screening/simulation-clock dependencies that are still unavailable. The first supplied fixes-and-suggestions text is the requirements baseline; Iteration-03 differences are not adopted. No staff UI or schema changes are included.
+See [My Profile alignment](my-profile-alignment.md) for the supplied Feature 7 requirements, implemented customer changes, and explicit booking/screening/simulation-clock dependencies that are still unavailable. The first supplied fixes-and-suggestions text is the requirements baseline; Iteration-03 differences are not adopted. This merged module includes both customer account APIs and staff lookup/correction APIs. No schema changes are included.
 
 Feature module for the customer My Profile screen and saved passengers, organized according to `docs/backend-structure.md`:
 
 ```text
 src/modules/passenger-profiles/
 ├── passenger-profiles.module.ts
-├── passenger-profiles.controller.ts
-├── passenger-profiles.service.ts
-├── passenger-profiles.service.spec.ts
-├── passenger-profiles.controller.spec.ts
+├── customer-account-profiles.controller.ts
+├── customer-account-profiles.service.ts
+├── customer-account-profiles.service.spec.ts
+├── customer-account-profiles.controller.spec.ts
 ├── profile-identity.service.ts
 ├── profile-identity.service.spec.ts
 ├── dto/
@@ -22,7 +22,15 @@ src/modules/passenger-profiles/
 
 The module is registered in AppModule. The existing global JwtAuthGuard validates Bearer access tokens. CurrentUser supplies the authenticated user ID. DbService is injected from the shared DbModule; no separate client, schema, migration, auth implementation or environment setting is added.
 
-## Routes
+## Combined module
+
+Customer account routes use CustomerAccountProfilesController/CustomerAccountProfilesService; staff routes use PassengerProfilesController/PassengerProfilesService plus CustomerProfilesController. All are registered once in PassengerProfilesModule. ProfileIdentityService and CustomerIdentityController use the customer account service, preserving the existing first-sign-in, email/photo sync and saved-passenger behavior.
+
+Staff routes and their existing behavior, limitations and validation requirements are documented in [Staff profiles API](staff-profiles.md). The staff service remains exported for its existing consumers. Customer and staff getProfile methods are separate because their identifiers, response shapes and authorization contexts differ.
+
+Both sets of DOB write DTOs now call the same pure `birthDateError(value, today)` rule and use one M/F/X constant. Staff transformations retain their existing Date/null response and error messages; customer DTOs retain their string payloads. Real time remains the fallback until the shared clock is available.
+
+## Customer routes
 
 All paths start with `/api/customers` and require an active customer account. The service resolves ownership from the authenticated user; clients never submit userId or customerId.
 

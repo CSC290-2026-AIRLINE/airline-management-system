@@ -1,0 +1,2295 @@
+/**
+ * Customer Search — F7 (staff-web).
+ *
+ * Every value here is lifted from the Figma section "Customer search"
+ * (`fzAKk0gYCYgV1Yy0xKLm3U`, node 2559:10531). The screens are 1440x1024 desktop,
+ * 393x852 mobile, with a 640x613 desktop dialog and a 340x644 mobile dialog.
+ *
+ * Tailwind, shadcn/ui and Lucide are NOT installed in this app, so the design
+ * tokens are expressed as plain custom properties and the handful of primitives
+ * (segmented control, listbox, badges) are styled here rather than pulled from a
+ * library. `Inter` and `Merriweather` are the design's typefaces; they are not
+ * bundled, so each is listed first and falls back to the closest system stack.
+ *
+ * Layout is fluid; the fixed numbers from the design (sidebar 260px, main column
+ * 1076px, 360px results card) are used as the *reference* the fluid rules track.
+ */
+
+/* ── Tokens ─────────────────────────────────────────────────────────────── */
+
+/* Declared on `:root`, not `.cs-app`: the listbox menu is portalled to `<body>`
+   so it can escape the dialog's `overflow`, and it still needs these tokens.
+   The `:has()` keeps them from leaking into routes that do not mount the
+   feature. */
+:root:has(.cs-app) {
+  --cs-bg: #f7f9fc;
+  --cs-surface: #ffffff;
+  --cs-surface-alt: #eef2f7;
+  --cs-surface-sunken: #f8fafc;
+  --cs-track: #f1f5f9;
+
+  --cs-border: #dbe2ea;
+  --cs-border-input: #cbd5e1;
+  --cs-row-border: #e2e8f0;
+
+  --cs-text: #0a1424;
+  --cs-text-2: #677287;
+  --cs-text-muted: #475569;
+  --cs-placeholder: #94a3b8;
+  --cs-on-dark: #b7c1d1;
+
+  --cs-sidebar: #14213d;
+  --cs-sidebar-item: #1c2f52;
+  --cs-sidebar-active: #2a4372;
+  --cs-accent: #f2a800;
+
+  --cs-primary: #102544;
+  --cs-link: #2563eb;
+
+  --cs-chip-blue-bg: #dbeafe;
+  --cs-chip-blue: #1d4ed8;
+  --cs-chip-grey-bg: #eef2f7;
+  --cs-chip-grey: #475569;
+
+  --cs-info-bg: #eaf2ff;
+  --cs-selected-bg: #eef4ff;
+
+  --cs-disabled-bg: #f4f6f8;
+  --cs-disabled-border: #c5cfd9;
+  --cs-disabled-text: #5a6b7b;
+
+  --cs-danger-bg: #fdecec;
+  --cs-danger: #b8171f;
+
+  --cs-shadow-pop: 0 12px 32px rgba(15, 26, 51, 0.18);
+  --cs-shadow-dialog: 0 12px 16px rgba(15, 26, 51, 0.18);
+}
+
+.cs-app {
+  display: flex;
+  min-height: 100vh;
+  background: var(--cs-bg);
+  color: var(--cs-text);
+  font-family:
+    'Inter',
+    'Inter var',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  letter-spacing: normal;
+  text-align: left;
+  /* The design is light-only; stop OS dark-mode from repainting form controls. */
+  color-scheme: light;
+}
+
+/* The design's widths (sidebar 260px, 360px results card, 640px dialog) are
+   border-box measurements. Nothing in `index.css` sets a global box-sizing, so
+   set it here and the feature's own numbers line up with the frames. */
+.cs-app,
+.cs-app *,
+.cs-overlay,
+.cs-overlay * {
+  box-sizing: border-box;
+}
+
+/* `index.css` ships a centred 1126px marketing shell. Undo it only while this
+   feature is mounted, so unrelated routes keep the shared shell untouched. */
+#root:has(.cs-app) {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-inline: 0;
+  text-align: left;
+  display: block;
+}
+
+.cs-app h1,
+.cs-app h2,
+.cs-app h3,
+.cs-app p,
+.cs-app dl,
+.cs-app dd,
+.cs-app figure {
+  margin: 0;
+}
+
+.cs-app h1,
+.cs-app h2,
+.cs-app h3 {
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--cs-text);
+  letter-spacing: normal;
+}
+
+.cs-app :focus-visible {
+  outline: 2px solid var(--cs-link);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.cs-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.cs-icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  display: block;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+
+.cs-sidebar {
+  width: 260px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px 22px 32px;
+  background: var(--cs-sidebar);
+  color: #fff;
+  transition: width 0.15s ease;
+}
+
+.cs-app.is-sidebar-collapsed .cs-sidebar {
+  width: 72px;
+  padding-inline: 16px;
+}
+
+.cs-sidebar__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cs-brand__word {
+  font-family: 'Merriweather Black', 'Merriweather', Georgia, 'Times New Roman', serif;
+  font-weight: 900;
+  font-size: 40px;
+  line-height: 1;
+  color: #fff;
+}
+
+.cs-brand__underline {
+  display: block;
+  width: 52px;
+  height: 4px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--cs-accent);
+}
+
+.cs-sidebar__collapse {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 24px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(110, 135, 178, 0.8);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cs-sidebar__eyebrow {
+  margin-top: 12px;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--cs-on-dark);
+}
+
+.cs-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.cs-nav-item {
+  display: block;
+  padding: 8px 12px;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.cs-nav-item.is-active {
+  padding-left: 14px;
+  background: var(--cs-sidebar-active);
+  border-left-color: var(--cs-accent);
+  font-weight: 600;
+}
+
+.cs-nav-item.is-disabled {
+  color: var(--cs-on-dark);
+  cursor: not-allowed;
+}
+
+.cs-nav-item__caption {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: #9fb3d9;
+}
+
+.cs-sidebar__footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cs-sidebar__user {
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.cs-sidebar__note {
+  width: 204px;
+  font-size: 12px;
+  color: var(--cs-on-dark);
+}
+
+.cs-sidebar__signout {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* ── Shell + mobile header ──────────────────────────────────────────────── */
+
+.cs-shell {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cs-mobile-header {
+  display: none;
+}
+
+.cs-main {
+  flex: 1;
+  min-width: 0;
+  padding: 54px 41px 54px 63px;
+}
+
+/* ── Page header + search ───────────────────────────────────────────────── */
+
+.cs-page {
+  max-width: 1076px;
+  margin: 0 auto;
+}
+
+.cs-page__title {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--cs-text);
+}
+
+.cs-page__subtitle {
+  margin-top: 6px;
+  font-size: 16px;
+  color: var(--cs-text-2);
+}
+
+.cs-searchbar {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.cs-searchbar__field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 14px;
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border-input);
+  border-radius: 8px;
+}
+
+.cs-searchbar__field:focus-within {
+  border: 1.5px solid var(--cs-link);
+}
+
+.cs-searchbar__icon {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cs-text-2);
+}
+
+.cs-searchbar__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--cs-text);
+}
+
+.cs-searchbar__input:focus {
+  outline: none;
+}
+
+.cs-searchbar__input::placeholder {
+  color: var(--cs-placeholder);
+}
+
+.cs-searchbar__input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.cs-searchbar__submit {
+  height: 41px;
+  padding-inline: 18px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.cs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cs-btn--primary {
+  height: 41px;
+  padding: 12px 18px;
+  background: var(--cs-primary);
+  border-color: var(--cs-primary);
+  color: #fff;
+  font-size: 14px;
+}
+
+.cs-btn--outline {
+  background: var(--cs-surface);
+  border-color: var(--cs-border-input);
+  color: var(--cs-text);
+  font-size: 13px;
+}
+
+.cs-btn--ghost {
+  background: var(--cs-disabled-bg);
+  border-color: var(--cs-disabled-border);
+  color: var(--cs-disabled-text);
+}
+
+.cs-btn--ghost.is-last,
+.cs-btn--next {
+  background: var(--cs-surface);
+  border-color: var(--cs-primary);
+  color: var(--cs-primary);
+}
+
+.cs-btn:disabled {
+  cursor: not-allowed;
+}
+
+.cs-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cs-link);
+  cursor: pointer;
+}
+
+/* ── Panels ─────────────────────────────────────────────────────────────── */
+
+.cs-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.cs-layout.is-split {
+  /* The results list tracks the design's 360px reference but is bounded, and the
+     profile beside it gets a floor. With `minmax(0, 1fr)` that column was free
+     to collapse to nothing, and in a narrow window the profile header and field
+     grid then overlapped inside a ~100px panel. Below 1200px — where 360px of
+     list, the 260px sidebar and the main padding leave too little — the split
+     stacks instead; see the 768–1199px block at the end of this file. */
+  grid-template-columns: minmax(300px, 360px) minmax(440px, 1fr);
+  align-items: start;
+}
+
+.cs-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 6px 16px 10px;
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: 12px;
+}
+
+.cs-panel--list {
+  position: sticky;
+  top: 24px;
+}
+
+.cs-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0 10px;
+}
+
+.cs-panel__title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* Title and count sit together; on mobile they read as one line, so the pair is
+   grouped here rather than relying on the title being inline (an `h2` is a block,
+   and making it inline would break the document outline). */
+.cs-panel__heading {
+  min-width: 0;
+}
+
+.cs-panel__subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--cs-text-2);
+}
+
+/* The design places the type filter inline with the list header in the
+   full-width cards, but underneath it, edge to edge, in the 360px
+   master-detail card. */
+.cs-panel--list .cs-panel__head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.cs-segmented {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--cs-track);
+  border-radius: 10px;
+}
+
+.cs-panel--list .cs-segmented {
+  align-self: stretch;
+}
+
+.cs-segmented__option {
+  flex: 1;
+  white-space: nowrap;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--cs-text-muted);
+  cursor: pointer;
+}
+
+.cs-segmented__option.is-active {
+  background: var(--cs-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 41, 0.12);
+  color: var(--cs-text);
+}
+
+/* ── Badges, avatars, pills ─────────────────────────────────────────────── */
+
+.cs-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--cs-chip-grey-bg);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cs-chip-grey);
+}
+
+.cs-avatar.is-sm {
+  width: 28px;
+  height: 28px;
+  font-size: 10px;
+}
+
+.cs-avatar.is-lg {
+  width: 60px;
+  height: 60px;
+  font-size: 19px;
+}
+
+.cs-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.cs-badge.is-accountHolder {
+  background: var(--cs-chip-blue-bg);
+  color: var(--cs-chip-blue);
+}
+
+.cs-badge.is-traveller {
+  background: var(--cs-chip-grey-bg);
+  color: var(--cs-chip-grey);
+}
+
+.cs-badge.is-relationship {
+  border-radius: 8px;
+  font-size: 11px;
+  background: var(--cs-info-bg);
+  color: var(--cs-chip-blue);
+}
+
+.cs-avatar.is-accountHolder {
+  background: var(--cs-chip-blue-bg);
+  color: var(--cs-chip-blue);
+}
+
+.cs-pill {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--cs-info-bg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--cs-link);
+}
+
+.cs-note {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--cs-info-bg);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cs-primary);
+}
+
+/* ── Desktop table ──────────────────────────────────────────────────────── */
+
+/* A four-column table cannot reflow, so the panel scrolls sideways rather than
+   crushing a column until its content paints over the next one. `width: 100%`
+   on the table plus this floor keeps the columns fluid at desktop widths and
+   switches to scrolling only when the container genuinely cannot fit them. */
+.cs-table-scroll {
+  /* Load-bearing. A flex item's `min-width: auto` resolves to its content's
+     min-content size, which for these tables is their `min-width` — so without
+     this the wrapper grows to fit the table and `overflow-x: auto` never has
+     anything to scroll, pushing the whole page sideways instead. */
+  min-width: 0;
+  overflow-x: auto;
+  /* Keeps the scrollbar from repainting the sticky first column on macOS. */
+  overscroll-behavior-x: contain;
+}
+
+.cs-table {
+  width: 100%;
+  /* The floor that makes `table-layout: fixed` safe. Columns 2–4 are fixed, so
+     NAME absorbs the remainder; without a floor a narrow panel drives that
+     remainder to ~0 and the name cell's content paints over DATE OF BIRTH.
+     `overflow-wrap` on the cells handles long values inside the column. */
+  min-width: 620px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.cs-table th {
+  height: 36px;
+  padding: 0 16px;
+  text-align: left;
+  background: var(--cs-surface-alt);
+  border-top: 1px solid var(--cs-border);
+  border-bottom: 1px solid var(--cs-border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--cs-text-2);
+}
+
+/* NAME takes the remainder — it holds the avatar, the name and the badge, so it
+   needs the most room. The other three are fixed, and sized to their longest
+   realistic value: a full date of birth, a country name, and half of a UUID
+   (which then wraps inside the column rather than past it). */
+.cs-table th:nth-child(1) {
+  width: auto;
+}
+.cs-table th:nth-child(2) {
+  width: 140px;
+}
+.cs-table th:nth-child(3) {
+  width: 130px;
+}
+.cs-table th:nth-child(4) {
+  width: 170px;
+}
+
+.cs-table__row {
+  border-bottom: 1px solid var(--cs-border);
+  cursor: pointer;
+}
+
+.cs-table__row:hover {
+  background: var(--cs-surface-sunken);
+}
+
+.cs-table td {
+  padding: 10px 16px;
+  /* `table-layout: fixed` gives each column a width whether or not its content
+     fits, so every cell has to break its own long values. Without this a UUID
+     or a long name runs past the column border and over its neighbour. */
+  overflow-wrap: anywhere;
+  /* Middle alignment: the NAME cell is taller (avatar beside a wrapped name and
+     a badge), and the other three would otherwise sit on its first baseline. */
+  vertical-align: middle;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cs-text);
+}
+
+.cs-table__name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  /* A button is a flex item's most common culprit: it refuses to shrink below
+     its content's intrinsic width by default, which pushed the name cell wider
+     than its column. `min-width: 0` lets the inner rows wrap instead. */
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-table__identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-table__name-row {
+  display: flex;
+  align-items: baseline;
+  /* The Thai name drops below the Latin one rather than sitting beside it once
+     the two together exceed the column. */
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  min-width: 0;
+}
+
+.cs-table__fullname {
+  /* Long names wrap inside the NAME column instead of overrunning it. */
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cs-text);
+}
+
+.cs-table__thai {
+  font-size: 11px;
+  color: var(--cs-text-2);
+}
+
+.cs-table__badge {
+  /* `Account holder` is two words; on one line it is the widest thing in the
+     cell, and letting it wrap doubled the height of every row. */
+  white-space: nowrap;
+}
+
+.cs-table__cell--id {
+  color: var(--cs-text-2);
+}
+
+/* ── Card list (master-detail column + mobile results) ──────────────────── */
+
+.cs-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 0 0;
+  list-style: none;
+}
+
+.cs-cards__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 62px;
+  padding: 12px;
+  border: 1px solid var(--cs-border);
+  border-radius: 10px;
+  background: var(--cs-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-cards__item:hover {
+  background: var(--cs-surface-sunken);
+}
+
+.cs-cards__item.is-selected {
+  background: var(--cs-selected-bg);
+  border: 1.5px solid var(--cs-link);
+}
+
+.cs-cards__identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cs-cards__name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cs-cards__fullname {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cs-text);
+}
+
+.cs-cards__thai {
+  font-size: 11px;
+  color: var(--cs-text-2);
+}
+
+.cs-cards__meta {
+  font-size: 12px;
+  color: var(--cs-text-2);
+}
+
+.cs-cards__chevron {
+  font-size: 16px;
+  color: var(--cs-placeholder);
+}
+
+/* ── Detail ─────────────────────────────────────────────────────────────── */
+
+.cs-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 28px;
+}
+
+.cs-detail__back {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cs-detail__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  /* The READ ONLY pill and the close button move to their own line rather than
+     sitting on top of the name when the panel is narrow. */
+  flex-wrap: wrap;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--cs-border);
+}
+
+.cs-detail__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* `flex-basis` sets the width the heading would *like*; below it, the wrap
+     above hands the rest of the row to the pill and the close button. */
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.cs-detail__name {
+  /* A long name or a Thai name without spaces breaks inside the heading rather
+     than pushing the row wider than the panel. */
+  overflow-wrap: anywhere;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.cs-detail__thai {
+  margin-left: 8px;
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--cs-text-2);
+}
+
+.cs-detail__meta {
+  display: flex;
+  align-items: center;
+  /* The Customer ID line is long, so it wraps rather than overlapping the pill. */
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cs-detail__meta-text {
+  /* A UUID has no break opportunity until `anywhere` supplies one. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--cs-text-2);
+}
+
+.cs-detail__close {
+  display: grid;
+  place-items: center;
+  /* Keeps the button beside the pill when the heading wraps below them. */
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 18px;
+  color: var(--cs-text-2);
+  cursor: pointer;
+}
+
+.cs-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cs-detail__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* Keeps the "Correct identity" button beside the heading where it fits and
+     below it where it does not, rather than overlapping it. */
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.cs-detail__section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--cs-text-2);
+}
+
+/* Two columns while each is wide enough for a full value such as an email
+   address, one below that. `auto-fit` + `minmax` is what makes this responsive
+   to the *panel* rather than to the viewport: the panel is the narrower box in
+   the split layout, so a viewport media query cannot see the squeeze. */
+.cs-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  column-gap: 32px;
+  row-gap: 16px;
+}
+
+.cs-detail__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--cs-text-2);
+}
+
+.cs-detail__value {
+  margin-top: 4px;
+  /* Same reason as the table cells: `auto-fit` gives the column a width whether
+     or not the value fits, so long values break rather than overrun. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--cs-text);
+}
+
+.cs-relations,
+.cs-linked {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cs-relations-table {
+  width: 100%;
+  /* Five columns of names, dates and nationalities do not fit the narrow profile
+     panel, and the wrapper around this table scrolls it sideways instead.
+     Fixed layout gives NAME a width decided here rather than one derived from
+     whatever the longest name happens to be, so the column wraps at a stable
+     point and never widens into Relationship. Column widths are below. */
+  min-width: 620px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* NAME takes what is left; the other four are sized for their widest content —
+   an uppercase header, or the value/badge it holds. Actions is wide enough that
+   "View" and its chevron stay on one line. */
+.cs-relations-table th:nth-child(2),
+.cs-relations-table td:nth-child(2) {
+  width: 122px;
+}
+
+.cs-relations-table th:nth-child(3),
+.cs-relations-table td:nth-child(3) {
+  width: 128px;
+}
+
+.cs-relations-table th:nth-child(4),
+.cs-relations-table td:nth-child(4) {
+  width: 118px;
+}
+
+.cs-relations-table th:nth-child(5),
+.cs-relations-table td:nth-child(5) {
+  width: 84px;
+}
+
+.cs-relations-table th {
+  height: 38px;
+  padding: 0 14px;
+  text-align: left;
+  background: var(--cs-surface-alt);
+  border-bottom: 1px solid var(--cs-border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--cs-text-2);
+}
+
+.cs-relations-table td {
+  height: 49px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--cs-border);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.cs-relations-table__row {
+  cursor: pointer;
+}
+
+.cs-relations-table__row:hover {
+  background: var(--cs-surface-sunken);
+}
+
+.cs-relations-table__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  color: var(--cs-text);
+  cursor: pointer;
+  /* A button is inline-block and centred by the UA stylesheet, so a name that
+     fits shrinks to its own width and looks left-aligned while one that wraps
+     fills the cell and centres both lines. Pinning it left makes every name
+     start at the same edge of the column. */
+  text-align: left;
+  /* Names are user data and may arrive as a single long unbroken token, which
+     under fixed layout would otherwise run under the next column. */
+  overflow-wrap: anywhere;
+}
+
+.cs-relations-table__action {
+  text-align: right;
+}
+
+.cs-relations__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--cs-border);
+  border-radius: 10px;
+  background: var(--cs-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-relations__name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cs-linked__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--cs-border);
+  border-radius: 10px;
+  background: var(--cs-surface-sunken);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-linked__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-linked__name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cs-linked__meta {
+  font-size: 12px;
+  color: var(--cs-text-2);
+}
+
+.cs-linked__open {
+  cursor: default;
+  font-size: 13px;
+}
+
+/* ── Pager ──────────────────────────────────────────────────────────────── */
+
+.cs-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* Below the width where the range and the controls fit on one line, the
+     controls wrap as one block rather than breaking apart or overflowing. */
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 12px 0;
+  margin-top: 6px;
+}
+
+.cs-pagination__range {
+  font-size: 13px;
+  color: var(--cs-text-2);
+}
+
+/* One flex row: `wrap` keeps all five parts together as a group when there is
+   room, and stacks them inside the group when there is not. */
+.cs-pagination__controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cs-pagination__page {
+  /* Keeps "Page 1 of 161" on one line — it must not break mid-number or be
+     squeezed into the Next button. */
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cs-primary);
+}
+
+.cs-rows {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cs-rows__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--cs-text-2);
+}
+
+/* Sized and bordered to match the design's dropdown rather than the browser's
+   default, and given the same 8px radius and 38px height as the buttons beside
+   it so the five pager controls read as one row. */
+.cs-select select {
+  appearance: none;
+  height: 38px;
+  min-width: 72px;
+  padding: 0 32px 0 12px;
+  border: 1px solid var(--cs-border-input);
+  border-radius: 8px;
+  background-color: var(--cs-surface);
+  /* The design draws a caret inside the control; `appearance: none` removes the
+     native one, so it is supplied here as a background image. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 6l4.5 4.5L12.5 6' stroke='%23677287' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  font: inherit;
+  font-size: 13px;
+  color: var(--cs-primary);
+  cursor: pointer;
+}
+
+.cs-select select:focus-visible {
+  outline: 2px solid var(--cs-link);
+  outline-offset: 2px;
+}
+
+/* ── Empty / loading ────────────────────────────────────────────────────── */
+
+.cs-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 64px 24px;
+  text-align: center;
+}
+
+.cs-empty__badge {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--cs-danger-bg);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--cs-danger);
+}
+
+.cs-empty__title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.cs-empty__hint {
+  font-size: 14px;
+  color: var(--cs-text-2);
+}
+
+.cs-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.cs-skeleton__row {
+  height: 59px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--cs-surface-alt) 25%, var(--cs-track) 37%, var(--cs-surface-alt) 63%);
+  background-size: 400% 100%;
+  animation: cs-skeleton-sweep 1.4s ease infinite;
+}
+
+@keyframes cs-skeleton-sweep {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-skeleton__row {
+    animation: none;
+  }
+}
+
+/* ── Dialog ─────────────────────────────────────────────────────────────── */
+
+.cs-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.cs-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(15, 26, 51, 0.55);
+  cursor: default;
+}
+
+.cs-dialog {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border-input);
+  border-radius: 12px;
+  box-shadow: var(--cs-shadow-dialog);
+}
+
+.cs-dialog__header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 26px 28px 0;
+}
+
+.cs-dialog__title {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.cs-dialog__subtitle {
+  font-size: 13px;
+  color: var(--cs-text-2);
+}
+
+.cs-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 28px;
+}
+
+.cs-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 4px 28px 26px;
+}
+
+.cs-dialog__footer .cs-btn {
+  height: 42px;
+  padding: 0 18px;
+  font-size: 13px;
+}
+
+.cs-dialog .cs-note {
+  background: var(--cs-track);
+  color: var(--cs-text-2);
+  font-weight: 400;
+}
+
+/* Comparison table */
+.cs-correct {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--cs-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.cs-correct thead th {
+  height: 38px;
+  padding: 0 16px;
+  text-align: left;
+  background: var(--cs-track);
+  border-bottom: 1px solid var(--cs-border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--cs-text-2);
+}
+
+.cs-correct tbody tr + tr th,
+.cs-correct tbody tr + tr td {
+  border-top: 1px solid var(--cs-row-border);
+}
+
+.cs-correct tbody th,
+.cs-correct tbody td {
+  padding: 10px 16px;
+  vertical-align: middle;
+}
+
+.cs-correct tbody th {
+  width: 150px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--cs-text-2);
+}
+
+.cs-correct tbody td {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.cs-correct tbody td:last-child {
+  width: 208px;
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+
+.cs-input,
+.cs-textarea {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--cs-border-input);
+  border-radius: 8px;
+  background: var(--cs-surface);
+  font: inherit;
+  font-size: 13px;
+  color: var(--cs-text);
+}
+
+.cs-textarea {
+  height: 76px;
+  min-height: 76px;
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.cs-input::placeholder,
+.cs-textarea::placeholder {
+  color: #8a96a8;
+}
+
+.cs-input:focus,
+.cs-textarea:focus {
+  outline: none;
+  border: 1.5px solid var(--cs-primary);
+}
+
+.cs-input.is-invalid,
+.cs-textarea.is-invalid {
+  border-color: var(--cs-danger);
+}
+
+.cs-dialog__reason {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cs-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cs-text);
+}
+
+.cs-field-error {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cs-danger);
+}
+
+.cs-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--cs-text);
+  cursor: pointer;
+}
+
+.cs-check input {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--cs-placeholder);
+  border-radius: 4px;
+  background: var(--cs-surface);
+  cursor: pointer;
+}
+
+.cs-check input:checked {
+  background: var(--cs-primary);
+  border-color: var(--cs-primary);
+}
+
+.cs-check input:checked::after {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 8px;
+  margin: 1px 0 0 4px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(43deg);
+}
+
+/* ── Listbox select ─────────────────────────────────────────────────────── */
+
+.cs-selectfield {
+  position: relative;
+}
+
+.cs-selectfield__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--cs-border-input);
+  border-radius: 8px;
+  background: var(--cs-surface);
+  font: inherit;
+  font-size: 13px;
+  color: var(--cs-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cs-selectfield__trigger:hover {
+  border-color: var(--cs-placeholder);
+}
+
+.cs-selectfield__trigger.is-invalid {
+  border-color: var(--cs-danger);
+}
+
+.cs-selectfield__caret {
+  font-size: 13px;
+  color: var(--cs-text-2);
+}
+
+.cs-selectfield__caret.is-open {
+  transform: rotate(180deg);
+}
+
+/* Portalled to `<body>` and positioned from the trigger's viewport rect, so it
+   is not clipped by the dialog's `overflow-y: auto`. Above the overlay's z-index
+   so the menu floats over the dialog the way the design shows it. The wrapper
+   owns the box so the filter input can sit outside the `role="listbox"` while
+   still scrolling with it. */
+.cs-selectfield__menu.is-portal {
+  position: fixed;
+  z-index: 60;
+  top: auto;
+  left: auto;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: 10px;
+  box-shadow: var(--cs-shadow-pop);
+}
+
+.cs-selectfield__filter {
+  flex: none;
+  height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--cs-border);
+  background: var(--cs-surface);
+  font: inherit;
+  font-size: 13px;
+  color: var(--cs-text);
+}
+
+.cs-selectfield__filter:focus-visible {
+  outline: 2px solid var(--cs-primary);
+  outline-offset: -2px;
+}
+
+.cs-selectfield__empty {
+  margin: 0;
+  padding: 12px 10px;
+  font-size: 13px;
+  color: var(--cs-text-2);
+}
+
+.cs-selectfield__list {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  min-width: 208px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: 10px;
+  box-shadow: var(--cs-shadow-pop);
+}
+
+/* Inside the portalled wrapper the list is the scrolling region; the wrapper
+   keeps the border, radius and shadow. */
+.cs-selectfield__menu .cs-selectfield__list {
+  position: static;
+  z-index: auto;
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cs-selectfield__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--cs-text);
+  cursor: pointer;
+}
+
+.cs-selectfield__option.is-active {
+  background: var(--cs-info-bg);
+  font-weight: 600;
+}
+
+.cs-selectfield__check {
+  flex: none;
+  width: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cs-primary);
+}
+
+.cs-selectfield__option:not([aria-selected='true']) .cs-selectfield__check {
+  opacity: 0;
+}
+
+/* ── Mobile ─────────────────────────────────────────────────────────────── */
+
+.cs-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  background: var(--cs-sidebar);
+  color: #fff;
+  overflow-y: auto;
+}
+
+.cs-drawer__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* This wordmark is an `<h2>`, and the heading reset at `.cs-app h2` (specificity
+   0,1,1) hands it the inherited sans and a dark body colour — both outrank a
+   bare class selector, so the descendant selector is what makes this rule win.
+   That puts the drawer on the same stack as the desktop sidebar's
+   `.cs-brand__word`: no webfont is loaded for either, so both resolve to Georgia
+   today and would pick up Merriweather if it is ever added. `font-size` and
+   `line-height` were never at risk — the reset sets neither — but they stay here
+   so the wordmark is described in one place. */
+.cs-app .cs-drawer__brand {
+  font-family: 'Merriweather Black', 'Merriweather', Georgia, 'Times New Roman', serif;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+}
+
+.cs-drawer__underline {
+  display: block;
+  width: 52px;
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 2px;
+  background: var(--cs-accent);
+}
+
+.cs-drawer__close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--cs-sidebar-active);
+  font-size: 18px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.cs-drawer__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.cs-drawer__nav .cs-nav-item {
+  padding: 12px 12px 12px 16px;
+  background: var(--cs-sidebar-item);
+  border-left: 0;
+  font-size: 15px;
+}
+
+.cs-drawer__nav .cs-nav-item.is-active {
+  background: var(--cs-sidebar-item);
+  border-left: 0;
+}
+
+.cs-drawer__footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 24px;
+}
+
+.cs-drawer__user {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.cs-drawer__role {
+  font-size: 12px;
+  color: var(--cs-on-dark);
+}
+
+.cs-drawer__signout {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  .cs-sidebar {
+    display: none;
+  }
+
+  /* Compact mobile header. `box-sizing: border-box` means the content box is
+     `height` less the vertical padding and border, so the menu button has to fit
+     inside what is left — 52 − 14 − 2 = 36px. The previous 64/10/44 combination
+     left a 42px box for a 44px button, which spilled outside the header. */
+  .cs-mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    height: 52px;
+    margin: 10px 16px 0;
+    padding: 7px 8px 7px 12px;
+    background: var(--cs-surface);
+    border: 1px solid #e5e9f0;
+    border-radius: 10px;
+  }
+
+  .cs-mobile-header__brand {
+    display: flex;
+    align-items: center;
+    /* Without this the wordmark refuses to shrink and pushes the badge and the
+       menu button off the right edge at narrow widths. */
+    min-width: 0;
+    /* The brand takes the slack, which parks the badge and the menu button
+       together against the right edge as the design shows them. */
+    flex: 1;
+  }
+
+  .cs-mobile-header__badge {
+    flex: none;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: #fff4cc;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: 0.3px;
+    color: #6b4503;
+    /* The badge sits beside the menu button and must not wrap onto a second line. */
+    white-space: nowrap;
+  }
+
+  .cs-mobile-header__brand .cs-brand__word {
+    font-size: 20px;
+    color: var(--cs-primary);
+  }
+
+  .cs-mobile-header__brand .cs-brand__underline {
+    display: none;
+  }
+
+  /* `flex: none` is load-bearing: without it the 36px button is a shrinkable flex
+     item, and a long wordmark would squeeze it out of shape. */
+  .cs-mobile-header__menu {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 9px;
+    background: var(--cs-primary);
+    font-size: 16px;
+    color: #fff;
+    cursor: pointer;
+  }
+
+  /* Matches the header's own side margin, so the heading's left edge lines up
+     with the wordmark rather than sitting further in. */
+  .cs-main {
+    padding: 12px 16px 20px;
+  }
+
+  .cs-page__title {
+    font-size: 19px;
+  }
+
+  /* The mobile copy is three clauses long, so it is given room to wrap over a
+     couple of lines. `overflow-wrap` is the guard for any single long token; the
+     width itself is bounded by `.cs-page`, so it cannot push the layout wider. */
+  .cs-page__subtitle {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.45;
+    overflow-wrap: break-word;
+  }
+
+  .cs-searchbar {
+    margin-top: 12px;
+  }
+
+  .cs-searchbar__field {
+    height: 40px;
+    padding: 0 10px;
+  }
+
+  .cs-searchbar__input {
+    font-size: 13px;
+  }
+
+  .cs-searchbar__submit {
+    display: none;
+  }
+
+  .cs-layout,
+  .cs-layout.is-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cs-panel {
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  .cs-panel__head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 4px 0 10px;
+  }
+
+  .cs-panel__title {
+    font-size: 13px;
+  }
+
+  /* Mobile reads as one line: `All people · 1,284`. The title and the count are
+     laid out as a row rather than relying on the `h2` becoming inline, and the
+     count is bold to match the title. `nowrap` keeps a long count from dropping
+     onto its own line. */
+  .cs-panel__heading {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .cs-panel__subtitle {
+    margin-top: 0;
+    font-weight: 700;
+    color: var(--cs-text);
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  .cs-panel--list {
+    position: static;
+  }
+
+  .cs-segmented {
+    align-self: stretch;
+    margin-bottom: 10px;
+  }
+
+  .cs-segmented__option {
+    font-size: 13px;
+    padding: 7px 10px;
+  }
+
+  .cs-cards__item {
+    min-height: 64px;
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .cs-cards .cs-avatar {
+    width: 38px;
+    height: 38px;
+    font-size: 12px;
+  }
+
+  .cs-cards .cs-badge {
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .cs-pagination {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  /* Detail — Figma "Mobile · Customer search: Customer detail" (2557:17085),
+     393px frame with 14px between blocks.
+
+     The design draws `Card / Customer` (2557:17094) as ONE card: 14px radius,
+     1px #dbe2ea border, 16px padding, holding the name row and then the six
+     field rows. Here the header and the field block are two sibling elements,
+     so they are styled as two halves of one card — the header keeps the top
+     corners and no bottom border, the section it is followed by keeps the
+     bottom corners and supplies the rule between them. `.cs-detail`'s own gap
+     is zeroed for the same reason: a gap would tear the halves apart. */
+  .cs-detail {
+    gap: 0;
+    padding: 0;
+  }
+
+  .cs-detail__back {
+    margin-bottom: 10px;
+  }
+
+  .cs-detail__header,
+  .cs-detail__section {
+    padding: 16px;
+    border: 1px solid var(--cs-border);
+    background: var(--cs-surface);
+  }
+
+  .cs-detail__section {
+    gap: 8px;
+    margin-top: 14px;
+    border-radius: 14px;
+  }
+
+  .cs-detail__header {
+    align-items: center;
+    gap: 12px;
+    /* The card's 16px padding, then the design's 10px gap before the first
+       field's rule. */
+    padding-bottom: 10px;
+    border-radius: 14px 14px 0 0;
+    border-bottom: 0;
+  }
+
+  /* The first section completes the header's card rather than starting one, so
+     it drops its own top margin and square top corners. The sibling selector
+     outranks the plain `.cs-detail__section` rule above.
+
+     Its gap goes to zero because the heading below is only hidden, not removed:
+     the empty box is still a flex child, and its 8px would land on top of the
+     10px the header already reserves. */
+  .cs-detail__header + .cs-detail__section {
+    margin-top: 0;
+    padding-top: 0;
+    border-radius: 0 0 14px 14px;
+    gap: 0;
+  }
+
+  /* In that first card the name already says whose details these are, so the
+     design drops the section heading. Only the title goes: a traveller's
+     "Correct identity" action shares this header and has to survive. */
+  .cs-detail__header + .cs-detail__section .cs-detail__section-title {
+    display: none;
+  }
+
+  /* The traveller card is the one with an action in that heading, and with the
+     gap gone it needs its own room above the button and above the fields. */
+  .cs-detail__header + .cs-detail__section:has(.cs-btn) .cs-detail__section-head,
+  .cs-detail__header + .cs-detail__section:has(.cs-btn) .cs-detail__grid {
+    margin-top: 12px;
+  }
+
+  /* Avatar: 48px, #dbeafe, initials in 15.36px bold #1d4ed8. The radius in the
+     design (24px on a 48px box) is a circle, which `.cs-avatar` already is. */
+  .cs-detail__header .cs-avatar.is-lg {
+    width: 48px;
+    height: 48px;
+    font-size: 15px;
+  }
+
+  .cs-detail__heading {
+    gap: 3px;
+  }
+
+  .cs-detail__name {
+    font-size: 16px;
+    line-height: 1.3;
+    overflow-wrap: break-word;
+  }
+
+  .cs-detail__thai {
+    margin-left: 0;
+    font-size: 13px;
+  }
+
+  .cs-detail__meta {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* "Account holder" wraps onto two lines inside a flex row otherwise, which
+     doubled the height of the name block. */
+  .cs-detail__meta .cs-badge {
+    flex: none;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  /* The account-holder card carries no Customer ID line and no READ ONLY chip.
+     The traveller card keeps its chip, which `:has()` on the badge picks out. */
+  .cs-detail__meta-text {
+    display: none;
+  }
+
+  .cs-detail__header:has(.cs-badge.is-accountHolder) .cs-pill {
+    display: none;
+  }
+
+  .cs-detail__grid {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0;
+  }
+
+  /* Field rows: label left at a fixed 100px, value beside it, hairline above.
+     The design pins the value flush left in the space the label leaves — the
+     spacer after it is what pushes nothing anywhere — so the value is not
+     right-aligned here either. */
+  .cs-detail__field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--cs-border);
+  }
+
+  .cs-detail__field:last-child {
+    border-bottom: 0;
+  }
+
+  .cs-detail__label {
+    flex: none;
+    width: 100px;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--cs-text-2);
+  }
+
+  .cs-detail__value {
+    flex: 1;
+    margin-top: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cs-text);
+    /* At 320px a long email has ~156px here. `min-width: 0` plus `anywhere`
+       wrapping is what stops it overflowing instead of scrolling the page. */
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* SAVED TRAVELLERS (2557:17129): 14px radius, 16px padding, 8px between the
+     heading and each row. The rows carry no rules of their own. */
+  .cs-detail__section-title {
+    font-size: 10px;
+    letter-spacing: 0;
+    color: var(--cs-text-2);
+  }
+
+  .cs-relations__item {
+    padding: 8px 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  .cs-relations .cs-avatar.is-sm {
+    width: 30px;
+    height: 30px;
+    font-size: 10px;
+  }
+
+  .cs-relations__name {
+    font-size: 13px;
+    /* The design sets `whitespace-nowrap`, which a long name would turn into a
+       sideways scroll. `min-width: 0` lets the flex item shrink instead; long
+       single tokens still break rather than pushing the row wide. */
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+
+  .cs-relations .cs-badge.is-relationship {
+    flex: none;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  /* The design's chevron is an 18px #677287 `›`. */
+  .cs-relations__chevron {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    color: var(--cs-text-2);
+  }
+
+  /* The design closes the profile with a plain muted 12px line, not a filled
+     note, and lets it wrap rather than truncating. */
+  .cs-detail .cs-note {
+    margin-top: 14px;
+    padding: 0;
+    background: none;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--cs-text-2);
+    overflow-wrap: break-word;
+  }
+
+  /* Dialog becomes a near-full-width card, still centred, not a bottom sheet. */
+  .cs-overlay {
+    padding: 12px;
+  }
+
+  .cs-dialog {
+    border-radius: 14px;
+  }
+
+  .cs-dialog__header {
+    padding: 22px 20px 0;
+  }
+
+  .cs-dialog__title {
+    font-size: 19px;
+  }
+
+  .cs-dialog__body {
+    gap: 14px;
+    padding: 14px 20px;
+  }
+
+  .cs-dialog__footer {
+    gap: 10px;
+    padding: 0 20px 22px;
+  }
+
+  .cs-dialog__footer .cs-btn {
+    flex: 1;
+  }
+
+  .cs-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .cs-fields__row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .cs-fields__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .cs-fields__label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cs-text);
+  }
+
+  .cs-fields__now {
+    font-size: 12px;
+    color: var(--cs-text-2);
+  }
+
+  .cs-overlay.is-sheet .cs-input,
+  .cs-overlay.is-sheet .cs-selectfield__trigger {
+    height: 42px;
+    font-size: 14px;
+  }
+
+  .cs-selectfield__option {
+    height: 40px;
+    font-size: 14px;
+  }
+
+  /* Empty state */
+  .cs-empty {
+    gap: 8px;
+    padding: 36px 16px;
+    background: var(--cs-surface);
+    border: 1px solid var(--cs-border);
+    border-radius: 14px;
+  }
+
+  .cs-empty__badge {
+    width: 52px;
+    height: 52px;
+    font-size: 16px;
+  }
+
+  .cs-empty__title {
+    font-size: 15px;
+  }
+
+  .cs-empty__hint {
+    font-size: 12px;
+    max-width: 280px;
+  }
+}
+
+/* Two-column grids collapse before the table does, on tablet widths. */
+/* Below this the split cannot hold both floors: 300px of list plus 440px of
+   profile is 740px, and the 260px sidebar and the main padding take a further
+   ~104px on top. Rather than let the profile be squeezed until its header and
+   fields overlap, the panels stack and the profile gets the full column. */
+@media (max-width: 1279px) {
+  .cs-layout.is-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The 767px rules are already compact, so they apply unchanged at 320, 375 and
+   390. This only tightens the side margins on the narrowest phones, where 16px
+   either side starts to crowd the wordmark and badge. */
+@media (max-width: 360px) {
+  .cs-mobile-header {
+    margin: 8px 12px 0;
+    padding: 7px 6px 7px 10px;
+  }
+
+  .cs-mobile-header__brand .cs-brand__word {
+    font-size: 18px;
+  }
+
+  .cs-main {
+    padding: 10px 12px 18px;
+  }
+
+  /* The filter box follows the mobile trigger height so the two read as one control. */
+  .cs-overlay.is-sheet .cs-selectfield__filter {
+    height: 42px;
+    font-size: 14px;
+  }
+}

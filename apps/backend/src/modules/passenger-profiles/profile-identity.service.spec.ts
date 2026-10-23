@@ -3,7 +3,7 @@ import { ConflictException, ForbiddenException, ServiceUnavailableException } fr
 import { createClerkClient } from '@clerk/backend'
 import type { EnvConfig } from '@backend/config/env.validation'
 import { DbService } from '@backend/db/db.service'
-import { PassengerProfilesService } from './passenger-profiles.service'
+import { CustomerAccountProfilesService } from './customer-account-profiles.service'
 import { ProfileIdentityService } from './profile-identity.service'
 
 jest.mock('@clerk/backend', () => ({ createClerkClient: jest.fn() }))
@@ -41,7 +41,7 @@ describe('ProfileIdentityService', () => {
     service = new ProfileIdentityService(
       db as unknown as DbService,
       { get: jest.fn().mockReturnValue('test-only') } as unknown as ConfigService<EnvConfig, true>,
-      { getProfile } as unknown as PassengerProfilesService,
+      { getProfile } as unknown as CustomerAccountProfilesService,
     )
   })
   it('fetches the owner from the customer Clerk app and atomically persists only the verified primary email and real image', async () => {

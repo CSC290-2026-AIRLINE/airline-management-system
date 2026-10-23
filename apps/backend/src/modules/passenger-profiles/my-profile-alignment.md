@@ -1,5 +1,7 @@
 # Feature 7: My Profile alignment
 
+หลัง merge ฝั่ง staff: module เดียวลงทะเบียน customer account APIs และ staff search/create/correct APIs ร่วมกัน โดยย้าย service/controller ของ customer ไปใช้ชื่อ CustomerAccountProfilesService/Controller เพื่อไม่ให้ getProfile คนละ contract ชนกัน การทำงาน First sign-in, My Profile และ email/photo sync เดิมยังอยู่ครบ กฎ DOB และค่า M/F/X ใช้ร่วมกัน ส่วนขอบเขตเดิมด้านล่างบันทึกงาน customer ก่อน merge ดู staff-profiles.md สำหรับ contract และข้อจำกัดของ staff
+
 เทียบกับเอกสาร “Feature 7 (customer and passenger profiles, security screening): fixes and suggestions” ที่ผู้ใช้ส่งให้ โดยจำกัดงานที่หน้า My Profile, Edit Profile, Saved Passengers และ API ฝั่ง customer ที่หน้านี้ใช้ ไม่เพิ่มหน้า staff, watchlist หรือ screening queue และไม่รัน proposed SQL แทน migration กลาง
 
 ## ส่วนที่ตรงแล้วและสิ่งที่ปรับ
