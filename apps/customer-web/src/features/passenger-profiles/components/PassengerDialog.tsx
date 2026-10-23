@@ -3,6 +3,7 @@ import ProfileDialog from '@customer-web/features/passenger-profiles/components/
 import BirthDateInput from '@customer-web/features/passenger-profiles/components/BirthDateInput'
 import { birthDateLabel, type Passenger } from '@customer-web/features/passenger-profiles/profile-context'
 import { errorMessage, nationalityOptions, nationalityCode, nationalityLabel } from '../profile-api'
+import { parseBirthDateInput } from '../birth-date'
 
 const relationships = ['Spouse', 'Parent', 'Child', 'Sibling', 'Guardian', 'Companion', 'Other']
 
@@ -47,24 +48,12 @@ export default function PassengerDialog({
     }
     let dateOfBirth = passenger?.dateOfBirth ?? ''
     if (!passenger) {
-      const parts = /^(\d{2})\s*\/\s*(\d{2})\s*\/\s*(\d{4})$/.exec(draft.dateOfBirth.trim())
-      if (!parts) {
-        setError('Enter the date of birth as DD / MM / YYYY.')
+      const birthDate = parseBirthDateInput(draft.dateOfBirth, new Date())
+      if (birthDate.error) {
+        setError(birthDate.error)
         return
       }
-      const [, day, month, year] = parts
-      const date = new Date(Number(year), Number(month) - 1, Number(day))
-      if (
-        Number(year) < 1900 ||
-        date.getFullYear() !== Number(year) ||
-        date.getMonth() !== Number(month) - 1 ||
-        date.getDate() !== Number(day) ||
-        date > new Date()
-      ) {
-        setError('Enter a valid date of birth in the past.')
-        return
-      }
-      dateOfBirth = `${year}-${month}-${day}`
+      dateOfBirth = birthDate.dateOfBirth
     }
     const firstName = draft.firstName.trim()
     const lastName = draft.lastName.trim()

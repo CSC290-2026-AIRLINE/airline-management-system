@@ -3,6 +3,7 @@ import { useUser } from '@clerk/clerk-react'
 import CustomerNavigation from '../components/CustomerNavigation'
 import BirthDateInput from '../components/BirthDateInput'
 import NationalitySelect from '../components/NationalitySelect'
+import { parseBirthDateInput } from '../birth-date'
 import { birthDateLabel, useProfile } from '../profile-context'
 import { errorMessage, genderCodes, nationalityCode } from '../profile-api'
 
@@ -25,21 +26,9 @@ export default function FirstSignInPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (busy) return
-    const match = /^(\d{2})\s*\/\s*(\d{2})\s*\/\s*(\d{4})$/.exec(draft.dateOfBirth.trim())
-    if (!match) {
-      setError('Enter your date of birth as DD / MM / YYYY.')
-      return
-    }
-    const [, day, month, year] = match
-    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
-    if (
-      Number(year) < 1900 ||
-      date.getUTCFullYear() !== Number(year) ||
-      date.getUTCMonth() !== Number(month) - 1 ||
-      date.getUTCDate() !== Number(day) ||
-      date > new Date()
-    ) {
-      setError('Enter a real date of birth from 1900 through today.')
+    const birthDate = parseBirthDateInput(draft.dateOfBirth, new Date())
+    if (birthDate.error) {
+      setError(birthDate.error)
       return
     }
     setBusy(true)
@@ -48,7 +37,7 @@ export default function FirstSignInPage() {
       await completeIdentitySetup({
         firstName: draft.firstName.trim(),
         lastName: draft.lastName.trim(),
-        dateOfBirth: `${year}-${month}-${day}`,
+        dateOfBirth: birthDate.dateOfBirth,
         gender: draft.gender,
         nationality: draft.nationality,
       })
