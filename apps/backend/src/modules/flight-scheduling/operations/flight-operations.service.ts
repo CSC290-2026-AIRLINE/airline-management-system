@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Inject,
   Injectable,
   InternalServerErrorException,
@@ -8,7 +9,15 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import type { AircraftChangeInput, CancelInput, DelayInput, DivertInput, HoldInput, RescheduleInput } from '../dto/operations.dto'
+import type {
+  AircraftChangeInput,
+  BatchDelayInput,
+  CancelInput,
+  DelayInput,
+  DivertInput,
+  HoldInput,
+  RescheduleInput,
+} from '../dto/operations.dto'
 import { prismaCode, UUID } from '../pagination'
 import { SettingsService } from '../settings.service'
 import { AircraftFeasibilityService, assertGatesPass } from './aircraft-feasibility.service'
@@ -102,6 +111,34 @@ export class FlightOperationsService {
       })
       return this.commit(tx, flight, event, actorId, { dep_at: event.columns.new_dep_at!, arr_at: event.columns.new_arr_at! })
     })
+  }
+
+  /** Delays each flight in departure order. One failure never blocks the others; the caller answers 207 with every outcome. */
+  async batchDelay(input: BatchDelayInput, actorId: string) {
+    const rows = await this.db.flight.findMany({
+      where: { id: { in: input.flight_ids } },
+      orderBy: { dep_at: 'asc' },
+      select: { id: true },
+    })
+    const known = new Set(rows.map((r) => r.id))
+    const results: { flight_id: string; status: number; result?: OperationResult; error?: unknown }[] = input.flight_ids
+      .filter((id) => !known.has(id))
+      .map((flight_id) => ({ flight_id, status: 404, error: 'Flight not found' }))
+    // Sequential on purpose: a later flight of the same aircraft sees the earlier delay (cascade check, aircraft lock).
+    for (const { id } of rows) {
+      try {
+        results.push({ flight_id: id, status: 200, result: await this.delay(id, input, actorId) })
+      } catch (e) {
+        if (!(e instanceof HttpException)) throw e
+        results.push({ flight_id: id, status: e.getStatus(), error: e.getResponse() })
+      }
+    }
+    return { results }
+  }
+
+  /** Active partner airlines, for rebooking a cancelled flight. Which partner flies which route needs partner_airline_route. */
+  listPartnerAirlines() {
+    return this.db.partner_airline.findMany({ where: { is_active: true }, orderBy: { code: 'asc' }, select: { code: true, name: true } })
   }
 
   /** Diversion keeps the route and sets actual_destination; later flights then start from the wrong airport. */
