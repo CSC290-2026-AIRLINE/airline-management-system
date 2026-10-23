@@ -157,6 +157,14 @@ describe('TimetableService', () => {
       })
     })
 
+    it('counts the flights generated from each timetable', async () => {
+      db.flight_pattern.findMany.mockResolvedValue([{ ...row, _count: { flight: 4 } }])
+      const result = await service.list({})
+      expect(db.flight_pattern.findMany.mock.calls[0][0]).toMatchObject({ include: { _count: { select: { flight: true } } } })
+      expect(result.data[0]).toMatchObject({ generated_flights: 4 })
+      expect(result.data[0]).not.toHaveProperty('_count')
+    })
+
     it.each([{ route_id: 'x' }, { cursor: 'x' }, { valid_on: '2026-02-30' }, { limit: '0' }])('rejects %j', async (query) => {
       await expect(service.list(query)).rejects.toBeInstanceOf(BadRequestException)
     })
