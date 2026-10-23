@@ -12,7 +12,7 @@ import { AircraftTypeModule } from './modules/aircraft_type/aircraft-type.module
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     DbModule,
-    AuthModule, //comment if want to test
+    //AuthModule, //comment if want to test
     AircraftModule,
     AircraftTypeModule,
   ],
