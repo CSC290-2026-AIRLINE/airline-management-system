@@ -29,7 +29,7 @@ export class ApiError extends Error {
   }
 }
 
-/** A row from `GET /api/passengers`. Dates arrive as ISO strings over JSON. */
+/** A row from `GET /api/staff/passengers` or `GET /api/staff/customers`. Dates arrive as ISO strings over JSON. */
 export interface PassengerSummaryResponse {
   id: string
   type: 'accountHolder' | 'traveller'
@@ -53,7 +53,7 @@ export interface PassengerLinkResponse {
   person: PassengerSummaryResponse
 }
 
-/** The response of `GET /api/passengers/:id`. */
+/** The response of `GET /api/staff/passengers/:id` and `GET /api/staff/customers/:id`. */
 export interface PassengerProfileResponse extends PassengerSummaryResponse {
   profilePhotoUrl: string | null
   savedTravellers: PassengerLinkResponse[]
@@ -68,19 +68,14 @@ export interface SearchPassengersResponse {
 }
 
 /**
- * The `PATCH` body. The API restates the whole identity record rather than
- * accepting a partial patch, so every field must be sent.
+ * The `PUT` body. Only the three identity-lock columns are correctable — the Artifact
+ * scopes a correction to date of birth, gender and nationality — so names, local
+ * spellings and the passport are not sent.
  */
 export interface CorrectIdentityBody {
-  firstName: string
-  lastName: string
-  localFirstName: string | null
-  localLastName: string | null
-  /** `yyyy-mm-dd`, not the ISO timestamp the GET responses use. */
   dateOfBirth: string | null
   gender: Gender | null
   nationality: string | null
-  passportNumber: string | null
   reason: string
   confirm: true
 }
@@ -140,18 +135,39 @@ const API_TYPE: Record<PersonFilter, PassengerSummaryResponse['type'] | 'all'> =
   traveller: 'traveller',
 }
 
+/**
+ * Which of the Artifact's two detail routes to read.
+ *
+ * The Account holders tab is served by `/api/staff/customers`, so a profile opened from it is
+ * read from `/api/staff/customers/:id`. Everything else — the All and Travellers tabs, and a
+ * deep link straight to `?person=…` where the tab is not known to match — reads the passenger
+ * route, which answers for a holder as well as a traveller. That fallback is why a cold link to
+ * an account holder still resolves instead of 404ing.
+ */
+export type ProfileScope = 'accountHolder' | 'passenger'
+
 function buildQuery(params: SearchPeopleParams): string {
   const query = new URLSearchParams()
   query.set('q', params.q)
-  query.set('type', API_TYPE[params.type])
   query.set('page', String(params.page))
   query.set('size', String(params.size))
+  // `GET /api/staff/customers` only ever answers with account holders, so it takes no `type` —
+  // sending one is not possible, and a `type` there would be ignored rather than rejected.
+  if (params.type !== 'account-holder') {
+    query.set('type', API_TYPE[params.type])
+  }
   return query.toString()
+}
+
+/** The list route for the current tab. The Account holders tab has a route of its own. */
+function listUrl(params: SearchPeopleParams): string {
+  const base = params.type === 'account-holder' ? '/api/staff/customers' : '/api/staff/passengers'
+  return `${base}?${buildQuery(params)}`
 }
 
 export interface CustomerSearchApi {
   searchPeople: (params: SearchPeopleParams, signal?: AbortSignal) => Promise<SearchPassengersResponse>
-  fetchPerson: (id: string, signal?: AbortSignal) => Promise<PassengerProfileResponse>
+  fetchPerson: (id: string, scope: ProfileScope, signal?: AbortSignal) => Promise<PassengerProfileResponse>
   correctIdentity: (id: string, body: CorrectIdentityBody) => Promise<PassengerSummaryResponse>
 }
 
@@ -179,15 +195,17 @@ export function useCustomerSearchApi(): CustomerSearchApi {
   return useMemo<CustomerSearchApi>(
     () => ({
       searchPeople(params, signal) {
-        return readJson<SearchPassengersResponse>(latest.current(`/api/passengers?${buildQuery(params)}`, { signal }))
+        return readJson<SearchPassengersResponse>(latest.current(listUrl(params), { signal }))
       },
-      fetchPerson(id, signal) {
-        return readJson<PassengerProfileResponse>(latest.current(`/api/passengers/${id}`, { signal }))
+      fetchPerson(id, scope, signal) {
+        const base = scope === 'accountHolder' ? '/api/staff/customers' : '/api/staff/passengers'
+        return readJson<PassengerProfileResponse>(latest.current(`${base}/${id}`, { signal }))
       },
       correctIdentity(id, body) {
+        // `PUT`, not `PATCH`: the Feature 7 Artifact writes updates with PUT.
         return readJson<PassengerSummaryResponse>(
-          latest.current(`/api/passengers/${id}/identity`, {
-            method: 'PATCH',
+          latest.current(`/api/staff/passengers/${id}/identity`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
           }),

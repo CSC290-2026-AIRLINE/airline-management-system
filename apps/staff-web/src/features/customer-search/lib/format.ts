@@ -12,6 +12,9 @@ import type { Gender, Person } from '../types'
 /** What every field renders when the value is missing. Matches the design's em dash. */
 export const EM_DASH = '—'
 
+/** The leading marker the API puts on a masked passport number. */
+const MASK_PREFIX = '••••'
+
 const dateFormatter = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 const monthYearFormatter = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' })
 
@@ -136,9 +139,18 @@ export function parseInputDate(value: string): string | null {
   return `${year}-${pad(month)}-${pad(day)}`
 }
 
-/** Always renders the last four digits only; the full number never reaches the DOM. */
+/**
+ * Renders a passport number as its last four characters.
+ *
+ * The API already masks the number (the Feature 7 Artifact requires the API to mask it
+ * "for non-security staff", and no security role exists to except), so what arrives here
+ * is already `•••• 1234`. Masking again on an already-masked value would be harmless but
+ * misleading, so an incoming mask is passed through and this is the fallback that keeps
+ * the full number out of the DOM if a response ever arrives unmasked.
+ */
 export function maskPassport(passportNumber: string | null): string {
-  return passportNumber ? `•••• ${passportNumber.slice(-4)}` : EM_DASH
+  if (!passportNumber) return EM_DASH
+  return passportNumber.startsWith(MASK_PREFIX) ? passportNumber : `${MASK_PREFIX} ${passportNumber.slice(-4)}`
 }
 
 export function genderLabel(gender: Gender | null): string {

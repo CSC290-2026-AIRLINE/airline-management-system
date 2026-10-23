@@ -63,7 +63,7 @@ function asSize(value: unknown): number | undefined {
  * An absent search param. TanStack Router drops an omitted key, but a `null` that
  * survived serialisation in an older link comes back as the *string* `"null"`,
  * which is truthy — treating that as a person id would make the app request
- * `/api/passengers/null` and get a 400.
+ * `/api/staff/passengers/null` and get a 400.
  */
 function asId(value: unknown): string | null {
   return typeof value === 'string' && value !== '' && value !== 'null' && value !== 'undefined' ? value : null

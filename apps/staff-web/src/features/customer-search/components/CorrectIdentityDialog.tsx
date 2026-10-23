@@ -11,7 +11,7 @@ import { Select } from './Select'
  * the same fields as a bottom sheet. Both share this form and its validation.
  *
  * The dialog only reports the *edits* it made. The page merges them with the
- * person's current record, because `PATCH /api/passengers/:id/identity` restates
+ * person's current record, because `PUT /api/staff/passengers/:id/identity` restates
  * the whole identity rather than accepting a partial patch.
  */
 
@@ -35,7 +35,7 @@ const REASON_MIN_LENGTH = 10
 interface CorrectIdentityDialogProps {
   person: Person
   variant: 'desktop' | 'mobile'
-  /** True while the PATCH is in flight; the form is disabled until it settles. */
+  /** True while the save is in flight; the form is disabled until it settles. */
   saving?: boolean
   /** A failed save, surfaced here so the dialog stays open with the input intact. */
   saveError?: string | null

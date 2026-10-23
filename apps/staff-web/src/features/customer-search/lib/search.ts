@@ -1,7 +1,7 @@
 /**
  * Pagination for the Customer Search lists.
  *
- * Filtering, sorting and slicing now happen in `GET /api/passengers` — this
+ * Filtering, sorting and slicing now happen in `GET /api/staff/passengers` — this
  * module only reshapes the server's answer into the `Page` the pagination bar
  * renders, so the bar is unchanged from the design.
  */

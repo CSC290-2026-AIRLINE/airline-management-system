@@ -62,11 +62,24 @@ mock and no fallback: with the backend down the screens show the error state.
 `AuthProvider.fetchWithAuth`, so the Bearer token and its single automatic
 refresh are the platform's, never this feature's:
 
-| Call                                   | Used for                                                                   |
-| -------------------------------------- | -------------------------------------------------------------------------- |
-| `GET /api/passengers?q&type&page&size` | the results list, with server-side filter, surname ordering and pagination |
-| `GET /api/passengers/:id`              | the open profile and its linked people                                     |
-| `PATCH /api/passengers/:id/identity`   | "Save correction"                                                          |
+| Call                                         | Used for                                                 |
+| -------------------------------------------- | -------------------------------------------------------- |
+| `GET /api/staff/customers?q&page&size`       | the results list on the Account holders tab              |
+| `GET /api/staff/passengers?q&type&page&size` | the results list on the All and Travellers tabs          |
+| `GET /api/staff/customers/:id`               | the open profile, when the Account holders tab opened it |
+| `GET /api/staff/passengers/:id`              | the open profile in every other case                     |
+| `PUT /api/staff/passengers/:id/identity`     | "Save correction"                                        |
+
+The Artifact lists account-holder reads as their own routes, so the Account holders tab calls
+`GET /api/staff/customers` rather than filtering `GET /api/staff/passengers?type=accountHolder`.
+That route takes no `type` — it only ever answers with account holders — and it applies the
+same search rules, ordering and paging as the passenger list, so the tab behaves identically.
+
+Both detail routes take the **passenger id**, and both answer with the same shape, so the
+Account holders tab reads its profiles from `/api/staff/customers/:id` and everything else from
+`/api/staff/passengers/:id`. The passenger route answers for a holder as well as a traveller,
+which is what makes the fallback safe: a deep link to `?person=…` whose tab does not match the
+person still resolves instead of `404`.
 
 `lib/person.ts` maps the wire responses onto this feature's `Person`. Nullability
 is preserved rather than defaulted, so "not on record" renders as an em dash
@@ -75,13 +88,33 @@ it only reshapes the server's slice into the `Page` the pagination bar renders.
 
 Two consequences worth knowing:
 
-- **The `PATCH` body is a full restatement, not a partial patch.** The dialog
-  reports only the fields the staff member edited; `CustomerSearchPage` merges
-  those onto the record on screen before sending. An absent edit means "keep the
-  current value", a `null` means "clear it".
+- **The `PUT` body carries only the three correctable fields.** The Artifact
+  scopes an identity correction to date of birth, gender and nationality, so the
+  dialog reports only the fields the staff member edited and `CustomerSearchPage`
+  merges those onto the record on screen before sending. An absent edit means
+  "keep the current value", a `null` means "clear it". Names, local spellings and
+  the passport are not sent — the API would drop them anyway.
 - **A correction writes an audit-log row** (`source_feature:
-'passenger-profiles'`, `is_sensitive: true`). The old and new values, the
-  actor and the reason are recorded server-side, not in the browser.
+'passenger-profiles'`, `action: 'update'`, `is_sensitive: true`). The old and new
+  values, the actor and the reason are recorded server-side, not in the browser.
+  Opening a profile writes a `view_sensitive` row, and both snapshots mask the
+  passport.
+
+## Passport masking
+
+The API masks the passport number — every response carries `•••• 1234`, never
+the full number — because the Artifact requires the API to mask it "for
+non-security staff". `lib/format.ts` passes an already-masked value straight
+through and otherwise falls back to masking the last four, so the full number
+cannot reach the DOM either way.
+
+Searching by passport still works: the term is matched in SQL against the stored
+column, so staff can find a passenger by typing the real number even though the
+result row shows a mask.
+
+There is no security role in this repository to unmask the number for
+check-in staff, so the Artifact's security-staff exception is not implemented.
+That is tracked in `apps/backend/src/modules/passenger-profiles/README.md`.
 
 ## Live search
 
@@ -91,7 +124,7 @@ once typing pauses, and the existing fetch effect re-runs against the server.
 
 - **Filtering is server-side.** The page never filters the rows it happens to
   hold — that would only ever cover one page and would desync `total` from the
-  pager. `GET /api/passengers?q=…` is the single source of matches.
+  pager. `GET /api/staff/passengers?q=…` is the single source of matches.
 - **The draft is trimmed before it is sent**, so the URL, the request and the
   Search button all carry the same value, and a stray space does not narrow the
   result set. The URL parser trims again on the way back in.
@@ -128,7 +161,7 @@ now in the list.
 249 of them on a phone is not usable. The menu is still portalled to `<body>` and
 measured against the viewport, so it is not clipped by the dialog or the screen.
 
-`GET /api/passengers` splits `q` on whitespace and requires **every** term to
+`GET /api/staff/passengers` splits `q` on whitespace and requires **every** term to
 match, so a full name like `Anabel Effertz` works — one term hits the first name,
 the other the surname. Each term is a case-insensitive substring of either name
 spelling, the passport number, the account holder's email, or the date of birth

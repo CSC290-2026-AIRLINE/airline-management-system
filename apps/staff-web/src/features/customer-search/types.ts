@@ -1,8 +1,9 @@
 /**
  * Domain types for the Customer Search feature (staff-web).
  *
- * These mirror what `GET /api/passengers` and `GET /api/passengers/:id` actually
- * return, mapped in `lib/person.ts`. See `lib/api.ts` for the wire types.
+ * These mirror what `GET /api/staff/passengers`, `GET /api/staff/customers` and their
+ * `:id` detail routes actually return, mapped in `lib/person.ts`. See `lib/api.ts` for
+ * the wire types.
  */
 
 /**
@@ -61,14 +62,15 @@ export interface Person {
   /** `Mar 2025`, or null. */
   memberSince: string | null
 
-  // Present only on a profile loaded from `GET /api/passengers/:id`.
+  // Present only on a profile loaded from a `:id` detail route.
   savedTravellers?: SavedTraveller[]
   linkedAccounts?: LinkedAccount[]
 }
 
 /**
- * The edits made in the "Correct identity" dialog. The page merges these into a
- * full `PATCH` body, because the API restates the whole identity record.
+ * The edits made in the "Correct identity" dialog. The page merges these with the values
+ * already on screen into the `PUT /api/staff/passengers/:id/identity` body, which carries
+ * only the three correctable fields — an absent edit keeps the recorded value.
  */
 export interface IdentityCorrection {
   /** Absent means "leave as recorded"; null means "clear the value on record". */
