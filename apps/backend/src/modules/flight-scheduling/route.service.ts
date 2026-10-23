@@ -12,6 +12,13 @@ const parseId = (raw: string) => {
   return raw
 }
 
+type Counted = { _count?: { flight_pattern: number } }
+
+// `pattern_count` is how many timetables use the route; present when the query counted them.
+const view = <T extends Counted>({ _count, ...row }: T) => ({ ...row, ...(_count && { pattern_count: _count.flight_pattern }) })
+
+const withCount = { _count: { select: { flight_pattern: true } } } as const
+
 @Injectable()
 export class RouteService {
   constructor(private readonly db: DbService) {}
@@ -29,18 +36,19 @@ export class RouteService {
     // Fetch one extra row to learn whether another page exists.
     const rows = await this.db.route.findMany({
       where: { origin, destination, is_active: is_active === undefined ? undefined : is_active === 'true' },
+      include: withCount,
       orderBy: [{ origin: 'asc' }, { destination: 'asc' }],
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     })
     const data = rows.slice(0, limit)
-    return { data, nextCursor: rows.length > limit ? data[data.length - 1].id : null }
+    return { data: data.map(view), nextCursor: rows.length > limit ? data[data.length - 1].id : null }
   }
 
   async get(id: string) {
-    const route = await this.db.route.findUnique({ where: { id: parseId(id) } })
+    const route = await this.db.route.findUnique({ where: { id: parseId(id) }, include: withCount })
     if (!route) throw new NotFoundException('route not found')
-    return route
+    return view(route)
   }
 
   async create(body: unknown) {

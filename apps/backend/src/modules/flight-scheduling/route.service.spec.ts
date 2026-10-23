@@ -113,6 +113,13 @@ describe('RouteService', () => {
       })
     })
 
+    it('counts the timetables that use each route', async () => {
+      db.route.findMany.mockResolvedValue([{ id: 'a', _count: { flight_pattern: 2 } }])
+      const result = await service.list({})
+      expect(db.route.findMany.mock.calls[0][0]).toMatchObject({ include: { _count: { select: { flight_pattern: true } } } })
+      expect(result.data[0]).toEqual({ id: 'a', pattern_count: 2 })
+    })
+
     it.each([{ is_active: 'x' }, { origin: 'A' }, { cursor: 'nope' }, { limit: '101' }])('rejects %j', async (query) => {
       await expect(service.list(query)).rejects.toBeInstanceOf(BadRequestException)
     })
