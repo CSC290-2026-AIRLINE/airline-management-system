@@ -35,7 +35,7 @@ function toLinkedAccount(link: PassengerLinkResponse): LinkedAccount {
   }
 }
 
-/** A row from the search list. Carries no links; those need `GET /api/passengers/:id`. */
+/** A row from the search list. Carries no links; those need `GET /api/staff/passengers/:id`. */
 export function toPerson(row: PassengerSummaryResponse): Person {
   const person: Person = {
     id: row.id,

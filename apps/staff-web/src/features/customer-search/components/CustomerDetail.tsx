@@ -4,7 +4,7 @@ import { ArrowRightIcon, ChevronLeftIcon, CloseIcon, PencilIcon } from './Icons'
 import { Avatar, DetailSection, ReadOnlyPill, TypeBadge } from './shared'
 
 /**
- * Read-only profile for a selected person, loaded from `GET /api/passengers/:id`.
+ * Read-only profile for a selected person, loaded from `GET /api/staff/passengers/:id`.
  *
  * Account holders get an "Account information" block plus their saved travellers;
  * travellers get a "Traveller profile" block, the "Correct identity" action, and

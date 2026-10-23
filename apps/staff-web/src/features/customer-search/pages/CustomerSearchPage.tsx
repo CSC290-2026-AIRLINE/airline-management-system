@@ -8,7 +8,7 @@ import { SearchIcon } from '../components/Icons'
 import { PaginationBar, SegmentedControl } from '../components/ListControls'
 import { PeopleCardList } from '../components/PeopleCardList'
 import { PeopleTable } from '../components/PeopleTable'
-import { useCustomerSearchApi, type SearchPassengersResponse } from '../lib/api'
+import { useCustomerSearchApi, type ProfileScope, type SearchPassengersResponse } from '../lib/api'
 import { toPage } from '../lib/search'
 import { DEFAULT_PAGE_SIZE, MOBILE_PAGE_SIZE, withCustomerSearch, type ResolvedCustomerSearch } from '../lib/searchParams'
 import { MOBILE_QUERY, useMediaQuery } from '../lib/useMediaQuery'
@@ -98,7 +98,11 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
 
   const pageSize = search.size ?? (isMobile ? MOBILE_PAGE_SIZE : DEFAULT_PAGE_SIZE)
   const listKey = `${attempt}|${search.q}|${search.type}|${search.page}|${pageSize}`
-  const profileKey = `${attempt}|${search.person ?? ''}`
+  // Which of the Artifact's two detail routes the open profile is read from. The Account
+  // holders tab has its own route; every other tab — and a deep link whose tab does not match
+  // the person — reads the passenger route, which answers for both kinds.
+  const profileScope: ProfileScope = search.type === 'account-holder' ? 'accountHolder' : 'passenger'
+  const profileKey = `${attempt}|${search.person ?? ''}|${profileScope}`
 
   // Results are tagged with the request they came from, so a response that
   // arrives after the user has typed again is discarded during render rather
@@ -148,7 +152,7 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
 
     const controller = new AbortController()
     api
-      .fetchPerson(search.person, controller.signal)
+      .fetchPerson(search.person, profileScope, controller.signal)
       .then((data) => setProfileResult({ key: profileKey, data: toProfilePerson(data), error: null }))
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
@@ -156,7 +160,7 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
       })
 
     return () => controller.abort()
-  }, [api, profileKey, search.person])
+  }, [api, profileKey, profileScope, search.person])
 
   // `toPage` only reshapes the server's slice; the rows still need mapping.
   const rows = (list?.data?.items ?? []).map(toPerson)
@@ -215,8 +219,10 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
   }, [onSearchChange, search])
 
   /**
-   * `PATCH /api/passengers/:id/identity` restates the whole identity record, so
-   * the dialog's edits are merged onto the record already on screen.
+   * `PUT /api/staff/passengers/:id/identity` carries only the three identity-lock
+   * columns, so the dialog's edits are merged onto the record already on screen: an
+   * absent edit keeps the current value and a `null` clears it. Names, local spellings
+   * and the passport are not sent — they are not correctable through this route.
    */
   const handleSaveCorrection = useCallback(
     async (correction: IdentityCorrection) => {
@@ -226,20 +232,15 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
       setSaveError(null)
       try {
         const updated = await api.correctIdentity(selected.id, {
-          firstName: selected.firstName,
-          lastName: selected.lastName,
-          localFirstName: selected.localFirstName,
-          localLastName: selected.localLastName,
           dateOfBirth: correction.dateOfBirth !== undefined ? correction.dateOfBirth : selected.dateOfBirth,
           gender: correction.gender ?? selected.gender,
           nationality: correction.nationality ?? selected.nationality,
-          passportNumber: selected.passportNumber,
           reason: correction.reason,
           confirm: true,
         })
 
         const person = toPerson(updated)
-        // The PATCH response is a summary row; keep the links already loaded.
+        // The PUT response is a summary row; keep the links already loaded.
         setProfileResult({
           key: profileKey,
           data: {
