@@ -22,6 +22,8 @@ export class FlightSchedulingService {
     // Fetch one extra row to learn whether another page exists.
     const rows = await this.db.flight.findMany({
       where: { status, route_id, service_date: date },
+      // The board shows which aircraft flies each row; tail_number is all it needs.
+      include: { aircraft: { select: { tail_number: true } } },
       orderBy: [{ dep_at: 'asc' }, { id: 'asc' }],
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
@@ -30,10 +32,20 @@ export class FlightSchedulingService {
     return { data, nextCursor: rows.length > limit ? data[data.length - 1].id : null }
   }
 
+  // The active disruption reasons for the delay and cancel forms; a short reference list, so no paging.
+  async listDisruptionReasons() {
+    const data = await this.db.disruption_reason.findMany({
+      where: { is_active: true },
+      orderBy: { code: 'asc' },
+      select: { code: true, category: true, description: true },
+    })
+    return { data, nextCursor: null }
+  }
+
   // One flight with its route and airports, for the features that read the schedule.
   async getFlight(id: string) {
     if (!UUID.test(id)) throw new BadRequestException('id must be a UUID')
-    const flight = await this.db.flight.findUnique({ where: { id }, include: { route: true } })
+    const flight = await this.db.flight.findUnique({ where: { id }, include: { route: true, aircraft: { select: { tail_number: true } } } })
     if (!flight) throw new NotFoundException('flight not found')
 
     const { route, ...row } = flight

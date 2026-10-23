@@ -30,7 +30,7 @@ describe('FlightSchedulingService.listFlights', () => {
     findMany.mockResolvedValue([{ id: ID(1) }, { id: ID(2) }, { id: ID(3) }])
     const result = await service.listFlights({ limit: '2' })
     expect(result).toEqual({ data: [{ id: ID(1) }, { id: ID(2) }], nextCursor: ID(2) })
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3 }))
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3, include: { aircraft: { select: { tail_number: true } } } }))
   })
 
   it('returns null nextCursor on the last page and passes filters and cursor to Prisma', async () => {
@@ -94,7 +94,10 @@ describe('FlightSchedulingService.getFlight', () => {
       },
     })
     expect(result).not.toHaveProperty('route.origin.created_at')
-    expect(db.flight.findUnique).toHaveBeenCalledWith({ where: { id: ID(1) }, include: { route: true } })
+    expect(db.flight.findUnique).toHaveBeenCalledWith({
+      where: { id: ID(1) },
+      include: { route: true, aircraft: { select: { tail_number: true } } },
+    })
   })
 
   it('computes the total delay and uses the diversion airport', async () => {
@@ -104,5 +107,20 @@ describe('FlightSchedulingService.getFlight', () => {
     const result = await service.getFlight(ID(1))
     expect(result.delay_minutes).toBe(85)
     expect(result.effective_destination).toBe('CCC')
+  })
+})
+
+describe('FlightSchedulingService.listDisruptionReasons', () => {
+  const findMany = jest.fn()
+  const service = new FlightSchedulingService({ disruption_reason: { findMany } } as never)
+
+  it('lists only active reasons in code order, without a next page', async () => {
+    findMany.mockResolvedValue([{ code: 'ATC', category: 'air_traffic_control', description: 'Air traffic control' }])
+    const result = await service.listDisruptionReasons()
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { is_active: true }, orderBy: { code: 'asc' } }))
+    expect(result).toEqual({
+      data: [{ code: 'ATC', category: 'air_traffic_control', description: 'Air traffic control' }],
+      nextCursor: null,
+    })
   })
 })
