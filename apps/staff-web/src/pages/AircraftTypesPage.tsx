@@ -205,6 +205,7 @@ export const AircraftTypesPage: React.FC = () => {
 
   return (
     <div style={{ padding: '24px', backgroundColor: '#f4f5f7', minHeight: '100vh', fontFamily: 'sans-serif', color: '#333' }}>
+      {/* Top Navbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #ddd', paddingBottom: '12px', backgroundColor: '#fff', padding: '12px 24px', borderRadius: '8px' }}>
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Flython Ops</h2>
@@ -220,7 +221,12 @@ export const AircraftTypesPage: React.FC = () => {
           >
             Aircraft Types
           </Link>
-          <span style={{ color: '#5f6368', cursor: 'pointer', fontSize: '14px' }}>Readiness</span>
+          <Link 
+            to="/readiness" 
+            style={{ color: '#5f6368', fontSize: '14px', textDecoration: 'none' }}
+          >
+            Readiness
+          </Link>
         </div>
         <div style={{ fontSize: '13px', color: '#5f6368' }}>Staff · admin</div>
       </div>

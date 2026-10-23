@@ -245,18 +245,23 @@ export function AircraftManagementPage() {
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Flython Ops</h2>
           <Link 
-  to="/aircraft" 
-  style={{ backgroundColor: '#e8f0fe', color: '#1a73e8', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px', textDecoration: 'none' }}
->
-  Fleet
-</Link>
-<Link 
-  to="/aircraft-types" 
-  style={{ color: '#5f6368', fontSize: '14px', textDecoration: 'none' }}
->
-  Aircraft Types
-</Link>
-          <span style={{ color: '#5f6368', cursor: 'pointer', fontSize: '14px' }}>Readiness</span>
+            to="/aircraft" 
+            style={{ backgroundColor: '#e8f0fe', color: '#1a73e8', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px', textDecoration: 'none' }}
+          >
+            Fleet
+          </Link>
+          <Link 
+            to="/aircraft-types" 
+            style={{ color: '#5f6368', fontSize: '14px', textDecoration: 'none' }}
+          >
+            Aircraft Types
+          </Link>
+          <Link 
+            to="/readiness" 
+            style={{ color: '#5f6368', fontSize: '14px', textDecoration: 'none' }}
+          >
+            Readiness
+          </Link>
         </div>
         <div style={{ fontSize: '13px', color: '#5f6368' }}>Staff · admin</div>
       </div>
