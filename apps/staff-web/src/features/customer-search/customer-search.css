@@ -1664,7 +1664,15 @@
   gap: 12px;
 }
 
-.cs-drawer__brand {
+/* This wordmark is an `<h2>`, and the heading reset at `.cs-app h2` (specificity
+   0,1,1) hands it the inherited sans and a dark body colour — both outrank a
+   bare class selector, so the descendant selector is what makes this rule win.
+   That puts the drawer on the same stack as the desktop sidebar's
+   `.cs-brand__word`: no webfont is loaded for either, so both resolve to Georgia
+   today and would pick up Merriweather if it is ever added. `font-size` and
+   `line-height` were never at risk — the reset sets neither — but they stay here
+   so the wordmark is described in one place. */
+.cs-app .cs-drawer__brand {
   font-family: 'Merriweather Black', 'Merriweather', Georgia, 'Times New Roman', serif;
   font-size: 30px;
   font-weight: 900;
