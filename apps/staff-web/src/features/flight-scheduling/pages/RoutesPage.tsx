@@ -3,7 +3,7 @@ import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { FormField } from '../components/FormField'
 import { Card } from '../components/Card'
 import { ListState } from '../components/ListState'
-import { MockNotice } from '../components/MockNotice'
+import { NotConnected } from '../components/NotConnected'
 import { PageHeader } from '../components/PageHeader'
 import { RouteCodes } from '../components/RouteCodes'
 import { SelectField } from '../components/SelectField'
@@ -13,7 +13,7 @@ import { Toast } from '../components/Toast'
 import { TableWrap } from '../components/TableWrap'
 import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
 import { useNotice } from '../hooks/useNotice'
-import { mockPartners } from '../mocks/cross-feature'
+import { CONNECTED, partnersFor } from '../connected'
 import type { AirportRow, RouteRow } from '../types'
 import '../flight-scheduling.css'
 
@@ -87,7 +87,9 @@ export function RoutesPage() {
           An origin and destination pair with its distance and gate-to-gate block time. Distance is what the loyalty programme (feature 11)
           uses for miles and what the range gate checks against the aircraft type.
         </PageHeader>
-        <MockNotice>The partner airlines column is simulated, because the schema does not link partner airlines to routes yet.</MockNotice>
+        {!CONNECTED.partnerRoutes && (
+          <NotConnected>Partner airlines per route are hidden until the partner_airline_route table exists.</NotConnected>
+        )}
 
         {rowError && <p role="alert">{rowError}</p>}
         <ListState
@@ -106,14 +108,14 @@ export function RoutesPage() {
                   <th>Route</th>
                   <th>Distance (km)</th>
                   <th>Block time (min)</th>
-                  <th>Partner airlines (demo)</th>
+                  {CONNECTED.partnerRoutes && <th>Partner airlines</th>}
                   <th>Used by</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {routes.rows.map((r) => {
-                  const partners = mockPartners(r.origin, r.destination)
+                  const partners = partnersFor(r.origin, r.destination)
                   const used = r.pattern_count ?? 0
                   return (
                     <tr key={r.id}>
@@ -142,7 +144,11 @@ export function RoutesPage() {
                           onBlur={(e) => save(r, 'block_time_min', e.currentTarget.value)}
                         />
                       </td>
-                      <td className={partners.length === 0 ? 'fs-to' : undefined}>{partners.length > 0 ? partners.join(' · ') : 'None'}</td>
+                      {CONNECTED.partnerRoutes && (
+                        <td className={partners.length === 0 ? 'fs-to' : undefined}>
+                          {partners.length > 0 ? partners.join(' · ') : 'None'}
+                        </td>
+                      )}
                       <td>
                         {used} {used === 1 ? 'pattern' : 'patterns'}
                       </td>

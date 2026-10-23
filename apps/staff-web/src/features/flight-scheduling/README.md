@@ -4,7 +4,7 @@
 pages/       one component per screen; routes in src/routes/ only wire a URL to these
 components/  UI used by two or more pages (see CLAUDE.md for the list)
 hooks/       usePagedList and useResource (API reads), useNotice (self-clearing message for <Toast />)
-mocks/       demo data for the parts that belong to other features; the only place mocks live
+connected.ts which parts wait on another feature: their flags (UI hidden while false), empty lists and refusing stubs
 format.ts    small text, date and clock helpers (WEEKDAYS, minutesOf, clockOf, formatDateTime)
 plan-dates.ts  the dates a pattern would fly, for the "would preview" line
 types.ts     shapes returned by /api/flight-scheduling
