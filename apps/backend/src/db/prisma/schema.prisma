@@ -172,8 +172,11 @@ model airport {
   airport_approval_policy_airport_approval_policy_airportToairport airport_approval_policy? @relation("airport_approval_policy_airportToairport")
   airport_congestion_airport_congestion_airportToairport           airport_congestion[]     @relation("airport_congestion_airportToairport")
   airport_fee_airport_fee_airportToairport                         airport_fee[]            @relation("airport_fee_airportToairport")
+  crew                                                             crew[]
   flight                                                           flight[]
   flight_event                                                     flight_event[]
+  pairing                                                          pairing[]
+  roster_run                                                       roster_run[]
   route_route_destinationToairport                                 route[]                  @relation("route_destinationToairport")
   route_route_originToairport                                      route[]                  @relation("route_originToairport")
   schedule_approval                                                schedule_approval[]
@@ -515,6 +518,7 @@ model flight {
   route                                                           route                @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   flight_event                                                    flight_event[]
   flight_report                                                   flight_report?
+  pairing_leg                                                     pairing_leg?
   product_offering                                                product_offering[]
   product_order                                                   product_order[]
   product_sale                                                    product_sale[]
@@ -1092,6 +1096,9 @@ model staff {
   cabin_setting                                              cabin_setting[]
   catering_order                                             catering_order[]
   catering_setting                                           catering_setting[]
+  country_legality_rule                                      country_legality_rule[]
+  crew                                                       crew?
+  crew_setting                                               crew_setting[]
   currency_rate                                              currency_rate[]
   expense                                                    expense[]
   fleet_setting                                              fleet_setting[]
@@ -1101,6 +1108,7 @@ model staff {
   payment_schedule                                           payment_schedule[]
   pricing_setting                                            pricing_setting[]
   purchase_receipt                                           purchase_receipt[]
+  rule_break                                                 rule_break[]
   schedule_approval_schedule_approval_requested_byTostaff    schedule_approval[]      @relation("schedule_approval_requested_byTostaff")
   schedule_approval_schedule_approval_responded_byTostaff    schedule_approval[]      @relation("schedule_approval_responded_byTostaff")
   schedule_conflict                                          schedule_conflict[]
@@ -1387,4 +1395,175 @@ model schedule_approval_offer {
   schedule_approval schedule_approval @relation(fields: [approval_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([approval_id, starts_at])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model country_language {
+  country_code  String
+  language_code String
+
+  @@id([country_code, language_code])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model country_legality_rule {
+  country_code   String   @id
+  min_rest_hours Decimal  @db.Decimal(4, 1)
+  max_duty_hours Decimal  @db.Decimal(4, 1)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_by     String?  @db.Uuid
+  staff          staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model crew {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staff_id               String?                  @unique @db.Uuid
+  first_name             String
+  last_name              String
+  employee_number        String                   @unique(map: "crew_employee_number_uq", where: raw("(deleted_at IS NULL)"))
+  role                   String
+  date_of_birth          DateTime?                @db.Date
+  email                  String?
+  phone                  String?
+  base_airport           String
+  fleet_aircraft_type    String
+  languages              String[]                 @default([])
+  licence_number         String                   @unique(map: "crew_licence_number_uq", where: raw("(deleted_at IS NULL)"))
+  licence_expires_on     DateTime                 @db.Date
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  deleted_at             DateTime?                @db.Timestamptz(6)
+  airport                airport                  @relation(fields: [base_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "crew_base_airport_fk")
+  staff                  staff?                   @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  crew_certification     crew_certification[]
+  pairing_leg_assignment pairing_leg_assignment[]
+  rule_break             rule_break[]
+
+  @@index([base_airport, role], map: "crew_base_role_idx", where: raw("(deleted_at IS NULL)"))
+  @@index([languages], type: Gin, where: raw("(deleted_at IS NULL)"))
+}
+
+model crew_certification {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  crew_id       String   @db.Uuid
+  name          String
+  aircraft_type String?
+  expires_on    DateTime @db.Date
+  crew          crew     @relation(fields: [crew_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([crew_id, name, aircraft_type], map: "crew_certification_uq")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model crew_setting {
+  key        String   @id
+  value      String
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_by String?  @db.Uuid
+  staff      staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model pairing {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String              @unique @default(dbgenerated("('P-'::text || nextval('pairing_code_seq'::regclass))"))
+  base_airport       String
+  created_at         DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime            @default(now()) @db.Timestamptz(6)
+  airport            airport             @relation(fields: [base_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "pairing_base_airport_fk")
+  pairing_leg        pairing_leg[]
+  roster_run_pairing roster_run_pairing?
+
+  @@index([base_airport], map: "pairing_base_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pairing_leg {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pairing_id             String                   @db.Uuid
+  flight_id              String                   @unique @db.Uuid
+  added_by               String                   @default("auto")
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  flight                 flight                   @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pairing_leg_flight_fk")
+  pairing                pairing                  @relation(fields: [pairing_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  pairing_leg_assignment pairing_leg_assignment[]
+  rule_break             rule_break[]
+
+  @@unique([id, pairing_id])
+  @@index([pairing_id], map: "pairing_leg_pairing_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pairing_leg_assignment {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pairing_id         String             @db.Uuid
+  pairing_leg_id     String             @db.Uuid
+  crew_id            String             @db.Uuid
+  role               String
+  assigned_by        String
+  assigned_at        DateTime           @db.Timestamptz(6)
+  unassigned_at      DateTime?          @db.Timestamptz(6)
+  reason             String?
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  crew               crew               @relation(fields: [crew_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  roster_run_pairing roster_run_pairing @relation(fields: [pairing_id], references: [pairing_id], onDelete: NoAction, onUpdate: NoAction)
+  pairing_leg        pairing_leg        @relation(fields: [pairing_leg_id, pairing_id], references: [id, pairing_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([pairing_leg_id, crew_id], map: "pairing_leg_assignment_active_uq", where: raw("(unassigned_at IS NULL)"))
+  @@unique([pairing_leg_id, role], map: "pairing_leg_assignment_pilot_uq", where: raw("((unassigned_at IS NULL) AND (role = ANY (ARRAY['captain'::text, 'first_officer'::text])))"))
+  @@index([crew_id], map: "pairing_leg_assignment_crew_idx", where: raw("(unassigned_at IS NULL)"))
+  @@index([pairing_leg_id], map: "pairing_leg_assignment_leg_idx")
+  @@index([pairing_id], map: "pairing_leg_assignment_pairing_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model roster_run {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  base_airport       String
+  date_from          DateTime             @db.Date
+  date_to            DateTime             @db.Date
+  status             String               @default("draft")
+  published_at       DateTime?            @db.Timestamptz(6)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  airport            airport              @relation(fields: [base_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "roster_run_base_airport_fk")
+  roster_run_pairing roster_run_pairing[]
+
+  @@index([base_airport, date_from(sort: Desc)], map: "roster_run_base_idx")
+}
+
+model roster_run_pairing {
+  roster_run_id          String                   @db.Uuid
+  pairing_id             String                   @unique @db.Uuid
+  pairing_leg_assignment pairing_leg_assignment[]
+  pairing                pairing                  @relation(fields: [pairing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  roster_run             roster_run               @relation(fields: [roster_run_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rule_break             rule_break[]
+
+  @@id([roster_run_id, pairing_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rule_break {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roster_run_id      String             @db.Uuid
+  pairing_id         String             @db.Uuid
+  pairing_leg_id     String             @db.Uuid
+  crew_id            String?            @db.Uuid
+  role               String?
+  rule               String
+  detail             String
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  resolved_at        DateTime?          @db.Timestamptz(6)
+  resolution         String?
+  overridden_by      String?            @db.Uuid
+  override_reason    String?
+  crew               crew?              @relation(fields: [crew_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff              staff?             @relation(fields: [overridden_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pairing_leg        pairing_leg        @relation(fields: [pairing_leg_id, pairing_id], references: [id, pairing_id], onDelete: NoAction, onUpdate: NoAction)
+  roster_run_pairing roster_run_pairing @relation(fields: [roster_run_id, pairing_id], references: [roster_run_id, pairing_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([pairing_leg_id, rule, crew_id, role], map: "rule_break_open_uq", where: raw("(resolved_at IS NULL)"))
+  @@index([roster_run_id, pairing_id], map: "rule_break_run_idx")
+  @@index([roster_run_id], map: "rule_break_run_open_idx", where: raw("(resolved_at IS NULL)"))
 }
