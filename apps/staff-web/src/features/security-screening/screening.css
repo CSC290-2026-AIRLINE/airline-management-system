@@ -253,6 +253,15 @@ body:has(.sq-app) {
   background: white;
   min-width: 0;
 }
+/* The shared rule draws the ring outside the control, where the neutral border
+   and the ring read as two stacked rounded rectangles, and where the sticky
+   header paints over the top of it. Pulling the ring inside by its own width
+   lays a single band exactly over the border instead: one indicator, no gap,
+   nothing outside the input, and the border colour is left untouched. */
+.sq-search-sort input:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: -3px;
+}
 .sq-app input::placeholder,
 .sq-app textarea::placeholder,
 .sq-review-dialog textarea::placeholder {
@@ -312,10 +321,11 @@ body:has(.sq-app) {
 }
 .sq-queue-description {
   color: var(--sq-muted);
-  margin: 16px 0 !important;
+  margin: 16px 0 0 !important;
   line-height: 16px;
 }
 .sq-queue-table {
+  margin-top: 16px;
   border: 1px solid var(--sq-border);
   border-radius: 12px;
   overflow: hidden;
@@ -1044,14 +1054,16 @@ body:has(.sq-app) {
   }
   .sq-queue-description {
     line-height: 16px;
-    margin: 12px 0 !important;
+    margin: 12px 0 0 !important;
   }
   .sq-queue-table {
+    margin-top: 12px;
     display: none;
   }
   .sq-queue-cards {
     display: grid;
     gap: 12px;
+    margin-top: 12px;
   }
   .sq-queue-card {
     display: grid;
