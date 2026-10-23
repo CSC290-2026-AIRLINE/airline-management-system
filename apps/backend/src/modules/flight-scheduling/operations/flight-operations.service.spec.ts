@@ -49,8 +49,9 @@ describe('FlightOperationsService', () => {
       order.push('commit')
       return result
     }),
-    flight: { findUnique: jest.fn() },
+    flight: { findUnique: jest.fn(), findMany: jest.fn() },
     flight_event: { findMany: jest.fn() },
+    partner_airline: { findMany: jest.fn() },
   }
   const writer = { append: jest.fn() }
   const publisher = { publishCommitted: jest.fn(() => order.push('publish')) }
@@ -112,6 +113,30 @@ describe('FlightOperationsService', () => {
     it('rejects when the flight moved to another aircraft between the read and the lock', async () => {
       tx.flight.findUnique.mockResolvedValueOnce({ aircraft_id: OTHER_AIRCRAFT }).mockResolvedValue(flightRow())
       await expect(service.delay(FLIGHT, { reason_code: 'ZZWX', delay_minutes: 45 }, STAFF)).rejects.toThrow(/changed by someone else/)
+    })
+  })
+
+  describe('batchDelay', () => {
+    const CANCELLED = '00000000-0000-0000-0000-0000000000f2'
+    const MISSING = '00000000-0000-0000-0000-0000000000f3'
+
+    it('delays in departure order, and one failure or missing id never blocks the others', async () => {
+      db.flight.findMany.mockResolvedValue([{ id: CANCELLED }, { id: FLIGHT }])
+      tx.flight.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(flightRow({ id: where.id, status: where.id === CANCELLED ? 'cancelled' : 'scheduled' })),
+      )
+
+      const { results } = await service.batchDelay(
+        { flight_ids: [FLIGHT, CANCELLED, MISSING], reason_code: 'ZZWX', delay_minutes: 45 },
+        STAFF,
+      )
+
+      expect(results.map((r) => [r.flight_id, r.status])).toEqual([
+        [MISSING, 404],
+        [CANCELLED, 409],
+        [FLIGHT, 200],
+      ])
+      expect(writer.append).toHaveBeenCalledTimes(1)
     })
   })
 

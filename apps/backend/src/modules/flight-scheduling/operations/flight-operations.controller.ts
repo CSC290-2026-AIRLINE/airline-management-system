@@ -4,6 +4,7 @@ import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import {
   parseAircraftChangeBody,
+  parseBatchDelayBody,
   parseCancelBody,
   parseConfirmBody,
   parseDelayBody,
@@ -35,6 +36,19 @@ export class FlightOperationsController {
   async confirm(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
     const input = parseConfirmBody(body)
     return this.confirmation.confirm(input, await this.actors.staffIdFor(user))
+  }
+
+  // Declared before the ':id' routes so 'batch' is never read as a flight id.
+  @Post('flights/batch/delay')
+  @HttpCode(207)
+  async batchDelay(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    const input = parseBatchDelayBody(body)
+    return this.operations.batchDelay(input, await this.actors.staffIdFor(user))
+  }
+
+  @Get('partner-airlines')
+  listPartnerAirlines() {
+    return this.operations.listPartnerAirlines()
   }
 
   @Get('flights/:id/events')

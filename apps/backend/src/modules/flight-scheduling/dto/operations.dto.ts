@@ -10,6 +10,10 @@ export interface DelayInput {
   note?: string
 }
 
+export interface BatchDelayInput extends DelayInput {
+  flight_ids: string[]
+}
+
 export interface DivertInput {
   reason_code: string
   airport_code: string
@@ -141,6 +145,21 @@ export function parseDelayBody(raw: unknown): DelayInput {
   const f = new Fields(body)
   const reason_code = f.code('reason_code')
   return f.done({ reason_code, delay_minutes: minutes(body, f, 'delay_minutes'), note: f.optionalText('note') })
+}
+
+// 50 is a guard against a runaway request, not an agreed business limit.
+const MAX_BATCH = 50
+
+export function parseBatchDelayBody(raw: unknown): BatchDelayInput {
+  const body = asBody(raw)
+  const f = new Fields(body)
+  const ids = body.flight_ids
+  const flight_ids = Array.isArray(ids) ? [...new Set(ids.map(String))] : []
+  if (!Array.isArray(ids) || !flight_ids.length || flight_ids.length > MAX_BATCH)
+    f.errors.push(`flight_ids must hold 1 to ${MAX_BATCH} ids`)
+  else if (flight_ids.some((id) => !UUID.test(id))) f.errors.push('flight_ids must be UUIDs')
+  const reason_code = f.code('reason_code')
+  return f.done({ flight_ids, reason_code, delay_minutes: minutes(body, f, 'delay_minutes'), note: f.optionalText('note') })
 }
 
 export function parseHoldBody(raw: unknown): HoldInput {
