@@ -1591,7 +1591,9 @@ CREATE SEQUENCE pairing_code_seq;
 -- A chain of feature 2 flights that starts and ends at base_airport. Leg order, duty days, duty hours, day count and
 -- validity are derived from the flights' current times (a delay changes them), so none of them is stored.
 -- A pairing that is not in a roster run is a draft: it may be invalid while Ops edits it, and deleting it is a hard
--- delete (its legs go with it). A pairing in a run cannot be deleted: roster_run_pairing refuses (23503 = PAIRING_IN_USE).
+-- delete (its legs go with it). roster_run_pairing refuses to delete a pairing that is in a run (23503). In a draft run
+-- the backend first takes the pairing out (its rule breaks, assignments and run link); in a published run the crew
+-- history keeps it in, and the backend answers PAIRING_IN_USE.
 CREATE TABLE pairing (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code         TEXT NOT NULL UNIQUE DEFAULT 'P-' || nextval('pairing_code_seq'), -- what Ops sees, such as P-101
@@ -1673,8 +1675,10 @@ CREATE INDEX pairing_leg_assignment_crew_idx ON pairing_leg_assignment (crew_id)
 
 -- Rule breaks -------------------------------------------------------------------------------------------
 
--- Law rules, never overridden: OVERLAP, REST_SHORT, HOURS_28D, DUTY_FLIGHTS, DUTY_HOURS, NO_LEGAL_CREW, LICENCE_EXPIRED,
--- NO_TYPE_RATING. Company rules, closed in writing with a reason: NO_LOCAL_CREW, POLICE_MIN, POLICE_NO_SEAT.
+-- Law rules, never overridden: OVERLAP, REST_SHORT, HOURS_28D, DUTY_LIMIT, NO_LEGAL_CREW, LICENCE_EXPIRED,
+-- NO_TYPE_RATING, WRONG_FLEET. Company rules, closed in writing with a reason: NO_LOCAL_CREW, POLICE_MIN, POLICE_NO_SEAT.
+-- DUTY_LIMIT covers the flight and hour limits of a duty (detail says which). WRONG_FLEET is a person whose fleet type
+-- is not the flight's aircraft type, such as after a feature 2 aircraft change.
 -- crew_id names the person for person rules; role names the empty seat for NO_LEGAL_CREW (also after a sick call).
 -- A re-check inserts with ON CONFLICT DO NOTHING (rule_break_open_uq) and closes the open breaks it no longer finds as
 -- 'fixed'. On a published run a break is never deleted. The override actor and reason also go to the audit log.
@@ -1686,8 +1690,8 @@ CREATE TABLE rule_break (
   crew_id         UUID REFERENCES crew (id),
   role            TEXT CHECK (role IN ('captain', 'first_officer', 'cabin_crew', 'police')),
   rule            TEXT NOT NULL CHECK (rule IN (
-                    'OVERLAP', 'REST_SHORT', 'HOURS_28D', 'DUTY_FLIGHTS', 'DUTY_HOURS', 'NO_LEGAL_CREW',
-                    'LICENCE_EXPIRED', 'NO_TYPE_RATING', 'NO_LOCAL_CREW', 'POLICE_MIN', 'POLICE_NO_SEAT')),
+                    'OVERLAP', 'REST_SHORT', 'HOURS_28D', 'DUTY_LIMIT', 'NO_LEGAL_CREW', 'LICENCE_EXPIRED',
+                    'NO_TYPE_RATING', 'WRONG_FLEET', 'NO_LOCAL_CREW', 'POLICE_MIN', 'POLICE_NO_SEAT')),
   detail          TEXT NOT NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   resolved_at     TIMESTAMPTZ,                             -- simulation clock
