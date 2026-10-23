@@ -160,7 +160,13 @@ export function formatLegDaySpan(legs: readonly FlightLeg[]): string {
   const start = new Date(`${startKey}T00:00:00.000Z`)
   const end = new Date(`${endKey}T00:00:00.000Z`)
   const startLabel = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: '2-digit', timeZone: 'UTC' }).format(start)
-  const endLabel = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(end)
+  const endLabel = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(end)
   return `${startLabel} – ${endLabel}`
 }
 

@@ -112,6 +112,9 @@ export const MOCK_ROSTER_RUN = {
 /** Simulation clock shown in the sidebar footer. */
 export const MOCK_SIMULATION_CLOCK = 'Mon 14 Sep 2026 · 09:00' as const
 
+/** Trimmed clock for the mobile top bar, where the full stamp does not fit. */
+export const MOCK_SIMULATION_CLOCK_SHORT = 'Sim · 14 Sep 09:00' as const
+
 export const DEFAULT_PARAMS: BuildPairingParams = {
   dateFrom: MOCK_ROSTER_RUN.dateFrom,
   dateTo: MOCK_ROSTER_RUN.dateTo,

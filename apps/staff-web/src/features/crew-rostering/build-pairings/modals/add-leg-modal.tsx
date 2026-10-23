@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { findAddLegCandidates } from '../types/pairing-engine'
 import { formatDay, formatTime } from '../types/format'
 import type { AddLegCandidate, FlightLeg, Pairing, ScheduledFlight } from '../types/types'
-import { BaseModalOverlay, Button, SearchIcon } from '../components/ui'
+import { BaseModalOverlay, Button, SearchIcon } from '../../shared/ui'
 
 /**
  * Pick a connecting flight that leaves the pairing's last airport after it
@@ -84,8 +84,8 @@ export function AddLegModal({
           </p>
         ) : (
           <p className="mt-4 text-sm text-primary-text/55">
-            Adding one of these means {pairing.id} no longer ends at {pairing.base}. Add a return flight too, or it will be marked
-            Invalid (PAIRING_NOT_CLOSED).
+            Adding one of these means {pairing.id} no longer ends at {pairing.base}. Add a return flight too, or it will be marked Invalid
+            (PAIRING_NOT_CLOSED).
           </p>
         )
       ) : (
@@ -121,43 +121,43 @@ function MatchingFlightsList({
     <>
       <SectionHeading />
       <ul className="mt-2 flex flex-col gap-2.5" role="radiogroup" aria-label="Connecting flights">
-      {candidates.map((candidate) => {
-        const selected = candidate.flight.id === selectedId
-        return (
-          <li key={candidate.flight.id}>
-            <label
-              className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
-                selected ? 'border-primary bg-info-bg' : 'border-border-desc/30 hover:border-primary/40'
-              }`}
-            >
-              <input
-                type="radio"
-                name="add-leg-candidate"
-                checked={selected}
-                onChange={() => onSelect(candidate.flight.id)}
-                className="h-4 w-4 shrink-0 accent-primary"
-              />
-              <span className="flex flex-1 flex-wrap items-center gap-2">
-                <span className="font-semibold text-primary-text">{candidate.flight.flightNumber}</span>
-                <span className="text-sm text-primary-text/80">
-                  {candidate.flight.origin} ➔ {candidate.flight.destination}
-                </span>
-                <span className="text-sm text-primary-text/55">
-                  {formatDay(candidate.flight.departureAt)} · {formatTime(candidate.flight.departureAt)}–
-                  {formatTime(candidate.flight.arrivalAt)}
-                </span>
-              </span>
-              <span
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                  candidate.returnsToBase ? 'bg-valid-bg text-valid' : 'bg-page-bg text-primary-text/60'
+        {candidates.map((candidate) => {
+          const selected = candidate.flight.id === selectedId
+          return (
+            <li key={candidate.flight.id}>
+              <label
+                className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                  selected ? 'border-primary bg-info-bg' : 'border-border-desc/30 hover:border-primary/40'
                 }`}
               >
-                {candidate.badgeLabel}
-              </span>
-            </label>
-          </li>
-        )
-      })}
+                <input
+                  type="radio"
+                  name="add-leg-candidate"
+                  checked={selected}
+                  onChange={() => onSelect(candidate.flight.id)}
+                  className="h-4 w-4 shrink-0 accent-primary"
+                />
+                <span className="flex flex-1 flex-wrap items-center gap-2">
+                  <span className="font-semibold text-primary-text">{candidate.flight.flightNumber}</span>
+                  <span className="text-sm text-primary-text/80">
+                    {candidate.flight.origin} ➔ {candidate.flight.destination}
+                  </span>
+                  <span className="text-sm text-primary-text/55">
+                    {formatDay(candidate.flight.departureAt)} · {formatTime(candidate.flight.departureAt)}–
+                    {formatTime(candidate.flight.arrivalAt)}
+                  </span>
+                </span>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                    candidate.returnsToBase ? 'bg-valid-bg text-valid' : 'bg-page-bg text-primary-text/60'
+                  }`}
+                >
+                  {candidate.badgeLabel}
+                </span>
+              </label>
+            </li>
+          )
+        })}
       </ul>
     </>
   )

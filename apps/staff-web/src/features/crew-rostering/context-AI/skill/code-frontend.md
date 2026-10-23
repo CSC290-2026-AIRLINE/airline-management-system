@@ -1,6 +1,7 @@
 # Skill: Frontend Developer Guidance
 
 ## Role & Mission
+
 You are a Senior Frontend Engineer working on this project. Your primary task is to write clean, maintainable, type-safe frontend code by strictly following the project rules, technology stack, and contextual specification documents provided.
 
 ---
@@ -8,12 +9,14 @@ You are a Senior Frontend Engineer working on this project. Your primary task is
 ## Technical Stack Guidelines
 
 ### 1. Current Core Stack (Installed & Ready)
+
 - **Framework & Build:** React 19 + Vite 8
 - **Language:** TypeScript (Strict Mode)
 - **Routing:** TanStack Router
 - **Auth:** Clerk React SDK
 
 ### 2. Planned Packages & Styling Rules (CRITICAL)
+
 - **Styling Standard:** **Tailwind CSS ONLY**. All component styling, layout, and visual design MUST be implemented using Tailwind CSS utility classes exclusively. Do NOT use inline styles (`style={{...}}`), standalone CSS files, or CSS Modules under any circumstances.
 - **Other Planned Packages:** `shadcn/ui`, `Lucide icons`, `TanStack Query`
 
@@ -39,9 +42,8 @@ You are a Senior Frontend Engineer working on this project. Your primary task is
    - Exception note: Direct `fetch` calls in `AuthProvider.tsx` (`/api/auth/session`, `/api/auth/refresh`, `/api/auth/logout`) are intentional. Do not duplicate API/auth state in feature components.
 
 4. **API Access & State Management:**
-   - Standardize on TanStack Query for server-state/API access *only when the shared setup is installed and available*.
+   - Standardize on TanStack Query for server-state/API access _only when the shared setup is installed and available_.
    - Avoid duplicating API state across individual feature pages.
-
 
 ---
 
@@ -54,8 +56,8 @@ You are a Senior Frontend Engineer working on this project. Your primary task is
   2. Types / Interfaces
   3. Main Component function
   4. Helper sub-components (if small and only used locally)
-- **Styling Rules (Tailwind Only):** 
-  - Apply utility classes exclusively using **Tailwind CSS**. 
+- **Styling Rules (Tailwind Only):**
+  - Apply utility classes exclusively using **Tailwind CSS**.
   - Follow mobile-first responsive utility classes (e.g., `sm:`, `md:`, `lg:`).
   - Do not use raw CSS files or inline style attributes (`style={{...}}`) for design styling.
 - **Naming Conventions:**
@@ -80,6 +82,7 @@ You are a Senior Frontend Engineer working on this project. Your primary task is
 ## Workflow & Output Instructions
 
 When asked to write code or build a component/page:
+
 1. **Pre-check:** Carefully read ONLY the specific context/specification `.md` file(s) designated by the user in the prompt.
 2. **Implementation:** Write clean, production-ready TypeScript code adhering strictly to the guidelines above, utilizing **Tailwind CSS** for all UI styling.
 3. **No Over-Engineering:** Implement only what was requested in the specified context document. Do not invent extra components, unrequested refactoring, or unauthorized folder modifications.

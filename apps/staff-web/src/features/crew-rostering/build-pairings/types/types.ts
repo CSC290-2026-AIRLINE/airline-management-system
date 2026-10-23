@@ -103,6 +103,11 @@ export interface Pairing {
   /** Ids of the flights that were returned to the unpaired pool by a delete. */
   releasedFlightIds: string[]
   /**
+   * Flight numbers of the released flights, e.g. `FD620`. Kept alongside the ids
+   * so the deleted-pairing card can name them without holding on to the legs.
+   */
+  releasedFlightNumbers: string[]
+  /**
    * True when a published roster already uses this pairing. A published pairing
    * cannot be deleted; the backend enforces this and the UI explains why.
    */

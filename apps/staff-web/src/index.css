@@ -16,16 +16,14 @@ body {
   margin: 0;
 }
 
-/* The starter page (#center, .hero, #next-steps) still relies on these. */
-h1 {
-  font-size: 3.5rem;
-  letter-spacing: -0.04em;
-  margin: 2rem 0;
-}
-
-code {
-  font-size: 0.9em;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: rgb(0 0 0 / 6%);
-}
+/*
+ * The Vite starter's `h1` / `code` element rules are gone. They were unlayered,
+ * so they outranked every Tailwind utility regardless of specificity: `h1` came
+ * out at 3.5rem with 2rem margins and overflowed the phone viewport no matter
+ * what `text-xl` asked for. Nothing renders the starter markup any more
+ * (`App.css` styles `.hero` / `#center` / `#next-steps`, which have no
+ * matching JSX left), so there is nothing left for them to style.
+ *
+ * `code` still has a user: the missing-Clerk-key fallback in `main.tsx`. Style
+ * it there if it ever needs to match the admin workspace.
+ */
