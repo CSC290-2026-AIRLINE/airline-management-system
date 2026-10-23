@@ -32,6 +32,13 @@ const NATIONALITY_DROPDOWN = [
 
 const REASON_MIN_LENGTH = 10
 
+/**
+ * The Artifact's DOB floor. The backend's `readDateOfBirth` is the rule and rejects
+ * anything earlier; this repeats it so a typo is caught on the field instead of costing
+ * a round-trip. Keep the two in step — the backend stays authoritative either way.
+ */
+const EARLIEST_DATE_OF_BIRTH_YEAR = 1900
+
 interface CorrectIdentityDialogProps {
   person: Person
   variant: 'desktop' | 'mobile'
@@ -90,6 +97,18 @@ export function CorrectIdentityDialog({ person, variant, saving = false, saveErr
     // Only a field the staff member actually typed into can be malformed.
     if (!dateIsBlank && parsedDate === null) {
       next.dateOfBirth = 'Use the format DD / MM / YYYY, e.g. 21 / 08 / 1992.'
+    } else if (parsedDate !== null) {
+      // `parseInputDate` only proves the input is a real calendar date. These two bounds
+      // are the rest of the Artifact's DOB rule, and the backend enforces them too.
+      //
+      // `parsedDate` is a zero-padded `yyyy-mm-dd`, so comparing the strings orders the
+      // dates exactly as comparing the `Date`s would. "Today" is UTC to match the
+      // backend, which compares a UTC-midnight date of birth against `Date.now()`.
+      if (parsedDate < `${EARLIEST_DATE_OF_BIRTH_YEAR}-01-01`) {
+        next.dateOfBirth = `Date of birth cannot be earlier than ${EARLIEST_DATE_OF_BIRTH_YEAR}.`
+      } else if (parsedDate > todayUtc()) {
+        next.dateOfBirth = 'Date of birth cannot be in the future.'
+      }
     }
     if (reason.trim().length < REASON_MIN_LENGTH) {
       next.reason = `Give a short reason (at least ${REASON_MIN_LENGTH} characters) for the audit log.`
@@ -294,4 +313,11 @@ function FieldError({ id, message }: { id?: string; message: string }) {
 /** `F · Female`, or an em dash when the passenger has no gender on record. */
 function currentGender(person: Person): string {
   return person.gender ? `${person.gender} · ${genderLabel(person.gender)}` : EM_DASH
+}
+
+/** Today's date as `yyyy-mm-dd` in UTC, for the "not in the future" check. */
+function todayUtc(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`
 }
