@@ -66,21 +66,127 @@ Query: `q`, `type` (`all` \| `accountHolder` \| `traveller`), `page` (1-based),
 
 `q` is split on whitespace, and **every** term has to match something, so a full
 name works: `Anabel Effertz` finds the row whose first name is one term and last
-name the other. Each term matches case-insensitively as a substring of either name
-spelling or the passport number, the account holder's email (only when the
-account is not soft-deleted), or the date of birth.
+name the other. Each term matches any one of the fields below, so a single term
+can bring back a person whose id carries it _and_ one whose passport does _and_
+one born on that day, all from one query.
+
+| Field                     | Matched as                                           |
+| ------------------------- | ---------------------------------------------------- |
+| Latin first / last name   | case-insensitive substring                           |
+| Local (Thai) first / last | case-insensitive substring                           |
+| Passport number           | case-insensitive substring, against the stored value |
+| Account holder email      | case-insensitive substring, live accounts only       |
+| Person id                 | substring of the uuid as text, or a whole uuid       |
+| Date of birth             | a date range, or a day / month / year                |
 
 A substring test includes every prefix match, so `A` surfaces `Anabel Effertz`
 and `An` narrows further, while `ertz` still finds `Effertz` from the middle of a
 surname.
 
-The date of birth is the one field that is not a text column — `passenger.date_of_birth`
-is a `@db.Date`, so it cannot take `contains`. A `YYYY`, `YYYY-MM` or `YYYY-MM-DD`
-term (the shape the staff UI displays) becomes the half-open range of days it could
-cover, which also keeps the lookup on `passenger_dob_idx` instead of forcing a cast
-per row. A term that is not a real date, including a rolled-over one like
-`2023-02-30`, is not turned into a range. The passenger id is compared only when
-the term is a UUID, since the column is a `@db.Uuid`.
+### Two of those fields cannot be expressed in Prisma
+
+Everything above is a column filter except two, and both come down to the column
+type:
+
+- `passenger.id` is a `@db.Uuid`, and the query builder has no `contains` for one.
+- `passenger.date_of_birth` is a `@db.Date`, so a _complete_ date is a range but a
+  day or a month alone is not expressible as one.
+
+Those two are asked of Postgres as a small `SELECT id`:
+
+```sql
+SELECT id FROM passenger WHERE deleted_at IS NULL
+  AND ((EXTRACT(DAY FROM date_of_birth) = $1) OR (EXTRACT(MONTH FROM date_of_birth) = $2) OR id::text ILIKE $3)
+```
+
+and the ids come back as one more alternative on the **same `OR`** as the text
+columns. So a term still matches whichever field carries it, and paging, sorting,
+the account-holder split and the count are still the one query the route makes —
+nothing is filtered in the browser.
+
+Every value is a bound parameter; a search term never reaches the statement as
+text. The whole lookup is built from fragments in `planToken`, and a query of
+plain names never triggers it — `Anabel Effertz` costs the one transaction it
+always did.
+
+**The placeholders are `$1`, `$2`, … and they have to be.** Fragments are written
+with `?` and renumbered by `numbered()` once the statement is assembled, because
+`$queryRawUnsafe` performs no translation of its own: unlike `Prisma.sql`, it hands
+the statement and its values to the driver exactly as given, and the `pg` adapter
+passes them to the server unchanged. A `?` that reached Postgres would be a syntax
+error rather than a parameter, and every term that needs this lookup — which is
+every numeric term, since digits are valid hex — would fail with a 500. The unit
+tests mock `DbService` and so cannot see that failure; a test pins the numbering
+explicitly for exactly that reason.
+
+**When a term is tried against the id.** A whole uuid is matched as the id _alone_
+and is not also run through the text columns: it cannot be a name, an email or a
+passport (a passport has no dashes), so searching those would only risk matching a
+name that happens to contain the digits. A _fragment_ is different — the results
+table prints the whole uuid, so staff read `08` off it and expect to find the
+person. Two rules keep that from costing a round trip on every keystroke: the term
+must be hex digits and dashes only, and at least two characters with at least one
+digit in them. `cafe` is hex-looking but carries no digit, and one character would
+match nearly every uuid, so neither pays for the cast. Either way the text columns
+are still searched as well — the cast is added to the term's alternatives, never
+substituted for them.
+
+### Date formats `q` accepts
+
+A staff member searching for a date copies what the screen shows, so every format the UI
+produces is accepted, not just ISO:
+
+| Typed                              | Matches                                                  |
+| ---------------------------------- | -------------------------------------------------------- |
+| `03 Sept 2012`                     | that day — `formatDateOfBirth`'s `en-GB` rendering       |
+| `03 Aug 1992`                      | that day                                                 |
+| `03 aug 1992`                      | the same; a month name is case-insensitive               |
+| `Sept 03 2012`, `Sept 1992`        | that day, or the whole month                             |
+| `03 Sep 2012`, `03 September 2012` | the same day — a month is matched by prefix              |
+| `1992-08-03`                       | that day (ISO)                                           |
+| `1992-08`, `1992`                  | the whole month, or the whole year                       |
+| `03/08/1992`, `03-08-1992`         | that day, day first — the order the UI's date input uses |
+
+**A date with no year is not a range.** The forms above all anchor to a year, so they
+become one half-open range of days and stay on `passenger_dob_idx`. A term that names
+only some of the parts cannot:
+
+| Typed                | Matches                                               |
+| -------------------- | ----------------------------------------------------- |
+| `Sept`               | September, in any year                                |
+| `03 Sept`, `Sept 03` | the third of September, in any year                   |
+| `03 1992`            | the third of 1992                                     |
+| `08`                 | the eighth day of any month, **or** any day in August |
+
+A bare `08` is deliberately both readings at once rather than a coin toss: a staff
+member typing it wants every plausible person, and the list carries each person's
+date of birth to tell them apart. Extra rows are cheap in a search box; missing ones
+are not. They are offered as two alternatives, never as a conjunction, so neither
+reading rules out the other.
+
+**The month abbreviation is not uniform.** `Intl`'s `en-GB` short month spells September
+`Sept`, four letters, while every other month is three — so a parser written against
+three-letter abbreviations silently finds nobody for anyone born in September, and it does
+so only in September, which is the worst way for it to fail. Months are therefore matched as
+a **prefix of the full name**, three letters minimum, which covers `Sep`, `Sept` and
+`September` without a table that has to track the browser's ICU. Three letters is exactly
+enough to stay unambiguous: no two months share a three-letter prefix, which is what keeps
+`junk` from being read as June.
+
+A date written in words has to stay **one term**, and so does a partial one. Every
+whitespace-separated term has to match something, so splitting `03 Sept 2012` into
+three — or `03 Sept` into two — would require `03` and `Sept` to match a name as well,
+which nothing ever does, and the search returns nothing. The tokenizer tries the
+longest span first, so a date is recognised before it is torn into words that cannot
+match.
+
+What is deliberately **not** a date: a bare `0`, `32` or `199`; a year outside
+1900–2100; a month prefix shorter than three letters; and anything that is not a real
+date, including a rolled-over `2023-02-30` and a misspelt `03 Junk 1992`. Each of those
+falls through to being matched as text.
+
+The twelve displayed forms are pinned by a test that builds them with the same `Intl`
+configuration the UI uses, so a future CLDR change fails in CI rather than at a desk.
 
 Matching every term means a query cannot widen the result set: `Anabel` matches one
 column group, and adding `Effertz` intersects with a second.
@@ -211,6 +317,18 @@ rather than a Postgres cast failure.
 
 ## Deliberate deviations
 
+- **The two cast lookups are unindexed and scale with the result set.** A term that
+  matches "the 8th of any month, or any day in August" can match a large share of
+  the table, and the ids come back as an `IN` list on the outer query. `passenger.id`
+  is a bare `uuid` with no functional index, and `passenger_dob_idx` is a plain b-tree
+  that an `EXTRACT` cannot use, so both predicates are a sequential scan — as the
+  `ILIKE '%…%'` on the name columns already were. The difference is that the ids are
+  materialised into the outer query, and Postgres caps a statement at 65535 bind
+  parameters, so a table large enough for a common term to match tens of thousands of
+  rows would fail rather than return a page. Fixing that properly needs an index on
+  `id::text` and on `date_of_birth` as text — that is a shared schema change, so it is
+  reported below rather than made here. The alternative, capping the id list, would
+  truncate results silently, which is worse than failing.
 - **Page pagination, not cursor.** `apps/backend/CLAUDE.md` prefers cursors for
   large lists. The staff-web results pager addresses pages by number, so a cursor
   would break the only client. Revisit together if that pager changes.
@@ -225,6 +343,14 @@ rather than a Postgres cast failure.
 
 ## Blockers — needs another team
 
+- **The id and date-part searches need an index this module must not add.**
+  Matching a fragment of `passenger.id`, or the day or month of `date_of_birth`,
+  means casting both columns in SQL; neither cast can use the indexes that exist.
+  `date_of_birth` is already indexed b-tree (`passenger_dob_idx`), which is why a
+  fully-specified date stays a range, but `id` has only its primary key. A functional
+  index on `id::text` and one on `date_of_birth` cast to text would fix both, and
+  would also let the cast be dropped for `id`. That is a shared schema change — see the
+  deviation above for what happens without it.
 - **The security-staff exception on passport masking is unimplemented.** The
   Artifact masks the passport "for non-security staff", which implies security
   staff see it in the clear. The role model cannot express that: `staff.role_id`
@@ -249,6 +375,14 @@ rather than a Postgres cast failure.
   contract to call. This module writes the correction and its audit row; the
   re-screen is a reported dependency, not a silent omission.
 - **The `S` staff guard is not enforced.** See the note under _Routes_.
+- **The seed data has no passport numbers or Thai names.** `src/db/seed.ts` populates the
+  Latin names, date of birth, gender and nationality, but leaves `passport_number`,
+  `local_first_name` and `local_last_name` null. Those three are searchable fields, and the
+  Artifact's own matching keys on a passport, so on a freshly seeded database a search for
+  either one returns nothing — the search is correct and the data is simply absent. Not
+  changed here: `src/db/` is the Database Team's (see `apps/backend/CLAUDE.md`), and a seed
+  that faked passports would also make review item 6's normalisation rule untestable against
+  realistic values.
 
 ## Not in this module
 

@@ -269,68 +269,388 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error
 }
 
-/** Split on any run of whitespace, so `"  Anabel   Effertz "` yields the two real terms. */
+/**
+ * Splits on whitespace, so `"  Anabel   Effertz "` yields the two real terms — but keeps a
+ * date written in words together as one term.
+ *
+ * The staff UI renders a date of birth as `03 Aug 1992` (`formatDateOfBirth`), so a staff
+ * member searching for a date copies what is on screen. Splitting that into three terms would
+ * require `03` *and* `Aug` to match a name as well, which nothing ever does, so the search
+ * returns nothing. The longest span is tried first, so a date is recognised before it is torn
+ * into words that cannot match anything.
+ *
+ * A partial date stays whole for the same reason: `03 Sept` has to be one term meaning "the
+ * third of September", not two terms that happen to be matched independently.
+ */
 function tokenizeQuery(q: string): string[] {
-  return q.split(/\s+/).filter((token) => token !== '')
+  const words = q.split(/\s+/).filter((word) => word !== '')
+  const tokens: string[] = []
+
+  for (let index = 0; index < words.length; index += 1) {
+    const three = words.slice(index, index + 3).join(' ')
+    const two = words.slice(index, index + 2).join(' ')
+
+    if (dateOfBirth(three)) {
+      tokens.push(three)
+      index += 2
+      continue
+    }
+    if (dateOfBirth(two)) {
+      tokens.push(two)
+      index += 1
+      continue
+    }
+    tokens.push(words[index])
+  }
+
+  return tokens
 }
 
 function containsInsensitive(term: string) {
   return { contains: term, mode: 'insensitive' as const }
 }
 
-/** `YYYY`, `YYYY-MM` or `YYYY-MM-DD` — the shape the staff UI shows a date of birth in. */
-const DATE_PREFIX = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/
+/** The shortest year this will read as a date of birth, matching `readDateOfBirth`'s floor. */
+const EARLIEST_SEARCH_YEAR = 1900
+
+/** Past the end of any plausible booking, so `9999` is not read as a year. */
+const LATEST_SEARCH_YEAR = 2100
 
 /**
- * Turns an ISO date prefix into the half-open range of days it could cover, so
- * `1988` means the whole of 1988 and `1988-03` the whole of March.
+ * Full month names, matched by prefix.
  *
- * `date_of_birth` is a `@db.Date`, so it cannot take a `contains` filter the way the
- * text columns do. A range is also what keeps this on `passenger_dob_idx` instead of
- * forcing a cast per row.
+ * The staff UI renders a date with `Intl.DateTimeFormat('en-GB', { month: 'short' })`, and that
+ * abbreviation is **not** always three letters: CLDR spells September `Sept`, so `03 Sept 2012`
+ * is what is actually on screen. Matching the full name by prefix accepts both `Sep` and `Sept`,
+ * and the full name too, without a table that has to be kept in step with the browser's ICU.
  *
- * Returns null for anything that is not a real date prefix, so an ordinary name or
- * passport token never turns into a range, and for a rolled-over day such as
- * `2023-02-30`, which `Date.UTC` would silently push into March.
+ * Three letters is the shortest accepted prefix, and it is exactly enough to stay unambiguous:
+ * no two months share a three-letter prefix (`mar`/`may` and `jun`/`jul` are the near misses).
+ * That is what keeps `junk` from being read as June.
  */
-function dateOfBirthRange(token: string): { gte: Date; lt: Date } | null {
-  const match = DATE_PREFIX.exec(token)
-  if (!match) {
+const MONTH_NAMES = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+]
+
+const SHORTEST_MONTH_PREFIX = 3
+
+/** `1992`, `1992-08` or `1992-08-03`. */
+const ISO_DATE = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/
+
+/** `03/08/1992` or `03-08-1992`, both separators required to be the same. */
+const SEPARATED_DATE = /^(\d{1,2})([/-])(\d{1,2})\2(\d{4})$/
+
+/** `03 Sept 1992` — the exact shape `formatDateOfBirth` puts on screen. */
+const DAY_MONTH_YEAR = /^(\d{1,2}) ([a-z]{3,9}) (\d{4})$/i
+
+/** `Sept 03 1992` and `Sept 1992`, the other ways the same date is written. */
+const MONTH_DAY_YEAR = /^([a-z]{3,9}) (\d{1,2}) (\d{4})$/i
+const MONTH_YEAR = /^([a-z]{3,9}) (\d{4})$/i
+
+/** `03 Sept` and `Sept 03` — a day and its month, with no year. */
+const DAY_MONTH = /^(\d{1,2}) ([a-z]{3,9})$/i
+const MONTH_DAY = /^([a-z]{3,9}) (\d{1,2})$/i
+
+/** `03 1992` — a day in a named year. */
+const DAY_YEAR = /^(\d{1,2}) (\d{4})$/
+
+/** A bare `08`, which is either the eighth day or August. */
+const BARE_DAY_OR_MONTH = /^(\d{1,2})$/
+
+/** A bare `Sept`, which is a month in any year. */
+const BARE_MONTH = /^([a-z]{3,9})$/i
+
+/** A month name or prefix of one as the 1-based number {@link range} expects, or null if it is neither. */
+function monthNumber(name: string): number | null {
+  const lower = name.toLowerCase()
+  if (lower.length < SHORTEST_MONTH_PREFIX) {
     return null
   }
-
-  const year = Number(match[1])
-  const month = match[2] === undefined ? 1 : Number(match[2])
-  const day = match[3] === undefined ? 1 : Number(match[3])
-  if (month < 1 || month > 12 || day < 1 || day > 31) {
-    return null
-  }
-
-  const monthIndex = month - 1
-  const start = new Date(Date.UTC(year, monthIndex, day))
-  if (start.getUTCFullYear() !== year || start.getUTCMonth() !== monthIndex || start.getUTCDate() !== day) {
-    return null
-  }
-
-  // `Date.UTC` rolls month and year over on its own, so December needs no special case.
-  const end =
-    match[3] !== undefined
-      ? new Date(Date.UTC(year, monthIndex, day + 1))
-      : match[2] !== undefined
-        ? new Date(Date.UTC(year, monthIndex + 1, 1))
-        : new Date(Date.UTC(year + 1, 0, 1))
-
-  return { gte: start, lt: end }
+  const index = MONTH_NAMES.findIndex((month) => month.startsWith(lower))
+  return index === -1 ? null : index + 1
 }
 
 /**
- * The columns one search term may match.
+ * Builds the half-open range of days a partially-specified date could cover, so `1992` means
+ * the whole of 1992 and `1992-08` the whole of August.
  *
- * Every term matches any one of these, and {@link buildSearchWhere} requires every
- * term to match one — which is what lets `Anabel Effertz` find a row where the two
- * words sit in different columns.
+ * `date_of_birth` is a `@db.Date`, so it cannot take a `contains` filter the way the text
+ * columns do. A range is also what keeps this on `passenger_dob_idx` instead of forcing a cast
+ * per row.
+ *
+ * Omitting the month or day means "any", never day 0: the start is floored to the first and
+ * the end to the next period. `Date.UTC` rolls month and year over on its own, so December
+ * needs no special case.
  */
-function matchClausesFor(token: string): Prisma.passengerWhereInput[] {
+function range(year: number, month: number | null, day: number | null): { gte: Date; lt: Date } | null {
+  if (year < EARLIEST_SEARCH_YEAR || year > LATEST_SEARCH_YEAR) {
+    return null
+  }
+  if (month === null) {
+    return { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) }
+  }
+  if (month < 1 || month > 12) {
+    return null
+  }
+
+  const monthIndexStart = month - 1
+  const gte = new Date(Date.UTC(year, monthIndexStart, day ?? 1))
+  // Rejects a rolled-over day such as `2023-02-30`, which `Date.UTC` would quietly push into March.
+  if (gte.getUTCFullYear() !== year || gte.getUTCMonth() !== monthIndexStart || gte.getUTCDate() !== (day ?? 1)) {
+    return null
+  }
+
+  const lt = day === null ? new Date(Date.UTC(year, monthIndexStart + 1, 1)) : new Date(Date.UTC(year, monthIndexStart, day + 1))
+  return { gte, lt }
+}
+
+/** The half-open range of days a fully-specified date could cover. */
+type DateRange = { gte: Date; lt: Date }
+
+/** A date with some of its parts left open, e.g. "the third of September, any year". */
+type PartialDate = { year?: number; month?: number; day?: number }
+
+/**
+ * What one term of `q` means as a date of birth.
+ *
+ * A `range` runs contiguously from 1 January of a known year, so Prisma can filter it and
+ * `passenger_dob_idx` still applies. `parts` is everything else — a bare day, a month with no
+ * year, a day whose month was never given — which no single range can describe and which
+ * `date_of_birth` being a `@db.Date` cannot take a `contains` for either.
+ */
+type DateMatch = { kind: 'range'; range: DateRange } | { kind: 'parts'; alternatives: PartialDate[] }
+
+/**
+ * Turns a date of birth written in any of the shapes staff actually use into something
+ * filterable, or returns null when the token is not a date at all.
+ *
+ * Null is what keeps an ordinary name or a passport token from becoming a range. It is also
+ * what keeps nonsense out: `2023-02-30` is not a real date, `199` is not a day, and `0` is
+ * neither a day nor a month, so none of them is treated as one.
+ */
+function dateOfBirth(token: string): DateMatch | null {
+  const asRange = (year: number, month: number | null, day: number | null): DateMatch | null => {
+    const found = range(year, month, day)
+    return found ? { kind: 'range', range: found } : null
+  }
+
+  const iso = ISO_DATE.exec(token)
+  if (iso) {
+    return asRange(Number(iso[1]), iso[2] === undefined ? null : Number(iso[2]), iso[3] === undefined ? null : Number(iso[3]))
+  }
+
+  const separated = SEPARATED_DATE.exec(token)
+  if (separated) {
+    // Day first: the UI's own date input is `DD / MM / YYYY`, so this is the order staff type.
+    return asRange(Number(separated[4]), Number(separated[3]), Number(separated[1]))
+  }
+
+  const dayMonthYear = DAY_MONTH_YEAR.exec(token)
+  if (dayMonthYear) {
+    const month = monthNumber(dayMonthYear[2])
+    return month === null ? null : asRange(Number(dayMonthYear[3]), month, Number(dayMonthYear[1]))
+  }
+
+  const monthDayYear = MONTH_DAY_YEAR.exec(token)
+  if (monthDayYear) {
+    const month = monthNumber(monthDayYear[1])
+    return month === null ? null : asRange(Number(monthDayYear[3]), month, Number(monthDayYear[2]))
+  }
+
+  const monthYear = MONTH_YEAR.exec(token)
+  if (monthYear) {
+    const month = monthNumber(monthYear[1])
+    return month === null ? null : asRange(Number(monthYear[2]), month, null)
+  }
+
+  const dayMonth = DAY_MONTH.exec(token)
+  if (dayMonth) {
+    const month = monthNumber(dayMonth[2])
+    const day = Number(dayMonth[1])
+    return month === null || !isDayOfMonth(day) ? null : { kind: 'parts', alternatives: [{ month, day }] }
+  }
+
+  const monthDay = MONTH_DAY.exec(token)
+  if (monthDay) {
+    const month = monthNumber(monthDay[1])
+    const day = Number(monthDay[2])
+    return month === null || !isDayOfMonth(day) ? null : { kind: 'parts', alternatives: [{ month, day }] }
+  }
+
+  const dayYear = DAY_YEAR.exec(token)
+  if (dayYear) {
+    const year = Number(dayYear[2])
+    const day = Number(dayYear[1])
+    return !isDayOfMonth(day) || year < EARLIEST_SEARCH_YEAR || year > LATEST_SEARCH_YEAR
+      ? null
+      : { kind: 'parts', alternatives: [{ year, day }] }
+  }
+
+  const bareMonth = BARE_MONTH.exec(token)
+  if (bareMonth) {
+    const month = monthNumber(bareMonth[1])
+    return month === null ? null : { kind: 'parts', alternatives: [{ month }] }
+  }
+
+  const bareDayOrMonth = BARE_DAY_OR_MONTH.exec(token)
+  if (bareDayOrMonth) {
+    const day = Number(bareDayOrMonth[1])
+    if (!isDayOfMonth(day)) {
+      return null
+    }
+    // `08` is ambiguous — the eighth of some month, or some day in August — and a staff member
+    // typing it into a search box wants both rather than a coin toss. It is offered as two
+    // alternatives, never as a conjunction, so neither reading rules out the other.
+    return { kind: 'parts', alternatives: [{ day }, { month: day }] }
+  }
+
+  return null
+}
+
+/** A day that exists in some month; February's shorter length is not checked, because a day alone cannot say which month. */
+function isDayOfMonth(day: number): boolean {
+  return Number.isInteger(day) && day >= 1 && day <= 31
+}
+
+/**
+ * A fragment of the person id, as a staff member reads it off the results table.
+ *
+ * `passenger.id` is a `@db.Uuid`, so Prisma's query builder cannot `contains` it and matching
+ * one has to cast the column to text in SQL. Two rules keep that cast rare enough to be worth
+ * the extra round trip it costs:
+ *
+ * - Only hex digits and dashes, so an ordinary name never triggers it.
+ * - At least two characters, and at least one digit, so a single character does not pull back
+ *   nearly every row. A two-character fragment is already specific enough for staff use.
+ *
+ * A term of one character still matches every text column it always did; it simply is not
+ * tried against the id.
+ */
+const ID_FRAGMENT = /^[0-9a-f-]+$/i
+const SHORTEST_ID_FRAGMENT = 2
+
+/**
+ * A piece of SQL and the values bound into it.
+ *
+ * Prisma's own `sql` tag would build this, but importing it means importing the generated
+ * client at runtime, and the generated client is ESM — which Jest cannot resolve, and which
+ * this module's unit tests deliberately avoid by mocking `DbService` instead. Holding the
+ * fragments here keeps the module importable, and keeps every value a bound parameter: a search
+ * term reaches the driver only as a value, never as statement text.
+ *
+ * Fragments are written with a `?`, which stands in for "a value goes here" and is renumbered
+ * by {@link numbered} once the whole statement is assembled. It is deliberately *not* the
+ * placeholder that reaches Postgres — see that function for why.
+ */
+interface SqlFragment {
+  text: string
+  values: unknown[]
+}
+
+const SQL_AND = ' AND '
+const SQL_OR = ' OR '
+
+/** Concatenates fragments, so their placeholders and their values stay in the same order. */
+function joinFragments(fragments: SqlFragment[], separator: string): SqlFragment {
+  return {
+    text: fragments.map((fragment) => fragment.text).join(separator),
+    values: fragments.flatMap((fragment) => fragment.values),
+  }
+}
+
+/**
+ * Replaces each `?` with the `$1`, `$2, … that Postgres actually takes.
+ *
+ * Postgres numbers its placeholders and has no `?` at all. Prisma rewrites one dialect's
+ * placeholder into another's inside its `sql` tag, but `$queryRawUnsafe` does no such
+ * rewriting — it hands the statement and the values to the driver exactly as given, and the
+ * `pg` adapter passes them to the server unchanged. So a `?` that reached the database would be
+ * a syntax error, not a parameter, and every term needing SQL would fail. `joinFragments`
+ * appends values in the same order it concatenates text, so the nth `?` is the nth value.
+ *
+ * Only ever substituted for text this module built: no user input reaches a statement, only a
+ * bound value, so a `?` here is always one of ours.
+ */
+function numbered(fragment: SqlFragment): string {
+  let index = 0
+  return fragment.text.replace(/\?/g, () => `$${++index}`)
+}
+
+function idFragmentSql(token: string): SqlFragment | null {
+  if (token.length < SHORTEST_ID_FRAGMENT || !ID_FRAGMENT.test(token) || !/\d/.test(token)) {
+    return null
+  }
+  // The fragment is bound as a parameter, never interpolated, so it cannot reach the SQL.
+  return { text: 'id::text ILIKE ?', values: [`%${token}%`] }
+}
+
+/**
+ * One calendar part, e.g. `EXTRACT(DAY FROM date_of_birth) = 3`.
+ *
+ * `date_of_birth` is a `@db.Date`, so Prisma can only compare it against a range; there is no
+ * filter for "the month is 9" however it is spelled. Postgres can say it with `EXTRACT`.
+ */
+function datePartSql(alternative: PartialDate): SqlFragment {
+  const parts: SqlFragment[] = []
+  if (alternative.year !== undefined) {
+    parts.push({ text: 'EXTRACT(YEAR FROM date_of_birth) = ?', values: [alternative.year] })
+  }
+  if (alternative.month !== undefined) {
+    parts.push({ text: 'EXTRACT(MONTH FROM date_of_birth) = ?', values: [alternative.month] })
+  }
+  if (alternative.day !== undefined) {
+    parts.push({ text: 'EXTRACT(DAY FROM date_of_birth) = ?', values: [alternative.day] })
+  }
+  // Parenthesised so the `AND` inside one alternative can never bind across to the next one.
+  const one = joinFragments(parts, SQL_AND)
+  return { text: `(${one.text})`, values: one.values }
+}
+
+/** A partial date as one predicate: its alternatives joined by `OR`, its own parts by `AND`. */
+function datePartsSql(alternatives: PartialDate[]): SqlFragment {
+  return joinFragments(alternatives.map(datePartSql), SQL_OR)
+}
+
+/**
+ * What one search term may match.
+ *
+ * A term matches any one of these, and {@link buildSearchWhere} requires every term to match
+ * one — which is what lets `Anabel Effertz` find a row where the two words sit in different
+ * columns, and what lets a single `08` return the person whose id carries it, the person whose
+ * passport does, and the person born on the eighth, all from one query.
+ *
+ * The two lists exist because two of the searchable fields cannot be expressed in Prisma's
+ * query builder at all: a substring of a `@db.Uuid` column, and a calendar part of a `@db.Date`
+ * column. Those become a small `SELECT id` and come back as one more alternative on the same
+ * `OR`, so a term still matches whichever field carries it.
+ */
+interface TokenPlan {
+  /** What Prisma's query builder can filter. */
+  clauses: Prisma.passengerWhereInput[]
+  /** What only Postgres can: a uuid substring, and a date with no contiguous range. */
+  sql: SqlFragment[]
+}
+
+function planToken(token: string): TokenPlan {
+  // A whole uuid is matched as the id *alone*: running it through the text `contains` clauses
+  // as well would search four name columns and an email for a value that can only ever be an
+  // id, and a passport number cannot contain a dash, so nothing legitimate is lost by not
+  // doing it. `passenger.id` is a `@db.Uuid`, so a non-uuid must never be compared to it.
+  if (looksLikeUuid(token)) {
+    return { clauses: [{ id: token }], sql: [] }
+  }
+
   const clauses: Prisma.passengerWhereInput[] = [
     { first_name: containsInsensitive(token) },
     { last_name: containsInsensitive(token) },
@@ -342,17 +662,21 @@ function matchClausesFor(token: string): Prisma.passengerWhereInput[] {
     { customer: { is: { deleted_at: null, user: { email: containsInsensitive(token) } } } },
   ]
 
-  // `passenger.id` is a `@db.Uuid`; comparing it to a non-UUID is a Postgres cast error.
-  if (looksLikeUuid(token)) {
-    clauses.push({ id: token })
+  const sql: SqlFragment[] = []
+
+  const date = dateOfBirth(token)
+  if (date?.kind === 'range') {
+    clauses.push({ date_of_birth: date.range })
+  } else if (date) {
+    sql.push(datePartsSql(date.alternatives))
   }
 
-  const dob = dateOfBirthRange(token)
-  if (dob) {
-    clauses.push({ date_of_birth: dob })
+  const idFragment = idFragmentSql(token)
+  if (idFragment) {
+    sql.push(idFragment)
   }
 
-  return clauses
+  return { clauses, sql }
 }
 
 @Injectable()
@@ -362,7 +686,7 @@ export class PassengerProfilesService {
   constructor(private readonly db: DbService) {}
 
   async search(dto: SearchPassengersDto): Promise<PassengerSearchResult> {
-    return this.runSearch(this.buildSearchWhere(dto.q, dto.type), dto.page, dto.size)
+    return this.runSearch(await this.buildSearchWhere(dto.q, dto.type), dto.page, dto.size)
   }
 
   /**
@@ -372,7 +696,32 @@ export class PassengerProfilesService {
    * caller cannot ask this route for travellers.
    */
   async searchAccountHolders(dto: SearchCustomersDto): Promise<PassengerSearchResult> {
-    return this.runSearch(this.buildSearchWhere(dto.q, 'accountHolder'), dto.page, dto.size)
+    return this.runSearch(await this.buildSearchWhere(dto.q, 'accountHolder'), dto.page, dto.size)
+  }
+
+  /**
+   * The rows a term's SQL-only predicates match, by id.
+   *
+   * Only the two filters Prisma cannot express reach this: a substring of the `@db.Uuid` id
+   * column and a calendar part of the `@db.Date` date of birth. Both are answered by one small
+   * `SELECT id`, and the ids come back as one more alternative on the same `OR` as the text
+   * columns — so paging, ordering, the account-holder split and the count are still the single
+   * query {@link runSearch} makes, with nothing filtered in the browser.
+   *
+   * `deleted_at` is honoured here as well, so a soft-deleted row cannot re-enter through the
+   * cast. The account-holder/traveller split is deliberately *not* applied: it is already on
+   * the outer query, and duplicating it here would mean two rules to keep in step.
+   *
+   * A query of plain names never gets here — {@link planToken} only produces SQL for a term
+   * that actually needs it, so `Anabel Effertz` still costs the one transaction it always did.
+   */
+  private async findPassengerIds(predicates: SqlFragment[]): Promise<string[]> {
+    const matched = joinFragments(predicates, SQL_OR)
+    const rows = await this.db.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id FROM passenger WHERE deleted_at IS NULL AND (${numbered(matched)})`,
+      ...matched.values,
+    )
+    return rows.map((row) => row.id)
   }
 
   private async runSearch(where: Prisma.passengerWhereInput, page: number, size: number): Promise<PassengerSearchResult> {
@@ -633,16 +982,26 @@ export class PassengerProfilesService {
     return toSummary(updated)
   }
 
-  private buildSearchWhere(q: string, type: PersonType): Prisma.passengerWhereInput {
+  private async buildSearchWhere(q: string, type: PersonType): Promise<Prisma.passengerWhereInput> {
     const where: Prisma.passengerWhereInput = { deleted_at: null }
 
-    const tokens = tokenizeQuery(q)
-    if (tokens.length > 0) {
-      // Each term has to match something, rather than the whole query being matched
-      // against one column at a time. That is what makes a full name work: `Anabel
-      // Effertz` finds the row whose first name is one term and last name the other.
-      // Single-term queries are unchanged — one group of alternatives, as before.
-      where.AND = tokens.map((token) => ({ OR: matchClausesFor(token) }))
+    const plans = tokenizeQuery(q).map(planToken)
+    if (plans.length > 0) {
+      // One lookup per term that needs one, all issued together. A term with nothing SQL-only
+      // about it does not wait on a query that would return every row anyway.
+      const sqlIds = await Promise.all(
+        plans.map((plan) => (plan.sql.length > 0 ? this.findPassengerIds(plan.sql) : Promise.resolve<string[]>([]))),
+      )
+
+      // Each term has to match something, rather than the whole query being matched against one
+      // column at a time. That is what makes a full name work: `Anabel Effertz` finds the row
+      // whose first name is one term and last name the other. Single-term queries are unchanged
+      // — one group of alternatives, as before.
+      where.AND = plans.map((plan, index) => ({
+        // The ids a cast needed to produce are one more alternative alongside the columns, so a
+        // term matches whichever field carries it. An empty list simply matches nothing.
+        OR: plan.sql.length > 0 ? [...plan.clauses, { id: { in: sqlIds[index] } }] : plan.clauses,
+      }))
     }
 
     if (type === 'accountHolder') {
