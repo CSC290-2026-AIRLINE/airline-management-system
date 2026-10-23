@@ -16,6 +16,15 @@ interface BatchItem {
   detail: string
 }
 
+interface BatchOutcome {
+  flight_id: string
+  status: number
+  error?: string | { message?: string | string[] }
+}
+
+// A per-flight error is either a string or the Nest error body ({ message: string | string[] }).
+const outcomeError = (error: BatchOutcome['error']) => (typeof error === 'string' ? error : [error?.message ?? 'Failed'].flat().join('; '))
+
 interface BatchActionsProps {
   selected: FlightRow[]
   fetcher: Fetcher
@@ -24,8 +33,8 @@ interface BatchActionsProps {
 }
 
 // "N flights selected" bar with Change aircraft and Delay, and the Batch result under it.
-// There is no batch endpoint yet (POST /flights/batch/delay), so each flight is sent to POST /flights/:id/delay on its own, in departure
-// order, and one failure never blocks the others. Change aircraft (PUT /flights/:id/aircraft) is hidden until the F9 aircraft list exists.
+// Delay goes to POST /flights/batch/delay in one call. Change aircraft (PUT /flights/:id/aircraft) is sent per flight and is hidden until
+// the F9 aircraft list exists.
 export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActionsProps) {
   const { reasons } = useDisruptionReasons()
   const [mode, setMode] = useState<'aircraft' | 'delay' | null>(null)
@@ -42,31 +51,52 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
   const ready = mode === 'aircraft' ? aircraft !== '' : Number.isInteger(delay) && delay > 0 && reason !== ''
   const tail = AIRCRAFT.find((a) => a.id === aircraft)?.label.split(' · ')[0] ?? aircraft
 
-  async function applyOne(flight: FlightRow): Promise<BatchItem> {
+  // Change aircraft stays one call per flight (PUT /flights/:id/aircraft has no batch endpoint, and it is hidden until F9 exists).
+  async function applyAircraft(flight: FlightRow): Promise<BatchItem> {
     try {
-      const res =
-        mode === 'aircraft'
-          ? await fetcher(`${BASE}/flights/${flight.id}/aircraft`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ aircraft_id: aircraft }),
-            })
-          : await fetcher(`${BASE}/flights/${flight.id}/delay`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ reason_code: reason, delay_minutes: delay }),
-            })
+      const res = await fetcher(`${BASE}/flights/${flight.id}/aircraft`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aircraft_id: aircraft }),
+      })
       if (!res.ok) return { flight, ok: false, detail: await errorMessage(res) }
-      return { flight, ok: true, detail: mode === 'aircraft' ? `${tail} assigned.` : `Delayed ${delay} min.` }
+      return { flight, ok: true, detail: `${tail} assigned.` }
     } catch (e) {
       return { flight, ok: false, detail: e instanceof Error ? e.message : String(e) }
     }
   }
 
+  // One POST /flights/batch/delay answers 207 with an outcome per flight; the server delays them in departure order.
+  async function applyDelay(flights: FlightRow[]): Promise<BatchItem[]> {
+    try {
+      const res = await fetcher(`${BASE}/flights/batch/delay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flight_ids: flights.map((f) => f.id), reason_code: reason, delay_minutes: delay }),
+      })
+      if (!res.ok) {
+        const detail = await errorMessage(res)
+        return flights.map((flight) => ({ flight, ok: false, detail }))
+      }
+      const { results } = (await res.json()) as { results: BatchOutcome[] }
+      const byId = new Map(results.map((r) => [r.flight_id, r]))
+      return flights.map((flight) => {
+        const r = byId.get(flight.id)
+        if (r?.status === 200) return { flight, ok: true, detail: `Delayed ${delay} min.` }
+        return { flight, ok: false, detail: r ? `${r.status}. ${outcomeError(r.error)}` : 'No result returned.' }
+      })
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e)
+      return flights.map((flight) => ({ flight, ok: false, detail }))
+    }
+  }
+
   async function apply() {
     setBusy(true)
+    const flights = [...selected].sort((a, b) => a.dep_at.localeCompare(b.dep_at))
     const items: BatchItem[] = []
-    for (const flight of [...selected].sort((a, b) => a.dep_at.localeCompare(b.dep_at))) items.push(await applyOne(flight))
+    if (mode === 'aircraft') for (const flight of flights) items.push(await applyAircraft(flight))
+    else items.push(...(await applyDelay(flights)))
     setResult(items)
     const changed = items.filter((i) => i.ok).length
     setWarn(changed < items.length)
