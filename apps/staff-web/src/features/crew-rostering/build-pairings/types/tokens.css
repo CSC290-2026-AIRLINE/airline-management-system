@@ -38,6 +38,11 @@
   --color-invalid-bg: rgb(184 23 31 / 0.3);
   --color-info-bg: #eef3fb;
 
+  /* Band behind a strip that sits into the page rather than on it, e.g. the wizard
+     steps. One step darker than `--color-page-bg`, so it reads as a band and not as
+     a card — a card on this colour would need a border to stay distinguishable. */
+  --color-band-bg: #eef2f7;
+
   /* Typography */
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Merriweather', ui-serif, Georgia, serif;

@@ -121,16 +121,26 @@ export function StatusBadge({ status }: { status: 'passed' | 'failed' }) {
   )
 }
 
-/** Full-width notice used for save and delete confirmations on the page. */
-export function AlertBanner({ tone, children }: { tone: 'success' | 'warning'; children: ReactNode }) {
+/**
+ * Full-width notice used for save and delete confirmations on the page.
+ *
+ * `action` sits inside the coloured box rather than beside it. On the fix-publish
+ * notices the next step is always part of the sentence — "All breaks closed… ready to
+ * publish" with the publish button attached — so putting the button in a second column
+ * would split the thought in half.
+ */
+export function AlertBanner({ tone, action, children }: { tone: 'success' | 'warning' | 'info'; action?: ReactNode; children: ReactNode }) {
   const styles = {
     success: 'border-valid/30 bg-valid-bg text-valid',
     warning: 'border-secondary/40 bg-secondary/10 text-primary',
+    info: 'border-primary/15 bg-info-bg text-primary',
   } as const
+  const Icon = tone === 'success' ? CheckIcon : InfoIcon
   return (
-    <div role="status" className={`flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium ${styles[tone]}`}>
-      {tone === 'success' ? <CheckIcon className="h-4 w-4 shrink-0" /> : <InfoIcon className="h-4 w-4 shrink-0" />}
-      <span>{children}</span>
+    <div role="status" className={`flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm font-medium ${styles[tone]}`}>
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 flex-1">{children}</span>
+      {action}
     </div>
   )
 }
@@ -189,7 +199,7 @@ export function BaseModalOverlay({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-primary/40 p-6 backdrop-blur-[2px]"
+      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-primary/40 p-3 backdrop-blur-[2px] sm:p-6"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
@@ -198,21 +208,24 @@ export function BaseModalOverlay({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className={`flex max-h-[90vh] w-full ${width} flex-col overflow-hidden rounded-2xl bg-card-bg shadow-2xl`}
+        className={`flex max-h-[92vh] w-full ${width} flex-col overflow-hidden rounded-2xl bg-card-bg shadow-2xl`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-border-desc/40 px-6 py-5">
-          <h2 className="text-xl font-bold text-primary-text">{title}</h2>
+        <div className="flex items-start justify-between gap-4 border-b border-border-desc/40 px-4 py-4 sm:px-6 sm:py-5">
+          <h2 className="text-lg font-bold text-primary-text sm:text-xl">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1 text-border-desc transition-colors hover:bg-page-bg hover:text-primary-text"
+            className="shrink-0 rounded-md p-1 text-border-desc transition-colors hover:bg-page-bg hover:text-primary-text"
           >
             <CloseIcon className="h-5 w-5" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
-        <div className="flex justify-end gap-3 border-t border-border-desc/40 bg-page-bg px-6 py-4">{footer}</div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">{children}</div>
+        {/* Stacked on a phone so two buttons never have to share one short row. */}
+        <div className="flex flex-col-reverse gap-2.5 border-t border-border-desc/40 bg-page-bg px-4 py-4 sm:flex-row sm:justify-end sm:gap-3 sm:px-6">
+          {footer}
+        </div>
       </div>
     </div>
   )
@@ -236,6 +249,14 @@ export function ChevronLeftIcon({ className = 'h-4 w-4' }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={className} aria-hidden="true">
       <path d="m15 18-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function ArrowLeftIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true">
+      <path d="M19 12H5m6 6-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
