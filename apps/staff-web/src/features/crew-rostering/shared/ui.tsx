@@ -291,21 +291,28 @@ export function StatusBadge({ status }: { status: 'passed' | 'failed' }) {
 }
 
 /**
- * Notice used for save and delete confirmations. On small screens it floats
+ * Notice used for save, delete and publish confirmations. On small screens it floats
  * above the commit footer as a toast; from `sm` up it sits inline in the flow.
+ *
+ * `action` is the call to action that rides along with the notice — publish-publish and
+ * "start next run" — so an operator who has to fix something is not left hunting for the
+ * button that acts on it.
  */
-export function AlertBanner({ tone, children }: { tone: 'success' | 'warning'; children: ReactNode }) {
+export function AlertBanner({ tone, action, children }: { tone: 'success' | 'warning' | 'info'; action?: ReactNode; children: ReactNode }) {
   const styles = {
     success: 'border-valid/30 bg-valid-bg text-valid',
     warning: 'border-secondary/40 bg-secondary/10 text-primary',
+    info: 'border-primary/15 bg-info-bg text-primary',
   } as const
+  const Icon = tone === 'success' ? CheckIcon : InfoIcon
   return (
     <div
       role="status"
-      className={`fixed inset-x-3 bottom-24 z-30 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium shadow-lg sm:static sm:inset-auto sm:bottom-auto sm:z-auto sm:shadow-none ${styles[tone]}`}
+      className={`fixed inset-x-3 bottom-24 z-30 flex flex-wrap items-center gap-x-2 gap-y-3 rounded-lg border px-4 py-3 text-sm font-medium shadow-lg sm:static sm:inset-auto sm:bottom-auto sm:z-auto sm:flex-nowrap sm:shadow-none ${styles[tone]}`}
     >
-      {tone === 'success' ? <CheckIcon className="h-4 w-4 shrink-0" /> : <InfoIcon className="h-4 w-4 shrink-0" />}
-      <span>{children}</span>
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 flex-1">{children}</span>
+      {action && <div className="flex w-full shrink-0 sm:w-auto">{action}</div>}
     </div>
   )
 }
@@ -474,7 +481,7 @@ export function BaseModalOverlay({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className={`flex max-h-[90vh] w-full ${width} flex-col overflow-hidden rounded-2xl bg-card-bg shadow-2xl`}
+        className={`flex max-h-[92vh] w-full ${width} flex-col overflow-hidden rounded-2xl bg-card-bg shadow-2xl`}
       >
         <div className="flex items-start justify-between gap-4 border-b border-border-desc/40 px-4 py-4 sm:px-6 sm:py-5">
           <h2 className="text-lg font-bold text-primary-text sm:text-xl">{title}</h2>
@@ -482,7 +489,7 @@ export function BaseModalOverlay({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1 text-border-desc transition-colors hover:bg-page-bg hover:text-primary-text"
+            className="shrink-0 rounded-md p-1 text-border-desc transition-colors hover:bg-page-bg hover:text-primary-text"
           >
             <CloseIcon className="h-5 w-5" />
           </button>
@@ -512,6 +519,14 @@ export function ChevronLeftIcon({ className = 'h-4 w-4' }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={className} aria-hidden="true">
       <path d="m15 18-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function ArrowLeftIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true">
+      <path d="M19 12H5m6 6-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
