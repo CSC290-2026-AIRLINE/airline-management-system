@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { CreateAircraftDto } from './dto/create-aircraft.dto';
+import { CreateAircraftDto } from '../dto/create-aircraft.dto';
 
 @Injectable()
 export class AircraftService {
