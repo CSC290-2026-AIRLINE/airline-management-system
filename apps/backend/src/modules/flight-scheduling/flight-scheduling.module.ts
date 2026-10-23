@@ -15,6 +15,19 @@ import { SettingsController } from './settings.controller'
 import { SettingsService } from './settings.service'
 import { TimetableController } from './timetable.controller'
 import { TimetableService } from './timetable.service'
+import { AIRCRAFT_DIRECTORY, PendingAircraftDirectory } from './operations/aircraft-directory'
+import { AircraftFeasibilityService } from './operations/aircraft-feasibility.service'
+import { AUDIT_SINK, PendingAuditSink } from './operations/audit-sink'
+import { CascadeDetector } from './operations/cascade-detector'
+import { ConflictService } from './operations/conflict.service'
+import { FLIGHT_CLOCK, InterimMachineClock } from './operations/flight-clock'
+import { FlightConfirmService } from './operations/flight-confirm.service'
+import { FlightEventBus, FlightEventPublisher } from './operations/flight-event-bus'
+import { FlightEventWriter } from './operations/flight-event-writer'
+import { FlightOperationsController } from './operations/flight-operations.controller'
+import { FlightOperationsService } from './operations/flight-operations.service'
+import { MissingScheduleApprovals, SCHEDULE_APPROVALS } from './operations/schedule-approvals'
+import { StaffActorService } from './operations/staff-actor.service'
 
 @Module({
   controllers: [
@@ -26,6 +39,7 @@ import { TimetableService } from './timetable.service'
     SettingsController,
     AirportFeeController,
     CongestionController,
+    FlightOperationsController,
   ],
   providers: [
     FlightSchedulingService,
@@ -36,7 +50,34 @@ import { TimetableService } from './timetable.service'
     SettingsService,
     AirportFeeService,
     CongestionService,
+    AircraftFeasibilityService,
+    // Until Feature 9 publishes its aircraft API, availability and type facts answer "unknown".
+    { provide: AIRCRAFT_DIRECTORY, useClass: PendingAircraftDirectory },
+    // Until Feature 1 publishes its simulation clock, business times come from the machine clock.
+    { provide: FLIGHT_CLOCK, useClass: InterimMachineClock },
+    // Until Feature 15 publishes its audit API, dismissing a conflict fails with 502 (the audit entry cannot be written).
+    { provide: AUDIT_SINK, useClass: PendingAuditSink },
+    // schedule_approval is not in the schema yet: confirm and reschedule answer "approval missing" until it is.
+    { provide: SCHEDULE_APPROVALS, useClass: MissingScheduleApprovals },
+    FlightEventWriter,
+    FlightEventBus,
+    FlightEventPublisher,
+    FlightConfirmService,
+    CascadeDetector,
+    StaffActorService,
+    FlightOperationsService,
+    ConflictService,
   ],
-  exports: [FlightSchedulingService, AirportService, RouteService, TimetableService, ScheduleBuilderService],
+  exports: [
+    FlightSchedulingService,
+    AirportService,
+    RouteService,
+    TimetableService,
+    ScheduleBuilderService,
+    AircraftFeasibilityService,
+    FlightEventWriter,
+    FlightEventBus,
+    FLIGHT_CLOCK,
+  ],
 })
 export class FlightSchedulingModule {}
