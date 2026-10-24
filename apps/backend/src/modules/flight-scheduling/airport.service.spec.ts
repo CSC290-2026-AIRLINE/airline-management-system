@@ -8,7 +8,7 @@ const valid = {
   icao_code: 'vtbs',
   name: 'Suvarnabhumi',
   city: 'Bangkok',
-  country: 'Thailand',
+  country: 'th',
   timezone: 'Asia/Bangkok',
   min_turnaround_min: 45,
 }
@@ -43,6 +43,10 @@ describe('AirportService', () => {
       ['non-integer turnaround', { ...valid, min_turnaround_min: 4.5 }],
       ['zero turnaround', { ...valid, min_turnaround_min: 0 }],
       ['blank name', { ...valid, name: '  ' }],
+      ['country name', { ...valid, country: 'Thailand' }],
+      ['upper-case country code', { ...valid, country: 'TH' }],
+      ['one-letter country code', { ...valid, country: 't' }],
+      ['blank country', { ...valid, country: '  ' }],
       ['non-boolean is_active', { ...valid, is_active: 'yes' }],
     ])('rejects %s', async (_label, body) => {
       await expect(service.create(body)).rejects.toBeInstanceOf(BadRequestException)
@@ -96,11 +100,11 @@ describe('AirportService', () => {
 
     it('paginates and applies filters', async () => {
       db.airport.findMany.mockResolvedValue([{ iata_code: 'AAA' }, { iata_code: 'BBB' }, { iata_code: 'CCC' }])
-      const result = await service.list({ limit: '2', country: 'Thailand', is_active: 'true', cursor: 'zzz', q: 'bang' })
+      const result = await service.list({ limit: '2', country: 'th', is_active: 'true', cursor: 'zzz', q: 'bang' })
       expect(result).toEqual({ data: [{ iata_code: 'AAA' }, { iata_code: 'BBB' }], nextCursor: 'BBB' })
       const args = db.airport.findMany.mock.calls[0][0]
       expect(args).toMatchObject({ take: 3, cursor: { iata_code: 'ZZZ' }, skip: 1 })
-      expect(args.where).toMatchObject({ country: 'Thailand', is_active: true })
+      expect(args.where).toMatchObject({ country: 'th', is_active: true })
       expect(args.where.OR).toHaveLength(4)
     })
   })

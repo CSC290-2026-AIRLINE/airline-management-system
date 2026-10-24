@@ -21,6 +21,8 @@ export interface AirportInput {
 
 const IATA = /^[A-Z]{3}$/
 const ICAO = /^[A-Z]{4}$/
+// The DB check airport_country_check and Feature 7's nationality use the same format, so Feature 8 can compare them.
+const COUNTRY = /^[a-z]{2}$/
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -57,6 +59,8 @@ export function parseAirportBody(body: unknown, requireIata: boolean): AirportIn
   if (iata !== undefined && iata && !IATA.test(iata)) errors.push('iata_code must be 3 letters')
   const icao = text('icao_code').toUpperCase()
   if (icao && !ICAO.test(icao)) errors.push('icao_code must be 4 letters')
+  const country = text('country')
+  if (country && !COUNTRY.test(country)) errors.push('country must be a 2-letter lower-case code, such as th or jp')
   const timezone = text('timezone')
   if (timezone && !isTimezone(timezone)) errors.push('timezone must be an IANA time zone name')
 
@@ -69,7 +73,7 @@ export function parseAirportBody(body: unknown, requireIata: boolean): AirportIn
     icao_code: icao,
     name: text('name'),
     city: text('city'),
-    country: text('country'),
+    country,
     timezone,
     min_turnaround_min: min as number,
     is_active: body.is_active as boolean | undefined,
