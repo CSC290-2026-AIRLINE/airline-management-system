@@ -24,15 +24,16 @@ F8 run ownership is enforced through roster_run_pairing: pairing_id is unique ac
 
 ## Migration history
 
-| Migration                                   | Effect                                                                                                                     |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `20260928160443`                            | Original plural-table scaffold                                                                                             |
-| `20260928162047`                            | Replaces plural tables with singular user, refresh_token, customer; reconnects staff                                       |
-| `20261012150000_level1_schema`              | Drops four scaffold tables with CASCADE, creates 69-table Level 1 schema and inserts admin role                            |
-| `20261023130000_feature2_schedule_approval` | Adds four F2 tables, airport country CHECK, departed/arrived event values, two approval setting keys and inserted defaults |
-| `20261024120000_feature8_crew_rostering`    | Adds eleven F8 tables, sequence, indexes, CHECKs, FKs and eleven inserted settings                                         |
+| Migration                                        | Effect                                                                                                                                                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `20260928160443`                                 | Original plural-table scaffold                                                                                                                                                                                                 |
+| `20260928162047`                                 | Replaces plural tables with singular user, refresh_token, customer; reconnects staff                                                                                                                                           |
+| `20261012150000_level1_schema`                   | Drops four scaffold tables with CASCADE, creates 69-table Level 1 schema and inserts admin role                                                                                                                                |
+| `20261023130000_feature2_schedule_approval`      | Adds four F2 tables, airport country CHECK, departed/arrived event values, two approval setting keys and inserted defaults                                                                                                     |
+| `20261024120000_feature8_crew_rostering`         | Adds eleven F8 tables, sequence, indexes, CHECKs, FKs and eleven inserted settings                                                                                                                                             |
+| `20261025120000_feature7_screening_iteration_03` | F7 Iteration-03: identity snapshot and `name_similarity` on screening_check, `entry_change` trigger point, drops `flight_dep_at`, `revision` on screening_review in place of one review per check, `gender` on watchlist_entry |
 
-**Data preservation:** Level 1 drops existing scaffold records. F2's country CHECK can reject existing free-text or uppercase country values. The new migrations use CREATE TABLE and INSERT statements without general rerun protection; let Prisma track migration application. Assess existing data before deployment; no migration/reset was run for this docs update.
+**Data preservation:** Level 1 drops existing scaffold records. F2's country CHECK can reject existing free-text or uppercase country values. The F7 screening migration fills the snapshot of existing screening_check rows from today's passenger and watchlist values (the compared values were never stored) and makes existing reviews revision 1. The new migrations use CREATE TABLE and INSERT statements without general rerun protection; let Prisma track migration application. Assess existing data before deployment; no migration/reset was run for this docs update.
 
 The original Level 1 migration has not been rewritten. Current schema.sql consolidates that baseline with F2/F8 additions; it is no longer identical to the historical migration. Run migration deployment through the Database Team rather than executing consolidated SQL over an existing database.
 
