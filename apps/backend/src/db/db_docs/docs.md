@@ -4,7 +4,7 @@
 
 **Maintained by:** Database Team — Docs + Maintain.
 
-**Scope:** F1, F2, F4, F7, F8, F9, F12 and F15. The original Level 1 baseline had 69 tables / 640 columns; F2 Iteration-03 adds four tables / 42 columns and F8 adds eleven tables / 76 columns. Current total: **84 tables / 758 columns**.
+**Scope:** F1, F2, F4, F7, F8, F9, F12 and F15. The original Level 1 baseline had 69 tables / 640 columns; F2 Iteration-03 adds four tables / 42 columns, F8 adds eleven tables / 76 columns and the F7 screening update adds 11 columns net. Current total: **84 tables / 769 columns**.
 
 ## Data dictionaries
 

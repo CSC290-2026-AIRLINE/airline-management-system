@@ -1027,41 +1027,54 @@ model screen {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model screening_check {
-  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  run_id             String            @db.Uuid
-  passenger_id       String            @db.Uuid
-  flight_id          String            @db.Uuid
-  flight_dep_at      DateTime          @db.Timestamptz(6)
-  pnr_id             String?           @db.Uuid
-  trigger_point      String
-  watchlist_entry_id String?           @db.Uuid
-  match_level        String
-  outcome            String
-  occurred_at        DateTime          @db.Timestamptz(6)
-  created_at         DateTime          @default(now()) @db.Timestamptz(6)
-  flight             flight            @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "screening_check_flight_fk")
-  passenger          passenger         @relation(fields: [passenger_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  watchlist_entry    watchlist_entry?  @relation(fields: [watchlist_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  screening_review   screening_review?
+  id                       String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  run_id                   String             @db.Uuid
+  passenger_id             String             @db.Uuid
+  flight_id                String             @db.Uuid
+  pnr_id                   String?            @db.Uuid
+  trigger_point            String
+  watchlist_entry_id       String?            @db.Uuid
+  match_level              String
+  outcome                  String
+  occurred_at              DateTime           @db.Timestamptz(6)
+  created_at               DateTime           @default(now()) @db.Timestamptz(6)
+  name_similarity          Float?             @db.Real
+  snap_first_name          String
+  snap_last_name           String
+  snap_date_of_birth       DateTime?          @db.Date
+  snap_nationality         String?
+  snap_passport            String?
+  snap_entry_first_name    String?
+  snap_entry_last_name     String?
+  snap_entry_date_of_birth DateTime?          @db.Date
+  snap_entry_nationality   String?
+  snap_entry_passport      String?
+  flight                   flight             @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "screening_check_flight_fk")
+  passenger                passenger          @relation(fields: [passenger_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  watchlist_entry          watchlist_entry?   @relation(fields: [watchlist_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  screening_review         screening_review[]
 
-  @@unique([passenger_id, flight_id, watchlist_entry_id, trigger_point], map: "screening_check_once_uq", where: raw("((watchlist_entry_id IS NOT NULL) AND (trigger_point <> 'identity_change'::text))"))
+  @@unique([passenger_id, flight_id, watchlist_entry_id, trigger_point], map: "screening_check_once_uq", where: raw("((watchlist_entry_id IS NOT NULL) AND (trigger_point = ANY (ARRAY['booking'::text, 'check_in'::text, 'new_entry'::text])))"))
   @@index([flight_id], map: "screening_check_flight_idx")
   @@index([passenger_id, occurred_at(sort: Desc)], map: "screening_check_passenger_idx")
-  @@index([flight_dep_at], map: "screening_check_queue_idx", where: raw("(outcome = ANY (ARRAY['flagged'::text, 'held'::text]))"))
+  @@index([flight_id], map: "screening_check_open_idx", where: raw("(outcome = ANY (ARRAY['flagged'::text, 'held'::text]))"))
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model screening_review {
   id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  screening_check_id    String          @unique @db.Uuid
+  screening_check_id    String          @db.Uuid
   decision              String
   reviewed_by_staff_id  String          @db.Uuid
   review_note           String
   reviewed_at           DateTime        @db.Timestamptz(6)
   authority_notified_at DateTime?       @db.Timestamptz(6)
   created_at            DateTime        @default(now()) @db.Timestamptz(6)
+  revision              Int
   staff                 staff           @relation(fields: [reviewed_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   screening_check       screening_check @relation(fields: [screening_check_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([screening_check_id, revision])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
