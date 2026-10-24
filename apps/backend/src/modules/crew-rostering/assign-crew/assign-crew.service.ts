@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { LOCAL_MISS_RATE, POLICE_SHORT_RATE, pickOne } from './random-pick'
+import { isoDate, localDay, shortName } from '../crew-format'
 
 /**
  * Feature 8 · Step 3 — assign crew.
@@ -1022,10 +1023,6 @@ function breakKey(legId: string, rule: string, crewId: string | null, role: stri
   return `${legId}|${rule}|${crewId ?? ''}|${role ?? ''}`
 }
 
-function shortName(member: { first_name: string; last_name: string }): string {
-  return `${member.first_name.charAt(0)}. ${member.last_name}`
-}
-
 function toCrewSummary(member: CrewDbRow): CrewSummaryRow {
   return {
     id: member.id,
@@ -1034,16 +1031,6 @@ function toCrewSummary(member: CrewDbRow): CrewSummaryRow {
     role: member.role as SeatRole,
     languages: member.languages,
   }
-}
-
-/** `YYYY-MM-DD` of a `DATE` column, which Prisma returns at UTC midnight. */
-function isoDate(value: Date): string {
-  return value.toISOString().slice(0, 10)
-}
-
-/** `YYYY-MM-DD` of an instant in the given timezone. */
-function localDay(instant: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant)
 }
 
 function hours(value: number): string {

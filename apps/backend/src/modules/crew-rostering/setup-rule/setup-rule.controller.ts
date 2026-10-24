@@ -12,6 +12,7 @@ import {
   type LanguageOptionRow,
   type RuleSetRow,
 } from './setup-rule.service'
+import { asObject, requireText } from '../request-parsing'
 
 /**
  * Feature 8 · Step 2 — legality rules.
@@ -93,16 +94,6 @@ export class SetupRuleController {
 
 /* ── input parsing ──────────────────────────────────────────────────────────
  * Inline rather than in a DTO folder, as this feature requires. */
-
-function asObject(body: unknown): Record<string, unknown> {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Request body must be a JSON object')
-  return body as Record<string, unknown>
-}
-
-function requireText(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new BadRequestException(`${field} is required`)
-  return value.trim()
-}
 
 /** A finite, non-negative number. `NaN` from an empty input is rejected here, not compared later. */
 function requireNumber(value: unknown, field: string): number {

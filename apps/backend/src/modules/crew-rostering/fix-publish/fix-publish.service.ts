@@ -12,6 +12,7 @@ import {
   type RunPairing,
   type SeatRole,
 } from '../assign-crew/assign-crew.service'
+import { isoDate, shortName } from '../crew-format'
 
 /**
  * Feature 8 · Step 4 — fix and publish.
@@ -1007,15 +1008,6 @@ export class FixPublishService {
     if (!row) throw new NotFoundException(`Break ${breakId} was not found`)
     return row
   }
-}
-
-function shortName(member: { first_name: string; last_name: string }): string {
-  return `${member.first_name.charAt(0)}. ${member.last_name}`
-}
-
-/** `YYYY-MM-DD` of a `DATE` column, which Prisma returns at UTC midnight. */
-function isoDate(value: Date): string {
-  return value.toISOString().slice(0, 10)
 }
 
 /** `15 Sep, 12:30` in the given timezone. */

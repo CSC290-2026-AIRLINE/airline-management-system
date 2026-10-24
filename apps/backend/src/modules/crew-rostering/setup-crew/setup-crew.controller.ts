@@ -13,6 +13,7 @@ import {
   type FleetOptionRow,
   type LanguageOptionRow,
 } from './setup-crew.service'
+import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
 
 /**
  * Feature 8 · Step 1 — crew directory.
@@ -105,26 +106,6 @@ export class SetupCrewController {
  * a `BadRequestException` naming the field, which is what a class-validator message
  * would have done. */
 
-function asObject(body: unknown): Record<string, unknown> {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Request body must be a JSON object')
-  return body as Record<string, unknown>
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-/** Ids reach Postgres as UUID parameters, so a malformed one is a 400 here rather than a 500 there. */
-function requireUuid(value: unknown, field: string): string {
-  const text = requireText(value, field)
-  if (!UUID.test(text)) throw new BadRequestException(`${field} must be a UUID`)
-  return text
-}
-
-/** A required, non-blank string. Blank is rejected rather than trimmed to empty. */
-function requireText(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new BadRequestException(`${field} is required`)
-  return value.trim()
-}
-
 /** An optional string. Anything non-string other than `null`/`undefined` is a bad request. */
 function optionalText(value: unknown, field: string): string | null {
   if (value === null || value === undefined || value === '') return null
@@ -136,15 +117,6 @@ function optionalEmail(value: unknown): string | null {
   const email = optionalText(value, 'email')
   if (email !== null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('email must be a valid address')
   return email
-}
-
-/** A `YYYY-MM-DD` calendar date. Rejects full ISO instants — the page only ever sends dates. */
-function requireDate(value: unknown, field: string): string {
-  const text = requireText(value, field)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(`${text}T00:00:00.000Z`))) {
-    throw new BadRequestException(`${field} must be a YYYY-MM-DD date`)
-  }
-  return text
 }
 
 function optionalDate(value: unknown, field: string): string | null {

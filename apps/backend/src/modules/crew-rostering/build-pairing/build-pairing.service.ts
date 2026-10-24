@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { buildChains } from './chain-builder'
+import { localDay } from '../crew-format'
 
 /**
  * Feature 8 · Step 2 — build pairings.
@@ -770,11 +771,6 @@ export class BuildPairingService {
     if (params.dateTo < params.dateFrom) throw new BadRequestException('dateTo must be on or after dateFrom')
     return { gte: new Date(`${params.dateFrom}T00:00:00.000Z`), lte: new Date(`${params.dateTo}T00:00:00.000Z`) }
   }
-}
-
-/** `YYYY-MM-DD` of an instant in the given timezone. */
-function localDay(instant: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant)
 }
 
 /** `6h 45m`. */

@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common'
 import { AssignCrewService, type AssignCrewParams, type CommittedPairingResult, type RunResult } from './assign-crew.service'
+import { asObjectOrEmpty, requireDate, requireText, requireUuid } from '../request-parsing'
 
 /**
  * Feature 8 · Step 3 — assign crew.
@@ -32,7 +33,7 @@ export class AssignCrewController {
   /** Crews the chosen pairings. An empty or missing `pairingIds` crews the whole run. */
   @Post('runs/:rosterRunId/auto-assign')
   async autoAssign(@Param('rosterRunId') rosterRunId: string, @Body() body: unknown): Promise<RunResult> {
-    return this.assignCrewService.autoAssign(requireUuid(rosterRunId, 'rosterRunId'), parsePairingIds(asObject(body).pairingIds))
+    return this.assignCrewService.autoAssign(requireUuid(rosterRunId, 'rosterRunId'), parsePairingIds(asObjectOrEmpty(body).pairingIds))
   }
 
   /** Re-checks every rule without changing who is crewed. */
@@ -44,33 +45,6 @@ export class AssignCrewController {
 
 /* ── input parsing ──────────────────────────────────────────────────────────
  * Inline rather than in a DTO folder, as this feature requires. */
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-function asObject(body: unknown): Record<string, unknown> {
-  if (body === undefined || body === null) return {}
-  if (typeof body !== 'object' || Array.isArray(body)) throw new BadRequestException('Request body must be a JSON object')
-  return body as Record<string, unknown>
-}
-
-function requireText(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new BadRequestException(`${field} is required`)
-  return value.trim()
-}
-
-/** Ids reach Postgres as UUID parameters, so a malformed one is a 400 here rather than a 500 there. */
-function requireUuid(value: unknown, field: string): string {
-  const text = requireText(value, field)
-  if (!UUID.test(text)) throw new BadRequestException(`${field} must be a UUID`)
-  return text
-}
-
-function requireDate(value: unknown, field: string): string {
-  const text = requireText(value, field)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(`${text}T00:00:00.000Z`)))
-    throw new BadRequestException(`${field} must be a YYYY-MM-DD date`)
-  return text
-}
 
 function parseParams(source: Record<string, string | undefined>): AssignCrewParams {
   const dateFrom = requireDate(source.dateFrom, 'dateFrom')
