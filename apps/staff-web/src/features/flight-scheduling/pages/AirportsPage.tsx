@@ -23,7 +23,7 @@ const FIELDS: [FormKey, string, string][] = [
   ['icao_code', 'ICAO code', 'VTBD'],
   ['name', 'Airport name', 'Don Mueang International'],
   ['city', 'City', 'Bangkok'],
-  ['country', 'Country', 'Thailand'],
+  ['country', 'Country code', 'th'], // the API takes a 2-letter lower-case code (th, jp), not the country name
   ['timezone', 'Time zone (IANA name)', 'Asia/Bangkok'],
   ['min_turnaround_min', 'Min turnaround (min)', '40'],
 ]
