@@ -1,12 +1,14 @@
--- Level 1 schema: features 2, 4, 7, 9, 12 and 15, plus the Feature 1 baseline they depend on.
+-- Level 1 schema: features 2, 4, 7, 8, 9, 12 and 15, plus the Feature 1 baseline they depend on.
 -- One file, in apply order. Run it once against an empty PostgreSQL 15 or later database (the project runs 16).
 -- Prisma cannot express most of this (exclusion constraints, expression and trigram indexes, check constraints, triggers),
 -- so the migration in prisma/migrations/*_level1_schema is this file with the old scaffold tables dropped first and the
--- 'admin' role inserted last. Keep the two in step. schema.prisma is generated from the migrated database with `prisma db pull`.
+-- 'admin' role inserted last. Later migrations: prisma/migrations/*_feature2_schedule_approval adds to Part 2 and
+-- Part 9, and prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 9. Keep the files
+-- in step. schema.prisma is generated from the migrated database with `prisma db pull`.
 -- Seed rows beyond that role (screens, base currency, airline code, first admin and so on) are not in the repo yet.
 
 -- ======================================================================================================================
--- PART 1 of 8: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
+-- PART 1 of 9: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
 -- ======================================================================================================================
 
 -- Feature 1 baseline assumed by features 2, 4, 7, 9 and 15.
@@ -82,13 +84,13 @@ CREATE INDEX refresh_token_user_idx ON refresh_token (user_id);
 
 
 -- ======================================================================================================================
--- PART 2 of 8: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
+-- PART 2 of 9: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
 -- ======================================================================================================================
 
 -- Feature 2 (Flight Scheduling and Network Ops) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format checks, overlap rules other than the aircraft
 -- timetable, event shape checks and helper triggers are the backend's job.
--- Cross-module foreign keys are in Part 8 of this file.
+-- Cross-module foreign keys are in Part 9 of this file.
 
 -- Reference data -----------------------------------------------------------------------------------
 
@@ -113,12 +115,14 @@ CREATE TABLE partner_airline (
 
 -- Network master data ------------------------------------------------------------------------------
 
+-- country is the 2-letter lower-case country code (th, jp), the format of Feature 7's nationality, so Feature 8's
+-- local-crew and international rules can compare it. Screens show the country name.
 CREATE TABLE airport (
   iata_code          TEXT PRIMARY KEY,
   icao_code          TEXT NOT NULL UNIQUE,
   name               TEXT NOT NULL,
   city               TEXT NOT NULL,
-  country            TEXT NOT NULL,
+  country            TEXT NOT NULL CHECK (country ~ '^[a-z]{2}$'),
   timezone           TEXT NOT NULL,
   min_turnaround_min INTEGER NOT NULL CHECK (min_turnaround_min > 0),
   is_active          BOOLEAN NOT NULL DEFAULT true,
@@ -157,6 +161,15 @@ CREATE TABLE route (
 );
 
 CREATE INDEX route_destination_idx ON route (destination);
+
+-- Which partner airline flies which route (a mocked list). Rebooking with a partner is offered only where a row exists.
+CREATE TABLE partner_airline_route (
+  partner_airline TEXT NOT NULL REFERENCES partner_airline (code),
+  route_id        UUID NOT NULL REFERENCES route (id),
+  PRIMARY KEY (partner_airline, route_id)
+);
+
+CREATE INDEX partner_airline_route_route_idx ON partner_airline_route (route_id);
 
 CREATE TABLE flight_pattern (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -223,13 +236,15 @@ CREATE INDEX flight_pattern_idx ON flight (pattern_id) WHERE pattern_id IS NOT N
 -- old_*/new_* mean the value before/after the event. delay_minutes is this event's increment; the
 -- total delay is dep_at - scheduled_dep_at.
 -- Which columns each event type must fill is enforced by the backend's event factory.
+-- departed and arrived are written by the simulation-clock job as system events (actor_id NULL).
 CREATE TABLE flight_event (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   seq                    BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
   flight_id              UUID NOT NULL REFERENCES flight (id),
   type                   TEXT NOT NULL CHECK (type IN (
                            'created', 'delayed', 'rescheduled', 'aircraft_changed',
-                           'holding', 'hold_ended', 'diverted', 'cancelled')),
+                           'holding', 'hold_ended', 'diverted', 'cancelled',
+                           'departed', 'arrived')),
   disruption_reason_code TEXT REFERENCES disruption_reason (code),
   delay_minutes          INTEGER CHECK (delay_minutes > 0),
   old_dep_at             TIMESTAMPTZ,
@@ -316,28 +331,121 @@ CREATE UNIQUE INDEX schedule_conflict_open_uq ON schedule_conflict (flight_id, k
 CREATE INDEX schedule_conflict_open_idx ON schedule_conflict (detected_at) WHERE status = 'open';
 CREATE INDEX schedule_conflict_flight_idx ON schedule_conflict (flight_id);
 
+-- Schedule approval (simulated approver) -----------------------------------------------------------
+
+-- Rules the simulated approver follows in auto mode, per origin airport; staff edit them. Times are local at the
+-- airport. Both curfew times NULL = no curfew; a curfew may wrap midnight (22:00 to 06:00).
+CREATE TABLE airport_approval_policy (
+  airport                TEXT PRIMARY KEY REFERENCES airport (iata_code),
+  curfew_start_local     TIME,
+  curfew_end_local       TIME,
+  max_departure_per_hour INTEGER CHECK (max_departure_per_hour > 0),
+  offer_style            TEXT NOT NULL DEFAULT 'slots' CHECK (offer_style IN ('window', 'slots')),
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((curfew_start_local IS NULL) = (curfew_end_local IS NULL)),
+  CHECK (curfew_start_local <> curfew_end_local)
+);
+
+-- A snapshot of one proposed flight (or reschedule) and the approver's answer. It is not a flight, so search never sees
+-- it. Each revision after an offer or a rejection is a new row; a live one it replaces becomes superseded. A revision
+-- whose time an earlier offer already covers is created approved, with covered_by_approval_id and no new answer.
+-- requested_at, respond_by and responded_at come from the simulation clock; responded_by NULL = the automatic approver.
+-- Allowed status changes (pending to approved, alternative_offered, rejected or expired; a live status to superseded;
+-- approved to consumed) are the backend's job.
+CREATE TABLE schedule_approval (
+  id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  purpose                  TEXT NOT NULL CHECK (purpose IN ('new_flight', 'reschedule')),
+  flight_id                UUID REFERENCES flight (id),            -- reschedule only
+  pattern_id               UUID REFERENCES flight_pattern (id),
+  route_id                 UUID NOT NULL REFERENCES route (id),
+  flight_number            TEXT NOT NULL,
+  service_date             DATE NOT NULL,
+  aircraft_id              UUID NOT NULL,                          -- feature 9 (cross-module FK)
+  proposed_dep_at          TIMESTAMPTZ NOT NULL,
+  proposed_arr_at          TIMESTAMPTZ NOT NULL,
+  approver_type            TEXT NOT NULL CHECK (approver_type IN ('airport', 'partner_airline')),
+  approver_airport         TEXT REFERENCES airport (iata_code),
+  approver_partner_airline TEXT REFERENCES partner_airline (code),
+  status                   TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+                             'pending', 'approved', 'alternative_offered', 'rejected',
+                             'superseded', 'consumed', 'expired')),
+  reject_reason            TEXT CHECK (reject_reason IN ('curfew', 'no_slot_available', 'capacity_full', 'other')),
+  response_note            TEXT,
+  previous_approval_id     UUID REFERENCES schedule_approval (id), -- the request this one revises
+  covered_by_approval_id   UUID REFERENCES schedule_approval (id), -- the earlier offer that already covers this time
+  revision                 INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+  requested_by             UUID REFERENCES staff (id),
+  requested_at             TIMESTAMPTZ NOT NULL,
+  respond_by               TIMESTAMPTZ,                            -- used by expiry (stretch)
+  responded_by             UUID REFERENCES staff (id),
+  responded_at             TIMESTAMPTZ,
+  resulting_flight_id      UUID REFERENCES flight (id),            -- set when consumed
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (proposed_arr_at > proposed_dep_at),
+  CHECK ((approver_type = 'airport') = (approver_airport IS NOT NULL)),
+  CHECK ((approver_type = 'partner_airline') = (approver_partner_airline IS NOT NULL)),
+  CHECK ((purpose = 'reschedule') = (flight_id IS NOT NULL)),
+  CHECK ((status = 'rejected') = (reject_reason IS NOT NULL)),
+  CHECK ((status = 'consumed') = (resulting_flight_id IS NOT NULL)),
+  CHECK ((revision = 1) = (previous_approval_id IS NULL)),
+  CHECK (covered_by_approval_id IS NULL OR previous_approval_id IS NOT NULL),
+  CHECK (status <> 'pending' OR (responded_at IS NULL AND responded_by IS NULL)),
+  CHECK (status NOT IN ('alternative_offered', 'rejected') OR responded_at IS NOT NULL),
+  CHECK (responded_by IS NULL OR responded_at IS NOT NULL)
+);
+
+-- One live request per flight number and service date.
+CREATE UNIQUE INDEX schedule_approval_live_uq ON schedule_approval (flight_number, service_date)
+  WHERE status IN ('pending', 'approved', 'alternative_offered');
+CREATE INDEX schedule_approval_flight_number_idx ON schedule_approval (flight_number, service_date);
+CREATE INDEX schedule_approval_pending_idx ON schedule_approval (requested_at) WHERE status = 'pending';
+CREATE INDEX schedule_approval_flight_idx ON schedule_approval (flight_id) WHERE flight_id IS NOT NULL;
+CREATE INDEX schedule_approval_resulting_flight_idx ON schedule_approval (resulting_flight_id) WHERE resulting_flight_id IS NOT NULL;
+CREATE INDEX schedule_approval_route_idx ON schedule_approval (route_id);
+CREATE INDEX schedule_approval_previous_idx ON schedule_approval (previous_approval_id) WHERE previous_approval_id IS NOT NULL;
+
+-- The times an approver offers instead: one window, or one row per slot. Times are departures at the origin; a window
+-- covers departures from starts_at to ends_at inclusive.
+CREATE TABLE schedule_approval_offer (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  approval_id UUID NOT NULL REFERENCES schedule_approval (id),
+  kind        TEXT NOT NULL CHECK (kind IN ('window', 'slot')),
+  starts_at   TIMESTAMPTZ NOT NULL,
+  ends_at     TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (approval_id, starts_at),
+  CHECK ((kind = 'window') = (ends_at IS NOT NULL)),
+  CHECK (ends_at IS NULL OR ends_at > starts_at)
+);
+
 -- Settings -------------------------------------------------------------------------------------------
 
 -- Feature 2 keeps its own settings; feature 15's scope is roles and audit only. Values are validated by the backend.
 CREATE TABLE flight_setting (
-  key        TEXT PRIMARY KEY CHECK (key IN ('holding_limit_minutes', 'airline_code')),
+  key        TEXT PRIMARY KEY CHECK (key IN (
+               'holding_limit_minutes', 'airline_code', 'approval_mode', 'approval_response_delay_minutes')),
   value      TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_by UUID REFERENCES staff (id)
 );
 
-INSERT INTO flight_setting (key, value) VALUES ('holding_limit_minutes', '30');
+INSERT INTO flight_setting (key, value) VALUES
+  ('holding_limit_minutes', '30'),
+  ('approval_mode', 'auto'),
+  ('approval_response_delay_minutes', '0');
 -- airline_code is seeded per airline, for example ('airline_code', 'FL').
 
 
 -- ======================================================================================================================
--- PART 3 of 8: FEATURE 9 - AIRCRAFT MANAGEMENT
+-- PART 3 of 9: FEATURE 9 - AIRCRAFT MANAGEMENT
 -- ======================================================================================================================
 
 -- Feature 9 (Aircraft Management) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Layout validation, format checks, task and
 -- maintenance state consistency and the turnaround readiness calculation are the backend's job.
--- Cross-module foreign keys (airport, flight) are in Part 8 of this file.
+-- Cross-module foreign keys (airport, flight) are in Part 9 of this file.
 -- Dates are calendar dates on the simulated calendar. end_date is the LAST unavailable day (inclusive).
 
 CREATE TABLE aircraft_type (
@@ -479,13 +587,13 @@ INSERT INTO fleet_setting (key, value) VALUES ('reserve_ratio', '1.10');
 
 
 -- ======================================================================================================================
--- PART 4 of 8: FEATURE 4 - PRICING, FARE RULES AND FINANCE
+-- PART 4 of 9: FEATURE 4 - PRICING, FARE RULES AND FINANCE
 -- ======================================================================================================================
 
 -- Feature 4 (Pricing and Fare Rules) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format and range checks, rule-shape checks,
 -- immutability of quotes and the base_currency lock are the backend's job.
--- Cross-module foreign keys (route, flight) are in Part 8 of this file.
+-- Cross-module foreign keys (route, flight) are in Part 9 of this file.
 -- All money is NUMERIC in the base currency (pricing_setting 'base_currency'). Percent columns are plain percents (15.00 = 15%).
 -- Columns that mean "when, in the simulation" (quoted_at, expires_at, paid_on, computed_at) have no default.
 
@@ -749,7 +857,7 @@ CREATE TABLE finance_monthly_summary (
 
 
 -- ======================================================================================================================
--- PART 5 of 8: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
+-- PART 5 of 9: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
 -- ======================================================================================================================
 
 -- Feature 7 (Customer and Passenger Profiles) - proposed schema.
@@ -757,7 +865,7 @@ CREATE TABLE finance_monthly_summary (
 -- and immutability of screening rows are the backend's job.
 -- "user" and staff are in Part 1 of this file. This REPLACES the old scaffold customer table:
 -- names, DOB, gender, nationality moved to passenger; seat and meal preferences were cut from scope.
--- The flight cross-module FK is in Part 8 of this file.
+-- The flight cross-module FK is in Part 9 of this file.
 
 -- Normalised name used for matching: uppercase letters and digits only. Passport spelling is ASCII.
 -- A function (not a stored column) so there is nothing for the backend to keep in sync; indexes use the same expression.
@@ -893,7 +1001,7 @@ CREATE TABLE screening_review (
 
 
 -- ======================================================================================================================
--- PART 6 of 8: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
+-- PART 6 of 9: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
 -- ======================================================================================================================
 
 -- Feature 15 (Admin Console) - proposed schema.
@@ -974,7 +1082,7 @@ CREATE TRIGGER audit_log_no_truncate
 
 
 -- ======================================================================================================================
--- PART 7 of 8: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
+-- PART 7 of 9: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
 -- ======================================================================================================================
 
 -- Feature 12 (Onboard Products) - proposed schema.
@@ -982,7 +1090,7 @@ CREATE TRIGGER audit_log_no_truncate
 -- completion rules, FEFO transfers, the order and payment state machine and on-hand reconciliation are the backend's job
 -- Uses customer (feature 7), staff (feature 1) and forbid_mutation() (baseline).
 -- booking_id, booking_passenger_id and payment_id belong to features 3b and 5, whose schemas do not exist yet: no foreign key.
--- The route, flight, aircraft and airport foreign keys are in Part 8 of this file.
+-- The route, flight, aircraft and airport foreign keys are in Part 9 of this file.
 -- Business timestamps (generated_at, transferred_at, submitted_at, sold_at, occurred_at, expires_at) have no default and
 -- come from the simulation clock. created_at and updated_at are real time.
 -- Money is NUMERIC in the base currency (feature 4, pricing_setting 'base_currency'). Orders and sales keep a currency snapshot.
@@ -1372,10 +1480,247 @@ CREATE TRIGGER stock_movement_no_truncate
 
 
 -- ======================================================================================================================
--- PART 8 of 8: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
+-- PART 8 of 9: FEATURE 8 - CREW MANAGEMENT AND ROSTERING
 -- ======================================================================================================================
 
--- Cross-module foreign keys for features 2, 4, 7, 9 and 12.
+-- Feature 8 (Crew Management and Rostering) - proposed schema.
+-- Contents: the doc's own checks and the columns the doc is missing. Pairing validation (closed at base, legs chained,
+-- duty and day limits), the legality rules, cross-flight overlap and the publish gate are the backend's job.
+-- Uses staff (feature 1). The airport and flight foreign keys (feature 2) are in Part 9 of this file.
+-- Business timestamps (assigned_at, unassigned_at, published_at, resolved_at) have no default and come from the
+-- simulation clock. created_at and updated_at are real time.
+-- Country codes use the team's nationality format (2 letters, lower case: th, jp, kr) and must match airport.country.
+-- Language codes are ISO 639-1 in lower case (th, ja, en).
+
+-- Settings and rules ------------------------------------------------------------------------------------
+
+-- Default limits for every country. Feature 8 keeps its own settings, like features 2, 4, 9 and 12.
+-- Values are validated by the backend. Cabin crew per leg = ceil(seats in the aircraft layout / seats_per_cabin_crew),
+-- a duty starts report_minutes before its first departure and ends release_minutes after its last arrival, and a
+-- licence or certification shows as expiring soon from expiry_warning_days before it expires.
+CREATE TABLE crew_setting (
+  key        TEXT PRIMARY KEY CHECK (key IN (
+               'min_rest_hours', 'max_duty_hours', 'max_flights_per_duty', 'max_pairing_days', 'max_flight_hours_28d',
+               'min_local_crew', 'min_police_international', 'seats_per_cabin_crew', 'report_minutes', 'release_minutes',
+               'expiry_warning_days')),
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by UUID REFERENCES staff (id)
+);
+
+INSERT INTO crew_setting (key, value) VALUES
+  ('min_rest_hours', '10'),
+  ('max_duty_hours', '13'),
+  ('max_flights_per_duty', '4'),
+  ('max_pairing_days', '3'),
+  ('max_flight_hours_28d', '100'),
+  ('min_local_crew', '1'),
+  ('min_police_international', '2'),
+  ('seats_per_cabin_crew', '50'),
+  ('report_minutes', '60'),
+  ('release_minutes', '0'),
+  ('expiry_warning_days', '30');
+
+-- A destination with stricter rest or duty limits. The backend refuses a looser value on save and, when checking,
+-- applies the stricter of this row and the default (more rest, less duty), so a row can never loosen a limit,
+-- even after the default changes.
+CREATE TABLE country_legality_rule (
+  country_code   TEXT PRIMARY KEY CHECK (country_code ~ '^[a-z]{2}$'),
+  min_rest_hours NUMERIC(4, 1) NOT NULL CHECK (min_rest_hours > 0),
+  max_duty_hours NUMERIC(4, 1) NOT NULL CHECK (max_duty_hours > 0),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by     UUID REFERENCES staff (id)
+);
+
+-- Languages that count as local in each destination country (edited by Ops; example rows belong in the seed).
+CREATE TABLE country_language (
+  country_code  TEXT NOT NULL CHECK (country_code ~ '^[a-z]{2}$'),
+  language_code TEXT NOT NULL CHECK (language_code ~ '^[a-z]{2}$'),
+  PRIMARY KEY (country_code, language_code)
+);
+
+-- Crew --------------------------------------------------------------------------------------------------
+
+-- Operational crew. staff_id links a crew member to a staff sign-in only when one is needed; there is no crew login in
+-- Iteration-02, so it starts empty. Soft delete only.
+-- languages stays an array: the local-crew rule and the "crew who speak it" count query it with languages && '{ja,en}'
+-- (Prisma hasSome), which the GIN index serves.
+-- fleet_aircraft_type and crew_certification.aircraft_type hold feature 9's aircraft_type.model (A320), which every layout
+-- version of the type shares, not aircraft_type.code (A320-V2). The backend validates them against active types.
+-- A crew member's current location is derived: the arrival airport of their last flown leg, else base_airport.
+CREATE TABLE crew (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  staff_id            UUID UNIQUE REFERENCES staff (id),   -- one crew row per sign-in, also after a soft delete
+  first_name          TEXT NOT NULL,
+  last_name           TEXT NOT NULL,
+  employee_number     TEXT NOT NULL,
+  role                TEXT NOT NULL CHECK (role IN ('captain', 'first_officer', 'cabin_crew', 'police')),
+  date_of_birth       DATE,
+  email               TEXT,
+  phone               TEXT,
+  base_airport        TEXT NOT NULL,                      -- feature 2's airport (cross-module FK)
+  fleet_aircraft_type TEXT NOT NULL,
+  languages           TEXT[] NOT NULL DEFAULT '{}'        -- ISO 639-1, such as {th,en,ja}
+                        CHECK (array_to_string(languages, ',', '?') ~ '^([a-z]{2}(,[a-z]{2})*)?$'),
+  licence_number      TEXT NOT NULL,
+  licence_expires_on  DATE NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at          TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX crew_employee_number_uq ON crew (employee_number) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX crew_licence_number_uq ON crew (licence_number) WHERE deleted_at IS NULL;
+CREATE INDEX crew_base_role_idx ON crew (base_airport, role) WHERE deleted_at IS NULL;
+CREATE INDEX crew_languages_idx ON crew USING gin (languages) WHERE deleted_at IS NULL;
+
+-- Type ratings (aircraft_type set) and other certifications such as CRM (aircraft_type NULL). Renewing one updates
+-- expires_on; the audit log keeps the old value.
+CREATE TABLE crew_certification (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  crew_id       UUID NOT NULL REFERENCES crew (id),
+  name          TEXT NOT NULL,
+  aircraft_type TEXT,
+  expires_on    DATE NOT NULL
+);
+
+CREATE UNIQUE INDEX crew_certification_uq ON crew_certification (crew_id, name, aircraft_type) NULLS NOT DISTINCT;
+
+-- Pairings ----------------------------------------------------------------------------------------------
+
+CREATE SEQUENCE pairing_code_seq;
+
+-- A chain of feature 2 flights that starts and ends at base_airport. Leg order, duty days, duty hours, day count and
+-- validity are derived from the flights' current times (a delay changes them), so none of them is stored.
+-- A pairing that is not in a roster run is a draft: it may be invalid while Ops edits it, and deleting it is a hard
+-- delete (its legs go with it). roster_run_pairing refuses to delete a pairing that is in a run (23503). In a draft run
+-- the backend first takes the pairing out (its rule breaks, assignments and run link); in a published run the crew
+-- history keeps it in, and the backend answers PAIRING_IN_USE.
+CREATE TABLE pairing (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code         TEXT NOT NULL UNIQUE DEFAULT 'P-' || nextval('pairing_code_seq'), -- what Ops sees, such as P-101
+  base_airport TEXT NOT NULL,                                                      -- feature 2's airport (cross-module FK)
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX pairing_base_idx ON pairing (base_airport);
+
+-- A flight is in one pairing at most. added_by 'ops' marks a leg added by hand, which a regenerate keeps.
+CREATE TABLE pairing_leg (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pairing_id UUID NOT NULL REFERENCES pairing (id) ON DELETE CASCADE,
+  flight_id  UUID NOT NULL UNIQUE,                         -- feature 2's flight (cross-module FK)
+  added_by   TEXT NOT NULL DEFAULT 'auto' CHECK (added_by IN ('auto', 'ops')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (id, pairing_id)
+);
+
+CREATE INDEX pairing_leg_pairing_idx ON pairing_leg (pairing_id);
+
+-- Roster runs -------------------------------------------------------------------------------------------
+
+-- One run per base and date range, drafted then published once. After publishing, changes (swaps, sick calls,
+-- feature 2 flight changes) are made in place and each one notifies the crew it affects (feature 13).
+-- A draft run may be discarded: the backend deletes its rule breaks, assignments and roster_run_pairing rows, then the
+-- run, in one transaction (there are no cascades). A published run is never deleted.
+CREATE TABLE roster_run (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  base_airport TEXT NOT NULL,                              -- feature 2's airport (cross-module FK)
+  date_from    DATE NOT NULL,
+  date_to      DATE NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+  published_at TIMESTAMPTZ,                                -- simulation clock
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (date_to >= date_from),
+  CHECK ((status = 'published') = (published_at IS NOT NULL))
+);
+
+CREATE INDEX roster_run_base_idx ON roster_run (base_airport, date_from DESC);
+
+-- The pairings Ops committed to a run. A pairing joins one run at most, so its crew and its rule breaks belong to that
+-- run. The backend adds only valid pairings with the run's base and dates.
+CREATE TABLE roster_run_pairing (
+  roster_run_id UUID NOT NULL REFERENCES roster_run (id),
+  pairing_id    UUID NOT NULL UNIQUE REFERENCES pairing (id),
+  PRIMARY KEY (roster_run_id, pairing_id)
+);
+
+-- One row per person on a leg; active = unassigned_at IS NULL. The pairing_id foreign key means crew can only be put on
+-- a pairing that is in a run, and only on that pairing's legs. On a published run rows are never deleted: a swap or a
+-- sick call sets unassigned_at and reason, and the replacement is a new row. A draft run's rows may be deleted.
+-- role is the seat, copied from crew.role when assigned (the backend checks they match), so a later promotion does not
+-- rewrite history. Overlap with the person's other flights, rest and the 28-day hours are checked by the backend while
+-- holding a lock on the crew row (SELECT ... FOR UPDATE), so two concurrent assignments cannot both pass.
+CREATE TABLE pairing_leg_assignment (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pairing_id     UUID NOT NULL REFERENCES roster_run_pairing (pairing_id),
+  pairing_leg_id UUID NOT NULL,
+  crew_id        UUID NOT NULL REFERENCES crew (id),
+  role           TEXT NOT NULL CHECK (role IN ('captain', 'first_officer', 'cabin_crew', 'police')),
+  assigned_by    TEXT NOT NULL CHECK (assigned_by IN ('auto', 'ops')),
+  assigned_at    TIMESTAMPTZ NOT NULL,                     -- simulation clock
+  unassigned_at  TIMESTAMPTZ,                              -- simulation clock
+  reason         TEXT,                                     -- why the person came off, such as 'sick call'
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (pairing_leg_id, pairing_id) REFERENCES pairing_leg (id, pairing_id),
+  CHECK (unassigned_at IS NULL OR reason IS NOT NULL)
+);
+
+CREATE UNIQUE INDEX pairing_leg_assignment_active_uq ON pairing_leg_assignment (pairing_leg_id, crew_id) WHERE unassigned_at IS NULL;
+CREATE UNIQUE INDEX pairing_leg_assignment_pilot_uq ON pairing_leg_assignment (pairing_leg_id, role)
+  WHERE unassigned_at IS NULL AND role IN ('captain', 'first_officer');
+CREATE INDEX pairing_leg_assignment_leg_idx ON pairing_leg_assignment (pairing_leg_id);
+CREATE INDEX pairing_leg_assignment_pairing_idx ON pairing_leg_assignment (pairing_id);
+CREATE INDEX pairing_leg_assignment_crew_idx ON pairing_leg_assignment (crew_id) WHERE unassigned_at IS NULL;
+
+-- Rule breaks -------------------------------------------------------------------------------------------
+
+-- Law rules, never overridden: OVERLAP, REST_SHORT, HOURS_28D, DUTY_LIMIT, NO_LEGAL_CREW, LICENCE_EXPIRED,
+-- NO_TYPE_RATING, WRONG_FLEET. Company rules, closed in writing with a reason: NO_LOCAL_CREW, POLICE_MIN, POLICE_NO_SEAT.
+-- DUTY_LIMIT covers the flight and hour limits of a duty (detail says which). WRONG_FLEET is a person whose fleet type
+-- is not the flight's aircraft type, such as after a feature 2 aircraft change.
+-- crew_id names the person for person rules; role names the empty seat for NO_LEGAL_CREW (also after a sick call).
+-- A re-check inserts with ON CONFLICT DO NOTHING (rule_break_open_uq) and closes the open breaks it no longer finds as
+-- 'fixed'. On a published run a break is never deleted. The override actor and reason also go to the audit log.
+CREATE TABLE rule_break (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  roster_run_id   UUID NOT NULL,
+  pairing_id      UUID NOT NULL,
+  pairing_leg_id  UUID NOT NULL,
+  crew_id         UUID REFERENCES crew (id),
+  role            TEXT CHECK (role IN ('captain', 'first_officer', 'cabin_crew', 'police')),
+  rule            TEXT NOT NULL CHECK (rule IN (
+                    'OVERLAP', 'REST_SHORT', 'HOURS_28D', 'DUTY_LIMIT', 'NO_LEGAL_CREW', 'LICENCE_EXPIRED',
+                    'NO_TYPE_RATING', 'WRONG_FLEET', 'NO_LOCAL_CREW', 'POLICE_MIN', 'POLICE_NO_SEAT')),
+  detail          TEXT NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at     TIMESTAMPTZ,                             -- simulation clock
+  resolution      TEXT CHECK (resolution IN ('fixed', 'overridden')),
+  overridden_by   UUID REFERENCES staff (id),
+  override_reason TEXT,
+  FOREIGN KEY (roster_run_id, pairing_id) REFERENCES roster_run_pairing (roster_run_id, pairing_id),
+  FOREIGN KEY (pairing_leg_id, pairing_id) REFERENCES pairing_leg (id, pairing_id),
+  CHECK ((rule = 'NO_LEGAL_CREW') = (role IS NOT NULL)),
+  CHECK ((resolution IS NULL) = (resolved_at IS NULL)),
+  -- NULL-safe: an open break can carry neither a reason nor an actor.
+  CHECK ((resolution IS NOT DISTINCT FROM 'overridden') = (override_reason IS NOT NULL)),
+  CHECK ((resolution IS NOT DISTINCT FROM 'overridden') = (overridden_by IS NOT NULL)),
+  CHECK (resolution IS DISTINCT FROM 'overridden' OR rule IN ('NO_LOCAL_CREW', 'POLICE_MIN', 'POLICE_NO_SEAT'))
+);
+
+CREATE UNIQUE INDEX rule_break_open_uq ON rule_break (pairing_leg_id, rule, crew_id, role) NULLS NOT DISTINCT
+  WHERE resolved_at IS NULL;
+CREATE INDEX rule_break_run_idx ON rule_break (roster_run_id, pairing_id);
+CREATE INDEX rule_break_run_open_idx ON rule_break (roster_run_id) WHERE resolved_at IS NULL;
+
+
+-- ======================================================================================================================
+-- PART 9 of 9: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
+-- ======================================================================================================================
+
+-- Cross-module foreign keys for features 2, 4, 7, 8, 9 and 12.
 -- Recommended: the targets are never hard-deleted (airport, route, flight and aircraft are deactivated or cancelled),
 -- everything lives in one Postgres, and the DB leads own the migration order. Apply after every feature script.
 -- This part is optional: delete it (or any statement) and the features still work, with the backend
@@ -1385,6 +1730,7 @@ CREATE TRIGGER stock_movement_no_truncate
 ALTER TABLE flight       ADD CONSTRAINT flight_aircraft_fk              FOREIGN KEY (aircraft_id)     REFERENCES aircraft (id);
 ALTER TABLE flight_event ADD CONSTRAINT flight_event_old_aircraft_fk    FOREIGN KEY (old_aircraft_id) REFERENCES aircraft (id);
 ALTER TABLE flight_event ADD CONSTRAINT flight_event_new_aircraft_fk    FOREIGN KEY (new_aircraft_id) REFERENCES aircraft (id);
+ALTER TABLE schedule_approval ADD CONSTRAINT schedule_approval_aircraft_fk FOREIGN KEY (aircraft_id) REFERENCES aircraft (id);
 ALTER TABLE aircraft     ADD CONSTRAINT aircraft_base_airport_fk        FOREIGN KEY (base_airport_code) REFERENCES airport (iata_code);
 ALTER TABLE aircraft_turnaround ADD CONSTRAINT aircraft_turnaround_flight_fk  FOREIGN KEY (flight_id)    REFERENCES flight (id);
 ALTER TABLE aircraft_turnaround ADD CONSTRAINT aircraft_turnaround_airport_fk FOREIGN KEY (airport_code) REFERENCES airport (iata_code);
@@ -1414,3 +1760,9 @@ ALTER TABLE flight_report    ADD CONSTRAINT flight_report_flight_fk        FOREI
 ALTER TABLE product_sale     ADD CONSTRAINT product_sale_flight_fk         FOREIGN KEY (flight_id)    REFERENCES flight (id);
 ALTER TABLE stock_movement   ADD CONSTRAINT stock_movement_flight_fk       FOREIGN KEY (flight_id)    REFERENCES flight (id);
 ALTER TABLE stock_movement   ADD CONSTRAINT stock_movement_aircraft_fk     FOREIGN KEY (aircraft_id)  REFERENCES aircraft (id);
+
+-- Feature 8 -> feature 2
+ALTER TABLE crew        ADD CONSTRAINT crew_base_airport_fk       FOREIGN KEY (base_airport) REFERENCES airport (iata_code);
+ALTER TABLE pairing     ADD CONSTRAINT pairing_base_airport_fk    FOREIGN KEY (base_airport) REFERENCES airport (iata_code);
+ALTER TABLE roster_run  ADD CONSTRAINT roster_run_base_airport_fk FOREIGN KEY (base_airport) REFERENCES airport (iata_code);
+ALTER TABLE pairing_leg ADD CONSTRAINT pairing_leg_flight_fk      FOREIGN KEY (flight_id)    REFERENCES flight (id);
