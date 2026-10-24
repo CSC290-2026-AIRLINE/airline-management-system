@@ -350,7 +350,7 @@ export class FixPublishService {
       }
 
       const scopeIds = freshPlan.scope.map((item) => item.id)
-      const leaving = fresh.assignments.filter((row) => scopeIds.includes(row.legId) && this.isLeaving(row, freshPlan, fresh))
+      const leaving = this.leavingRows(freshPlan, fresh)
       if (leaving.length > 0) {
         await tx.pairing_leg_assignment.updateMany({
           where: { id: { in: leaving.map((row) => row.id) } },
@@ -752,15 +752,34 @@ export class FixPublishService {
     return none('This rule is about the pairing itself, not a person, so a swap cannot close it. Change the pairing in Build pairings.')
   }
 
-  /** True when the row is the one a swap takes off the roster. */
-  private isLeaving(row: ActiveAssignment, plan: Plan, world: World): boolean {
-    if (plan.mode === 'replace-subject') return row.crewId === plan.subjectId
-    if (plan.mode === 'replace-non-speaker') {
-      if (row.role !== 'cabin_crew') return false
+  /**
+   * The assignments a swap takes off the roster.
+   *
+   * Swapping out a person takes that person off. Closing `NO_LOCAL_CREW` takes **one** cabin crew member who does
+   * not speak the language off each leg, which is what the page says, so the cabin keeps its size: one comes off,
+   * the speaker goes on. They are picked by name so the same swap always lets the same person go.
+   */
+  private leavingRows(plan: Plan, world: World): ActiveAssignment[] {
+    const scopeIds = new Set(plan.scope.map((leg) => leg.id))
+    const onScope = world.assignments.filter((row) => scopeIds.has(row.legId))
+
+    if (plan.mode === 'replace-subject') return onScope.filter((row) => row.crewId === plan.subjectId)
+    if (plan.mode !== 'replace-non-speaker') return []
+
+    const nameOf = (row: ActiveAssignment) => {
       const member = world.crewById.get(row.crewId)
-      return !!member && !plan.languages.some((language) => member.languages.includes(language))
+      return member ? `${member.last_name} ${member.first_name}` : ''
     }
-    return false
+    const nonSpeakers = onScope
+      .filter((row) => {
+        const member = world.crewById.get(row.crewId)
+        return row.role === 'cabin_crew' && !!member && !plan.languages.some((language) => member.languages.includes(language))
+      })
+      .sort((a, b) => nameOf(a).localeCompare(nameOf(b)) || a.id.localeCompare(b.id))
+
+    const onePerLeg = new Map<string, ActiveAssignment>()
+    for (const row of nonSpeakers) if (!onePerLeg.has(row.legId)) onePerLeg.set(row.legId, row)
+    return [...onePerLeg.values()]
   }
 
   private replacementSet(plan: Plan, world: World): ReplacementSetRow {

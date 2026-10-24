@@ -143,3 +143,122 @@ describe('FixPublishService cover rules', () => {
     expect(reasonOf(result)).toContain('came off this seat')
   })
 })
+
+/** Who a swap takes off the roster, and that a swap really takes off that many. */
+describe('FixPublishService swap, who comes off', () => {
+  const leg = {
+    id: 'leg-1',
+    pairingId: 'p-1',
+    flightNumber: 'TX301',
+    serviceDate: '2026-09-17',
+    aircraftType: 'A320',
+    destinationCountry: 'jp',
+    dep: new Date('2026-09-17T01:00:00Z'),
+    arr: new Date('2026-09-17T08:00:00Z'),
+  }
+  const limits = { minRestHours: 10, maxFlightHours28d: 100, reportMinutes: 60, releaseMinutes: 0 }
+
+  const person = (id: string, last: string, role: string, languages: string[]) => ({
+    id,
+    first_name: 'T',
+    last_name: last,
+    role,
+    languages,
+    licence_expires_on: new Date('2030-01-01'),
+    fleet_aircraft_type: 'A320',
+    crew_certification: [{ aircraft_type: 'A320', expires_on: new Date('2030-01-01') }],
+  })
+  const row = (id: string, crewId: string, role: string) => ({ id, crewId, pairingId: 'p-1', legId: 'leg-1', role })
+
+  // Four cabin crew, none of whom speak Japanese, and a captain who must never be touched.
+  const crew = [
+    person('c-zed', 'Zed', 'cabin_crew', ['th']),
+    person('c-ann', 'Ann', 'cabin_crew', ['th']),
+    person('c-bob', 'Bob', 'cabin_crew', ['th']),
+    person('c-cat', 'Cat', 'cabin_crew', ['th']),
+    person('c-cap', 'Aaron', 'captain', ['th']),
+  ]
+  const speaker = person('c-speaker', 'Sato', 'cabin_crew', ['ja', 'th'])
+  const assignments = [
+    row('a-zed', 'c-zed', 'cabin_crew'),
+    row('a-ann', 'c-ann', 'cabin_crew'),
+    row('a-bob', 'c-bob', 'cabin_crew'),
+    row('a-cat', 'c-cat', 'cabin_crew'),
+    row('a-cap', 'c-cap', 'captain'),
+  ]
+  const world = {
+    pairings: [],
+    context: { defaults: limits },
+    legs: new Map([['leg-1', leg]]),
+    pairingById: new Map([['p-1', { code: 'P-1' }]]),
+    assignments,
+    pool: [speaker],
+    crewById: new Map([...crew, speaker].map((member) => [member.id, member])),
+    busy: new Map(),
+    removed: new Map(),
+  }
+  const nonSpeakerPlan = { mode: 'replace-non-speaker', role: 'cabin_crew', scope: [leg], languages: ['ja'] }
+
+  type Internals = { leavingRows: (plan: unknown, world: unknown) => { id: string }[] }
+  const leaving = (plan: unknown, over: Record<string, unknown> = {}) => {
+    const service = new FixPublishService({} as DbService, {} as AssignCrewService)
+    return (service as unknown as Internals).leavingRows(plan, { ...world, ...over }).map((item) => item.id)
+  }
+
+  it('takes one cabin crew member off, not every one who does not speak the language', () => {
+    // Four do not speak it, one comes off: the first by name, so the same swap always lets the same person go.
+    expect(leaving(nonSpeakerPlan)).toEqual(['a-ann'])
+  })
+
+  it('never takes a pilot off, and keeps people who do speak the language', () => {
+    const withSpeaker = [...assignments, row('a-speaker', 'c-speaker', 'cabin_crew')]
+    const crewById = new Map([...world.crewById, ['c-speaker', speaker]])
+
+    expect(leaving(nonSpeakerPlan, { assignments: withSpeaker, crewById })).toEqual(['a-ann'])
+    expect(leaving(nonSpeakerPlan, { assignments: [row('a-cap', 'c-cap', 'captain')] })).toEqual([])
+  })
+
+  it('takes off nobody when everyone already speaks it', () => {
+    const allSpeak = new Map(world.crewById)
+    for (const member of crew) allSpeak.set(member.id, { ...member, languages: ['ja'] })
+
+    expect(leaving(nonSpeakerPlan, { crewById: allSpeak })).toEqual([])
+  })
+
+  it('takes off only the person a swap is replacing, and nobody when it only adds', () => {
+    expect(leaving({ mode: 'replace-subject', role: 'cabin_crew', scope: [leg], languages: [], subjectId: 'c-bob' })).toEqual(['a-bob'])
+    expect(leaving({ mode: 'add', role: 'cabin_crew', scope: [leg], languages: [] })).toEqual([])
+  })
+
+  it('writes one unassignment and one new seat when a NO_LOCAL_CREW swap is made', async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      pairing_leg_assignment: { updateMany: jest.fn(), createMany: jest.fn() },
+      audit_log: { create: jest.fn() },
+    }
+    const db = { $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)) }
+    const service = new FixPublishService(db as unknown as DbService, {} as AssignCrewService)
+    const internals = service as unknown as Record<'readBreak' | 'loadWorld' | 'planFor' | 'check', unknown>
+    jest.spyOn(internals as { readBreak: () => Promise<unknown> }, 'readBreak').mockResolvedValue({
+      id: 'brk-1',
+      roster_run_id: 'run-1',
+      pairing_id: 'p-1',
+      pairing_leg_id: 'leg-1',
+      rule: 'NO_LOCAL_CREW',
+      role: null,
+      crew_id: null,
+      detail: 'x',
+      resolved_at: null,
+    })
+    jest.spyOn(internals as { loadWorld: () => Promise<unknown> }, 'loadWorld').mockResolvedValue(world)
+    jest.spyOn(internals as { planFor: () => unknown }, 'planFor').mockReturnValue(nonSpeakerPlan)
+    jest.spyOn(service, 'check' as never).mockResolvedValue({ breaks: [] } as never)
+
+    await service.swap('brk-1', 'c-speaker', 'user-1')
+
+    expect(tx.pairing_leg_assignment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['a-ann'] } } }))
+    expect(tx.pairing_leg_assignment.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ pairing_leg_id: 'leg-1', crew_id: 'c-speaker', role: 'cabin_crew' })],
+    })
+  })
+})
