@@ -89,6 +89,7 @@ export class FlightConfirmService {
             status: 'scheduled',
           },
         })
+        await this.approvals.markConsumed(tx, input.approval_id, flight.id)
         const event = buildFlightEvent({
           type: 'created',
           depAt: input.scheduled_dep_at,

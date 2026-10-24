@@ -39,7 +39,7 @@ describe('FlightConfirmService.confirm', () => {
   const feasibility = { checkAircraftFeasibility: jest.fn() }
   const writer = { append: jest.fn() }
   const publisher = { publishCommitted: jest.fn(() => order.push('publish')) }
-  const approvals = { consume: jest.fn() }
+  const approvals = { consume: jest.fn(), markConsumed: jest.fn() }
   const service = new FlightConfirmService(db as never, feasibility as never, writer as never, publisher as never, approvals)
 
   beforeEach(() => {

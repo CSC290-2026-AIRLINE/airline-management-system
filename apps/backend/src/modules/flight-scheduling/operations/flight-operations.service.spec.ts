@@ -58,7 +58,7 @@ describe('FlightOperationsService', () => {
   const cascade = { refresh: jest.fn(), supersedeForFlight: jest.fn() }
   const feasibility = { checkAircraftFeasibility: jest.fn() }
   const settings = { get: jest.fn() }
-  const approvals = { consume: jest.fn() }
+  const approvals = { consume: jest.fn(), markConsumed: jest.fn() }
   const clock = { now: jest.fn() }
   const service = new FlightOperationsService(
     db as never,
