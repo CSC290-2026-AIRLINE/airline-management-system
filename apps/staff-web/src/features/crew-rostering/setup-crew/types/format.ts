@@ -97,15 +97,18 @@ export function formatProfileMeta(crew: CrewMember): string {
  * A Thai base with Thai on the licence qualifies; everyone else falls back to
  * the country their base sits in, which is what the mockups show.
  */
-export function localCrewEligibility(crew: Pick<CrewMember, 'base' | 'languages'>): string {
-  return crew.languages.includes('th') ? 'Thailand' : crew.base
+export function localCrewEligibility(crew: Pick<CrewMember, 'baseCountry'>): string {
+  return crew.baseCountry
 }
 
-/** Licence health: expired, expiring within 30 days, or valid. */
-export function licenceState(expiresOn: LocalDate): LicenceState {
+/** Used until the backend's `expiry_warning_days` setting has loaded. */
+export const DEFAULT_EXPIRY_WARNING_DAYS = 30
+
+/** Licence health: expired, expiring within `warningDays`, or valid. */
+export function licenceState(expiresOn: LocalDate, warningDays: number = DEFAULT_EXPIRY_WARNING_DAYS): LicenceState {
   const remaining = daysUntil(expiresOn)
   if (remaining < 0) return 'expired'
-  if (remaining <= 30) return 'expiring-soon'
+  if (remaining <= warningDays) return 'expiring-soon'
   return 'valid'
 }
 
@@ -118,25 +121,28 @@ export function licenceWarning(expiresOn: LocalDate): string | null {
  * `Valid until 15 Jan 2028` for a healthy rating, `Expires 28 Sep 2026 · in 14
  * days` when it is close. Past ones say `Expired on …`.
  */
-export function describeCertification(certification: Certification): string {
+export function describeCertification(certification: Certification, warningDays: number = DEFAULT_EXPIRY_WARNING_DAYS): string {
   const remaining = daysUntil(certification.expiresOn)
   if (remaining < 0) return `Expired on ${formatDate(certification.expiresOn)}`
   if (remaining === 0) return `Expires today · ${formatDate(certification.expiresOn)}`
-  if (remaining <= 30) return `Expires ${formatDate(certification.expiresOn)} · in ${remaining} days`
+  if (remaining <= warningDays) return `Expires ${formatDate(certification.expiresOn)} · in ${remaining} days`
   return `Valid until ${formatDate(certification.expiresOn)}`
 }
 
 /** `EXPIRING SOON` / `EXPIRED` tag for a certification, or null when healthy. */
-export function certificationTag(certification: Certification): 'warning' | 'invalid' | null {
+export function certificationTag(
+  certification: Certification,
+  warningDays: number = DEFAULT_EXPIRY_WARNING_DAYS,
+): 'warning' | 'invalid' | null {
   const remaining = daysUntil(certification.expiresOn)
   if (remaining < 0) return 'invalid'
-  if (remaining <= 30) return 'warning'
+  if (remaining <= warningDays) return 'warning'
   return null
 }
 
 /** Tone of the warning text under a certification. */
-export function certificationIsUrgent(certification: Certification): boolean {
-  return certificationTag(certification) !== null
+export function certificationIsUrgent(certification: Certification, warningDays: number = DEFAULT_EXPIRY_WARNING_DAYS): boolean {
+  return certificationTag(certification, warningDays) !== null
 }
 
 /** `64 / 100 h`, the directory's hours column. */

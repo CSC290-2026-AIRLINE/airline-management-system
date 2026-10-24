@@ -38,7 +38,7 @@ export function CrewProfileModal({
   suggestedEmployeeNo: string
   takenNumbers: readonly string[]
   onCancel: () => void
-  onSubmit: (input: CrewProfileInput) => void
+  onSubmit: (input: CrewProfileInput) => void | Promise<void>
 }) {
   const [form, setForm] = useState<CrewProfileInput>(() =>
     crew ? toCrewForm(crew) : { ...EMPTY_CREW_FORM, employeeNo: suggestedEmployeeNo },

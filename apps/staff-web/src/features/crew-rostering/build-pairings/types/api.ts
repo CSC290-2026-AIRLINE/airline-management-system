@@ -81,18 +81,27 @@ export class ApiError extends Error {
   }
 }
 
+/** A non-2xx answer as an `ApiError` carrying the backend's message. */
+async function toApiError(response: Response): Promise<ApiError> {
+  const body = (await response.json().catch(() => null)) as { message?: string | string[] } | null
+  const message = Array.isArray(body?.message) ? body.message.join(' ') : body?.message
+  return new ApiError(message ?? `Request failed (${response.status})`, response.status)
+}
+
 /** JSON request to the API; a non-2xx answer becomes an `ApiError` carrying the backend's message. */
 export async function requestJson<T>(fetchWithAuth: FetchWithAuth, path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetchWithAuth(path, {
     ...init,
     headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
   })
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string | string[] } | null
-    const message = Array.isArray(body?.message) ? body.message.join(' ') : body?.message
-    throw new ApiError(message ?? `Request failed (${response.status})`, response.status)
-  }
+  if (!response.ok) throw await toApiError(response)
   return (await response.json()) as T
+}
+
+/** For endpoints that answer with no body (a 204, or a 200 with nothing in it), which `requestJson` cannot parse. */
+export async function requestVoid(fetchWithAuth: FetchWithAuth, path: string, init: RequestInit = {}): Promise<void> {
+  const response = await fetchWithAuth(path, init)
+  if (!response.ok) throw await toApiError(response)
 }
 
 function request<T>(fetchWithAuth: FetchWithAuth, path: string, init: RequestInit = {}): Promise<T> {

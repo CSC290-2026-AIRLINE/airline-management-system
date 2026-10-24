@@ -5,14 +5,15 @@
  * over the same data: `crewId` absent is the directory, `crewId` set is that
  * profile's details page. The router stays thin and passes the id straight in.
  *
- * Composition only: state lives in `useSetupCrew`, rules in `crew-form` and
- * `format`, and the mock lives in `mock-data`. Replacing the mock with the
- * backend should not require editing this file beyond the hook's internals.
+ * Composition only: state lives in `useSetupCrew` (which talks to the backend through
+ * `api`), and the form rules live in `crew-form` and `format`. A modal closes only once
+ * the backend has saved; a failed save leaves it open and shows the reason as a notice.
  */
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { MOCK_SIMULATION_CLOCK, MOCK_SIMULATION_CLOCK_SHORT } from '../build-pairings/types/mock-data'
 import { MobileTopBar, SidebarNav } from '../shared/app-shell'
+import { useAccount } from '../shared/use-account'
 import { AlertBanner, ChevronLeftIcon, EmptyFaceIcon, Toast } from '../shared/ui'
 import { CrewDirectoryTable, NoCrewMatchState } from './components/crew-directory-table'
 import { CrewFilterBar } from './components/crew-filter-bar'
@@ -25,6 +26,7 @@ import type { Certification, CertificationInput } from './types/types'
 
 export function SetupCrewPage({ crewId }: { crewId?: string }) {
   const state = useSetupCrew()
+  const account = useAccount()
   const navigate = useNavigate()
 
   const [creating, setCreating] = useState(false)
@@ -35,21 +37,24 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
   const crew = crewId ? state.crew.find((member) => member.id === crewId) : undefined
   const isLoading = state.loadState === 'loading'
 
-  function handleCertificationSubmit(input: CertificationInput) {
+  async function handleCertificationSubmit(input: CertificationInput) {
     if (!crew) return
     if (editingCertification) {
-      state.updateCertification(crew.id, editingCertification.id, input)
-      setEditingCertification(null)
-    } else {
-      state.addCertification(crew.id, input)
+      if (await state.updateCertification(crew.id, editingCertification.id, input)) setEditingCertification(null)
+    } else if (await state.addCertification(crew.id, input)) {
       setAddingCertification(false)
     }
   }
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-page-bg lg:flex-row">
-      <SidebarNav activeItem="crew" simulationClock={MOCK_SIMULATION_CLOCK} userName="Administrator" />
-      <MobileTopBar simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT} userName="Administrator" activeItem="crew" />
+      <SidebarNav activeItem="crew" simulationClock={MOCK_SIMULATION_CLOCK} userName={account.full} onSignOut={account.signOut} />
+      <MobileTopBar
+        simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT}
+        userName={account.short}
+        activeItem="crew"
+        onSignOut={account.signOut}
+      />
 
       <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
         {crew ? (
@@ -65,6 +70,7 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
 
             <CrewProfileView
               crew={crew}
+              expiryWarningDays={state.expiryWarningDays}
               onEditProfile={() => setEditingProfile(true)}
               onAddCertification={() => setAddingCertification(true)}
               onEditCertification={(certification) => setEditingCertification(certification)}
@@ -129,9 +135,8 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
           suggestedEmployeeNo={state.suggestedEmployeeNo}
           takenNumbers={state.employeeNumbersInUse(null)}
           onCancel={() => setCreating(false)}
-          onSubmit={(input) => {
-            state.createCrew(input)
-            setCreating(false)
+          onSubmit={async (input) => {
+            if (await state.createCrew(input)) setCreating(false)
           }}
         />
       )}
@@ -146,9 +151,8 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
           suggestedEmployeeNo={crew.employeeNo}
           takenNumbers={state.employeeNumbersInUse(crew.id)}
           onCancel={() => setEditingProfile(false)}
-          onSubmit={(input) => {
-            state.updateCrew(crew.id, input)
-            setEditingProfile(false)
+          onSubmit={async (input) => {
+            if (await state.updateCrew(crew.id, input)) setEditingProfile(false)
           }}
         />
       )}
@@ -170,9 +174,8 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
           fleets={state.fleets}
           onCancel={() => setEditingCertification(null)}
           onSubmit={handleCertificationSubmit}
-          onRemove={() => {
-            state.removeCertification(crew.id, editingCertification.id)
-            setEditingCertification(null)
+          onRemove={async () => {
+            if (await state.removeCertification(crew.id, editingCertification.id)) setEditingCertification(null)
           }}
         />
       )}

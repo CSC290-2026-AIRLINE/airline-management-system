@@ -23,16 +23,19 @@ import { CrewAvatar, DetailRow, ProfileCard } from './profile-card'
  */
 export function CrewProfileView({
   crew,
+  expiryWarningDays,
   onEditProfile,
   onAddCertification,
   onEditCertification,
 }: {
   crew: CrewMember
+  /** Days before expiry that a licence or certification shows as expiring soon. */
+  expiryWarningDays: number
   onEditProfile: () => void
   onAddCertification: () => void
   onEditCertification: (certification: Certification) => void
 }) {
-  const licence = licenceState(crew.licenceExpiresOn)
+  const licence = licenceState(crew.licenceExpiresOn, expiryWarningDays)
 
   return (
     <div className="flex flex-col gap-5">
@@ -54,7 +57,7 @@ export function CrewProfileView({
         <PersonalContactCard crew={crew} />
         <BaseFleetCard crew={crew} />
         <LicenceCard crew={crew} state={licence} />
-        <CertificationsCard crew={crew} onAdd={onAddCertification} onEdit={onEditCertification} />
+        <CertificationsCard crew={crew} warningDays={expiryWarningDays} onAdd={onAddCertification} onEdit={onEditCertification} />
       </div>
 
       <UpcomingDutiesCard crew={crew} />
@@ -113,10 +116,12 @@ function LicenceCard({ crew, state }: { crew: CrewMember; state: ReturnType<type
 
 function CertificationsCard({
   crew,
+  warningDays,
   onAdd,
   onEdit,
 }: {
   crew: CrewMember
+  warningDays: number
   onAdd: () => void
   onEdit: (certification: Certification) => void
 }) {
@@ -137,7 +142,7 @@ function CertificationsCard({
       ) : (
         <ul className="mt-2 flex flex-col">
           {crew.certifications.map((certification) => {
-            const tag = certificationTag(certification)
+            const tag = certificationTag(certification, warningDays)
             return (
               <li key={certification.id} className="flex items-start gap-3 border-b border-border-desc/20 py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
@@ -146,7 +151,7 @@ function CertificationsCard({
                     {tag && <TagPill tone={tag}>{tag === 'invalid' ? 'Expired' : 'Expiring soon'}</TagPill>}
                   </p>
                   <p className={`mt-0.5 text-sm ${tag === 'invalid' ? 'font-medium text-invalid' : 'text-primary-text/60'}`}>
-                    {describeCertification(certification)}
+                    {describeCertification(certification, warningDays)}
                   </p>
                 </div>
                 <IconButton label={`Edit ${certification.name}`} onClick={() => onEdit(certification)}>

@@ -2,9 +2,8 @@
  * Setup Rule — the limits and language mappings every assignment is checked
  * against.
  *
- * Composition only: state lives in `useSetupRule`, the validation rules in
- * `rule-form` and `format`, and the mock in `mock-data`. Replacing the mock with
- * the backend should not require editing this file beyond the hook's internals.
+ * Composition only: state lives in `useSetupRule` (which talks to the backend through
+ * `api`), and the validation rules live in `rule-form` and `format`.
  *
  * Edits are staged rather than written through. The unsaved-changes bar counts
  * what differs from the last save, so an edit followed by an undo goes quiet on
@@ -13,6 +12,7 @@
 import { useState } from 'react'
 import { MOCK_SIMULATION_CLOCK, MOCK_SIMULATION_CLOCK_SHORT } from '../build-pairings/types/mock-data'
 import { BottomUnsavedBar, MobileTopBar, SidebarNav, TabsNav } from '../shared/app-shell'
+import { useAccount } from '../shared/use-account'
 import { AlertBanner } from '../shared/ui'
 import { CompanyRulesCard } from './components/company-rules-card'
 import { CountryLanguagesTable } from './components/country-languages-table'
@@ -33,6 +33,7 @@ const TABS = [
 
 export function SetupRulePage() {
   const state = useSetupRule()
+  const account = useAccount()
 
   const [tab, setTab] = useState<RuleTab>('legality')
   const [addingRule, setAddingRule] = useState(false)
@@ -52,7 +53,7 @@ export function SetupRulePage() {
 
   function save() {
     setInlineEditingId(null)
-    state.saveRules()
+    void state.saveRules()
   }
 
   function discard() {
@@ -62,8 +63,13 @@ export function SetupRulePage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-page-bg lg:flex-row">
-      <SidebarNav activeItem="rules" simulationClock={MOCK_SIMULATION_CLOCK} userName="Administrator" />
-      <MobileTopBar simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT} userName="Administrator" activeItem="rules" />
+      <SidebarNav activeItem="rules" simulationClock={MOCK_SIMULATION_CLOCK} userName={account.full} onSignOut={account.signOut} />
+      <MobileTopBar
+        simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT}
+        userName={account.short}
+        activeItem="rules"
+        onSignOut={account.signOut}
+      />
 
       <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
         <header>
@@ -76,6 +82,8 @@ export function SetupRulePage() {
         {isLoading && <p className="text-sm text-primary-text/60">Loading rules…</p>}
 
         {state.loadState === 'error' && <AlertBanner tone="warning">Could not load the rules. Try again shortly.</AlertBanner>}
+
+        {state.saveError && <AlertBanner tone="warning">Could not save · {state.saveError}</AlertBanner>}
 
         {state.defaults && tab === 'legality' && (
           <>
@@ -115,7 +123,7 @@ export function SetupRulePage() {
                 ? `${state.limitsChangeCount} unsaved change${state.limitsChangeCount === 1 ? '' : 's'} · Saving rechecks affected pairings and roster assignments.`
                 : 'Saving language mappings rechecks local-crew coverage on affected destination legs.'
             }
-            saveLabel={tab === 'legality' ? 'Save rules' : 'Save changes'}
+            saveLabel={state.isSaving ? 'Saving…' : tab === 'legality' ? 'Save rules' : 'Save changes'}
             onDiscard={discard}
             onSave={save}
           />

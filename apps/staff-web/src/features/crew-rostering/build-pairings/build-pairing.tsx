@@ -11,9 +11,9 @@ import { MOCK_SIMULATION_CLOCK, MOCK_SIMULATION_CLOCK_SHORT } from './types/mock
 import { suggestFixes, validatePairing } from './types/pairing-engine'
 import { useBuildPairings } from './types/use-build-pairings'
 import { useMediaQuery } from './types/use-media-query'
-import { useAppAuth } from '../../../auth/AuthProvider'
 import type { FlightLeg, Pairing } from './types/types'
 import { RosterRunBadge, SidebarNav, WizardSteps, MobileTopBar } from '../shared/app-shell'
+import { useAccount } from '../shared/use-account'
 import { BuildSettingsCard, NoPairingsEmptyState, NoSelectionEmptyState } from './components/build-settings-card'
 import { GeneratedPairingsLabel, PairingCard } from './components/pairing-card'
 import { InspectorSheet } from './components/inspector-sheet'
@@ -26,7 +26,7 @@ import { DeletePairingModal } from './modals/delete-pairing-modal'
 
 export function BuildPairingsPage() {
   const state = useBuildPairings()
-  const { logout } = useAppAuth()
+  const account = useAccount()
   const navigate = useNavigate()
   const [editing, setEditing] = useState<Pairing | null>(null)
   const [deleting, setDeleting] = useState<Pairing | null>(null)
@@ -73,17 +73,12 @@ export function BuildPairingsPage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-page-bg lg:flex-row">
-      <SidebarNav
-        activeItem="roster-runs"
-        simulationClock={MOCK_SIMULATION_CLOCK}
-        userName="Administrator"
-        onSignOut={() => void logout()}
-      />
+      <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={account.full} onSignOut={account.signOut} />
       <MobileTopBar
         simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT}
-        userName="Administrator"
+        userName={account.short}
         activeItem="roster-runs"
-        onSignOut={() => void logout()}
+        onSignOut={account.signOut}
       />
 
       {/* Bottom padding clears the fixed commit footer on small screens. */}

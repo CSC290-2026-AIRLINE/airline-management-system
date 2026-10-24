@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MOCK_BASES, MOCK_FLEETS, MOCK_LANGUAGES, loadCrew, nextEmployeeNo } from './mock-data'
-import { toCertification } from './crew-form'
-import { fullName } from './format'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useAppAuth } from '../../../../auth/AuthProvider'
+import { createSetupCrewApi, type SetupCrewOptions } from './api'
+import { DEFAULT_EXPIRY_WARNING_DAYS, fullName } from './format'
 import type { CertificationInput, CrewFilters, CrewMember, CrewMetrics, CrewProfileInput, PageNotice } from './types'
 import { PILOT_ROLES } from './types'
 
 export type LoadState = 'idle' | 'loading' | 'error'
 
 const EMPTY_FILTERS: CrewFilters = { search: '', base: 'all', role: 'all' }
+
+const NO_OPTIONS: SetupCrewOptions = { bases: [], fleets: [], languages: [] }
 
 export interface SetupCrewState {
   crew: CrewMember[]
@@ -20,6 +22,8 @@ export interface SetupCrewState {
   languages: readonly { code: string; label: string }[]
   loadState: LoadState
   notice: PageNotice | null
+  /** Days before expiry that a licence or certification shows as expiring soon (`crew_setting`). */
+  expiryWarningDays: number
   /** Employee number the create modal pre-fills, e.g. `EMP-2202`. */
   suggestedEmployeeNo: string
   /** Employee numbers not owned by `crewId`, for the edit form's uniqueness check. */
@@ -28,40 +32,60 @@ export interface SetupCrewState {
   setBase: (value: string) => void
   setRole: (value: string) => void
   clearFilters: () => void
-  createCrew: (input: CrewProfileInput) => CrewMember
-  updateCrew: (crewId: string, input: CrewProfileInput) => void
-  addCertification: (crewId: string, input: CertificationInput) => void
-  updateCertification: (crewId: string, certificationId: string, input: CertificationInput) => void
-  removeCertification: (crewId: string, certificationId: string) => void
+  /** Each write resolves `true` once the backend has saved it, `false` after a failure has been shown as a notice. */
+  createCrew: (input: CrewProfileInput) => Promise<boolean>
+  updateCrew: (crewId: string, input: CrewProfileInput) => Promise<boolean>
+  addCertification: (crewId: string, input: CertificationInput) => Promise<boolean>
+  updateCertification: (crewId: string, certificationId: string, input: CertificationInput) => Promise<boolean>
+  removeCertification: (crewId: string, certificationId: string) => Promise<boolean>
   dismissNotice: () => void
 }
 
 /**
  * All setup-crew state in one place.
  *
- * `loadCrew` is the single async call and the only thing that knows the data is
- * mocked. Swapping it for TanStack Query later touches this file alone: every
- * component reads plain values from here and never imports `mock-data`.
+ * Reads the directory and the pickers from `/api/crew-rostering/setup-crew` and writes
+ * every change there first, so what the table shows is what the backend stored. The
+ * backend also recomputes the 28-day hours, licence health and upcoming duties, which
+ * is why an edit replaces the whole row with the answer instead of patching it locally.
  *
  * Filters are held here rather than in the table because the metric cards count
  * the whole roster, not the visible rows — keeping both in one place makes that
  * difference obvious.
  */
 export function useSetupCrew(): SetupCrewState {
+  const { accessToken, fetchWithAuth } = useAppAuth()
+  // `fetchWithAuth` is a new function on every provider render. Reading it through a ref
+  // keeps `getApi` stable, so the load effect runs once per session, not on every render.
+  const fetchRef = useRef(fetchWithAuth)
+  useEffect(() => {
+    fetchRef.current = fetchWithAuth
+  }, [fetchWithAuth])
+  const getApi = useCallback(() => createSetupCrewApi(fetchRef.current), [])
+  const signedIn = accessToken !== null
+
   const [crew, setCrew] = useState<CrewMember[]>([])
+  const [options, setOptions] = useState<SetupCrewOptions>(NO_OPTIONS)
+  const [expiryWarningDays, setExpiryWarningDays] = useState(DEFAULT_EXPIRY_WARNING_DAYS)
+  const [suggestedEmployeeNo, setSuggestedEmployeeNo] = useState('')
   const [filters, setFilters] = useState<CrewFilters>(EMPTY_FILTERS)
-  // The first fetch starts as soon as the hook mounts, so the initial state is
+  // The first fetch starts as soon as the session is ready, so the initial state is
   // already `loading`. Setting it from the effect body would be a second render
   // for no reason, and React's own lint rule rejects it.
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [notice, setNotice] = useState<PageNotice | null>(null)
 
   useEffect(() => {
+    if (!signedIn) return
     let active = true
-    loadCrew()
-      .then((loaded) => {
+    const api = getApi()
+    Promise.all([api.listCrew(), api.listOptions(), api.suggestEmployeeNo().catch(() => '')])
+      .then(([directory, loadedOptions, suggestion]) => {
         if (!active) return
-        setCrew(loaded)
+        setCrew(directory.crew)
+        setExpiryWarningDays(directory.expiryWarningDays)
+        setOptions(loadedOptions)
+        setSuggestedEmployeeNo(suggestion)
         setLoadState('idle')
       })
       .catch(() => {
@@ -70,7 +94,7 @@ export function useSetupCrew(): SetupCrewState {
     return () => {
       active = false
     }
-  }, [])
+  }, [getApi, signedIn])
 
   const visibleCrew = useMemo(() => {
     const term = filters.search.trim().toLowerCase()
@@ -97,96 +121,89 @@ export function useSetupCrew(): SetupCrewState {
     setCrew((current) => current.map((member) => (member.id === crewId ? update(member) : member)))
   }
 
-  const createCrew = useCallback((input: CrewProfileInput) => {
-    // Not a real id: a backend assigns these. Unique because the list is short
-    // and one profile at a time is created per session.
-    const created: CrewMember = {
-      id: `CRW-LOCAL-${Date.now()}`,
-      ...input,
-      firstName: input.firstName.trim(),
-      lastName: input.lastName.trim(),
-      employeeNo: input.employeeNo.trim(),
-      licenceNumber: input.licenceNumber.trim(),
-      hours28d: 0,
-      hoursCap: 100,
-      certifications: [],
-      upcomingDuties: [],
-      justCreated: true,
+  /** Runs one backend write. A failure becomes a notice carrying the backend's reason, never an unhandled rejection. */
+  async function save(action: () => Promise<void>): Promise<boolean> {
+    try {
+      await action()
+      return true
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Please try again.'
+      setNotice({ message: `Could not save · ${reason}`, shortMessage: 'Could not save' })
+      return false
     }
-    setCrew((current) => [created, ...current])
-    setNotice({
-      message: `Crew profile created · ${fullName(created)} (${created.employeeNo}) can now be auto-assigned`,
-      shortMessage: `${fullName(created)} added`,
-    })
-    return created
-  }, [])
+  }
 
-  const updateCrew = useCallback((crewId: string, input: CrewProfileInput) => {
-    patchCrew(crewId, (member) => ({
-      ...member,
-      ...input,
-      firstName: input.firstName.trim(),
-      lastName: input.lastName.trim(),
-      employeeNo: input.employeeNo.trim(),
-      licenceNumber: input.licenceNumber.trim(),
-    }))
-    setNotice({
-      message: 'Changes saved · licence, ratings and upcoming duties re-checked',
-      shortMessage: 'Changes saved',
+  const createCrew = (input: CrewProfileInput) =>
+    save(async () => {
+      const api = getApi()
+      const created = await api.createCrew(input)
+      setCrew((current) => [{ ...created, justCreated: true }, ...current])
+      setNotice({
+        message: `Crew profile created · ${fullName(created)} (${created.employeeNo}) can now be auto-assigned`,
+        shortMessage: `${fullName(created)} added`,
+      })
+      // The next free number moves on once this one is taken; a failed refresh just keeps the old suggestion.
+      setSuggestedEmployeeNo(await api.suggestEmployeeNo().catch(() => ''))
     })
-  }, [])
 
-  const addCertification = useCallback((crewId: string, input: CertificationInput) => {
-    patchCrew(crewId, (member) => ({
-      ...member,
-      certifications: [...member.certifications, toCertification(member.id, input, member.certifications)],
-    }))
-    setNotice({
-      message: `${input.name.trim()} added · re-checked before each assignment`,
-      shortMessage: `${input.name.trim()} added`,
+  const updateCrew = (crewId: string, input: CrewProfileInput) =>
+    save(async () => {
+      const updated = await getApi().updateCrew(crewId, input)
+      patchCrew(crewId, () => updated)
+      setNotice({
+        message: 'Changes saved · licence, ratings and upcoming duties re-checked',
+        shortMessage: 'Changes saved',
+      })
     })
-  }, [])
 
-  const updateCertification = useCallback((crewId: string, certificationId: string, input: CertificationInput) => {
-    patchCrew(crewId, (member) => ({
-      ...member,
-      certifications: member.certifications.map((certification) =>
-        certification.id === certificationId
-          ? { ...certification, name: input.name.trim(), aircraftType: input.aircraftType, expiresOn: input.expiresOn }
-          : certification,
-      ),
-    }))
-    setNotice({
-      message: `${input.name.trim()} updated · re-checked before each assignment`,
-      shortMessage: `${input.name.trim()} updated`,
+  const addCertification = (crewId: string, input: CertificationInput) =>
+    save(async () => {
+      const added = await getApi().addCertification(crewId, input)
+      patchCrew(crewId, (member) => ({ ...member, certifications: [...member.certifications, added] }))
+      setNotice({
+        message: `${added.name} added · re-checked before each assignment`,
+        shortMessage: `${added.name} added`,
+      })
     })
-  }, [])
 
-  const removeCertification = useCallback(
-    (crewId: string, certificationId: string) => {
+  const updateCertification = (crewId: string, certificationId: string, input: CertificationInput) =>
+    save(async () => {
+      const updated = await getApi().updateCertification(crewId, certificationId, input)
+      patchCrew(crewId, (member) => ({
+        ...member,
+        certifications: member.certifications.map((certification) => (certification.id === certificationId ? updated : certification)),
+      }))
+      setNotice({
+        message: `${updated.name} updated · re-checked before each assignment`,
+        shortMessage: `${updated.name} updated`,
+      })
+    })
+
+  const removeCertification = (crewId: string, certificationId: string) =>
+    save(async () => {
       const target = crew
         .find((member) => member.id === crewId)
         ?.certifications.find((certification) => certification.id === certificationId)
+      await getApi().removeCertification(crewId, certificationId)
       patchCrew(crewId, (member) => ({
         ...member,
         certifications: member.certifications.filter((certification) => certification.id !== certificationId),
       }))
       setNotice({ message: `${target?.name ?? 'Certification'} removed`, shortMessage: 'Certification removed' })
-    },
-    [crew],
-  )
+    })
 
   return {
     crew,
     visibleCrew,
     metrics,
     filters,
-    bases: MOCK_BASES,
-    fleets: MOCK_FLEETS,
-    languages: MOCK_LANGUAGES,
+    bases: options.bases,
+    fleets: options.fleets,
+    languages: options.languages,
     loadState,
     notice,
-    suggestedEmployeeNo: nextEmployeeNo(crew),
+    expiryWarningDays,
+    suggestedEmployeeNo,
     employeeNumbersInUse: (crewId) => crew.filter((member) => member.id !== crewId).map((member) => member.employeeNo),
     setSearch: (value) => setFilters((current) => ({ ...current, search: value })),
     setBase: (value) => setFilters((current) => ({ ...current, base: value as CrewFilters['base'] })),
