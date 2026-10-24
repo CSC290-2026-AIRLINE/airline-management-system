@@ -18,7 +18,7 @@ import { MOCK_SIMULATION_CLOCK, MOCK_SIMULATION_CLOCK_SHORT } from '../build-pai
 import { MobileTopBar, RosterRunBadge, SidebarNav, WizardSteps } from '../shared/app-shell'
 import { ArrowLeftIcon, ArrowRightIcon, Button, ChevronLeftIcon } from '../shared/ui'
 import { BreakChips } from './components/break-chips'
-import { BreakList } from './components/break-list'
+import { BreakList, SeatRules } from './components/break-list'
 import { ClosedList } from './components/closed-list'
 import { FixPanel } from './components/fix-panel'
 import { NoticeStrip } from './components/notice-strip'
@@ -208,13 +208,22 @@ export function FixPublishPage() {
               below `lg` the list collapses into chips and the panel drops its facts table. */}
           {hasOpen && (
             <>
-              <div className="hidden gap-6 xl:grid xl:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] xl:items-start">
-                <BreakList
-                  breaks={state.breaks}
-                  selectedId={state.selectedBreak?.id ?? null}
-                  onSelect={state.selectBreak}
-                  title={isPublished ? 'Open seats' : 'Rule breaks'}
-                />
+              {/* The fix panel sets the row's height and the left column fits it: the column sits in an absolutely placed box, so
+                  however many breaks there are it adds nothing to the row. The rules card keeps its own height and the list
+                  takes what is left, scrolling inside it. The minimum keeps the list usable beside a short panel. */}
+              <div className="hidden gap-6 xl:grid xl:min-h-[46rem] xl:grid-cols-[minmax(0,21rem)_minmax(0,1fr)]">
+                <div className="relative min-w-0">
+                  <div className="absolute inset-0 flex flex-col gap-4">
+                    <BreakList
+                      fill
+                      breaks={state.breaks}
+                      selectedId={state.selectedBreak?.id ?? null}
+                      onSelect={state.selectBreak}
+                      title={isPublished ? 'Open seats' : 'Rule breaks'}
+                    />
+                    <SeatRules />
+                  </div>
+                </div>
                 <FixPanel {...panelProps} notice={state.fixNotice} />
               </div>
 
@@ -225,6 +234,7 @@ export function FixPublishPage() {
                   onSelect={state.selectBreak}
                   title={isPublished ? 'Open seats' : 'Rule breaks'}
                 />
+                <SeatRules />
                 <FixPanel {...panelProps} notice={state.fixNotice} />
               </div>
 
