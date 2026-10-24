@@ -20,7 +20,9 @@ import { countryName } from '../country-names'
 export const CREW_ROLES = ['captain', 'first_officer', 'cabin_crew', 'police'] as const
 export type CrewRole = (typeof CREW_ROLES)[number]
 
-export const CREW_ROLE_LABEL: Record<CrewRole, string> = {
+export type CrewRoleLabel = 'Captain' | 'First Officer' | 'Cabin Crew' | 'Flight Police'
+
+export const CREW_ROLE_LABEL: Record<CrewRole, CrewRoleLabel> = {
   captain: 'Captain',
   first_officer: 'First Officer',
   cabin_crew: 'Cabin Crew',
@@ -63,7 +65,7 @@ export interface CrewMemberRow {
   lastName: string
   employeeNo: string
   role: CrewRole
-  roleLabel: string
+  roleLabel: CrewRoleLabel
   /** Base airport IATA code. */
   base: string
   /** Name of the country the base airport is in; this is where the crew member counts as local. */

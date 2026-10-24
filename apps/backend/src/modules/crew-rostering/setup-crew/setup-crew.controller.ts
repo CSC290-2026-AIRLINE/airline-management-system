@@ -62,7 +62,7 @@ export class SetupCrewController {
 
   @Get('crew/:crewId')
   async getCrew(@Param('crewId') crewId: string): Promise<CrewMemberRow> {
-    return this.setupCrewService.getCrew(requireText(crewId, 'crewId'))
+    return this.setupCrewService.getCrew(requireUuid(crewId, 'crewId'))
   }
 
   @Post('crew')
@@ -72,12 +72,12 @@ export class SetupCrewController {
 
   @Patch('crew/:crewId')
   async updateCrew(@Param('crewId') crewId: string, @Body() body: unknown): Promise<CrewMemberRow> {
-    return this.setupCrewService.updateCrew(requireText(crewId, 'crewId'), parseProfile(asObject(body)))
+    return this.setupCrewService.updateCrew(requireUuid(crewId, 'crewId'), parseProfile(asObject(body)))
   }
 
   @Post('crew/:crewId/certifications')
   async addCertification(@Param('crewId') crewId: string, @Body() body: unknown): Promise<CertificationRow> {
-    return this.setupCrewService.addCertification(requireText(crewId, 'crewId'), parseCertification(asObject(body)))
+    return this.setupCrewService.addCertification(requireUuid(crewId, 'crewId'), parseCertification(asObject(body)))
   }
 
   @Patch('crew/:crewId/certifications/:certificationId')
@@ -87,8 +87,8 @@ export class SetupCrewController {
     @Body() body: unknown,
   ): Promise<CertificationRow> {
     return this.setupCrewService.updateCertification(
-      requireText(crewId, 'crewId'),
-      requireText(certificationId, 'certificationId'),
+      requireUuid(crewId, 'crewId'),
+      requireUuid(certificationId, 'certificationId'),
       parseCertification(asObject(body)),
     )
   }
@@ -96,7 +96,7 @@ export class SetupCrewController {
   @Delete('crew/:crewId/certifications/:certificationId')
   @HttpCode(204)
   async removeCertification(@Param('crewId') crewId: string, @Param('certificationId') certificationId: string): Promise<void> {
-    await this.setupCrewService.removeCertification(requireText(crewId, 'crewId'), requireText(certificationId, 'certificationId'))
+    await this.setupCrewService.removeCertification(requireUuid(crewId, 'crewId'), requireUuid(certificationId, 'certificationId'))
   }
 }
 
@@ -108,6 +108,15 @@ export class SetupCrewController {
 function asObject(body: unknown): Record<string, unknown> {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Request body must be a JSON object')
   return body as Record<string, unknown>
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Ids reach Postgres as UUID parameters, so a malformed one is a 400 here rather than a 500 there. */
+function requireUuid(value: unknown, field: string): string {
+  const text = requireText(value, field)
+  if (!UUID.test(text)) throw new BadRequestException(`${field} must be a UUID`)
+  return text
 }
 
 /** A required, non-blank string. Blank is rejected rather than trimmed to empty. */

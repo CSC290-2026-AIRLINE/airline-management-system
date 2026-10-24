@@ -336,6 +336,8 @@ export class FixPublishService {
     const role = plan.role
 
     const outgoing = await this.db.$transaction(async (tx) => {
+      // Run first, then crew: publish takes the run lock alone, so the two can never wait on each other in a circle.
+      await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${brk.roster_run_id}::uuid FOR UPDATE`
       await tx.$queryRaw`SELECT id FROM crew WHERE id = ${replacementId}::uuid FOR UPDATE`
 
       const fresh = await this.loadWorld(tx, brk.roster_run_id)
@@ -467,6 +469,7 @@ export class FixPublishService {
     const name = shortName(row.crew)
     const flightNumber = row.pairing_leg.flight.flight_number
     await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
       await tx.pairing_leg_assignment.update({ where: { id: row.id }, data: { unassigned_at: new Date(), reason: input.reason } })
       await tx.audit_log.create({
         data: {
@@ -505,31 +508,45 @@ export class FixPublishService {
     if (!run) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
     if (run.status === 'published') throw new ConflictException('This roster is already published')
 
-    await this.assignCrew.check(rosterRunId)
+    await this.db.$transaction(
+      async (tx) => {
+        // The run row is locked before anything is read, so a swap or sick call cannot slip in between the check and
+        // the flip, and a second publish waits here and then finds the run already published.
+        const [locked] = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
+        if (!locked) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
+        if (locked.status === 'published') throw new ConflictException('This roster is already published')
 
-    await this.db.$transaction(async (tx) => {
-      const pairings = await tx.roster_run_pairing.count({ where: { roster_run_id: rosterRunId } })
-      if (pairings === 0) throw new ConflictException('ROSTER_EMPTY · Commit at least one pairing in Build pairings before publishing')
-      const open = await tx.rule_break.count({ where: { roster_run_id: rosterRunId, resolved_at: null } })
-      if (open > 0) throw new ConflictException(`ROSTER_HAS_BREAKS · close ${open} open ${open === 1 ? 'break' : 'breaks'} to publish`)
+        // Checked again under the lock, so what is counted below is the roster as it stands now.
+        await this.assignCrew.check(rosterRunId)
 
-      const now = new Date()
-      await tx.roster_run.update({ where: { id: rosterRunId }, data: { status: 'published', published_at: now, updated_at: now } })
-      await tx.audit_log.create({
-        data: {
-          occurred_at: now,
-          actor_type: 'staff',
-          actor_id: actorUserId ?? null,
-          source_feature: '8',
-          action: 'status_change',
-          entity_type: 'roster_run',
-          entity_id: rosterRunId,
-          summary: 'Roster published',
-          before: { status: 'draft' },
-          after: { status: 'published', published_at: now.toISOString() },
-        },
-      })
-    })
+        const pairings = await tx.roster_run_pairing.count({ where: { roster_run_id: rosterRunId } })
+        if (pairings === 0) throw new ConflictException('ROSTER_EMPTY · Commit at least one pairing in Build pairings before publishing')
+        const open = await tx.rule_break.count({ where: { roster_run_id: rosterRunId, resolved_at: null } })
+        if (open > 0) throw new ConflictException(`ROSTER_HAS_BREAKS · close ${open} open ${open === 1 ? 'break' : 'breaks'} to publish`)
+
+        const now = new Date()
+        const flipped = await tx.roster_run.updateMany({
+          where: { id: rosterRunId, status: 'draft' },
+          data: { status: 'published', published_at: now, updated_at: now },
+        })
+        if (flipped.count === 0) throw new ConflictException('This roster is already published')
+        await tx.audit_log.create({
+          data: {
+            occurred_at: now,
+            actor_type: 'staff',
+            actor_id: actorUserId ?? null,
+            source_feature: '8',
+            action: 'status_change',
+            entity_type: 'roster_run',
+            entity_id: rosterRunId,
+            summary: 'Roster published',
+            before: { status: 'draft' },
+            after: { status: 'published', published_at: now.toISOString() },
+          },
+        })
+      },
+      { timeout: 30_000 },
+    )
 
     return this.buildState(rosterRunId)
   }
@@ -792,8 +809,15 @@ export class FixPublishService {
     const isPilot = role === 'captain' || role === 'first_officer'
     // A sick call leaves the seat empty with no subject, so the person who came off has to be ruled out here.
     const cameOff = scope.some((leg) => world.removed.get(`${leg.id}|${member.role}`)?.crewId === member.id)
+    // The picker already filters on both, so these only bite when a swap is asked for directly: the seat is the
+    // plan's role, and nobody takes a second seat on a leg they are already crewed on.
+    const alreadyOnLeg = world.assignments.some((item) => scopeIds.has(item.legId) && item.crewId === member.id)
     let eligible: string | undefined
-    if (cameOff) {
+    if (plan.role !== null && member.role !== plan.role) {
+      eligible = `${shortName(member)} is ${ROLE_NOUN[member.role as SeatRole].one}, not ${ROLE_NOUN[plan.role].one}.`
+    } else if (alreadyOnLeg) {
+      eligible = `${shortName(member)} is already crewed on this flight.`
+    } else if (cameOff) {
       eligible = `${shortName(member)} came off this seat and cannot cover it.`
     } else if (isoDate(member.licence_expires_on) < lastDate) {
       eligible = `Licence expires ${isoDate(member.licence_expires_on)}, before ${lastDate}.`

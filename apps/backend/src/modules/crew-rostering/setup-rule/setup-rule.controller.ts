@@ -145,7 +145,7 @@ function parseCountryLanguage(body: Record<string, unknown>): CountryLanguageInp
   const languages = body.languages
   if (!Array.isArray(languages) || languages.length === 0) throw new BadRequestException('languages must list at least one code')
   return {
-    country: typeof body.country === 'string' ? body.country.trim() : '',
+    country: typeof body.country === 'string' && body.country.trim() !== '' ? body.country.trim() : undefined,
     languages: languages.map((entry, index) => requireLanguageCode(entry, `languages[${index}]`)),
   }
 }

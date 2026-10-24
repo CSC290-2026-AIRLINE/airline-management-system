@@ -119,7 +119,8 @@ export interface CountryLimitInput {
 }
 
 export interface CountryLanguageInput {
-  country: string
+  /** Optional: the URL already names the country. When given it has to name the same one. */
+  country?: string
   languages: string[]
 }
 
@@ -343,8 +344,11 @@ export class SetupRuleService {
    * mapping would report a local crew member the page does not have.
    */
   async upsertCountryLanguages(countryCode: string, input: CountryLanguageInput): Promise<CountryLanguageRow> {
-    const code = await this.resolveCountryCode(input.country ?? countryCode)
-    const wanted = [...new Set(input.languages.map((code) => code.toLowerCase()))]
+    const code = await this.resolveCountryCode(countryCode)
+    if (input.country && (await this.resolveCountryCode(input.country)) !== code) {
+      throw new BadRequestException(`country ${input.country} does not match ${countryName(code)} in the URL`)
+    }
+    const wanted = [...new Set(input.languages.map((language) => language.toLowerCase()))]
 
     await this.db.$transaction(async (tx) => {
       await tx.country_language.deleteMany({ where: { country_code: code } })
