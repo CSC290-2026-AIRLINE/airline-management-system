@@ -1042,11 +1042,13 @@ model screening_check {
   snap_first_name          String
   snap_last_name           String
   snap_date_of_birth       DateTime?          @db.Date
+  snap_gender              String?
   snap_nationality         String?
   snap_passport            String?
   snap_entry_first_name    String?
   snap_entry_last_name     String?
   snap_entry_date_of_birth DateTime?          @db.Date
+  snap_entry_gender        String?
   snap_entry_nationality   String?
   snap_entry_passport      String?
   flight                   flight             @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "screening_check_flight_fk")
@@ -1315,6 +1317,7 @@ model watchlist_entry {
   created_by_staff_id                              String            @db.Uuid
   created_at                                       DateTime          @default(now()) @db.Timestamptz(6)
   updated_at                                       DateTime          @default(now()) @db.Timestamptz(6)
+  gender                                           String?
   screening_check                                  screening_check[]
   staff_watchlist_entry_cleared_by_staff_idTostaff staff?            @relation("watchlist_entry_cleared_by_staff_idTostaff", fields: [cleared_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff_watchlist_entry_created_by_staff_idTostaff staff             @relation("watchlist_entry_created_by_staff_idTostaff", fields: [created_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)

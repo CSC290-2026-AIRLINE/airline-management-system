@@ -4,8 +4,8 @@
 -- so the migration in prisma/migrations/*_level1_schema is this file with the old scaffold tables dropped first and the
 -- 'admin' role inserted last. Later migrations: prisma/migrations/*_feature2_schedule_approval adds to Part 2 and
 -- Part 9, prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 9, and
--- prisma/migrations/*_feature7_screening_iteration_03 changes the screening tables in Part 5. Keep the files
--- in step. schema.prisma is generated from the migrated database with `prisma db pull`.
+-- prisma/migrations/*_feature7_screening_iteration_03 changes watchlist_entry and the screening tables in Part 5.
+-- Keep the files in step. schema.prisma is generated from the migrated database with `prisma db pull`.
 -- Seed rows beyond that role (screens, base currency, airline code, first admin and so on) are not in the repo yet.
 
 -- ======================================================================================================================
@@ -938,6 +938,7 @@ CREATE TABLE watchlist_entry (
   first_name          TEXT NOT NULL,
   last_name           TEXT NOT NULL,
   date_of_birth       DATE,
+  gender              TEXT CHECK (gender IN ('M', 'F', 'X')), -- shown on the review screen; matching does not use it
   nationality         TEXT,                                -- normalised like passenger
   passport_number     TEXT,
   list_type           TEXT NOT NULL CHECK (list_type IN ('wanted', 'travel_ban', 'no_fly')),
@@ -981,19 +982,21 @@ CREATE TABLE screening_check (
   snap_first_name          TEXT NOT NULL,                  -- passenger as compared (passport spelling)
   snap_last_name           TEXT NOT NULL,
   snap_date_of_birth       DATE,
+  snap_gender              TEXT CHECK (snap_gender IN ('M', 'F', 'X')),
   snap_nationality         TEXT,
   snap_passport            TEXT,
   snap_entry_first_name    TEXT,                           -- watchlist entry as compared
   snap_entry_last_name     TEXT,
   snap_entry_date_of_birth DATE,
+  snap_entry_gender        TEXT CHECK (snap_entry_gender IN ('M', 'F', 'X')),
   snap_entry_nationality   TEXT,
   snap_entry_passport      TEXT,
   occurred_at              TIMESTAMPTZ NOT NULL,           -- simulation clock
   created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
-  -- The entry side is set exactly when an entry matched; its DOB, nationality and passport only if the entry has them.
+  -- The entry side is set exactly when an entry matched; its DOB, gender, nationality and passport only if the entry has them.
   CHECK (CASE WHEN watchlist_entry_id IS NULL
     THEN num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name, snap_entry_date_of_birth,
-                      snap_entry_nationality, snap_entry_passport) = 0
+                      snap_entry_gender, snap_entry_nationality, snap_entry_passport) = 0
     ELSE num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name) = 3
   END)
 );

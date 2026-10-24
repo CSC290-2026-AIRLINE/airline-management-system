@@ -2,7 +2,13 @@
 -- screening_check keeps a snapshot of both identities it compared, so the review screen shows what matched even after the
 -- passenger or the watchlist entry is edited. screening_review allows corrections: a new review with the next revision.
 -- The departure time is no longer copied; the Screening Queue reads it from feature 2's flight, so delays show.
+-- watchlist_entry gets gender, so the review screen can compare it with the passenger's.
 -- Part 5 of schema.sql shows the result.
+
+-- watchlist_entry -------------------------------------------------------------------------------------------------------
+
+-- Shown on the review screen next to the passenger's gender. Matching does not use it.
+ALTER TABLE watchlist_entry ADD COLUMN gender TEXT CHECK (gender IN ('M', 'F', 'X'));
 
 -- screening_check -------------------------------------------------------------------------------------------------------
 
@@ -16,11 +22,13 @@ ALTER TABLE screening_check
   ADD COLUMN snap_first_name          TEXT,
   ADD COLUMN snap_last_name           TEXT,
   ADD COLUMN snap_date_of_birth       DATE,
+  ADD COLUMN snap_gender              TEXT CHECK (snap_gender IN ('M', 'F', 'X')),
   ADD COLUMN snap_nationality         TEXT,
   ADD COLUMN snap_passport            TEXT,
   ADD COLUMN snap_entry_first_name    TEXT,
   ADD COLUMN snap_entry_last_name     TEXT,
   ADD COLUMN snap_entry_date_of_birth DATE,
+  ADD COLUMN snap_entry_gender        TEXT CHECK (snap_entry_gender IN ('M', 'F', 'X')),
   ADD COLUMN snap_entry_nationality   TEXT,
   ADD COLUMN snap_entry_passport      TEXT;
 
@@ -29,6 +37,7 @@ UPDATE screening_check c
 SET snap_first_name    = p.first_name,
     snap_last_name     = p.last_name,
     snap_date_of_birth = p.date_of_birth,
+    snap_gender        = p.gender,
     snap_nationality   = p.nationality,
     snap_passport      = p.passport_number
 FROM passenger p
@@ -38,6 +47,7 @@ UPDATE screening_check c
 SET snap_entry_first_name    = w.first_name,
     snap_entry_last_name     = w.last_name,
     snap_entry_date_of_birth = w.date_of_birth,
+    snap_entry_gender        = w.gender,
     snap_entry_nationality   = w.nationality,
     snap_entry_passport      = w.passport_number,
     name_similarity          = greatest(
@@ -51,7 +61,7 @@ ALTER TABLE screening_check
   ALTER COLUMN snap_last_name SET NOT NULL,
   ADD CONSTRAINT screening_check_check CHECK (CASE WHEN watchlist_entry_id IS NULL
     THEN num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name, snap_entry_date_of_birth,
-                      snap_entry_nationality, snap_entry_passport) = 0
+                      snap_entry_gender, snap_entry_nationality, snap_entry_passport) = 0
     ELSE num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name) = 3
   END);
 

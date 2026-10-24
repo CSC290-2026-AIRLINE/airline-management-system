@@ -4,7 +4,7 @@
 
 **Tables (6):** [`passenger`](#table-passenger) · [`customer`](#table-customer) · [`customer_passenger`](#table-customer_passenger) · [`watchlist_entry`](#table-watchlist_entry) · [`screening_check`](#table-screening_check) · [`screening_review`](#table-screening_review)
 
-**Later migration:** `20261025120000_feature7_screening_iteration_03/migration.sql` brings `screening_check` and `screening_review` up to the F7 Iteration-03 doc (identity snapshot, correctable reviews). With it the schema has 84 tables / 769 columns.
+**Later migration:** `20261025120000_feature7_screening_iteration_03/migration.sql` brings `screening_check` and `screening_review` up to the F7 Iteration-03 doc (identity snapshot, correctable reviews) and adds `watchlist_entry.gender`. With it the schema has 84 tables / 772 columns.
 
 <a id="table-passenger"></a>
 
@@ -90,6 +90,7 @@ Travel watchlist identity, status, and issuing/clearing details.
 | `first_name`          | `TEXT`        | required                                               | First name.                                                |
 | `last_name`           | `TEXT`        | required                                               | Family or last name.                                       |
 | `date_of_birth`       | `DATE`        | nullable                                               | Date of birth recorded for passenger identity checks.      |
+| `gender`              | `TEXT`        | nullable; Allowed: M, F, X                             | Shown on the review screen; matching does not use it.      |
 | `nationality`         | `TEXT`        | nullable                                               | Normalised like passenger.                                 |
 | `passport_number`     | `TEXT`        | nullable                                               | Passport identifier used for traveller/watchlist matching. |
 | `list_type`           | `TEXT`        | required; Allowed: wanted, travel_ban, no_fly          | Wanted, travel ban, or no-fly watchlist category.          |
@@ -131,17 +132,19 @@ One screening comparison: a passenger against one watchlist entry, or a clean ru
 | `snap_first_name`          | `TEXT`        | required                                                                       | Passenger first name as compared (passport spelling).                             |
 | `snap_last_name`           | `TEXT`        | required                                                                       | Passenger last name as compared (passport spelling).                              |
 | `snap_date_of_birth`       | `DATE`        | nullable                                                                       | Passenger date of birth as compared.                                              |
+| `snap_gender`              | `TEXT`        | nullable; Allowed: M, F, X                                                     | Passenger gender as compared.                                                     |
 | `snap_nationality`         | `TEXT`        | nullable                                                                       | Passenger nationality as compared.                                                |
 | `snap_passport`            | `TEXT`        | nullable                                                                       | Passenger passport number as compared.                                            |
 | `snap_entry_first_name`    | `TEXT`        | set exactly when `watchlist_entry_id` is set                                   | Watchlist entry first name as compared.                                           |
 | `snap_entry_last_name`     | `TEXT`        | set exactly when `watchlist_entry_id` is set                                   | Watchlist entry last name as compared.                                            |
 | `snap_entry_date_of_birth` | `DATE`        | nullable; NULL without an entry                                                | Watchlist entry date of birth as compared, if the entry has one.                  |
+| `snap_entry_gender`        | `TEXT`        | nullable; Allowed: M, F, X; NULL without an entry                              | Watchlist entry gender as compared, if the entry has one.                         |
 | `snap_entry_nationality`   | `TEXT`        | nullable; NULL without an entry                                                | Watchlist entry nationality as compared, if the entry has one.                    |
 | `snap_entry_passport`      | `TEXT`        | nullable; NULL without an entry                                                | Watchlist entry passport number as compared, if the entry has one.                |
 | `occurred_at`              | `TIMESTAMPTZ` | required                                                                       | Simulation clock.                                                                 |
 | `created_at`               | `TIMESTAMPTZ` | required; default `now()`                                                      | Actual database creation timestamp.                                               |
 
-**Table-level SQL constraints:** `CHECK (CASE WHEN watchlist_entry_id IS NULL THEN num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name, snap_entry_date_of_birth, snap_entry_nationality, snap_entry_passport) = 0 ELSE num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name) = 3 END)`
+**Table-level SQL constraints:** `CHECK (CASE WHEN watchlist_entry_id IS NULL THEN num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name, snap_entry_date_of_birth, snap_entry_gender, snap_entry_nationality, snap_entry_passport) = 0 ELSE num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name) = 3 END)`
 
 **Indexes:** `screening_check_once_uq` (unique; `(passenger_id, flight_id, watchlist_entry_id, trigger_point) WHERE watchlist_entry_id IS NOT NULL AND trigger_point IN ('booking', 'check_in', 'new_entry')`); `screening_check_flight_idx` (index; `(flight_id)`); `screening_check_passenger_idx` (index; `(passenger_id, occurred_at DESC)`); `screening_check_open_idx` (index; `(flight_id) WHERE outcome IN ('flagged', 'held')`).
 
