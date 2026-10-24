@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+﻿import { Module } from '@nestjs/common';
 import { AircraftTypeService } from './aircraft-type.service';
 import { AircraftTypeController } from './aircraft-type.controller';
 import { DbModule } from '../../db/db.module';

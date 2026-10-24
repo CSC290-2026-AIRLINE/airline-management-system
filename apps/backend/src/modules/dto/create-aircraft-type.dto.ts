@@ -1,4 +1,4 @@
-export class CreateAircraftTypeDto {
+﻿export class CreateAircraftTypeDto {
   code!: string;
   manufacturer!: string;
   model!: string;

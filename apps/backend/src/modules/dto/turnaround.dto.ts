@@ -1,4 +1,4 @@
-export class TurnaroundTaskDto {
+﻿export class TurnaroundTaskDto {
   task_type!: string;
   status?: string; 
 }

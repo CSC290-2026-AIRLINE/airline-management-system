@@ -1,4 +1,4 @@
-export class CreateRouteDto {
+﻿export class CreateRouteDto {
   origin!: string;
   destination!: string;
   distance_km!: number;
