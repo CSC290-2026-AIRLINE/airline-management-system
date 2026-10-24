@@ -8,6 +8,9 @@
 import { InputField, SelectDropdown } from '../../shared/ui'
 import type { AssignCrewParams } from '../types/types'
 
+/** Phone: small caps above the field. From `lg`: the quieter sentence-case label. */
+const LABEL = 'text-[11px] font-semibold tracking-wider text-label uppercase lg:text-xs lg:font-medium lg:tracking-normal lg:normal-case'
+
 export interface RosterRunFieldsProps {
   params: AssignCrewParams
   bases: readonly string[]
@@ -19,21 +22,31 @@ export interface RosterRunFieldsProps {
 
 export function RosterRunFields({ params, bases, dateError, onDateFromChange, onDateToChange, onBaseChange }: RosterRunFieldsProps) {
   return (
-    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:mt-2 lg:grid-cols-3 lg:gap-4">
+    <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 lg:mt-1 lg:grid-cols-3 lg:gap-x-6">
       <InputField
         label="Date from"
         type="date"
         value={params.dateFrom}
-        error={dateError ?? undefined}
+        labelClassName={LABEL}
         onChange={(event) => onDateFromChange(event.target.value)}
+        className="min-w-0"
       />
-      <InputField label="Date to" type="date" value={params.dateTo} onChange={(event) => onDateToChange(event.target.value)} />
+      <InputField
+        label="Date to"
+        type="date"
+        value={params.dateTo}
+        error={dateError ?? undefined}
+        labelClassName={LABEL}
+        onChange={(event) => onDateToChange(event.target.value)}
+        className="min-w-0"
+      />
       <SelectDropdown
         label="Base"
         options={bases}
         value={params.base}
+        labelClassName={LABEL}
         onChange={(event) => onBaseChange(event.target.value)}
-        className="sm:col-span-2 lg:col-span-1"
+        className="col-span-2 lg:col-span-1"
       />
     </div>
   )

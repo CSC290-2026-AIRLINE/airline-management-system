@@ -2,10 +2,9 @@
  * Fix & Publish — step 3 of the roster run wizard.
  *
  * Page composition only, the same split as step 2: selection and results live in
- * `use-fix-publish`, the sentences live in `break-descriptions`, the candidate rules
- * in `replacement-pool`, and the styles in the shared `tokens.css`. Replacing the mock
- * data with the backend should not require editing this file beyond the hook's
- * internals.
+ * `use-fix-publish`, which talks to `/api/crew-rostering/fix-publish`. The backend
+ * writes every sentence and decides who may take a seat; the styles are in the shared
+ * `tokens.css`.
  *
  * The layout is a two-column workspace above `xl` — breaks on the left, the fix for
  * the selected break on the right — because fixing is a loop between the two and making
@@ -15,14 +14,14 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
-import { MOCK_SIMULATION_CLOCK } from '../assign-crew/types/mock-data'
-import { MobileTopBar } from '../assign-crew/components/mobile-chrome'
-import { MOCK_ROSTER_RUN } from '../build-pairings/types/mock-data'
-import { RosterRunBadge, SidebarNav, WizardSteps } from '../build-pairings/components/app-shell'
-import { AlertBanner, ArrowLeftIcon, Button, ChevronLeftIcon } from '../shared/ui'
+import { MOCK_SIMULATION_CLOCK, MOCK_SIMULATION_CLOCK_SHORT } from '../build-pairings/types/mock-data'
+import { MobileTopBar, RosterRunBadge, SidebarNav, WizardSteps } from '../shared/app-shell'
+import { ArrowLeftIcon, ArrowRightIcon, Button, ChevronLeftIcon } from '../shared/ui'
+import { BreakChips } from './components/break-chips'
 import { BreakList } from './components/break-list'
 import { ClosedList } from './components/closed-list'
 import { FixPanel } from './components/fix-panel'
+import { NoticeStrip } from './components/notice-strip'
 import { ProgressHeader } from './components/progress-header'
 import { PublishChecks } from './components/publish-checks'
 import { RosterTable } from './components/roster-table'
@@ -31,12 +30,8 @@ import { OverrideModal } from './modals/override-modal'
 import { RemoveMemberModal } from './modals/remove-member-modal'
 import { SickCallModal } from './modals/sick-call-modal'
 import { useFixPublish } from './types/use-fix-publish'
+import { DEFAULT_RULE_LIMITS } from '../assign-crew/types/roster-rules'
 import type { FixBreak, LegAssignment } from './types/types'
-
-/** `Mon 14 Sep 2026 · 09:00` shortened for the mobile top bar. */
-const SHORT_CLOCK = MOCK_SIMULATION_CLOCK.replace(/^\w{3}\s/, '')
-  .split(' · ')[0]
-  .replace(/\s\d{4}$/, '')
 
 /**
  * The account line under the sidebar wordmark.
@@ -66,13 +61,23 @@ export function FixPublishPage() {
   const role = roleLabel(user?.type ?? 'admin')
 
   const closed = state.breaks.filter((item) => item.resolution !== undefined)
+  const hasOpen = state.openBreaks.length > 0
   const isPublished = state.status === 'published'
-  const seatOnly = state.openBreaks.every((item) => item.code === 'SICK_CALL')
+  const seatOnly = state.openBreaks.every((item) => item.code === 'NO_LEGAL_CREW')
+  const windowSearch = { dateFrom: state.params.dateFrom, dateTo: state.params.dateTo, base: state.params.base }
+  const hasRun = state.rosterRun !== null
+  const backToRoster = isPublished && hasOpen
+  const base = state.rosterRun?.base ?? state.params.base
 
-  // The Feature 2 trigger acts on the leg carrying the rest break, because that is the
-  // one a two-hour delay actually reaches. It is a demo affordance, so it sits in the
-  // chrome rather than pretending to be part of the fix flow.
-  const delayTarget = state.assignments.find((assignment) => assignment.leg.flightNumber === 'FD511') ?? state.assignments[0]
+  const panelProps = {
+    item: state.selectedBreak,
+    base,
+    openCount: state.openBreaks.length,
+    rosterFor: state.rosterFor,
+    isBusy: state.isBusy,
+    onOverride: setOverriding,
+    onSwap: state.swapIn,
+  }
 
   function pickAbsent(assignment: LegAssignment, memberId: string) {
     setPicking(null)
@@ -81,61 +86,105 @@ export function FixPublishPage() {
 
   return (
     <div className="flex min-h-screen w-full bg-page-bg">
-      <div className="hidden lg:contents">
-        <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={role.full} onSignOut={() => void logout()} />
-      </div>
+      <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={role.full} onSignOut={() => void logout()} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileTopBar simulationClockShort={SHORT_CLOCK} accountLabel={role.short} />
+        <MobileTopBar
+          simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT}
+          userName={role.short}
+          activeItem="roster-runs"
+          onSignOut={() => void logout()}
+        />
 
-        <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 pb-28 lg:px-8 lg:py-7 lg:pb-8">
+        <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 pb-28 lg:px-9 lg:py-7 lg:pb-9">
           <header className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase lg:text-3xl">Fix &amp; publish</h1>
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-primary-text/60">
+              <p className="mt-1.5 text-sm leading-relaxed text-primary-text/60 lg:hidden">Fix each break, then publish the roster.</p>
+              <p className="mt-1.5 hidden max-w-3xl text-base leading-relaxed text-primary-text/60 lg:block">
                 Fix each rule break, then publish the roster. Law rules must be fixed; company rules can be overridden with a reason.
               </p>
             </div>
             <div className="hidden lg:block">
               <RosterRunBadge
-                base={MOCK_ROSTER_RUN.base}
-                dateFrom={MOCK_ROSTER_RUN.dateFrom}
-                dateTo={MOCK_ROSTER_RUN.dateTo}
+                base={state.rosterRun?.base ?? state.params.base}
+                dateFrom={state.rosterRun?.dateFrom ?? state.params.dateFrom}
+                dateTo={state.rosterRun?.dateTo ?? state.params.dateTo}
                 status={state.rosterStatusLabel}
               />
             </div>
           </header>
 
-          <WizardSteps active="fix-publish" allDone={isPublished && state.openBreaks.length === 0} />
+          <div className="lg:mb-1">
+            <WizardSteps active="fix-publish" allDone={isPublished && !hasOpen} />
+          </div>
 
-          {/* The way back to step 2. The wizard strip shows where you are but is not
-              itself clickable, so without this the only route back is the sidebar. */}
-          <button
-            type="button"
-            onClick={() => void navigate({ to: '/assign-crew' })}
-            className="-mt-1 flex w-fit items-center gap-1.5 text-sm font-semibold text-blue-700 transition-colors hover:text-blue-800 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-            Assign crew
-          </button>
-
-          {state.banner && (
-            <AlertBanner
-              tone={state.banner.tone}
-              action={
-                isPublished ? (
-                  <Button variant="highlight" className="shrink-0" onClick={() => void navigate({ to: '/build-pairings' })}>
-                    Start next roster run →
-                  </Button>
-                ) : (
-                  <Button variant="highlight" className="shrink-0" disabled={!state.canPublish} onClick={state.publish}>
-                    Publish roster
-                  </Button>
-                )
+          {/* The way back. The wizard strip shows where you are but is not itself clickable,
+              so before publishing this goes to step 2; once the roster is live and a seat is
+              open, it goes back up to the roster the seat belongs to. */}
+          {(!isPublished || hasOpen) && (
+            <button
+              type="button"
+              onClick={() =>
+                backToRoster
+                  ? document.getElementById('published-roster')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  : void navigate({ to: '/assign-crew', search: windowSearch })
               }
+              className="-mt-1 flex w-fit items-center gap-1.5 text-sm font-semibold text-blue-700 transition-colors hover:text-blue-800 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
             >
-              {state.banner.text}
-            </AlertBanner>
+              <ArrowLeftIcon className="h-4 w-4" />
+              {backToRoster ? 'Published roster' : 'Assign crew'}
+            </button>
+          )}
+
+          {state.loadError && (
+            <p role="alert" className="rounded-lg border border-invalid/30 bg-invalid-bg px-4 py-3 text-sm font-medium text-invalid">
+              {state.loadError}
+            </p>
+          )}
+
+          {state.loadState === 'loading' && <p className="text-sm text-primary-text/60">Loading the roster…</p>}
+
+          {state.loadState === 'idle' && !hasRun && (
+            <section className="rounded-2xl border border-border-desc/40 bg-card-bg px-6 py-10 text-center">
+              <p className="text-base font-bold text-primary-text">No roster run for this base and dates yet</p>
+              <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-primary-text/60">
+                Commit valid pairings in Build pairings and crew them in Assign crew first. Then the breaks that are left appear here.
+              </p>
+              <Button className="mt-5" onClick={() => void navigate({ to: '/build-pairings', search: windowSearch })}>
+                Go to Build pairings
+              </Button>
+            </section>
+          )}
+
+          {/* On a phone a published roster speaks through its cards and the bottom bar, so the strip is a draft-only line there. */}
+          {state.banner && (
+            <div className={isPublished ? 'max-lg:hidden' : ''}>
+              <NoticeStrip
+                tone={state.banner.tone}
+                action={
+                  isPublished ? (
+                    <Button variant="highlight" className="h-10 shrink-0" onClick={() => void navigate({ to: '/build-pairings' })}>
+                      Start next roster run
+                      <ArrowRightIcon className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button variant="highlight" className="h-10 shrink-0 px-5" disabled={!state.canPublish} onClick={state.publish}>
+                      Publish roster
+                    </Button>
+                  )
+                }
+              >
+                {state.banner.text}
+              </NoticeStrip>
+            </div>
+          )}
+
+          {/* What the last fix did. Wide screens print it at the top of the panel; on a phone it is a strip. */}
+          {state.fixNotice && hasOpen && (
+            <div className="lg:hidden">
+              <NoticeStrip tone="success">{state.fixNotice}</NoticeStrip>
+            </div>
           )}
 
           {state.heading && (
@@ -150,69 +199,76 @@ export function FixPublishPage() {
             />
           )}
 
-          <RulesStrip />
+          {hasOpen && hasRun && <RulesStrip limits={state.limits ?? DEFAULT_RULE_LIMITS} />}
 
           {/* The workspace: list on the left, fix on the right. */}
           {/* Two columns from `xl`, not `lg`: the sidebar is already taking ~260px by
               then, which leaves the fix panel roughly 260px wide — too narrow for the
-              facts table and the candidate cards. Between `lg` and `xl` the two stack,
-              which is why this and the block below share one breakpoint. */}
-          <div className="hidden gap-6 xl:grid xl:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] xl:items-start">
-            <BreakList
-              breaks={state.breaks}
-              selectedId={state.selectedBreak?.id ?? null}
-              onSelect={state.selectBreak}
-              title={isPublished ? 'Open seats' : 'Rule breaks'}
-            />
-            <FixPanel item={state.selectedBreak} onOverride={setOverriding} onSwap={state.swapIn} />
-          </div>
+              facts table and the candidate cards. Between `lg` and `xl` the two stack;
+              below `lg` the list collapses into chips and the panel drops its facts table. */}
+          {hasOpen && (
+            <>
+              <div className="hidden gap-6 xl:grid xl:grid-cols-[minmax(0,21rem)_minmax(0,1fr)] xl:items-start">
+                <BreakList
+                  breaks={state.breaks}
+                  selectedId={state.selectedBreak?.id ?? null}
+                  onSelect={state.selectBreak}
+                  title={isPublished ? 'Open seats' : 'Rule breaks'}
+                />
+                <FixPanel {...panelProps} notice={state.fixNotice} />
+              </div>
 
-          <div className="flex w-full flex-col gap-4 xl:hidden">
-            <BreakList
-              breaks={state.breaks}
-              selectedId={state.selectedBreak?.id ?? null}
-              onSelect={state.selectBreak}
-              title={isPublished ? 'Open seats' : 'Rule breaks'}
-            />
-            <FixPanel item={state.selectedBreak} onOverride={setOverriding} onSwap={state.swapIn} />
-          </div>
+              <div className="hidden w-full flex-col gap-4 lg:flex xl:hidden">
+                <BreakList
+                  breaks={state.breaks}
+                  selectedId={state.selectedBreak?.id ?? null}
+                  onSelect={state.selectBreak}
+                  title={isPublished ? 'Open seats' : 'Rule breaks'}
+                />
+                <FixPanel {...panelProps} notice={state.fixNotice} />
+              </div>
+
+              <div className="flex w-full flex-col gap-4 lg:hidden">
+                <BreakChips
+                  breaks={state.breaks}
+                  selectedId={state.selectedBreak?.id ?? null}
+                  isPublished={isPublished}
+                  onSelect={state.selectBreak}
+                />
+                <FixPanel {...panelProps} compact />
+              </div>
+            </>
+          )}
 
           {isPublished && (
             <RosterTable
               assignments={state.assignments}
-              uncoveredLegIds={state.uncoveredLegIds}
+              openBreaks={state.openBreaks}
               updated={state.isUpdated}
               onSickCall={(legId) => {
                 const assignment = state.rosterFor(legId)
                 if (assignment) setPicking(assignment)
               }}
-              onFindCover={(legId) => {
-                const call = state.sickCalls.find((item) => item.legId === legId && item.replacementId === undefined)
-                if (call) state.selectBreak(call.id)
-              }}
+              onFindCover={state.coverLeg}
             />
           )}
 
-          {closed.length > 0 && <ClosedList breaks={closed} rosterFor={state.rosterFor} />}
+          {!isPublished && !hasOpen && closed.length > 0 && <ClosedList breaks={closed} rosterFor={state.rosterFor} />}
 
           <PublishChecks
             checks={state.publishChecks}
-            openCount={state.openBreaks.length}
+            openBreaks={state.openBreaks}
             overriddenCount={closed.filter((item) => item.resolution?.kind === 'overridden').length}
             isPublished={isPublished}
           />
 
-          {!isPublished && delayTarget && (
+          {hasRun && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-border-desc/60 px-5 py-4">
               <p className="text-xs leading-relaxed text-primary-text/60">
-                Demo: push {delayTarget.leg.flightNumber} two hours later, the way Feature 2 would, and watch the affected legs re-check.
+                Did Flight Scheduling (Feature 2) move or cancel a flight? Re-read the schedule and re-check every rule against the roster.
               </p>
-              <Button
-                variant="outline"
-                disabled={state.delayedLegId === delayTarget.leg.flightId}
-                onClick={() => state.delayFlight(delayTarget.leg.flightId)}
-              >
-                {state.delayedLegId === delayTarget.leg.flightId ? 'Delay applied' : `Delay ${delayTarget.leg.flightNumber} +2 h`}
+              <Button variant="outline" disabled={state.isBusy} onClick={state.recheck}>
+                Re-check roster
               </Button>
             </div>
           )}
@@ -222,8 +278,9 @@ export function FixPublishPage() {
           openCount={state.openBreaks.length}
           isPublished={isPublished}
           canPublish={state.canPublish}
-          onBack={() => void navigate({ to: '/assign-crew' })}
+          onBack={() => void navigate({ to: '/assign-crew', search: windowSearch })}
           onPublish={state.publish}
+          onNextRun={() => void navigate({ to: '/build-pairings' })}
         />
       </div>
 
@@ -249,7 +306,7 @@ export function FixPublishPage() {
           memberId={removing.memberId}
           onCancel={() => setRemoving(null)}
           onConfirm={(reason) => {
-            state.raiseSickCall(removing.assignment.leg.flightId, removing.memberId, reason)
+            state.raiseSickCall(removing.assignment.leg.legId, removing.memberId, reason)
             setRemoving(null)
           }}
         />
@@ -261,9 +318,9 @@ export function FixPublishPage() {
 /**
  * Fixed bottom bar.
  *
- * Mirrors step 2's bar so the two steps feel like one wizard, but the action is
- * Publish rather than "next step" — this is the last one, and the button states the
- * count of what is still in the way.
+ * Mirrors step 2's bar so the two steps feel like one wizard. Before publishing the action is
+ * Publish, and the label counts what is still in the way; once the roster is live the step is
+ * done and the action is the next run.
  */
 function MobileBottomBar({
   openCount,
@@ -271,41 +328,50 @@ function MobileBottomBar({
   canPublish,
   onBack,
   onPublish,
+  onNextRun,
 }: {
   openCount: number
   isPublished: boolean
   canPublish: boolean
   onBack: () => void
   onPublish: () => void
+  onNextRun: () => void
 }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 bg-primary px-4 py-3 text-white lg:hidden">
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-semibold tracking-widest text-white/50 uppercase">Status</p>
-        <p className="truncate text-sm font-medium">
-          {isPublished
-            ? 'Roster published'
-            : openCount === 0
-              ? 'Ready to publish'
-              : `${openCount} ${openCount === 1 ? 'break' : 'breaks'} to fix`}
+        <p className="text-[10px] font-semibold tracking-widest text-white/60 uppercase">{isPublished ? 'Done' : 'Next step'}</p>
+        <p className="truncate text-sm font-semibold">
+          {isPublished ? 'Roster published' : `${openCount} open ${openCount === 1 ? 'break' : 'breaks'}`}
         </p>
       </div>
       <button
         type="button"
         onClick={onBack}
         aria-label="Back to Assign crew"
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/25 text-white transition-colors hover:bg-white/10"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/30 text-white transition-colors hover:bg-white/10"
       >
         <ChevronLeftIcon className="h-5 w-5" />
       </button>
-      <button
-        type="button"
-        onClick={onPublish}
-        disabled={!canPublish || isPublished}
-        className="shrink-0 rounded-lg bg-btn-yellow px-4 py-3 text-sm font-semibold text-primary-text transition-colors hover:bg-btn-yellow-hover disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/50"
-      >
-        {isPublished ? 'Published' : 'Publish'}
-      </button>
+      {isPublished ? (
+        <button
+          type="button"
+          onClick={onNextRun}
+          className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-btn-yellow px-4 text-sm font-bold text-primary-text transition-colors hover:bg-btn-yellow-hover"
+        >
+          Start next run
+          <ArrowRightIcon className="h-4 w-4" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onPublish}
+          disabled={!canPublish}
+          className="h-11 shrink-0 rounded-lg bg-btn-yellow px-4 text-sm font-bold text-primary-text transition-colors hover:bg-btn-yellow-hover disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/50"
+        >
+          Publish roster
+        </button>
+      )}
     </div>
   )
 }

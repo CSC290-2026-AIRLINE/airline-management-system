@@ -1,39 +1,36 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { Prisma } from '@backend/db/generated/prisma/client'
+import { buildChains } from './chain-builder'
 
 /**
  * Feature 8 · Step 2 — build pairings.
  *
  * Owns `pairing`, `pairing_leg` and the handover into `roster_run` / `roster_run_pairing`.
- * It reads `flight` for the schedule and `crew_setting` / `legality_rule` for the limits,
- * but writes nothing outside the pairing tables.
+ * It reads `flight` for the schedule and `crew_setting` / `country_legality_rule` for the
+ * limits, but writes nothing outside the pairing and run tables.
  *
- * Two decisions worth stating up front:
+ * Decisions taken from the F8 migration (`20261024120000_feature8_crew_rostering`):
  *
- *  · **Leg order and duty day come from the flight times.** `pairing_leg` has no
- *    `sequence_number` or `duty_day` column, so a leg's position and its duty day are
- *    derived from `scheduled_dep_at` on read. That is the only ordering that cannot
- *    disagree with the schedule itself.
- *
- *  · **Validity is never stored.** It is recomputed by `evaluatePairing` on every read
- *    and every save, so an edit and a validation can never drift apart. The pairing
- *    tables therefore carry no `is_valid` column, and the F8 branch has none either.
+ *  · **Leg order, duty days and validity are derived, never stored.** They come from
+ *    the flights' current `dep_at` / `arr_at`, so a feature 2 delay changes them.
+ *  · **A pairing is stored only when it is committed.** Generate proposes pairings without
+ *    writing anything, and Commit stores the ones Ops chose and links them to the run. Deleting
+ *    a stored pairing is a hard delete (its legs cascade). In a draft run it is first taken out
+ *    of the run (rule breaks, assignments, run link); in a published run the answer is
+ *    `PAIRING_IN_USE`.
+ *  · **Only valid pairings join a run**, and only when every leg is inside the run's dates.
+ *    Editing the legs of a pairing in a draft run takes it out of the run, so it has to be
+ *    committed again and cannot slip in invalid.
  */
 
-/** Machine-readable failure reasons. Mirrors the codes the page renders in its check list. */
 export type PairingErrorCode =
-  | 'PAIRING_NOT_CLOSED'
-  | 'DUTY_DAY_EXCEEDED'
-  | 'FLIGHTS_PER_DAY_EXCEEDED'
-  | 'PAIRING_TOO_LONG'
-  | 'PAIRING_EMPTY'
-  | 'SEQUENCE_BROKEN'
-  | 'PAIRING_IN_USE'
+  'PAIRING_EMPTY' | 'SEQUENCE_BROKEN' | 'PAIRING_NOT_CLOSED' | 'FLIGHTS_PER_DAY_EXCEEDED' | 'DUTY_DAY_EXCEEDED' | 'PAIRING_TOO_LONG'
 
 export type CheckStatus = 'passed' | 'failed'
 
 export interface BuildParams {
-  /** `YYYY-MM-DD`. */
+  /** `YYYY-MM-DD`, compared with `flight.service_date`. */
   dateFrom: string
   /** `YYYY-MM-DD`, inclusive. */
   dateTo: string
@@ -41,16 +38,30 @@ export interface BuildParams {
   base: string
 }
 
+/** The limits a pairing is checked against, after any stricter destination rule is applied. */
+export interface PairingLimitsRow {
+  maxFlightsPerDuty: number
+  maxDutyHours: number
+  maxPairingDays: number
+  minRestHours: number
+  /** A duty starts this many minutes before its first departure. */
+  reportMinutes: number
+  /** A duty ends this many minutes after its last arrival. */
+  releaseMinutes: number
+}
+
 export interface ScheduledFlightRow {
   id: string
   flightNumber: string
   origin: string
   destination: string
-  /** ISO-8601 UTC instant. */
+  /** ISO-8601 UTC instant, the flight's current departure time. */
   departureAt: string
-  /** ISO-8601 UTC instant. */
+  /** ISO-8601 UTC instant, the flight's current arrival time. */
   arrivalAt: string
-  status: 'available' | 'manually_added'
+  /** `paired` when the flight is already a leg of a pairing (a flight is in one pairing at most). */
+  status: 'available' | 'paired'
+  pairingId: string | null
 }
 
 export interface FlightLegRow {
@@ -60,183 +71,147 @@ export interface FlightLegRow {
   destination: string
   departureAt: string
   arrivalAt: string
+  /** `pairing_leg.added_by = 'ops'`. */
   addedManually: boolean
-}
-
-export interface LayoverRow {
-  airport: string
-  nights: number
-  arrivesAt: string
-  departsAt: string
-}
-
-export interface LegSummaryRow {
-  flightId: string
-  flightNumber: string
-  origin: string
-  destination: string
-  departureLocal: string
-  arrivalLocal: string
-  layoverAfter?: LayoverRow
 }
 
 export interface LegalityCheckRow {
   code: PairingErrorCode
-  label: string
   status: CheckStatus
-  /** Right-aligned summary, e.g. `BKK ➔ BKK`, `2`, `6h 45m`, `2 days`. */
-  value: string
   /** Human explanation of a failure. Absent when the check passed. */
   detail?: string
-}
-
-export interface PairingRow {
-  id: string
-  base: string
-  code: string
-  legs: FlightLegRow[]
-  deleted: boolean
-  releasedFlightIds: string[]
-  releasedFlightNumbers: string[]
-  published: boolean
-}
-
-export interface PairingMetricsRow {
-  totalPairings: number
-  totalFlights: number
-  validCount: number
-  invalidCount: number
-  deletedCount: number
 }
 
 export interface PairingEvaluationRow {
   status: CheckStatus
   checks: LegalityCheckRow[]
-  primaryError?: LegalityCheckRow
-  /** Airports in visit order, e.g. `['BKK', 'ICN', 'BKK']`. */
-  route: string[]
-  routeLabel: string
-  cardRows: LegSummaryRow[]
-  scheduleByDay: { dateLabel: string; rows: { leg: FlightLegRow; durationLabel: string }[] }[]
-  layoverLabel: string
-  layoverIsError: boolean
-  /** Card footer: `2 flights · 2 days`. */
-  cardFooterLeft: string
-  /** Card footer / commit callout: `12h 30m duty`. */
-  dutyLabel: string
-  totalDutyMinutes: number
+}
+
+export interface RosterRunRow {
+  id: string
+  base: string
+  dateFrom: string
+  dateTo: string
+  status: 'draft' | 'published'
+}
+
+export interface PairingRow {
+  id: string
+  /** What Ops sees, such as `P-101`. */
+  code: string
+  base: string
+  legs: FlightLegRow[]
+  rosterRunId: string | null
+  rosterRunStatus: 'draft' | 'published' | null
+  /** In a published run, so it can no longer be edited or deleted here. */
+  published: boolean
+  limits: PairingLimitsRow
 }
 
 export interface PairingListResult {
   pairings: PairingRow[]
-  metrics: PairingMetricsRow
+  /** Every flight in the window, for the Add leg picker. */
+  flights: ScheduledFlightRow[]
+  /** The run for exactly this base and window, if one exists yet. */
+  rosterRun: RosterRunRow | null
 }
 
-export interface PairingDetailResult {
+export interface SaveLegInput {
+  flightId: string
+  addedManually: boolean
+}
+
+export interface SaveLegsResult {
   pairing: PairingRow
-  evaluation: PairingEvaluationRow
+  /** True when the edit took the pairing out of its draft roster run. */
+  withdrawnFromRun: boolean
 }
 
-export interface PairingValidationResult {
-  status: CheckStatus
-  checks: LegalityCheckRow[]
-  primaryError?: LegalityCheckRow
+export interface DeletePairingResult {
+  id: string
+  code: string
+  releasedFlightIds: string[]
+  releasedFlightNumbers: string[]
 }
 
-export interface AddLegCandidateRow {
-  flight: ScheduledFlightRow
-  returnsToBase: boolean
-  badgeLabel: string
+/** A pairing in the window that was committed earlier, so Generate does not offer its flights again. */
+export interface CommittedPairingRow {
+  code: string
+  rosterRunId: string
+  runDateFrom: string
+  runDateTo: string
+  runStatus: 'draft' | 'published'
+}
+
+/**
+ * What Generate answers. The pairings are a proposal: nothing about them is stored yet. Their ids
+ * and codes are provisional (the code is the one the database will hand out next), and they only
+ * become rows when Ops commit them.
+ */
+export interface GenerateResult extends PairingListResult {
+  committed: CommittedPairingRow[]
+}
+
+/** One pairing Ops are committing, as the page holds it. `ref` is the code the proposal showed. */
+export interface CommitDraft {
+  ref: string
+  legs: SaveLegInput[]
 }
 
 export interface CommitResult {
-  rosterRunId: string
-  pairingId: string
-  status: 'draft' | 'published'
+  rosterRun: RosterRunRow
+  /** The pairings this call stored and put in the run, with the code each one was given. */
+  committed: { ref: string; code: string }[]
+  /** Refs of drafts that failed a legality check, and so were not stored. */
+  skippedInvalid: string[]
+  /** Refs of valid drafts with a leg outside the run's dates. */
+  skippedOutsideWindow: string[]
+  /** Refs of drafts with a flight that is already in another pairing. */
+  skippedTaken: string[]
 }
 
-export interface BaseOptionRow {
-  code: string
-  name: string
+/** Minimum time between two legs the generator chains together. */
+const MIN_CONNECTION_MINUTES = 60
+
+/** Flights that can no longer be flown are never offered or paired. */
+const UNPAIRABLE_FLIGHT_STATUSES = ['cancelled']
+
+/** Fallbacks for a missing `crew_setting` row; the migration seeds the same values. */
+const DEFAULT_LIMITS: PairingLimitsRow = {
+  maxFlightsPerDuty: 4,
+  maxDutyHours: 13,
+  maxPairingDays: 3,
+  minRestHours: 10,
+  reportMinutes: 60,
+  releaseMinutes: 0,
 }
 
-interface Limits {
-  maxDutyHours: number
-  maxFlightsPerDuty: number
-  maxPairingDays: number
-  minRestHours: number
-}
-
-interface LegDbRow {
-  id: string
-  added_by: string
-  flight: {
-    id: string
-    flight_number: string
-    scheduled_dep_at: Date
-    scheduled_arr_at: Date
-    route: { origin: string; destination: string }
-  }
-}
-
-interface PairingDbRow {
-  id: string
-  code: string
-  base_airport: string
-  deleted_at: Date | null
-  pairing_leg: LegDbRow[]
-  roster_run_pairing: { roster_run: { status: string } }[]
-}
-
-/** Check labels, written once so the list and the banner can never drift apart. */
-const CHECK_LABELS: Record<PairingErrorCode, string> = {
-  PAIRING_EMPTY: 'Pairing has flights',
-  SEQUENCE_BROKEN: 'Sequence is continuous',
-  PAIRING_NOT_CLOSED: 'Returns to base',
-  PAIRING_TOO_LONG: 'Within maximum pairing length',
-  FLIGHTS_PER_DAY_EXCEEDED: 'Flights per duty day',
-  DUTY_DAY_EXCEEDED: 'Duty hours per day',
-  PAIRING_IN_USE: 'Not in a published roster',
-}
+const FLIGHT_SELECT = {
+  id: true,
+  flight_number: true,
+  dep_at: true,
+  arr_at: true,
+  route: { select: { origin: true, destination: true } },
+} satisfies Prisma.flightSelect
 
 const PAIRING_SELECT = {
   id: true,
   code: true,
   base_airport: true,
-  deleted_at: true,
-  pairing_leg: {
-    select: {
-      id: true,
-      added_by: true,
-      flight: {
-        select: {
-          id: true,
-          flight_number: true,
-          scheduled_dep_at: true,
-          scheduled_arr_at: true,
-          route: { select: { origin: true, destination: true } },
-        },
-      },
-    },
-  },
-  roster_run_pairing: { select: { roster_run: { select: { status: true } } } },
-} as const
+  pairing_leg: { select: { id: true, added_by: true, flight: { select: { ...FLIGHT_SELECT, service_date: true } } } },
+  roster_run_pairing: { select: { roster_run: { select: { id: true, status: true } } } },
+} satisfies Prisma.pairingSelect
 
-/** Minutes between two instants, never negative — a leg that lands before it flies is treated as zero. */
-function minutesBetween(from: Date, to: Date): number {
-  return Math.max(0, Math.round((to.getTime() - from.getTime()) / 60_000))
-}
+type FlightDbRow = Prisma.flightGetPayload<{ select: typeof FLIGHT_SELECT }>
+type PairingDbRow = Prisma.pairingGetPayload<{ select: typeof PAIRING_SELECT }>
 
-/** `2 days`, `1 day` — the unit is carried in the caller, this is just the count. */
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`
-}
-
-/** `6h 45m` — the format the duty column and the card footer both print. */
-function durationLabel(minutes: number): string {
-  const hours = Math.floor(minutes / 60)
-  const rest = minutes % 60
-  return hours === 0 ? `${rest}m` : `${hours}h ${String(rest).padStart(2, '0')}m`
+/** Settings, stricter country rules and airport facts, loaded once per request. */
+interface LimitsContext {
+  defaults: PairingLimitsRow
+  countryRules: Map<string, { minRestHours: number; maxDutyHours: number }>
+  airportCountry: Map<string, string>
+  /** Duty days are cut at local midnight in the base's timezone. */
+  timeZone: string
 }
 
 @Injectable()
@@ -244,7 +219,7 @@ export class BuildPairingService {
   constructor(private readonly db: DbService) {}
 
   /** Bases pairings can be built at. Every active airport. */
-  async listBases(): Promise<BaseOptionRow[]> {
+  async listBases(): Promise<{ code: string; name: string }[]> {
     const rows = await this.db.airport.findMany({
       where: { is_active: true },
       select: { iata_code: true, name: true },
@@ -253,607 +228,558 @@ export class BuildPairingService {
     return rows.map((row) => ({ code: row.iata_code, name: row.name }))
   }
 
-  /**
-   * Flights in the window that touch the base.
-   *
-   * A flight counts as touching the base if it either departs from it or lands at it,
-   * because a pairing can be opened by the return leg as easily as by the outbound
-   * one. `available` means the flight is not in a live pairing yet; `manually_added`
-   * means it is only reachable by the Edit Legs picker.
-   */
-  async listFlights(params: BuildParams): Promise<ScheduledFlightRow[]> {
-    const { from, to } = this.window(params)
-    const base = params.base.toUpperCase()
-
-    const rows = (await this.db.flight.findMany({
-      where: { scheduled_dep_at: { gte: from, lt: to }, route: { OR: [{ origin: base }, { destination: base }] } },
-      select: {
-        id: true,
-        flight_number: true,
-        scheduled_dep_at: true,
-        scheduled_arr_at: true,
-        route: { select: { origin: true, destination: true } },
-        pairing_leg: { select: { pairing: { select: { id: true, deleted_at: true } } } },
-      },
-      orderBy: { scheduled_dep_at: 'asc' },
-    })) as {
-      id: string
-      flight_number: string
-      scheduled_dep_at: Date
-      scheduled_arr_at: Date
-      route: { origin: string; destination: string }
-      pairing_leg: { pairing: { id: string; deleted_at: Date | null } }[]
-    }[]
-
-    return rows.map((row) => ({
-      id: row.id,
-      flightNumber: row.flight_number,
-      origin: row.route.origin,
-      destination: row.route.destination,
-      departureAt: row.scheduled_dep_at.toISOString(),
-      arrivalAt: row.scheduled_arr_at.toISOString(),
-      status: row.pairing_leg.some((leg) => leg.pairing.deleted_at === null) ? 'manually_added' : 'available',
-    }))
-  }
-
-  /**
-   * Candidate legs for the Add Leg modal.
-   *
-   * Everything in the window, not just the base's own flights: a pairing is allowed
-   * to sit at a hub it does not serve directly.
-   */
-  async listAddLegCandidates(pairingId: string): Promise<AddLegCandidateRow[]> {
-    const pairing = (await this.db.pairing.findFirst({ where: { id: pairingId }, select: { base_airport: true } })) as
-      { base_airport: string } | undefined
-    if (!pairing) throw new NotFoundException(`Pairing ${pairingId} was not found`)
-
-    const { from, to } = this.window({
-      dateFrom: this.isoDay(new Date()),
-      dateTo: this.isoDay(new Date(Date.now() + 14 * 86_400_000)),
-      base: pairing.base_airport,
-    })
-    const flights = await this.listFlights({
-      dateFrom: this.isoDay(from),
-      dateTo: this.isoDay(new Date(to.getTime() - 86_400_000)),
-      base: pairing.base_airport,
-    })
-
-    return flights
-      .filter((flight) => flight.origin === pairing.base_airport || flight.destination === pairing.base_airport)
-      .map((flight) => ({
-        flight,
-        returnsToBase: flight.destination === pairing.base_airport,
-        badgeLabel: flight.destination === pairing.base_airport ? 'Returns to base' : `Ends at ${flight.destination}`,
-      }))
-  }
-
-  /**
-   * Builds pairings for a window and stores them.
-   *
-   * Greedy and deterministic: flights are walked in departure order and each one is
-   * chained onto the earliest open pairing it can legally extend. Running the same
-   * window twice is idempotent because existing live pairings are loaded first and
-   * only their unused flights are considered.
-   */
-  async generatePairings(params: BuildParams): Promise<PairingListResult> {
-    const limits = await this.readLimits()
-    const { from, to } = this.window(params)
-    const base = params.base.toUpperCase()
-
-    const existing = (await this.db.pairing.findMany({
-      where: { base_airport: base, deleted_at: null, pairing_leg: { some: { flight: { scheduled_dep_at: { gte: from, lt: to } } } } },
-      select: PAIRING_SELECT,
-      orderBy: { created_at: 'asc' },
-    })) as PairingDbRow[]
-
-    const taken = new Set(existing.flatMap((pairing) => pairing.pairing_leg.map((leg) => leg.flight.id)))
-
-    const candidates = (await this.db.flight.findMany({
-      where: {
-        scheduled_dep_at: { gte: from, lt: to },
-        route: { origin: base },
-        id: { notIn: [...taken] },
-      },
-      select: {
-        id: true,
-        flight_number: true,
-        scheduled_dep_at: true,
-        scheduled_arr_at: true,
-        route: { select: { origin: true, destination: true } },
-      },
-      orderBy: { scheduled_dep_at: 'asc' },
-    })) as {
-      id: string
-      flight_number: string
-      scheduled_dep_at: Date
-      scheduled_arr_at: Date
-      route: { origin: string; destination: string }
-    }[]
-
-    const drafts: { code: string; legs: typeof candidates }[] = []
-
-    for (const flight of candidates) {
-      const open = drafts.find((draft) => this.canExtend(draft, flight, limits))
-      if (open) open.legs.push(flight)
-      else drafts.push({ code: `P-DRAFT-${drafts.length + 1}`, legs: [flight] })
-    }
-
-    const created = []
-    for (const draft of drafts) {
-      created.push(
-        await this.db.pairing.create({
-          data: {
-            base_airport: base,
-            pairing_leg: {
-              create: draft.legs.map((leg) => ({ flight_id: leg.id, added_by: 'auto' })),
-            },
-          },
-          select: PAIRING_SELECT,
-        }),
-      )
-    }
-
-    return this.toListResult([...existing, ...created], base)
-  }
-
-  /** Draft pairings for a window, each with its legality check rolled up into the metrics. */
+  /** Pairings at the base with a leg in the window, every flight in the window, and the window's run. */
   async listPairings(params: BuildParams): Promise<PairingListResult> {
-    const base = params.base.toUpperCase()
-    const { from, to } = this.window(params)
-    const rows = (await this.db.pairing.findMany({
-      where: { base_airport: base, pairing_leg: { some: { flight: { scheduled_dep_at: { gte: from, lt: to } } } } },
-      select: PAIRING_SELECT,
-      orderBy: { created_at: 'asc' },
-    })) as PairingDbRow[]
+    const context = await this.loadContext(params.base)
+    const window = this.serviceDates(params)
 
-    return this.toListResult(rows, base)
-  }
+    const [rows, flights, rosterRun] = await Promise.all([
+      this.db.pairing.findMany({
+        where: { base_airport: params.base, pairing_leg: { some: { flight: { service_date: window } } } },
+        select: PAIRING_SELECT,
+        orderBy: { created_at: 'asc' },
+      }),
+      this.db.flight.findMany({
+        where: { service_date: window, status: { notIn: UNPAIRABLE_FLIGHT_STATUSES } },
+        select: { ...FLIGHT_SELECT, pairing_leg: { select: { pairing_id: true } } },
+        orderBy: { dep_at: 'asc' },
+      }),
+      this.findRun(params),
+    ])
 
-  async getPairing(pairingId: string): Promise<PairingDetailResult> {
-    const row = (await this.db.pairing.findUnique({ where: { id: pairingId }, select: PAIRING_SELECT })) as PairingDbRow | null
-    if (!row) throw new NotFoundException(`Pairing ${pairingId} was not found`)
-
-    const pairing = this.toPairingRow(row)
-    return { pairing, evaluation: await this.evaluatePairing(pairing.legs, row.base_airport) }
+    return {
+      pairings: rows.map((row) => this.toPairingRow(row, context)),
+      flights: flights.map((flight) => ({
+        ...this.toFlightFields(flight),
+        status: flight.pairing_leg ? 'paired' : 'available',
+        pairingId: flight.pairing_leg?.pairing_id ?? null,
+      })),
+      rosterRun,
+    }
   }
 
   /**
-   * Validates a pairing the caller has not saved yet.
+   * Proposes pairings from the window's unpaired flights. Nothing is stored.
    *
-   * Takes loose leg input rather than a stored pairing id because the Edit Legs modal
-   * re-checks the draft on every keystroke, before there is a row to point at.
+   * Every call is a fresh random draw (see `buildChains`): seeds and connections are picked at
+   * random, most chains come home to base and some do not. A chain that cannot close is offered
+   * anyway, as Invalid, so Ops can repair it by hand before committing. Pairings committed earlier
+   * come back too, with their run, and their flights are not offered again.
+   *
+   * Drafts stored by an earlier version of this step are removed first, since they would hold
+   * flights nobody can see. From here on a pairing exists in the database only once it is committed.
    */
-  async validateDraft(base: string, legs: FlightLegRow[]): Promise<PairingValidationResult> {
-    const evaluation = await this.evaluatePairing(legs, base.toUpperCase())
-    return { status: evaluation.status, checks: evaluation.checks, primaryError: evaluation.primaryError }
+  async generatePairings(params: BuildParams): Promise<GenerateResult> {
+    const context = await this.loadContext(params.base)
+    const window = this.serviceDates(params)
+    await this.discardDrafts(params)
+
+    const [flights, rosterRun, committedRows, nextNumber] = await Promise.all([
+      this.db.flight.findMany({
+        where: { service_date: window, status: { notIn: UNPAIRABLE_FLIGHT_STATUSES } },
+        select: { ...FLIGHT_SELECT, pairing_leg: { select: { pairing_id: true } } },
+        orderBy: { dep_at: 'asc' },
+      }),
+      this.findRun(params),
+      this.db.pairing.findMany({
+        where: {
+          base_airport: params.base,
+          roster_run_pairing: { isNot: null },
+          pairing_leg: { some: { flight: { service_date: window } } },
+        },
+        select: {
+          ...PAIRING_SELECT,
+          roster_run_pairing: { select: { roster_run: { select: { id: true, date_from: true, date_to: true, status: true } } } },
+        },
+        orderBy: { created_at: 'asc' },
+      }),
+      this.nextPairingNumber(),
+    ])
+
+    const free = flights.filter((flight) => flight.pairing_leg === null)
+    const chains = buildChains(
+      free,
+      params.base,
+      MIN_CONNECTION_MINUTES,
+      (seed, flight) => this.spanDays(seed.dep_at, flight.arr_at, context.timeZone) <= context.defaults.maxPairingDays,
+    )
+
+    // Pairings committed earlier are listed too, first and locked, so Ops can see what is already on its way to Assign crew.
+    const pairings: PairingRow[] = committedRows.map((row) => this.toPairingRow(row, context))
+    const proposedIn = new Map<string, string>()
+    chains.forEach((chain, index) => {
+      const code = `P-${nextNumber + index}`
+      const id = `draft-${code}`
+      const legs = chain.map((flight): FlightLegRow => ({ ...this.toFlightFields(flight), flightId: flight.id, addedManually: false }))
+      pairings.push({
+        id,
+        code,
+        base: params.base,
+        legs,
+        rosterRunId: null,
+        rosterRunStatus: null,
+        published: false,
+        limits: this.limitsFor(legs, context),
+      })
+      for (const flight of chain) proposedIn.set(flight.id, id)
+    })
+
+    return {
+      pairings,
+      flights: flights.map((flight) => ({
+        ...this.toFlightFields(flight),
+        status: flight.pairing_leg || proposedIn.has(flight.id) ? 'paired' : 'available',
+        pairingId: proposedIn.get(flight.id) ?? flight.pairing_leg?.pairing_id ?? null,
+      })),
+      rosterRun,
+      committed: committedRows.flatMap((row) => {
+        const run = row.roster_run_pairing?.roster_run
+        if (!run) return []
+        return [
+          {
+            code: row.code,
+            rosterRunId: run.id,
+            runDateFrom: run.date_from.toISOString().slice(0, 10),
+            runDateTo: run.date_to.toISOString().slice(0, 10),
+            runStatus: run.status === 'published' ? ('published' as const) : ('draft' as const),
+          },
+        ]
+      }),
+    }
+  }
+
+  /** The number the next pairing code will carry (`P-` + the sequence), so a proposal can show the code it will get. */
+  private async nextPairingNumber(): Promise<number> {
+    const [sequence] = await this.db.$queryRaw<
+      { last_value: bigint; is_called: boolean }[]
+    >`SELECT last_value, is_called FROM pairing_code_seq`
+    return Number(sequence.last_value) + (sequence.is_called ? 1 : 0)
   }
 
   /**
    * Replaces a pairing's legs.
    *
-   * A published pairing is refused rather than rewritten — step 3 is where a live
-   * roster is changed, and it records who changed it.
+   * Legs are diffed rather than rewritten so the ones that stay keep their row. A pairing
+   * in a published run is refused; one in a draft run is taken out of the run.
    */
-  async saveLegs(pairingId: string, legs: FlightLegRow[]): Promise<PairingDetailResult> {
-    const row = (await this.db.pairing.findUnique({ where: { id: pairingId }, select: PAIRING_SELECT })) as PairingDbRow | null
-    if (!row) throw new NotFoundException(`Pairing ${pairingId} was not found`)
-    if (this.isPublished(row)) throw new ConflictException('This pairing is in a published roster and can no longer be edited')
+  async saveLegs(pairingId: string, legs: SaveLegInput[]): Promise<SaveLegsResult> {
+    const flightIds = [...new Set(legs.map((leg) => leg.flightId))]
+    if (flightIds.length === 0) throw new BadRequestException('A pairing needs at least one flight. Delete the pairing instead.')
 
-    const addedManually = new Set(legs.filter((leg) => leg.addedManually).map((leg) => leg.flightId))
-    await this.db.$transaction(async (tx) => {
-      await tx.pairingLeg.deleteMany({ where: { pairing_id: pairingId } })
-      if (legs.length > 0) {
-        await tx.pairingLeg.createMany({
-          data: legs.map((leg) => ({
-            pairing_id: pairingId,
-            flight_id: leg.flightId,
-            added_by: addedManually.has(leg.flightId) ? 'manual' : 'auto',
-          })),
-        })
-      }
-      await tx.pairing.update({ where: { id: pairingId }, data: { deleted_at: null, updated_at: new Date() } })
+    const row = await this.findPairing(pairingId)
+    const run = row.roster_run_pairing?.roster_run ?? null
+    if (run?.status === 'published') throw this.inUse(row.code)
+
+    const flights = await this.db.flight.findMany({
+      where: { id: { in: flightIds } },
+      select: { id: true, flight_number: true, pairing_leg: { select: { pairing_id: true } } },
     })
+    if (flights.length !== flightIds.length) throw new NotFoundException('One or more flights were not found')
+    const taken = flights.find((flight) => flight.pairing_leg !== null && flight.pairing_leg.pairing_id !== pairingId)
+    if (taken) throw new ConflictException(`${taken.flight_number} is already in another pairing`)
 
-    return this.getPairing(pairingId)
-  }
+    const keep = new Set(flightIds)
+    const current = new Set(row.pairing_leg.map((leg) => leg.flight.id))
+    const removedLegIds = row.pairing_leg.filter((leg) => !keep.has(leg.flight.id)).map((leg) => leg.id)
+    const manual = new Set(legs.filter((leg) => leg.addedManually).map((leg) => leg.flightId))
+    const added = flightIds.filter((flightId) => !current.has(flightId))
+    const changed = removedLegIds.length > 0 || added.length > 0
 
-  /**
-   * Soft-deletes a pairing, returning its flights to the unpaired pool.
-   *
-   * Soft rather than hard so the deleted-pairing card can still name the flights it
-   * released; the rows stop counting as pairings the moment `deleted_at` is set.
-   */
-  async deletePairing(pairingId: string): Promise<PairingRow> {
-    const row = (await this.db.pairing.findUnique({ where: { id: pairingId }, select: PAIRING_SELECT })) as PairingDbRow | null
-    if (!row) throw new NotFoundException(`Pairing ${pairingId} was not found`)
-    if (this.isPublished(row)) throw new ConflictException('This pairing is in a published roster and can no longer be deleted')
-
-    const deleted = (await this.db.pairing.update({
-      where: { id: pairingId },
-      data: { deleted_at: new Date(), updated_at: new Date() },
-      select: PAIRING_SELECT,
-    })) as PairingDbRow
-
-    return this.toPairingRow(deleted)
-  }
-
-  /** Drops every draft pairing in a window. Published pairings are left alone. */
-  async clearPairings(params: BuildParams): Promise<{ releasedPairings: number }> {
-    const { from, to } = this.window(params)
-    const rows = (await this.db.pairing.findMany({
-      where: {
-        base_airport: params.base.toUpperCase(),
-        deleted_at: null,
-        roster_run_pairing: { none: { roster_run: { status: 'published' } } },
-      },
-      select: { id: true, pairing_leg: { select: { flight: { select: { scheduled_dep_at: true } } } } },
-    })) as { id: string; pairing_leg: { flight: { scheduled_dep_at: Date } } }[]
-
-    const inWindow = rows.filter((row) =>
-      row.pairing_leg.some((leg) => leg.flight.scheduled_dep_at >= from && leg.flight.scheduled_dep_at < to),
-    )
-    if (inWindow.length > 0) {
-      await this.db.pairing.updateMany({
-        where: { id: { in: inWindow.map((row) => row.id) } },
-        data: { deleted_at: new Date(), updated_at: new Date() },
-      })
-    }
-    return { releasedPairings: inWindow.length }
-  }
-
-  /**
-   * Hands a valid pairing over to the roster run for the window.
-   *
-   * The run is created in draft if it does not exist yet, and keyed on base plus date
-   * range so the same window always lands in the same run rather than fragmenting
-   * into a new one per pairing.
-   */
-  async commitPairing(pairingId: string, params: BuildParams): Promise<CommitResult> {
-    const row = (await this.db.pairing.findUnique({ where: { id: pairingId }, select: PAIRING_SELECT })) as PairingDbRow | null
-    if (!row) throw new NotFoundException(`Pairing ${pairingId} was not found`)
-
-    const evaluation = await this.evaluatePairing(this.toPairingRow(row).legs, row.base_airport)
-    if (evaluation.status === 'failed') {
-      throw new BadRequestException(
-        `Pairing ${row.code} is not legal yet: ${evaluation.primaryError?.detail ?? evaluation.primaryError?.label ?? 'a check failed'}`,
+    if (changed) {
+      await this.mapUniqueViolation(
+        () =>
+          this.db.$transaction(async (tx) => {
+            if (run) await this.withdrawFromRun(tx, pairingId)
+            if (removedLegIds.length > 0) await tx.pairing_leg.deleteMany({ where: { id: { in: removedLegIds } } })
+            if (added.length > 0) {
+              await tx.pairing_leg.createMany({
+                data: added.map((flightId) => ({
+                  pairing_id: pairingId,
+                  flight_id: flightId,
+                  added_by: manual.has(flightId) ? 'ops' : 'auto',
+                })),
+              })
+            }
+            await tx.pairing.update({ where: { id: pairingId }, data: { updated_at: new Date() } })
+          }),
+        'One of these flights was added to another pairing at the same time.',
       )
     }
 
-    const base = params.base.toUpperCase()
-    const run = (await this.db.rosterRun.upsert({
-      where: {
-        base_airport_date_from_date_to: { base_airport: base, date_from: new Date(params.dateFrom), date_to: new Date(params.dateTo) },
-      },
-      update: {},
-      create: { base_airport: base, date_from: new Date(params.dateFrom), date_to: new Date(params.dateTo), status: 'draft' },
-      select: { id: true, status: true },
-    })) as { id: string; status: string }
+    const context = await this.loadContext(row.base_airport)
+    return { pairing: this.toPairingRow(await this.findPairing(pairingId), context), withdrawnFromRun: changed && run !== null }
+  }
 
-    await this.db.rosterRunPairing.upsert({
-      where: { roster_run_id_pairing_id: { roster_run_id: run.id, pairing_id: pairingId } },
-      update: {},
-      create: { roster_run_id: run.id, pairing_id: pairingId },
+  /** Hard-deletes a draft pairing; its flights go back to the unpaired list. */
+  async deletePairing(pairingId: string): Promise<DeletePairingResult> {
+    const row = await this.findPairing(pairingId)
+    const run = row.roster_run_pairing?.roster_run ?? null
+    if (run?.status === 'published') throw this.inUse(row.code)
+
+    await this.db.$transaction(async (tx) => {
+      if (run) await this.withdrawFromRun(tx, pairingId)
+      await tx.pairing.delete({ where: { id: pairingId } })
     })
 
-    return { rosterRunId: run.id, pairingId, status: run.status === 'published' ? 'published' : 'draft' }
+    const legs = this.sortedLegs(row)
+    return {
+      id: row.id,
+      code: row.code,
+      releasedFlightIds: legs.map((leg) => leg.flight.id),
+      releasedFlightNumbers: legs.map((leg) => leg.flight.flight_number),
+    }
+  }
+
+  /** Deletes the window's pairings that are not in any roster run yet. Committed ones are kept. */
+  async clearPairings(params: BuildParams): Promise<{ deleted: number; kept: number }> {
+    return this.discardDrafts(params)
+  }
+
+  private async discardDrafts(params: BuildParams): Promise<{ deleted: number; kept: number }> {
+    const rows = await this.db.pairing.findMany({
+      where: { base_airport: params.base, pairing_leg: { some: { flight: { service_date: this.serviceDates(params) } } } },
+      select: { id: true, roster_run_pairing: { select: { pairing_id: true } } },
+    })
+    const drafts = rows.filter((row) => row.roster_run_pairing === null).map((row) => row.id)
+    if (drafts.length > 0) await this.db.pairing.deleteMany({ where: { id: { in: drafts } } })
+    return { deleted: drafts.length, kept: rows.length - drafts.length }
+  }
+
+  /**
+   * Stores the pairings Ops chose and puts them in the draft run for exactly this base and
+   * window, creating the run on the first commit.
+   *
+   * This is the moment a pairing becomes data. Each draft arrives as a list of flights; the
+   * legality checks run again here, because the page's preview is only a preview, and a draft
+   * that fails them is left out and reported by its `ref`. So are drafts with a leg outside the
+   * run's dates and drafts with a flight that someone else paired in the meantime.
+   */
+  async commitPairings(params: BuildParams, drafts: CommitDraft[]): Promise<CommitResult> {
+    if (drafts.length === 0) throw new BadRequestException('NO_PAIRINGS · Choose at least one valid pairing to commit')
+    const context = await this.loadContext(params.base)
+    const window = this.serviceDates(params)
+    const runs = await this.db.roster_run.findMany({
+      where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
+      select: { id: true, status: true },
+      orderBy: { created_at: 'desc' },
+    })
+    if (runs.some((run) => run.status === 'published')) {
+      throw new ConflictException(`The roster run for ${params.base} · ${params.dateFrom} to ${params.dateTo} is already published`)
+    }
+
+    const flightIds = [...new Set(drafts.flatMap((draft) => draft.legs.map((leg) => leg.flightId)))]
+    const flights = await this.db.flight.findMany({
+      where: { id: { in: flightIds } },
+      select: { ...FLIGHT_SELECT, service_date: true, status: true, pairing_leg: { select: { pairing_id: true } } },
+    })
+    const byId = new Map(flights.map((flight) => [flight.id, flight]))
+    if (flightIds.some((id) => !byId.has(id))) throw new NotFoundException('One or more flights were not found')
+
+    const ready: { draft: CommitDraft; legs: { flightId: string; addedManually: boolean }[] }[] = []
+    const skippedInvalid: string[] = []
+    const skippedOutsideWindow: string[] = []
+    const skippedTaken: string[] = []
+    const claimed = new Set<string>()
+    for (const draft of drafts) {
+      const rows = draft.legs.map((leg) => byId.get(leg.flightId)!)
+      const unique = new Set(draft.legs.map((leg) => leg.flightId)).size === draft.legs.length
+      if (!unique || rows.some((row) => row.pairing_leg !== null || claimed.has(row.id))) {
+        skippedTaken.push(draft.ref)
+        continue
+      }
+
+      const ordered = [...rows].sort((a, b) => a.dep_at.getTime() - b.dep_at.getTime())
+      const legs = ordered.map((row): FlightLegRow => ({ ...this.toFlightFields(row), flightId: row.id, addedManually: false }))
+      if (
+        ordered.some((row) => UNPAIRABLE_FLIGHT_STATUSES.includes(row.status)) ||
+        this.evaluate(legs, params.base, this.limitsFor(legs, context), context.timeZone).status === 'failed'
+      ) {
+        skippedInvalid.push(draft.ref)
+      } else if (ordered.some((row) => row.service_date < window.gte || row.service_date > window.lte)) {
+        skippedOutsideWindow.push(draft.ref)
+      } else {
+        ready.push({ draft, legs: draft.legs })
+        for (const row of rows) claimed.add(row.id)
+      }
+    }
+
+    const { run, committed } = await this.mapUniqueViolation(
+      () =>
+        this.db.$transaction(async (tx) => {
+          const target =
+            runs[0] ??
+            (await tx.roster_run.create({
+              data: { base_airport: params.base, date_from: window.gte, date_to: window.lte, status: 'draft' },
+              select: { id: true, status: true },
+            }))
+          // One at a time and in order, so the codes follow the order of the list.
+          const stored: { ref: string; id: string; code: string }[] = []
+          for (const { draft, legs } of ready) {
+            const manual = new Set(legs.filter((leg) => leg.addedManually).map((leg) => leg.flightId))
+            const created = await tx.pairing.create({
+              data: {
+                base_airport: params.base,
+                pairing_leg: {
+                  create: legs.map((leg) => ({ flight_id: leg.flightId, added_by: manual.has(leg.flightId) ? 'ops' : 'auto' })),
+                },
+              },
+              select: { id: true, code: true },
+            })
+            stored.push({ ref: draft.ref, id: created.id, code: created.code })
+          }
+          if (stored.length > 0) {
+            await tx.roster_run_pairing.createMany({ data: stored.map((row) => ({ roster_run_id: target.id, pairing_id: row.id })) })
+            await tx.roster_run.update({ where: { id: target.id }, data: { updated_at: new Date() } })
+          }
+          return { run: target, committed: stored.map(({ ref, code }) => ({ ref, code })) }
+        }),
+      'Some of these flights were paired by someone else at the same time. Generate again.',
+    )
+
+    return {
+      rosterRun: { id: run.id, base: params.base, dateFrom: params.dateFrom, dateTo: params.dateTo, status: 'draft' },
+      committed,
+      skippedInvalid,
+      skippedOutsideWindow,
+      skippedTaken,
+    }
   }
 
   /* ── legality ───────────────────────────────────────────────────────────── */
 
   /**
-   * The full check list for a pairing, in the order the inspector prints it.
-   *
-   * Every check is always evaluated and always returned — a passing row stays in the
-   * list — so the operator can see what was cleared, not only what failed.
+   * The pairing checks, in the order the inspector prints them. The staff-web
+   * `pairing-engine` mirrors these rules with the same limits for its live preview;
+   * this one is the one that decides what may be committed.
    */
-  async evaluatePairing(legs: FlightLegRow[], base: string): Promise<PairingEvaluationRow> {
-    const limits = await this.readLimits()
-    const ordered = [...legs].sort((a, b) => a.departureAt.localeCompare(b.departureAt))
+  evaluate(legs: FlightLegRow[], base: string, limits: PairingLimitsRow, timeZone: string): PairingEvaluationRow {
+    if (legs.length === 0) {
+      return { status: 'failed', checks: [{ code: 'PAIRING_EMPTY', status: 'failed', detail: 'A pairing needs at least one flight.' }] }
+    }
 
     const checks: LegalityCheckRow[] = []
-    const add = (code: PairingErrorCode, status: CheckStatus, value: string, detail?: string): void => {
-      checks.push(
-        detail === undefined
-          ? { code, label: CHECK_LABELS[code], status, value }
-          : { code, label: CHECK_LABELS[code], status, value, detail },
-      )
+    const add = (code: PairingErrorCode, passed: boolean, detail: string): void => {
+      checks.push(passed ? { code, status: 'passed' } : { code, status: 'failed', detail })
     }
 
-    const route = ordered.length === 0 ? [] : [ordered[0].origin, ...ordered.map((leg) => leg.destination)]
-
-    if (ordered.length === 0) {
-      add('PAIRING_EMPTY', 'failed', '0', 'A pairing needs at least one flight.')
-    } else {
-      add('PAIRING_EMPTY', 'passed', String(ordered.length))
-    }
-
-    const breaks = ordered.slice(1).filter((leg, index) => ordered[index].destination !== leg.origin)
-    add(
-      'SEQUENCE_BROKEN',
-      breaks.length === 0 ? 'passed' : 'failed',
-      breaks.length === 0 ? 'Continuous' : `${breaks.length} gap${breaks.length === 1 ? '' : 's'}`,
-      breaks.length === 0
-        ? undefined
-        : `Leg ${breaks.length} departs ${breaks[0].origin} but the previous leg ends at ${ordered[0].destination}.`,
-    )
-
-    const last = ordered[ordered.length - 1]
+    const first = legs[0]
+    const last = legs[legs.length - 1]
     add(
       'PAIRING_NOT_CLOSED',
-      last !== undefined && last.destination === base ? 'passed' : 'failed',
-      ordered.length === 0 ? '—' : `${ordered[0].origin} ➔ ${last.destination}`,
-      ordered.length === 0
-        ? undefined
-        : last.destination === base
-          ? undefined
-          : `Pairing ends at ${last.destination}, not at base ${base}.`,
+      first.origin === base && last.destination === base,
+      first.origin !== base ? `Starts in ${first.origin}, not at base ${base}.` : `Ends in ${last.destination}, not at base ${base}.`,
     )
 
-    const days = this.dutyDayCount(ordered.map((leg) => leg.departureAt.slice(0, 10)))
+    const gap = legs.findIndex(
+      (leg, index) => index > 0 && (leg.origin !== legs[index - 1].destination || leg.departureAt < legs[index - 1].arrivalAt),
+    )
     add(
-      'PAIRING_TOO_LONG',
-      days <= limits.maxPairingDays ? 'passed' : 'failed',
-      plural(days, 'day'),
-      days <= limits.maxPairingDays
-        ? undefined
-        : `Pairing runs ${plural(days, 'day')}; the limit is ${plural(limits.maxPairingDays, 'day')}.`,
+      'SEQUENCE_BROKEN',
+      gap === -1,
+      gap === -1 ? '' : `${legs[gap].flightNumber} leaves ${legs[gap].origin} but the leg before it ends at ${legs[gap - 1].destination}.`,
     )
 
-    const busiestDay = this.busiestDutyDay(ordered)
+    const days = this.dutyDays(legs, timeZone)
+    const busiest = Math.max(...days.map((day) => day.length))
     add(
       'FLIGHTS_PER_DAY_EXCEEDED',
-      busiestDay.count <= limits.maxFlightsPerDuty ? 'passed' : 'failed',
-      String(busiestDay.count),
-      busiestDay.count <= limits.maxFlightsPerDuty
-        ? undefined
-        : `${plural(busiestDay.count, 'flight')} on ${busiestDay.day}; the limit is ${limits.maxFlightsPerDuty}.`,
+      busiest <= limits.maxFlightsPerDuty,
+      `A duty day runs ${busiest} flights, over the limit of ${limits.maxFlightsPerDuty}.`,
     )
 
-    const longestDay = this.longestDutyDay(ordered.map((leg) => ({ dep: new Date(leg.departureAt), arr: new Date(leg.arrivalAt) })))
+    const longest = Math.max(...days.map((day) => this.dutyMinutes(day, limits)))
     add(
       'DUTY_DAY_EXCEEDED',
-      longestDay.minutes / 60 <= limits.maxDutyHours ? 'passed' : 'failed',
-      durationLabel(longestDay.minutes),
-      longestDay.minutes / 60 <= limits.maxDutyHours
-        ? undefined
-        : `${durationLabel(longestDay.minutes)} of duty on ${longestDay.day}; the limit is ${durationLabel(limits.maxDutyHours * 60)}.`,
+      longest <= limits.maxDutyHours * 60,
+      `A duty day runs ${durationLabel(longest)}, over the ${limits.maxDutyHours}h limit.`,
     )
 
-    const primaryError = checks.find((check) => check.status === 'failed')
-    const layovers = this.layovers(ordered)
-    const shortLayover = layovers.find((layover) => layover.nights > 0 && this.layoverMinutes(layover) < limits.minRestHours * 60)
+    const span = this.spanDays(new Date(first.departureAt), new Date(last.arrivalAt), timeZone)
+    add('PAIRING_TOO_LONG', span <= limits.maxPairingDays, `Pairing runs ${span} days, over the ${limits.maxPairingDays} day limit.`)
+
+    return { status: checks.some((check) => check.status === 'failed') ? 'failed' : 'passed', checks }
+  }
+
+  /** Consecutive legs that depart on the same local day form one duty. */
+  private dutyDays(legs: FlightLegRow[], timeZone: string): FlightLegRow[][] {
+    const days: FlightLegRow[][] = []
+    for (const leg of legs) {
+      const current = days[days.length - 1]
+      if (current && localDay(new Date(current[0].departureAt), timeZone) === localDay(new Date(leg.departureAt), timeZone))
+        current.push(leg)
+      else days.push([leg])
+    }
+    return days
+  }
+
+  /** Report before the first departure to release after the last arrival. */
+  private dutyMinutes(day: FlightLegRow[], limits: PairingLimitsRow): number {
+    const start = Date.parse(day[0].departureAt) - limits.reportMinutes * 60_000
+    const end = Date.parse(day[day.length - 1].arrivalAt) + limits.releaseMinutes * 60_000
+    return Math.max(0, Math.round((end - start) / 60_000))
+  }
+
+  /** Calendar days from the first departure to the last arrival, both local, inclusive. */
+  private spanDays(from: Date, to: Date, timeZone: string): number {
+    return Math.round((Date.parse(localDay(to, timeZone)) - Date.parse(localDay(from, timeZone))) / 86_400_000) + 1
+  }
+
+  /* ── limits ─────────────────────────────────────────────────────────────── */
+
+  private async loadContext(base: string): Promise<LimitsContext> {
+    const [settings, countryRules, airports] = await Promise.all([
+      this.db.crew_setting.findMany({ select: { key: true, value: true } }),
+      this.db.country_legality_rule.findMany({ select: { country_code: true, min_rest_hours: true, max_duty_hours: true } }),
+      this.db.airport.findMany({ select: { iata_code: true, country: true, timezone: true } }),
+    ])
+
+    const baseAirport = airports.find((airport) => airport.iata_code === base)
+    if (!baseAirport) throw new NotFoundException(`Base ${base} was not found`)
+
+    const setting = new Map(settings.map((row) => [row.key, Number.parseFloat(row.value)]))
+    const read = (key: string, fallback: number): number => {
+      const value = setting.get(key)
+      return value !== undefined && Number.isFinite(value) ? value : fallback
+    }
 
     return {
-      status: primaryError === undefined ? 'passed' : 'failed',
-      checks,
-      primaryError,
-      route,
-      routeLabel: route.join(' ➔ '),
-      cardRows: this.cardRows(ordered, layovers),
-      scheduleByDay: this.scheduleByDay(ordered),
-      layoverLabel:
-        layovers.length === 0
-          ? 'No layovers'
-          : `${plural(
-              layovers.reduce((total, layover) => total + layover.nights, 0),
-              'night',
-            )} · ${[...new Set(layovers.map((l) => l.airport))].join(', ')}`,
-      layoverIsError: shortLayover !== undefined,
-      cardFooterLeft: `${plural(ordered.length, 'flight')} · ${plural(days, 'day')}`,
-      dutyLabel: `${durationLabel(longestDay.minutes)} duty`,
-      totalDutyMinutes: longestDay.minutes,
+      defaults: {
+        maxFlightsPerDuty: read('max_flights_per_duty', DEFAULT_LIMITS.maxFlightsPerDuty),
+        maxDutyHours: read('max_duty_hours', DEFAULT_LIMITS.maxDutyHours),
+        maxPairingDays: read('max_pairing_days', DEFAULT_LIMITS.maxPairingDays),
+        minRestHours: read('min_rest_hours', DEFAULT_LIMITS.minRestHours),
+        reportMinutes: read('report_minutes', DEFAULT_LIMITS.reportMinutes),
+        releaseMinutes: read('release_minutes', DEFAULT_LIMITS.releaseMinutes),
+      },
+      countryRules: new Map(
+        countryRules.map((rule) => [
+          rule.country_code,
+          { minRestHours: Number(rule.min_rest_hours), maxDutyHours: Number(rule.max_duty_hours) },
+        ]),
+      ),
+      airportCountry: new Map(airports.map((airport) => [airport.iata_code, airport.country.toLowerCase()])),
+      timeZone: baseAirport.timezone,
     }
   }
 
-  /** Can this leg legally extend the open pairing? Used only by the generator. */
-  private canExtend(
-    draft: { legs: { scheduled_dep_at: Date; scheduled_arr_at: Date; route: { destination: string } }[] },
-    flight: { scheduled_arr_at: Date; route: { origin: string } },
-    limits: Limits,
-  ): boolean {
-    const current = draft.legs[draft.legs.length - 1]
-    if (current.route.destination !== flight.route.origin) return false
-    if (this.dutyDayCount(draft.legs.map((leg) => this.isoDay(leg.scheduled_dep_at))) > limits.maxPairingDays) return false
-    if (
-      this.longestDutyDay(draft.legs.map((leg) => ({ dep: leg.scheduled_dep_at, arr: leg.scheduled_arr_at }))).minutes >
-      limits.maxDutyHours * 60
-    )
-      return false
-
-    const nextDay = this.isoDay(flight.scheduled_arr_at)
-    const onLastDay = draft.legs.filter((leg) => this.isoDay(leg.scheduled_dep_at) === nextDay).length + 1
-    if (onLastDay > limits.maxFlightsPerDuty) return false
-
-    // The chain may keep going until it runs out of legal room, or close at base.
-    return true
+  /**
+   * The defaults, tightened by every destination country the pairing visits. A country
+   * row can only make a limit stricter (more rest, less duty), never looser.
+   */
+  private limitsFor(legs: FlightLegRow[], context: LimitsContext): PairingLimitsRow {
+    const limits = { ...context.defaults }
+    for (const leg of legs) {
+      const rule = context.countryRules.get(context.airportCountry.get(leg.destination) ?? '')
+      if (!rule) continue
+      limits.minRestHours = Math.max(limits.minRestHours, rule.minRestHours)
+      limits.maxDutyHours = Math.min(limits.maxDutyHours, rule.maxDutyHours)
+    }
+    return limits
   }
 
-  /* ── row mapping ────────────────────────────────────────────────────────── */
+  /* ── reads and writes ───────────────────────────────────────────────────── */
 
-  private toPairingRow(row: PairingDbRow): PairingRow {
-    const legs = [...row.pairing_leg]
-      .sort((a, b) => a.flight.scheduled_dep_at.getTime() - b.flight.scheduled_dep_at.getTime())
-      .map((leg): FlightLegRow => ({
-        flightId: leg.flight.id,
-        flightNumber: leg.flight.flight_number,
-        origin: leg.flight.route.origin,
-        destination: leg.flight.route.destination,
-        departureAt: leg.flight.scheduled_dep_at.toISOString(),
-        arrivalAt: leg.flight.scheduled_arr_at.toISOString(),
-        addedManually: leg.added_by !== 'auto',
-      }))
+  private async findPairing(pairingId: string): Promise<PairingDbRow> {
+    const row = await this.db.pairing.findUnique({ where: { id: pairingId }, select: PAIRING_SELECT })
+    if (!row) throw new NotFoundException(`Pairing ${pairingId} was not found`)
+    return row
+  }
 
-    const released = row.deleted_at !== null ? legs : []
+  /** The run for exactly this base and window; the newest one if there are several. */
+  private async findRun(params: BuildParams): Promise<RosterRunRow | null> {
+    const window = this.serviceDates(params)
+    const run = await this.db.roster_run.findFirst({
+      where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
+      select: { id: true, status: true },
+      orderBy: { created_at: 'desc' },
+    })
+    return run
+      ? {
+          id: run.id,
+          base: params.base,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          status: run.status === 'published' ? 'published' : 'draft',
+        }
+      : null
+  }
+
+  /**
+   * Takes a pairing out of its draft run: its rule breaks, its assignments, then the run
+   * link. Only ever called after the run was checked to be a draft.
+   */
+  private async withdrawFromRun(tx: Prisma.TransactionClient, pairingId: string): Promise<void> {
+    await tx.rule_break.deleteMany({ where: { pairing_id: pairingId } })
+    await tx.pairing_leg_assignment.deleteMany({ where: { pairing_id: pairingId } })
+    await tx.roster_run_pairing.deleteMany({ where: { pairing_id: pairingId } })
+  }
+
+  /** A flight is in one pairing at most (`pairing_leg.flight_id` is unique). */
+  private async mapUniqueViolation<T>(write: () => Promise<T>, message: string): Promise<T> {
+    try {
+      return await write()
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException(message)
+      throw error
+    }
+  }
+
+  private inUse(code: string): ConflictException {
+    return new ConflictException(`PAIRING_IN_USE · ${code} is part of a published roster. Change it in Fix & publish instead.`)
+  }
+
+  /* ── mapping ────────────────────────────────────────────────────────────── */
+
+  private toPairingRow(row: PairingDbRow, context: LimitsContext): PairingRow {
+    const legs = this.sortedLegs(row).map((leg): FlightLegRow => ({
+      ...this.toFlightFields(leg.flight),
+      flightId: leg.flight.id,
+      addedManually: leg.added_by === 'ops',
+    }))
+    const run = row.roster_run_pairing?.roster_run ?? null
+    const runStatus = run === null ? null : run.status === 'published' ? 'published' : 'draft'
     return {
       id: row.id,
-      base: row.base_airport,
       code: row.code,
+      base: row.base_airport,
       legs,
-      deleted: row.deleted_at !== null,
-      releasedFlightIds: released.map((leg) => leg.flightId),
-      releasedFlightNumbers: released.map((leg) => leg.flightNumber),
-      published: this.isPublished(row),
+      rosterRunId: run?.id ?? null,
+      rosterRunStatus: runStatus,
+      published: runStatus === 'published',
+      limits: this.limitsFor(legs, context),
     }
   }
 
-  private isPublished(row: PairingDbRow): boolean {
-    return row.roster_run_pairing.some((link) => link.roster_run.status === 'published')
+  private sortedLegs(row: PairingDbRow): PairingDbRow['pairing_leg'] {
+    return [...row.pairing_leg].sort((a, b) => a.flight.dep_at.getTime() - b.flight.dep_at.getTime())
   }
 
-  private async toListResult(rows: PairingDbRow[], base: string): Promise<PairingListResult> {
-    const pairings: PairingRow[] = []
-    let validCount = 0
-    let invalidCount = 0
-    let deletedCount = 0
-    let totalFlights = 0
-
-    for (const row of rows) {
-      const pairing = this.toPairingRow(row)
-      pairings.push(pairing)
-
-      if (pairing.deleted) {
-        deletedCount += 1
-        continue
-      }
-
-      const evaluation = await this.evaluatePairing(pairing.legs, base)
-      if (evaluation.status === 'passed') validCount += 1
-      else invalidCount += 1
-      totalFlights += pairing.legs.length
-    }
-
+  private toFlightFields(flight: FlightDbRow): Omit<ScheduledFlightRow, 'status' | 'pairingId'> {
     return {
-      pairings,
-      metrics: { totalPairings: pairings.length - deletedCount, totalFlights, validCount, invalidCount, deletedCount },
+      id: flight.id,
+      flightNumber: flight.flight_number,
+      origin: flight.route.origin,
+      destination: flight.route.destination,
+      departureAt: flight.dep_at.toISOString(),
+      arrivalAt: flight.arr_at.toISOString(),
     }
   }
 
-  /* ── limits and dates ───────────────────────────────────────────────────── */
-
-  /**
-   * Company limits, with any country override applied to the flights involved.
-   *
-   * Only `min_rest_hours` and `max_duty_hours` are country-specific in the design;
-   * a pairing may touch several countries, so the tightest rule of the ones it
-   * visits is the one that applies.
-   */
-  private async readLimits(): Promise<Limits> {
-    const settings = await this.db.crewSetting.findMany({
-      where: { key: { in: ['max_duty_hours', 'max_flights_per_duty', 'max_pairing_days', 'min_rest_hours'] } },
-      select: { key: true, value: true },
-    })
-    const byKey = new Map(settings.map((setting) => [setting.key, Number.parseFloat(String(setting.value))]))
-
-    return {
-      maxDutyHours: finite(byKey.get('max_duty_hours'), 13),
-      maxFlightsPerDuty: finite(byKey.get('max_flights_per_duty'), 4),
-      maxPairingDays: finite(byKey.get('max_pairing_days'), 3),
-      minRestHours: finite(byKey.get('min_rest_hours'), 10),
-    }
-  }
-
-  /** Inclusive `YYYY-MM-DD` window as a half-open instant range. */
-  private window(params: BuildParams): { from: Date; to: Date } {
-    const from = Date.parse(`${params.dateFrom}T00:00:00.000Z`)
-    const to = Date.parse(`${params.dateTo}T00:00:00.000Z`) + 86_400_000
-    if (Number.isNaN(from) || Number.isNaN(to)) throw new BadRequestException('dateFrom and dateTo must be YYYY-MM-DD')
-    if (to <= from) throw new BadRequestException('dateTo must be on or after dateFrom')
-    return { from: new Date(from), to: new Date(to) }
-  }
-
-  /* ── derivations from flight times ──────────────────────────────────────── */
-
-  /** `YYYY-MM-DD` of an instant, in UTC. */
-  private isoDay(value: Date): string {
-    return value.toISOString().slice(0, 10)
-  }
-
-  /** Distinct duty days in a list of `YYYY-MM-DD` keys. */
-  private dutyDayCount(days: readonly string[]): number {
-    return new Set(days).size
-  }
-
-  private busiestDutyDay(legs: FlightLegRow[]): { day: string; count: number } {
-    const counts = new Map<string, number>()
-    for (const leg of legs) {
-      const day = leg.departureAt.slice(0, 10)
-      counts.set(day, (counts.get(day) ?? 0) + 1)
-    }
-    let worst: { day: string; count: number } = { day: '—', count: 0 }
-    for (const [day, count] of counts) if (count > worst.count) worst = { day, count }
-    return worst
-  }
-
-  /**
-   * The longest single duty day.
-   *
-   * A duty day runs from the first departure to the last arrival on that calendar day,
-   * which is why the measurement is taken on a whole-day basis rather than per leg.
-   */
-  private longestDutyDay(legs: readonly { dep: Date; arr: Date }[]): { day: string; minutes: number } {
-    const byDay = new Map<string, { start: Date; end: Date }>()
-    for (const leg of legs) {
-      const day = this.isoDay(leg.dep)
-      const span = byDay.get(day)
-      if (span === undefined) byDay.set(day, { start: leg.dep, end: leg.arr })
-      else byDay.set(day, { start: leg.dep < span.start ? leg.dep : span.start, end: leg.arr > span.end ? leg.arr : span.end })
-    }
-
-    let worst: { day: string; minutes: number } = { day: '—', minutes: 0 }
-    for (const [day, span] of byDay) {
-      const minutes = minutesBetween(span.start, span.end)
-      if (minutes > worst.minutes) worst = { day, minutes }
-    }
-    return worst
-  }
-
-  private layovers(legs: FlightLegRow[]): LayoverRow[] {
-    const out: LayoverRow[] = []
-    for (let index = 0; index < legs.length - 1; index += 1) {
-      const arrival = new Date(legs[index].arrivalAt)
-      const departure = new Date(legs[index + 1].departureAt)
-      const nights = Math.floor(minutesBetween(arrival, departure) / 1_440)
-      out.push({ airport: legs[index].destination, nights, arrivesAt: legs[index].arrivalAt, departsAt: legs[index + 1].departureAt })
-    }
-    return out
-  }
-
-  private layoverMinutes(layover: LayoverRow): number {
-    return minutesBetween(new Date(layover.arrivesAt), new Date(layover.departsAt))
-  }
-
-  private cardRows(legs: FlightLegRow[], layovers: LayoverRow[]): LegSummaryRow[] {
-    return legs.map((leg, index) => ({
-      flightId: leg.flightId,
-      flightNumber: leg.flightNumber,
-      origin: leg.origin,
-      destination: leg.destination,
-      departureLocal: leg.departureAt.slice(11, 16),
-      arrivalLocal: leg.arrivalAt.slice(11, 16),
-      layoverAfter: index < layovers.length ? layovers[index] : undefined,
-    }))
-  }
-
-  private scheduleByDay(legs: FlightLegRow[]): { dateLabel: string; rows: { leg: FlightLegRow; durationLabel: string }[] }[] {
-    const byDay = new Map<string, FlightLegRow[]>()
-    for (const leg of legs) {
-      const day = leg.departureAt.slice(0, 10)
-      const existing = byDay.get(day)
-      if (existing === undefined) byDay.set(day, [leg])
-      else existing.push(leg)
-    }
-
-    return [...byDay.entries()].map(([date, dayLegs]) => ({
-      dateLabel: date,
-      rows: dayLegs.map((leg) => ({
-        leg,
-        durationLabel: durationLabel(minutesBetween(new Date(leg.departureAt), new Date(leg.arrivalAt))),
-      })),
-    }))
+  /** The window as a `service_date` filter. */
+  private serviceDates(params: BuildParams): { gte: Date; lte: Date } {
+    if (params.dateTo < params.dateFrom) throw new BadRequestException('dateTo must be on or after dateFrom')
+    return { gte: new Date(`${params.dateFrom}T00:00:00.000Z`), lte: new Date(`${params.dateTo}T00:00:00.000Z`) }
   }
 }
 
-/** Falls back when a setting row is missing or unreadable. */
-function finite(value: number | undefined, fallback: number): number {
-  return value !== undefined && Number.isFinite(value) ? value : fallback
+/** `YYYY-MM-DD` of an instant in the given timezone. */
+function localDay(instant: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant)
+}
+
+/** `6h 45m`. */
+function durationLabel(minutes: number): string {
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return hours === 0 ? `${rest}m` : `${hours}h ${String(rest).padStart(2, '0')}m`
 }

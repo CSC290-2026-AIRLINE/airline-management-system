@@ -224,7 +224,7 @@ export class SetupCrewService {
 
   /** Fleets a crew member can be rated on: every active aircraft type. */
   async listFleets(): Promise<FleetOptionRow[]> {
-    const rows = await this.db.aircraftType.findMany({
+    const rows = await this.db.aircraft_type.findMany({
       where: { is_active: true },
       select: { code: true, model: true },
       orderBy: { code: 'asc' },
@@ -239,7 +239,7 @@ export class SetupCrewService {
    * step 3 — listing the two from different tables would let the two drift.
    */
   async listLanguages(): Promise<LanguageOptionRow[]> {
-    const rows = await this.db.countryLanguage.findMany({
+    const rows = await this.db.country_language.findMany({
       select: { language_code: true },
       distinct: ['language_code'],
       orderBy: { language_code: 'asc' },
@@ -368,7 +368,7 @@ export class SetupCrewService {
 
   async updateCertification(crewId: string, certificationId: string, input: CertificationInput): Promise<CertificationRow> {
     await this.assertCertificationBelongsToCrew(crewId, certificationId)
-    await this.db.crewCertification.update({
+    await this.db.crew_certification.update({
       where: { id: certificationId },
       data: { name: input.name, aircraft_type: input.aircraftType, expires_on: new Date(input.expiresOn) },
     })
@@ -378,7 +378,7 @@ export class SetupCrewService {
   /** Hard delete — a certification is a fact about the crew member, not a soft-deleted row. */
   async removeCertification(crewId: string, certificationId: string): Promise<void> {
     await this.assertCertificationBelongsToCrew(crewId, certificationId)
-    await this.db.crewCertification.delete({ where: { id: certificationId } })
+    await this.db.crew_certification.delete({ where: { id: certificationId } })
   }
 
   private async assertCrewExists(crewId: string): Promise<void> {
@@ -403,7 +403,7 @@ export class SetupCrewService {
   }
 
   private async assertCertificationBelongsToCrew(crewId: string, certificationId: string): Promise<void> {
-    const found = await this.db.crewCertification.findFirst({ where: { id: certificationId, crew_id: crewId }, select: { id: true } })
+    const found = await this.db.crew_certification.findFirst({ where: { id: certificationId, crew_id: crewId }, select: { id: true } })
     if (!found) throw new NotFoundException(`Certification ${certificationId} does not belong to crew ${crewId}`)
   }
 
@@ -412,18 +412,18 @@ export class SetupCrewService {
     data: { name: string; aircraft_type: string | null },
     expiresOn: string,
   ): Promise<CertificationRow> {
-    const created = (await this.db.crewCertification.create({
+    const created = await this.db.crew_certification.create({
       data: { crew_id: crewId, name: data.name, aircraft_type: data.aircraft_type, expires_on: new Date(expiresOn) },
       select: { id: true, name: true, aircraft_type: true, expires_on: true },
-    })) as { id: string; name: string; aircraft_type: string | null; expires_on: Date }
+    })
     return { id: created.id, name: created.name, aircraftType: created.aircraft_type, expiresOn: localDate(created.expires_on) as string }
   }
 
   private async readCertification(certificationId: string): Promise<CertificationRow> {
-    const row = (await this.db.crewCertification.findUnique({
+    const row = await this.db.crew_certification.findUnique({
       where: { id: certificationId },
       select: { id: true, name: true, aircraft_type: true, expires_on: true },
-    })) as { id: string; name: string; aircraft_type: string | null; expires_on: Date } | null
+    })
     if (!row) throw new NotFoundException(`Certification ${certificationId} was not found`)
     return { id: row.id, name: row.name, aircraftType: row.aircraft_type, expiresOn: localDate(row.expires_on) as string }
   }
@@ -435,20 +435,20 @@ export class SetupCrewService {
    * error: the directory still has to render, so the doc's default of 100 is used.
    */
   private async getFlightHoursCap(): Promise<number> {
-    const setting = await this.db.crewSetting.findUnique({ where: { key: 'max_flight_hours_28d' }, select: { value: true } })
+    const setting = await this.db.crew_setting.findUnique({ where: { key: 'max_flight_hours_28d' }, select: { value: true } })
     const parsed = setting === null ? Number.NaN : Number.parseFloat(String(setting?.value))
     return Number.isFinite(parsed) ? parsed : 100
   }
 
   /** Flights this crew member is on in the next 28 days, across draft and published runs. */
   private async listUpcomingDuties(crewId: string): Promise<UpcomingDutyRow[]> {
-    const rows = (await this.db.pairingLegAssignment.findMany({
+    const rows = (await this.db.pairing_leg_assignment.findMany({
       where: { crew_id: crewId, unassigned_at: null, pairing_leg: { flight: { scheduled_dep_at: { gte: new Date() } } } },
       select: {
         pairing_leg_id: true,
         pairing_leg: {
           select: {
-            pairing: { select: { code: true, roster_run_pairing: { select: { roster_run: { select: { status: true } } }, take: 1 } } },
+            pairing: { select: { code: true, roster_run_pairing: { select: { roster_run: { select: { status: true } } } } } },
             flight: {
               select: {
                 flight_number: true,
@@ -465,7 +465,7 @@ export class SetupCrewService {
     })) as {
       pairing_leg_id: string
       pairing_leg: {
-        pairing: { code: string; roster_run_pairing: { roster_run: { status: string } }[] }
+        pairing: { code: string; roster_run_pairing: { roster_run: { status: string } } | null }
         flight: {
           flight_number: string
           service_date: Date
@@ -477,7 +477,7 @@ export class SetupCrewService {
     }[]
 
     return rows.map(({ pairing_leg_id: legId, pairing_leg: leg }): UpcomingDutyRow => {
-      const run = leg.pairing.roster_run_pairing[0]
+      const run = leg.pairing.roster_run_pairing
       const duty: DutyDbRow = {
         pairing_leg_id: legId,
         pairing_code: leg.pairing.code,
@@ -507,7 +507,7 @@ export class SetupCrewService {
   /** Block hours flown in the rolling window, summed across every leg still assigned. */
   private async hoursInWindow(crewId: string): Promise<number> {
     const since = new Date(Date.now() - HOURS_WINDOW_DAYS * 86_400_000)
-    const rows = (await this.db.pairingLegAssignment.findMany({
+    const rows = (await this.db.pairing_leg_assignment.findMany({
       where: { crew_id: crewId, unassigned_at: null, pairing_leg: { flight: { scheduled_dep_at: { gte: since } } } },
       select: { pairing_leg: { select: { flight: { select: { scheduled_dep_at: true, scheduled_arr_at: true } } } } },
     })) as { pairing_leg: { flight: { scheduled_dep_at: Date; scheduled_arr_at: Date } } }[]

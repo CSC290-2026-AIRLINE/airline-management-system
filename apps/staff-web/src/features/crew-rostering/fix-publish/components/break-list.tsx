@@ -7,8 +7,8 @@
  * the same thing after fixing break 1. Closed items stay in the list with what closed
  * them, because "where did this go" is the question a break list has to answer alone.
  */
-import { listLabel } from '../types/break-descriptions'
-import type { CrewRole, FixBreak } from '../types/types'
+import { listLabel } from '../types/labels'
+import type { FixBreak } from '../types/types'
 
 interface BreakListProps {
   breaks: readonly FixBreak[]
@@ -26,21 +26,13 @@ interface BreakListProps {
  * operator who cannot see why a cabin crew member is not offered a police seat will
  * assume the picker is broken.
  */
-const SEAT_RULES: readonly { role: CrewRole; rule: string }[] = [
-  { role: 'captain', rule: 'by captain role' },
-  { role: 'first_officer', rule: 'by first officer role' },
-  { role: 'cabin', rule: 'by cabin crew, Feature 9 count' },
-  { role: 'local', rule: 'by same language (KR, JP, TH)' },
-  { role: 'police', rule: 'by police, 2 on international legs' },
+const SEAT_RULES: readonly { label: string; rule: string }[] = [
+  { label: 'Captain', rule: 'by captain role' },
+  { label: 'First officer', rule: 'by first officer role' },
+  { label: 'Cabin crew', rule: 'by cabin crew, Feature 9 count' },
+  { label: 'Local crew', rule: 'by same language (KR, JP, TH)' },
+  { label: 'Police', rule: 'by police, 2 on international legs' },
 ]
-
-const ROLE_LABELS: Record<CrewRole, string> = {
-  captain: 'Captain',
-  first_officer: 'First officer',
-  cabin: 'Cabin crew',
-  local: 'Local crew',
-  police: 'Police',
-}
 
 /**
  * The border each row wears, and the tint behind it.
@@ -57,10 +49,10 @@ function rowStyle(item: FixBreak, selected: boolean): string {
       ? 'border-secondary/60'
       : item.resolution
         ? 'border-valid/40'
-        : 'border-invalid/20'
+        : 'border-invalid/25'
   // Green carries more alpha than red for the same apparent tint: it is far lighter in
   // luminance, so at the same percentage it would disappear against the white card.
-  return `${border} ${item.resolution === undefined ? 'bg-invalid/2' : 'bg-valid/5'}`
+  return `${border} ${item.resolution === undefined ? 'bg-invalid/5' : 'bg-valid/8'}`
 }
 
 export function BreakList({ breaks, selectedId, onSelect, title, subtitle }: BreakListProps) {
@@ -123,8 +115,8 @@ export function BreakList({ breaks, selectedId, onSelect, title, subtitle }: Bre
         </p>
         <dl className="mt-4 flex flex-col gap-4">
           {SEAT_RULES.map((seat) => (
-            <div key={seat.role} className="flex items-baseline justify-between gap-3">
-              <dt className="text-sm font-semibold text-primary-text">{ROLE_LABELS[seat.role]}</dt>
+            <div key={seat.label} className="flex items-baseline justify-between gap-3">
+              <dt className="text-sm font-semibold text-primary-text">{seat.label}</dt>
               <dd className="text-sm text-primary-text/60">{seat.rule}</dd>
             </div>
           ))}
@@ -138,7 +130,7 @@ export function BreakList({ breaks, selectedId, onSelect, title, subtitle }: Bre
 function StatePill({ closed, overridden }: { closed: boolean; overridden: boolean }) {
   // Overridden is green, not amber: an override still leaves the roster legal, and the
   // only thing that should read as a warning on this list is a break that is still open.
-  const style = closed ? 'bg-valid/10 text-valid' : 'bg-invalid/10 text-invalid'
+  const style = closed ? 'border-valid/40 text-valid' : 'border-invalid/40 text-invalid'
   const label = overridden ? 'Overridden' : closed ? 'Fixed' : 'Open'
-  return <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${style}`}>{label}</span>
+  return <span className={`rounded-full border bg-white px-2.5 py-0.5 text-[11px] font-semibold ${style}`}>{label}</span>
 }

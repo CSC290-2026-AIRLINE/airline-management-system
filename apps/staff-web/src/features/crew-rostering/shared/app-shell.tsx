@@ -9,15 +9,16 @@
  */
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { formatDateRange } from '../build-pairings/types/format'
-import { Button, ChevronLeftIcon, CloseIcon } from './ui'
+import { Button, CheckIcon, ChevronLeftIcon, CloseIcon } from './ui'
 
 export type WizardStep = 'build-pairings' | 'assign-crew' | 'fix-publish'
 
 const NAV_ITEMS = [
-  { id: 'roster-runs', label: 'Roster runs' },
-  { id: 'crew', label: 'Crew' },
-  { id: 'rules', label: 'Rules' },
+  { id: 'roster-runs', label: 'Roster runs', to: '/build-pairings' },
+  { id: 'crew', label: 'Crew', to: '/setup-crew' },
+  { id: 'rules', label: 'Rules', to: '/setup-rule' },
 ] as const
 
 const WIZARD_STEPS: { id: WizardStep; label: string }[] = [
@@ -35,10 +36,12 @@ export function MobileTopBar({
   simulationClockShort,
   userName,
   activeItem,
+  onSignOut,
 }: {
   simulationClockShort: string
   userName: string
   activeItem: string
+  onSignOut?: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -66,13 +69,23 @@ export function MobileTopBar({
         </div>
       </header>
 
-      {menuOpen && <MobileNavDrawer userName={userName} activeItem={activeItem} onClose={() => setMenuOpen(false)} />}
+      {menuOpen && <MobileNavDrawer userName={userName} activeItem={activeItem} onClose={() => setMenuOpen(false)} onSignOut={onSignOut} />}
     </>
   )
 }
 
 /** Full-height navigation overlay for small screens, mirroring `SidebarNav`. */
-function MobileNavDrawer({ userName, activeItem, onClose }: { userName: string; activeItem: string; onClose: () => void }) {
+function MobileNavDrawer({
+  userName,
+  activeItem,
+  onClose,
+  onSignOut,
+}: {
+  userName: string
+  activeItem: string
+  onClose: () => void
+  onSignOut?: () => void
+}) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') onClose()
@@ -100,24 +113,24 @@ function MobileNavDrawer({ userName, activeItem, onClose }: { userName: string; 
         {NAV_ITEMS.map((item) => {
           const active = item.id === activeItem
           return (
-            <button
+            <Link
               key={item.id}
-              type="button"
+              to={item.to}
               aria-current={active ? 'page' : undefined}
               onClick={onClose}
-              className={`rounded-lg py-2 pl-4 text-left text-sm font-medium transition-colors ${
-                active ? 'relative border-l-2 border-secondary bg-white/12 font-semibold text-white' : 'text-white/65'
+              className={`block rounded-lg py-2 pl-4 text-left text-sm font-medium transition-colors ${
+                active ? 'relative border-l-2 border-secondary bg-nav-active font-semibold text-white' : 'text-white/65'
               }`}
             >
               {item.label}
-            </button>
+            </Link>
           )
         })}
       </nav>
 
       <div className="mt-auto">
         <p className="font-display text-lg font-bold">{userName}</p>
-        <button type="button" className="mt-1 text-sm font-medium text-white/80 underline-offset-4 hover:underline">
+        <button type="button" onClick={onSignOut} className="mt-1 text-sm font-medium text-white/80 underline-offset-4 hover:underline">
           Sign out
         </button>
       </div>
@@ -138,15 +151,18 @@ export function SidebarNav({
   activeItem,
   simulationClock,
   userName,
+  onSignOut,
   children,
 }: {
   activeItem: string
   simulationClock: string
   userName: string
+  onSignOut?: () => void
   children?: ReactNode
 }) {
+  // Pinned to the viewport: on a long page the clock and account block stay in view instead of sinking to the bottom.
   return (
-    <aside className="hidden w-66 shrink-0 flex-col bg-primary px-5 py-6 text-white lg:flex">
+    <aside className="hidden w-66 shrink-0 flex-col self-start overflow-y-auto bg-primary px-5 py-6 text-white lg:sticky lg:top-0 lg:flex lg:h-screen">
       <div className="flex items-start justify-between">
         <span className="font-display text-[40px] leading-none font-black tracking-tight">Airlines</span>
         <button
@@ -165,16 +181,16 @@ export function SidebarNav({
         {NAV_ITEMS.map((item) => {
           const active = item.id === activeItem
           return (
-            <button
+            <Link
               key={item.id}
-              type="button"
+              to={item.to}
               aria-current={active ? 'page' : undefined}
-              className={`rounded-lg py-2 pl-4 text-left text-sm font-medium transition-colors ${
-                active ? 'bg-white/12 font-semibold text-white' : 'text-white/65 hover:bg-white/8 hover:text-white'
+              className={`block rounded-lg py-2 pl-4 text-left text-sm font-medium transition-colors ${
+                active ? 'bg-nav-active font-semibold text-white' : 'text-white/65 hover:bg-white/8 hover:text-white'
               } ${active ? 'relative border-l-2 border-secondary' : ''}`}
             >
               {item.label}
-            </button>
+            </Link>
           )
         })}
       </nav>
@@ -193,7 +209,7 @@ export function SidebarNav({
         <div>
           <p className="font-display text-lg font-bold">{userName}</p>
           <p className="mt-1 max-w-47.5 text-xs leading-relaxed text-white/55">Navigation follows assigned staff permissions.</p>
-          <button type="button" className="mt-3 text-sm font-medium text-white/80 underline-offset-4 hover:underline">
+          <button type="button" onClick={onSignOut} className="mt-3 text-sm font-medium text-white/80 underline-offset-4 hover:underline">
             Sign out
           </button>
         </div>
@@ -210,35 +226,60 @@ export function RosterRunBadge({ base, dateFrom, dateTo, status }: { base: strin
       <span className="text-[13px] font-bold text-primary-text">
         {base} · {formatDateRange(dateFrom, dateTo)}
       </span>
-      <span className="rounded-full bg-secondary/15 px-2.5 py-1 text-[11px] font-semibold text-primary-text">{status}</span>
+      <span
+        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+          status === 'Published' ? 'bg-valid-bg text-valid' : 'bg-secondary/15 text-primary-text'
+        }`}
+      >
+        {status}
+      </span>
       <span className="px-1 text-[11px] text-border-desc">▾</span>
     </div>
   )
 }
 
-/** Three-step wizard strip. Only `build-pairings` is reachable so far. */
-export function WizardSteps({ active }: { active: WizardStep }) {
+/**
+ * Three-step wizard strip. Status only: it shows how far the run has got and is not clickable.
+ *
+ * From `sm` the current step is a navy block holding its number and label. On a phone the
+ * labels sit under the numbers and the current number is ringed instead, because the
+ * block would not fit three steps across.
+ */
+export function WizardSteps({ active, allDone = false }: { active: WizardStep; allDone?: boolean }) {
   const activeIndex = WIZARD_STEPS.findIndex((step) => step.id === active)
   return (
-    <div className="flex items-center justify-between gap-2 rounded-xl bg-primary/6 px-4 py-3.5 sm:justify-start sm:gap-3 sm:px-6">
+    <div className="flex items-start justify-center gap-1 rounded-2xl bg-band-bg px-3 py-3 sm:items-center sm:justify-start sm:gap-3 sm:px-3 sm:py-2">
       {WIZARD_STEPS.map((step, index) => {
-        const done = index < activeIndex
-        const current = index === activeIndex
+        const done = allDone || index < activeIndex
+        const current = !allDone && index === activeIndex
         return (
-          <div key={step.id} className="flex items-center gap-2 sm:gap-3">
-            {index > 0 && <span className="h-px w-4 bg-primary/15 sm:w-8" />}
-            <div className="flex flex-col items-center gap-1.5 sm:flex-row sm:gap-2.5">
+          <div key={step.id} className="flex items-start gap-1 sm:items-center sm:gap-3">
+            {index > 0 && <span aria-hidden="true" className="mt-4 h-0.5 w-9 shrink-0 rounded-full bg-border-desc/70 sm:mt-0 sm:w-6" />}
+            <div
+              aria-current={current ? 'step' : undefined}
+              className={`flex w-20 flex-col items-center gap-1.5 sm:w-auto sm:flex-row sm:gap-2.5 sm:rounded-xl sm:py-2 sm:pr-4 sm:pl-3.5 ${
+                current ? 'sm:bg-btn-navy' : ''
+              }`}
+            >
               <span
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                  current ? 'bg-btn-navy text-white' : done ? 'bg-valid text-white' : 'bg-primary/15 text-primary/60'
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold sm:h-5.5 sm:w-5.5 sm:text-[11px] ${
+                  current
+                    ? 'border-2 border-primary bg-white text-primary sm:border-0 sm:text-btn-navy'
+                    : done
+                      ? 'bg-valid text-white'
+                      : 'border border-border-desc bg-white text-primary-text/55'
                 }`}
               >
-                {index + 1}
+                {done ? <CheckIcon className="h-3.5 w-3.5" /> : index + 1}
               </span>
-              <span className={`text-center text-xs sm:hidden ${current ? 'font-bold text-primary' : 'font-medium text-primary/50'}`}>
+              <span className={`text-center text-xs sm:hidden ${current ? 'font-bold text-primary' : 'font-semibold text-primary/55'}`}>
                 {SHORT_LABELS[step.id]}
               </span>
-              <span className={`hidden text-sm sm:inline ${current ? 'font-bold text-primary' : 'font-medium text-primary/50'}`}>
+              <span
+                className={`hidden text-sm whitespace-nowrap sm:inline ${
+                  current ? 'font-bold text-white' : done ? 'font-semibold text-primary-text' : 'font-semibold text-primary/55'
+                }`}
+              >
                 {step.label}
               </span>
             </div>

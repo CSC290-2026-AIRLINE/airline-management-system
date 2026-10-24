@@ -1,7 +1,8 @@
 import { validatePairing } from '../types/pairing-engine'
-import { formatRemoveLegDay, formatRoute, formatTime } from '../types/format'
+import { formatRemoveLegDay, formatTime } from '../types/format'
 import type { FlightLeg, Pairing } from '../types/types'
-import { BaseModalOverlay, Button } from '../../shared/ui'
+import { BaseModalOverlay, Button, MinusIcon } from '../../shared/ui'
+import { RouteText } from '../components/route-text'
 
 /**
  * Confirms removing one leg and spells out the consequence before it happens,
@@ -28,22 +29,24 @@ export function RemoveLegModal({
 
   return (
     <BaseModalOverlay
-      title={`Remove ${leg.flightNumber} from ${pairing.id}?`}
+      title={`Remove ${leg.flightNumber} from ${pairing.code}?`}
       onClose={onCancel}
-      width="max-w-md"
+      variant="plain"
+      width="max-w-lg"
       footer={
         <>
           <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
           <Button variant="danger" onClick={onConfirm}>
+            <MinusIcon className="h-4 w-4" />
             Remove leg
           </Button>
         </>
       }
     >
-      <p className="text-sm text-primary-text/70">
-        {pairing.id} is re-checked when you save.{' '}
+      <p className="text-sm text-primary-text/60">
+        <span className="hidden sm:inline">{pairing.code} is re-checked when you save. </span>
         {outcome.status === 'passed' ? (
           <>
             Without {leg.flightNumber} it still ends at {pairing.base}, so it stays Valid.
@@ -60,12 +63,14 @@ export function RemoveLegModal({
         )}
       </p>
 
-      <p className="mt-5 text-[11px] font-semibold tracking-widest text-primary-text/45 uppercase">Leg to remove</p>
+      <p className="mt-4 text-sm font-bold text-primary-text">Leg to remove</p>
 
       <div className="mt-2 rounded-xl border border-border-desc/30 px-4 py-3.5">
         <p className="text-xs text-primary-text/55">{formatRemoveLegDay(leg.departureAt)}</p>
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2.5">
-          <span className="text-base font-bold text-primary-text">{formatRoute([leg.origin, leg.destination])}</span>
+          <span className="text-lg font-extrabold text-primary-text">
+            <RouteText route={[leg.origin, leg.destination]} arrowClassName="text-primary-text" />
+          </span>
           <span className="rounded-md bg-info-bg px-2 py-1 text-[11px] font-bold text-primary">{leg.flightNumber}</span>
         </div>
         <p className="mt-2 text-xs text-primary-text/55">
