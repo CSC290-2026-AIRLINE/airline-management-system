@@ -6,7 +6,7 @@
  * fixed bottom bar that stays reachable while the page scrolls.
  */
 import type { ReactNode } from 'react'
-import { ArrowRightIcon, ChevronLeftIcon } from '../../build-pairings/components/ui'
+import { ArrowRightIcon, ChevronLeftIcon } from '../../shared/ui'
 
 /** Slim top bar: wordmark, simulation clock and the account menu. */
 export function MobileTopBar({ simulationClockShort, accountLabel }: { simulationClockShort: string; accountLabel: string }) {

@@ -3,7 +3,7 @@ import { MOCK_ROSTER_RUN } from '../types/mock-data'
 import { formatLegDaySpan, formatLegTimeSpan, formatRoute, formatShortDayRange, localDateKey } from '../types/format'
 import { validatePairing } from '../types/pairing-engine'
 import type { Pairing } from '../types/types'
-import { BaseModalOverlay, Button } from '../components/ui'
+import { BaseModalOverlay, Button } from '../../shared/ui'
 
 /**
  * Confirm or block deletion of a pairing.

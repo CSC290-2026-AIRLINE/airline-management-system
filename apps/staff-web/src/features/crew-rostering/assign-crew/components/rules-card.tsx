@@ -5,7 +5,7 @@
  * records whether a break under it is law or a company rule, which is what the
  * footnote and the break cards rely on.
  */
-import { InfoBox } from '../../build-pairings/components/ui'
+import { InfoBox } from '../../shared/ui'
 import { ROSTER_RULES, RULES_FOOTNOTE } from '../types/crew-engine'
 
 export function RulesCard() {

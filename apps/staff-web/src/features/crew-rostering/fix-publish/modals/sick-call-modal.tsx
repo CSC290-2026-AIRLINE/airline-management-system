@@ -6,7 +6,7 @@
  * — taking somebody off a published roster notifies every other crew member on the leg,
  * and that should not be one tap away from reading the list.
  */
-import { BaseModalOverlay, Button } from '../../build-pairings/components/ui'
+import { BaseModalOverlay, Button } from '../../shared/ui'
 import { formatTime } from '../../build-pairings/types/format'
 import { crewOn, dayMonth } from '../types/break-descriptions'
 import type { CrewRole, LegAssignment } from '../types/types'

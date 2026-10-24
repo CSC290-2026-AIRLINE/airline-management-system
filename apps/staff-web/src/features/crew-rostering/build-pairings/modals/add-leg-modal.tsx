@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { findAddLegCandidates } from '../types/pairing-engine'
 import { formatDay, formatTime } from '../types/format'
 import type { AddLegCandidate, FlightLeg, Pairing, ScheduledFlight } from '../types/types'
-import { BaseModalOverlay, Button, SearchIcon } from '../components/ui'
+import { BaseModalOverlay, Button, SearchIcon } from '../../shared/ui'
 
 /**
  * Pick a connecting flight that leaves the pairing's last airport after it

@@ -1,5 +1,5 @@
 import type { BuildPairingParams, LocalDate } from '../types/types'
-import { Button, InputField, SelectDropdown } from './ui'
+import { Button, InputField, SelectDropdown } from '../../shared/ui'
 
 /** Build settings form: date range, base and the generate/clear actions. */
 export function BuildSettingsCard({
@@ -26,16 +26,16 @@ export function BuildSettingsCard({
   onClear: () => void
 }) {
   return (
-    <section className="rounded-2xl border border-border-desc/30 bg-card-bg px-6 py-5">
+    <section className="rounded-2xl border border-border-desc/30 bg-card-bg px-4 py-5 sm:px-6">
       <h2 className="text-xl font-semibold text-primary-text">Build settings</h2>
 
-      <div className="mt-4 flex flex-wrap items-start gap-4">
+      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
         <InputField
           label="Date from"
           type="date"
           value={params.dateFrom}
           onChange={(event) => onDateFromChange(event.target.value)}
-          className="w-[200px]"
+          className="min-w-0 flex-1 sm:w-50 sm:flex-none"
         />
         <InputField
           label="Date to"
@@ -43,17 +43,17 @@ export function BuildSettingsCard({
           value={params.dateTo}
           error={dateError ?? undefined}
           onChange={(event) => onDateToChange(event.target.value)}
-          className="w-[200px]"
+          className="min-w-0 flex-1 sm:w-50 sm:flex-none"
         />
         <SelectDropdown
           label="Base"
           value={params.base}
           options={bases}
           onChange={(event) => onBaseChange(event.target.value)}
-          className="w-[190px]"
+          className="w-full sm:w-47.5"
         />
 
-        <div className="ml-auto flex items-center gap-3 pt-6">
+        <div className="flex w-full flex-col gap-3 pt-6 sm:ml-auto sm:w-auto sm:flex-row sm:items-center">
           <Button variant="primary" onClick={onGenerate} disabled={isLoading || dateError !== null}>
             {isLoading ? 'Generating…' : 'Generate pairings'}
           </Button>

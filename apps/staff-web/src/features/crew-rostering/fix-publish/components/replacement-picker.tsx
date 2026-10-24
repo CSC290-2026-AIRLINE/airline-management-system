@@ -11,7 +11,7 @@
  * roster changing under them mid-read.
  */
 import { useState } from 'react'
-import { Button, CheckIcon, CrossIcon } from '../../build-pairings/components/ui'
+import { Button, CheckIcon, CrossIcon } from '../../shared/ui'
 import type { FixBreak, ReplacementCandidate } from '../types/types'
 
 interface ReplacementPickerProps {

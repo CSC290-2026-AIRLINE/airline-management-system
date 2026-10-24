@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { formatRoute, formatTime } from '../types/format'
 import type { FlightLeg, Pairing } from '../types/types'
-import { ArrowDownIcon, ArrowUpIcon, BaseModalOverlay, Button, GripIcon, InfoBox, PlusIcon, TrashIcon } from '../components/ui'
+import { ArrowDownIcon, ArrowUpIcon, BaseModalOverlay, Button, GripIcon, InfoBox, PlusIcon, TrashIcon } from '../../shared/ui'
 import { AddLegModal } from './add-leg-modal'
 import { RemoveLegModal } from './remove-leg-modal'
 
@@ -69,20 +69,26 @@ export function EditLegsModal({
 
         <ol className="mt-5 flex flex-col gap-2.5">
           {legs.map((leg, index) => (
-            <li key={leg.flightId} className="flex items-center gap-3 rounded-xl border border-border-desc/30 px-4 py-3">
+            <li
+              key={leg.flightId}
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border-desc/30 px-4 py-3 sm:flex-nowrap"
+            >
               <GripIcon className="h-4 w-4 shrink-0 text-border-desc" />
               <span className="w-4 shrink-0 text-xs font-semibold text-primary-text/40">{index + 1}</span>
-              <span className="flex flex-1 flex-wrap items-center gap-2">
+              {/* Below `sm` the row is too narrow to hold the flight details and
+                  the actions side by side, so the actions wrap onto their own
+                  line and the details get the full width. */}
+              <span className="flex w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:w-auto sm:flex-1">
                 <span className="font-semibold text-primary-text">{leg.flightNumber}</span>
-                <span className="text-sm text-primary-text/80">
+                <span className="text-sm whitespace-nowrap text-primary-text/80">
                   {leg.origin} ➔ {leg.destination}
                 </span>
-                <span className="text-sm text-primary-text/60">
+                <span className="text-sm whitespace-nowrap text-primary-text/60">
                   {formatTime(leg.departureAt)}–{formatTime(leg.arrivalAt)}
                 </span>
                 {leg.addedManually && <span className="rounded-full bg-valid-bg px-2 py-0.5 text-[11px] font-bold text-valid">Added</span>}
               </span>
-              <span className="flex shrink-0 items-center gap-1">
+              <span className="flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto sm:justify-start">
                 <IconAction label={`Move ${leg.flightNumber} up`} disabled={index === 0} onClick={() => move(index, -1)}>
                   <ArrowUpIcon className="h-3.5 w-3.5" />
                 </IconAction>
