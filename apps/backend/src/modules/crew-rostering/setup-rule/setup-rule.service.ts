@@ -195,21 +195,22 @@ export class SetupRuleService {
    * be saved that is looser than the current baseline.
    */
   async updateDefaults(input: DefaultLimitsRow, actorUserId?: string): Promise<DefaultLimitsRow> {
-    const current = await this.getDefaults()
-    const next: DefaultLimitsRow = {
-      minRestHours: input.minRestHours ?? current.minRestHours,
-      maxDutyHours: input.maxDutyHours ?? current.maxDutyHours,
-      maxFlightsPerDuty: input.maxFlightsPerDuty ?? current.maxFlightsPerDuty,
-      maxPairingDays: input.maxPairingDays ?? current.maxPairingDays,
-      hoursCap28d: input.hoursCap28d ?? current.hoursCap28d,
-      minLocalCrew: input.minLocalCrew ?? current.minLocalCrew,
-      minPolice: input.minPolice ?? current.minPolice,
-    }
+    const next: DefaultLimitsRow = { ...input }
 
-    if (next.minRestHours > 24) throw new BadRequestException('minRestHours cannot exceed 24')
-    if (next.maxDutyHours > 24) throw new BadRequestException('maxDutyHours cannot exceed 24')
-    if (next.maxFlightsPerDuty < 1) throw new BadRequestException('maxFlightsPerDuty must be at least 1')
-    if (next.maxPairingDays < 1) throw new BadRequestException('maxPairingDays must be at least 1')
+    const within = (value: number, low: number, high: number) => Number.isFinite(value) && value >= low && value <= high
+    if (!within(next.minRestHours, 0.1, 24)) throw new BadRequestException('minRestHours must be above 0 and at most 24')
+    if (!within(next.maxDutyHours, 0.1, 24)) throw new BadRequestException('maxDutyHours must be above 0 and at most 24')
+    if (!Number.isInteger(next.maxFlightsPerDuty) || next.maxFlightsPerDuty < 1) {
+      throw new BadRequestException('maxFlightsPerDuty must be a whole number, at least 1')
+    }
+    if (!Number.isInteger(next.maxPairingDays) || next.maxPairingDays < 1) {
+      throw new BadRequestException('maxPairingDays must be a whole number, at least 1')
+    }
+    if (!within(next.hoursCap28d, 1, 1000)) throw new BadRequestException('hoursCap28d must be between 1 and 1000')
+    if (!Number.isInteger(next.minLocalCrew) || next.minLocalCrew < 0)
+      throw new BadRequestException('minLocalCrew must be a whole number, 0 or more')
+    if (!Number.isInteger(next.minPolice) || next.minPolice < 0)
+      throw new BadRequestException('minPolice must be a whole number, 0 or more')
 
     const values: Record<string, string> = {
       [SETTING_KEYS.minRestHours]: String(next.minRestHours),
@@ -225,13 +226,30 @@ export class SetupRuleService {
     const actor = actorUserId
       ? await this.db.staff.findFirst({ where: { user_id: actorUserId, deleted_at: null }, select: { id: true } })
       : null
-    for (const [key, value] of Object.entries(values)) {
-      await this.db.crew_setting.upsert({
-        where: { key },
-        update: { value, updated_at: new Date(), updated_by: actor?.id ?? null },
-        create: { key, value, updated_by: actor?.id ?? null },
-      })
-    }
+
+    await this.db.$transaction(async (tx) => {
+      // A country rule may only tighten the baseline. A baseline that moves past one would leave it looser than the
+      // company limit, so it is refused here instead of being quietly overruled by the rule at check time.
+      const rules = await tx.country_legality_rule.findMany({ select: { country_code: true, min_rest_hours: true, max_duty_hours: true } })
+      const loosened = rules.filter(
+        (rule) => Number(rule.min_rest_hours) < next.minRestHours || Number(rule.max_duty_hours) > next.maxDutyHours,
+      )
+      if (loosened.length > 0) {
+        throw new BadRequestException(
+          `The new baseline (rest ${next.minRestHours} h, duty ${next.maxDutyHours} h) is tighter than the rule for ${loosened
+            .map((rule) => countryName(rule.country_code))
+            .join(', ')}. Update or remove ${loosened.length === 1 ? 'that rule' : 'those rules'} first.`,
+        )
+      }
+
+      for (const [key, value] of Object.entries(values)) {
+        await tx.crew_setting.upsert({
+          where: { key },
+          update: { value, updated_at: new Date(), updated_by: actor?.id ?? null },
+          create: { key, value, updated_by: actor?.id ?? null },
+        })
+      }
+    })
 
     return next
   }
@@ -271,7 +289,7 @@ export class SetupRuleService {
       select: LEGALITY_RULE_SELECT,
       orderBy: { country_code: 'asc' },
     })) as LegalityRuleDbRow[]
-    return Promise.all(rows.map((row) => this.toCountryLimitRow(row)))
+    return this.limitRows(rows)
   }
 
   /**
@@ -291,7 +309,7 @@ export class SetupRuleService {
       data: { country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours },
     })
 
-    return this.toCountryLimitRow({ country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours })
+    return (await this.limitRows([{ country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours }]))[0]
   }
 
   async updateCountryLimit(countryCode: string, input: CountryLimitInput): Promise<CountryLimitRow> {
@@ -303,7 +321,7 @@ export class SetupRuleService {
       where: { country_code: code },
       data: { min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours },
     })
-    return this.toCountryLimitRow({ country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours })
+    return (await this.limitRows([{ country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours }]))[0]
   }
 
   /** Removes the country override, which puts the destination back on the baseline. */
@@ -325,15 +343,15 @@ export class SetupRuleService {
       else byCountry.set(row.country_code, [row.language_code])
     }
 
-    return Promise.all(
-      [...byCountry.entries()].map(async ([code, languages]) => ({
-        id: `CL-${code}`,
-        country: countryName(code),
-        countryCode: code,
-        languages,
-        speakingCrew: await this.countSpeakingCrew(languages),
-      })),
-    )
+    // One read of everyone's languages, counted per country here, rather than a count query for each country.
+    const crew = await this.db.crew.findMany({ where: { deleted_at: null }, select: { languages: true } })
+    return [...byCountry.entries()].map(([code, languages]) => ({
+      id: `CL-${code}`,
+      country: countryName(code),
+      countryCode: code,
+      languages,
+      speakingCrew: crew.filter((member) => member.languages.some((language) => languages.includes(language))).length,
+    }))
   }
 
   /**
@@ -417,24 +435,43 @@ export class SetupRuleService {
    * tightening rule changes what an arrival into that country is allowed to look
    * like — which is the leg that already fails today.
    */
-  private async countAffectedPairings(code: string): Promise<number> {
-    return await this.db.pairing.count({
+
+  /** Pairings not yet published that fly into each of the given countries, from one read of those pairings. */
+  private async affectedPairingsByCountry(codes: string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>()
+    if (codes.length === 0) return counts
+
+    const pairings = await this.db.pairing.findMany({
       where: {
-        pairing_leg: { some: { flight: { route: { airport_route_destinationToairport: { country: code } } } } },
+        pairing_leg: { some: { flight: { route: { airport_route_destinationToairport: { country: { in: codes } } } } } },
         OR: [{ roster_run_pairing: { is: null } }, { roster_run_pairing: { roster_run: { status: { not: 'published' } } } }],
       },
+      select: {
+        pairing_leg: {
+          select: { flight: { select: { route: { select: { airport_route_destinationToairport: { select: { country: true } } } } } } },
+        },
+      },
     })
+    for (const pairing of pairings) {
+      const reached = new Set(pairing.pairing_leg.map((leg) => leg.flight.route.airport_route_destinationToairport.country))
+      for (const code of codes) if (reached.has(code)) counts.set(code, (counts.get(code) ?? 0) + 1)
+    }
+    return counts
   }
 
-  private async toCountryLimitRow(row: LegalityRuleDbRow): Promise<CountryLimitRow> {
-    const defaults = await this.getDefaults()
-    return {
+  /** Builds the page rows with one read for the baseline and one for the pairing counts, however many countries there are. */
+  private async limitRows(rows: LegalityRuleDbRow[]): Promise<CountryLimitRow[]> {
+    const [defaults, affected] = await Promise.all([
+      this.getDefaults(),
+      this.affectedPairingsByCountry(rows.map((row) => row.country_code)),
+    ])
+    return rows.map((row) => ({
       id: `RL-${row.country_code}`,
       country: countryName(row.country_code),
       countryCode: row.country_code,
       minRestHours: num(Number(row.min_rest_hours), defaults.minRestHours),
       maxDutyHours: num(Number(row.max_duty_hours), defaults.maxDutyHours),
-      affectedPairings: await this.countAffectedPairings(row.country_code),
-    }
+      affectedPairings: affected.get(row.country_code) ?? 0,
+    }))
   }
 }

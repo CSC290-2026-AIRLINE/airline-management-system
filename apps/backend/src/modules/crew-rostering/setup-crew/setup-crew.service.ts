@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { countryName } from '../country-names'
+import { localTime } from '../crew-format'
 
 /**
  * Feature 8 · Step 1 — crew directory.
@@ -166,19 +167,6 @@ interface CrewDbRow {
   }[]
 }
 
-interface DutyDbRow {
-  pairing_leg_id: string
-  pairing_code: string
-  roster_status: string
-  flight_id: string
-  flight_number: string
-  origin: string
-  destination: string
-  scheduled_dep_at: Date
-  scheduled_arr_at: Date
-  service_date: Date
-}
-
 const CREW_SELECT = {
   id: true,
   first_name: true,
@@ -200,11 +188,6 @@ const CREW_SELECT = {
 /** `YYYY-MM-DD` in UTC — the shape every date field leaves the service in. */
 function localDate(value: Date | null): string | null {
   return value === null ? null : value.toISOString().slice(0, 10)
-}
-
-/** `HH:mm` — the page prints times on their own and never needs the date part. */
-function clockTime(value: Date): string {
-  return value.toISOString().slice(11, 16)
 }
 
 /**
@@ -276,8 +259,6 @@ export class SetupCrewService {
       select: CREW_SELECT,
       orderBy: { last_name: 'asc' },
     })) as CrewDbRow[]
-    const hoursCap = await this.getFlightHoursCap()
-
     const term = query.search?.trim().toLowerCase() ?? ''
     const matched = all.filter((row) => {
       if (query.base && row.base_airport !== query.base) return false
@@ -286,7 +267,7 @@ export class SetupCrewService {
       return `${row.first_name} ${row.last_name}`.toLowerCase().includes(term) || row.employee_number.toLowerCase().includes(term)
     })
 
-    const crew = await Promise.all(matched.map((row) => this.toMemberRow(row, hoursCap)))
+    const crew = await this.memberRows(matched)
 
     const metrics: CrewMetricsRow = {
       totalCrew: all.length,
@@ -303,7 +284,7 @@ export class SetupCrewService {
     const row = await this.db.crew.findFirst({ where: { id: crewId, deleted_at: null }, select: CREW_SELECT })
     if (!row) throw new NotFoundException(`Crew ${crewId} was not found`)
 
-    return this.toMemberRow(row, await this.getFlightHoursCap())
+    return (await this.memberRows([row]))[0]
   }
 
   /** The next free employee number, e.g. `EMP-2202`, for the create form to pre-fill. */
@@ -340,7 +321,7 @@ export class SetupCrewService {
       select: CREW_SELECT,
     })
 
-    return this.toMemberRow(created, await this.getFlightHoursCap())
+    return (await this.memberRows([created]))[0]
   }
 
   /**
@@ -378,7 +359,7 @@ export class SetupCrewService {
       select: CREW_SELECT,
     })
 
-    return this.toMemberRow(updated, await this.getFlightHoursCap())
+    return (await this.memberRows([updated]))[0]
   }
 
   async addCertification(crewId: string, input: CertificationInput): Promise<CertificationRow> {
@@ -504,11 +485,20 @@ export class SetupCrewService {
     return Number.isFinite(parsed) ? parsed : 100
   }
 
-  /** Flights this crew member is on in the next 28 days, across draft and published runs. */
-  private async listUpcomingDuties(crewId: string): Promise<UpcomingDutyRow[]> {
-    const rows = (await this.db.pairing_leg_assignment.findMany({
-      where: { crew_id: crewId, unassigned_at: null, pairing_leg: { flight: { scheduled_dep_at: { gte: new Date() } } } },
+  /**
+   * Upcoming flights for every crew member asked about, in one read.
+   *
+   * Times are on the wall clock of the airport they happen at: a departure at the origin's, an
+   * arrival at the destination's.
+   */
+  private async dutiesByCrew(crewIds: string[]): Promise<Map<string, UpcomingDutyRow[]>> {
+    const duties = new Map<string, UpcomingDutyRow[]>()
+    if (crewIds.length === 0) return duties
+
+    const rows = await this.db.pairing_leg_assignment.findMany({
+      where: { crew_id: { in: crewIds }, unassigned_at: null, pairing_leg: { flight: { scheduled_dep_at: { gte: new Date() } } } },
       select: {
+        crew_id: true,
         pairing_leg_id: true,
         pairing_leg: {
           select: {
@@ -519,74 +509,72 @@ export class SetupCrewService {
                 service_date: true,
                 scheduled_dep_at: true,
                 scheduled_arr_at: true,
-                route: { select: { origin: true, destination: true } },
+                route: {
+                  select: {
+                    origin: true,
+                    destination: true,
+                    airport_route_originToairport: { select: { timezone: true } },
+                    airport_route_destinationToairport: { select: { timezone: true } },
+                  },
+                },
               },
             },
           },
         },
       },
       orderBy: { pairing_leg: { flight: { scheduled_dep_at: 'asc' } } },
-    })) as {
-      pairing_leg_id: string
-      pairing_leg: {
-        pairing: { code: string; roster_run_pairing: { roster_run: { status: string } } | null }
-        flight: {
-          flight_number: string
-          service_date: Date
-          scheduled_dep_at: Date
-          scheduled_arr_at: Date
-          route: { origin: string; destination: string }
-        }
-      }
-    }[]
-
-    return rows.map(({ pairing_leg_id: legId, pairing_leg: leg }): UpcomingDutyRow => {
-      const run = leg.pairing.roster_run_pairing
-      const duty: DutyDbRow = {
-        pairing_leg_id: legId,
-        pairing_code: leg.pairing.code,
-        roster_status: run?.roster_run.status ?? 'draft',
-        flight_id: '',
-        flight_number: leg.flight.flight_number,
-        origin: leg.flight.route.origin,
-        destination: leg.flight.route.destination,
-        scheduled_dep_at: leg.flight.scheduled_dep_at,
-        scheduled_arr_at: leg.flight.scheduled_arr_at,
-        service_date: leg.flight.service_date,
-      }
-      return {
-        id: duty.pairing_leg_id,
-        date: localDate(duty.service_date) as string,
-        flightNumber: duty.flight_number,
-        origin: duty.origin,
-        destination: duty.destination,
-        departureLocal: clockTime(duty.scheduled_dep_at),
-        arrivalLocal: clockTime(duty.scheduled_arr_at),
-        pairingId: duty.pairing_code,
-        rosterStatus: duty.roster_status === 'published' ? 'Published' : 'Draft',
-      }
     })
+
+    for (const row of rows) {
+      const { pairing, flight } = row.pairing_leg
+      const duty: UpcomingDutyRow = {
+        id: row.pairing_leg_id,
+        date: localDate(flight.service_date) as string,
+        flightNumber: flight.flight_number,
+        origin: flight.route.origin,
+        destination: flight.route.destination,
+        departureLocal: localTime(flight.scheduled_dep_at, flight.route.airport_route_originToairport.timezone),
+        arrivalLocal: localTime(flight.scheduled_arr_at, flight.route.airport_route_destinationToairport.timezone),
+        pairingId: pairing.code,
+        rosterStatus: pairing.roster_run_pairing?.roster_run.status === 'published' ? 'Published' : 'Draft',
+      }
+      duties.set(row.crew_id, [...(duties.get(row.crew_id) ?? []), duty])
+    }
+    return duties
   }
 
-  /** Block hours flown in the rolling window, summed across every leg still assigned. */
-  private async hoursInWindow(crewId: string): Promise<number> {
-    const since = new Date(Date.now() - HOURS_WINDOW_DAYS * 86_400_000)
-    const rows = (await this.db.pairing_leg_assignment.findMany({
-      where: { crew_id: crewId, unassigned_at: null, pairing_leg: { flight: { scheduled_dep_at: { gte: since } } } },
-      select: { pairing_leg: { select: { flight: { select: { scheduled_dep_at: true, scheduled_arr_at: true } } } } },
-    })) as { pairing_leg: { flight: { scheduled_dep_at: Date; scheduled_arr_at: Date } } }[]
+  /**
+   * Block hours flown in the rolling window, summed across every leg still assigned, for
+   * everyone asked about in one read. Only flights that have already left count: a duty
+   * next week is not hours flown, and would push someone over the cap on paper.
+   */
+  private async hoursByCrew(crewIds: string[]): Promise<Map<string, number>> {
+    const hours = new Map<string, number>()
+    if (crewIds.length === 0) return hours
 
-    return (
-      Math.round(
-        rows.reduce(
-          (total, row) => total + hoursBetween(row.pairing_leg.flight.scheduled_dep_at, row.pairing_leg.flight.scheduled_arr_at),
-          0,
-        ) * 10,
-      ) / 10
-    )
+    const now = new Date()
+    const since = new Date(now.getTime() - HOURS_WINDOW_DAYS * 86_400_000)
+    const rows = await this.db.pairing_leg_assignment.findMany({
+      where: { crew_id: { in: crewIds }, unassigned_at: null, pairing_leg: { flight: { scheduled_dep_at: { gte: since, lte: now } } } },
+      select: { crew_id: true, pairing_leg: { select: { flight: { select: { scheduled_dep_at: true, scheduled_arr_at: true } } } } },
+    })
+
+    for (const row of rows) {
+      const { scheduled_dep_at, scheduled_arr_at } = row.pairing_leg.flight
+      hours.set(row.crew_id, (hours.get(row.crew_id) ?? 0) + hoursBetween(scheduled_dep_at, scheduled_arr_at))
+    }
+    for (const [crewId, total] of hours) hours.set(crewId, Math.round(total * 10) / 10)
+    return hours
   }
 
-  private async toMemberRow(row: CrewDbRow, hoursCap: number): Promise<CrewMemberRow> {
+  /** Turns crew rows into what the page shows, with one read for the cap, one for hours and one for duties however many there are. */
+  private async memberRows(rows: CrewDbRow[]): Promise<CrewMemberRow[]> {
+    const ids = rows.map((row) => row.id)
+    const [hoursCap, hours, duties] = await Promise.all([this.getFlightHoursCap(), this.hoursByCrew(ids), this.dutiesByCrew(ids)])
+    return rows.map((row) => this.toMemberRow(row, hoursCap, hours.get(row.id) ?? 0, duties.get(row.id) ?? []))
+  }
+
+  private toMemberRow(row: CrewDbRow, hoursCap: number, hours28d: number, upcomingDuties: UpcomingDutyRow[]): CrewMemberRow {
     const role = CREW_ROLES.includes(row.role as CrewRole) ? (row.role as CrewRole) : 'cabin_crew'
     return {
       id: row.id,
@@ -604,7 +592,7 @@ export class SetupCrewService {
       phone: row.phone,
       licenceNumber: row.licence_number,
       licenceExpiresOn: localDate(row.licence_expires_on) as string,
-      hours28d: await this.hoursInWindow(row.id),
+      hours28d,
       hoursCap,
       certifications: row.crew_certification
         .map((cert) => ({
@@ -614,7 +602,7 @@ export class SetupCrewService {
           expiresOn: localDate(cert.expires_on) as string,
         }))
         .sort((a, b) => a.name.localeCompare(b.name)),
-      upcomingDuties: await this.listUpcomingDuties(row.id),
+      upcomingDuties,
     }
   }
 }

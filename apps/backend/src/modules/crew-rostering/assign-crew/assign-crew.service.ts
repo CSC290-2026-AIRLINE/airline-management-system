@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
+import { loadBaseContext } from '../base-context'
 import { LOCAL_MISS_RATE, POLICE_SHORT_RATE, pickOne } from './random-pick'
 import { isoDate, localDay, shortName } from '../crew-format'
 
@@ -833,21 +834,10 @@ export class AssignCrewService {
   }
 
   private async loadContext(base: string): Promise<Context> {
-    const [settings, countryRules, airports, languages] = await Promise.all([
-      this.db.crew_setting.findMany({ select: { key: true, value: true } }),
-      this.db.country_legality_rule.findMany({ select: { country_code: true, min_rest_hours: true, max_duty_hours: true } }),
-      this.db.airport.findMany({ select: { iata_code: true, country: true, timezone: true } }),
+    const [{ read, ...shared }, languages] = await Promise.all([
+      loadBaseContext(this.db, base),
       this.db.country_language.findMany({ select: { country_code: true, language_code: true }, orderBy: { language_code: 'asc' } }),
     ])
-
-    const baseAirport = airports.find((airport) => airport.iata_code === base)
-    if (!baseAirport) throw new NotFoundException(`Base ${base} was not found`)
-
-    const setting = new Map(settings.map((row) => [row.key, Number.parseFloat(row.value)]))
-    const read = (key: string, fallback: number): number => {
-      const value = setting.get(key)
-      return value !== undefined && Number.isFinite(value) ? value : fallback
-    }
 
     const countryLanguages = new Map<string, string[]>()
     for (const row of languages)
@@ -865,15 +855,8 @@ export class AssignCrewService {
         reportMinutes: read('report_minutes', 60),
         releaseMinutes: read('release_minutes', 0),
       },
-      countryRules: new Map(
-        countryRules.map((rule) => [
-          rule.country_code,
-          { minRestHours: Number(rule.min_rest_hours), maxDutyHours: Number(rule.max_duty_hours) },
-        ]),
-      ),
-      airportCountry: new Map(airports.map((airport) => [airport.iata_code, airport.country.toLowerCase()])),
       countryLanguages,
-      timeZone: baseAirport.timezone,
+      ...shared,
     }
   }
 

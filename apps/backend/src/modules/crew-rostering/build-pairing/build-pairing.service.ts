@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
+import { loadBaseContext } from '../base-context'
 import { buildChains } from './chain-builder'
 import { localDay } from '../crew-format'
 
@@ -628,20 +629,7 @@ export class BuildPairingService {
   /* ── limits ─────────────────────────────────────────────────────────────── */
 
   private async loadContext(base: string): Promise<LimitsContext> {
-    const [settings, countryRules, airports] = await Promise.all([
-      this.db.crew_setting.findMany({ select: { key: true, value: true } }),
-      this.db.country_legality_rule.findMany({ select: { country_code: true, min_rest_hours: true, max_duty_hours: true } }),
-      this.db.airport.findMany({ select: { iata_code: true, country: true, timezone: true } }),
-    ])
-
-    const baseAirport = airports.find((airport) => airport.iata_code === base)
-    if (!baseAirport) throw new NotFoundException(`Base ${base} was not found`)
-
-    const setting = new Map(settings.map((row) => [row.key, Number.parseFloat(row.value)]))
-    const read = (key: string, fallback: number): number => {
-      const value = setting.get(key)
-      return value !== undefined && Number.isFinite(value) ? value : fallback
-    }
+    const { read, ...shared } = await loadBaseContext(this.db, base)
 
     return {
       defaults: {
@@ -652,14 +640,7 @@ export class BuildPairingService {
         reportMinutes: read('report_minutes', DEFAULT_LIMITS.reportMinutes),
         releaseMinutes: read('release_minutes', DEFAULT_LIMITS.releaseMinutes),
       },
-      countryRules: new Map(
-        countryRules.map((rule) => [
-          rule.country_code,
-          { minRestHours: Number(rule.min_rest_hours), maxDutyHours: Number(rule.max_duty_hours) },
-        ]),
-      ),
-      airportCountry: new Map(airports.map((airport) => [airport.iata_code, airport.country.toLowerCase()])),
-      timeZone: baseAirport.timezone,
+      ...shared,
     }
   }
 

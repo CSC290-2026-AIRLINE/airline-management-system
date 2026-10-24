@@ -14,3 +14,8 @@ export function isoDate(value: Date): string {
 export function localDay(instant: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant)
 }
+
+/** `HH:mm` of an instant on the wall clock of an IANA time zone. */
+export function localTime(instant: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(instant)
+}
