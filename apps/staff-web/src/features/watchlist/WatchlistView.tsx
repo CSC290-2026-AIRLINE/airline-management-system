@@ -116,8 +116,7 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
             <button disabled title="Screening Queue is not implemented in this checkout">
               <img src={screeningIcon} alt="" width="16" height="16" />
               <span className="wl-desktop-label">Screening Queue</span>
-              <span className="wl-held">2 held</span>
-              <span className="wl-mobile-label">Screening Queue · 2</span>
+              <span className="wl-mobile-label">Screening Queue</span>
             </button>
             <a href="/watchlist" aria-current="page">
               <img src={watchlistIcon} alt="" width="16" height="16" />
@@ -187,15 +186,6 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
               setModal('edit')
             }}
           />
-          <p
-            className="wl-preview-note"
-            title="UI preview: sample data only. Changes reset on reload. Screening, security permissions and audit logging are not connected."
-          >
-            <span className="wl-desktop-label">
-              Only the security role can see this page. Every view and change is recorded in the Feature 15 audit log.
-            </span>
-            <span className="wl-mobile-label">UI preview · Changes reset on reload. Audit logging is not connected.</span>
-          </p>
         </section>
       </main>
       {(modal === 'add' || modal === 'edit') && (
