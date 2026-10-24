@@ -287,6 +287,7 @@ export class FlightOperationsService {
       arrAt: input.arr_at,
     })
     if (!approval.ok) throw new UnprocessableEntityException({ message: approval.detail, rule: approval.rule })
+    await this.approvals.markConsumed(tx, input.approval_id, flight.id)
 
     const event = buildFlightEvent({
       type: 'rescheduled',

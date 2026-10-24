@@ -26,7 +26,7 @@ import { FlightEventBus, FlightEventPublisher } from './operations/flight-event-
 import { FlightEventWriter } from './operations/flight-event-writer'
 import { FlightOperationsController } from './operations/flight-operations.controller'
 import { FlightOperationsService } from './operations/flight-operations.service'
-import { MissingScheduleApprovals, SCHEDULE_APPROVALS } from './operations/schedule-approvals'
+import { DbScheduleApprovals, SCHEDULE_APPROVALS } from './operations/schedule-approvals'
 import { StaffActorService } from './operations/staff-actor.service'
 
 @Module({
@@ -57,8 +57,7 @@ import { StaffActorService } from './operations/staff-actor.service'
     { provide: FLIGHT_CLOCK, useClass: InterimMachineClock },
     // Until Feature 15 publishes its audit API, dismissing a conflict fails with 502 (the audit entry cannot be written).
     { provide: AUDIT_SINK, useClass: PendingAuditSink },
-    // schedule_approval is not in the schema yet: confirm and reschedule answer "approval missing" until it is.
-    { provide: SCHEDULE_APPROVALS, useClass: MissingScheduleApprovals },
+    { provide: SCHEDULE_APPROVALS, useClass: DbScheduleApprovals },
     FlightEventWriter,
     FlightEventBus,
     FlightEventPublisher,
