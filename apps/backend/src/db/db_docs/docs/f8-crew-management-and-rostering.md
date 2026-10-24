@@ -1,332 +1,351 @@
-# F8 — Crew Management & Rostering (Iteration-02)
+# F8 — Crew Management & Rostering
 
-> **Status: PROPOSED DB DESIGN — NOT IN GITHUB `dev`.** Documented from Group 1’s Feature 8 Iteration-02 specification (**11 Oct 2026**) and compared with the merged Level 1 database at `dev` commit `752428e732da4e4179a5c4f7ea2c1a07bc3f6400` (checked **21 Oct 2026**). Feature 8 is **not** one of the 69 currently implemented tables; do not apply its draft SQL as an approved migration.
+> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
 **Feature owner:** Group 1 — Choto and Xiang Xiang.  
-**Module:** staff-web; Crew, Pairings, Roster and Fix rule breaks (mock/sample-data prototype).  
-**Draft tables (10):** `crew`, `crew_certification`, `country_language`, `pairing`, `pairing_leg`, `pairing_leg_assignment`, `legality_rule`, `roster_run`, `roster_run_pairing`, `rule_break`.  
-**Implemented database:** 69 tables / 640 columns (F1, F2, F4, F7, F9, F12, F15); **F8 tables implemented: 0**.
+**Tables (11):** `crew_setting`, `country_legality_rule`, `country_language`, `crew`, `crew_certification`, `pairing`, `pairing_leg`, `roster_run`, `roster_run_pairing`, `pairing_leg_assignment`, `rule_break`.
 
-## 1. Scope and lifecycle
+**Migration:** `20261024120000_feature8_crew_rostering/migration.sql`.
 
-The feature converts Feature 2 flight schedules into up-to-three-day crew pairings starting/ending at a base, automatically assigns qualified crew, records coverage and violations, permits logged **project-defined company-rule** overrides, and publishes a roster only after open breaks are resolved. There is **no crew login, standby pool, leave/swap requests, or crew self-service in Iteration-02**. Police are represented in F8 as operational crew but travel as passengers and require integration with future F3/F6 seat and boarding logic. Feature 5 receives duty hours for future overtime calculations; Feature 13 distributes published rosters.
+## Scope and enforcement boundary
 
-**Status vocabulary used throughout:** **Implemented** = found in current `dev` SQL/Prisma; **Proposed** = supplied by Group 1 but not committed; **Needs agreement** = conflicts with another feature/schema or omits a persistence requirement. Business-rule labels such as “law” and “company” below are classifications in the **project specification**, not independently verified aviation or jurisdictional rules.
+These tables are committed database structures. The migration's introductory word “proposed” is historical source wording; the CREATE TABLE statements and Prisma models are present in the inspected commit. This does not establish that the migration has run in any environment. No F8 application module, assignment worker, simulation-clock job or publication service exists in this checkout.
 
-### Database dependencies verified against `dev`
+**Current schema, not the requested revision:** Crew are operational records; `staff_id` optionally links shared staff identity and does not introduce crew login. `fleet_aircraft_type` and certification `aircraft_type` refer to **aircraft_type.model**, not layout-specific code or a UUID FK. The backend must validate the active model. Base-airport FKs correctly target `airport.iata_code`; `airport.country` now has a lowercase two-letter format CHECK. Country/language codes have no canonical-country FK.
 
-| Existing entity                        | Source feature | Actual schema / integration observation                                                                                                                                                        |
-| -------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `airport`                              | F2             | PK is **`iata_code TEXT`**, not `code`; `country TEXT` is not guaranteed ISO-3166-alpha-2                                                                                                      |
-| `route`                                | F2             | `origin` and `destination` are TEXT FKs to `airport(iata_code)`                                                                                                                                |
-| `flight`                               | F2             | `id UUID`, `flight_number`, `service_date`, `route_id`, `dep_at`, `arr_at`, `scheduled_dep_at`, `scheduled_arr_at`, `aircraft_id`, `status`; use dated flight rows, not free-form flight codes |
-| `flight_event`                         | F2             | Events include delay, reschedule, aircraft change, diversion and cancellation; F8 listeners/handlers are **not yet implemented**                                                               |
-| `aircraft`                             | F9             | `id UUID`, `aircraft_type_id UUID` (FK to `aircraft_type`)                                                                                                                                     |
-| `aircraft_type`                        | F9             | `id UUID`; `code TEXT` has a **partial** unique index for non-deleted rows; no dedicated cabin-crew minimum column in current SQL                                                              |
-| `staff` / `user` / `role`              | F1             | Ops sign-in uses existing staff identity. F8 `crew` need not be an authenticated `staff` account                                                                                               |
-| `audit_log`                            | F15            | Implemented append-only log; `actor_id` is `user.id` (per SQL comment), `source_feature` may be `'8'`; action constrained to existing enum                                                     |
-| F3 booking and police seat allocation  | F3             | **Not present in current Level 1 SQL** — integration contract needed                                                                                                                           |
-| F5 overtime, F13 notifications, F14 BI | Later waves    | No corresponding F8-bound tables/contracts in current Level 1 schema; report outputs must be agreed                                                                                            |
+**Requested follow-up:** Replace the two F8 aircraft-type text fields with UUID foreign keys to the existing F9 `aircraft_type.id`. This request is not implemented in the inspected SQL, Prisma or migration. See [review fixes and requested revision](#5-review-fixes-and-requested-aircraft-type-revision).
 
-## 2. Proposed entity relationships
+## Settings inserted by SQL and the F8 migration
 
-```mermaid
-erDiagram
-    airport ||--o{ crew : base_iata
-    airport ||--o{ pairing : base_iata
-    airport ||--o{ roster_run : base_iata
-    crew ||--o{ crew_certification : holds
-    crew ||--o{ pairing_leg_assignment : assigned
-    pairing ||--o{ pairing_leg : contains
-    flight ||--o{ pairing_leg : scheduled_as
-    pairing_leg ||--o{ pairing_leg_assignment : staffed_by
-    roster_run ||--o{ roster_run_pairing : selects
-    pairing ||--o{ roster_run_pairing : selected_in
-    roster_run ||--o{ rule_break : records
-    pairing_leg ||--o{ rule_break : affects
-    crew |o--o{ rule_break : subject
-    staff |o--o{ rule_break : override_actor
-```
+All values are TEXT. These are project defaults, not independently verified aviation requirements.
 
-The diagram expresses the intended logical relationships; the three `airport` FKs are **invalid in Group 1’s literal SQL until their targets are corrected**. `country_language` and `legality_rule.country_code` currently have no SQL FK to a canonical country table; the country dictionary is not implemented.
+| Key                        | Inserted value | Interpretation                                |
+| -------------------------- | -------------- | --------------------------------------------- |
+| `min_rest_hours`           | `10`           | Default minimum rest                          |
+| `max_duty_hours`           | `13`           | Default maximum duty                          |
+| `max_flights_per_duty`     | `4`            | Maximum legs per duty                         |
+| `max_pairing_days`         | `3`            | Maximum pairing duration                      |
+| `max_flight_hours_28d`     | `100`          | Rolling 28-day flight-hour limit              |
+| `min_local_crew`           | `1`            | Destination-language crew minimum             |
+| `min_police_international` | `2`            | Police minimum on international legs          |
+| `seats_per_cabin_crew`     | `50`           | Cabin count = ceil(layout seats / this value) |
+| `report_minutes`           | `60`           | Duty starts before first departure            |
+| `release_minutes`          | `0`            | Duty ends after last arrival                  |
+| `expiry_warning_days`      | `30`           | Licence/certification warning interval        |
 
-## 3. Proposed SQL data dictionary
+`country_legality_rule` holds positive country-specific rest/duty values. Applying the stricter limit (more rest, less duty), including after a default changes, is an application requirement. The earlier nullable `legality_rule` design was replaced; there is no nullable default-country row.
 
-All column names and types in the following tables come directly from the **supplied Feature 8 SQL**, not from current GitHub tables. “FK →” records the draft SQL reference even when invalid. Recommendations are identified separately below.
+## Data dictionary
 
-<a id="table-crew"></a>
+<a id="table-crew_setting"></a>
 
-### 3.1 `crew`
+### `crew_setting`
 
-Crew master profile, role, home base, fleet, contact data, spoken languages and licence. Allowed roles: `captain`, `first_officer`, `cabin_crew`, `police`. This table describes operational crew, not a new Clerk login or a replacement for shared `staff`.
+F8 default limits and operational settings, stored as text. Values require application validation.
 
-| Column                | SQL type      | Draft constraints / linkage               | Meaning                                                                                       |
-| --------------------- | ------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `id`                  | `UUID`        | PK; required; default `gen_random_uuid()` | Crew UUID.                                                                                    |
-| `first_name`          | `TEXT`        | required                                  | Given name.                                                                                   |
-| `last_name`           | `TEXT`        | required                                  | Family name.                                                                                  |
-| `employee_number`     | `TEXT`        | required; unique                          | Operational employee identifier; distinct from shared `staff.staff_code`.                     |
-| `role`                | `TEXT`        | required; CHECK                           | Captain, first officer, cabin crew or police (air marshal).                                   |
-| `date_of_birth`       | `DATE`        | nullable                                  | Date of birth, if available.                                                                  |
-| `email`               | `TEXT`        | nullable                                  | Crew contact email.                                                                           |
-| `phone`               | `TEXT`        | nullable                                  | Crew contact phone.                                                                           |
-| `base_airport`        | `TEXT`        | required; FK → `airport(code)`            | Home base airport IATA code; **proposed `airport(code)` reference is invalid against `dev`**. |
-| `fleet_aircraft_type` | `TEXT`        | required                                  | Aircraft type code assigned for fleet eligibility; linkage to F9 still unresolved.            |
-| `languages`           | `CHAR(2)[]`   | required; default `'{}'`                  | ISO 639-1 language codes crew can speak, used for destination-local coverage.                 |
-| `licence_number`      | `TEXT`        | required; unique                          | Licence/credential identifier; mandatory in the supplied draft even for police.               |
-| `licence_expires_on`  | `DATE`        | required                                  | Credential expiry used by legality checks.                                                    |
-| `created_at`          | `TIMESTAMPTZ` | required; default `now()`                 | SQL default uses wall-clock `now()`; distinguish from simulated business time.                |
-| `updated_at`          | `TIMESTAMPTZ` | required; default `now()`                 | SQL default set on insertion; application must maintain updates.                              |
-| `deleted_at`          | `TIMESTAMPTZ` | nullable                                  | Soft deletion marker.                                                                         |
+| Column       | SQL type      | Constraints / linkage                                                                                                                                                                                                                                                              | Meaning                                                        |
+| ------------ | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `key`        | `TEXT`        | required; `PRIMARY KEY CHECK (key IN ( 'min_rest_hours', 'max_duty_hours', 'max_flights_per_duty', 'max_pairing_days', 'max_flight_hours_28d', 'min_local_crew', 'min_police_international', 'seats_per_cabin_crew', 'report_minutes', 'release_minutes', 'expiry_warning_days'))` | Allowed configuration key; see settings below.                 |
+| `value`      | `TEXT`        | required; `NOT NULL`                                                                                                                                                                                                                                                               | Text setting value; application validates its interpretation.  |
+| `updated_at` | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                                                                                                                                                                                                                                 | Real last-update time; application-maintained after insertion. |
+| `updated_by` | `UUID`        | nullable; `REFERENCES staff (id)`                                                                                                                                                                                                                                                  | Optional staff member who last changed this setting.           |
 
-<a id="table-crew_certification"></a>
+<a id="table-country_legality_rule"></a>
 
-### 3.2 `crew_certification`
+### `country_legality_rule`
 
-Dated type ratings and other qualifications for a crew profile. For pilots, the aircraft type rating must match the operating aircraft type.
+Stricter country-specific rest and duty thresholds; default limits live in crew_setting.
 
-| Column          | SQL type | Draft constraints / linkage               | Meaning                                                            |
-| --------------- | -------- | ----------------------------------------- | ------------------------------------------------------------------ |
-| `id`            | `UUID`   | PK; required; default `gen_random_uuid()` | Certification UUID.                                                |
-| `crew_id`       | `UUID`   | required; FK → `crew(id)`                 | Crew member with this qualification.                               |
-| `name`          | `TEXT`   | required                                  | Qualification type/name.                                           |
-| `aircraft_type` | `TEXT`   | nullable                                  | Type rating code where relevant; NULL for non-type certifications. |
-| `expires_on`    | `DATE`   | required                                  | Last date qualification remains valid.                             |
+| Column           | SQL type       | Constraints / linkage                                       | Meaning                                                          |
+| ---------------- | -------------- | ----------------------------------------------------------- | ---------------------------------------------------------------- |
+| `country_code`   | `TEXT`         | required; `PRIMARY KEY CHECK (country_code ~ '^[a-z]{2}$')` | Lowercase two-letter country code; no FK to a country catalogue. |
+| `min_rest_hours` | `NUMERIC(4,1)` | required; `NOT NULL CHECK (min_rest_hours > 0)`             | Minimum rest hours for this country; positive.                   |
+| `max_duty_hours` | `NUMERIC(4,1)` | required; `NOT NULL CHECK (max_duty_hours > 0)`             | Maximum duty hours for this country; positive.                   |
+| `updated_at`     | `TIMESTAMPTZ`  | required; `NOT NULL DEFAULT now()`                          | Real last-update time; application-maintained after insertion.   |
+| `updated_by`     | `UUID`         | nullable; `REFERENCES staff (id)`                           | Optional staff member who last changed this setting.             |
 
 <a id="table-country_language"></a>
 
-### 3.3 `country_language`
+### `country_language`
 
-Reference mapping from a destination country to languages accepted by the project’s local-crew rule.
+Country-to-local-language mapping. The composite primary key permits multiple languages per country.
 
-| Column          | SQL type  | Draft constraints / linkage | Meaning                                                                            |
-| --------------- | --------- | --------------------------- | ---------------------------------------------------------------------------------- |
-| `country_code`  | `CHAR(2)` | required                    | ISO 3166-1 alpha-2 code, e.g. `JP`; requires normalized `airport.country` mapping. |
-| `language_code` | `CHAR(2)` | required                    | ISO 639-1 language, e.g. `ja`.                                                     |
+| Column          | SQL type | Constraints / linkage                                     | Meaning                                                          |
+| --------------- | -------- | --------------------------------------------------------- | ---------------------------------------------------------------- |
+| `country_code`  | `TEXT`   | required; `NOT NULL CHECK (country_code ~ '^[a-z]{2}$')`  | Lowercase two-letter country code; no FK to a country catalogue. |
+| `language_code` | `TEXT`   | required; `NOT NULL CHECK (language_code ~ '^[a-z]{2}$')` | Lowercase two-letter language code.                              |
 
-**Composite PK:** `(country_code, language_code)`.
+**Table-level SQL constraints:**
+
+- `PRIMARY KEY (country_code, language_code)`
+
+<a id="table-crew"></a>
+
+### `crew`
+
+Operational crew, optionally linked to shared staff sign-in. Crew are soft-deleted.
+
+| Column                | SQL type      | Constraints / linkage                                                                                        | Meaning                                                                                                   |
+| --------------------- | ------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `id`                  | `UUID`        | required; `PRIMARY KEY DEFAULT gen_random_uuid()`                                                            | Generated UUID identifying this row.                                                                      |
+| `staff_id`            | `UUID`        | nullable; `UNIQUE REFERENCES staff (id)`                                                                     | Optional staff sign-in link; uniqueness remains after crew soft deletion.                                 |
+| `first_name`          | `TEXT`        | required; `NOT NULL`                                                                                         | First name.                                                                                               |
+| `last_name`           | `TEXT`        | required; `NOT NULL`                                                                                         | Last name.                                                                                                |
+| `employee_number`     | `TEXT`        | required; `NOT NULL`                                                                                         | Employee identifier unique among non-deleted crew.                                                        |
+| `role`                | `TEXT`        | required; `NOT NULL CHECK (role IN ('captain', 'first_officer', 'cabin_crew', 'police'))`                    | Crew role or assignment seat: captain, first_officer, cabin_crew or police.                               |
+| `date_of_birth`       | `DATE`        | nullable                                                                                                     | Date of birth.                                                                                            |
+| `email`               | `TEXT`        | nullable                                                                                                     | Email.                                                                                                    |
+| `phone`               | `TEXT`        | nullable                                                                                                     | Phone.                                                                                                    |
+| `base_airport`        | `TEXT`        | required; `NOT NULL`; cross-FK → `airport(iata_code)`                                                        | IATA airport code; FK to airport.iata_code in Part 9.                                                     |
+| `fleet_aircraft_type` | `TEXT`        | required; `NOT NULL`                                                                                         | F9 aircraft_type.model, e.g. A320, shared by layout versions; active-type validation is application-side. |
+| `languages`           | `TEXT[]`      | required; `NOT NULL DEFAULT '{}' CHECK (array_to_string(languages, ',', '?') ~ '^([a-z]{2}(,[a-z]{2})*)?$')` | Lowercase two-letter language codes; empty array allowed. SQL validates array contents.                   |
+| `licence_number`      | `TEXT`        | required; `NOT NULL`                                                                                         | Credential number unique among non-deleted crew; required for every crew role.                            |
+| `licence_expires_on`  | `DATE`        | required; `NOT NULL`                                                                                         | Credential expiry date used by future legality checks.                                                    |
+| `created_at`          | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                                                           | Real database creation time.                                                                              |
+| `updated_at`          | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                                                           | Real last-update time; application-maintained after insertion.                                            |
+| `deleted_at`          | `TIMESTAMPTZ` | nullable                                                                                                     | Soft-delete time; NULL means not deleted.                                                                 |
+
+**Named indexes:**
+
+- `CREATE UNIQUE INDEX crew_employee_number_uq ON crew (employee_number) WHERE deleted_at IS NULL;`
+- `CREATE UNIQUE INDEX crew_licence_number_uq ON crew (licence_number) WHERE deleted_at IS NULL;`
+- `CREATE INDEX crew_base_role_idx ON crew (base_airport, role) WHERE deleted_at IS NULL;`
+- `CREATE INDEX crew_languages_idx ON crew USING gin (languages) WHERE deleted_at IS NULL;`
+
+<a id="table-crew_certification"></a>
+
+### `crew_certification`
+
+Type ratings and other certifications. Renewal updates expires_on; audit writing is an application responsibility.
+
+| Column          | SQL type | Constraints / linkage                             | Meaning                                                                                        |
+| --------------- | -------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `id`            | `UUID`   | required; `PRIMARY KEY DEFAULT gen_random_uuid()` | Generated UUID identifying this row.                                                           |
+| `crew_id`       | `UUID`   | required; `NOT NULL REFERENCES crew (id)`         | Related operational crew member.                                                               |
+| `name`          | `TEXT`   | required; `NOT NULL`                              | Name.                                                                                          |
+| `aircraft_type` | `TEXT`   | nullable                                          | Optional F9 aircraft_type.model for a type rating; NULL for general certifications. No SQL FK. |
+| `expires_on`    | `DATE`   | required; `NOT NULL`                              | Certification expiry date; updated on renewal.                                                 |
+
+**Named indexes:**
+
+- `CREATE UNIQUE INDEX crew_certification_uq ON crew_certification (crew_id, name, aircraft_type) NULLS NOT DISTINCT;`
 
 <a id="table-pairing"></a>
 
-### 3.4 `pairing`
+### `pairing`
 
-Ordered trip starting and ending at a crew base; contains totals and a validation result. Overnight trips may last at most three days.
+A chain of dated flights. Leg order, duty periods, validity and totals are derived from current flight times.
 
-| Column           | SQL type       | Draft constraints / linkage               | Meaning                                                                                 |
-| ---------------- | -------------- | ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| `id`             | `UUID`         | PK; required; default `gen_random_uuid()` | Pairing UUID.                                                                           |
-| `base_airport`   | `TEXT`         | required; FK → `airport(code)`            | Start and end airport for pairing; source draft targets nonexistent `airport.code`.     |
-| `day_count`      | `INT`          | required                                  | Number of duty/overnight days, up to three by project rules.                            |
-| `duty_hours`     | `NUMERIC(5,1)` | required                                  | Total measured duty hours across all duty days; not a replacement for per-duty windows. |
-| `is_valid`       | `BOOLEAN`      | required                                  | Pairing validity flag.                                                                  |
-| `invalid_reason` | `TEXT`         | nullable                                  | Human-readable pairing validation error; NULL when valid.                               |
-| `created_at`     | `TIMESTAMPTZ`  | required; default `now()`                 | SQL insertion timestamp.                                                                |
-| `updated_at`     | `TIMESTAMPTZ`  | required; default `now()`                 | SQL insertion default; application-maintained thereafter.                               |
-| `deleted_at`     | `TIMESTAMPTZ`  | nullable                                  | Soft-deletion timestamp. Avoid hard-deleting published history.                         |
+| Column         | SQL type      | Constraints / linkage                                 | Meaning                                                        |
+| -------------- | ------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| `id`           | `UUID`        | required; `PRIMARY KEY DEFAULT gen_random_uuid()`     | Generated UUID identifying this row.                           |
+| `code`         | `TEXT`        | required; `NOT NULL UNIQUE DEFAULT 'P-'               |                                                                | nextval('pairing_code_seq')` | Sequence-generated public pairing code, e.g. P-101; omit on insert. |
+| `base_airport` | `TEXT`        | required; `NOT NULL`; cross-FK → `airport(iata_code)` | IATA airport code; FK to airport.iata_code in Part 9.          |
+| `created_at`   | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                    | Real database creation time.                                   |
+| `updated_at`   | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                    | Real last-update time; application-maintained after insertion. |
+
+**Named indexes:**
+
+- `CREATE INDEX pairing_base_idx ON pairing (base_airport);`
 
 <a id="table-pairing_leg"></a>
 
-### 3.5 `pairing_leg`
+### `pairing_leg`
 
-One dated Feature 2 `flight` used as a leg of a pairing, with order and duty-day grouping.
+A dated flight belonging to one pairing. A flight can occur in at most one pairing.
 
-| Column            | SQL type | Draft constraints / linkage               | Meaning                                                     |
-| ----------------- | -------- | ----------------------------------------- | ----------------------------------------------------------- |
-| `id`              | `UUID`   | PK; required; default `gen_random_uuid()` | Pairing-leg UUID.                                           |
-| `pairing_id`      | `UUID`   | required; FK → `pairing(id)`              | Owning pairing.                                             |
-| `flight_id`       | `UUID`   | required; FK → `flight(id)`               | Dated scheduled flight from Feature 2.                      |
-| `sequence_number` | `INT`    | required                                  | Order of this leg in the pairing.                           |
-| `duty_day`        | `INT`    | required                                  | Duty-day grouping within the pairing (1–3).                 |
-| `status`          | `TEXT`   | required; default `'scheduled'`           | Leg lifecycle; synchronization with `flight.status` needed. |
+| Column       | SQL type      | Constraints / linkage                                                   | Meaning                                                                       |
+| ------------ | ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `id`         | `UUID`        | required; `PRIMARY KEY DEFAULT gen_random_uuid()`                       | Generated UUID identifying this row.                                          |
+| `pairing_id` | `UUID`        | required; `NOT NULL REFERENCES pairing (id) ON DELETE CASCADE`          | Related pairing; run membership is enforced where referenced.                 |
+| `flight_id`  | `UUID`        | required; `NOT NULL UNIQUE`; cross-FK → `flight(id)`                    | Dated flight reference; globally unique across pairings.                      |
+| `added_by`   | `TEXT`        | required; `NOT NULL DEFAULT 'auto' CHECK (added_by IN ('auto', 'ops'))` | Leg source: auto or ops. Regeneration is intended to preserve ops-added legs. |
+| `created_at` | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                      | Real database creation time.                                                  |
 
-**Allowed `status`:** `scheduled`, `completed`, `cancelled`. **Declared table-level uniqueness:** `(pairing_id, sequence_number)`; no explicit uniqueness on `(pairing_id, flight_id)` in the draft.
+**Table-level SQL constraints:**
 
-<a id="table-pairing_leg_assignment"></a>
+- `UNIQUE (id, pairing_id)`
 
-### 3.6 `pairing_leg_assignment`
+**Named indexes:**
 
-Crew member assigned to one leg, including its assignment/removal history and source (automatic or Ops).
-
-| Column           | SQL type      | Draft constraints / linkage               | Meaning                                                          |
-| ---------------- | ------------- | ----------------------------------------- | ---------------------------------------------------------------- |
-| `id`             | `UUID`        | PK; required; default `gen_random_uuid()` | Assignment UUID.                                                 |
-| `pairing_leg_id` | `UUID`        | required; FK → `pairing_leg(id)`          | Flight leg that the crew member serves.                          |
-| `crew_id`        | `UUID`        | required; FK → `crew(id)`                 | Assigned operational crew.                                       |
-| `assigned_by`    | `TEXT`        | required; CHECK                           | Source of assignment: automatic allocator or Ops.                |
-| `assigned_at`    | `TIMESTAMPTZ` | required; default `now()`                 | Time assignment was made; simulated-time policy must be decided. |
-| `unassigned_at`  | `TIMESTAMPTZ` | nullable                                  | NULL for currently active; non-NULL for removed/replaced.        |
-| `reason`         | `TEXT`        | nullable                                  | Free-text removal or reassignment explanation.                   |
-
-**Allowed `assigned_by`:** `auto`, `ops`. **Active assignment convention:** `unassigned_at IS NULL`; this does **not** by itself prohibit duplicate active assignments or relate an assignment to a specific `roster_run`.
-
-<a id="table-legality_rule"></a>
-
-### 3.7 `legality_rule`
-
-Default and optional destination-country thresholds for duty, rest, coverage and operating rules.
-
-| Column                 | SQL type       | Draft constraints / linkage               | Meaning                                                                                               |
-| ---------------------- | -------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `id`                   | `UUID`         | PK; required; default `gen_random_uuid()` | Legality-rule record UUID.                                                                            |
-| `country_code`         | `CHAR(2)`      | nullable; unique                          | NULL for project default; otherwise destination country. UNIQUE alone permits multiple NULL defaults. |
-| `max_flights_per_duty` | `INT`          | required; default `4`                     | Maximum flight legs in one duty.                                                                      |
-| `max_duty_hours`       | `NUMERIC(4,1)` | required; default `13`                    | Maximum hours in one duty period.                                                                     |
-| `max_pairing_days`     | `INT`          | required; default `3`                     | Maximum total pairing days.                                                                           |
-| `min_rest_hours`       | `NUMERIC(4,1)` | required; default `10`                    | Minimum rest between duties.                                                                          |
-| `max_flight_hours_28d` | `NUMERIC(5,1)` | required; default `100`                   | Maximum block/flight hours in rolling 28 days.                                                        |
-| `min_local_crew`       | `INT`          | required; default `1`                     | Language-eligible minimum crew for destination.                                                       |
-| `min_police`           | `INT`          | required; default `2`                     | Police minimum for international services only.                                                       |
+- `CREATE INDEX pairing_leg_pairing_idx ON pairing_leg (pairing_id);`
 
 <a id="table-roster_run"></a>
 
-### 3.8 `roster_run`
+### `roster_run`
 
-A draft or published automatic assignment run for a date range and base. Allowed statuses: `draft`, `published`.
+Draft or published roster for a base and date range. Publication and deletion policy require backend enforcement.
 
-| Column         | SQL type      | Draft constraints / linkage               | Meaning                                                            |
-| -------------- | ------------- | ----------------------------------------- | ------------------------------------------------------------------ |
-| `id`           | `UUID`        | PK; required; default `gen_random_uuid()` | Roster-run UUID.                                                   |
-| `base_airport` | `TEXT`        | required; FK → `airport(code)`            | Airport base; proposed FK target is invalid on current schema.     |
-| `date_from`    | `DATE`        | required                                  | Roster starting service date.                                      |
-| `date_to`      | `DATE`        | required                                  | Roster ending service date; should be >= start.                    |
-| `status`       | `TEXT`        | required; default `'draft'`; CHECK        | Draft versus published state.                                      |
-| `published_at` | `TIMESTAMPTZ` | nullable                                  | Publication time; should align with `status` and simulation clock. |
-| `created_at`   | `TIMESTAMPTZ` | required; default `now()`                 | SQL default insertion timestamp.                                   |
+| Column         | SQL type      | Constraints / linkage                                                         | Meaning                                                                |
+| -------------- | ------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `id`           | `UUID`        | required; `PRIMARY KEY DEFAULT gen_random_uuid()`                             | Generated UUID identifying this row.                                   |
+| `base_airport` | `TEXT`        | required; `NOT NULL`; cross-FK → `airport(iata_code)`                         | IATA airport code; FK to airport.iata_code in Part 9.                  |
+| `date_from`    | `DATE`        | required; `NOT NULL`                                                          | First calendar date covered by the run.                                |
+| `date_to`      | `DATE`        | required; `NOT NULL`                                                          | Last calendar date covered; cannot precede date_from.                  |
+| `status`       | `TEXT`        | required; `NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published'))` | Current allowed lifecycle state; see SQL checks.                       |
+| `published_at` | `TIMESTAMPTZ` | nullable                                                                      | Simulation publication time; present exactly when status is published. |
+| `created_at`   | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                            | Real database creation time.                                           |
+| `updated_at`   | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                            | Real last-update time; application-maintained after insertion.         |
+
+**Table-level SQL constraints:**
+
+- `CHECK (date_to >= date_from)`
+- `CHECK ((status = 'published') = (published_at IS NOT NULL))`
+
+**Named indexes:**
+
+- `CREATE INDEX roster_run_base_idx ON roster_run (base_airport, date_from DESC);`
 
 <a id="table-roster_run_pairing"></a>
 
-### 3.9 `roster_run_pairing`
+### `roster_run_pairing`
 
-Join table containing the pairings selected for a particular roster run.
+Pairings committed to a roster run. Each pairing can belong to only one run.
 
-| Column          | SQL type | Draft constraints / linkage     | Meaning                           |
-| --------------- | -------- | ------------------------------- | --------------------------------- |
-| `roster_run_id` | `UUID`   | required; FK → `roster_run(id)` | Chosen roster run.                |
-| `pairing_id`    | `UUID`   | required; FK → `pairing(id)`    | Pairing selected for this roster. |
+| Column          | SQL type | Constraints / linkage                               | Meaning                                                       |
+| --------------- | -------- | --------------------------------------------------- | ------------------------------------------------------------- |
+| `roster_run_id` | `UUID`   | required; `NOT NULL REFERENCES roster_run (id)`     | Roster run containing this pairing.                           |
+| `pairing_id`    | `UUID`   | required; `NOT NULL UNIQUE REFERENCES pairing (id)` | Related pairing; run membership is enforced where referenced. |
 
-**Composite PK:** `(roster_run_id, pairing_id)`.
+**Table-level SQL constraints:**
+
+- `PRIMARY KEY (roster_run_id, pairing_id)`
+
+<a id="table-pairing_leg_assignment"></a>
+
+### `pairing_leg_assignment`
+
+Crew assignment history for a leg of a pairing already committed to a run.
+
+| Column           | SQL type      | Constraints / linkage                                                                     | Meaning                                                                     |
+| ---------------- | ------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `id`             | `UUID`        | required; `PRIMARY KEY DEFAULT gen_random_uuid()`                                         | Generated UUID identifying this row.                                        |
+| `pairing_id`     | `UUID`        | required; `NOT NULL REFERENCES roster_run_pairing (pairing_id)`                           | Related pairing; run membership is enforced where referenced.               |
+| `pairing_leg_id` | `UUID`        | required; `NOT NULL`                                                                      | Related flight leg, constrained to the same pairing.                        |
+| `crew_id`        | `UUID`        | required; `NOT NULL REFERENCES crew (id)`                                                 | Related operational crew member.                                            |
+| `role`           | `TEXT`        | required; `NOT NULL CHECK (role IN ('captain', 'first_officer', 'cabin_crew', 'police'))` | Crew role or assignment seat: captain, first_officer, cabin_crew or police. |
+| `assigned_by`    | `TEXT`        | required; `NOT NULL CHECK (assigned_by IN ('auto', 'ops'))`                               | Assignment source: auto or ops; not a staff ID.                             |
+| `assigned_at`    | `TIMESTAMPTZ` | required; `NOT NULL`                                                                      | Simulation time of assignment; application must supply it.                  |
+| `unassigned_at`  | `TIMESTAMPTZ` | nullable                                                                                  | Simulation time of removal; NULL means active. A removal requires a reason. |
+| `reason`         | `TEXT`        | nullable                                                                                  | Explanation for removing an assignment; required when unassigned_at is set. |
+| `created_at`     | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                                        | Real database creation time.                                                |
+
+**Table-level SQL constraints:**
+
+- `FOREIGN KEY (pairing_leg_id, pairing_id) REFERENCES pairing_leg (id, pairing_id)`
+- `CHECK (unassigned_at IS NULL OR reason IS NOT NULL)`
+
+**Named indexes:**
+
+- `CREATE UNIQUE INDEX pairing_leg_assignment_active_uq ON pairing_leg_assignment (pairing_leg_id, crew_id) WHERE unassigned_at IS NULL;`
+- `CREATE UNIQUE INDEX pairing_leg_assignment_pilot_uq ON pairing_leg_assignment (pairing_leg_id, role) WHERE unassigned_at IS NULL AND role IN ('captain', 'first_officer');`
+- `CREATE INDEX pairing_leg_assignment_leg_idx ON pairing_leg_assignment (pairing_leg_id);`
+- `CREATE INDEX pairing_leg_assignment_pairing_idx ON pairing_leg_assignment (pairing_id);`
+- `CREATE INDEX pairing_leg_assignment_crew_idx ON pairing_leg_assignment (crew_id) WHERE unassigned_at IS NULL;`
 
 <a id="table-rule_break"></a>
 
-### 3.10 `rule_break`
+### `rule_break`
 
-Recorded legality/coverage exception for a leg and roster run, with resolution/override metadata.
+Roster violations, resolutions and permitted company-rule overrides, linked to the same run/pairing/leg.
 
-| Column            | SQL type      | Draft constraints / linkage               | Meaning                                                                  |
-| ----------------- | ------------- | ----------------------------------------- | ------------------------------------------------------------------------ |
-| `id`              | `UUID`        | PK; required; default `gen_random_uuid()` | Rule-break UUID.                                                         |
-| `roster_run_id`   | `UUID`        | required; FK → `roster_run(id)`           | Roster run for this validation result.                                   |
-| `pairing_leg_id`  | `UUID`        | required; FK → `pairing_leg(id)`          | Affected flight leg.                                                     |
-| `crew_id`         | `UUID`        | nullable; FK → `crew(id)`                 | Affected crew member, if person-specific; NULL for coverage/seat breaks. |
-| `rule`            | `TEXT`        | required; CHECK                           | Standardized error code naming the broken rule.                          |
-| `detail`          | `TEXT`        | required                                  | Human-readable explanation and evidence of the break.                    |
-| `created_at`      | `TIMESTAMPTZ` | required; default `now()`                 | Insertion timestamp.                                                     |
-| `resolved_at`     | `TIMESTAMPTZ` | nullable                                  | When fixed or overridden.                                                |
-| `resolution`      | `TEXT`        | nullable; CHECK                           | NULL open; fixed or overridden when closed.                              |
-| `overridden_by`   | `UUID`        | nullable; FK → `staff(id)`                | Shared `staff.id` of Ops staff approving permitted override.             |
-| `override_reason` | `TEXT`        | nullable                                  | Required descriptive rationale for company-rule override.                |
+| Column            | SQL type      | Constraints / linkage                                                                                                                                                                                            | Meaning                                                                              |
+| ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `id`              | `UUID`        | required; `PRIMARY KEY DEFAULT gen_random_uuid()`                                                                                                                                                                | Generated UUID identifying this row.                                                 |
+| `roster_run_id`   | `UUID`        | required; `NOT NULL`                                                                                                                                                                                             | Roster run containing this pairing.                                                  |
+| `pairing_id`      | `UUID`        | required; `NOT NULL`                                                                                                                                                                                             | Related pairing; run membership is enforced where referenced.                        |
+| `pairing_leg_id`  | `UUID`        | required; `NOT NULL`                                                                                                                                                                                             | Related flight leg, constrained to the same pairing.                                 |
+| `crew_id`         | `UUID`        | nullable; `REFERENCES crew (id)`                                                                                                                                                                                 | Related operational crew member.                                                     |
+| `role`            | `TEXT`        | nullable; `CHECK (role IN ('captain', 'first_officer', 'cabin_crew', 'police'))`                                                                                                                                 | Crew role or assignment seat; on rule_break, populated exactly for NO_LEGAL_CREW.    |
+| `rule`            | `TEXT`        | required; `NOT NULL CHECK (rule IN ( 'OVERLAP', 'REST_SHORT', 'HOURS_28D', 'DUTY_LIMIT', 'NO_LEGAL_CREW', 'LICENCE_EXPIRED', 'NO_TYPE_RATING', 'WRONG_FLEET', 'NO_LOCAL_CREW', 'POLICE_MIN', 'POLICE_NO_SEAT'))` | Violation code from the SQL whitelist.                                               |
+| `detail`          | `TEXT`        | required; `NOT NULL`                                                                                                                                                                                             | Human-readable violation explanation.                                                |
+| `created_at`      | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                                                                                                                                                               | Real database creation time.                                                         |
+| `resolved_at`     | `TIMESTAMPTZ` | nullable                                                                                                                                                                                                         | Simulation resolution time; present exactly when resolution is non-NULL.             |
+| `resolution`      | `TEXT`        | nullable; `CHECK (resolution IN ('fixed', 'overridden'))`                                                                                                                                                        | NULL while open; fixed or overridden when resolved.                                  |
+| `overridden_by`   | `UUID`        | nullable; `REFERENCES staff (id)`                                                                                                                                                                                | staff.id approving an allowed company override; audit actor uses the linked user.id. |
+| `override_reason` | `TEXT`        | nullable                                                                                                                                                                                                         | Required exactly for an overridden resolution, together with overridden_by.          |
 
-**Allowed `rule` values:** `OVERLAP`, `REST_SHORT`, `HOURS_28D`, `DUTY_LIMIT`, `NO_LOCAL_CREW`, `POLICE_MIN`, `POLICE_NO_SEAT`, `NO_LEGAL_CREW`, `LICENCE_EXPIRED`, `NO_TYPE_RATING`. **Declared checks:** permitted `rule` enum; `resolution` is `fixed`/`overridden`; draft attempts to require an override reason and restrict overrides to `NO_LOCAL_CREW`, `POLICE_MIN`, `POLICE_NO_SEAT`. The NULL-handling of its reason check requires revision; see §5.
+**Table-level SQL constraints:**
 
-## 4. Feature 8 rules: data needed and enforcement boundary
+- `FOREIGN KEY (roster_run_id, pairing_id) REFERENCES roster_run_pairing (roster_run_id, pairing_id)`
+- `FOREIGN KEY (pairing_leg_id, pairing_id) REFERENCES pairing_leg (id, pairing_id)`
+- `CHECK ((rule = 'NO_LEGAL_CREW') = (role IS NOT NULL))`
+- `CHECK ((resolution IS NULL) = (resolved_at IS NULL))`
+- `CHECK ((resolution IS NOT DISTINCT FROM 'overridden') = (override_reason IS NOT NULL))`
+- `CHECK ((resolution IS NOT DISTINCT FROM 'overridden') = (overridden_by IS NOT NULL))`
+- `CHECK (resolution IS DISTINCT FROM 'overridden' OR rule IN ('NO_LOCAL_CREW', 'POLICE_MIN', 'POLICE_NO_SEAT'))`
 
-| Group 1 rule (11 Oct 2026)                                      | Planned source/storage                                                                        | Enforced today in merged SQL?                                                                             |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Pairing returns to home base; at most 3 days                    | `pairing`, ordered `pairing_leg`, `route`, `flight`; compare initial origin/final destination | **No.** F8 tables are not merged; validation in F8 backend required                                       |
-| Max 4 legs **and** 13 hours per duty                            | `pairing_leg.duty_day`, F2 flight times, `legality_rule`                                      | **No.** `pairing.duty_hours` is an aggregate, not full per-duty timestamps                                |
-| 1 captain, 1 first officer, F9 cabin count                      | `pairing_leg_assignment`, `crew.role`, F9 aircraft type                                       | **No.** F9 has no dedicated cabin-crew-count value                                                        |
-| 1 destination-language-capable crew                             | `crew.languages`, `country_language`, destination from F2 route                               | **No.** Need normalized airport country identifiers                                                       |
-| 2 police on each international flight; booked seats             | `crew.role=police`, assignment plus proposed F3 booking/seat API                              | **No.** F3 reservation tables and F6 boarding integration are not merged                                  |
-| Valid licence, rating, fleet and availability                   | `crew`, `crew_certification`, F9 aircraft type, rest and duty records                         | **No.** Must evaluate against service date and aircraft type                                              |
-| At least 10 hours rest; max 100 flight hours in rolling 28 days | Flight/duty histories and country rule                                                        | **No.** Need exact duty boundaries and published/revised history                                          |
-| No overlapping crew flight assignments                          | Crew assignments joined to flight time windows                                                | **No.** Must handle atomic concurrent allocation and event changes                                        |
-| Stricter destination-country limits win                         | `legality_rule.country_code`; planned country mapping                                         | **No.** No regulatory dataset approved or seeded                                                          |
-| Company override only, with Ops identity and reason             | `rule_break`, F15 `audit_log`                                                                 | **No.** Draft CHECK not fully NULL-safe; real legal approval separate                                     |
-| Publish only with no open breaks                                | `roster_run.status`, `rule_break.resolution`, coverage query                                  | **No.** Backend transaction and concurrent recheck required                                               |
-| Republish and notify crew after changes                         | `roster_run` / assignments + F13 event                                                        | **No.** Assignment revision/history contract incomplete                                                   |
-| Crew duty hours to F5 overtime                                  | Derived duty intervals; publication/version identifiers                                       | **No.** Duty start/end and rate logic need interface definitions                                          |
-| Simulation clock from F1                                        | Application clock service; future `assigned_at`, `published_at`, `resolved_at`                | **No F8 implementation.** Draft `DEFAULT now()` is real wall-clock time, not automatically simulated time |
+**Named indexes:**
 
-**Important interpretation:** A violation marked “company” in the feature spec is **not necessarily legally waivable in real airline operations**. The implementation should not treat specification labels as external legal authorization; DB/feature leads must approve jurisdiction-specific policies before a production claim.
+- `CREATE UNIQUE INDEX rule_break_open_uq ON rule_break (pairing_leg_id, rule, crew_id, role) NULLS NOT DISTINCT WHERE resolved_at IS NULL;`
+- `CREATE INDEX rule_break_run_idx ON rule_break (roster_run_id, pairing_id);`
+- `CREATE INDEX rule_break_run_open_idx ON rule_break (roster_run_id) WHERE resolved_at IS NULL;`
 
-## 5. Integration issues to resolve before an F8 migration
+## Relationships, history and remaining application work
 
-| Priority    | Issue in supplied SQL or neighboring features                                                                                                                           | Recommended DB-team action                                                                                                                                                                                  |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Blocker** | `crew.base_airport`, `pairing.base_airport`, `roster_run.base_airport` reference `airport(code)`, but **the real PK is `airport(iata_code)`**                           | Replace the three FK targets with `airport(iata_code)`; preserve source draft in version history                                                                                                            |
-| **Blocker** | `pairing_leg_assignment` has **no `roster_run_id`**; multiple runs for the same leg share one global active assignment list                                             | Agree if the assignment is an immutable published operational fact or a draft/run-specific allocation. Add a run FK or an explicit assignment snapshot/version mapping and distinguish draft from published |
-| **High**    | `fleet_aircraft_type` and `crew_certification.aircraft_type` are unvalidated TEXT; F9 `aircraft_type.code` is only **partially** unique for non-deleted rows            | Prefer referencing `aircraft_type.id` (UUID) or approve a stable lookup/interface keyed on active code; account for F9 layout versions (`A320-V2`)                                                          |
-| **High**    | Existing `aircraft_type` SQL does **not** store `min_cabin_crew` / required cabin crew count                                                                            | Obtain approved F9 parameter or derived rule, with version-safe source and business rule                                                                                                                    |
-| **High**    | `airport.country` is unnormalized `TEXT`; F8 country codes require `CHAR(2)` ISO values                                                                                 | Define authoritative country-code mapping; avoid assuming free-text country names are ISO-3166-alpha-2                                                                                                      |
-| **High**    | `legality_rule.country_code CHAR(2) UNIQUE` permits **multiple NULL rows** in PostgreSQL                                                                                | Enforce a single default rule (e.g., partial unique index for `country_code IS NULL`) and document effective stricter-country rule merging                                                                  |
-| **High**    | The `rule_break` check `((resolution = 'overridden') = (override_reason IS NOT NULL))` can evaluate to `NULL` when resolution is NULL; PostgreSQL CHECK accepts UNKNOWN | Define a NULL-safe check tying together `resolution`, `override_reason`, `overridden_by`, and `resolved_at`; maintain allowed override rule whitelist                                                       |
-| **High**    | A pairing has total `duty_hours` and `duty_day` per leg, but no duty/report/release interval                                                                            | Agree report/debrief buffers and per-duty boundary source (derived or materialized); necessary for 13-hour duty, 10-hour rest and F5 overtime                                                               |
-| **High**    | `ON DELETE CASCADE` from pairing → leg → assignment could destroy auditability; published-run pairings cannot be deleted                                                | Use soft-delete and protect published history; agree FK/delete policy and immutable snapshots/versioning                                                                                                    |
-| **High**    | Roster run has only `draft` or `published`; post-publication modifications and crew re-notifications need version/order                                                 | Add a revision/publication history or defined immutable run strategy and idempotent event contract                                                                                                          |
-| **High**    | `pairing_leg_assignment` lacks a DB guard against duplicate active crew/leg assignments; simple uniqueness will not detect **overlap across different legs**            | At minimum, partial unique `(pairing_leg_id, crew_id)` for active rows; enforce schedule conflicts transactionally using indexed time queries and appropriate locking                                       |
-| **High**    | F3 booking/seat inventory and F6 boarding rules are not yet integrated                                                                                                  | Decide whether police receive passenger bookings/tickets or separate protected occupancy rows; define aisle/front/Economy-first availability and override permissions                                       |
-| **Medium**  | Draft `crew.licence_number NOT NULL UNIQUE` requires a licence for every police officer; licence expiry warning threshold unspecified                                   | Confirm whether police have an equivalent credential and whether unique numbers are soft-delete aware; agree expiring-soon days                                                                             |
-| **Medium**  | `pairing.is_valid=false` and `invalid_reason` are stored, but the API says invalid pairings **cannot be committed**                                                     | Decide whether invalid pairings exist only in preview, or can persist as unpublished drafts; update status semantics                                                                                        |
-| **Medium**  | `pairing_leg.status` duplicates `flight.status` and may diverge after Feature 2 events                                                                                  | Set synchronization/derivation policy and use stable `flight.id` on all updates                                                                                                                             |
-| **Medium**  | Draft `roster_run` lacks `date_to >= date_from`; `pairing_leg.duty_day` lacks 1–3 bound; `legality_rule` lacks threshold positivity checks                              | Add FK/index/check constraints and enum validation before DB Leads approve migration                                                                                                                        |
-| **Medium**  | `audit_log.actor_id` is `user.id` per merged SQL comments; `rule_break.overridden_by` is `staff.id`                                                                     | Resolve actor ID through `staff.user_id` and write F15 allowed action codes (not arbitrary unapproved `override` action)                                                                                    |
-| **Medium**  | Simulated business timestamps conflict with SQL `DEFAULT now()` values                                                                                                  | Keep `created_at`/`updated_at` as actual DB clock according to shared docs; explicitly supply simulation clock for event times where required                                                               |
-| **Medium**  | No F8 reference seeds or production-appropriate crew sample data exist in `dev`                                                                                         | Prepare approved country languages, defaults and test fixtures; never seed fabricated real crew/licence data into production                                                                                |
+- `crew.base_airport`, `pairing.base_airport`, `roster_run.base_airport` → `airport.iata_code`; `pairing_leg.flight_id` → `flight.id` are SQL-enforced cross-feature FKs.
+- `roster_run_pairing.pairing_id` is globally unique: a pairing belongs to at most one run. Assignment `pairing_id` references this link, and a composite FK keeps its leg in that pairing. The earlier cross-run ambiguity is addressed by this ownership model, not by adding a run ID to each assignment.
+- `rule_break` references both `(roster_run_id, pairing_id)` and `(pairing_leg_id, pairing_id)`. It cannot point to a different run or pairing's leg.
+- A pairing hard delete cascades only to its legs. Run membership, assignments and breaks have blocking FKs. Published-run deletion protection and transactional draft cleanup remain application requirements.
+- Assignment removal is represented by `unassigned_at` plus `reason`; replacements are new rows. Partial indexes prevent duplicate active crew/leg rows and duplicate active captain/first-officer seats. They do not detect overlap across different flights.
+- NULL-safe CHECKs require `resolved_at` with resolution, require both override actor and reason exactly for `overridden`, and allow overrides only for `NO_LOCAL_CREW`, `POLICE_MIN`, `POLICE_NO_SEAT`. `WRONG_FLEET` is now also an allowed rule. The partial `rule_break_open_uq` uses `NULLS NOT DISTINCT` to deduplicate open breaks even with NULL crew/role.
+- Pairing closure, derived duty boundaries, 28-day hours, licences/ratings, staffing counts, country-language coverage, assignment role matching and cross-flight overlap still require a backend. SQL comments prescribe locking the crew row (`SELECT ... FOR UPDATE`) during assignment validation.
+- The schema checks roster date order and published timestamp consistency. It does not enforce one run per base/range or the publish gate requiring zero open breaks. The comments describe publishing once, then making changes in place with history and notifications; no roster revision column is defined.
+- Business timestamps (`assigned_at`, `unassigned_at`, `published_at`, `resolved_at`) require application simulation time. Audit/storage timestamps use real time.
+- F3/F6 police seat/boarding integration, F5 overtime and F13 notifications remain contracts to implement. F15 audit writing must map override `staff.id` through `staff.user_id`, use an existing audit action, set `source_feature='8'` and mask sensitive fields. No F8 audit writer is present.
 
-### Sample review-only PostgreSQL corrections
+## 5. Review fixes and requested aircraft-type revision
 
-The following are **illustrative changes, not an executable migration**; create/approve migration through DB Leads after resolving table design:
+This section tracks the former proposal's section 5 review against the committed schema, plus the follow-up supplied by the documentation owner. A resolved SQL issue does not establish that its related backend rule is implemented.
 
-```sql
--- In the three proposed F8 tables, use actual existing airport PK:
--- base_airport TEXT NOT NULL REFERENCES airport (iata_code)
+### Requested UUID references — not yet in the schema
 
--- A UNIQUE nullable country code alone does not ensure one default row:
-CREATE UNIQUE INDEX legality_rule_one_default_uq
-  ON legality_rule ((1)) WHERE country_code IS NULL;
+The follow-up explicitly requests using F9's existing `aircraft_type` instead of model-name text:
 
--- A crew member should not have two active rows on the *same* leg:
-CREATE UNIQUE INDEX pairing_leg_assignment_active_uq
-  ON pairing_leg_assignment (pairing_leg_id, crew_id)
-  WHERE unassigned_at IS NULL;
+| Current committed column                 | Requested replacement                                                    | Status                                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `crew.fleet_aircraft_type TEXT NOT NULL` | `crew.aircraft_type_id UUID REFERENCES aircraft_type (id)`               | Pending schema/migration change; current dictionary retains the actual TEXT column |
+| `crew_certification.aircraft_type TEXT`  | `crew_certification.aircraft_type_id UUID REFERENCES aircraft_type (id)` | Pending schema/migration change; general certifications currently allow NULL       |
 
--- Still requires application/transactional cross-leg overlap checks.
--- Required checks tying override reason/actor/resolution must be designed
--- jointly with F8 and F15 before implementation.
-```
+Do not create a second aircraft type table. The requested relationships target F9's existing UUID primary key. When the Database Team implements the revision, it must agree nullability, map existing model strings to IDs, update the certification uniqueness index and Prisma relations, and create a new forward migration. Model strings can correspond to several layout versions, so the mapping must resolve ambiguity explicitly. Confirm how a rating applies across layout versions before replacing model matching with ID comparison. Do not rewrite the committed F8 migration to imply the change already exists.
 
-These snippets assume the F8 tables have already been created and are **not** safe to execute alone.
+### Earlier section 5 fixes: current disposition
 
-## 6. Proposed seeds and verification scenarios
+| Earlier review issue                        | Current SQL / repository evidence                                                                              | Remaining work                                                              |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Invalid airport(code) references            | Resolved: all three F8 base-airport FKs target airport.iata_code                                               | Verify deployed constraints separately                                      |
+| Assignment ownership across roster runs     | Resolved by unique roster_run_pairing.pairing_id and assignment/run-link plus leg/pairing FKs                  | Implement transactional draft cleanup and published history policy          |
+| Text fleet/type-rating references           | Current source deliberately uses aircraft_type.model strings; follow-up requests UUID FKs                      | Pending UUID revision above; do not describe it as implemented              |
+| Missing cabin staffing source               | crew_setting.seats_per_cabin_crew defaults to 50; comments define ceil(layout seats / divisor)                 | Implement calculation; no dedicated F9 count column exists                  |
+| Country normalization                       | airport.country and F8 country columns have lowercase two-letter format CHECKs                                 | Normalize existing data before migration; populate agreed language mappings |
+| Multiple nullable default legality rules    | Superseded: defaults are crew_setting keys; country_legality_rule has a non-NULL country PK                    | Implement stricter-country rule merging                                     |
+| NULL-unsafe override metadata               | Resolved: NULL-safe actor/reason checks, resolution timestamp consistency and company-only override whitelist  | Implement permission checks and F15 audit writer                            |
+| Missing duty boundaries                     | report_minutes=60 and release_minutes=0 inserted; duty intervals derive from flight times                      | Implement per-duty grouping, rest and rolling-hour calculations             |
+| Cascading deletes / published history       | Only pairing→leg cascades; run membership and assignment/break FKs block referenced deletes                    | Backend must protect published runs and perform ordered draft deletion      |
+| Revisions and post-publication changes      | Current design publishes once and changes assignments in place with unassigned_at/reason                       | Notifications and audit trail remain unimplemented; no revision column      |
+| Duplicate assignments / overlap             | Active crew/leg and pilot-role partial unique indexes exist                                                    | Cross-flight overlap and concurrent checks need crew-row locking            |
+| Police booking/boarding                     | No F3/F6 booking/seat integration in this schema                                                               | Agree seat allocation and boarding contract                                 |
+| Licence policy / expiry warning             | Soft-delete-aware licence uniqueness and expiry_warning_days=30 exist; licence remains mandatory for all roles | Confirm credentials for police role and implement expiry checks             |
+| Stored pairing validity / copied leg status | Proposed validity, duty aggregates and leg-status copies were removed                                          | Derive validity and status from current flights in application code         |
+| Range and numeric checks                    | Roster date ordering and positive country rest/duty values are checked                                         | Text settings still need numeric validation; duty_day column was removed    |
+| Audit actor identity                        | Override FK is staff.id; audit_log actor_id represents user.id by contract                                     | Map staff.user_id and use supported F15 actions                             |
+| Simulation time                             | F8 business timestamps have no now() defaults                                                                  | Supply simulation time from application; verify at runtime                  |
+| Missing F8 seeds                            | Eleven defaults inserted; no crew/certification/country-language fixtures                                      | Agree and add fixtures through a separate seed change                       |
 
-**Reference/data dictionaries to approve:** one default `legality_rule` using the project’s 4 flights / 13 duty hours / 3 pairing days / 10 rest hours / 100 hours per 28 days / 1 local / 2 international police limits; optionally stricter per-country records; country-to-language ISO mapping; F9 aircraft type definitions and cabin crew counts. These are **requirements-derived defaults**, not verified rules from aviation authorities.
+### DBML follow-up — source needed
 
-**Fixtures for test/staging only:** crews with all four roles, valid/expired and near-expiry licences, multiple languages, certified/uncertified pilots, multiple same-day and overnight F2 flights and bases, two draft runs sharing pairings, publication/republication, sick-call removals, concurrent overlapping crew assignment attempts, international/domestic police requirements, missing police seats, cancelled/diverted flights and company-only override history.
+The supplied message says the DBML is missing “these 4”, but does not identify those items. No `.dbml` file is present in this checkout. The four missing items and the external DBML cannot be marked reviewed or fixed until their names/source are available. This is separate from the four F2 tables documented here; their identity must not be assumed. No DBML, schema or migration was changed in this Markdown-only task.
 
-**Publish tests:** rejected while an open law or company break exists; accepted after valid fixes or permitted company override with actor/reason; blocked for override of a law-tagged rule; blocked on attempted deletion of published pairing; rechecks after flight events; audit log contains action, who, when, before/after details and safe reason; assignment history is recoverable.
+## Seeds and verification
 
-## 7. Interfaces and data ownership
+The F8 migration inserts the 11 settings above. Neither it nor `seed.ts` inserts crew, certifications, country-language mappings, country overrides, pairings, rosters, assignments or breaks. Before runtime approval, verify migration deployment and test FK failures, NULL-safe overrides, duplicate active pilot assignments, cross-flight concurrent allocation, published history preservation and publication with unresolved breaks. Those runtime checks were not executed for this documentation update.
 
-| Producer → consumer | Required contract / ownership                                                                                                    |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| F2 → F8             | Flight `id`, dep/arr instants, airports, aircraft ID, cancellation/reschedule/aircraft change event and stable event identifier  |
-| F9 → F8             | `aircraft_type.id`, active type/code, approved cabin staffing count, type-rating matching policy                                 |
-| F8 ↔ F3 / F6        | Air marshal seat assignment and board-first workflow. Booking/seat inventory schema not yet available in Level 1                 |
-| F8 → F2             | Crew coverage by flight; pairing-impact counts for schedule change preview                                                       |
-| F8 → F5             | Duty-hour and roster version/period totals for overtime payroll; payment calculation belongs to F5                               |
-| F8 → F13            | Published/revised roster notification event, crew recipient mapping, event ID for deduplication                                  |
-| F8 → F14            | Crew utilisation, legality exceptions, coverage and published roster metrics                                                     |
-| F8 → F15            | Append-only action audit record with F15’s actual action enum, actor `user.id`, `source_feature='8'` and sensitive-field masking |
-| F1 → F8             | Ops staff authorization and an application-supplied simulation clock; no new F8 self-service identity                            |
+## Sources
 
-## 8. Source references and review checklist
-
-- **Feature source:** Group 1, “Feature 8: Crew Management & Rostering (Iteration-02)”, updated **11 Oct 2026**, supplied directly for this review. The original SQL was treated as **proposed**, not merged.
-- **Current database:** [`schema.sql`](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/apps/backend/src/db/schema.sql) / [`schema.prisma`](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/apps/backend/src/db/prisma/schema.prisma), `dev` SHA `752428e732` checked **21 Oct 2026**.
-- **Other documentation:** [F1 baseline](./f1-baseline.md), [F2 scheduling](./f2-flight-scheduling.md), [F9 aircraft](./f9-aircraft-management.md), [F15 audit](./f15-admin-audit.md), [Relationships & migrations](./relationships-and-migrations.md), [Seeds](./seed-data.md), [Decisions & maintenance](./decisions-and-maintenance.md).
-
-**Before DB implementation:** [ ] F8 and DB Leads approve corrected airport FKs; [ ] F9 resolves fleet/cabin limits; [ ] F8 defines roster assignment revision and duty boundaries; [ ] F3/F6 seat integrations agreed; [ ] F15 audit contract approved; [ ] legality country/default and NULL-safe override constraints approved; [ ] migration review/tests; [ ] update this dictionary with approved SQL and applied migration SHA; [ ] verify running database independently.
+- `schema.sql`, Part 8 (F8) and Part 9 (cross-feature FKs).
+- `prisma/schema.prisma` and `prisma/migrations/20261024120000_feature8_crew_rostering/migration.sql` at the commit in the header.
+- [Relationships & migrations](./relationships-and-migrations.md), [Seeds](./seed-data.md), [Decisions & maintenance](./decisions-and-maintenance.md).
 
 ---
 
-[← Database documentation home](../docs.md) · [Relationships & migrations](./relationships-and-migrations.md) · [Seed data](./seed-data.md) · [Decisions & maintenance](./decisions-and-maintenance.md)
+[← Database documentation home](../docs.md)

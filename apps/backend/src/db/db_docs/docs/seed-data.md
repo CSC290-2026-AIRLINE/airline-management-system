@@ -1,62 +1,55 @@
 # Seed Data and Bootstrap Status
 
-> **Status: MERGED LEVEL 1 SCHEMA — verified against `dev` on 21 Oct 2026 (`752428e732da`).** [PR #14](https://github.com/CSC290-2026-AIRLINE/airline-management-system/pull/14) merged on 12 Oct 2026 (16:54 UTC). The F1/F2/F4/F7/F9/F12/F15 SQL dictionary describes the committed 69-table Level 1 schema; Feature 8 is documented separately as an **unmerged proposal**. Repository merge is not proof of deployment to any running database or final feature-owner approval.
+> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
-## 5. Seed data — what exists and what is missing
+## Embedded SQL / migration inserts
 
-**A seed is an insertion of initial or test rows, not a table definition.** The following describes what the inspected `dev` branch contains, not what has already executed in your teammate’s machine or staging database.
+These statements exist in source; execution in a running database was not verified. Consolidated schema.sql includes the F2/F8 values; their incremental migrations insert them for an existing Level 1 installation.
 
-### 5.1 Statements embedded in `schema.sql`
+| Target                        | Inserted values                                                                 | Caveat                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| flight_setting                | holding_limit_minutes=30; approval_mode=auto; approval_response_delay_minutes=0 | airline_code is not inserted                                                                                                           |
+| fleet_setting                 | reserve_ratio=1.10                                                              | Stored as TEXT                                                                                                                         |
+| cabin_setting                 | Four network cabin defaults                                                     | Provisional F12 defaults: economy/premium economy paid with zero included meals; business/first complimentary with one; 48-hour window |
+| catering_setting              | payment_hold_minutes=30                                                         | Stored as TEXT                                                                                                                         |
+| crew_setting                  | Eleven project defaults                                                         | See complete keys/values in [F8](./f8-crew-management-and-rostering.md#settings-inserted-by-sql-and-the-f8-migration)                  |
+| role (Level 1 migration only) | admin / Admin / is_admin=true                                                   | ON CONFLICT (code) DO NOTHING                                                                                                          |
 
-| Target table       | Defined inserted values                                      | Notes                                                                                                                                                                                               |
-| ------------------ | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `flight_setting`   | `holding_limit_minutes = 30`                                 | Actual SQL insert; separate `airline_code` is still required.                                                                                                                                       |
-| `fleet_setting`    | `reserve_ratio = 1.10`                                       | Actual SQL insert, string value.                                                                                                                                                                    |
-| `cabin_setting`    | Four network rows: economy, premium economy, business, first | Marked **placeholder / confirm with F12 owner**. Economy and premium economy are paid with zero included meals; business/first complimentary with one included meal; all show 48-hour order window. |
-| `catering_setting` | `payment_hold_minutes = 30`                                  | Actual SQL insert.                                                                                                                                                                                  |
+## seed.ts on a fresh migrated database
 
-### 5.2 Migration-only bootstrap row
+| Target                  | Rows / keys per run                                                           | Repeatability                                     |
+| ----------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------- |
+| role                    | check-in, gate, baggage, admin                                                | Upsert; existing rows preserved                   |
+| airport                 | BKK, CNX, HKT; country th; timezone Asia/Bangkok                              | Upsert; existing rows preserved                   |
+| partner_airline         | PA (Partner Air), SC (Sky Connect)                                            | Upsert; existing rows preserved                   |
+| route                   | BKK→CNX, CNX→BKK, BKK→HKT, HKT→BKK                                            | Upsert by origin/destination                      |
+| partner_airline_route   | PA on BKK→CNX; PA and SC on CNX→BKK                                           | Three compound-key upserts                        |
+| airport_approval_policy | BKK: 00:00–05:00, 20 departures/hour, slots; CNX: 23:00–06:00, 8/hour, window | Two upserts; local curfew times                   |
+| user                    | 3 customer-type + 2 staff-type users                                          | New Faker rows every execution                    |
+| passenger / customer    | 3 each, linked to customer users                                              | New rows every execution                          |
+| staff                   | 2, random choice among the four roles                                         | New rows every execution                          |
+| refresh_token           | 10 generated token hashes                                                     | Two per generated user; not usable Clerk sessions |
 
-| Target | Insertion                             | Notes                                                                                                                                                |
-| ------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `role` | `admin` / `Admin` / `is_admin = true` | Inserted by the **merged Level 1 migration** after the copied schema via `ON CONFLICT (code) DO NOTHING`. Needed so staff sign-in can find its role. |
+HKT intentionally has no approval policy, and its routes have no partner coverage. No flights, schedule approvals or approval offers are seeded. The network/role upserts use empty updates, preserving existing values; rerunning does not repair old country codes or replace edited policies. The full seed is not idempotent because identity/session fixtures accumulate.
 
-### 5.3 `seed.ts`: Faker-generated development records
+## Remaining bootstrap and F8 data
 
-| Target table    | Per execution on a fresh DB | Meaning / caveat                                                                                         |
-| --------------- | --------------------------: | -------------------------------------------------------------------------------------------------------- |
-| `role`          |       4 role codes (upsert) | `check-in`, `gate`, `baggage`, `admin` (admin has `is_admin=true`). Already-existing rows are preserved. |
-| `user`          |                  5 new rows | 3 customer-type users + 2 staff-type users.                                                              |
-| `passenger`     |                  3 new rows | One for each generated customer user.                                                                    |
-| `customer`      |                  3 new rows | Each links a user and their passenger.                                                                   |
-| `staff`         |                  2 new rows | Each links to a generated staff-type user and picks a role at random.                                    |
-| `refresh_token` |                 10 new rows | Two generated token hashes for each of the five created users.                                           |
+No complete approved level1-seed.sql or equivalent reference bootstrap exists in this checkout. Screen catalogue/permissions, pricing_setting.base_currency, flight_setting.airline_code and an approved initial administrator setup still need agreement. Random staff fixtures are not a controlled initial administrator account.
 
-**Repeatability:** `role` uses `upsert` to avoid duplicate role codes. The random user/profile/token rows are created anew per execution; **do not describe the whole seed as fully idempotent**. Exact generated names, nationality, birthdays, and hashes vary each run; no fixed values should be documented as if guaranteed.
+F8 has committed tables and inserted default settings, but no country_language, country_legality_rule, crew, certification, pairing, roster, assignment or rule-break fixtures in seed.ts. Agree country/language mappings, active aircraft model values and test scenarios with owners before adding them. Do not document example crew identities or licences as production records.
 
-### 5.4 Required seeds that are not in this PR
+**Pending UUID revision:** F8 aircraft-type fixtures must follow the schema actually deployed. The requested `aircraft_type_id` FK revision is not implemented; when it is, use real F9 UUIDs and resolve existing model/layout mappings rather than seeding model strings into UUID fields. See [F8 section 5](./f8-crew-management-and-rostering.md#5-review-fixes-and-requested-aircraft-type-revision).
 
-The current branch header explicitly says that rows beyond the migration admin role—particularly **screen definitions, `pricing_setting.base_currency`, `flight_setting.airline_code`, and the first real admin account**—are not yet included as a complete `level1-seed.sql` in inspected `dev`. Other feature-specific reference rows may also be needed, pending owner agreement. Do **not** claim that these are deployed or that the example airline code `FL` is the confirmed company code.
+## Verification checklist
 
-### 5.5 Seed verification checklist
+- [x] Documented migration settings and current seed.ts targets/counts from source.
+- [ ] Confirm remaining bootstrap values and reference-data owners.
+- [ ] Verify migration/seed execution against a clean disposable PostgreSQL database.
+- [ ] Test reruns with existing edited network rows and required country-code normalization.
+- [ ] Verify F8 assignment/override/publication constraints and application behavior when implemented.
 
-- [ ] Full agreed reference seed file is committed and referenced here.
-- [ ] Role codes / permissions, screen catalogue, base currency, airline code and initial admin account are confirmed with owners.
-- [ ] All inserted tables, rows/keys, intended environment and responsible owner are documented.
-- [ ] Seed ordering respects FK dependencies; actual execution on a clean database is verified by the Database Team.
-- [ ] Real credentials, raw session tokens, passwords, and personally identifiable test data are not copied into documentation.
-
-### 5.6 Feature 8 reference data (proposed — not seeded)
-
-No Feature 8 tables or seeds are currently present in the merged Level 1 schema. When the F8 migration is approved, the database team must agree and seed:
-
-- Exactly one default `legality_rule`, plus approved country-specific overrides (initially use project defaults for all countries, per Iteration-02). A nullable unique `country_code` by itself does **not** ensure a single default row in PostgreSQL.
-- `country_language` codes using an agreed ISO-3166-1-alpha-2 country-code mapping and ISO-639-1 language codes. `airport.country` currently stores unnormalized TEXT, so normalize/transform before lookups.
-- F9 fleet type references, cabin-crew count by aircraft type, and representative crew/ratings **only in demo/test environments**. No fabricated production crew identity or licence records.
-- Police seat allocation depends on F3 booking/seat inventory; no confirmed F3 seed interface yet.
-
-See [F8 — Crew & Rostering](./f8-crew-management-and-rostering.md).
+Run the repository's npm run db:seed only in the intended environment after migration deployment; no seed command was executed during this update. Never include credentials or raw tokens in documentation.
 
 ---
 
-[← Database documentation home](../docs.md) · [Seed data](./seed-data.md) · [Relationships & migrations](./relationships-and-migrations.md) · [Decisions & maintenance](./decisions-and-maintenance.md)
+[← Database documentation home](../docs.md) · [Seeds](./seed-data.md) · [Relationships & migrations](./relationships-and-migrations.md) · [Decisions & maintenance](./decisions-and-maintenance.md)

@@ -1,6 +1,6 @@
 # F7 — Customer and passenger profiles / screening
 
-> **Status: MERGED LEVEL 1 SCHEMA — verified against `dev` on 21 Oct 2026 (`752428e732da`).** [PR #14](https://github.com/CSC290-2026-AIRLINE/airline-management-system/pull/14) merged on 12 Oct 2026 (16:54 UTC). The F1/F2/F4/F7/F9/F12/F15 SQL dictionary describes the committed 69-table Level 1 schema; Feature 8 is documented separately as an **unmerged proposal**. Repository merge is not proof of deployment to any running database or final feature-owner approval.
+> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
 **Tables (6):** [`passenger`](#table-passenger) · [`customer`](#table-customer) · [`customer_passenger`](#table-customer_passenger) · [`watchlist_entry`](#table-watchlist_entry) · [`screening_check`](#table-screening_check) · [`screening_review`](#table-screening_review)
 
@@ -131,7 +131,7 @@ Snapshot of an automated screening run and a possible watchlist match.
 
 **Indexes:** `screening_check_once_uq` (unique; `(passenger_id, flight_id, watchlist_entry_id, trigger_point) WHERE watchlist_entry_id IS NOT NU…`); `screening_check_flight_idx` (index; `(flight_id)`); `screening_check_passenger_idx` (index; `(passenger_id, occurred_at DESC)`); `screening_check_queue_idx` (index; `(flight_dep_at) WHERE outcome IN ('flagged', 'held')`).
 
-**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-screening_review"></a>
 

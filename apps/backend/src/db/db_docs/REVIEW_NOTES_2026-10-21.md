@@ -1,5 +1,7 @@
 # Database documentation — verification and changes (21 Oct 2026)
 
+> **Historical snapshot.** Counts and F8 proposal status below describe 21 Oct only. Superseded for current implementation by [24 Oct verification](./REVIEW_NOTES_2026-10-24.md).
+
 **Checked against:** `CSC290-2026-AIRLINE/airline-management-system`, GitHub `dev` commit `752428e732da4e4179a5c4f7ea2c1a07bc3f6400`; PR #14 merged **12 Oct 2026 at 16:54 UTC**. This review uses repository **source**, not direct access to a running PostgreSQL database.
 
 **Source ZIP:** `db_docs.zip` containing 12 Markdown files; all original files retained and updated, with an additional Feature 8 guide and this review note.
