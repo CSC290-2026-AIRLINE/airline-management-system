@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from '@tanstack/react-router';
 import type { AircraftType } from '../types/aircraftType';
+import { aircraftTypeService } from '../services/aircraftTypeService';
 
 interface CabinConfig {
   id: string;
@@ -11,55 +12,14 @@ interface CabinConfig {
   rowSeats: string[];
 }
 
-export const AircraftTypesPage: React.FC = () => {
-  const [aircraftTypes, setAircraftTypes] = useState<AircraftType[]>([
-    {
-      code: 'A320',
-      manufacturer: 'Airbus',
-      model: 'A320',
-      hold_weight_limit_kg: 9435,
-      max_takeoff_weight_kg: 78000,
-      max_range_km: 6100,
-      min_turnaround_minutes: 45,
-      operating_cost_per_hour: 5200,
-      cost_currency: 'USD',
-      is_active: false,
-      total_seats: 150,
-      layout: { cabins: [] }
-    },
-    {
-      code: 'A321',
-      manufacturer: 'Airbus',
-      model: 'A321',
-      hold_weight_limit_kg: 11780,
-      max_takeoff_weight_kg: 93500,
-      max_range_km: 5900,
-      min_turnaround_minutes: 55,
-      operating_cost_per_hour: 6100,
-      cost_currency: 'USD',
-      is_active: true,
-      total_seats: 220,
-      layout: { cabins: [] }
-    },
-    {
-      code: 'B738',
-      manufacturer: 'Boeing',
-      model: '737-800',
-      hold_weight_limit_kg: 8940,
-      max_takeoff_weight_kg: 79000,
-      max_range_km: 5400,
-      min_turnaround_minutes: 45,
-      operating_cost_per_hour: 5000,
-      cost_currency: 'USD',
-      is_active: true,
-      total_seats: 189,
-      layout: { cabins: [] }
-    }
-  ]);
 
-  const [selectedType, setSelectedType] = useState<AircraftType | null>(aircraftTypes[0]);
+export const AircraftTypesPage: React.FC = () => {
+  const [aircraftTypes, setAircraftTypes] = useState<AircraftType[]>([]);
+  const [selectedType, setSelectedType] = useState<AircraftType | null>(null);
   const [isEditorMode, setIsEditorMode] = useState<boolean>(false);
   const [editorTitle, setEditorTitle] = useState<string>('New Aircraft Type');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     code: 'A320',
@@ -75,7 +35,7 @@ export const AircraftTypesPage: React.FC = () => {
 
   const [cabins, setCabins] = useState<CabinConfig[]>([
     { id: '1', name: 'Business', firstRow: 1, lastRow: 3, layoutPattern: '2-2', rowSeats: ['A', 'B', 'D', 'E'] },
-    { id: '2', name: 'Economy', firstRow: 4, lastRow: 26, layoutPattern: '3-3', rowSeats: ['A', 'B', 'C', 'D', 'E', 'F'] }
+    { id: '2', name: 'Economy', firstRow: 4, lastRow: 26, layoutPattern: '3-3', rowSeats: ['A', 'B', 'C', 'D', 'E', 'F'] },
   ]);
 
   const [newCabinName, setNewCabinName] = useState('Economy');
@@ -84,6 +44,60 @@ export const AircraftTypesPage: React.FC = () => {
   const [newCabinLayout, setNewCabinLayout] = useState('2 - 3 - 2 (AB | DEF | GH)');
 
   const [blockedSeats, setBlockedSeats] = useState<Set<string>>(new Set(['3D', '3E']));
+
+  // Load real aircraft types on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTypes() {
+      setIsLoading(true);
+      setFetchError(null);
+      try {
+        const list = await aircraftTypeService.getAll();
+        if (!cancelled) {
+          if (list.length > 0) {
+            setAircraftTypes(list);
+            setSelectedType(list[0]);
+          } else {
+            // Default baseline if DB is completely empty
+            const defaults: AircraftType[] = [
+              {
+                code: 'A320',
+                manufacturer: 'Airbus',
+                model: 'A320',
+                hold_weight_limit_kg: 9435,
+                max_takeoff_weight_kg: 78000,
+                max_range_km: 6100,
+                min_turnaround_minutes: 45,
+                operating_cost_per_hour: 5200,
+                cost_currency: 'USD',
+                is_active: true,
+                layout: { cabins: [] },
+              },
+            ];
+            setAircraftTypes(defaults);
+            setSelectedType(defaults[0]);
+          }
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : 'Failed to load aircraft types';
+          console.error(msg);
+          setFetchError(msg);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadTypes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleOpenNewEditor = () => {
     setEditorTitle('New Aircraft Type');
@@ -100,7 +114,7 @@ export const AircraftTypesPage: React.FC = () => {
     });
     setCabins([
       { id: '1', name: 'Business', firstRow: 1, lastRow: 3, layoutPattern: '2-2', rowSeats: ['A', 'B', 'D', 'E'] },
-      { id: '2', name: 'Economy', firstRow: 4, lastRow: 26, layoutPattern: '3-3', rowSeats: ['A', 'B', 'C', 'D', 'E', 'F'] }
+      { id: '2', name: 'Economy', firstRow: 4, lastRow: 26, layoutPattern: '3-3', rowSeats: ['A', 'B', 'C', 'D', 'E', 'F'] },
     ]);
     setBlockedSeats(new Set());
     setIsEditorMode(true);
@@ -121,23 +135,34 @@ export const AircraftTypesPage: React.FC = () => {
     });
     setCabins([
       { id: '1', name: 'Business', firstRow: 1, lastRow: 3, layoutPattern: '2-2', rowSeats: ['A', 'B', 'D', 'E'] },
-      { id: '2', name: 'Economy', firstRow: 4, lastRow: 26, layoutPattern: '3-3', rowSeats: ['A', 'B', 'C', 'D', 'E', 'F'] }
+      { id: '2', name: 'Economy', firstRow: 4, lastRow: 26, layoutPattern: '3-3', rowSeats: ['A', 'B', 'C', 'D', 'E', 'F'] },
     ]);
     setBlockedSeats(new Set(['3D', '3E']));
     setIsEditorMode(true);
   };
 
-  const handleToggleActive = (code: string) => {
-    setAircraftTypes(
-      aircraftTypes.map((t) => (t.code === code ? { ...t, is_active: !t.is_active } : t))
+  const handleToggleActive = async (code: string) => {
+    const target = aircraftTypes.find((t) => t.code === code);
+    const newActive = target ? !target.is_active : false;
+
+    if (target?.id) {
+      try {
+        await aircraftTypeService.update(target.id, { is_active: newActive });
+      } catch (err) {
+        console.error('Failed to update type active status:', err);
+      }
+    }
+
+    setAircraftTypes((prev) =>
+      prev.map((t) => (t.code === code ? { ...t, is_active: newActive } : t))
     );
     if (selectedType && selectedType.code === code) {
-      setSelectedType({ ...selectedType, is_active: !selectedType.is_active });
+      setSelectedType({ ...selectedType, is_active: newActive });
     }
   };
 
   const handleRemoveCabin = (id: string) => {
-    setCabins(cabins.filter(c => c.id !== id));
+    setCabins(cabins.filter((c) => c.id !== id));
   };
 
   const handleAddCabin = () => {
@@ -157,7 +182,7 @@ export const AircraftTypesPage: React.FC = () => {
       firstRow: Number(newCabinFirstRow),
       lastRow: Number(newCabinLastRow),
       layoutPattern: pattern,
-      rowSeats: seats
+      rowSeats: seats,
     };
     setCabins([...cabins, newCabin]);
   };
@@ -173,56 +198,120 @@ export const AircraftTypesPage: React.FC = () => {
   };
 
   let totalSeats = 0;
-  cabins.forEach(c => {
+  cabins.forEach((c) => {
     const rowCount = c.lastRow - c.firstRow + 1;
-    const seatCount = c.layoutPattern === '2-3-2' ? 7 : (c.layoutPattern === '2-2' ? 4 : 6);
+    const seatCount = c.layoutPattern === '2-3-2' ? 7 : c.layoutPattern === '2-2' ? 4 : 6;
     totalSeats += rowCount * seatCount;
   });
   const blockedCount = blockedSeats.size;
   const sellableCount = totalSeats - blockedCount;
 
-  const handleSaveAircraftType = () => {
+  const handleSaveAircraftType = async () => {
     if (!formData.code.trim()) return;
-    const newTypeObj: AircraftType = {
-      code: formData.code,
-      manufacturer: formData.manufacturer,
-      model: formData.model,
-      hold_weight_limit_kg: Number(formData.hold_weight_limit_kg),
-      max_takeoff_weight_kg: Number(formData.max_takeoff_weight_kg),
-      max_range_km: Number(formData.max_range_km),
-      min_turnaround_minutes: Number(formData.min_turnaround_minutes),
+
+    // Convert cabin configs to layout format required by backend
+    const layoutCabins = cabins.map((c) => {
+      let cabinClass: 'first' | 'business' | 'premium_economy' | 'economy' = 'economy';
+      const lower = c.name.toLowerCase();
+      if (lower.includes('business')) cabinClass = 'business';
+      else if (lower.includes('first')) cabinClass = 'first';
+      else if (lower.includes('premium')) cabinClass = 'premium_economy';
+
+      const aisleAfter: string[] = [];
+      if (c.layoutPattern === '2-2' && c.rowSeats.includes('B')) aisleAfter.push('B');
+      if (c.layoutPattern === '3-3' && c.rowSeats.includes('C')) aisleAfter.push('C');
+      if (c.layoutPattern === '2-3-2') {
+        if (c.rowSeats.includes('B')) aisleAfter.push('B');
+        if (c.rowSeats.includes('E')) aisleAfter.push('E');
+      }
+
+      return {
+        cabin_class: cabinClass,
+        first_row: c.firstRow,
+        last_row: c.lastRow,
+        columns: c.rowSeats,
+        aisle_after: aisleAfter,
+        blocked_seats: Array.from(blockedSeats),
+      };
+    });
+
+    layoutCabins.sort((a, b) => a.first_row - b.first_row);
+
+    const payload = {
+      code: formData.code.trim().toUpperCase(),
+      manufacturer: formData.manufacturer.trim(),
+      model: formData.model.trim(),
+      hold_weight_limit_kg: Math.round(Number(formData.hold_weight_limit_kg)),
+      max_takeoff_weight_kg: Math.round(Number(formData.max_takeoff_weight_kg)),
+      max_range_km: Math.round(Number(formData.max_range_km)),
+      min_turnaround_minutes: Math.round(Number(formData.min_turnaround_minutes)),
       operating_cost_per_hour: Number(formData.operating_cost_per_hour),
-      cost_currency: formData.cost_currency,
+      cost_currency: formData.cost_currency || 'USD',
       is_active: true,
-      total_seats: totalSeats,
-      layout: { cabins: [] }
+      layout: {
+        cabins: layoutCabins,
+      },
     };
 
-    setAircraftTypes([newTypeObj, ...aircraftTypes]);
-    setSelectedType(newTypeObj);
-    setIsEditorMode(false);
+    try {
+      const created = await aircraftTypeService.create(payload);
+      setAircraftTypes((prev) => [created, ...prev]);
+      setSelectedType(created);
+      setIsEditorMode(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save aircraft type';
+      alert(`Save error: ${msg}`);
+    }
   };
 
   return (
-    <div style={{ padding: '24px', backgroundColor: '#f4f5f7', minHeight: '100vh', fontFamily: 'sans-serif', color: '#333' }}>
+    <div
+      style={{
+        padding: '24px',
+        backgroundColor: '#f4f5f7',
+        minHeight: '100vh',
+        fontFamily: 'sans-serif',
+        color: '#333',
+      }}
+    >
       {/* Top Navbar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #ddd', paddingBottom: '12px', backgroundColor: '#fff', padding: '12px 24px', borderRadius: '8px' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '20px',
+          borderBottom: '1px solid #ddd',
+          paddingBottom: '12px',
+          backgroundColor: '#fff',
+          padding: '12px 24px',
+          borderRadius: '8px',
+        }}
+      >
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Flython Ops</h2>
-          <Link 
-            to="/aircraft" 
+          <Link
+            to="/aircraft"
             style={{ color: '#5f6368', fontSize: '14px', textDecoration: 'none' }}
           >
             Fleet
           </Link>
-          <Link 
-            to="/aircraft-types" 
-            style={{ backgroundColor: '#e8f0fe', color: '#1a73e8', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px', textDecoration: 'none' }}
+          <Link
+            to="/aircraft-types"
+            style={{
+              backgroundColor: '#e8f0fe',
+              color: '#1a73e8',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              fontSize: '14px',
+              textDecoration: 'none',
+            }}
           >
             Aircraft Types
           </Link>
-          <Link 
-            to="/readiness" 
+          <Link
+            to="/readiness"
             style={{ color: '#5f6368', fontSize: '14px', textDecoration: 'none' }}
           >
             Readiness
@@ -231,133 +320,307 @@ export const AircraftTypesPage: React.FC = () => {
         <div style={{ fontSize: '13px', color: '#5f6368' }}>Staff · admin</div>
       </div>
 
+      {fetchError && (
+        <div
+          style={{
+            padding: '10px 16px',
+            marginBottom: '16px',
+            backgroundColor: '#fce8e6',
+            color: '#c5221f',
+            borderRadius: '6px',
+            fontSize: '13px',
+          }}
+        >
+          ⚠️ {fetchError}
+        </div>
+      )}
+
       {!isEditorMode ? (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '16px',
+            }}
+          >
             <div>
               <h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Aircraft types</h1>
               <p style={{ fontSize: '13px', color: '#5f6368', margin: '4px 0 0 0' }}>
-                Each type's seat map layout is set once, at creation. To change a layout, clone the type and retire the old one.
+                Each type's seat map layout is set once, at creation. To change a layout, clone the
+                type and retire the old one.
               </p>
             </div>
-            <button 
+            <button
               onClick={handleOpenNewEditor}
-              style={{ backgroundColor: '#1a56db', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer' }}
+              style={{
+                backgroundColor: '#1a56db',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: '6px',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                cursor: 'pointer',
+              }}
             >
               + New Aircraft Type
             </button>
           </div>
 
           <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
-            <div style={{ flex: 1.5, backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #dadce0', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #dadce0', color: '#5f6368', backgroundColor: '#fff' }}>
-                    <th style={{ padding: '12px 16px', fontWeight: 600 }}>Code</th>
-                    <th style={{ padding: '12px 16px', fontWeight: 600 }}>Manufacturer / Model</th>
-                    <th style={{ padding: '12px 16px', fontWeight: 600 }}>Hold limit</th>
-                    <th style={{ padding: '12px 16px', fontWeight: 600 }}>Seats</th>
-                    <th style={{ padding: '12px 16px', fontWeight: 600 }}>Turnaround</th>
-                    <th style={{ padding: '12px 16px', fontWeight: 600 }}>Cost / hour</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aircraftTypes.map((type) => (
-                    <tr 
-                      key={type.code} 
-                      onClick={() => setSelectedType(type)}
-                      style={{ 
-                        borderBottom: '1px solid #f1f3f4', 
-                        backgroundColor: selectedType?.code === type.code ? '#e8f0fe' : '#fff',
-                        cursor: 'pointer' 
+            <div
+              style={{
+                flex: 1.5,
+                backgroundColor: '#fff',
+                borderRadius: '8px',
+                border: '1px solid #dadce0',
+                overflow: 'hidden',
+              }}
+            >
+              {isLoading ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: '#5f6368' }}>
+                  Loading aircraft types...
+                </div>
+              ) : aircraftTypes.length === 0 ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: '#5f6368' }}>
+                  No aircraft types found.
+                </div>
+              ) : (
+                <table
+                  style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    textAlign: 'left',
+                    fontSize: '13px',
+                  }}
+                >
+                  <thead>
+                    <tr
+                      style={{
+                        borderBottom: '1px solid #dadce0',
+                        color: '#5f6368',
+                        backgroundColor: '#fff',
                       }}
                     >
-                      <td style={{ padding: '14px 16px', fontWeight: 'bold' }}>{type.code}</td>
-                      <td style={{ padding: '14px 16px', color: '#3c4043' }}>{type.manufacturer} {type.model}</td>
-                      <td style={{ padding: '14px 16px', color: '#3c4043' }}>{type.hold_weight_limit_kg.toLocaleString()} kg</td>
-                      <td style={{ padding: '14px 16px', color: '#3c4043' }}>{type.total_seats}</td>
-                      <td style={{ padding: '14px 16px', color: '#3c4043' }}>{type.min_turnaround_minutes} min</td>
-                      <td style={{ padding: '14px 16px', color: '#3c4043' }}>{type.cost_currency} {type.operating_cost_per_hour.toLocaleString()}</td>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Code</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Manufacturer / Model</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Hold limit</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Turnaround</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>Cost / hour</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {aircraftTypes.map((type) => (
+                      <tr
+                        key={type.code}
+                        onClick={() => setSelectedType(type)}
+                        style={{
+                          borderBottom: '1px solid #f1f3f4',
+                          backgroundColor: selectedType?.code === type.code ? '#e8f0fe' : '#fff',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <td style={{ padding: '14px 16px', fontWeight: 'bold' }}>{type.code}</td>
+                        <td style={{ padding: '14px 16px', color: '#3c4043' }}>
+                          {type.manufacturer} {type.model}
+                        </td>
+                        <td style={{ padding: '14px 16px', color: '#3c4043' }}>
+                          {type.hold_weight_limit_kg.toLocaleString()} kg
+                        </td>
+                        <td style={{ padding: '14px 16px', color: '#3c4043' }}>
+                          {type.min_turnaround_minutes} min
+                        </td>
+                        <td style={{ padding: '14px 16px', color: '#3c4043' }}>
+                          {type.cost_currency} {type.operating_cost_per_hour.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             {selectedType && (
-              <div style={{ flex: 1, backgroundColor: '#fff', padding: '24px', borderRadius: '8px', border: '1px solid #dadce0', boxSizing: 'border-box' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div
+                style={{
+                  flex: 1,
+                  backgroundColor: '#fff',
+                  padding: '24px',
+                  borderRadius: '8px',
+                  border: '1px solid #dadce0',
+                  boxSizing: 'border-box',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: '16px',
+                  }}
+                >
                   <div>
-                    <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>{selectedType.code}</h2>
-                    <p style={{ margin: '4px 0 0 0', color: '#5f6368', fontSize: '13px' }}>{selectedType.manufacturer} {selectedType.model}</p>
+                    <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>
+                      {selectedType.code}
+                    </h2>
+                    <p style={{ margin: '4px 0 0 0', color: '#5f6368', fontSize: '13px' }}>
+                      {selectedType.manufacturer} {selectedType.model}
+                    </p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setSelectedType(null)}
-                    style={{ border: '1px solid #dadce0', background: '#fff', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+                    style={{
+                      border: '1px solid #dadce0',
+                      background: '#fff',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                    }}
                   >
                     Close
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', marginBottom: '20px', borderBottom: '1px solid #f1f3f4', paddingBottom: '16px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    fontSize: '13px',
+                    marginBottom: '20px',
+                    borderBottom: '1px solid #f1f3f4',
+                    paddingBottom: '16px',
+                  }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#5f6368' }}>Max takeoff weight</span>
-                    <span style={{ fontWeight: 'bold' }}>{selectedType.max_takeoff_weight_kg.toLocaleString()} kg</span>
+                    <span style={{ fontWeight: 'bold' }}>
+                      {selectedType.max_takeoff_weight_kg.toLocaleString()} kg
+                    </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#5f6368' }}>Status</span>
-                    <span style={{ fontWeight: 'bold', color: selectedType.is_active ? '#137333' : '#c5221f' }}>
+                    <span
+                      style={{
+                        fontWeight: 'bold',
+                        color: selectedType.is_active ? '#137333' : '#c5221f',
+                      }}
+                    >
                       {selectedType.is_active ? 'active' : 'retired (is_active = false)'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#5f6368' }}>Hold weight limit</span>
-                    <span style={{ fontWeight: 'bold' }}>{selectedType.hold_weight_limit_kg.toLocaleString()} kg</span>
+                    <span style={{ fontWeight: 'bold' }}>
+                      {selectedType.hold_weight_limit_kg.toLocaleString()} kg
+                    </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#5f6368' }}>Max range</span>
-                    <span style={{ fontWeight: 'bold' }}>{selectedType.max_range_km.toLocaleString()} km</span>
+                    <span style={{ fontWeight: 'bold' }}>
+                      {selectedType.max_range_km.toLocaleString()} km
+                    </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#5f6368' }}>Min turnaround</span>
-                    <span style={{ fontWeight: 'bold' }}>{selectedType.min_turnaround_minutes} min</span>
+                    <span style={{ fontWeight: 'bold' }}>
+                      {selectedType.min_turnaround_minutes} min
+                    </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#5f6368' }}>Operating cost</span>
-                    <span style={{ fontWeight: 'bold' }}>{selectedType.cost_currency} {selectedType.operating_cost_per_hour.toLocaleString()} / hour</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#5f6368' }}>Total seats</span>
-                    <span style={{ fontWeight: 'bold' }}>{selectedType.total_seats}</span>
+                    <span style={{ fontWeight: 'bold' }}>
+                      {selectedType.cost_currency}{' '}
+                      {selectedType.operating_cost_per_hour.toLocaleString()} / hour
+                    </span>
                   </div>
                 </div>
 
                 <div style={{ marginBottom: '20px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#5f6368', marginBottom: '8px', letterSpacing: '0.5px' }}>CABINS</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '6px' }}>
-                    <span style={{ color: '#3c4043' }}>Business (rows 1-4)</span>
-                    <span style={{ color: '#5f6368' }}>4 rows · 2-2</span>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      color: '#5f6368',
+                      marginBottom: '8px',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    CABINS
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                    <span style={{ color: '#3c4043' }}>Economy (rows 5-30)</span>
-                    <span style={{ color: '#5f6368' }}>26 rows · 3-3</span>
-                  </div>
+                  {selectedType.layout?.cabins && selectedType.layout.cabins.length > 0 ? (
+                    selectedType.layout.cabins.map((c, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontSize: '13px',
+                          marginBottom: '6px',
+                        }}
+                      >
+                        <span style={{ color: '#3c4043', textTransform: 'capitalize' }}>
+                          {c.cabin_class} (rows {c.first_row}-{c.last_row})
+                        </span>
+                        <span style={{ color: '#5f6368' }}>
+                          {c.last_row - c.first_row + 1} rows · {c.columns.join('')}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: '13px', color: '#5f6368' }}>
+                      Standard seat layout (rows 1-30)
+                    </div>
+                  )}
                 </div>
 
-                <div style={{ backgroundColor: '#fef7e0', border: '1px solid #fce8b2', padding: '12px', borderRadius: '6px', fontSize: '12px', color: '#b06000', marginBottom: '20px', lineHeight: '1.4' }}>
-                  Layout is locked. To change it, clone this type (the clone starts with this layout) and retire the old one.
+                <div
+                  style={{
+                    backgroundColor: '#fef7e0',
+                    border: '1px solid #fce8b2',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    color: '#b06000',
+                    marginBottom: '20px',
+                    lineHeight: '1.4',
+                  }}
+                >
+                  Layout is locked. To change it, clone this type (the clone starts with this layout)
+                  and retire the old one.
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button 
+                  <button
                     onClick={() => handleOpenCloneEditor(selectedType)}
-                    style={{ backgroundColor: '#1a56db', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}
+                    style={{
+                      backgroundColor: '#1a56db',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
                   >
                     Clone type
                   </button>
-                  <button 
-                    onClick={() => handleToggleActive(selectedType.code)}
-                    style={{ border: '1px solid #dadce0', background: '#fff', color: '#3c4043', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' }}
+                  <button
+                    onClick={() => void handleToggleActive(selectedType.code)}
+                    style={{
+                      border: '1px solid #dadce0',
+                      background: '#fff',
+                      color: '#3c4043',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
                   >
                     {selectedType.is_active ? 'Retire type' : 'Reactivate type'}
                   </button>
@@ -368,348 +631,515 @@ export const AircraftTypesPage: React.FC = () => {
         </div>
       ) : (
         <div>
-          <button 
+          <button
             onClick={() => setIsEditorMode(false)}
-            style={{ background: 'none', border: 'none', color: '#5f6368', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '8px' }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#5f6368',
+              fontSize: '13px',
+              cursor: 'pointer',
+              padding: 0,
+              marginBottom: '8px',
+            }}
           >
             ← Aircraft Types
           </button>
-          <h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: '0 0 20px 0' }}>{editorTitle}</h1>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '16px',
+            }}
+          >
+            <h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{editorTitle}</h1>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setIsEditorMode(false)}
+                style={{
+                  border: '1px solid #dadce0',
+                  background: '#fff',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleSaveAircraftType()}
+                style={{
+                  backgroundColor: '#1a56db',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '8px 20px',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Save Type & Layout
+              </button>
+            </div>
+          </div>
 
-          <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
-            <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #dadce0' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Code</label>
-                    <input 
-                      type="text" 
-                      value={formData.code} 
-                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Hold weight limit (kg)</label>
-                    <input 
-                      type="number" 
-                      value={formData.hold_weight_limit_kg} 
-                      onChange={(e) => setFormData({ ...formData, hold_weight_limit_kg: Number(e.target.value) })}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Max takeoff weight (kg)</label>
-                    <input 
-                      type="number" 
-                      value={formData.max_takeoff_weight_kg} 
-                      onChange={(e) => setFormData({ ...formData, max_takeoff_weight_kg: Number(e.target.value) })}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Manufacturer</label>
-                    <input 
-                      type="text" 
-                      value={formData.manufacturer} 
-                      onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Model</label>
-                    <input 
-                      type="text" 
-                      value={formData.model} 
-                      onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Max range (km)</label>
-                    <input 
-                      type="number" 
-                      value={formData.max_range_km} 
-                      onChange={(e) => setFormData({ ...formData, max_range_km: Number(e.target.value) })}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Min turnaround (min)</label>
-                    <input 
-                      type="number" 
-                      value={formData.min_turnaround_minutes} 
-                      onChange={(e) => setFormData({ ...formData, min_turnaround_minutes: Number(e.target.value) })}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Operating cost per hour</label>
-                    <input 
-                      type="number" 
-                      value={formData.operating_cost_per_hour} 
-                      onChange={(e) => setFormData({ ...formData, operating_cost_per_hour: Number(e.target.value) })}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Cost currency</label>
-                    <input 
-                      type="text" 
-                      value={formData.cost_currency} 
-                      onChange={(e) => setFormData({ ...formData, cost_currency: e.target.value })}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #dadce0' }}>
-                <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 'bold' }}>Cabins</h3>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                  {cabins.map((cabin) => (
-                    <div key={cabin.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8f9fa', padding: '10px 14px', borderRadius: '6px' }}>
-                      <span style={{ fontSize: '13px', color: '#3c4043' }}>
-                        <strong>{cabin.name}</strong> rows {cabin.firstRow}-{cabin.lastRow} · {cabin.layoutPattern}
-                      </span>
-                      <button 
-                        onClick={() => handleRemoveCabin(cabin.id)}
-                        style={{ border: 'none', background: 'none', color: '#c5221f', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ borderTop: '1px solid #f1f3f4', paddingTop: '12px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#5f6368', marginBottom: '8px' }}>ADD CABIN</div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Class name</label>
-                    <input 
-                      type="text" 
-                      value={newCabinName}
-                      onChange={(e) => setNewCabinName(e.target.value)}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>First row</label>
-                      <input 
-                        type="number" 
-                        value={newCabinFirstRow}
-                        onChange={(e) => setNewCabinFirstRow(Number(e.target.value))}
-                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Last row</label>
-                      <input 
-                        type="number" 
-                        value={newCabinLastRow}
-                        onChange={(e) => setNewCabinLastRow(Number(e.target.value))}
-                        style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', fontSize: '13px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: '12px' }}>
-                    <label style={{ display: 'block', fontSize: '11px', color: '#5f6368', marginBottom: '4px' }}>Seat layout (letters, "|" marks the aisle)</label>
-                    <select 
-                      value={newCabinLayout}
-                      onChange={(e) => setNewCabinLayout(e.target.value)}
-                      style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', backgroundColor: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                    >
-                      <option value="2 - 2 (AB | DE)">2 - 2 (AB | DE)</option>
-                      <option value="3 - 3 (ABC | DEF)">3 - 3 (ABC | DEF)</option>
-                      <option value="2 - 3 - 2 (AB | DEF | GH)">2 - 3 - 2 (AB | DEF | GH)</option>
-                    </select>
-                  </div>
-                  <button 
-                    onClick={handleAddCabin}
-                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #dadce0', background: '#fff', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', color: '#3c4043' }}
+          <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+            <div
+              style={{
+                flex: 1,
+                backgroundColor: '#fff',
+                padding: '24px',
+                borderRadius: '8px',
+                border: '1px solid #dadce0',
+              }}
+            >
+              <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: 'bold' }}>
+                Specification
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      color: '#5f6368',
+                      marginBottom: '4px',
+                    }}
                   >
-                    + Add cabin
-                  </button>
-                  <p style={{ fontSize: '11px', color: '#5f6368', marginTop: '6px' }}>Enter a class name and both row numbers to add this cabin.</p>
+                    IATA / Type Code
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.code}
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1px solid #dadce0',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      color: '#5f6368',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Manufacturer
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.manufacturer}
+                    onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1px solid #dadce0',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      color: '#5f6368',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Model
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.model}
+                    onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1px solid #dadce0',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      color: '#5f6368',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Hold limit (kg)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.hold_weight_limit_kg}
+                    onChange={(e) =>
+                      setFormData({ ...formData, hold_weight_limit_kg: Number(e.target.value) })
+                    }
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1px solid #dadce0',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      color: '#5f6368',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Max takeoff weight (kg)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.max_takeoff_weight_kg}
+                    onChange={(e) =>
+                      setFormData({ ...formData, max_takeoff_weight_kg: Number(e.target.value) })
+                    }
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1px solid #dadce0',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      color: '#5f6368',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Max range (km)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.max_range_km}
+                    onChange={(e) =>
+                      setFormData({ ...formData, max_range_km: Number(e.target.value) })
+                    }
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1px solid #dadce0',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      color: '#5f6368',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Min turnaround (min)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.min_turnaround_minutes}
+                    onChange={(e) =>
+                      setFormData({ ...formData, min_turnaround_minutes: Number(e.target.value) })
+                    }
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: '1px solid #dadce0',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      color: '#5f6368',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Operating cost / hour
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      value={formData.cost_currency}
+                      onChange={(e) => setFormData({ ...formData, cost_currency: e.target.value })}
+                      style={{
+                        width: '70px',
+                        padding: '8px',
+                        borderRadius: '6px',
+                        border: '1px solid #dadce0',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <input
+                      type="number"
+                      value={formData.operating_cost_per_hour}
+                      onChange={(e) =>
+                        setFormData({ ...formData, operating_cost_per_hour: Number(e.target.value) })
+                      }
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        borderRadius: '6px',
+                        border: '1px solid #dadce0',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div style={{ backgroundColor: '#fef7e0', border: '1px solid #fce8b2', padding: '12px', borderRadius: '6px', fontSize: '12px', color: '#b06000', lineHeight: '1.4' }}>
-                Once saved, this layout is permanent. To change it later, clone the type. Double-check row ranges, row types and blocked seats first.
-              </div>
+              <div style={{ borderTop: '1px solid #dadce0', marginTop: '24px', paddingTop: '16px' }}>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 'bold' }}>
+                  Cabins
+                </h3>
+                {cabins.map((cabin) => (
+                  <div
+                    key={cabin.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      backgroundColor: '#f8f9fa',
+                      padding: '10px 14px',
+                      borderRadius: '6px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{cabin.name}</span>
+                      <span style={{ fontSize: '12px', color: '#5f6368', marginLeft: '8px' }}>
+                        Rows {cabin.firstRow}–{cabin.lastRow} · {cabin.layoutPattern} (
+                        {cabin.rowSeats.join('')})
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveCabin(cabin.id)}
+                      style={{
+                        color: '#c5221f',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
 
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button 
-                  onClick={() => setIsEditorMode(false)}
-                  style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #dadce0', background: '#fff', cursor: 'pointer', fontSize: '13px' }}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '8px',
+                    alignItems: 'center',
+                    marginTop: '12px',
+                    flexWrap: 'wrap',
+                  }}
                 >
-                  Cancel
-                </button>
-                <button 
-                  onClick={handleSaveAircraftType}
-                  style={{ padding: '8px 20px', borderRadius: '6px', border: 'none', background: '#1a56db', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
-                >
-                  Save aircraft type
-                </button>
+                  <input
+                    type="text"
+                    placeholder="Cabin Name"
+                    value={newCabinName}
+                    onChange={(e) => setNewCabinName(e.target.value)}
+                    style={{
+                      width: '100px',
+                      padding: '6px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid #dadce0',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <input
+                    type="number"
+                    placeholder="First"
+                    value={newCabinFirstRow}
+                    onChange={(e) => setNewCabinFirstRow(Number(e.target.value))}
+                    style={{
+                      width: '50px',
+                      padding: '6px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid #dadce0',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <span>to</span>
+                  <input
+                    type="number"
+                    placeholder="Last"
+                    value={newCabinLastRow}
+                    onChange={(e) => setNewCabinLastRow(Number(e.target.value))}
+                    style={{
+                      width: '50px',
+                      padding: '6px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid #dadce0',
+                      fontSize: '12px',
+                    }}
+                  />
+                  <select
+                    value={newCabinLayout}
+                    onChange={(e) => setNewCabinLayout(e.target.value)}
+                    style={{
+                      padding: '6px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid #dadce0',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <option value="2 - 2 (AB | DE)">2 - 2 (AB | DE)</option>
+                    <option value="3 - 3 (ABC | DEF)">3 - 3 (ABC | DEF)</option>
+                    <option value="2 - 3 - 2 (AB | DEF | GH)">2 - 3 - 2 (AB | DEF | GH)</option>
+                  </select>
+                  <button
+                    onClick={handleAddCabin}
+                    style={{
+                      backgroundColor: '#fff',
+                      border: '1px solid #dadce0',
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    Add Cabin
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #dadce0' }}>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '12px' }}>Capacity summary</div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div style={{ flex: 1, backgroundColor: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '10px', color: '#5f6368', fontWeight: 'bold' }}>TOTAL SEATS</div>
-                    <div style={{ fontSize: '20px', fontWeight: 'bold', marginTop: '4px' }}>{totalSeats}</div>
-                  </div>
-                  <div style={{ flex: 1, backgroundColor: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '10px', color: '#c5221f', fontWeight: 'bold' }}>BLOCKED</div>
-                    <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#c5221f', marginTop: '4px' }}>{blockedCount}</div>
-                  </div>
-                  <div style={{ flex: 1, backgroundColor: '#f8f9fa', padding: '12px', borderRadius: '6px' }}>
-                    <div style={{ fontSize: '10px', color: '#137333', fontWeight: 'bold' }}>SELLABLE</div>
-                    <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#137333', marginTop: '4px' }}>{sellableCount}</div>
-                  </div>
-                </div>
+            <div
+              style={{
+                flex: 1,
+                backgroundColor: '#fff',
+                padding: '24px',
+                borderRadius: '8px',
+                border: '1px solid #dadce0',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '16px',
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>Seat Map Editor</h3>
+                <span style={{ fontSize: '12px', color: '#5f6368' }}>
+                  Total: {totalSeats} | Blocked: {blockedCount} | Sellable: {sellableCount}
+                </span>
               </div>
+              <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#5f6368' }}>
+                Click a seat to block or unblock it. Blocked seats are excluded from sellable capacity.
+              </p>
 
-              <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #dadce0', maxHeight: '620px', overflowY: 'auto' }}>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '4px' }}>Seat map preview</div>
-                <p style={{ fontSize: '11px', color: '#5f6368', margin: '0 0 16px 0' }}>
-                  Click a seat to toggle blocked (blocked seats are not sellable). Click a row number to mark the whole row: exit row, then extra legroom, then normal.
-                </p>
-
-                <div style={{ border: '1px solid #e0e0e0', borderRadius: '80px 80px 16px 16px', padding: '40px 20px 20px 20px', backgroundColor: '#fafafa', width: '310px', margin: '0 auto' }}>
-                  <div style={{ textAlign: 'center', fontSize: '10px', color: '#9e9e9e', fontWeight: 'bold', letterSpacing: '1px', marginBottom: '20px' }}>FRONT</div>
-
-                  {cabins.map((cabin) => {
-                    const rowNumbers = Array.from({ length: cabin.lastRow - cabin.firstRow + 1 }, (_, i) => cabin.firstRow + i);
-                    
-                    let group1 = ['A', 'B'];
-                    let group2 = ['D', 'E', 'F'];
-                    let group3 = ['G', 'H'];
-
-                    if (cabin.layoutPattern === '2-2') {
-                      group1 = ['A', 'B'];
-                      group2 = ['D', 'E'];
-                      group3 = [];
-                    } else if (cabin.layoutPattern === '3-3') {
-                      group1 = ['A', 'B', 'C'];
-                      group2 = ['D', 'E', 'F'];
-                      group3 = [];
-                    } else if (cabin.layoutPattern === '2-3-2') {
-                      group1 = ['A', 'B'];
-                      group2 = ['D', 'E', 'F'];
-                      group3 = ['G', 'H'];
-                    }
-
-                    return (
-                      <div key={cabin.id} style={{ marginBottom: '24px' }}>
-                        <div style={{ textAlign: 'center', fontSize: '11px', fontWeight: 'bold', color: '#5f6368', marginBottom: '12px' }}>
-                          {cabin.name.toUpperCase()} · rows {cabin.firstRow}-{cabin.lastRow} · {cabin.layoutPattern}
-                        </div>
-
-                        {rowNumbers.map((rowNum) => {
-                          return (
-                            <div key={rowNum} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '6px' }}>
-                              <div style={{ display: 'flex', gap: '2px' }}>
-                                {group1.map((letter) => {
-                                  const seatId = `${rowNum}${letter}`;
-                                  const isBlocked = blockedSeats.has(seatId);
-                                  return (
-                                    <button
-                                      key={seatId}
-                                      onClick={() => handleToggleSeatBlock(seatId)}
-                                      style={{
-                                        width: '22px',
-                                        height: '24px',
-                                        borderRadius: '4px',
-                                        border: '1px solid #dadce0',
-                                        backgroundColor: isBlocked ? '#fce8e6' : '#e8f0fe',
-                                        color: isBlocked ? '#c5221f' : '#1a73e8',
-                                        fontSize: '10px',
-                                        cursor: 'pointer',
-                                        padding: 0
-                                      }}
-                                    >
-                                      {letter}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              <span style={{ width: '20px', textAlign: 'center', fontSize: '11px', color: '#137333', fontWeight: 'bold' }}>
-                                {rowNum}
-                              </span>
-
-                              <div style={{ display: 'flex', gap: '2px' }}>
-                                {group2.map((letter) => {
-                                  const seatId = `${rowNum}${letter}`;
-                                  const isBlocked = blockedSeats.has(seatId);
-                                  return (
-                                    <button
-                                      key={seatId}
-                                      onClick={() => handleToggleSeatBlock(seatId)}
-                                      style={{
-                                        width: '22px',
-                                        height: '24px',
-                                        borderRadius: '4px',
-                                        border: '1px solid #dadce0',
-                                        backgroundColor: isBlocked ? '#fce8e6' : '#e8f0fe',
-                                        color: isBlocked ? '#c5221f' : '#1a73e8',
-                                        fontSize: '10px',
-                                        cursor: 'pointer',
-                                        padding: 0
-                                      }}
-                                    >
-                                      {letter}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              {group3.length > 0 && (
-                                <>
-                                  <span style={{ width: '20px', textAlign: 'center', fontSize: '11px', color: '#137333', fontWeight: 'bold' }}>
-                                    {rowNum}
-                                  </span>
-
-                                  <div style={{ display: 'flex', gap: '2px' }}>
-                                    {group3.map((letter) => {
-                                      const seatId = `${rowNum}${letter}`;
-                                      const isBlocked = blockedSeats.has(seatId);
-                                      return (
-                                        <button
-                                          key={seatId}
-                                          onClick={() => handleToggleSeatBlock(seatId)}
-                                          style={{
-                                            width: '22px',
-                                            height: '24px',
-                                            borderRadius: '4px',
-                                            border: '1px solid #dadce0',
-                                            backgroundColor: isBlocked ? '#fce8e6' : '#e8f0fe',
-                                            color: isBlocked ? '#c5221f' : '#1a73e8',
-                                            fontSize: '10px',
-                                            cursor: 'pointer',
-                                            padding: 0
-                                          }}
-                                        >
-                                          {letter}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  maxHeight: '400px',
+                  overflowY: 'auto',
+                  paddingRight: '8px',
+                }}
+              >
+                {cabins.map((cabin) => {
+                  const rows = [];
+                  for (let r = cabin.firstRow; r <= Math.min(cabin.lastRow, cabin.firstRow + 8); r++) {
+                    rows.push(r);
+                  }
+                  return (
+                    <div key={cabin.id} style={{ marginBottom: '12px' }}>
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          color: '#5f6368',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        {cabin.name.toUpperCase()}
                       </div>
-                    );
-                  })}
-                </div>
+                      {rows.map((rowNum) => (
+                        <div
+                          key={rowNum}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            marginBottom: '4px',
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: '24px',
+                              fontSize: '11px',
+                              color: '#5f6368',
+                              textAlign: 'right',
+                              marginRight: '6px',
+                            }}
+                          >
+                            {rowNum}
+                          </span>
+                          {cabin.rowSeats.map((seatLetter) => {
+                            const seatId = `${rowNum}${seatLetter}`;
+                            const isBlocked = blockedSeats.has(seatId);
+                            return (
+                              <button
+                                key={seatLetter}
+                                onClick={() => handleToggleSeatBlock(seatId)}
+                                style={{
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #dadce0',
+                                  backgroundColor: isBlocked ? '#fce8e6' : '#e6f4ea',
+                                  color: isBlocked ? '#c5221f' : '#137333',
+                                  fontSize: '10px',
+                                  fontWeight: 'bold',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {seatLetter}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

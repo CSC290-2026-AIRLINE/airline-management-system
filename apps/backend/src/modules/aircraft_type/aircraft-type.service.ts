@@ -12,7 +12,6 @@ import { UpdateAircraftTypeDto } from '../dto/update-aircraft-type.dto'
 export class AircraftTypeService {
   constructor(private readonly db: DbService) {}
 
-  // Validate JSON layout structure
   validateLayout(layout: any) {
     if (
       !layout ||
@@ -45,7 +44,6 @@ export class AircraftTypeService {
       if (!Array.isArray(cabin.columns) || cabin.columns.length === 0) {
         throw new BadRequestException('columns must be a non-empty array')
       }
-      // Check columns are distinct capital letters
       const colSet = new Set(cabin.columns)
       if (colSet.size !== cabin.columns.length) {
         throw new BadRequestException('columns must be distinct')
@@ -57,7 +55,6 @@ export class AircraftTypeService {
           )
         }
       }
-      // aisle_after must be among columns
       if (cabin.aisle_after) {
         for (const a of cabin.aisle_after) {
           if (!cabin.columns.includes(a)) {
@@ -68,7 +65,6 @@ export class AircraftTypeService {
         }
       }
     }
-    // Check cabins don't overlap rows
     const sortedCabins = [...layout.cabins].sort(
       (a: any, b: any) => a.first_row - b.first_row,
     )
@@ -103,7 +99,6 @@ export class AircraftTypeService {
 
   async update(id: string, data: UpdateAircraftTypeDto) {
     const existing = await this.findOne(id)
-    // layout cannot be changed
     if (data.layout !== undefined) {
       throw new BadRequestException(
         'layout cannot be changed; create a new aircraft type or use clone',
@@ -113,7 +108,7 @@ export class AircraftTypeService {
       where: { id },
       data: {
         ...data,
-        layout: undefined, // ensure layout is never updated
+        layout: undefined, 
         updated_at: new Date(),
       },
     })
@@ -122,7 +117,6 @@ export class AircraftTypeService {
   async clone(id: string, newCode: string, newLayout?: any) {
     const existing = await this.findOne(id)
 
-    // Check code uniqueness
     const codeExists = await this.db.aircraft_type.findFirst({
       where: { code: newCode, deleted_at: null },
     })

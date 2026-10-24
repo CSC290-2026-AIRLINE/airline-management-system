@@ -13,7 +13,6 @@ import { Public } from '../../auth/decorators/public.decorator'
 export class AircraftController {
   constructor(private readonly aircraftService: AircraftService) {}
 
-  // 1. GET /aircraft - List fleet with filters
   @Public()
   @Get()
   findAll(
@@ -23,15 +22,12 @@ export class AircraftController {
   ) {
     return this.aircraftService.findAll({ type, base, status })
   }
-
-  // 2. POST /aircraft - Register aircraft
   @Public()
   @Post()
   create(@Body() createAircraftDto: CreateAircraftDto) {
     return this.aircraftService.create(createAircraftDto)
   }
 
-  // 3. GET /aircraft/available (must precede :id)
   @Public()
   @Get('available')
   getAvailable(
@@ -50,21 +46,18 @@ export class AircraftController {
     })
   }
 
-  // 4. GET /aircraft/status-changes (must precede :id)
   @Public()
   @Get('status-changes')
   getStatusChanges(@Query('since') since: string) {
     return this.aircraftService.getStatusChanges(since || new Date(0).toISOString())
   }
 
-  // 5. GET /aircraft/:id - Detail with current status
   @Public()
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.aircraftService.findOne(id)
   }
 
-  // 6. PUT /aircraft/:id - Edit registry fields or retire
   @Public()
   @Put(':id')
   update(
@@ -74,49 +67,42 @@ export class AircraftController {
     return this.aircraftService.update(id, body)
   }
 
-  // 7. GET /aircraft/:id/status - Status at simulated date
   @Public()
   @Get(':id/status')
   getStatus(@Param('id') id: string) {
     return this.aircraftService.getStatus(id)
   }
 
-  // 8. POST /aircraft/:id/status - Set status period
   @Public()
   @Post(':id/status')
   createStatus(@Param('id') id: string, @Body() dto: CreateAircraftStatusDto) {
     return this.aircraftService.createStatus(id, dto)
   }
 
-  // 9. DELETE /aircraft/:id/status/:periodId - Cancel status period
   @Public()
   @Delete(':id/status/:periodId')
   removeStatus(@Param('id') id: string, @Param('periodId') periodId: string) {
     return this.aircraftService.removeStatus(id, periodId)
   }
 
-  // 10. GET /aircraft/:id/status/history
   @Public()
   @Get(':id/status/history')
   getStatusHistory(@Param('id') id: string) {
     return this.aircraftService.getStatusHistory(id)
   }
 
-  // 11. GET /aircraft/:id/seat-map
   @Public()
   @Get(':id/seat-map')
   getSeatMap(@Param('id') id: string) {
     return this.aircraftService.getSeatMap(id)
   }
 
-  // 12. GET /aircraft/:id/capacity
   @Public()
   @Get(':id/capacity')
   getCapacity(@Param('id') id: string) {
     return this.aircraftService.getCapacity(id)
   }
 
-  // 13. GET /aircraft/:id/availability
   @Public()
   @Get(':id/availability')
   getAvailability(
@@ -134,21 +120,18 @@ export class AircraftController {
     })
   }
 
-  // 14. GET /aircraft/:id/maintenance
   @Public()
   @Get(':id/maintenance')
   getMaintenanceList(@Param('id') id: string) {
     return this.aircraftService.getMaintenanceList(id)
   }
 
-  // 15. POST /aircraft/:id/maintenance
   @Public()
   @Post(':id/maintenance')
   createMaintenance(@Param('id') id: string, @Body() dto: CreateAircraftMaintenanceDto) {
     return this.aircraftService.createMaintenance(id, dto)
   }
 
-  // 16. PUT /aircraft/:id/maintenance/:maintenanceId
   @Public()
   @Put(':id/maintenance/:maintenanceId')
   updateMaintenance(
@@ -159,21 +142,18 @@ export class AircraftController {
     return this.aircraftService.updateMaintenance(id, maintenanceId, dto)
   }
 
-  // 17. GET /aircraft/:id/operating-days
   @Public()
   @Get(':id/operating-days')
   getOperatingDays(@Param('id') id: string) {
     return this.aircraftService.getOperatingDays(id)
   }
 
-  // 18. PUT /aircraft/:id/operating-days
   @Public()
   @Put(':id/operating-days')
   setOperatingDays(@Param('id') id: string, @Body() dto: CreateOperatingDayDto) {
     return this.aircraftService.setOperatingDays(id, dto.days || [])
   }
 
-  // 19. POST /aircraft/:id/turnarounds
   @Public()
   @Post(':id/turnarounds')
   createTurnaround(@Param('id') aircraftId: string, @Body() dto: CreateTurnaroundDto) {
@@ -186,7 +166,6 @@ export class AircraftController {
     return this.aircraftService.createTurnaround(aircraftId, dto)
   }
 
-  // 20. GET /aircraft/:id/turnarounds/latest
   @Public()
   @Get(':id/turnarounds/latest')
   getLatestTurnaround(@Param('id') aircraftId: string) {

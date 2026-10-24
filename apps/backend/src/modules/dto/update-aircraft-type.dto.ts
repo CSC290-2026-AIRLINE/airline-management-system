@@ -2,7 +2,7 @@
   code?: string
   manufacturer?: string
   model?: string
-  layout?: any // present in body but rejected by the service
+  layout?: any 
   hold_weight_limit_kg?: number
   max_takeoff_weight_kg?: number
   max_range_km?: number

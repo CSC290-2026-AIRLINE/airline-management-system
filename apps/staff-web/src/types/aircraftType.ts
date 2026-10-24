@@ -29,5 +29,4 @@ export interface AircraftType {
   cost_currency: string;
   is_active: boolean;
   layout: AircraftTypeLayout;
-  total_seats?: number;
 }
