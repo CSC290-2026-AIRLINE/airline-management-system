@@ -1,5 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { Prisma } from '@backend/db/generated/prisma/client'
+import { countryName } from '../country-names'
 
 /**
  * Feature 8 · Step 1 — crew directory.
@@ -15,13 +17,13 @@ import { DbService } from '@backend/db/db.service'
  */
 
 /** Role as stored in `crew.role`. */
-export const CREW_ROLES = ['captain', 'first_officer', 'cabin', 'police'] as const
+export const CREW_ROLES = ['captain', 'first_officer', 'cabin_crew', 'police'] as const
 export type CrewRole = (typeof CREW_ROLES)[number]
 
 export const CREW_ROLE_LABEL: Record<CrewRole, string> = {
   captain: 'Captain',
   first_officer: 'First Officer',
-  cabin: 'Cabin Crew',
+  cabin_crew: 'Cabin Crew',
   police: 'Flight Police',
 }
 
@@ -64,6 +66,8 @@ export interface CrewMemberRow {
   roleLabel: string
   /** Base airport IATA code. */
   base: string
+  /** Name of the country the base airport is in; this is where the crew member counts as local. */
+  baseCountry: string
   fleet: string
   languages: string[]
   /** `YYYY-MM-DD`, null when not recorded. */
@@ -90,6 +94,8 @@ export interface CrewMetricsRow {
 export interface CrewListResult {
   crew: CrewMemberRow[]
   metrics: CrewMetricsRow
+  /** Days before expiry that a licence or certification starts to show as expiring soon (`crew_setting`). */
+  expiryWarningDays: number
 }
 
 export interface CrewProfileInput {
@@ -142,6 +148,7 @@ interface CrewDbRow {
   employee_number: string
   role: string
   base_airport: string
+  airport: { country: string }
   fleet_aircraft_type: string
   languages: string[]
   date_of_birth: Date | null
@@ -149,7 +156,7 @@ interface CrewDbRow {
   phone: string | null
   licence_number: string
   licence_expires_on: Date
-  certifications: {
+  crew_certification: {
     id: string
     name: string
     aircraft_type: string | null
@@ -177,6 +184,7 @@ const CREW_SELECT = {
   employee_number: true,
   role: true,
   base_airport: true,
+  airport: { select: { country: true } },
   fleet_aircraft_type: true,
   languages: true,
   date_of_birth: true,
@@ -184,7 +192,7 @@ const CREW_SELECT = {
   phone: true,
   licence_number: true,
   licence_expires_on: true,
-  certifications: { select: { id: true, name: true, aircraft_type: true, expires_on: true } },
+  crew_certification: { select: { id: true, name: true, aircraft_type: true, expires_on: true } },
 } as const
 
 /** `YYYY-MM-DD` in UTC — the shape every date field leaves the service in. */
@@ -222,14 +230,20 @@ export class SetupCrewService {
     return rows.map((row) => ({ code: row.iata_code, name: row.name }))
   }
 
-  /** Fleets a crew member can be rated on: every active aircraft type. */
+  /**
+   * Fleets a crew member can be rated on: the model of every active aircraft type.
+   *
+   * `crew.fleet_aircraft_type` holds the model (A320), which every layout version of the
+   * type shares, not the layout-specific `aircraft_type.code` (A320-V2).
+   */
   async listFleets(): Promise<FleetOptionRow[]> {
     const rows = await this.db.aircraft_type.findMany({
       where: { is_active: true },
-      select: { code: true, model: true },
-      orderBy: { code: 'asc' },
+      select: { model: true },
+      distinct: ['model'],
+      orderBy: { model: 'asc' },
     })
-    return rows.map((row) => ({ code: row.code, label: row.model === row.code ? row.code : `${row.code} · ${row.model}` }))
+    return rows.map((row) => ({ code: row.model, label: row.model }))
   }
 
   /**
@@ -275,16 +289,16 @@ export class SetupCrewService {
     const metrics: CrewMetricsRow = {
       totalCrew: all.length,
       pilots: all.filter((row) => PILOT_ROLES.includes(row.role as CrewRole)).length,
-      cabinCrew: all.filter((row) => row.role === 'cabin').length,
+      cabinCrew: all.filter((row) => row.role === 'cabin_crew').length,
       flightPolice: all.filter((row) => row.role === 'police').length,
     }
 
-    return { crew, metrics }
+    return { crew, metrics, expiryWarningDays: await this.getExpiryWarningDays() }
   }
 
   /** One profile, certifications and upcoming duties included. */
   async getCrew(crewId: string): Promise<CrewMemberRow> {
-    const row = (await this.db.crew.findFirst({ where: { id: crewId, deleted_at: null }, select: CREW_SELECT })) as CrewDbRow | null
+    const row = await this.db.crew.findFirst({ where: { id: crewId, deleted_at: null }, select: CREW_SELECT })
     if (!row) throw new NotFoundException(`Crew ${crewId} was not found`)
 
     return this.toMemberRow(row, await this.getFlightHoursCap())
@@ -303,15 +317,17 @@ export class SetupCrewService {
   async createCrew(input: CrewProfileInput): Promise<CrewMemberRow> {
     await this.assertEmployeeNoFree(input.employeeNo)
     await this.assertLicenceNumberFree(input.licenceNumber)
+    await this.assertBaseActive(input.base)
+    const fleet = await this.resolveFleet(input.fleet)
 
-    const created = (await this.db.crew.create({
+    const created = await this.db.crew.create({
       data: {
         first_name: input.firstName,
         last_name: input.lastName,
         employee_number: input.employeeNo,
         role: input.role,
         base_airport: input.base,
-        fleet_aircraft_type: input.fleet,
+        fleet_aircraft_type: fleet,
         languages: input.languages,
         licence_number: input.licenceNumber,
         licence_expires_on: new Date(input.licenceExpiresOn),
@@ -320,7 +336,7 @@ export class SetupCrewService {
         phone: input.phone,
       },
       select: CREW_SELECT,
-    })) as CrewDbRow
+    })
 
     return this.toMemberRow(created, await this.getFlightHoursCap())
   }
@@ -332,13 +348,15 @@ export class SetupCrewService {
    * unchanged profile does not collide with the crew member's own row.
    */
   async updateCrew(crewId: string, input: CrewProfileInput): Promise<CrewMemberRow> {
-    const current = (await this.db.crew.findFirst({ where: { id: crewId, deleted_at: null }, select: CREW_SELECT })) as CrewDbRow | null
+    const current = await this.db.crew.findFirst({ where: { id: crewId, deleted_at: null }, select: CREW_SELECT })
     if (!current) throw new NotFoundException(`Crew ${crewId} was not found`)
 
     if (current.employee_number !== input.employeeNo) await this.assertEmployeeNoFree(input.employeeNo, crewId)
     if (current.licence_number !== input.licenceNumber) await this.assertLicenceNumberFree(input.licenceNumber, crewId)
+    await this.assertBaseActive(input.base)
+    const fleet = await this.resolveFleet(input.fleet)
 
-    const updated = (await this.db.crew.update({
+    const updated = await this.db.crew.update({
       where: { id: crewId },
       data: {
         first_name: input.firstName,
@@ -346,7 +364,7 @@ export class SetupCrewService {
         employee_number: input.employeeNo,
         role: input.role,
         base_airport: input.base,
-        fleet_aircraft_type: input.fleet,
+        fleet_aircraft_type: fleet,
         languages: input.languages,
         licence_number: input.licenceNumber,
         licence_expires_on: new Date(input.licenceExpiresOn),
@@ -356,22 +374,26 @@ export class SetupCrewService {
         updated_at: new Date(),
       },
       select: CREW_SELECT,
-    })) as CrewDbRow
+    })
 
     return this.toMemberRow(updated, await this.getFlightHoursCap())
   }
 
   async addCertification(crewId: string, input: CertificationInput): Promise<CertificationRow> {
     await this.assertCrewExists(crewId)
-    return this.writeCertification(crewId, { name: input.name, aircraft_type: input.aircraftType }, input.expiresOn)
+    const aircraftType = await this.resolveCertificationType(input.aircraftType)
+    return this.writeCertification(crewId, { name: input.name, aircraft_type: aircraftType }, input.expiresOn)
   }
 
   async updateCertification(crewId: string, certificationId: string, input: CertificationInput): Promise<CertificationRow> {
     await this.assertCertificationBelongsToCrew(crewId, certificationId)
-    await this.db.crew_certification.update({
-      where: { id: certificationId },
-      data: { name: input.name, aircraft_type: input.aircraftType, expires_on: new Date(input.expiresOn) },
-    })
+    const aircraftType = await this.resolveCertificationType(input.aircraftType)
+    await this.mapDuplicateCertification(() =>
+      this.db.crew_certification.update({
+        where: { id: certificationId },
+        data: { name: input.name, aircraft_type: aircraftType, expires_on: new Date(input.expiresOn) },
+      }),
+    )
     return this.readCertification(certificationId)
   }
 
@@ -412,10 +434,12 @@ export class SetupCrewService {
     data: { name: string; aircraft_type: string | null },
     expiresOn: string,
   ): Promise<CertificationRow> {
-    const created = await this.db.crew_certification.create({
-      data: { crew_id: crewId, name: data.name, aircraft_type: data.aircraft_type, expires_on: new Date(expiresOn) },
-      select: { id: true, name: true, aircraft_type: true, expires_on: true },
-    })
+    const created = await this.mapDuplicateCertification(() =>
+      this.db.crew_certification.create({
+        data: { crew_id: crewId, name: data.name, aircraft_type: data.aircraft_type, expires_on: new Date(expiresOn) },
+        select: { id: true, name: true, aircraft_type: true, expires_on: true },
+      }),
+    )
     return { id: created.id, name: created.name, aircraftType: created.aircraft_type, expiresOn: localDate(created.expires_on) as string }
   }
 
@@ -426,6 +450,44 @@ export class SetupCrewService {
     })
     if (!row) throw new NotFoundException(`Certification ${certificationId} was not found`)
     return { id: row.id, name: row.name, aircraftType: row.aircraft_type, expiresOn: localDate(row.expires_on) as string }
+  }
+
+  /** A crew member's base has to be an active airport, or the foreign key answers with a 500. */
+  private async assertBaseActive(base: string): Promise<void> {
+    const found = await this.db.airport.findFirst({ where: { iata_code: base, is_active: true }, select: { iata_code: true } })
+    if (!found) throw new BadRequestException(`${base} is not an active base airport`)
+  }
+
+  /** The stored model for a fleet the operator typed, matched without regard to case. */
+  private async resolveFleet(fleet: string): Promise<string> {
+    const models = await this.db.aircraft_type.findMany({ where: { is_active: true }, select: { model: true }, distinct: ['model'] })
+    const match = models.find((row) => row.model.toLowerCase() === fleet.toLowerCase())
+    if (!match) throw new BadRequestException(`${fleet} is not an active aircraft type`)
+    return match.model
+  }
+
+  /** A type rating names a model; a certification such as CRM names none. */
+  private async resolveCertificationType(aircraftType: string | null): Promise<string | null> {
+    return aircraftType === null ? null : this.resolveFleet(aircraftType)
+  }
+
+  /** `crew_certification_uq` allows one row per crew member, name and aircraft type. */
+  private async mapDuplicateCertification<T>(write: () => Promise<T>): Promise<T> {
+    try {
+      return await write()
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('This crew member already holds that certification')
+      }
+      throw error
+    }
+  }
+
+  /** Days before expiry a licence or certification shows as expiring soon. Falls back to 30 if the setting is missing. */
+  private async getExpiryWarningDays(): Promise<number> {
+    const setting = await this.db.crew_setting.findUnique({ where: { key: 'expiry_warning_days' }, select: { value: true } })
+    const parsed = setting === null ? Number.NaN : Number.parseInt(String(setting.value), 10)
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 30
   }
 
   /**
@@ -523,7 +585,7 @@ export class SetupCrewService {
   }
 
   private async toMemberRow(row: CrewDbRow, hoursCap: number): Promise<CrewMemberRow> {
-    const role = CREW_ROLES.includes(row.role as CrewRole) ? (row.role as CrewRole) : 'cabin'
+    const role = CREW_ROLES.includes(row.role as CrewRole) ? (row.role as CrewRole) : 'cabin_crew'
     return {
       id: row.id,
       firstName: row.first_name,
@@ -532,6 +594,7 @@ export class SetupCrewService {
       role,
       roleLabel: CREW_ROLE_LABEL[role],
       base: row.base_airport,
+      baseCountry: countryName(row.airport.country),
       fleet: row.fleet_aircraft_type,
       languages: row.languages,
       dateOfBirth: localDate(row.date_of_birth),
@@ -541,7 +604,7 @@ export class SetupCrewService {
       licenceExpiresOn: localDate(row.licence_expires_on) as string,
       hours28d: await this.hoursInWindow(row.id),
       hoursCap,
-      certifications: row.certifications
+      certifications: row.crew_certification
         .map((cert) => ({
           id: cert.id,
           name: cert.name,

@@ -152,7 +152,11 @@ function parseRole(value: unknown): CrewRole {
 function parseLanguages(value: unknown): string[] {
   if (value === null || value === undefined) return []
   if (!Array.isArray(value)) throw new BadRequestException('languages must be an array of codes')
-  return value.map((entry, index) => requireText(entry, `languages[${index}]`).toLowerCase())
+  return value.map((entry, index) => {
+    const code = requireText(entry, `languages[${index}]`).toLowerCase()
+    if (!/^[a-z]{2}$/.test(code)) throw new BadRequestException(`languages[${index}] must be a 2-letter language code`)
+    return code
+  })
 }
 
 function parseProfile(body: Record<string, unknown>): CrewProfileInput {
@@ -162,7 +166,7 @@ function parseProfile(body: Record<string, unknown>): CrewProfileInput {
     employeeNo: requireText(body.employeeNo, 'employeeNo'),
     role: parseRole(body.role),
     base: requireText(body.base, 'base').toUpperCase(),
-    fleet: requireText(body.fleet, 'fleet').toUpperCase(),
+    fleet: requireText(body.fleet, 'fleet'),
     languages: parseLanguages(body.languages),
     licenceNumber: requireText(body.licenceNumber, 'licenceNumber'),
     licenceExpiresOn: requireDate(body.licenceExpiresOn, 'licenceExpiresOn'),
@@ -175,7 +179,7 @@ function parseProfile(body: Record<string, unknown>): CrewProfileInput {
 function parseCertification(body: Record<string, unknown>): CertificationInput {
   return {
     name: requireText(body.name, 'name'),
-    aircraftType: optionalText(body.aircraftType, 'aircraftType')?.toUpperCase() ?? null,
+    aircraftType: optionalText(body.aircraftType, 'aircraftType'),
     expiresOn: requireDate(body.expiresOn, 'expiresOn'),
   }
 }

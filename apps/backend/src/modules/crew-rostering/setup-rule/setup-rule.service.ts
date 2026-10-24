@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { COUNTRY_CODES, countryName } from '../country-names'
 
 /**
  * Feature 8 · Step 2 — legality rules.
@@ -21,7 +22,7 @@ export const SETTING_KEYS = {
   maxPairingDays: 'max_pairing_days',
   maxFlightHours28d: 'max_flight_hours_28d',
   minLocalCrew: 'min_local_crew',
-  minPolice: 'min_police',
+  minPolice: 'min_police_international',
 } as const
 
 /** Values used when a key has never been written, so a fresh install still renders. */
@@ -43,24 +44,6 @@ const SETTING_FALLBACKS: Record<string, string> = {
  * code. This map stands in until a migration adds one; every read and write of a
  * country rule goes through it, so swapping it for a table is a local change.
  */
-export const COUNTRY_CODES: Readonly<Record<string, string>> = {
-  AU: 'Australia',
-  CN: 'China',
-  DE: 'Germany',
-  FR: 'France',
-  GB: 'United Kingdom',
-  ID: 'Indonesia',
-  IN: 'India',
-  JP: 'Japan',
-  KR: 'South Korea',
-  MY: 'Malaysia',
-  NZ: 'New Zealand',
-  SG: 'Singapore',
-  TH: 'Thailand',
-  US: 'United States',
-  VN: 'Vietnam',
-}
-
 /**
  * Company policies that sit above the legality limits.
  *
@@ -210,7 +193,7 @@ export class SetupRuleService {
    * on its own. Updatable keys are validated together so a tightening rule can never
    * be saved that is looser than the current baseline.
    */
-  async updateDefaults(input: DefaultLimitsRow, actorId?: string): Promise<DefaultLimitsRow> {
+  async updateDefaults(input: DefaultLimitsRow, actorUserId?: string): Promise<DefaultLimitsRow> {
     const current = await this.getDefaults()
     const next: DefaultLimitsRow = {
       minRestHours: input.minRestHours ?? current.minRestHours,
@@ -237,22 +220,39 @@ export class SetupRuleService {
       [SETTING_KEYS.minPolice]: String(next.minPolice),
     }
 
+    // `crew_setting.updated_by` points at staff, while the signed-in caller is a user.
+    const actor = actorUserId
+      ? await this.db.staff.findFirst({ where: { user_id: actorUserId, deleted_at: null }, select: { id: true } })
+      : null
     for (const [key, value] of Object.entries(values)) {
       await this.db.crew_setting.upsert({
         where: { key },
-        update: { value, updated_at: new Date(), updated_by: actorId ?? null },
-        create: { key, value, updated_by: actorId ?? null },
+        update: { value, updated_at: new Date(), updated_by: actor?.id ?? null },
+        create: { key, value, updated_by: actor?.id ?? null },
       })
     }
 
     return next
   }
 
-  /** Destinations an operator can pick when adding a country rule. */
-  listCountries(): CountryOptionRow[] {
-    return Object.entries(COUNTRY_CODES)
-      .map(([code, name]) => ({ name, code }))
-      .sort((a, b) => a.name.localeCompare(b.name))
+  /**
+   * Destinations an operator can pick: every country that has an active airport, plus any
+   * country that already carries a rule or a language mapping, so an existing row can always
+   * be edited. Codes are lower case, as stored; names come from `COUNTRY_CODES`, falling back
+   * to the code for a country that table does not know.
+   */
+  async listCountries(): Promise<CountryOptionRow[]> {
+    const [airports, rules, mappings] = await Promise.all([
+      this.db.airport.findMany({ where: { is_active: true }, select: { country: true }, distinct: ['country'] }),
+      this.db.country_legality_rule.findMany({ select: { country_code: true } }),
+      this.db.country_language.findMany({ select: { country_code: true }, distinct: ['country_code'] }),
+    ])
+    const codes = new Set([
+      ...airports.map((row) => row.country),
+      ...rules.map((row) => row.country_code),
+      ...mappings.map((row) => row.country_code),
+    ])
+    return [...codes].map((code) => ({ name: countryName(code), code })).sort((a, b) => a.name.localeCompare(b.name))
   }
 
   /** Languages an operator can mark as local. Every code in `country_language` qualifies. */
@@ -281,9 +281,9 @@ export class SetupRuleService {
    * written, because that is the one edit that would make the roster less legal.
    */
   async createCountryLimit(input: CountryLimitInput): Promise<CountryLimitRow> {
-    const code = this.resolveCountryCode(input.country)
+    const code = await this.resolveCountryCode(input.country)
     const existing = await this.db.country_legality_rule.findUnique({ where: { country_code: code }, select: { country_code: true } })
-    if (existing) throw new BadRequestException(`${COUNTRY_CODES[code] ?? code} already has a rule`)
+    if (existing) throw new BadRequestException(`${countryName(code)} already has a rule`)
 
     await this.assertTightens(input.minRestHours, input.maxDutyHours)
     await this.db.country_legality_rule.create({
@@ -294,7 +294,7 @@ export class SetupRuleService {
   }
 
   async updateCountryLimit(countryCode: string, input: CountryLimitInput): Promise<CountryLimitRow> {
-    const code = this.resolveCountryCode(countryCode)
+    const code = await this.resolveCountryCode(countryCode)
     await this.assertRuleExists(code)
     await this.assertTightens(input.minRestHours, input.maxDutyHours)
 
@@ -307,7 +307,7 @@ export class SetupRuleService {
 
   /** Removes the country override, which puts the destination back on the baseline. */
   async deleteCountryLimit(countryCode: string): Promise<void> {
-    const code = this.resolveCountryCode(countryCode)
+    const code = await this.resolveCountryCode(countryCode)
     await this.assertRuleExists(code)
     await this.db.country_legality_rule.delete({ where: { country_code: code } })
   }
@@ -327,7 +327,7 @@ export class SetupRuleService {
     return Promise.all(
       [...byCountry.entries()].map(async ([code, languages]) => ({
         id: `CL-${code}`,
-        country: COUNTRY_CODES[code] ?? code,
+        country: countryName(code),
         countryCode: code,
         languages,
         speakingCrew: await this.countSpeakingCrew(languages),
@@ -343,7 +343,7 @@ export class SetupRuleService {
    * mapping would report a local crew member the page does not have.
    */
   async upsertCountryLanguages(countryCode: string, input: CountryLanguageInput): Promise<CountryLanguageRow> {
-    const code = this.resolveCountryCode(input.country ?? countryCode)
+    const code = await this.resolveCountryCode(input.country ?? countryCode)
     const wanted = [...new Set(input.languages.map((code) => code.toLowerCase()))]
 
     await this.db.$transaction(async (tx) => {
@@ -355,7 +355,7 @@ export class SetupRuleService {
 
     return {
       id: `CL-${code}`,
-      country: COUNTRY_CODES[code] ?? code,
+      country: countryName(code),
       countryCode: code,
       languages: wanted,
       speakingCrew: await this.countSpeakingCrew(wanted),
@@ -363,28 +363,35 @@ export class SetupRuleService {
   }
 
   async deleteCountryLanguages(countryCode: string): Promise<void> {
-    const code = this.resolveCountryCode(countryCode)
+    const code = await this.resolveCountryCode(countryCode)
     const { count } = await this.db.country_language.deleteMany({ where: { country_code: code } })
-    if (count === 0) throw new NotFoundException(`${COUNTRY_CODES[code] ?? code} has no language mapping`)
+    if (count === 0) throw new NotFoundException(`${countryName(code)} has no language mapping`)
   }
 
   /** Accepts either an ISO code or a country name, so the form can send what it holds. */
-  private resolveCountryCode(country: string): string {
+  /** Accepts a name or a 2-letter code and returns the lower-case code the tables store. */
+  private async resolveCountryCode(country: string): Promise<string> {
     const text = (country ?? '').trim()
     if (text === '') throw new BadRequestException('country is required')
-    const upper = text.toUpperCase()
-    if (COUNTRY_CODES[upper]) return upper
     const byName = Object.entries(COUNTRY_CODES).find(([, name]) => name.toLowerCase() === text.toLowerCase())
-    if (byName) return byName[0]
-    throw new BadRequestException(`${text} is not a supported destination`)
+    if (byName) return byName[0].toLowerCase()
+    if (!/^[A-Za-z]{2}$/.test(text)) throw new BadRequestException(`${text} is not a supported destination`)
+
+    const code = text.toLowerCase()
+    if (COUNTRY_CODES[code.toUpperCase()]) return code
+    // A country this file has no name for is still valid when one of our airports is there.
+    const served = await this.db.airport.findFirst({ where: { country: code }, select: { iata_code: true } })
+    if (!served) throw new BadRequestException(`${text} is not a supported destination`)
+    return code
   }
 
   private async assertRuleExists(code: string): Promise<void> {
     const found = await this.db.country_legality_rule.findUnique({ where: { country_code: code }, select: { country_code: true } })
-    if (!found) throw new NotFoundException(`${COUNTRY_CODES[code] ?? code} has no rule`)
+    if (!found) throw new NotFoundException(`${countryName(code)} has no rule`)
   }
 
   private async assertTightens(minRestHours: number, maxDutyHours: number): Promise<void> {
+    if (minRestHours <= 0 || maxDutyHours <= 0) throw new BadRequestException('minRestHours and maxDutyHours must be above 0')
     const defaults = await this.getDefaults()
     if (minRestHours < defaults.minRestHours) {
       throw new BadRequestException(`minRestHours cannot be below the company minimum of ${defaults.minRestHours} h`)
@@ -409,7 +416,7 @@ export class SetupRuleService {
   private async countAffectedPairings(code: string): Promise<number> {
     return await this.db.pairing.count({
       where: {
-        pairing_leg: { some: { flight: { route: { airport_route_destinationToairport: { country: COUNTRY_CODES[code] ?? code } } } } },
+        pairing_leg: { some: { flight: { route: { airport_route_destinationToairport: { country: code } } } } },
         OR: [{ roster_run_pairing: { is: null } }, { roster_run_pairing: { roster_run: { status: { not: 'published' } } } }],
       },
     })
@@ -419,7 +426,7 @@ export class SetupRuleService {
     const defaults = await this.getDefaults()
     return {
       id: `RL-${row.country_code}`,
-      country: COUNTRY_CODES[row.country_code] ?? row.country_code,
+      country: countryName(row.country_code),
       countryCode: row.country_code,
       minRestHours: num(Number(row.min_rest_hours), defaults.minRestHours),
       maxDutyHours: num(Number(row.max_duty_hours), defaults.maxDutyHours),

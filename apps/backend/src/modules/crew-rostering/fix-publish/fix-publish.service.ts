@@ -83,6 +83,8 @@ export interface RosterFactRow {
 }
 
 export interface RemovedMemberRow {
+  /** Who came off, so the cover picker never offers the same person back. */
+  crewId: string
   name: string
   role: SeatRole
   reason: string
@@ -788,8 +790,12 @@ export class FixPublishService {
     const model = scope[0]?.aircraftType ?? ''
     const role = member.role as SeatRole
     const isPilot = role === 'captain' || role === 'first_officer'
+    // A sick call leaves the seat empty with no subject, so the person who came off has to be ruled out here.
+    const cameOff = scope.some((leg) => world.removed.get(`${leg.id}|${member.role}`)?.crewId === member.id)
     let eligible: string | undefined
-    if (isoDate(member.licence_expires_on) < lastDate) {
+    if (cameOff) {
+      eligible = `${shortName(member)} came off this seat and cannot cover it.`
+    } else if (isoDate(member.licence_expires_on) < lastDate) {
       eligible = `Licence expires ${isoDate(member.licence_expires_on)}, before ${lastDate}.`
     } else if (role !== 'police' && scope.some((leg) => leg.aircraftType !== member.fleet_aircraft_type)) {
       eligible = `Flies the ${member.fleet_aircraft_type}, but this flight is a ${model}.`
@@ -902,6 +908,7 @@ export class FixPublishService {
         where: { pairing_id: { in: pairingIds }, unassigned_at: { not: null } },
         select: {
           pairing_leg_id: true,
+          crew_id: true,
           role: true,
           reason: true,
           unassigned_at: true,
@@ -930,7 +937,7 @@ export class FixPublishService {
     for (const row of off) {
       const key = `${row.pairing_leg_id}|${row.role}`
       if (removed.has(key) || (row.reason ?? '').startsWith(SWAP_REASON)) continue
-      removed.set(key, { name: shortName(row.crew), role: row.role as SeatRole, reason: row.reason ?? 'Removed' })
+      removed.set(key, { crewId: row.crew_id, name: shortName(row.crew), role: row.role as SeatRole, reason: row.reason ?? 'Removed' })
     }
 
     return {

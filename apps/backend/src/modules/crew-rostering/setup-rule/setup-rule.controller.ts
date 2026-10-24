@@ -46,7 +46,7 @@ export class SetupRuleController {
   }
 
   @Get('countries')
-  listCountries(): CountryOptionRow[] {
+  async listCountries(): Promise<CountryOptionRow[]> {
     return this.setupRuleService.listCountries()
   }
 
@@ -114,6 +114,13 @@ function requireNumber(value: unknown, field: string): number {
   return parsed
 }
 
+/** `country_language.language_code` is a 2-letter ISO 639-1 code in lower case. */
+function requireLanguageCode(value: unknown, field: string): string {
+  const code = requireText(value, field).toLowerCase()
+  if (!/^[a-z]{2}$/.test(code)) throw new BadRequestException(`${field} must be a 2-letter language code`)
+  return code
+}
+
 function parseDefaults(body: Record<string, unknown>): DefaultLimitsRow {
   return {
     minRestHours: requireNumber(body.minRestHours, 'minRestHours'),
@@ -139,6 +146,6 @@ function parseCountryLanguage(body: Record<string, unknown>): CountryLanguageInp
   if (!Array.isArray(languages) || languages.length === 0) throw new BadRequestException('languages must list at least one code')
   return {
     country: typeof body.country === 'string' ? body.country.trim() : '',
-    languages: languages.map((entry, index) => requireText(entry, `languages[${index}]`).toLowerCase()),
+    languages: languages.map((entry, index) => requireLanguageCode(entry, `languages[${index}]`)),
   }
 }
