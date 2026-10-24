@@ -11,9 +11,23 @@
 
 These tables are committed database structures. The migration's introductory word “proposed” is historical source wording; the CREATE TABLE statements and Prisma models are present in the inspected commit. This does not establish that the migration has run in any environment. No F8 application module, assignment worker, simulation-clock job or publication service exists in this checkout.
 
-**Current schema, not the requested revision:** Crew are operational records; `staff_id` optionally links shared staff identity and does not introduce crew login. `fleet_aircraft_type` and certification `aircraft_type` refer to **aircraft_type.model**, not layout-specific code or a UUID FK. The backend must validate the active model. Base-airport FKs correctly target `airport.iata_code`; `airport.country` now has a lowercase two-letter format CHECK. Country/language codes have no canonical-country FK.
+Crew are operational records; `staff_id` optionally links shared staff identity and does not introduce crew login. `fleet_aircraft_type` and certification `aircraft_type` refer to **aircraft_type.model**, not layout-specific code or a UUID FK. The backend must validate the active model. Base-airport FKs correctly target `airport.iata_code`; `airport.country` now has a lowercase two-letter format CHECK. Country/language codes have no canonical-country FK.
 
-**Requested follow-up:** Replace the two F8 aircraft-type text fields with UUID foreign keys to the existing F9 `aircraft_type.id`. This request is not implemented in the inspected SQL, Prisma or migration. See [review fixes and requested revision](#5-review-fixes-and-requested-aircraft-type-revision).
+## Shared feature dependencies
+
+F8 owns crew and roster data. It reuses other features' records and integrates with their services rather than duplicating their tables. Some dependencies are SQL foreign keys; others are application contracts that have not been implemented yet.
+
+| Direction          | Feature            | Shared data / responsibility                                      | Current evidence                                                                                       |
+| ------------------ | ------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Supports F8        | F1 identity        | Staff acting in Ops and approving overrides                       | SQL FKs to staff; no separate crew login                                                               |
+| Supports F8        | F2 scheduling      | Dated flights, routes, airports, country codes and flight changes | Airport/flight FKs exist; event-driven roster rechecks remain application work                         |
+| Supports F8        | F9 aircraft        | Assigned aircraft type, model and seat layout                     | F2 flight points to aircraft; F8 fleet/rating TEXT matches aircraft_type.model; no separate type table |
+| Supports F8        | F15 audit          | Shared action history and actor contract                          | Audit table exists; F8 audit writer remains application work                                           |
+| Shared integration | F3 / F6            | Police passenger seats and boarding                               | Booking/boarding contract remains to be implemented outside F8's crew tables                           |
+| F8 supplies        | F5 finance/payroll | Derived duty-hour totals for overtime                             | Output contract remains to be implemented; payment logic belongs to F5                                 |
+| F8 supplies        | F13 notifications  | Published-roster and assignment-change notifications              | Notification contract and delivery remain to be implemented                                            |
+
+Cross-feature dependencies do not by themselves mean the F8 schema is incomplete. For example, aircraft types already belong to F9, and F8 uses that existing data. The dictionary below describes the current schema; replacing model strings with UUID references would be a separate coordinated schema decision.
 
 ## Settings inserted by SQL and the F8 migration
 
@@ -294,20 +308,9 @@ Roster violations, resolutions and permitted company-rule overrides, linked to t
 - Business timestamps (`assigned_at`, `unassigned_at`, `published_at`, `resolved_at`) require application simulation time. Audit/storage timestamps use real time.
 - F3/F6 police seat/boarding integration, F5 overtime and F13 notifications remain contracts to implement. F15 audit writing must map override `staff.id` through `staff.user_id`, use an existing audit action, set `source_feature='8'` and mask sensitive fields. No F8 audit writer is present.
 
-## 5. Review fixes and requested aircraft-type revision
+## 5. Review fixes and integration status
 
-This section tracks the former proposal's section 5 review against the committed schema, plus the follow-up supplied by the documentation owner. A resolved SQL issue does not establish that its related backend rule is implemented.
-
-### Requested UUID references — not yet in the schema
-
-The follow-up explicitly requests using F9's existing `aircraft_type` instead of model-name text:
-
-| Current committed column                 | Requested replacement                                                    | Status                                                                             |
-| ---------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `crew.fleet_aircraft_type TEXT NOT NULL` | `crew.aircraft_type_id UUID REFERENCES aircraft_type (id)`               | Pending schema/migration change; current dictionary retains the actual TEXT column |
-| `crew_certification.aircraft_type TEXT`  | `crew_certification.aircraft_type_id UUID REFERENCES aircraft_type (id)` | Pending schema/migration change; general certifications currently allow NULL       |
-
-Do not create a second aircraft type table. The requested relationships target F9's existing UUID primary key. When the Database Team implements the revision, it must agree nullability, map existing model strings to IDs, update the certification uniqueness index and Prisma relations, and create a new forward migration. Model strings can correspond to several layout versions, so the mapping must resolve ambiguity explicitly. Confirm how a rating applies across layout versions before replacing model matching with ID comparison. Do not rewrite the committed F8 migration to imply the change already exists.
+This section tracks the former proposal's section 5 review against the committed schema and shared feature dependencies. A resolved SQL issue does not establish that its related backend rule is implemented.
 
 ### Earlier section 5 fixes: current disposition
 
@@ -315,7 +318,7 @@ Do not create a second aircraft type table. The requested relationships target F
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | Invalid airport(code) references            | Resolved: all three F8 base-airport FKs target airport.iata_code                                               | Verify deployed constraints separately                                      |
 | Assignment ownership across roster runs     | Resolved by unique roster_run_pairing.pairing_id and assignment/run-link plus leg/pairing FKs                  | Implement transactional draft cleanup and published history policy          |
-| Text fleet/type-rating references           | Current source deliberately uses aircraft_type.model strings; follow-up requests UUID FKs                      | Pending UUID revision above; do not describe it as implemented              |
+| Text fleet/type-rating references           | Current source uses F9 aircraft_type.model strings shared across layout versions                               | Validate against active F9 models in application code; no SQL FK exists     |
 | Missing cabin staffing source               | crew_setting.seats_per_cabin_crew defaults to 50; comments define ceil(layout seats / divisor)                 | Implement calculation; no dedicated F9 count column exists                  |
 | Country normalization                       | airport.country and F8 country columns have lowercase two-letter format CHECKs                                 | Normalize existing data before migration; populate agreed language mappings |
 | Multiple nullable default legality rules    | Superseded: defaults are crew_setting keys; country_legality_rule has a non-NULL country PK                    | Implement stricter-country rule merging                                     |

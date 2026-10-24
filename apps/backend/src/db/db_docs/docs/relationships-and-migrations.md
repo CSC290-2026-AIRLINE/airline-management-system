@@ -22,8 +22,6 @@ F8 fleet/rating strings use **aircraft_type.model**, not aircraft_type.code. No 
 
 F8 run ownership is enforced through roster_run_pairing: pairing_id is unique across runs, assignments reference that link and their own pairing leg, and rule breaks reference both the run/pairing and leg/pairing. See [F8](./f8-crew-management-and-rostering.md) for history/deletion boundaries.
 
-**Pending relationship revision:** The requested F8 follow-up replaces both aircraft-type TEXT fields with `aircraft_type_id UUID REFERENCES aircraft_type (id)`. Those two FKs are absent from current SQL/Prisma/migrations. The current model-string contract above must be updated together with a forward migration, indexes, data mapping and F9 documentation when implemented. See [F8 section 5](./f8-crew-management-and-rostering.md#5-review-fixes-and-requested-aircraft-type-revision).
-
 ## Migration history
 
 | Migration                                   | Effect                                                                                                                     |

@@ -180,8 +180,6 @@ Fleet configuration key/value settings, including reserve ratio.
 
 ## F8 integration
 
-**Requested follow-up, not implemented:** The documentation-owner review asks to replace F8 `crew.fleet_aircraft_type` and `crew_certification.aircraft_type` TEXT with `aircraft_type_id UUID REFERENCES aircraft_type (id)`, reusing this F9 table. Current schema still uses model strings; the paragraph below describes that committed state. Track nullability, layout-version/rating mapping and migration work in [F8 section 5](./f8-crew-management-and-rostering.md#5-review-fixes-and-requested-aircraft-type-revision).
-
 F8 is committed. Crew fleet and certification types store `aircraft_type.model` (e.g. A320), shared across layout-specific codes such as A320-V2; they are TEXT without a SQL FK. Active-model validation requires the backend. Cabin staffing is specified as `ceil(layout seats / crew_setting.seats_per_cabin_crew)`, with an inserted default of 50 seats per cabin crew member. No dedicated cabin-crew-count column was added to F9. See [F8 dictionary](./f8-crew-management-and-rostering.md).
 
 ---

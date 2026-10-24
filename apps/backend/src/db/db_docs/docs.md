@@ -44,8 +44,6 @@ All paths below are relative to `apps/backend/src/db/`.
 
 **Actual repository technology:** PostgreSQL 16, Prisma 7 with `@prisma/adapter-pg`, and NestJS. This documents the existing repository. No stack changes are part of this documentation update. Configuration comes from `apps/backend/prisma.config.ts` and backend configuration; do not copy credentials into docs.
 
-**Open F8 review request:** The schema still stores fleet/rating model strings. The requested UUID references to F9 aircraft_type are pending, and the external DBML’s unnamed four missing items are unverified. See [F8 section 5](./docs/f8-crew-management-and-rostering.md#5-review-fixes-and-requested-aircraft-type-revision).
-
 ## Reading and integration notes
 
 - PK = primary key; FK = SQL-enforced foreign key; cross-FK = a cross-feature FK in current `schema.sql` Part 9. The original Level 1 migration used Part 8 for that section.

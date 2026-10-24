@@ -35,8 +35,7 @@
 
 ## Follow-up review requirements
 
-- **Pending schema change:** Replace F8 fleet/rating text fields with `aircraft_type_id UUID REFERENCES aircraft_type (id)` using F9's existing table. SQL, Prisma and the committed F8 migration still contain text fields. A forward migration, existing-data mapping, nullability and certification-index changes need Database Team implementation.
-- **Prior section 5 fixes:** [F8 section 5](./f8-crew-management-and-rostering.md#5-review-fixes-and-requested-aircraft-type-revision) now records each earlier review issue as resolved in SQL, superseded by the committed design, or still requiring application/integration work. It also records the outstanding UUID request.
+- **Prior section 5 fixes:** [F8 section 5](./f8-crew-management-and-rostering.md#5-review-fixes-and-integration-status) now records each earlier review issue as resolved in SQL, superseded by the committed design, or still requiring application/integration work.
 - **DBML follow-up unresolved:** No DBML file is in this checkout, and the quoted “these 4” are unnamed. Missing external-diagram items cannot be confirmed without that source.
 - **Repository-wide alignment:** README.md, setup.md, docs/backend-structure.md and docs/infra-guide.md agree on the centralized Prisma/PostgreSQL/NestJS layer. The central database-structure guide's four-model count remains outdated; preserve this discrepancy as an open item rather than copying that count into the current dictionaries.
 
@@ -61,7 +60,7 @@
 
 - [x] Current SQL table/column coverage and types compared with dictionaries and Prisma model inventory.
 - [x] F2 and F8 migration changes and seed source reviewed.
-- [x] Earlier F8 proposal fixes tracked against the committed design in F8 section 5; UUID revision and DBML follow-up remain open.
+- [x] Earlier F8 proposal fixes tracked against the committed design in F8 section 5; external DBML follow-up remains unverified.
 - [ ] Running-database migration state and runtime constraints independently verified.
 - [ ] Feature owners confirm outstanding business assumptions and integration contracts.
 - [ ] Complete reference bootstrap approved and verified.

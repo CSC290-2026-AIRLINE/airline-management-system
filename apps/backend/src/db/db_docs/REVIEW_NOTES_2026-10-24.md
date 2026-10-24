@@ -15,11 +15,11 @@ Reviewed local source after merging origin/dev into the documentation branch. So
 - Consolidated schema.sql is no longer identical to the original Level 1 migration. Later migrations add the new definitions; historical migrations were not changed by this documentation work.
 - Backend feature services/workers, audit masking, last-admin protection, F8 legality checks and publish gates must not be claimed as implemented merely from SQL comments.
 
-## Follow-up supplied after the initial update
+## Feature dependency review
 
-The documentation owner supplied a request to use F9 aircraft_type UUID references instead of both F8 aircraft-type text fields, and referred to the prior F8 section 5 fixes and four missing DBML items. Current SQL, Prisma and the F8 migration still use TEXT. The UUID request is now tracked consistently in F8, F9, relationships, seeds, the index and maintenance notes as a pending schema revision. F8 section 5 preserves issue-by-issue disposition of the earlier fixes. No DBML file was found and the four items are unnamed, so external DBML completeness remains unverified.
+F8 consumes F1 staff identity, F2 flights/airports, F9 aircraft types/layout and the F15 audit contract. F3/F6 seating, F5 overtime and F13 notifications are integration dependencies rather than tables F8 must duplicate. Current dictionaries describe the model-name TEXT fields found in SQL and Prisma; no aircraft-type UUID conversion is prescribed by this documentation update.
 
-README.md, setup.md and the backend/infra guides were checked for database location, stack and ownership alignment. The central database guide remains outdated on its four-model inventory; it is outside the authorized edit folder.
+The earlier section 5 issues remain tracked against the actual implementation. No DBML file was found and the quoted four missing items are unnamed, so external DBML completeness remains unverified. README.md, setup.md and backend/infra guides agree on database location, stack and ownership. The central database guide's four-model inventory remains outdated and outside this edit scope.
 
 ## Verification limits
 

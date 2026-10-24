@@ -38,8 +38,6 @@ No complete approved level1-seed.sql or equivalent reference bootstrap exists in
 
 F8 has committed tables and inserted default settings, but no country_language, country_legality_rule, crew, certification, pairing, roster, assignment or rule-break fixtures in seed.ts. Agree country/language mappings, active aircraft model values and test scenarios with owners before adding them. Do not document example crew identities or licences as production records.
 
-**Pending UUID revision:** F8 aircraft-type fixtures must follow the schema actually deployed. The requested `aircraft_type_id` FK revision is not implemented; when it is, use real F9 UUIDs and resolve existing model/layout mappings rather than seeding model strings into UUID fields. See [F8 section 5](./f8-crew-management-and-rostering.md#5-review-fixes-and-requested-aircraft-type-revision).
-
 ## Verification checklist
 
 - [x] Documented migration settings and current seed.ts targets/counts from source.
