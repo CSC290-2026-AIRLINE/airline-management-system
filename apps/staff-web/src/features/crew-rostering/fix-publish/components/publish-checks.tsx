@@ -6,39 +6,49 @@
  * disabling a button and leaving the operator to count breaks on the left. An override
  * counts as closed here, because it is: the point of the table is what publishing will
  * do, not what the rules say.
+ *
+ * Desktop is a table. A phone gets the same rows as tiles inside one card.
  */
-import { InfoBox } from '../../shared/ui'
-import type { PublishCheck } from '../types/types'
+import { CheckIcon } from '../../shared/ui'
+import type { FixBreak, PublishCheck } from '../types/types'
 
 interface PublishChecksProps {
   checks: readonly PublishCheck[]
-  openCount: number
+  openBreaks: readonly FixBreak[]
   overriddenCount: number
   isPublished: boolean
 }
 
-export function PublishChecks({ checks, openCount, overriddenCount, isPublished }: PublishChecksProps) {
-  const remaining = `${openCount} open ${openCount === 1 ? 'break' : 'breaks'}`
-  const headline = isPublished || openCount === 0 ? `${isPublished ? 'Published' : 'Ready to publish'} · ${remaining}` : remaining
+const PUBLICATION_RULE =
+  'Publishing closes the run to automatic crewing. Later changes — a sick call, a delay, a cancellation — are re-checked against the same rules. Notifying the crew is Feature 13 and is not connected yet.'
+
+/** `0 open breaks`, `1 leg not covered`, `1 open break (POLICE_NO_SEAT)` — what is still in the way. */
+function remainingLabel(openBreaks: readonly FixBreak[], isPublished: boolean): string {
+  const count = openBreaks.length
+  if (!isPublished || count === 0) return `${count} open ${count === 1 ? 'break' : 'breaks'}`
+  const seats = openBreaks.every((item) => item.code === 'NO_LEGAL_CREW' || item.removed)
+  if (seats) return `${count} ${count === 1 ? 'leg' : 'legs'} not covered`
+  const codes = [...new Set(openBreaks.map((item) => item.code))].join(', ')
+  return `${count} open ${count === 1 ? 'break' : 'breaks'} (${codes})`
+}
+
+export function PublishChecks({ checks, openBreaks, overriddenCount, isPublished }: PublishChecksProps) {
+  const remaining = remainingLabel(openBreaks, isPublished)
+  const headline = isPublished ? `Published · ${remaining}` : openBreaks.length === 0 ? `Ready to publish · ${remaining}` : remaining
   const subtitle = overriddenCount > 0 ? `${headline} · ${overriddenCount} overridden` : headline
+  const phoneTitle = isPublished ? 'Published' : openBreaks.length === 0 ? 'Ready to publish' : 'Publish checks'
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border-desc/40 bg-card-bg">
-      <header className="border-b border-border-desc/30 px-5 py-4 sm:px-6 sm:py-5">
-        <h2 className="text-lg font-extrabold tracking-tight text-primary-text">Publish checks</h2>
-        <p className="mt-1 text-sm text-primary-text/60">{subtitle}</p>
-      </header>
+    <>
+      <section className="hidden rounded-2xl border border-border-desc/40 bg-card-bg p-7 lg:block">
+        <h2 className="text-2xl font-extrabold tracking-tight text-primary-text">Publish checks</h2>
+        <p className="mt-1.5 text-sm text-primary-text/60">{subtitle}</p>
 
-      <div className="hidden overflow-x-auto lg:block">
-        <table className="w-full border-collapse text-left">
+        <table className="mt-5 w-full border-collapse text-left">
           <thead>
-            <tr className="border-b border-border-desc/30">
+            <tr className="bg-table-head">
               {['Check', 'Date', 'Base', 'Detail', 'Publish status'].map((heading) => (
-                <th
-                  key={heading}
-                  scope="col"
-                  className="px-6 py-3 text-[11px] font-semibold tracking-widest text-primary-text/60 uppercase"
-                >
+                <th key={heading} scope="col" className="px-4 py-4 text-xs font-bold tracking-wider text-primary-text uppercase">
                   {heading}
                 </th>
               ))}
@@ -46,55 +56,52 @@ export function PublishChecks({ checks, openCount, overriddenCount, isPublished 
           </thead>
           <tbody>
             {checks.map((check) => (
-              <tr key={check.pairingId} className="border-b border-border-desc/20 last:border-b-0">
-                <td className="px-6 py-3.5 text-sm font-bold text-primary-text">{check.pairingId}</td>
-                <td className="px-6 py-3.5 text-sm text-primary-text/70">{check.dateLabel}</td>
-                <td className="px-6 py-3.5 text-sm text-primary-text/70">{check.base}</td>
-                <td className="px-6 py-3.5 text-sm text-primary-text/70">{check.detail}</td>
-                <td className="px-6 py-3.5">
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                      check.tone === 'good' ? 'bg-valid-bg text-valid' : 'bg-invalid-bg text-invalid'
-                    }`}
-                  >
-                    {check.status}
-                  </span>
+              <tr key={check.pairingId} className="border-b border-border-desc/40">
+                <td className="px-4 py-4 text-sm text-primary-text">{check.pairingId}</td>
+                <td className="px-4 py-4 text-sm whitespace-nowrap text-primary-text">{check.dateLabel}</td>
+                <td className="px-4 py-4 text-sm text-primary-text">{check.base}</td>
+                <td className="px-4 py-4 text-sm text-primary-text">{check.detail}</td>
+                <td className={`px-4 py-4 text-sm font-bold whitespace-nowrap ${check.tone === 'good' ? 'text-valid' : 'text-invalid'}`}>
+                  {check.status}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
 
-      <ul className="flex flex-col lg:hidden">
-        {checks.map((check) => (
-          <li key={check.pairingId} className="border-b border-border-desc/25 px-5 py-4 last:border-b-0">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-sm font-bold text-primary-text">
-                {check.pairingId} <span className="font-normal text-primary-text/60">{check.dateLabel}</span>
-              </p>
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                  check.tone === 'good' ? 'bg-valid-bg text-valid' : 'bg-invalid-bg text-invalid'
-                }`}
-              >
-                {check.status}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-primary-text/70">{check.detail}</p>
-          </li>
-        ))}
-      </ul>
-
-      <div className="border-t border-border-desc/30 px-5 py-4 sm:px-6">
-        <p className="text-[11px] font-bold tracking-widest text-primary-text/50 uppercase">Publication rule</p>
-        <div className="mt-2">
-          <InfoBox>
-            Publishing sends every leg and duty to the crew on it and closes the run. Later changes — a sick call, a delay, a cancellation —
-            are re-checked against the same six rules and re-sent to the crew affected.
-          </InfoBox>
+        <div className="mt-6 rounded-xl bg-info-bg px-5 py-5">
+          <p className="text-sm font-bold text-primary-text">Publication rule</p>
+          <p className="mt-2 text-xs leading-relaxed text-primary-text/55">{PUBLICATION_RULE}</p>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5 lg:hidden">
+        {isPublished && (
+          <span className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-valid text-white">
+            <CheckIcon className="h-4 w-4" />
+          </span>
+        )}
+        <h2 className="text-xl font-extrabold tracking-tight text-primary-text">{phoneTitle}</h2>
+        <p className="mt-1 text-xs leading-relaxed text-primary-text/55">{subtitle}</p>
+
+        <ul className="mt-3 flex flex-col gap-3">
+          {checks.map((check) => (
+            <li
+              key={check.pairingId}
+              className={`rounded-xl border px-4 py-3 ${check.tone === 'good' ? 'border-valid bg-green-tint' : 'border-invalid/50 bg-green-tint'}`}
+            >
+              <p className="text-sm font-extrabold text-primary-text">
+                {check.pairingId} · {check.dateLabel} · {check.base}
+              </p>
+              <p className={`mt-1 text-xs ${check.tone === 'good' ? 'text-primary-text/55' : 'text-invalid'}`}>{check.detail}</p>
+            </li>
+          ))}
+          <li className="rounded-xl bg-band-bg px-4 py-3">
+            <p className="text-xs font-extrabold tracking-wider text-primary-text uppercase">Publication rule</p>
+            <p className="mt-1.5 text-xs leading-relaxed text-primary-text/55">{PUBLICATION_RULE}</p>
+          </li>
+        </ul>
+      </section>
+    </>
   )
 }

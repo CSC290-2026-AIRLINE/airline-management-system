@@ -38,6 +38,17 @@
   --color-invalid-bg: rgb(184 23 31 / 0.3);
   --color-info-bg: #eef3fb;
 
+  /* Notices, labels and chrome taken from the Build pairings mockups */
+  --color-amber-ink: #8a5200;
+  --color-amber-tint: #fff3d6;
+  --color-amber-line: #f3d48a;
+  --color-green-tint: #e6f6ee;
+  --color-green-line: #b9e3cd;
+  --color-label: #5b6475;
+  --color-slate: #7f8aa0;
+  --color-nav-active: #2b4373;
+  --color-table-head: #e3e9f1;
+
   /* Band behind a strip that sits into the page rather than on it, e.g. the wizard
      steps. One step darker than `--color-page-bg`, so it reads as a band and not as
      a card — a card on this colour would need a border to stay distinguishable. */

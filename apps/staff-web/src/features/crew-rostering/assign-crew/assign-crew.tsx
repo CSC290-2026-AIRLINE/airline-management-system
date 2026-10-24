@@ -1,35 +1,31 @@
 /**
  * Assign Crew — step 2 of the roster run wizard.
  *
- * Page composition only: selection and results live in `use-assign-crew`, the
- * auto-assign decision and every rule in `crew-engine`, and the styles in the shared
- * `tokens.css`. Swapping the mock data for the backend should not require editing
- * this file beyond replacing the hook's internals.
+ * Page composition only: selection and results live in `use-assign-crew`, which talks
+ * to `/api/crew-rostering/assign-crew`. The backend makes the auto-assign decision and
+ * checks every rule; styles are in the shared `tokens.css`.
  *
  * The page renders two layouts from one state. Above `lg` it is the desktop workspace
  * with the dark sidebar; below it the sidebar collapses into a top bar, the pairing
  * picker becomes cards, and the step's primary action moves into a fixed bottom bar.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
-import { MOCK_ROSTER_RUN, MOCK_SIMULATION_CLOCK } from './types/mock-data'
+import { MOCK_SIMULATION_CLOCK } from './types/mock-data'
 import { useAssignCrew } from './types/use-assign-crew'
 import type { AssignmentSummary } from './types/types'
-import { RosterRunBadge, SidebarNav, WizardSteps } from '../build-pairings/components/app-shell'
-import { ArrowRightIcon, Button, InfoIcon } from '../shared/ui'
+import { MOCK_SIMULATION_CLOCK_SHORT } from '../build-pairings/types/mock-data'
+import { MobileTopBar, RosterRunBadge, SidebarNav, WizardSteps } from '../shared/app-shell'
+import { ArrowRightIcon, Button } from '../shared/ui'
 import { AssignmentCards, AssignmentsTable } from './components/assignment-table'
-import { MobileBottomBar, MobileTopBar, PageColumn } from './components/mobile-chrome'
+import { MobileBottomBar, PageColumn } from './components/mobile-chrome'
 import { PairingsPicker } from './components/pairings-picker'
 import { RosterRunFields } from './components/roster-run-card'
 import { RuleBreaksCard } from './components/rule-breaks-card'
+import { NoCrewAssigned, RunStatCards } from './components/run-results'
 import { RulesCard, RulesCardCompact } from './components/rules-card'
 import { RunAutoAssignModal } from './modals/run-auto-assign-modal'
-
-/** `Mon 14 Sep 2026 · 09:00` shortened for the mobile top bar. */
-const SHORT_CLOCK = MOCK_SIMULATION_CLOCK.replace(/^\w{3}\s/, '')
-  .split(' · ')[0]
-  .replace(/\s\d{4}$/, '')
 
 /**
  * The account line under the sidebar wordmark.
@@ -59,12 +55,20 @@ export function AssignCrewPage() {
   // rather than a claim that is not true.
   const role = roleLabel(user?.type ?? 'admin')
 
-  const canRun = state.selectedPairings.length > 0 && state.dateError === null
+  const canRun = state.rosterRun?.status === 'draft' && state.selectedPairings.length > 0 && state.dateError === null && !state.isRunning
   const summary = state.summary
+  const hasResults = state.assignments !== null && summary !== null
 
-  /** Step 3 does not exist yet, so "Fix breaks" brings the break list into view. */
+  // Named in the rules note only when every selected leg flies the same aircraft type.
+  const aircraftType = useMemo(() => {
+    const types = new Set(state.pairings.flatMap((pairing) => pairing.legs.map((leg) => leg.aircraftType)))
+    return types.size === 1 ? [...types][0] : undefined
+  }, [state.pairings])
+
+  /** Opens Fix & publish on the same base and dates, where the breaks are fixed and the roster is published. */
   function openFixPublish() {
-    document.querySelector('[data-rule-breaks]')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const { dateFrom, dateTo, base } = state.params
+    void navigate({ to: '/fix-publish', search: { dateFrom, dateTo, base } })
   }
 
   function handleRun() {
@@ -87,8 +91,9 @@ export function AssignCrewPage() {
     <PairingsPicker
       pairings={state.pairings}
       selectedIds={state.selectedIds}
-      excluded={state.excluded}
+      excluded={state.uncommitted}
       canRun={canRun}
+      hasRun={hasResults}
       onToggle={state.togglePairing}
       onSelectAll={state.selectAll}
       onClearSelection={state.clearSelection}
@@ -100,56 +105,86 @@ export function AssignCrewPage() {
     <div className="flex min-h-screen w-full bg-page-bg">
       {/* `contents` keeps the sidebar a direct flex child, so its own `mt-auto`
           footer still pins to the bottom of the viewport on desktop. */}
-      <div className="hidden lg:contents">
-        <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={role.full} onSignOut={() => void logout()} />
-      </div>
+      <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={role.full} onSignOut={() => void logout()} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileTopBar simulationClockShort={SHORT_CLOCK} accountLabel={role.short} />
+        <MobileTopBar
+          simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT}
+          userName={role.short}
+          activeItem="roster-runs"
+          onSignOut={() => void logout()}
+        />
 
-        <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 pb-28 lg:px-8 lg:py-7 lg:pb-8">
+        <main className={`flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 lg:px-9 lg:py-7 lg:pb-9 ${hasResults ? 'pb-28' : 'pb-8'}`}>
           <header className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase lg:text-3xl">Assign crew</h1>
-              <p className="mt-1 text-sm text-primary-text/60 lg:hidden">Crew are assigned to every leg automatically.</p>
-              <p className="mt-1 hidden text-sm text-primary-text/60 lg:block">
+              <p className="mt-1.5 text-sm text-primary-text/60 lg:hidden">Crew are assigned to every leg automatically.</p>
+              <p className="mt-1.5 hidden text-base text-primary-text/60 lg:block">
                 Crew are assigned to every leg automatically, then checked against the rules.
               </p>
             </div>
             <div className="hidden lg:block">
               <RosterRunBadge
-                base={MOCK_ROSTER_RUN.base}
-                dateFrom={MOCK_ROSTER_RUN.dateFrom}
-                dateTo={MOCK_ROSTER_RUN.dateTo}
-                status={MOCK_ROSTER_RUN.status}
+                base={state.rosterRun?.base ?? state.params.base}
+                dateFrom={state.rosterRun?.dateFrom ?? state.params.dateFrom}
+                dateTo={state.rosterRun?.dateTo ?? state.params.dateTo}
+                status={
+                  state.rosterRun && state.pairings.length > 0
+                    ? state.rosterRun.status === 'published'
+                      ? 'Published'
+                      : 'Draft'
+                    : 'Not committed'
+                }
               />
             </div>
           </header>
 
-          <WizardSteps active="assign-crew" />
+          <div className="lg:mb-4">
+            <WizardSteps active="assign-crew" />
+          </div>
 
           {summary && state.assignments && <RunSummaryBanner summary={summary} onOpenFix={openFixPublish} />}
 
+          {state.runError && (
+            <p role="alert" className="rounded-lg border border-invalid/30 bg-invalid-bg px-4 py-3 text-sm font-medium text-invalid">
+              {state.runError}
+            </p>
+          )}
+
+          {state.rosterRun?.status === 'published' && (
+            <p className="rounded-lg border border-secondary/40 bg-secondary/10 px-4 py-3 text-sm font-medium text-primary">
+              This roster is published. Change crew in Fix &amp; publish instead of running auto-assign again.
+            </p>
+          )}
+
           {state.loadState === 'error' && (
             <p role="alert" className="rounded-lg border border-invalid/30 bg-invalid-bg px-4 py-3 text-sm font-medium text-invalid">
-              Could not load the committed pairings. Try again.
+              {state.loadError ?? 'Could not load the committed pairings. Try again.'}
             </p>
           )}
 
           {/* Desktop: roster-run fields and the picker share one card. */}
           <div className="hidden flex-col gap-5 lg:flex">
             <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-7">
-              <p className="text-[11px] font-semibold tracking-widest text-primary-text/60 uppercase">Roster run</p>
+              <p className="text-xs font-semibold tracking-wider text-label uppercase">Roster run</p>
               {fields}
-              <div className="mt-7 border-t border-border-desc/30 pt-6">{picker}</div>
+              <div className="mt-7">{picker}</div>
             </section>
 
-            <RulesCard />
-            {state.assignments && <AssignmentsTable assignments={state.assignments} breaksByLeg={state.breaksByLeg} />}
-            {state.assignments && (
-              <div data-rule-breaks>
-                <RuleBreaksCard breaks={state.breaks} onOpenFix={openFixPublish} />
-              </div>
+            <RulesCard limits={state.limits} aircraftType={aircraftType} />
+            {hasResults ? (
+              <>
+                <RunStatCards summary={summary} />
+                <AssignmentsTable assignments={state.assignments!} breaksByLeg={state.breaksByLeg} />
+                {state.breaks.length > 0 && (
+                  <div data-rule-breaks>
+                    <RuleBreaksCard breaks={state.breaks} onOpenFix={openFixPublish} />
+                  </div>
+                )}
+              </>
+            ) : (
+              <NoCrewAssigned committedCount={state.pairings.length} />
             )}
           </div>
 
@@ -161,34 +196,70 @@ export function AssignCrewPage() {
                 Pick the dates and base, then choose which pairings to crew.
               </p>
               {fields}
-              <Button fullWidth className="mt-5" disabled={!canRun} onClick={() => setConfirming(true)}>
-                Run auto-assign
-              </Button>
+              {hasResults && (
+                <Button fullWidth className="mt-5 h-11" disabled={!canRun} onClick={() => setConfirming(true)}>
+                  Re-run auto-assign
+                </Button>
+              )}
             </section>
 
-            <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5">{picker}</section>
+            {/* Before a run the picker is its own card; afterwards it folds away so the results come first. */}
+            {hasResults ? (
+              <details className="group rounded-2xl border border-border-desc/40 bg-card-bg p-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between text-lg font-bold text-primary-text">
+                  Committed pairings
+                  <span className="text-xs font-semibold text-primary-text/55">{state.selectedIds.length} selected</span>
+                </summary>
+                <div className="mt-3">
+                  <PairingsPicker
+                    pairings={state.pairings}
+                    selectedIds={state.selectedIds}
+                    excluded={state.uncommitted}
+                    canRun={canRun}
+                    showRun={false}
+                    onToggle={state.togglePairing}
+                    onSelectAll={state.selectAll}
+                    onClearSelection={state.clearSelection}
+                    onRun={() => setConfirming(true)}
+                  />
+                </div>
+              </details>
+            ) : (
+              <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5">{picker}</section>
+            )}
 
-            <RulesCardCompact />
-            {state.assignments && <AssignmentCards assignments={state.assignments} breaksByLeg={state.breaksByLeg} />}
-            {state.assignments && (
-              <div data-rule-breaks>
-                <RuleBreaksCard breaks={state.breaks} onOpenFix={openFixPublish} />
-              </div>
+            <RulesCardCompact limits={state.limits} aircraftType={aircraftType} />
+            {hasResults ? (
+              <>
+                <RunStatCards summary={summary} />
+                <AssignmentCards assignments={state.assignments!} breaksByLeg={state.breaksByLeg} />
+                {state.breaks.length > 0 && (
+                  <div data-rule-breaks>
+                    <RuleBreaksCard breaks={state.breaks} onOpenFix={openFixPublish} />
+                  </div>
+                )}
+              </>
+            ) : (
+              <NoCrewAssigned committedCount={state.pairings.length} />
             )}
           </PageColumn>
         </main>
 
-        <MobileBottomBar
-          breakCount={summary?.breakCount ?? 0}
-          onBack={() => void navigate({ to: '/build-pairings' })}
-          onOpenFix={openFixPublish}
-        />
+        {hasResults && (
+          <MobileBottomBar
+            breakCount={summary.breakCount}
+            onBack={() => void navigate({ to: '/build-pairings', search: { ...state.params } })}
+            onOpenFix={openFixPublish}
+          />
+        )}
       </div>
 
       {confirming && (
         <RunAutoAssignModal
           pairings={state.selectedPairings}
+          base={state.params.base}
           flightCount={state.selectedFlightCount}
+          isRerun={hasResults}
           onCancel={() => setConfirming(false)}
           onConfirm={handleRun}
         />
@@ -206,18 +277,35 @@ export function AssignCrewPage() {
  * misreport the roster.
  */
 function RunSummaryBanner({ summary, onOpenFix }: { summary: AssignmentSummary; onOpenFix: () => void }) {
+  const clean = summary.breakCount === 0
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-secondary/40 bg-secondary/10 px-4 py-3">
-      <InfoIcon className="h-4 w-4 shrink-0 text-secondary" />
-      <p className="flex-1 text-sm font-medium text-primary">
+    <div
+      role="status"
+      className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
+        clean ? 'border-green-line bg-green-tint text-valid' : 'border-amber-line bg-amber-tint text-amber-ink'
+      }`}
+    >
+      <span aria-hidden="true" className="w-4 shrink-0 text-center text-base leading-none font-extrabold">
+        {clean ? '✓' : '!'}
+      </span>
+      <p className="flex-1 text-sm font-semibold">
         Auto-assign finished · {summary.fullyCrewedLegs} of {summary.totalLegs} legs fully crewed ·{' '}
-        <span className="hidden lg:inline">
-          {summary.breakCount} rule breaks on {summary.brokenLegs} legs to fix in the next step.
-        </span>
-        <span className="lg:hidden">{summary.breakCount} rule breaks to fix.</span>
+        {clean ? (
+          'no rule breaks.'
+        ) : (
+          <>
+            <span className="hidden lg:inline">
+              {summary.breakCount} rule {summary.breakCount === 1 ? 'break' : 'breaks'} on {summary.brokenLegs}{' '}
+              {summary.brokenLegs === 1 ? 'leg' : 'legs'} to fix in the next step.
+            </span>
+            <span className="lg:hidden">
+              {summary.breakCount} rule {summary.breakCount === 1 ? 'break' : 'breaks'} to fix.
+            </span>
+          </>
+        )}
       </p>
-      <Button variant="highlight" className="hidden lg:inline-flex" onClick={onOpenFix}>
-        Fix breaks
+      <Button variant="highlight" className="hidden shrink-0 lg:inline-flex" onClick={onOpenFix}>
+        {clean ? 'Fix & publish' : 'Fix breaks'}
         <ArrowRightIcon className="h-4 w-4" />
       </Button>
     </div>

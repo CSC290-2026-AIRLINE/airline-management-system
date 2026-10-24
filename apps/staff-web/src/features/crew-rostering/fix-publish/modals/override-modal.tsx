@@ -10,7 +10,8 @@
 import { useState } from 'react'
 import { BaseModalOverlay, Button } from '../../shared/ui'
 import { formatFullDay, formatTime } from '../../build-pairings/types/format'
-import { breakNoun } from '../types/break-descriptions'
+import { RouteText } from '../../build-pairings/components/route-text'
+import { breakNoun } from '../types/labels'
 import type { FixBreak, LegAssignment } from '../types/types'
 
 interface OverrideModalProps {
@@ -31,13 +32,16 @@ export function OverrideModal({ item, rosterFor, onCancel, onConfirm }: Override
     <BaseModalOverlay
       title="Override company-rule break?"
       onClose={onCancel}
+      variant="plain"
+      stackFooter
       width="max-w-xl"
       footer={
         <>
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" className="h-11" onClick={onCancel}>
             Cancel
           </Button>
           <Button
+            className="h-11"
             onClick={() => {
               setTried(true)
               if (trimmed.length > 0) onConfirm(trimmed)
@@ -48,54 +52,48 @@ export function OverrideModal({ item, rosterFor, onCancel, onConfirm }: Override
         </>
       }
     >
-      <div className="flex flex-col gap-4">
-        <p className="text-sm leading-relaxed text-primary-text/70">
-          Only local-crew and police breaks can be overridden. Your reason is saved to the audit log in Feature 15.
-        </p>
+      <p className="text-sm leading-relaxed text-primary-text/60">
+        Only local-crew and police breaks can be overridden. Your reason is saved to the audit log in Feature 15.
+      </p>
 
-        <div className="flex flex-col gap-1.5">
-          <p className="text-[11px] font-bold tracking-widest text-primary-text/50 uppercase">Break to override</p>
-          <div className="rounded-xl border border-border-desc/40 bg-page-bg px-4 py-3.5">
-            <p className="text-[11px] font-medium text-primary-text/60">{leg ? formatFullDay(leg.departureAt) : '—'}</p>
-            <p className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="text-lg font-extrabold tracking-tight text-primary-text">
-                {leg ? `${leg.origin} → ${leg.destination}` : '—'}
-              </span>
-              <span className="rounded-full bg-info-bg px-2.5 py-1 text-xs font-bold text-primary">{item.flightNumber}</span>
-            </p>
-            <p className="mt-1 text-xs text-primary-text/70">
-              {item.code} · {breakNoun(item.code)}
-              {leg && ` · ${formatTime(leg.departureAt)}–${formatTime(leg.arrivalAt)}`}
-            </p>
-          </div>
+      <p className="mt-4 text-sm font-bold text-primary-text">Break to override</p>
+      <div className="mt-2 rounded-xl border border-border-desc/50 px-4 py-3.5">
+        <p className="text-xs text-primary-text/55">{leg ? formatFullDay(leg.departureAt) : '—'}</p>
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xl font-extrabold tracking-tight text-primary-text">
+            {leg ? <RouteText route={[leg.origin, leg.destination]} arrowClassName="text-primary-text" /> : '—'}
+          </span>
+          <span className="rounded-full bg-info-bg px-2.5 py-1 text-[11px] font-bold text-blue-700">{item.flightNumber}</span>
         </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="override-reason" className="text-[11px] font-bold tracking-widest text-primary-text/50 uppercase">
-            Reason
-          </label>
-          <textarea
-            id="override-reason"
-            rows={4}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            placeholder="Write why this rule is being overridden"
-            aria-invalid={missing || undefined}
-            className={`rounded-lg border bg-white px-3 py-2.5 text-sm text-primary-text outline-none transition-colors focus-visible:border-primary ${
-              missing ? 'border-invalid' : 'border-border-desc'
-            }`}
-          />
-          {missing && (
-            <p className="text-xs font-medium text-invalid">
-              <span className="font-bold">Reason_required</span> · Write a reason before overriding. It is saved to the audit log.
-            </p>
-          )}
-        </div>
-
-        <p className="border-t border-border-desc/30 pt-3 text-xs leading-relaxed text-primary-text/60">
-          Law rules can't be overridden. This closes the company-rule break only.
+        <p className="mt-1.5 text-xs text-primary-text/55">
+          {item.code} · {breakNoun(item.code)}
+          {leg && ` · ${formatTime(leg.departureAt)}–${formatTime(leg.arrivalAt)}`}
         </p>
       </div>
+
+      <label htmlFor="override-reason" className="mt-4 block text-[11px] font-semibold tracking-widest text-label uppercase">
+        Reason
+      </label>
+      <input
+        id="override-reason"
+        type="text"
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        placeholder="Write why this rule is being overridden"
+        aria-invalid={missing || undefined}
+        className={`mt-1.5 h-11 w-full rounded-lg bg-white px-3 text-sm text-primary-text outline-none transition-colors focus-visible:border-primary ${
+          missing ? 'border-2 border-invalid' : 'border border-border-desc'
+        }`}
+      />
+      {missing && (
+        <p className="mt-1.5 text-xs font-medium text-invalid">
+          REASON_REQUIRED · Write a reason before overriding. It is saved to the audit log.
+        </p>
+      )}
+
+      <p className="mt-3 text-xs leading-relaxed text-primary-text/55">
+        Law rules can’t be overridden. This closes the company-rule break only.
+      </p>
     </BaseModalOverlay>
   )
 }

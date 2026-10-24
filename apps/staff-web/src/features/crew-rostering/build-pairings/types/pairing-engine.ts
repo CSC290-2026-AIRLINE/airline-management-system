@@ -1,37 +1,31 @@
-import type { AddLegCandidate, FlightLeg, LegalityCheck, Layover, Pairing, PairingEvaluation, ScheduledFlight } from './types'
+import type {
+  AddLegCandidate,
+  FlightLeg,
+  LegalityCheck,
+  Layover,
+  Pairing,
+  PairingEvaluation,
+  PairingLimits,
+  ScheduledFlight,
+} from './types'
 import { formatDay, formatDuration, formatFlightsPerDay, formatRoute, formatTime, localDateKey, minutesBetween } from './format'
 
 /**
- * Flight time limits applied by the pairing builder. The backend owns the real
- * values (they are rules, not UI constants); these mirror the defaults shown in
- * the mockups so a future response can simply overwrite them.
+ * Fallback limits, used only when a pairing has none attached. The backend sends
+ * each pairing's real limits (from `crew_setting`, tightened by any stricter
+ * destination rule); these mirror the values the migration seeds.
  */
-export const FTL_LIMITS = {
-  /** Flights per duty day. */
-  maxFlightsPerDutyDay: 4,
-  /** Duty hours per day. */
-  maxDutyHoursPerDay: 13,
-  /** Duty hours across the whole pairing, shown in the card footer. */
+export const DEFAULT_LIMITS: PairingLimits = {
+  maxFlightsPerDuty: 4,
+  maxDutyHours: 13,
   maxPairingDays: 3,
-  /** Minutes added before the first departure and after the last arrival of a duty day. */
-  preFlightMinutes: 45,
-  postFlightMinutes: 45,
-} as const
-
-/** Minimum connection time, in minutes, between two consecutive legs. */
-export const MIN_CONNECTION_MINUTES = 60
-
-function toLeg(flight: ScheduledFlight, addedManually: boolean): FlightLeg {
-  return {
-    flightId: flight.id,
-    flightNumber: flight.flightNumber,
-    origin: flight.origin,
-    destination: flight.destination,
-    departureAt: flight.departureAt,
-    arrivalAt: flight.arrivalAt,
-    addedManually,
-  }
+  minRestHours: 10,
+  reportMinutes: 60,
+  releaseMinutes: 0,
 }
+
+/** Minimum connection time, in minutes, between two consecutive legs. Matches the backend generator. */
+export const MIN_CONNECTION_MINUTES = 60
 
 function byDeparture(a: ScheduledFlight, b: ScheduledFlight): number {
   return a.departureAt.localeCompare(b.departureAt)
@@ -41,55 +35,6 @@ function byDeparture(a: ScheduledFlight, b: ScheduledFlight): number {
 function canFollow(candidate: ScheduledFlight, from: FlightLeg): boolean {
   return candidate.origin === from.destination && minutesBetween(from.arrivalAt, candidate.departureAt) >= MIN_CONNECTION_MINUTES
 }
-
-/**
- * Builds pairings by chaining flights outward from `base`.
- *
- * Flights are consumed in departure order: each pass takes the earliest unused
- * flight leaving base, then keeps extending the chain with the earliest
- * connection until it lands back on base or runs out of options. A chain that
- * cannot close is still emitted so the operator can repair it by hand, which is
- * exactly what the Invalid cards in the mockups show.
- */
-export function generatePairings(flights: readonly ScheduledFlight[], base: string): Pairing[] {
-  const pool = [...flights].filter((f) => f.status === 'available').sort(byDeparture)
-  const used = new Set<string>()
-  const pairings: Pairing[] = []
-
-  const takeNext = (from: AirportOrigin, after?: FlightLeg): ScheduledFlight | undefined =>
-    pool.find((f) => !used.has(f.id) && f.origin === from && (!after || canFollow(f, after)))
-
-  for (const seed of pool) {
-    if (seed.origin !== base || used.has(seed.id)) continue
-
-    const legs: FlightLeg[] = []
-    let cursor: ScheduledFlight | undefined = seed
-
-    while (cursor) {
-      used.add(cursor.id)
-      const leg = toLeg(cursor, false)
-      legs.push(leg)
-      if (cursor.destination === base) break
-      cursor = takeNext(cursor.destination, leg)
-    }
-
-    pairings.push({
-      id: `P-${101 + pairings.length}`,
-      base,
-      legs,
-      deleted: false,
-      releasedFlightIds: [],
-      releasedFlightNumbers: [],
-      // The first pairing stands in for one a published roster already uses, so
-      // the "can't delete" path is reachable without a backend.
-      published: pairings.length === 0,
-    })
-  }
-
-  return pairings
-}
-
-type AirportOrigin = string
 
 /** Groups legs into duty days. A new day starts when the local date changes. */
 function splitIntoDutyDays(legs: readonly FlightLeg[]): FlightLeg[][] {
@@ -105,14 +50,22 @@ function splitIntoDutyDays(legs: readonly FlightLeg[]): FlightLeg[][] {
   return days
 }
 
-/** Duty minutes for one day, including pre-flight and post-flight buffers. */
-function dutyMinutesForDay(day: readonly FlightLeg[]): number {
+/** Duty minutes for one day, from report before the first departure to release after the last arrival. */
+function dutyMinutesForDay(day: readonly FlightLeg[], limits: PairingLimits): number {
   const first = day[0]
   const last = day.at(-1)
   if (!first || !last) return 0
-  const start = new Date(first.departureAt).getTime() - FTL_LIMITS.preFlightMinutes * 60_000
-  const end = new Date(last.arrivalAt).getTime() + FTL_LIMITS.postFlightMinutes * 60_000
+  const start = new Date(first.departureAt).getTime() - limits.reportMinutes * 60_000
+  const end = new Date(last.arrivalAt).getTime() + limits.releaseMinutes * 60_000
   return (end - start) / 60_000
+}
+
+/** Calendar days from the first departure to the last arrival, inclusive. A two-night trip is three days. */
+function spanDays(legs: readonly FlightLeg[]): number {
+  const first = legs[0]
+  const last = legs.at(-1)
+  if (!first || !last) return 0
+  return nightsBetween(first.departureAt, last.arrivalAt) + 1
 }
 
 /** Every rest between consecutive legs that crosses midnight. */
@@ -151,55 +104,78 @@ function check(code: LegalityCheck['code'], label: string, passed: boolean, valu
   return { code, label, status: passed ? 'passed' : 'failed', value, detail }
 }
 
+/** Why a pairing does not start and end at base, or undefined when it does. */
+function closureDetail(legs: readonly FlightLeg[], base: string): string | undefined {
+  const first = legs[0]
+  const last = legs.at(-1)
+  if (!first || !last) return 'Add at least one flight in Edit legs.'
+  if (first.origin !== base) return `Starts in ${first.origin}, not at base. Start with a flight out of ${base}, or delete this pairing.`
+  if (last.destination !== base)
+    return `Ends in ${last.destination}, not at base. Add a flight back to ${base} in Edit legs, or delete this pairing.`
+  return undefined
+}
+
 /**
  * Recomputes a pairing's legality from its legs. Never trust a stored status:
  * every edit path calls this so the badge and the checks can never disagree.
+ *
+ * The rules mirror the backend's `BuildPairingService.evaluate`, which is the one
+ * that decides what may be committed. Both read the same limits.
  */
 export function validatePairing(pairing: Pairing): PairingEvaluation {
   const { legs, base } = pairing
+  const limits = pairing.limits ?? DEFAULT_LIMITS
   const route = routeOf(legs)
   const days = splitIntoDutyDays(legs)
+  const dayCount = spanDays(legs)
   const layovers = findLayovers(legs)
-  const dayDuties = days.map(dutyMinutesForDay)
+  const dayDuties = days.map((day) => dutyMinutesForDay(day, limits))
   const totalDuty = dayDuties.reduce((sum, value) => sum + value, 0)
   const maxFlightsPerDay = Math.max(0, ...days.map((day) => day.length))
   const maxDayDuty = Math.max(0, ...dayDuties)
 
-  const closed = legs.length > 0 && route[route.length - 1] === base
-  const withinDuty = maxDayDuty <= FTL_LIMITS.maxDutyHoursPerDay * 60
-  const withinFlights = maxFlightsPerDay <= FTL_LIMITS.maxFlightsPerDutyDay
-  const withinLength = days.length <= FTL_LIMITS.maxPairingDays
+  const notClosed = closureDetail(legs, base)
+  const closed = notClosed === undefined
+  const gap = legs.findIndex(
+    (leg, index) => index > 0 && (leg.origin !== legs[index - 1].destination || leg.departureAt < legs[index - 1].arrivalAt),
+  )
+  const withinDuty = maxDayDuty <= limits.maxDutyHours * 60
+  const withinFlights = maxFlightsPerDay <= limits.maxFlightsPerDuty
+  const withinLength = dayCount <= limits.maxPairingDays
 
   const checks: LegalityCheck[] = [
+    check('PAIRING_NOT_CLOSED', 'Starts and ends at base', closed, formatRoute(route), notClosed),
     check(
-      'PAIRING_NOT_CLOSED',
-      'Starts and ends at base',
-      closed,
-      formatRoute(route),
-      closed ? undefined : `Ends in ${route.at(-1)}, not at base. Add a flight back to ${base} in Edit legs, or delete this pairing.`,
+      'SEQUENCE_BROKEN',
+      'Each flight leaves where the last one landed',
+      gap === -1,
+      gap === -1 ? 'Continuous' : `Gap at ${legs[gap].flightNumber}`,
+      gap === -1
+        ? undefined
+        : `${legs[gap].flightNumber} leaves ${legs[gap].origin}, but the flight before it lands in ${legs[gap - 1].destination}.`,
     ),
     check(
       'FLIGHTS_PER_DAY_EXCEEDED',
-      `Flights per duty day (max ${FTL_LIMITS.maxFlightsPerDutyDay})`,
+      `Flights per duty day (max ${limits.maxFlightsPerDuty})`,
       withinFlights,
       formatFlightsPerDay(maxFlightsPerDay),
-      withinFlights ? undefined : `A duty day runs ${maxFlightsPerDay} flights, over the limit of ${FTL_LIMITS.maxFlightsPerDutyDay}.`,
+      withinFlights ? undefined : `A duty day runs ${maxFlightsPerDay} flights, over the limit of ${limits.maxFlightsPerDuty}.`,
     ),
     check(
       'DUTY_DAY_EXCEEDED',
-      `Duty hours per day (max ${FTL_LIMITS.maxDutyHoursPerDay}h)`,
+      `Duty hours per day (max ${limits.maxDutyHours}h)`,
       withinDuty,
       formatDuration(maxDayDuty),
       withinDuty
         ? undefined
-        : `A duty day runs ${formatDuration(maxDayDuty)}, over the ${FTL_LIMITS.maxDutyHoursPerDay}h limit. Remove a leg or split the pairing.`,
+        : `A duty day runs ${formatDuration(maxDayDuty)}, over the ${limits.maxDutyHours}h limit. Remove a leg or split the pairing.`,
     ),
     check(
       'PAIRING_TOO_LONG',
-      `Pairing length (max ${FTL_LIMITS.maxPairingDays} days)`,
+      `Pairing length (max ${limits.maxPairingDays} days)`,
       withinLength,
-      `${days.length} ${days.length === 1 ? 'day' : 'days'}`,
-      withinLength ? undefined : `Pairing runs ${days.length} days, over the ${FTL_LIMITS.maxPairingDays} day limit.`,
+      `${dayCount} ${dayCount === 1 ? 'day' : 'days'}`,
+      withinLength ? undefined : `Pairing runs ${dayCount} days, over the ${limits.maxPairingDays} day limit.`,
     ),
   ]
 
@@ -229,7 +205,7 @@ export function validatePairing(pairing: Pairing): PairingEvaluation {
     })),
     layoverLabel: layoverLabel(layovers, closed, route.at(-1) ?? base),
     layoverIsError: !closed,
-    cardFooterLeft: dayCountSuffix(legs, days.length),
+    cardFooterLeft: dayCountSuffix(legs, dayCount),
     dutyLabel: `${formatDuration(totalDuty)} duty`,
     totalDutyMinutes: totalDuty,
   }
@@ -254,11 +230,15 @@ export function nightStopLabel(layover: Layover, nextLeg: FlightLeg): string {
 /**
  * Candidate flights for the Add Leg modal: everything leaving the pairing's last
  * airport after the current end, tagged with whether it would close the pairing.
+ * A flight already in another pairing is left out, because a flight can only be
+ * in one pairing.
  */
 export function findAddLegCandidates(flights: readonly ScheduledFlight[], pairing: Pairing, base: string): AddLegCandidate[] {
   const lastLeg = pairing.legs.at(-1)
   if (!lastLeg) return []
+  const inThisPairing = new Set(pairing.legs.map((leg) => leg.flightId))
   return flights
+    .filter((flight) => !inThisPairing.has(flight.id) && (flight.pairingId == null || flight.pairingId === pairing.id))
     .filter((flight) => canFollow(flight, lastLeg))
     .sort(byDeparture)
     .map((flight) => {
@@ -269,4 +249,64 @@ export function findAddLegCandidates(flights: readonly ScheduledFlight[], pairin
         badgeLabel: returnsToBase ? 'Returns to base' : `Ends at ${flight.destination}`,
       }
     })
+}
+
+/** One-step repair for an Invalid pairing: the legs it would have afterwards, which pass every check. */
+export interface PairingFix {
+  id: string
+  title: string
+  detail: string
+  legs: FlightLeg[]
+}
+
+const MAX_FIXES = 3
+
+function toLeg(flight: ScheduledFlight): FlightLeg {
+  return {
+    flightId: flight.id,
+    flightNumber: flight.flightNumber,
+    origin: flight.origin,
+    destination: flight.destination,
+    departureAt: flight.departureAt,
+    arrivalAt: flight.arrivalAt,
+    addedManually: true,
+  }
+}
+
+/**
+ * Ways to make an Invalid pairing Valid in one step: add a flight that brings it back to base,
+ * or drop one leg. Every option is run through `validatePairing`, so each one offered really
+ * passes. An empty list means there is no one-step fix and the operator has to edit by hand.
+ */
+export function suggestFixes(pairing: Pairing, flights: readonly ScheduledFlight[]): PairingFix[] {
+  if (pairing.legs.length === 0 || validatePairing(pairing).status === 'passed') return []
+  const fixes: PairingFix[] = []
+
+  for (const candidate of findAddLegCandidates(flights, pairing, pairing.base)) {
+    if (!candidate.returnsToBase) continue
+    const legs = [...pairing.legs, toLeg(candidate.flight)]
+    if (validatePairing({ ...pairing, legs }).status !== 'passed') continue
+    const { flight } = candidate
+    fixes.push({
+      id: `add-${flight.id}`,
+      title: `Add ${flight.flightNumber} ${flight.origin} → ${flight.destination}`,
+      detail: `${formatDay(flight.departureAt)} · ${formatTime(flight.departureAt)}–${formatTime(flight.arrivalAt)} · brings it back to ${pairing.base}`,
+      legs,
+    })
+  }
+
+  if (pairing.legs.length > 1) {
+    pairing.legs.forEach((leg, index) => {
+      const legs = pairing.legs.filter((_, position) => position !== index)
+      if (validatePairing({ ...pairing, legs }).status !== 'passed') return
+      fixes.push({
+        id: `remove-${leg.flightId}`,
+        title: `Remove ${leg.flightNumber} ${leg.origin} → ${leg.destination}`,
+        detail: `The other ${legs.length === 1 ? 'flight is' : 'flights are'} left as a valid pairing; ${leg.flightNumber} goes back to the unpaired list`,
+        legs,
+      })
+    })
+  }
+
+  return fixes.slice(0, MAX_FIXES)
 }

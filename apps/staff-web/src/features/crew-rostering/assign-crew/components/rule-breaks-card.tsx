@@ -7,7 +7,7 @@
  * instead of being copy that can go stale.
  */
 import { useRef, useState, type MouseEvent } from 'react'
-import type { RuleBreak } from '../types/types'
+import type { RosterRuleBreak } from '../types/types'
 
 /** `ChevronRightIcon` lives in the shared UI file; this one keeps the card self-contained. */
 function ChevronRightIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -16,6 +16,15 @@ function ChevronRightIcon({ className = 'h-4 w-4' }: { className?: string }) {
       <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
+}
+
+/**
+ * The title as the design shows it: the rule, plus `· law rule` for the ones that must be
+ * swapped. The backend appends the flight number, but the detail line already names the flight.
+ */
+function displayTitle(ruleBreak: RosterRuleBreak): string {
+  const rule = ruleBreak.title.replace(` · ${ruleBreak.flightNumber}`, '')
+  return ruleBreak.severity === 'law' ? `${rule} · law rule` : rule
 }
 
 /** `A`, `A and B` — the joining the closing sentence needs. */
@@ -53,7 +62,7 @@ const OVERRIDE_HINT = 'Override in Fix & publish with a written reason'
  * moment the pointer drifts off a 16 px button is worse than no hint at all. The
  * chevron stays the only thing that navigates.
  */
-function BreakRow({ ruleBreak, onOpenFix }: { ruleBreak: RuleBreak; onOpenFix: () => void }) {
+function BreakRow({ ruleBreak, onOpenFix }: { ruleBreak: RosterRuleBreak; onOpenFix: () => void }) {
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null)
   const button = useRef<HTMLButtonElement>(null)
   // Every break is fixed in Fix & publish, but not the same way: a law break only
@@ -73,12 +82,12 @@ function BreakRow({ ruleBreak, onOpenFix }: { ruleBreak: RuleBreak; onOpenFix: (
       onMouseEnter={track}
       onMouseMove={track}
       onMouseLeave={() => setTip(null)}
-      className="rounded-xl border border-invalid/30 bg-invalid/5 px-4 py-3.5 transition-colors hover:bg-invalid/10"
+      className="rounded-xl border border-invalid/25 bg-invalid/5 px-4 py-3 transition-colors hover:bg-invalid/10"
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-bold text-invalid">{ruleBreak.title}</p>
+        <p className="text-sm font-bold text-invalid">{displayTitle(ruleBreak)}</p>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="rounded bg-invalid-bg px-2 py-0.5 text-[11px] font-bold text-invalid">{ruleBreak.code}</span>
+          <span className="rounded bg-invalid/10 px-2 py-0.5 text-[10px] font-bold text-invalid">{ruleBreak.code}</span>
           <button
             ref={button}
             type="button"
@@ -98,15 +107,15 @@ function BreakRow({ ruleBreak, onOpenFix }: { ruleBreak: RuleBreak; onOpenFix: (
   )
 }
 
-export function RuleBreaksCard({ breaks, onOpenFix }: { breaks: readonly RuleBreak[]; onOpenFix: () => void }) {
+export function RuleBreaksCard({ breaks, onOpenFix }: { breaks: readonly RosterRuleBreak[]; onOpenFix: () => void }) {
   const lawCodes = [...new Set(breaks.filter((ruleBreak) => ruleBreak.severity === 'law').map((ruleBreak) => ruleBreak.code))]
   const companyCodes = [...new Set(breaks.filter((ruleBreak) => ruleBreak.severity === 'company').map((ruleBreak) => ruleBreak.code))]
 
   return (
     <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5 lg:p-7">
-      <h2 className="text-xl font-bold text-primary-text lg:text-2xl">Rule breaks ({breaks.length})</h2>
+      <h2 className="text-lg font-bold text-primary-text lg:text-xl">Rule breaks ({breaks.length})</h2>
 
-      <ul className="mt-5 flex flex-col gap-3">
+      <ul className="mt-4 flex flex-col gap-3">
         {breaks.map((ruleBreak) => (
           <BreakRow key={ruleBreak.id} ruleBreak={ruleBreak} onOpenFix={onOpenFix} />
         ))}

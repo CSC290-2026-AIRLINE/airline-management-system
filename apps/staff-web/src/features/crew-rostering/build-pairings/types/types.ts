@@ -31,14 +31,15 @@ export interface ScheduledFlight {
   /** UTC instant of wheels-down. */
   arrivalAt: IsoInstant
   /**
-   * Whether the flight is still free to be auto-built into a pairing.
-   * The backend will own this flag; today the mock set marks the flights that
-   * only appear once an operator adds one by hand.
+   * Whether the flight is still free to be put into a pairing. The backend sends
+   * `available` or `paired`; `manually_added` is only used by the older mock set.
    */
   status: FlightStatus
+  /** The pairing this flight is a leg of, when `paired`. A flight is in one pairing at most. */
+  pairingId?: string | null
 }
 
-export type FlightStatus = 'available' | 'manually_added'
+export type FlightStatus = 'available' | 'paired' | 'manually_added'
 
 /** One flight inside a pairing. A leg is a flight plus its position in the sequence. */
 export interface FlightLeg {
@@ -96,8 +97,20 @@ export interface Layover {
  */
 export interface Pairing {
   id: string
+  /** What Ops sees, e.g. `P-101`. `id` is the backend UUID. */
+  code: string
   base: AirportCode
   legs: FlightLeg[]
+  /**
+   * Limits this pairing is checked against, already tightened by any stricter
+   * destination rule. Sent by the backend so the live preview and the commit check
+   * use the same numbers.
+   */
+  limits?: PairingLimits
+  /** The roster run this pairing was committed to, or null while it is a draft. */
+  rosterRunStatus?: 'draft' | 'published' | null
+  /** Which roster run that is. A pairing can belong to a run for another window than the one on screen. */
+  rosterRunId?: string | null
   /** Set when the operator deletes the pairing; its legs return to the unpaired pool. */
   deleted: boolean
   /** Ids of the flights that were returned to the unpaired pool by a delete. */
@@ -114,6 +127,27 @@ export interface Pairing {
   published: boolean
 }
 
+/** `crew_setting` limits for one pairing. Mirrors the backend's `PairingLimitsRow`. */
+export interface PairingLimits {
+  maxFlightsPerDuty: number
+  maxDutyHours: number
+  maxPairingDays: number
+  minRestHours: number
+  /** A duty starts this many minutes before its first departure. */
+  reportMinutes: number
+  /** A duty ends this many minutes after its last arrival. */
+  releaseMinutes: number
+}
+
+/** The roster run for the chosen base and window. */
+export interface RosterRun {
+  id: string
+  base: AirportCode
+  dateFrom: LocalDate
+  dateTo: LocalDate
+  status: 'draft' | 'published'
+}
+
 /** Aggregate numbers for the summary metrics bar. All are derived, never stored. */
 export interface PairingMetrics {
   totalPairings: number
@@ -121,6 +155,8 @@ export interface PairingMetrics {
   validCount: number
   invalidCount: number
   deletedCount: number
+  /** Pairings already committed to a roster run; they are listed but locked, and are not counted as valid or invalid. */
+  committedCount: number
 }
 
 /** One row of the "generated pairings" card body. */

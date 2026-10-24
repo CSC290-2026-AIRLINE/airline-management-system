@@ -8,17 +8,19 @@
  * and import it from there.
  */
 import type { ReactNode } from 'react'
+import { Link } from '@tanstack/react-router'
 import { formatDateRange } from '../types/format'
 import { CheckIcon, ChevronLeftIcon } from '../../shared/ui'
 
 export type WizardStep = 'build-pairings' | 'assign-crew' | 'fix-publish'
 
 const NAV_ITEMS = [
-  { id: 'roster-runs', label: 'Roster runs' },
-  { id: 'crew', label: 'Crew' },
-  { id: 'rules', label: 'Rules' },
+  { id: 'roster-runs', label: 'Roster runs', to: '/build-pairings' },
+  { id: 'crew', label: 'Crew', to: '/setup-crew' },
+  { id: 'rules', label: 'Rules', to: '/setup-rule' },
 ] as const
 
+/** Status only: the strip shows how far the run has got, and is not a way to move between pages. */
 const WIZARD_STEPS: { id: WizardStep; label: string }[] = [
   { id: 'build-pairings', label: 'Build pairings' },
   { id: 'assign-crew', label: 'Assign crew' },
@@ -64,16 +66,16 @@ export function SidebarNav({
         {NAV_ITEMS.map((item) => {
           const active = item.id === activeItem
           return (
-            <button
+            <Link
               key={item.id}
-              type="button"
+              to={item.to}
               aria-current={active ? 'page' : undefined}
-              className={`rounded-lg py-2 pl-4 text-left text-sm font-medium transition-colors ${
+              className={`block rounded-lg py-2 pl-4 text-left text-sm font-medium transition-colors ${
                 active ? 'bg-white/12 font-semibold text-white' : 'text-white/65 hover:bg-white/8 hover:text-white'
               } ${active ? 'relative border-l-2 border-secondary' : ''}`}
             >
               {item.label}
-            </button>
+            </Link>
           )
         })}
       </nav>

@@ -51,12 +51,13 @@ export function InputField({
   label,
   error,
   className = '',
+  labelClassName = 'text-xs font-medium text-border-desc',
   ...rest
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; labelClassName?: string }) {
   const id = useId()
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      <label htmlFor={id} className="text-xs font-medium text-border-desc">
+      <label htmlFor={id} className={labelClassName}>
         {label}
       </label>
       <input
@@ -87,12 +88,18 @@ export function SelectDropdown({
   options,
   error,
   className = '',
+  labelClassName = 'text-xs font-medium text-border-desc',
   ...rest
-}: SelectHTMLAttributes<HTMLSelectElement> & { label: string; options: readonly SelectOption[]; error?: string }) {
+}: SelectHTMLAttributes<HTMLSelectElement> & {
+  label: string
+  options: readonly SelectOption[]
+  error?: string
+  labelClassName?: string
+}) {
   const id = useId()
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      <label htmlFor={id} className="text-xs font-medium text-border-desc">
+      <label htmlFor={id} className={labelClassName}>
         {label}
       </label>
       <div className="relative">
@@ -438,12 +445,24 @@ export function BaseModalOverlay({
   children,
   footer,
   width = 'max-w-2xl',
+  variant = 'default',
+  mobileSheet = false,
+  titleAside,
+  stackFooter = false,
 }: {
   title: ReactNode
   onClose: () => void
   children: ReactNode
   footer: ReactNode
   width?: string
+  /** `plain` is the flat dialog from the Build pairings mockups: no header rule, no footer band, no close button. */
+  variant?: 'default' | 'plain'
+  /** `plain` only: dock to the bottom edge below `sm`, with a grab handle. */
+  mobileSheet?: boolean
+  /** `plain` only: sits on the right of the title row, e.g. a status pill. */
+  titleAside?: ReactNode
+  /** `plain` only: below `sm` the footer buttons stack, the primary action on top. */
+  stackFooter?: boolean
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -469,6 +488,40 @@ export function BaseModalOverlay({
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
+
+  if (variant === 'plain') {
+    return (
+      <div
+        className={`animate-fade-in fixed inset-0 z-50 flex justify-center bg-primary/40 backdrop-blur-[2px] ${
+          mobileSheet ? 'items-end sm:items-center sm:p-6' : 'items-center p-3 sm:p-6'
+        }`}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) onClose()
+        }}
+      >
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          className={`flex max-h-[92vh] w-full ${width} flex-col overflow-hidden bg-card-bg shadow-2xl ${
+            mobileSheet ? 'rounded-t-3xl sm:rounded-2xl' : 'rounded-2xl'
+          }`}
+        >
+          {mobileSheet && <span aria-hidden="true" className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-border-desc sm:hidden" />}
+          <div className="flex items-start justify-between gap-3 px-5 pt-5 sm:px-7 sm:pt-7">
+            <h2 className="text-lg font-extrabold text-primary-text sm:text-2xl">{title}</h2>
+            {titleAside}
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 pt-2 pb-1 sm:px-7">{children}</div>
+          <div
+            className={`flex gap-3 px-5 pt-4 pb-5 *:flex-1 sm:justify-end sm:px-7 sm:pb-7 sm:*:flex-none ${stackFooter ? 'flex-col-reverse sm:flex-row' : ''}`}
+          >
+            {footer}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -584,6 +637,14 @@ export function TrashIcon({ className = 'h-4 w-4' }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true">
       <path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function MinusIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={className} aria-hidden="true">
+      <path d="M5 12h14" strokeLinecap="round" />
     </svg>
   )
 }

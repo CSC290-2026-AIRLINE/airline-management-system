@@ -142,8 +142,8 @@ export interface CountryLanguageInput {
 
 interface LegalityRuleDbRow {
   country_code: string
-  min_rest_hours: string | number
-  max_duty_hours: string | number
+  min_rest_hours: { toString(): string } | number
+  max_duty_hours: { toString(): string } | number
 }
 
 const LEGALITY_RULE_SELECT = { country_code: true, min_rest_hours: true, max_duty_hours: true } as const
@@ -181,7 +181,7 @@ export class SetupRuleService {
 
   /** The company-wide baseline. Unset keys fall back to the design's defaults. */
   async getDefaults(): Promise<DefaultLimitsRow> {
-    const settings = await this.db.crewSetting.findMany({
+    const settings = await this.db.crew_setting.findMany({
       where: { key: { in: Object.values(SETTING_KEYS) } },
       select: { key: true, value: true },
     })
@@ -238,7 +238,7 @@ export class SetupRuleService {
     }
 
     for (const [key, value] of Object.entries(values)) {
-      await this.db.crewSetting.upsert({
+      await this.db.crew_setting.upsert({
         where: { key },
         update: { value, updated_at: new Date(), updated_by: actorId ?? null },
         create: { key, value, updated_by: actorId ?? null },
@@ -257,7 +257,7 @@ export class SetupRuleService {
 
   /** Languages an operator can mark as local. Every code in `country_language` qualifies. */
   async listLanguages(): Promise<LanguageOptionRow[]> {
-    const rows = await this.db.countryLanguage.findMany({
+    const rows = await this.db.country_language.findMany({
       select: { language_code: true },
       distinct: ['language_code'],
       orderBy: { language_code: 'asc' },
@@ -266,7 +266,7 @@ export class SetupRuleService {
   }
 
   async listCountryLimits(): Promise<CountryLimitRow[]> {
-    const rows = (await this.db.legalityRule.findMany({
+    const rows = (await this.db.country_legality_rule.findMany({
       select: LEGALITY_RULE_SELECT,
       orderBy: { country_code: 'asc' },
     })) as LegalityRuleDbRow[]
@@ -282,11 +282,11 @@ export class SetupRuleService {
    */
   async createCountryLimit(input: CountryLimitInput): Promise<CountryLimitRow> {
     const code = this.resolveCountryCode(input.country)
-    const existing = await this.db.legalityRule.findUnique({ where: { country_code: code }, select: { country_code: true } })
+    const existing = await this.db.country_legality_rule.findUnique({ where: { country_code: code }, select: { country_code: true } })
     if (existing) throw new BadRequestException(`${COUNTRY_CODES[code] ?? code} already has a rule`)
 
     await this.assertTightens(input.minRestHours, input.maxDutyHours)
-    await this.db.legalityRule.create({
+    await this.db.country_legality_rule.create({
       data: { country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours },
     })
 
@@ -298,7 +298,7 @@ export class SetupRuleService {
     await this.assertRuleExists(code)
     await this.assertTightens(input.minRestHours, input.maxDutyHours)
 
-    await this.db.legalityRule.update({
+    await this.db.country_legality_rule.update({
       where: { country_code: code },
       data: { min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours },
     })
@@ -309,11 +309,11 @@ export class SetupRuleService {
   async deleteCountryLimit(countryCode: string): Promise<void> {
     const code = this.resolveCountryCode(countryCode)
     await this.assertRuleExists(code)
-    await this.db.legalityRule.delete({ where: { country_code: code } })
+    await this.db.country_legality_rule.delete({ where: { country_code: code } })
   }
 
   async listCountryLanguages(): Promise<CountryLanguageRow[]> {
-    const rows = await this.db.countryLanguage.findMany({
+    const rows = await this.db.country_language.findMany({
       select: { country_code: true, language_code: true },
       orderBy: [{ country_code: 'asc' }, { language_code: 'asc' }],
     })
@@ -347,9 +347,9 @@ export class SetupRuleService {
     const wanted = [...new Set(input.languages.map((code) => code.toLowerCase()))]
 
     await this.db.$transaction(async (tx) => {
-      await tx.countryLanguage.deleteMany({ where: { country_code: code } })
+      await tx.country_language.deleteMany({ where: { country_code: code } })
       if (wanted.length > 0) {
-        await tx.countryLanguage.createMany({ data: wanted.map((languageCode) => ({ country_code: code, language_code: languageCode })) })
+        await tx.country_language.createMany({ data: wanted.map((languageCode) => ({ country_code: code, language_code: languageCode })) })
       }
     })
 
@@ -364,7 +364,7 @@ export class SetupRuleService {
 
   async deleteCountryLanguages(countryCode: string): Promise<void> {
     const code = this.resolveCountryCode(countryCode)
-    const { count } = await this.db.countryLanguage.deleteMany({ where: { country_code: code } })
+    const { count } = await this.db.country_language.deleteMany({ where: { country_code: code } })
     if (count === 0) throw new NotFoundException(`${COUNTRY_CODES[code] ?? code} has no language mapping`)
   }
 
@@ -380,7 +380,7 @@ export class SetupRuleService {
   }
 
   private async assertRuleExists(code: string): Promise<void> {
-    const found = await this.db.legalityRule.findUnique({ where: { country_code: code }, select: { country_code: true } })
+    const found = await this.db.country_legality_rule.findUnique({ where: { country_code: code }, select: { country_code: true } })
     if (!found) throw new NotFoundException(`${COUNTRY_CODES[code] ?? code} has no rule`)
   }
 
@@ -409,8 +409,8 @@ export class SetupRuleService {
   private async countAffectedPairings(code: string): Promise<number> {
     return await this.db.pairing.count({
       where: {
-        pairing_leg: { some: { flight: { route: { destination: { country: COUNTRY_CODES[code] ?? code } } } } },
-        roster_run_pairing: { none: { roster_run: { status: 'published' } } },
+        pairing_leg: { some: { flight: { route: { airport_route_destinationToairport: { country: COUNTRY_CODES[code] ?? code } } } } },
+        OR: [{ roster_run_pairing: { is: null } }, { roster_run_pairing: { roster_run: { status: { not: 'published' } } } }],
       },
     })
   }
@@ -421,8 +421,8 @@ export class SetupRuleService {
       id: `RL-${row.country_code}`,
       country: COUNTRY_CODES[row.country_code] ?? row.country_code,
       countryCode: row.country_code,
-      minRestHours: num(row.min_rest_hours, defaults.minRestHours),
-      maxDutyHours: num(row.max_duty_hours, defaults.maxDutyHours),
+      minRestHours: num(Number(row.min_rest_hours), defaults.minRestHours),
+      maxDutyHours: num(Number(row.max_duty_hours), defaults.maxDutyHours),
       affectedPairings: await this.countAffectedPairings(row.country_code),
     }
   }

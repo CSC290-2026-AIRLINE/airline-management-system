@@ -1,14 +1,13 @@
 /**
  * Chrome that only exists below the `lg` breakpoint.
  *
- * The desktop layout uses the shared dark sidebar. On a phone there is no room for
- * it, so the sidebar collapses into a slim top bar and the primary action moves to a
+ * The assign-crew page uses the shared top bar in `../shared/app-shell`. The primary action moves to a
  * fixed bottom bar that stays reachable while the page scrolls.
  */
 import type { ReactNode } from 'react'
 import { ArrowRightIcon, ChevronLeftIcon } from '../../shared/ui'
 
-/** Slim top bar: wordmark, simulation clock and the account menu. */
+/** Slim top bar: wordmark, simulation clock and the account menu. Fix & publish still uses this one. */
 export function MobileTopBar({ simulationClockShort, accountLabel }: { simulationClockShort: string; accountLabel: string }) {
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-primary px-4 py-3.5 text-white lg:hidden">

@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
-import { MOCK_ROSTER_RUN } from '../types/mock-data'
-import { formatLegDaySpan, formatLegTimeSpan, formatRoute, formatShortDayRange, localDateKey } from '../types/format'
+import { formatLegDaySpan, formatLegTimeSpan, formatShortDayRange, localDateKey } from '../types/format'
 import { validatePairing } from '../types/pairing-engine'
 import type { Pairing } from '../types/types'
-import { BaseModalOverlay, Button } from '../../shared/ui'
+import { BaseModalOverlay, Button, MinusIcon } from '../../shared/ui'
+import { RouteText } from '../components/route-text'
 
 /**
  * Confirm or block deletion of a pairing.
@@ -19,8 +19,9 @@ export function DeletePairingModal({ pairing, onCancel, onConfirm }: { pairing: 
 
   return (
     <BaseModalOverlay
-      title={blocked ? `Can't delete ${pairing.id}` : `Delete pairing ${pairing.id}?`}
+      title={blocked ? `Can't delete ${pairing.code}` : `Delete pairing ${pairing.code}?`}
       onClose={onCancel}
+      variant="plain"
       width="max-w-xl"
       footer={
         blocked ? (
@@ -33,6 +34,7 @@ export function DeletePairingModal({ pairing, onCancel, onConfirm }: { pairing: 
               Cancel
             </Button>
             <Button variant="danger" onClick={onConfirm}>
+              <MinusIcon className="h-4 w-4" />
               Delete pairing
             </Button>
           </>
@@ -40,8 +42,8 @@ export function DeletePairingModal({ pairing, onCancel, onConfirm }: { pairing: 
       }
     >
       {blocked ? (
-        <p className="text-sm font-semibold text-invalid">
-          {`PAIRING_IN_USE · ${pairing.id} is part of the published roster ${MOCK_ROSTER_RUN.base} · ${formatShortDayRange(
+        <p className="text-sm text-invalid">
+          {`PAIRING_IN_USE · ${pairing.code} is part of the published roster ${pairing.base} · ${formatShortDayRange(
             pairing.legs,
           )}. Change it in a new roster run instead.`}
         </p>
@@ -51,15 +53,15 @@ export function DeletePairingModal({ pairing, onCancel, onConfirm }: { pairing: 
         </p>
       )}
 
-      <p className="mt-4 text-[11px] font-semibold tracking-widest text-primary-text/45 uppercase">
-        {blocked ? 'Used by published roster' : 'Pairing to delete'}
-      </p>
+      <p className="mt-4 text-sm font-bold text-primary-text">{blocked ? 'Used by published roster' : 'Pairing to delete'}</p>
 
       <article className="mt-2 rounded-xl border border-border-desc/30 px-4 py-3.5">
         <p className="text-xs text-primary-text/55">{formatLegDaySpan(pairing.legs)}</p>
         <div className="mt-1.5 flex flex-wrap items-start justify-between gap-2.5">
-          <span className="text-base font-bold text-primary-text">{formatRoute(evaluation.route)}</span>
-          <span className="flex flex-wrap items-center gap-1.5">
+          <span className="text-lg font-extrabold text-primary-text">
+            <RouteText route={evaluation.route} arrowClassName="text-primary-text" />
+          </span>
+          <span className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
             {pairing.legs.map((leg) => (
               <span key={leg.flightId} className="rounded-md bg-info-bg px-2 py-1 text-[11px] font-bold text-primary">
                 {leg.flightNumber}
@@ -67,7 +69,12 @@ export function DeletePairingModal({ pairing, onCancel, onConfirm }: { pairing: 
             ))}
           </span>
         </div>
-        <p className="mt-2 text-xs text-primary-text/55">{pairingMetaLine(pairing, evaluation.dutyLabel, days)}</p>
+        <p className="mt-2 text-xs text-primary-text/55">
+          {pairingMetaLine(pairing, evaluation.dutyLabel, days)}
+          {!blocked && evaluation.status === 'failed' && days === 1 && (
+            <span className="sm:hidden"> · Invalid, ends in {evaluation.route.at(-1)}</span>
+          )}
+        </p>
       </article>
     </BaseModalOverlay>
   )
@@ -75,12 +82,12 @@ export function DeletePairingModal({ pairing, onCancel, onConfirm }: { pairing: 
 
 /** `P-103 · 08:00–13:30 · 5h 30m duty` for single-day, `P-102 · 16–17 Sep · 2 days, 1 night in ICN` for multi-day. */
 function pairingMetaLine(pairing: Pairing, dutyLabel: string, dayCount: number): string {
-  if (pairing.published) return `${pairing.id} · ${formatLegTimeSpan(pairing.legs)} · Published`
+  if (pairing.published) return `${pairing.code} · ${formatLegTimeSpan(pairing.legs)} · Published`
   if (dayCount > 1) {
     const nights = overnightStops(pairing)
-    return `${pairing.id} · ${formatShortDayRange(pairing.legs)} · ${dayCount} days${nights ? `, ${nights}` : ''}`
+    return `${pairing.code} · ${formatShortDayRange(pairing.legs)} · ${dayCount} days${nights ? `, ${nights}` : ''}`
   }
-  return `${pairing.id} · ${formatLegTimeSpan(pairing.legs)} · ${dutyLabel}`
+  return `${pairing.code} · ${formatLegTimeSpan(pairing.legs)} · ${dutyLabel}`
 }
 
 /**

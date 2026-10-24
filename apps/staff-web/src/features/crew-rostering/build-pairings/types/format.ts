@@ -40,6 +40,11 @@ const inputFormatter = new Intl.DateTimeFormat('en-GB', {
   timeZone: ROSTER_TIME_ZONE,
 })
 
+/** Newer ICU data spells September `Sept`; the design and every label here use `Sep`. */
+function clean(text: string): string {
+  return text.replace(/\bSept\b/g, 'Sep')
+}
+
 /** `12:30`, in roster time. */
 export function formatTime(instant: IsoInstant): string {
   return timeFormatter.format(new Date(instant))
@@ -47,17 +52,17 @@ export function formatTime(instant: IsoInstant): string {
 
 /** `Wed 16 Sep`. */
 export function formatDay(instant: IsoInstant): string {
-  return dayFormatter.format(new Date(instant))
+  return clean(dayFormatter.format(new Date(instant)))
 }
 
 /** `Thu 17 Sep 2026`. */
 export function formatFullDay(instant: IsoInstant): string {
-  return fullDayFormatter.format(new Date(instant))
+  return clean(fullDayFormatter.format(new Date(instant)))
 }
 
 /** Same as `formatFullDay`; kept separate so intent is obvious at call sites. */
 export function formatRemoveLegDay(instant: IsoInstant): string {
-  return longDayFormatter.format(new Date(instant))
+  return clean(longDayFormatter.format(new Date(instant)))
 }
 
 /** `15/09/2026`, the shape the date inputs show in the mockups. */
@@ -127,15 +132,12 @@ export function daysInRange(dateFrom: LocalDate, dateTo: LocalDate): number {
 export function formatDateRange(dateFrom: LocalDate, dateTo: LocalDate): string {
   const from = new Date(`${dateFrom}T00:00:00.000Z`)
   const to = new Date(`${dateTo}T00:00:00.000Z`)
-  if (dateFrom === dateTo) return longDayFormatter.format(from)
+  if (dateFrom === dateTo) return clean(longDayFormatter.format(from))
   const sameMonth = from.getUTCMonth() === to.getUTCMonth() && from.getUTCFullYear() === to.getUTCFullYear()
   const startDay = new Intl.DateTimeFormat('en-GB', { day: '2-digit', timeZone: 'UTC' }).format(from)
   const endDay = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
-  if (sameMonth) {
-    const monthYear = endDay.format(to).replace(/^\d{2}/, '')
-    return `${startDay}–${monthYear}`
-  }
-  return `${fullDayFormatter.format(from)} – ${fullDayFormatter.format(to)}`
+  if (sameMonth) return clean(`${startDay}–${endDay.format(to)}`)
+  return clean(`${fullDayFormatter.format(from)} – ${fullDayFormatter.format(to)}`)
 }
 
 /** `1 valid`, `1 invalid`, `1 deleted` — used by the summary metrics bar. */
@@ -184,4 +186,14 @@ export function formatShortDayRange(legs: readonly FlightLeg[]): string {
   const last = legs.at(-1)
   if (!first || !last) return '—'
   return formatDateRange(localDateKey(first.departureAt), localDateKey(last.arrivalAt))
+}
+
+/** `12 h 30 m`, the spaced form the phone cards use. */
+export function formatDurationSpaced(minutes: number): string {
+  const rounded = Math.round(minutes)
+  const hours = Math.floor(rounded / 60)
+  const rest = rounded % 60
+  if (hours === 0) return `${rest} m`
+  if (rest === 0) return `${hours} h`
+  return `${hours} h ${rest} m`
 }
