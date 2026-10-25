@@ -1,6 +1,6 @@
 # F12 — Inventory, catering, transfers, and sales
 
-> **Status: MERGED LEVEL 1 SCHEMA — verified against `dev` on 21 Oct 2026 (`752428e732da`).** [PR #14](https://github.com/CSC290-2026-AIRLINE/airline-management-system/pull/14) merged on 12 Oct 2026 (16:54 UTC). The F1/F2/F4/F7/F9/F12/F15 SQL dictionary describes the committed 69-table Level 1 schema; Feature 8 is documented separately as an **unmerged proposal**. Repository merge is not proof of deployment to any running database or final feature-owner approval.
+> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
 **Tables (14):** [`warehouse`](#table-warehouse) · [`supplier`](#table-supplier) · [`purchase_receipt`](#table-purchase_receipt) · [`warehouse_stock`](#table-warehouse_stock) · [`stock_batch`](#table-stock_batch) · [`catering_order`](#table-catering_order) · [`catering_order_line`](#table-catering_order_line) · [`stock_transfer`](#table-stock_transfer) · [`stock_transfer_line`](#table-stock_transfer_line) · [`aircraft_stock`](#table-aircraft_stock) · [`flight_report`](#table-flight_report) · [`flight_report_line`](#table-flight_report_line) · [`product_sale`](#table-product_sale) · [`stock_movement`](#table-stock_movement)
 
@@ -26,7 +26,7 @@ Airport warehouse for incoming stock and departures.
 
 **Indexes:** `warehouse_airport_uq` (unique; `(airport_code) WHERE deleted_at IS NULL`).
 
-**Cross-feature linkage:** `airport_code` → `airport(iata_code)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `airport_code` → `airport(iata_code)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-supplier"></a>
 
@@ -44,7 +44,7 @@ Supplier contact and associated airport.
 | `created_at`   | `TIMESTAMPTZ` | required; default `now()`                 | Actual database creation timestamp.            |
 | `deleted_at`   | `TIMESTAMPTZ` | nullable                                  | Soft-delete timestamp; NULL means not deleted. |
 
-**Cross-feature linkage:** `airport_code` → `airport(iata_code)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `airport_code` → `airport(iata_code)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-purchase_receipt"></a>
 
@@ -131,7 +131,7 @@ One catering preparation and loading order for a flight.
 | `created_at`            | `TIMESTAMPTZ` | required; default `now()`                                                 | Actual database creation timestamp.                          |
 | `updated_at`            | `TIMESTAMPTZ` | required; default `now()`                                                 | Last modification timestamp (application-maintained).        |
 
-**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-catering_order_line"></a>
 
@@ -172,7 +172,7 @@ Warehouse-to-aircraft stock movement associated with a flight.
 | `staff_id`       | `UUID`        | FK → `staff(id)`; required                | Related staff member identifier.    |
 | `created_at`     | `TIMESTAMPTZ` | required; default `now()`                 | Actual database creation timestamp. |
 
-**Cross-feature linkage:** `flight_id` → `flight(id)`; `aircraft_id` → `aircraft(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `flight_id` → `flight(id)`; `aircraft_id` → `aircraft(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-stock_transfer_line"></a>
 
@@ -209,7 +209,7 @@ Inventory kept onboard a particular aircraft, tracked by stock batch.
 
 **Table-level SQL constraints:** `UNIQUE (aircraft_id, stock_batch_id)` · `FOREIGN KEY (stock_batch_id, product_id) REFERENCES stock_batch (id, product_id)`
 
-**Cross-feature linkage:** `aircraft_id` → `aircraft(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `aircraft_id` → `aircraft(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-flight_report"></a>
 
@@ -226,7 +226,7 @@ Cabin-crew inventory/consumption report for a flight.
 | `submitted_at`          | `TIMESTAMPTZ` | required                                                  | Simulation clock.                             |
 | `created_at`            | `TIMESTAMPTZ` | required; default `now()`                                 | Actual database creation timestamp.           |
 
-**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-flight_report_line"></a>
 
@@ -276,7 +276,7 @@ Paid onboard product sales, with price and batch-cost snapshots.
 
 **Indexes:** `product_sale_flight_idx` (index; `(flight_id)`).
 
-**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-stock_movement"></a>
 
@@ -308,7 +308,7 @@ Immutable signed warehouse/aircraft inventory ledger entries.
 
 **Indexes:** `stock_movement_order_once_uq` (unique; `(product_order_id, product_id, type) WHERE type IN ('reserve', 'release')`); `stock_movement_product_idx` (index; `(product_id, occurred_at)`); `stock_movement_flight_idx` (index; `(flight_id) WHERE flight_id IS NOT NULL`).
 
-**Cross-feature linkage:** `flight_id` → `flight(id)`; `aircraft_id` → `aircraft(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `flight_id` → `flight(id)`; `aircraft_id` → `aircraft(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 ---
 
