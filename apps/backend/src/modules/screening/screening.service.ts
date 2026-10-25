@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import type { Prisma, screening_check, screening_review } from '@backend/db/generated/prisma/client'
-import { QueueDto, uuid } from './dto/screening.dto'
+import { QueueDto, ReviewDto, ReviewPipe, uuid } from './dto/screening.dto'
 import { ScreeningAudit, ScreeningContext } from './screening.context'
-import { bangkokDay, classify, snapshotIdentity } from './screening.rules'
-import { ScreeningBookingPort } from './screening.ports'
+import { bangkokDay, classify, clearance, snapshotIdentity } from './screening.rules'
+import { identityChecks } from './screening-check.service'
+import { ScreeningBookingPort, ScreeningNotificationPort } from './screening.ports'
 
 const reviewInclude = { staff: { select: { first_name: true, last_name: true } } } satisfies Prisma.screening_reviewInclude
 const readInclude = {
@@ -113,6 +114,7 @@ export class ScreeningService {
     private readonly context: ScreeningContext,
     private readonly audit: ScreeningAudit,
     private readonly bookings: ScreeningBookingPort,
+    private readonly notifications: ScreeningNotificationPort,
   ) {}
 
   async list(userId: string, query: QueueDto) {
@@ -244,6 +246,49 @@ export class ScreeningService {
         })),
         now: now.toISOString(),
         timeZone: 'Asia/Bangkok',
+      }
+    })
+  }
+
+  async review(userId: string, id: string, request: ReviewDto) {
+    const input = new ReviewPipe().transform(request)
+    return this.context.run(userId, async (tx, actor, now) => {
+      const row = await tx.screening_check.findUnique({
+        where: { id },
+        include: {
+          screening_review: { orderBy: { revision: 'desc' }, take: 1 },
+        },
+      })
+      if (!row) throw new NotFoundException('Screening check was not found')
+      if (row.outcome === 'clear' || !row.watchlist_entry_id) throw new BadRequestException('A clear check cannot be reviewed')
+      const previous = row.screening_review[0]
+      if ((previous?.revision ?? 0) !== input.expectedRevision) throw new ConflictException('Decision changed, please reload')
+      if (now < row.occurred_at || (previous && now < previous.reviewed_at))
+        throw new BadRequestException('A review cannot predate the check or previous review')
+      const notification = input.decision === 'confirmed' ? this.notifications.confirm(now) : null
+      const review = await tx.screening_review.create({
+        data: {
+          screening_check_id: id,
+          revision: input.expectedRevision + 1,
+          decision: input.decision,
+          review_note: input.note,
+          reviewed_by_staff_id: actor.staffId,
+          reviewed_at: now,
+          authority_notified_at: notification?.authorityNotifiedAt ?? null,
+        },
+        include: reviewInclude,
+      })
+      await this.audit.record(tx, actor, now, 'create', 'screening_review', review.id, {
+        screeningCheckId: id,
+        revision: review.revision,
+        decision: input.decision,
+        passportCompared: true,
+        notificationMode: notification?.mode ?? null,
+      })
+      return {
+        review: reviewResponse(review, true),
+        clearance: clearance(await identityChecks(tx, row.flight_id, snapshotIdentity(row)), snapshotIdentity(row)),
+        integrations: { checkIn: 'not_connected', notification: notification?.mode ?? 'not_requested', audit: 'database' },
       }
     })
   }
