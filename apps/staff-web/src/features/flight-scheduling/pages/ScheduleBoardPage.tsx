@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
+import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { BatchActions } from '../components/BatchActions'
 import { ListState } from '../components/ListState'
 import { PageHeader } from '../components/PageHeader'
@@ -9,7 +10,7 @@ import { StatusPill } from '../components/StatusPill'
 import { Stats } from '../components/Stats'
 import { TableWrap } from '../components/TableWrap'
 import { capitalize } from '../format'
-import { publicFetch, usePagedList } from '../hooks/usePagedList'
+import { usePagedList } from '../hooks/usePagedList'
 import { openConflictCount } from '../connected'
 import { FLIGHT_STATUSES, type FlightRow, type RouteRow } from '../types'
 import '../flight-scheduling.css'
@@ -25,6 +26,7 @@ const clock = (iso: string) => timeFormat.format(new Date(iso))
 const DISRUPTED = ['delayed', 'holding', 'diverted']
 
 export function ScheduleBoardPage() {
+  const { fetchWithAuth } = useAppAuth()
   const [routeId, setRouteId] = useState('')
   const [serviceDate, setServiceDate] = useState('')
   const [status, setStatus] = useState('')
@@ -36,9 +38,9 @@ export function ScheduleBoardPage() {
     ...(serviceDate && { service_date: serviceDate }),
     ...(status && { status }),
   }).toString()
-  const flights = usePagedList<FlightRow>(`/flights${query && `?${query}`}`)
+  const flights = usePagedList<FlightRow>(`/flights${query && `?${query}`}`, fetchWithAuth)
   // ponytail: first 100 routes feed the filter and the route column; page through them when there are more.
-  const routes = usePagedList<RouteRow>('/routes?limit=100')
+  const routes = usePagedList<RouteRow>('/routes?limit=100', fetchWithAuth)
   const routeById = new Map(routes.rows.map((r) => [r.id, r]))
 
   const filtered = query !== ''
@@ -149,13 +151,7 @@ export function ScheduleBoardPage() {
           </label>
         )}
 
-        <BatchActions
-          selected={selected}
-          // ponytail: the board is outside the signed-in layout, so this is a plain fetch; move the board under routes/_authenticated/ and pass useAppAuth().fetchWithAuth once the TEMP public routes are removed.
-          fetcher={publicFetch}
-          onClear={() => setPicked(new Set())}
-          onApply={flights.reload}
-        />
+        <BatchActions selected={selected} fetcher={fetchWithAuth} onClear={() => setPicked(new Set())} onApply={flights.reload} />
 
         <ListState
           loading={flights.loading}
