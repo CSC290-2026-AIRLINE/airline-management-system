@@ -2,6 +2,8 @@ import { Module, type OnModuleInit } from '@nestjs/common'
 import { AdminConsoleController } from './admin-console.controller'
 import { MeController } from './me.controller'
 import { AdminConsoleService } from './admin-console.service'
+import { StaffController } from './staff.controller'
+import { StaffService } from './staff.service'
 import { AdminConsoleGuard } from './guards/admin-console.guard'
 import { SimulationClock } from './simulation-clock'
 import { SELF_REGISTER_SCREENS } from './self-register'
@@ -14,8 +16,8 @@ import { SELF_REGISTER_SCREENS } from './self-register'
  * `DbModule` is `@Global()`, so we don't need to import it here — `DbService` is already available everywhere.
  */
 @Module({
-  controllers: [AdminConsoleController, MeController],
-  providers: [AdminConsoleService, AdminConsoleGuard, SimulationClock],
+  controllers: [AdminConsoleController, MeController, StaffController],
+  providers: [AdminConsoleService, StaffService, AdminConsoleGuard, SimulationClock],
   exports: [AdminConsoleService],
 })
 export class AdminConsoleModule implements OnModuleInit {
