@@ -3,8 +3,9 @@
 -- Prisma cannot express most of this (exclusion constraints, expression and trigram indexes, check constraints, triggers),
 -- so the migration in prisma/migrations/*_level1_schema is this file with the old scaffold tables dropped first and the
 -- 'admin' role inserted last. Later migrations: prisma/migrations/*_feature2_schedule_approval adds to Part 2 and
--- Part 9, and prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 9. Keep the files
--- in step. schema.prisma is generated from the migrated database with `prisma db pull`.
+-- Part 9, prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 9, and
+-- prisma/migrations/*_feature7_screening_iteration_03 changes watchlist_entry and the screening tables in Part 5.
+-- Keep the files in step. schema.prisma is generated from the migrated database with `prisma db pull`.
 -- Seed rows beyond that role (screens, base currency, airline code, first admin and so on) are not in the repo yet.
 
 -- ======================================================================================================================
@@ -937,6 +938,7 @@ CREATE TABLE watchlist_entry (
   first_name          TEXT NOT NULL,
   last_name           TEXT NOT NULL,
   date_of_birth       DATE,
+  gender              TEXT CHECK (gender IN ('M', 'F', 'X')), -- shown on the review screen; matching does not use it
   nationality         TEXT,                                -- normalised like passenger
   passport_number     TEXT,
   list_type           TEXT NOT NULL CHECK (list_type IN ('wanted', 'travel_ban', 'no_fly')),
@@ -962,41 +964,68 @@ CREATE INDEX watchlist_entry_name_trgm ON watchlist_entry USING gin (name_key(fi
 -- One row per (run, matched entry); a clean run is one row with match_level 'none'. Never updated or deleted
 -- (the backend has no update or delete path for it). Decisions live in screening_review, so "held" is never overwritten.
 -- The backend keeps match_level, outcome and trigger_point consistent.
+-- The snap_ columns are the identities as compared, so the review screen shows what matched, not today's values: the
+-- passenger always, the watchlist entry only when one matched. They are written in the same insert as the row.
+-- The departure time is not copied: the Screening Queue joins feature 2's flight, so delays show.
 CREATE TABLE screening_check (
-  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  run_id             UUID NOT NULL,                        -- one POST /screening/check call
-  passenger_id       UUID NOT NULL REFERENCES passenger (id),
-  flight_id          UUID NOT NULL,                        -- feature 2's flight (cross-module FK)
-  flight_dep_at      TIMESTAMPTZ NOT NULL,                 -- copied from feature 2 so the queue can sort without calling it
-  pnr_id             UUID,                                 -- feature 3b, for the review screen; optional
-  trigger_point      TEXT NOT NULL CHECK (trigger_point IN ('booking', 'check_in', 'new_entry', 'identity_change')),
-  watchlist_entry_id UUID REFERENCES watchlist_entry (id),
-  match_level        TEXT NOT NULL CHECK (match_level IN ('none', 'weak', 'probable', 'strong')),
-  outcome            TEXT NOT NULL CHECK (outcome IN ('clear', 'flagged', 'held')),
-  occurred_at        TIMESTAMPTZ NOT NULL,                 -- simulation clock
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id                   UUID NOT NULL,                  -- one POST /screening/check call or job pass
+  passenger_id             UUID NOT NULL REFERENCES passenger (id),
+  flight_id                UUID NOT NULL,                  -- feature 2's flight (cross-module FK)
+  pnr_id                   UUID,                           -- feature 3b, for the review screen; optional
+  trigger_point            TEXT NOT NULL
+                             CHECK (trigger_point IN ('booking', 'check_in', 'new_entry', 'entry_change', 'identity_change')),
+  watchlist_entry_id       UUID REFERENCES watchlist_entry (id),
+  match_level              TEXT NOT NULL CHECK (match_level IN ('none', 'weak', 'probable', 'strong')),
+  name_similarity          REAL CHECK (name_similarity BETWEEN 0 AND 1), -- best of both name orders
+  outcome                  TEXT NOT NULL CHECK (outcome IN ('clear', 'flagged', 'held')),
+  snap_first_name          TEXT NOT NULL,                  -- passenger as compared (passport spelling)
+  snap_last_name           TEXT NOT NULL,
+  snap_date_of_birth       DATE,
+  snap_gender              TEXT CHECK (snap_gender IN ('M', 'F', 'X')),
+  snap_nationality         TEXT,
+  snap_passport            TEXT,
+  snap_entry_first_name    TEXT,                           -- watchlist entry as compared
+  snap_entry_last_name     TEXT,
+  snap_entry_date_of_birth DATE,
+  snap_entry_gender        TEXT CHECK (snap_entry_gender IN ('M', 'F', 'X')),
+  snap_entry_nationality   TEXT,
+  snap_entry_passport      TEXT,
+  occurred_at              TIMESTAMPTZ NOT NULL,           -- simulation clock
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The entry side is set exactly when an entry matched; its DOB, gender, nationality and passport only if the entry has them.
+  CHECK (CASE WHEN watchlist_entry_id IS NULL
+    THEN num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name, snap_entry_date_of_birth,
+                      snap_entry_gender, snap_entry_nationality, snap_entry_passport) = 0
+    ELSE num_nonnulls(name_similarity, snap_entry_first_name, snap_entry_last_name) = 3
+  END)
 );
 
 -- Idempotency: a retry or a re-run of the background job cannot create a second row for the same hit.
--- identity_change is excluded because a passenger can legitimately be corrected more than once.
+-- entry_change and identity_change are excluded because an entry can be edited, and a passenger corrected, more than once.
 CREATE UNIQUE INDEX screening_check_once_uq
   ON screening_check (passenger_id, flight_id, watchlist_entry_id, trigger_point)
-  WHERE watchlist_entry_id IS NOT NULL AND trigger_point <> 'identity_change';
+  WHERE watchlist_entry_id IS NOT NULL AND trigger_point IN ('booking', 'check_in', 'new_entry');
 CREATE INDEX screening_check_flight_idx ON screening_check (flight_id);
 CREATE INDEX screening_check_passenger_idx ON screening_check (passenger_id, occurred_at DESC);
-CREATE INDEX screening_check_queue_idx ON screening_check (flight_dep_at) WHERE outcome IN ('flagged', 'held');
+CREATE INDEX screening_check_open_idx ON screening_check (flight_id) WHERE outcome IN ('flagged', 'held');
 
--- One decision per check. A mistaken decision is handled by a new check, not by editing this row.
--- The Screening Queue is: flagged or held checks with no review, nearest departure first (a query, not a view).
+-- Append-only. A correction is a new review with the next revision, and the highest revision for a check is the decision.
+-- The backend inserts the corrected review's revision + 1, so of two corrections made at once the second fails on the
+-- unique key. Rules that look at a prior decision (skip a false_positive, deny a confirmed) read each check's latest review.
+-- The Screening Queue is: flagged or held checks with no review, joined to feature 2's flight, nearest departure first
+-- (a query, not a view).
 CREATE TABLE screening_review (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  screening_check_id    UUID NOT NULL UNIQUE REFERENCES screening_check (id),
+  screening_check_id    UUID NOT NULL REFERENCES screening_check (id),
+  revision              INTEGER NOT NULL CHECK (revision >= 1), -- 1 for the first review, +1 for each correction
   decision              TEXT NOT NULL CHECK (decision IN ('confirmed', 'false_positive')),
   reviewed_by_staff_id  UUID NOT NULL REFERENCES staff (id),
   review_note           TEXT NOT NULL,
   reviewed_at           TIMESTAMPTZ NOT NULL,              -- simulation clock
   authority_notified_at TIMESTAMPTZ,                       -- simulation clock; feature 13 is mocked
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (screening_check_id, revision)
 );
 
 

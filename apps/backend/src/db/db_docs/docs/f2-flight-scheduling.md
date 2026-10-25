@@ -1,8 +1,8 @@
 # F2 — Flight scheduling and network operations
 
-> **Status: MERGED LEVEL 1 SCHEMA — verified against `dev` on 21 Oct 2026 (`752428e732da`).** [PR #14](https://github.com/CSC290-2026-AIRLINE/airline-management-system/pull/14) merged on 12 Oct 2026 (16:54 UTC). The F1/F2/F4/F7/F9/F12/F15 SQL dictionary describes the committed 69-table Level 1 schema; Feature 8 is documented separately as an **unmerged proposal**. Repository merge is not proof of deployment to any running database or final feature-owner approval.
+> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
-**Tables (12):** [`disruption_reason`](#table-disruption_reason) · [`partner_airline`](#table-partner_airline) · [`airport`](#table-airport) · [`airport_fee`](#table-airport_fee) · [`route`](#table-route) · [`flight_pattern`](#table-flight_pattern) · [`flight`](#table-flight) · [`flight_event`](#table-flight_event) · [`flight_event_outbox`](#table-flight_event_outbox) · [`airport_congestion`](#table-airport_congestion) · [`schedule_conflict`](#table-schedule_conflict) · [`flight_setting`](#table-flight_setting)
+**Tables (16):** [`disruption_reason`](#table-disruption_reason) · [`partner_airline`](#table-partner_airline) · [`airport`](#table-airport) · [`airport_fee`](#table-airport_fee) · [`route`](#table-route) · [`flight_pattern`](#table-flight_pattern) · [`flight`](#table-flight) · [`flight_event`](#table-flight_event) · [`flight_event_outbox`](#table-flight_event_outbox) · [`airport_congestion`](#table-airport_congestion) · [`schedule_conflict`](#table-schedule_conflict) · [`flight_setting`](#table-flight_setting) · [`partner_airline_route`](#table-partner_airline_route) · [`airport_approval_policy`](#table-airport_approval_policy) · [`schedule_approval`](#table-schedule_approval) · [`schedule_approval_offer`](#table-schedule_approval_offer)
 
 <a id="table-disruption_reason"></a>
 
@@ -39,18 +39,18 @@ Partner airlines that can receive rebooked passengers after disruptions.
 
 Airport master records with IATA/ICAO codes and operating metadata.
 
-| Column               | SQL type      | Constraints / linkage     | Meaning                                               |
-| -------------------- | ------------- | ------------------------- | ----------------------------------------------------- |
-| `iata_code`          | `TEXT`        | PK; required              | Three-letter IATA airport identifier.                 |
-| `icao_code`          | `TEXT`        | required; unique          | Four-letter ICAO airport identifier.                  |
-| `name`               | `TEXT`        | required                  | Human-readable name.                                  |
-| `city`               | `TEXT`        | required                  | City where the airport is located.                    |
-| `country`            | `TEXT`        | required                  | Country where the airport is located.                 |
-| `timezone`           | `TEXT`        | required                  | IANA time zone used for local flight scheduling.      |
-| `min_turnaround_min` | `INTEGER`     | required; CHECK           | Minimum permitted turnaround min.                     |
-| `is_active`          | `BOOLEAN`     | required; default `true`  | Whether the record is enabled for new use.            |
-| `created_at`         | `TIMESTAMPTZ` | required; default `now()` | Actual database creation timestamp.                   |
-| `updated_at`         | `TIMESTAMPTZ` | required; default `now()` | Last modification timestamp (application-maintained). |
+| Column               | SQL type      | Constraints / linkage     | Meaning                                                                     |
+| -------------------- | ------------- | ------------------------- | --------------------------------------------------------------------------- |
+| `iata_code`          | `TEXT`        | PK; required              | Three-letter IATA airport identifier.                                       |
+| `icao_code`          | `TEXT`        | required; unique          | Four-letter ICAO airport identifier.                                        |
+| `name`               | `TEXT`        | required                  | Human-readable name.                                                        |
+| `city`               | `TEXT`        | required                  | City where the airport is located.                                          |
+| `country`            | `TEXT`        | required; CHECK           | Lowercase two-letter country code (e.g. th); SQL CHECK enforces the format. |
+| `timezone`           | `TEXT`        | required                  | IANA time zone used for local flight scheduling.                            |
+| `min_turnaround_min` | `INTEGER`     | required; CHECK           | Minimum permitted turnaround min.                                           |
+| `is_active`          | `BOOLEAN`     | required; default `true`  | Whether the record is enabled for new use.                                  |
+| `created_at`         | `TIMESTAMPTZ` | required; default `now()` | Actual database creation timestamp.                                         |
+| `updated_at`         | `TIMESTAMPTZ` | required; default `now()` | Last modification timestamp (application-maintained).                       |
 
 <a id="table-airport_fee"></a>
 
@@ -152,7 +152,7 @@ Individual dated flight service, with scheduled and current expected times, airc
 
 **Indexes:** `flight_route_dep_idx` (index; `(route_id, dep_at)`); `flight_dep_at_idx` (index; `(dep_at)`); `flight_arr_at_idx` (index; `(arr_at)`); `flight_aircraft_dep_idx` (index; `(aircraft_id, dep_at)`); `flight_status_dep_idx` (index; `(status, dep_at)`); `flight_pattern_idx` (index; `(pattern_id) WHERE pattern_id IS NOT NULL`).
 
-**Cross-feature linkage:** `aircraft_id` → `aircraft(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `aircraft_id` → `aircraft(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-flight_event"></a>
 
@@ -160,33 +160,33 @@ Individual dated flight service, with scheduled and current expected times, airc
 
 Immutable record of a flight schedule/status change and the circumstances of that change.
 
-**Important behavior:** The global `seq` orders inserts; it is not a safe checkpoint across different flights. Rows cannot be updated or deleted via the trigger. Business event shape is validated by the backend.
+**Important behavior:** The global `seq` orders inserts; it is not a safe checkpoint across different flights. Rows cannot be updated or deleted via the trigger. Business event shape requires backend validation; no feature handler is present in this checkout.
 
-| Column                   | SQL type      | Constraints / linkage                                                                                        | Meaning                                                                        |
-| ------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `id`                     | `UUID`        | PK; required; default `gen_random_uuid()`                                                                    | Unique identifier for this record.                                             |
-| `seq`                    | `BIGINT`      | required; unique                                                                                             | Global insertion sequence; not guaranteed to follow cross-flight commit order. |
-| `flight_id`              | `UUID`        | FK → `flight(id)`; required                                                                                  | Related dated flight identifier.                                               |
-| `type`                   | `TEXT`        | required; Allowed: created, delayed, rescheduled, aircraft_changed, holding, hold_ended, diverted, cancelled | Record/event category.                                                         |
-| `disruption_reason_code` | `TEXT`        | FK → `disruption_reason(code)`; nullable                                                                     | Code identifying disruption reason.                                            |
-| `delay_minutes`          | `INTEGER`     | nullable; CHECK                                                                                              | Incremental minutes for this event, not accumulated delay.                     |
-| `old_dep_at`             | `TIMESTAMPTZ` | nullable                                                                                                     | Previous expected departure time recorded by this change.                      |
-| `new_dep_at`             | `TIMESTAMPTZ` | nullable                                                                                                     | Replacement expected departure time recorded by this change.                   |
-| `old_arr_at`             | `TIMESTAMPTZ` | nullable                                                                                                     | Previous expected arrival time recorded by this change.                        |
-| `new_arr_at`             | `TIMESTAMPTZ` | nullable                                                                                                     | Replacement expected arrival time recorded by this change.                     |
-| `new_destination`        | `TEXT`        | FK → `airport(iata_code)`; nullable                                                                          | Airport code used after a diversion.                                           |
-| `old_aircraft_id`        | `UUID`        | cross-FK → `aircraft(id)`; nullable                                                                          | Aircraft assigned before this change.                                          |
-| `new_aircraft_id`        | `UUID`        | cross-FK → `aircraft(id)`; nullable                                                                          | Aircraft assigned after this change.                                           |
-| `hold_minutes`           | `INTEGER`     | nullable; CHECK                                                                                              | Duration of a holding event, in minutes.                                       |
-| `resolution`             | `TEXT`        | nullable; Allowed: refund, rebook_partner                                                                    | Disruption resolution: refund or partner rebooking.                            |
-| `partner_airline`        | `TEXT`        | FK → `partner_airline(code)`; nullable                                                                       | Code for the partner airline accepting rebooking.                              |
-| `note`                   | `TEXT`        | nullable                                                                                                     | Additional free-text note.                                                     |
-| `actor_id`               | `UUID`        | FK → `staff(id)`; nullable                                                                                   | Staff who performed action; NULL indicates system event.                       |
-| `occurred_at`            | `TIMESTAMPTZ` | required                                                                                                     | Time the event happened on the simulated clock.                                |
+| Column                   | SQL type      | Constraints / linkage                                                                                                           | Meaning                                                                        |
+| ------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `id`                     | `UUID`        | PK; required; default `gen_random_uuid()`                                                                                       | Unique identifier for this record.                                             |
+| `seq`                    | `BIGINT`      | required; unique; GENERATED ALWAYS AS IDENTITY (omit on insert)                                                                 | Global insertion sequence; not guaranteed to follow cross-flight commit order. |
+| `flight_id`              | `UUID`        | FK → `flight(id)`; required                                                                                                     | Related dated flight identifier.                                               |
+| `type`                   | `TEXT`        | required; Allowed: created, delayed, rescheduled, aircraft_changed, holding, hold_ended, diverted, cancelled, departed, arrived | Record/event category.                                                         |
+| `disruption_reason_code` | `TEXT`        | FK → `disruption_reason(code)`; nullable                                                                                        | Code identifying disruption reason.                                            |
+| `delay_minutes`          | `INTEGER`     | nullable; CHECK                                                                                                                 | Incremental minutes for this event, not accumulated delay.                     |
+| `old_dep_at`             | `TIMESTAMPTZ` | nullable                                                                                                                        | Previous expected departure time recorded by this change.                      |
+| `new_dep_at`             | `TIMESTAMPTZ` | nullable                                                                                                                        | Replacement expected departure time recorded by this change.                   |
+| `old_arr_at`             | `TIMESTAMPTZ` | nullable                                                                                                                        | Previous expected arrival time recorded by this change.                        |
+| `new_arr_at`             | `TIMESTAMPTZ` | nullable                                                                                                                        | Replacement expected arrival time recorded by this change.                     |
+| `new_destination`        | `TEXT`        | FK → `airport(iata_code)`; nullable                                                                                             | Airport code used after a diversion.                                           |
+| `old_aircraft_id`        | `UUID`        | cross-FK → `aircraft(id)`; nullable                                                                                             | Aircraft assigned before this change.                                          |
+| `new_aircraft_id`        | `UUID`        | cross-FK → `aircraft(id)`; nullable                                                                                             | Aircraft assigned after this change.                                           |
+| `hold_minutes`           | `INTEGER`     | nullable; CHECK                                                                                                                 | Duration of a holding event, in minutes.                                       |
+| `resolution`             | `TEXT`        | nullable; Allowed: refund, rebook_partner                                                                                       | Disruption resolution: refund or partner rebooking.                            |
+| `partner_airline`        | `TEXT`        | FK → `partner_airline(code)`; nullable                                                                                          | Code for the partner airline accepting rebooking.                              |
+| `note`                   | `TEXT`        | nullable                                                                                                                        | Additional free-text note.                                                     |
+| `actor_id`               | `UUID`        | FK → `staff(id)`; nullable                                                                                                      | Staff who performed action; NULL indicates system event.                       |
+| `occurred_at`            | `TIMESTAMPTZ` | required                                                                                                                        | Time the event happened on the simulated clock.                                |
 
 **Indexes:** `flight_event_flight_idx` (index; `(flight_id, seq)`); `flight_event_occurred_idx` (index; `(occurred_at)`); `flight_event_reason_idx` (index; `(disruption_reason_code, occurred_at)`).
 
-**Cross-feature linkage:** `old_aircraft_id` → `aircraft(id)`; `new_aircraft_id` → `aircraft(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `old_aircraft_id` → `aircraft(id)`; `new_aircraft_id` → `aircraft(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-flight_event_outbox"></a>
 
@@ -194,7 +194,7 @@ Immutable record of a flight schedule/status change and the circumstances of tha
 
 Message delivery tracking for immutable flight events; supports reliable event publication.
 
-**Important behavior:** Created in the same transaction as `flight_event`; publication worker records attempts, failure text, and publish time.
+**Important behavior:** Application requirement: insert in the same transaction as `flight_event`; a future publication worker must record attempts, failures and publication time. That worker is not implemented here.
 
 | Column         | SQL type      | Constraints / linkage                 | Meaning                                                    |
 | -------------- | ------------- | ------------------------------------- | ---------------------------------------------------------- |
@@ -265,18 +265,139 @@ Detected scheduling problems and their resolution, dismissal, or supersession hi
 
 Flight-module configuration key/value settings such as airline code and holding limit.
 
-**Important behavior:** Schema inserts `holding_limit_minutes=30`; the actual `airline_code` must be seeded separately.
+**Important behavior:** Schema inserts `holding_limit_minutes=30`, `approval_mode=auto` and `approval_response_delay_minutes=0`; `airline_code` must be seeded separately. Setting value validation and approval state transitions require application logic.
 
-| Column       | SQL type      | Constraints / linkage                                      | Meaning                                               |
-| ------------ | ------------- | ---------------------------------------------------------- | ----------------------------------------------------- |
-| `key`        | `TEXT`        | PK; required; Allowed: holding_limit_minutes, airline_code | Configuration key.                                    |
-| `value`      | `TEXT`        | required                                                   | Setting or measured value.                            |
-| `updated_at` | `TIMESTAMPTZ` | required; default `now()`                                  | Last modification timestamp (application-maintained). |
-| `updated_by` | `UUID`        | FK → `staff(id)`; nullable                                 | Staff member who last changed this setting.           |
+| Column       | SQL type      | Constraints / linkage                                                                                      | Meaning                                               |
+| ------------ | ------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `key`        | `TEXT`        | PK; required; Allowed: holding_limit_minutes, airline_code, approval_mode, approval_response_delay_minutes | Configuration key.                                    |
+| `value`      | `TEXT`        | required                                                                                                   | Setting or measured value.                            |
+| `updated_at` | `TIMESTAMPTZ` | required; default `now()`                                                                                  | Last modification timestamp (application-maintained). |
+| `updated_by` | `UUID`        | FK → `staff(id)`; nullable                                                                                 | Staff member who last changed this setting.           |
 
-## F8 integration (proposed; unmerged)
+## F8 integration
 
-F8 plans to create pairings from F2 `flight.id`, `dep_at`, `arr_at`, `route_id` and `aircraft_id`, and to re-check rosters on `flight_event` changes. **No F8 pairings or listeners exist in the merged Level 1 database.** F8’s source draft uses `airport(code)` for three foreign keys, but this document correctly defines `airport.iata_code` as the PK. See [F8 proposed dictionary](./f8-crew-management-and-rostering.md).
+The committed F8 `pairing_leg.flight_id` references F2 `flight.id`; crew, pairing and roster base-airport FKs target `airport.iata_code`. `airport.country` is now constrained to lowercase two-letter codes. Rechecking rosters after flight changes remains an application integration requirement. `departed` and `arrived` are allowed event types; a simulation-clock event writer is not implemented in this checkout. See [F8 dictionary](./f8-crew-management-and-rostering.md).
+
+<a id="table-partner_airline_route"></a>
+
+### `partner_airline_route`
+
+Demo partner-airline route coverage used when offering partner rebooking.
+
+| Column            | SQL type | Constraints / linkage                                  | Meaning                                               |
+| ----------------- | -------- | ------------------------------------------------------ | ----------------------------------------------------- |
+| `partner_airline` | `TEXT`   | required; `NOT NULL REFERENCES partner_airline (code)` | Partner airline code; SQL FK to partner_airline.code. |
+| `route_id`        | `UUID`   | required; `NOT NULL REFERENCES route (id)`             | Directed route.id; SQL-enforced FK.                   |
+
+**Table-level SQL constraints:**
+
+- `PRIMARY KEY (partner_airline, route_id)`
+
+**Named indexes:**
+
+- `CREATE INDEX partner_airline_route_route_idx ON partner_airline_route (route_id);`
+
+<a id="table-airport_approval_policy"></a>
+
+### `airport_approval_policy`
+
+Simulated approval policy per origin airport. Curfew clock times are local to that airport.
+
+| Column                   | SQL type      | Constraints / linkage                                                           | Meaning                                                                 |
+| ------------------------ | ------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `airport`                | `TEXT`        | required; `PRIMARY KEY REFERENCES airport (iata_code)`                          | Airport IATA code; SQL FK to airport.iata_code.                         |
+| `curfew_start_local`     | `TIME`        | nullable                                                                        | Start of local curfew; paired with curfew_end_local; may wrap midnight. |
+| `curfew_end_local`       | `TIME`        | nullable                                                                        | End of local curfew; both curfew fields NULL means no curfew.           |
+| `max_departure_per_hour` | `INTEGER`     | nullable; `CHECK (max_departure_per_hour > 0)`                                  | Positive simulated departure capacity; NULL means no configured cap.    |
+| `offer_style`            | `TEXT`        | required; `NOT NULL DEFAULT 'slots' CHECK (offer_style IN ('window', 'slots'))` | Simulated response style: window or slots.                              |
+| `created_at`             | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                              | Real database creation time.                                            |
+| `updated_at`             | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                              | Real last-update time; application-maintained after insertion.          |
+
+**Table-level SQL constraints:**
+
+- `CHECK ((curfew_start_local IS NULL) = (curfew_end_local IS NULL))`
+- `CHECK (curfew_start_local <> curfew_end_local)`
+
+<a id="table-schedule_approval"></a>
+
+### `schedule_approval`
+
+Snapshot of a proposed new flight or reschedule and its approval response; this is not a searchable flight.
+
+| Column                     | SQL type      | Constraints / linkage                                                                                                                                     | Meaning                                                                           |
+| -------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `id`                       | `UUID`        | required; `PRIMARY KEY DEFAULT gen_random_uuid()`                                                                                                         | Generated UUID identifying this row.                                              |
+| `purpose`                  | `TEXT`        | required; `NOT NULL CHECK (purpose IN ('new_flight', 'reschedule'))`                                                                                      | new_flight or reschedule.                                                         |
+| `flight_id`                | `UUID`        | nullable; `REFERENCES flight (id)`                                                                                                                        | Dated flight reference; on approvals required exactly for reschedule.             |
+| `pattern_id`               | `UUID`        | nullable; `REFERENCES flight_pattern (id)`                                                                                                                | Pattern id.                                                                       |
+| `route_id`                 | `UUID`        | required; `NOT NULL REFERENCES route (id)`                                                                                                                | Directed route.id; SQL-enforced FK.                                               |
+| `flight_number`            | `TEXT`        | required; `NOT NULL`                                                                                                                                      | Flight number.                                                                    |
+| `service_date`             | `DATE`        | required; `NOT NULL`                                                                                                                                      | Service date.                                                                     |
+| `aircraft_id`              | `UUID`        | required; `NOT NULL`; cross-FK → `aircraft(id)`                                                                                                           | F9 aircraft.id; SQL-enforced cross-feature FK on schedule approvals.              |
+| `proposed_dep_at`          | `TIMESTAMPTZ` | required; `NOT NULL`                                                                                                                                      | Proposed departure instant; not yet an approved flight.                           |
+| `proposed_arr_at`          | `TIMESTAMPTZ` | required; `NOT NULL`                                                                                                                                      | Proposed arrival instant; must follow proposed departure.                         |
+| `approver_type`            | `TEXT`        | required; `NOT NULL CHECK (approver_type IN ('airport', 'partner_airline'))`                                                                              | airport or partner_airline; determines the required approver FK.                  |
+| `approver_airport`         | `TEXT`        | nullable; `REFERENCES airport (iata_code)`                                                                                                                | Airport answering the request; present exactly for airport approvers.             |
+| `approver_partner_airline` | `TEXT`        | nullable; `REFERENCES partner_airline (code)`                                                                                                             | Partner airline answering; present exactly for partner-airline approvers.         |
+| `status`                   | `TEXT`        | required; `NOT NULL DEFAULT 'pending' CHECK (status IN ( 'pending', 'approved', 'alternative_offered', 'rejected', 'superseded', 'consumed', 'expired'))` | Current allowed lifecycle state; see SQL checks.                                  |
+| `reject_reason`            | `TEXT`        | nullable; `CHECK (reject_reason IN ('curfew', 'no_slot_available', 'capacity_full', 'other'))`                                                            | Present exactly when rejected: curfew, no_slot_available, capacity_full or other. |
+| `response_note`            | `TEXT`        | nullable                                                                                                                                                  | Response note.                                                                    |
+| `previous_approval_id`     | `UUID`        | nullable; `REFERENCES schedule_approval (id)`                                                                                                             | Earlier request revised by this row; NULL exactly for revision 1.                 |
+| `covered_by_approval_id`   | `UUID`        | nullable; `REFERENCES schedule_approval (id)`                                                                                                             | Earlier offer covering this time; requires a previous request.                    |
+| `revision`                 | `INTEGER`     | required; `NOT NULL DEFAULT 1 CHECK (revision > 0)`                                                                                                       | Positive revision number; revision 1 has no previous request.                     |
+| `requested_by`             | `UUID`        | nullable; `REFERENCES staff (id)`                                                                                                                         | Requesting staff member; nullable for system requests.                            |
+| `requested_at`             | `TIMESTAMPTZ` | required; `NOT NULL`                                                                                                                                      | Simulation request time, supplied by application.                                 |
+| `respond_by`               | `TIMESTAMPTZ` | nullable                                                                                                                                                  | Simulation expiry deadline; optional stretch functionality.                       |
+| `responded_by`             | `UUID`        | nullable; `REFERENCES staff (id)`                                                                                                                         | Responding staff; NULL for the automatic approver.                                |
+| `responded_at`             | `TIMESTAMPTZ` | nullable                                                                                                                                                  | Simulation response time; required for rejection or an alternative offer.         |
+| `resulting_flight_id`      | `UUID`        | nullable; `REFERENCES flight (id)`                                                                                                                        | Created/updated flight reference; present exactly when consumed.                  |
+| `created_at`               | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                                                                                                        | Real database creation time.                                                      |
+| `updated_at`               | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                                                                                                                        | Real last-update time; application-maintained after insertion.                    |
+
+**Table-level SQL constraints:**
+
+- `CHECK (proposed_arr_at > proposed_dep_at)`
+- `CHECK ((approver_type = 'airport') = (approver_airport IS NOT NULL))`
+- `CHECK ((approver_type = 'partner_airline') = (approver_partner_airline IS NOT NULL))`
+- `CHECK ((purpose = 'reschedule') = (flight_id IS NOT NULL))`
+- `CHECK ((status = 'rejected') = (reject_reason IS NOT NULL))`
+- `CHECK ((status = 'consumed') = (resulting_flight_id IS NOT NULL))`
+- `CHECK ((revision = 1) = (previous_approval_id IS NULL))`
+- `CHECK (covered_by_approval_id IS NULL OR previous_approval_id IS NOT NULL)`
+- `CHECK (status <> 'pending' OR (responded_at IS NULL AND responded_by IS NULL))`
+- `CHECK (status NOT IN ('alternative_offered', 'rejected') OR responded_at IS NOT NULL)`
+- `CHECK (responded_by IS NULL OR responded_at IS NOT NULL)`
+
+**Named indexes:**
+
+- `CREATE UNIQUE INDEX schedule_approval_live_uq ON schedule_approval (flight_number, service_date) WHERE status IN ('pending', 'approved', 'alternative_offered');`
+- `CREATE INDEX schedule_approval_flight_number_idx ON schedule_approval (flight_number, service_date);`
+- `CREATE INDEX schedule_approval_pending_idx ON schedule_approval (requested_at) WHERE status = 'pending';`
+- `CREATE INDEX schedule_approval_flight_idx ON schedule_approval (flight_id) WHERE flight_id IS NOT NULL;`
+- `CREATE INDEX schedule_approval_resulting_flight_idx ON schedule_approval (resulting_flight_id) WHERE resulting_flight_id IS NOT NULL;`
+- `CREATE INDEX schedule_approval_route_idx ON schedule_approval (route_id);`
+- `CREATE INDEX schedule_approval_previous_idx ON schedule_approval (previous_approval_id) WHERE previous_approval_id IS NOT NULL;`
+
+<a id="table-schedule_approval_offer"></a>
+
+### `schedule_approval_offer`
+
+Alternative departure times: a window has an inclusive end; a slot has no end.
+
+| Column        | SQL type      | Constraints / linkage                                   | Meaning                                                               |
+| ------------- | ------------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
+| `id`          | `UUID`        | required; `PRIMARY KEY DEFAULT gen_random_uuid()`       | Generated UUID identifying this row.                                  |
+| `approval_id` | `UUID`        | required; `NOT NULL REFERENCES schedule_approval (id)`  | Parent schedule approval request.                                     |
+| `kind`        | `TEXT`        | required; `NOT NULL CHECK (kind IN ('window', 'slot'))` | window or slot; determines whether ends_at must be supplied.          |
+| `starts_at`   | `TIMESTAMPTZ` | required; `NOT NULL`                                    | Offered departure instant or beginning of inclusive departure window. |
+| `ends_at`     | `TIMESTAMPTZ` | nullable                                                | Inclusive window end; NULL exactly for a slot.                        |
+| `created_at`  | `TIMESTAMPTZ` | required; `NOT NULL DEFAULT now()`                      | Real database creation time.                                          |
+
+**Table-level SQL constraints:**
+
+- `UNIQUE (approval_id, starts_at)`
+- `CHECK ((kind = 'window') = (ends_at IS NOT NULL))`
+- `CHECK (ends_at IS NULL OR ends_at > starts_at)`
 
 ---
 
