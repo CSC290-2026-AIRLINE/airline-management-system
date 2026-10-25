@@ -1,6 +1,6 @@
 # Screening API (G10 / Feature 7)
 
-This module implements matching, immutable screening checks, queue/detail reads and append-only review decisions. It is registered in `AppModule`. Frontend wiring and automatic cross-feature workflows are not included.
+This module implements matching, immutable screening checks, queue/detail reads and append-only review decisions. It is registered in `AppModule`. The staff Screening Queue consumes these APIs. Automatic cross-feature workflows are not included.
 
 ## Authentication and access
 
@@ -104,7 +104,7 @@ Passport acknowledgement is stored as a boolean in the review's transactional au
 - F13 uses `MockScreeningNotification`, records a simulated notification time and returns `notificationMode: mock`. No real authority is contacted. Replace it with transactional outbox delivery when that contract is available.
 - F15 auditing writes to the existing `audit_log`; no F15 service or separate notification delivery is assumed.
 - The Watchlist branch is not merged or modified. Automatic re-screen jobs and effects of clearing/editing entries on existing checks are not connected. Existing checks are preserved.
-- Frontend fixtures and rendering are unchanged. They must be wired to these API contracts in a subsequent frontend task (including revision-based latest-review selection).
+- The staff Screening Queue uses these APIs and selects the latest review by revision. Its isolated fixture/model tests remain separate from live data.
 - No schema, migration, seed, auth configuration, package or lockfile changes are included.
 
 ## Verification

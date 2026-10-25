@@ -19,7 +19,9 @@ export interface Decision {
   readonly note: string
   readonly by: string
   readonly reviewedAt: string
-  readonly passportCompared: boolean
+  readonly revision?: number
+  readonly notificationMode?: 'mock' | null
+  readonly passportCompared: boolean | null
   readonly authorityNotifiedAt?: string
 }
 export interface ScreeningRecord {
@@ -36,6 +38,11 @@ export interface ScreeningRecord {
   readonly matchReason: MatchReason
   readonly flight: { id: string; label: string; departureAt: string }
   similarity: string
+  readonly now?: string
+  readonly authority?: string
+  readonly bookingSource?: 'mock' | 'not_connected'
+  readonly comparisonMatches?: readonly boolean[]
+  readonly historyReviews?: readonly (Decision | undefined)[]
   readonly comparison: readonly Comparison[]
   booking: string
   bookedBy: string
@@ -45,4 +52,11 @@ export interface ScreeningRecord {
   listed: string
   readonly history: readonly HistoryRow[]
   readonly reviews: readonly Decision[]
+}
+
+export interface ReviewSubmission {
+  saving: boolean
+  error?: string
+  requiresReload: boolean
+  onReload: () => void
 }

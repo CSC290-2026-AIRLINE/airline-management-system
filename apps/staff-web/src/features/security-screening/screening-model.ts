@@ -19,11 +19,11 @@ export function formatDeparture(value: string, now = simulationNow): string {
 export function formatOccurredAt(value: string, now = simulationNow): string {
   return isSimulationToday(value, now) ? formatTime(value) : shortDateFormat.format(new Date(value))
 }
-export function remainingTime(record: ScreeningRecord, now = simulationNow): string {
+export function remainingTime(record: ScreeningRecord, now = record.now ?? simulationNow): string {
   const minutes = Math.ceil((Date.parse(record.flight.departureAt) - Date.parse(now)) / 60000)
   return minutes > 0 ? `in ${Math.floor(minutes / 60)} h ${minutes % 60} m` : 'Departed'
 }
-export function isUrgent(record: ScreeningRecord, now = simulationNow): boolean {
+export function isUrgent(record: ScreeningRecord, now = record.now ?? simulationNow): boolean {
   const difference = Date.parse(record.flight.departureAt) - Date.parse(now)
   return !latestReview(record) && difference > 0 && difference <= 3 * 60 * 60 * 1000
 }
@@ -37,9 +37,14 @@ export function sourceLabel(trigger: TriggerPoint): string {
   }
   return labels[trigger]
 }
+export function compareReviews(a: Decision, b: Decision): number {
+  return a.revision !== undefined && b.revision !== undefined && a.revision !== b.revision
+    ? a.revision - b.revision
+    : Date.parse(a.reviewedAt) - Date.parse(b.reviewedAt)
+}
 export function latestReview(record: ScreeningRecord): Decision | undefined {
   return record.reviews.reduce<Decision | undefined>(
-    (latest, review) => (!latest || Date.parse(review.reviewedAt) >= Date.parse(latest.reviewedAt) ? review : latest),
+    (latest, review) => (!latest || compareReviews(latest, review) <= 0 ? review : latest),
     undefined,
   )
 }
@@ -66,9 +71,9 @@ export function reviewHistory(record: ScreeningRecord): HistoryRow[] {
   return [
     ...record.history,
     ...[...record.reviews]
-      .sort((a, b) => Date.parse(a.reviewedAt) - Date.parse(b.reviewedAt))
+      .sort(compareReviews)
       .map((review): HistoryRow => [
-        formatDeparture(review.reviewedAt),
+        formatDeparture(review.reviewedAt, record.now),
         'Review',
         '—',
         reviewStatus(review),

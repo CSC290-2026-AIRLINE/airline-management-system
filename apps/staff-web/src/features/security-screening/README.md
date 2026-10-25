@@ -1,59 +1,51 @@
 # Screening Queue frontend
 
-Route: `/screening-queue`, under the existing staff authenticated layout. Run `npm run dev -w apps/staff-web`, sign in, then open the route. UI stays in `features/security-screening`; the route only validates URL state and connects the existing logout handler.
+The authenticated `/screening-queue` route now reads and saves through the Screening backend. It uses `useAppAuth().fetchWithAuth`, including the existing token-refresh flow; it adds no login, shared cache, environment variable or package.
 
-## Requirements used
+## API integration
 
-The user supplied **Feature 7 — Customer & Passenger Profiles (Iteration-03)** and the **#group10-chat** discussion. The chat calls the 11 October schema notes suggestions and records the subsequent update to v3 on 12 October. Iteration-03 is the final behavior reference where the two differ:
+- `GET /api/security/screenings` supplies the current page, global counts, server time and next cursor. Filters, search and sort remain in URL search parameters. Previous/Next use the server cursor; changing filters resets pagination.
+- `GET /api/security/screenings/:id` supplies detail independently of the loaded page, so direct links and refreshed detail URLs work.
+- `POST /api/security/screenings/:id/reviews` saves the note, decision, explicit passport comparison and `expectedRevision` (zero for the first decision; highest loaded revision for a correction).
+- Save success is shown only after the API confirms it. The queue and counts are fetched again. No local review is appended optimistically.
+- Submit controls are disabled while saving, with an immediate duplicate-submit lock. A 409 preserves the draft and requires an explicit reload; it never automatically retries with a newer revision. Network/unknown write failures also require reload because the write may have succeeded before the connection failed.
+- Loading, empty, unavailable-session, forbidden, missing-check and server-error states are explicit. A cancelled or superseded read cannot replace a newer view. The existing `AuthProvider` alone owns authentication refresh.
 
-| Topic              | Earlier chat proposal                    | Iteration-03 used here                                                               |
-| ------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------ |
-| Weak match         | Similarity >= 0.7                        | Similarity >= 0.6 with different/missing DOB                                         |
-| Probable match     | Partial examples                         | Same passport with different/missing nationality, OR similarity >= 0.5 with same DOB |
-| Review correction  | One review per check; create a new check | Append another review on the SAME check; latest review wins                          |
-| Departure          | Copy departure into screening check      | Receive current flight departure data; do not copy it into the immutable check       |
-| Re-screen triggers | No `entry_change`                        | Support `booking`, `check_in`, `new_entry`, `entry_change`, `identity_change`        |
+The feature hook manages only local request state. `screening-api.ts` contains the transport contract and maps API data to the existing view model. TanStack Query and a global request/cache layer have not been added.
 
-The Figma layout and concise interface copy are retained. The demo-clock banner and implementation details are kept out of the page. In history, the underlined `Review` button expands/collapses the complete original note for that row; `By <reviewer>` is plain text. This works on desktop, mobile, and keyboard, without changing or dropping any reviews. Simulation times, counts, and sorting remain data-driven rather than hardcoded to a screenshot.
+## Data displayed
 
-Small copy differences are intentional where the design abbreviates a rule: the queue does not say held checks always come first (nearest-departure sorting is authoritative), the short Probable legend also mentions passport matches, and Strong/Probable flags never claim check-in is held. Longer rule explanations are available as tooltips rather than extra page sections. Audit/authority wording follows the Figma prototype; these integrations remain mocked as documented below.
+Identity comparison uses backend snapshots. The UI displays only passport last-four values and does not retain full passports in its view model. The comparison badge uses full-value equality before masking, so different passports sharing the same last four are not shown as equal. Empty fields do not count as matches.
 
-## Frontend behavior
+The current decision is selected by highest review revision. Earlier fixture tests can still use timestamp ordering when revisions are absent. History retains prior checks and their review notes; the selected check's reviews are not duplicated. Passport comparison is shown only when the backend supplies evidence; unknown evidence is displayed as not recorded.
 
-- `screening-model.ts` derives presentation from an immutable check outcome (`held`, `flagged`, `clear`) plus separate reviews (`confirmed`, `false_positive`). A review does not overwrite the check, snapshot, or earlier reviews.
-- Pending means a held/flagged check with NO review. Clear checks never appear as reviewable. The latest timestamp determines the effective decision; when timestamps tie, the last appended review wins.
-- `Needs review` and explicit departure sort order ALL pending checks by current `flight.departureAt`; a later held check does not jump ahead of an earlier flagged check. Waiting sort uses complete timestamps across days. Strongest match sorts Strong, Probable, Weak, with departure as tie-breaker.
-- `Decided today` uses the latest review date in Asia/Bangkok, rather than including all historical decisions.
-- `MatchNotice` uses the received match reason and original outcome, not the masked passport or match level alone. A flagged Strong/Probable case is NOT described as held. Only the check-in trigger may hold; booking never blocks purchase.
-- A nonblank note and explicit passport-comparison confirmation are required by the form. Creating a review appends to the same check. History shows the old and new decisions, reviewers, and notes.
-- Confirmation simulates a denied check-in and a Feature 13 authority notification. A false positive clears ONLY this check; the UI does not promise that other matches are clear. Prior notification history stays visible when a decision is corrected.
-- One fixture simulation clock is used everywhere: **05 Nov 2026, 08:30 Asia/Bangkok**. Departure text, waiting times, 3-hour highlighting, decision dates, and newly appended reviews use that clock, not the user's real date. This is a fixed frontend fixture, to be replaced by the shared simulation clock during integration.
-- URL state persists status, search, sort, and selected review. Filters are actual links. Refresh/Back/Forward/open-in-new-tab work. Typing replaces the current history entry, rather than creating one per keystroke.
+Business dates, urgency and remaining departure time use the backend's `now`, in Asia/Bangkok. The fixture clock is not used by the connected page. Queue counts/filtering/sorting are authoritative on the server; the browser never filters only the current page.
 
-Examples: `/screening-queue?status=held`, `?status=flagged`, `?status=decided`, `?status=needs-review&q=ARTHIT&sort=match&review=C-F735`.
+Authority/reason/list type are current watchlist metadata, while compared identities are historical snapshots. Booking details explicitly show demo or not-connected status. Confirmation banners label authority notification as simulated and describe the screening outcome without claiming a real notification was delivered or a check-in record updated.
 
-## Boundaries for later integration
+## Access and required data
 
-This change is **frontend only**, limited to the existing Screening Queue / Screening Review scope. Mock reviews are in memory and reset on reload. No backend route, Prisma schema, migration, seed, database contents, or authentication behavior is changed. Watchlist management and customer/passenger profile screens are separate work.
+The backend requires an enabled staff account with role `security`; an admin account alone receives 403. Assign roles through the team's existing administrative process. This change does not grant permissions or bypass the backend.
 
-- Matching and thresholds are backend responsibilities. This UI only renders fixture results and match reasons; it does not implement trigram matching or treat the last four passport digits as identity equality.
-- False-positive memory must eventually be enforced by identity + flight + watchlist entry, never passenger ID alone. If either side has a passport, use the passport/nationality identity rule; fall back to normalized name/DOB only when neither has a passport. This UI does not emulate that matching service or automatically clear other checks.
-- Flight times should come from the joined Feature 2 flight in the future response. `flight.departureAt` is a current flight summary, not a copied screening timestamp.
-- Append-review requests will map to `POST /security/screenings/:id/reviews`; pending/detail reads to `GET /security/screenings` and `GET /security/screenings/:id`. These endpoints are documented only; no requests are made here.
-- The reviewer name and authority-notification timestamp are explicitly simulated. Backend must supply the authenticated reviewer and record Feature 13 / Feature 15 effects. Real auditing, notification delivery, security-role authorization, identity normalization, idempotency, and check-in fail-closed behavior remain backend work.
-- Existing authentication stays centralized. The UI is not security-role enforcement. Production backend authorization is still required as the supplied requirements specify.
+The queue displays actual `screening_check` rows. Frontend fixture IDs cannot be posted to the real API. If no checks exist, the queue is empty. Existing passenger, watchlist and future-flight rows must be screened through the backend's authorized `POST /api/screening/check` operation before they can appear. This change does not seed records or run screening automatically.
 
-## Validation
+Booking/check-in workflow integration and Watchlist re-screen jobs remain separate tasks. F13 is mocked; review and audit writes go to PostgreSQL. A backend validation or authorization failure does not fall back to fixtures.
 
-From `apps/staff-web`:
+## Preview fixtures
 
-```sh
-node --experimental-strip-types --test src/features/security-screening/screening-model.test.ts
-npm run lint
-npm run format:check
-npm run build
+`mock-data.ts` and `appendReview` remain for isolated model tests and design references. The live `ScreeningQueue.tsx` does not import or save to them. The layout, original local fonts/assets, responsive table/cards and review dialog are retained.
+
+## Verification
+
+Use Node 24. From the repository root:
+
+```powershell
+node --experimental-strip-types --test apps/staff-web/src/features/security-screening/screening-model.test.ts apps/staff-web/src/features/security-screening/screening-api.test.ts
+npm run lint -w apps/staff-web
+npm run format:check -w apps/staff-web
+npm run build -w apps/staff-web
 ```
 
-The model tests cover immutability, corrected reviews and history, latest-review ordering, validation, clean checks, cross-day dates, departure ordering, other sorts, simulation time, and trigger labels. `format:check` still reports pre-existing formatting issues elsewhere in the scaffold; feature files are checked separately without reformatting unrelated files.
+Transport/model tests cover masking collisions, server time, highest revision, review requests, first-review revision zero, errors without automatic write retry, and history preservation. The project-wide formatting check may still report existing scaffold files; changed feature files are checked separately without reformatting unrelated code.
 
-Visual reference: Figma file `Vrt9ABsEitS4LGzHS4jXEC`, section `2559:10535` (desktop 1440px, mobile 393px). Original local SVGs and fonts remain in `assets/`.
+Manual integration requires the existing backend and staff app running with the team's Clerk configuration and a legitimate security account. Open `http://localhost:6161/screening-queue`, review an actual check and inspect `screening_review` and `audit_log` in Prisma Studio. Refreshing the browser should retain a saved decision under Decided today. A second browser with stale details should receive a reload conflict after another reviewer saves.

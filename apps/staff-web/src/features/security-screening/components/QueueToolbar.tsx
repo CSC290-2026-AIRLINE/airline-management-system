@@ -51,6 +51,7 @@ export function QueueToolbar({
       <div className="sq-search-sort">
         <input
           aria-label="Search passenger or flight"
+          maxLength={100}
           placeholder={mobile ? 'Search name or flight' : 'Search passenger or flight'}
           value={search}
           onChange={(event) => onSearch(event.target.value)}
