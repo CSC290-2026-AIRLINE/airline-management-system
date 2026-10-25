@@ -5,7 +5,16 @@
  * Distinct from real fixtures: clearly gated behind an explicit URL flag and visually labelled.
  */
 
-import type { AuditPage, RoleScreensResponse, RoleSummary, ScreenDto, ScreenGroup } from './types'
+import type {
+  AuditPage,
+  RoleScreensResponse,
+  RoleSummary,
+  ScreenDto,
+  ScreenGroup,
+  StaffListResponse,
+  StaffRoleRef,
+  StaffRow,
+} from './types'
 
 /* ----- /me/screens preview --------------------------------------------------- */
 
@@ -217,4 +226,59 @@ export const previewAudit: AuditPage = {
   ],
   next_cursor: null,
   has_more: false,
+}
+
+/* ----- /admin/staff preview ------------------------------------------------ */
+
+function previewRoleRef(id: string): StaffRoleRef {
+  const r = previewRoles.roles.find((role) => role.id === id) ?? previewRoles.roles[0]
+  return { id: r.id, code: r.code, name: r.name, is_admin: r.is_admin }
+}
+
+function previewStaffRow(
+  n: number,
+  first_name: string,
+  last_name: string,
+  roleId: string,
+  opts: { active?: boolean; lastSignIn?: string | null; created?: string } = {},
+): StaffRow {
+  const email = `${first_name.toLowerCase()}.${last_name[0].toLowerCase()}@flython.example`
+  const lastSignIn = opts.lastSignIn === undefined ? '2026-10-12T03:24:00Z' : opts.lastSignIn
+  return {
+    id: `p-staff-${n}`,
+    user_id: `p-user-${n}`,
+    staff_code: `ST-${String(n).padStart(4, '0')}`,
+    first_name,
+    last_name,
+    email,
+    role: previewRoleRef(roleId),
+    active: opts.active ?? true,
+    claimed: lastSignIn !== null,
+    last_sign_in_at: lastSignIn,
+    created_at: opts.created ?? '2026-08-04T02:00:00Z',
+  }
+}
+
+/**
+ * Mirrors the Staff & roles design comp: the viewer (Kaow) is an active admin, Nida is a second admin who is switched
+ * off, and Sara has never signed in, so her email is still editable. Roles come from `previewRoles` so the role filter
+ * and the role dropdown line up with the Role access preview.
+ */
+export const previewStaff: StaffListResponse = {
+  viewer_staff_id: 'p-staff-1',
+  next_staff_code: 'ST-0042',
+  staff: [
+    previewStaffRow(1, 'Kaow', 'Srisuk', 'r-admin', { created: '2026-01-02T02:00:00Z' }),
+    previewStaffRow(2, 'Nida', 'Phongsak', 'r-admin', { active: false, lastSignIn: '2026-10-11T10:38:00Z' }),
+    previewStaffRow(14, 'Kenji', 'Sato', 'r-gate', { lastSignIn: '2026-10-12T01:05:00Z' }),
+    previewStaffRow(19, 'Mali', 'Rattana', 'r-gate', { lastSignIn: '2026-10-12T01:15:00Z' }),
+    previewStaffRow(21, 'Ton', 'Wichai', 'r-gate', { active: false, lastSignIn: '2026-09-28T11:10:00Z' }),
+    previewStaffRow(23, 'Arthit', 'Wong', 'r-gate', { lastSignIn: '2026-10-12T01:00:00Z' }),
+    previewStaffRow(27, 'Ploy', 'Chan', 'r-finance', { lastSignIn: '2026-10-12T02:14:00Z' }),
+    previewStaffRow(31, 'Dao', 'Kittisak', 'r-finance', { lastSignIn: '2026-10-12T02:58:00Z' }),
+    previewStaffRow(33, 'Wit', 'Boonma', 'r-finance', { lastSignIn: '2026-10-12T01:50:00Z' }),
+    previewStaffRow(35, 'Ben', 'Carter', 'r-finance', { lastSignIn: '2026-10-12T02:26:00Z' }),
+    previewStaffRow(36, 'Jane', 'Park', 'r-gate', { lastSignIn: '2026-10-12T02:06:00Z' }),
+    previewStaffRow(40, 'Sara', 'Lim', 'r-finance', { lastSignIn: null, created: '2026-10-10T02:00:00Z' }),
+  ],
 }

@@ -64,3 +64,50 @@ export interface AuditFilters {
   from?: string
   to?: string
 }
+
+/* ----- Staff & roles ------------------------------------------------------- */
+/* Mirrors `apps/backend/src/modules/admin-console/dto/staff.types.ts`. */
+
+export interface StaffRoleRef {
+  id: string
+  code: string
+  name: string
+  is_admin: boolean
+}
+
+export interface StaffRow {
+  /** `staff.id` — the id used in `/api/admin/staff/:id`. */
+  id: string
+  user_id: string
+  /** System-generated, e.g. `ST-0042`. */
+  staff_code: string
+  first_name: string
+  last_name: string
+  email: string
+  role: StaffRoleRef
+  active: boolean
+  /** `true` once the person signed in with Clerk; the email is locked from then on. */
+  claimed: boolean
+  last_sign_in_at: string | null
+  created_at: string
+}
+
+export interface StaffListResponse {
+  staff: StaffRow[]
+  /** Best guess of the next staff code; the create response carries the real one. */
+  next_staff_code: string
+  /** The signed-in admin's own `staff.id` — drives the "You" badge and the self-change guards. */
+  viewer_staff_id: string
+}
+
+export type StaffErrorCode =
+  | 'VALIDATION_FAILED'
+  | 'REASON_REQUIRED'
+  | 'EMAIL_TAKEN'
+  | 'EMAIL_LOCKED'
+  | 'ROLE_NOT_FOUND'
+  | 'STAFF_NOT_FOUND'
+  | 'SELF_DISABLE'
+  | 'SELF_ROLE_CHANGE'
+  | 'LAST_ADMIN'
+  | 'NO_CHANGE'
