@@ -6,8 +6,8 @@ export function QueueList({ records, decided, onOpen }: { records: ScreeningReco
   if (!records.length)
     return (
       <div className="sq-empty" role="status">
-        <h2>No passengers found</h2>
-        <p>Try another search or queue filter.</p>
+        <h2>No screening checks found</h2>
+        <p>No checks match this view. Try another filter or refresh after a screening run.</p>
       </div>
     )
   return (
@@ -45,8 +45,12 @@ export function QueueList({ records, decided, onOpen }: { records: ScreeningReco
                   <Badge tone={record.match}>{record.match}</Badge>
                 </td>
                 <td>{record.flight.label}</td>
-                <td className={isUrgent(record) && !decided ? 'sq-depart-urgent' : ''}>{formatDeparture(record.flight.departureAt)}</td>
-                <td className="sq-muted">{decided ? formatTime(latestReview(record)!.reviewedAt) : formatOccurredAt(record.occurredAt)}</td>
+                <td className={isUrgent(record) && !decided ? 'sq-depart-urgent' : ''}>
+                  {formatDeparture(record.flight.departureAt, record.now)}
+                </td>
+                <td className="sq-muted">
+                  {decided ? formatTime(latestReview(record)!.reviewedAt) : formatOccurredAt(record.occurredAt, record.now)}
+                </td>
                 <td>
                   <button
                     className={`sq-button ${!decided && displayStatus(record) === 'Held' ? 'sq-primary' : ''}`}
@@ -83,11 +87,11 @@ export function QueueList({ records, decided, onOpen }: { records: ScreeningReco
             </span>
             <span className="sq-card-times">
               <span className={isUrgent(record) && !decided ? 'sq-depart-urgent' : ''}>
-                Departs {formatDeparture(record.flight.departureAt)}
+                Departs {formatDeparture(record.flight.departureAt, record.now)}
               </span>
               <span>
                 {decided ? 'Decided' : 'Since'}{' '}
-                {decided ? formatTime(latestReview(record)!.reviewedAt) : formatOccurredAt(record.occurredAt)}
+                {decided ? formatTime(latestReview(record)!.reviewedAt) : formatOccurredAt(record.occurredAt, record.now)}
               </span>
               <b>{decided ? 'View' : 'Review'} →</b>
             </span>

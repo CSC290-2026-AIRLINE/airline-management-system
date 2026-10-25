@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { ReviewDecision, ReviewDraft, ScreeningOutcome, ScreeningRecord } from '../types'
+import type { ReviewDecision, ReviewDraft, ReviewSubmission, ScreeningOutcome, ScreeningRecord } from '../types'
 
 export function MatchNotice({ record }: { record: ScreeningRecord }) {
   if (record.outcome === 'clear') return null
@@ -35,19 +35,21 @@ export function DecisionForm({
   outcome,
   onSave,
   modal = false,
+  submission,
 }: {
   outcome: ScreeningOutcome
   onSave: (draft: ReviewDraft) => void
   modal?: boolean
+  submission: ReviewSubmission
 }) {
   const [note, setNote] = useState('')
   const [checked, setChecked] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const noteInvalid = submitted && !note.trim()
+  const noteInvalid = submitted && (!note.trim() || note.trim().length > 2000)
   const checkInvalid = submitted && !checked
   function submit(decision: ReviewDecision) {
     setSubmitted(true)
-    if (!note.trim() || !checked) return
+    if (!note.trim() || note.trim().length > 2000 || !checked || submission.saving || submission.requiresReload) return
     onSave({
       decision,
       note: note.trim(),
@@ -55,55 +57,77 @@ export function DecisionForm({
     })
   }
   return (
-    <form className={`sq-decision-form ${modal ? 'sq-modal-form' : ''}`} onSubmit={(event) => event.preventDefault()} noValidate>
-      <label className="sq-note-label">
-        Note (required)
-        <textarea
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-          placeholder={modal ? 'Why the earlier decision was wrong' : 'What you compared, e.g. passport number differs'}
-          aria-invalid={noteInvalid}
-          aria-describedby={noteInvalid ? 'sq-note-error' : undefined}
-          required
-        />
-      </label>
-      {noteInvalid && (
-        <p className="sq-error" id="sq-note-error" role="alert">
-          Write what you compared before you decide. The note is saved with the review.
-        </p>
-      )}
-      <label className="sq-check-label">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(event) => setChecked(event.target.checked)}
-          aria-invalid={checkInvalid}
-          aria-describedby={checkInvalid ? 'sq-check-error' : undefined}
-        />
-        <span>{modal ? 'I compared the passport in person.' : 'I compared the passport in person or with the agent at the counter.'}</span>
-      </label>
-      {checkInvalid && (
-        <p className="sq-error" id="sq-check-error" role="alert">
-          Confirm that you compared the passport before you decide.
-        </p>
-      )}
-      <div className="sq-decision-actions">
-        <button type="button" className="sq-button" onClick={() => submit('false_positive')}>
-          Not the same person{!modal && ` · ${outcome === 'held' ? 'release hold' : 'clear flag'}`}
-        </button>
-        <button type="button" className="sq-button sq-danger" onClick={() => submit('confirmed')}>
-          Same person{!modal && ' · confirm match'}
-        </button>
-      </div>
-      {(modal || outcome === 'flagged') && (
-        <p
-          className="sq-fine-print"
-          title="Frontend prototype: notification delivery and audit integration are mocked. A review applies to this check only; other unresolved matches may still block check-in."
-        >
-          {modal
-            ? '“Same person” denies check-in and notifies the authority. Logged in Feature 15.'
-            : 'Clearing the flag is remembered for this identity, flight and entry, so it isn’t flagged again.'}
-        </p>
+    <form
+      className={`sq-decision-form ${modal ? 'sq-modal-form' : ''}`}
+      onSubmit={(event) => event.preventDefault()}
+      noValidate
+      aria-busy={submission.saving}
+    >
+      <fieldset disabled={submission.saving || submission.requiresReload}>
+        <legend className="sq-sr-only">Review decision</legend>
+        <label className="sq-note-label">
+          Note (required)
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder={modal ? 'Why the earlier decision was wrong' : 'What you compared, e.g. passport number differs'}
+            aria-invalid={noteInvalid}
+            aria-describedby={noteInvalid ? 'sq-note-error' : undefined}
+            maxLength={2000}
+            required
+          />
+        </label>
+        {noteInvalid && (
+          <p className="sq-error" id="sq-note-error" role="alert">
+            Write what you compared in 1–2000 characters. The note is saved with the review.
+          </p>
+        )}
+        <label className="sq-check-label">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(event) => setChecked(event.target.checked)}
+            aria-invalid={checkInvalid}
+            aria-describedby={checkInvalid ? 'sq-check-error' : undefined}
+          />
+          <span>
+            {modal ? 'I compared the passport in person.' : 'I compared the passport in person or with the agent at the counter.'}
+          </span>
+        </label>
+        {checkInvalid && (
+          <p className="sq-error" id="sq-check-error" role="alert">
+            Confirm that you compared the passport before you decide.
+          </p>
+        )}
+        <div className="sq-decision-actions">
+          <button type="button" className="sq-button" onClick={() => submit('false_positive')}>
+            Not the same person{!modal && ` · ${outcome === 'held' ? 'release hold' : 'clear flag'}`}
+          </button>
+          <button type="button" className="sq-button sq-danger" onClick={() => submit('confirmed')}>
+            Same person{!modal && ' · confirm match'}
+          </button>
+        </div>
+        {(modal || outcome === 'flagged') && (
+          <p
+            className="sq-fine-print"
+            title="A review applies to this check only. Other unresolved checks may still block check-in. Authority notification is simulated."
+          >
+            {modal
+              ? '“Same person” records a denied screening outcome. Authority notification is simulated. Your review is saved in the audit log.'
+              : 'Clearing the flag is remembered for this identity, flight and entry, so it isn’t flagged again.'}
+          </p>
+        )}
+      </fieldset>
+      {submission.saving && <p role="status">Saving decision…</p>}
+      {submission.error && (
+        <div className="sq-error" role="alert">
+          <p>{submission.error}</p>
+          {submission.requiresReload && (
+            <button type="button" className="sq-button" onClick={submission.onReload}>
+              Reload latest decision
+            </button>
+          )}
+        </div>
       )}
     </form>
   )

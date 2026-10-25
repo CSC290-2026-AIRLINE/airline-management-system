@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { ReviewDraft, ScreeningRecord } from '../types'
+import type { ReviewDraft, ReviewSubmission, ScreeningRecord } from '../types'
 import { decisionLabel, latestReview, reviewStatus } from '../screening-model'
 import { Badge } from './Badge'
 import { DecisionForm } from './DecisionForm'
@@ -8,10 +8,12 @@ export function ReviewDialog({
   record,
   onClose,
   onSave,
+  submission,
 }: {
   record: ScreeningRecord
   onClose: () => void
   onSave: (draft: ReviewDraft) => void
+  submission: ReviewSubmission
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
@@ -25,9 +27,12 @@ export function ReviewDialog({
       ref={ref}
       className="sq-review-dialog"
       aria-labelledby="sq-dialog-title"
-      onCancel={onClose}
+      onCancel={(event) => {
+        if (submission.saving) event.preventDefault()
+        else onClose()
+      }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) {
+        if (!submission.saving && event.target === event.currentTarget) {
           const rect = event.currentTarget.getBoundingClientRect()
           if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose()
         }
@@ -38,7 +43,7 @@ export function ReviewDialog({
           <h2 id="sq-dialog-title">Add a new review</h2>
           <p>{record.displayName} · The latest review wins; the old one is kept.</p>
         </div>
-        <button className="sq-close" onClick={onClose} aria-label="Close new review">
+        <button className="sq-close" onClick={onClose} disabled={submission.saving} aria-label="Close new review">
           ×
         </button>
       </div>
@@ -47,7 +52,7 @@ export function ReviewDialog({
         <Badge tone={reviewStatus(decision)}>{decisionLabel(record, decision)}</Badge>
         <p>“{decision.note}”</p>
       </div>
-      <DecisionForm outcome={record.outcome} onSave={onSave} modal />
+      <DecisionForm outcome={record.outcome} onSave={onSave} submission={submission} modal />
     </dialog>
   )
 }

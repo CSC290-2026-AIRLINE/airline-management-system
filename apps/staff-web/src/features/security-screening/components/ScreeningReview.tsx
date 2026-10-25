@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Decision, ReviewDraft, ScreeningRecord } from '../types'
+import type { Decision, ReviewDraft, ReviewSubmission, ScreeningRecord } from '../types'
 import {
+  compareReviews,
   decisionLabel,
   displayStatus,
   formatDeparture,
@@ -56,10 +57,12 @@ export function ScreeningReview({
   record,
   onBack,
   onSave,
+  submission,
 }: {
   record: ScreeningRecord
   onBack: () => void
   onSave: (draft: ReviewDraft) => void
+  submission: ReviewSubmission
 }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [expandedReviews, setExpandedReviews] = useState<Set<string>>(() => new Set())
@@ -86,7 +89,7 @@ export function ScreeningReview({
   }
   const decision = latestReview(record)
   const history = reviewHistory(record)
-  const orderedReviews = [...record.reviews].sort((a, b) => Date.parse(a.reviewedAt) - Date.parse(b.reviewedAt))
+  const orderedReviews = [...record.reviews].sort(compareReviews)
   const matchDetail =
     record.matchReason === 'passport_and_nationality'
       ? 'passport + nationality'
@@ -97,7 +100,7 @@ export function ScreeningReview({
           : 'similar name'
   return (
     <div className="sq-review">
-      <button className="sq-back" onClick={onBack}>
+      <button className="sq-back" onClick={onBack} disabled={submission.saving}>
         ← Back
       </button>
       {decision ? (
@@ -115,7 +118,8 @@ export function ScreeningReview({
           <h2>{record.name}</h2>
           <p>
             Check {record.id} · from {sourceLabel(record.triggerPoint)}
-            {sourceLabel(record.triggerPoint) === 'booking' ? ' (3b)' : ''} · {record.outcome} {formatOccurredAt(record.occurredAt)}
+            {sourceLabel(record.triggerPoint) === 'booking' ? ' (3b)' : ''} · {record.outcome}{' '}
+            {formatOccurredAt(record.occurredAt, record.now)}
           </p>
         </div>
         <div className="sq-summary-badges">
@@ -128,7 +132,7 @@ export function ScreeningReview({
           <span>DEPARTS</span>
           <strong>
             <span className="sq-mobile-only">Departs </span>
-            {formatDeparture(record.flight.departureAt)}
+            {formatDeparture(record.flight.departureAt, record.now)}
             {!decision && ` · ${remainingTime(record)}`}
           </strong>
         </div>
@@ -152,14 +156,18 @@ export function ScreeningReview({
                 </tr>
               </thead>
               <tbody>
-                {record.comparison.map(([field, passenger, entry]) => (
+                {record.comparison.map(([field, passenger, entry], index) => (
                   <tr key={field}>
                     <td>{field}</td>
                     <td>{passenger}</td>
                     <td>{entry}</td>
                     <td>
-                      <Badge tone={passenger === entry ? 'Same' : field === 'Name' ? 'Similar' : 'Different'}>
-                        {passenger === entry ? 'Same' : field === 'Name' ? 'Similar' : 'Different'}
+                      <Badge
+                        tone={
+                          (record.comparisonMatches?.[index] ?? passenger === entry) ? 'Same' : field === 'Name' ? 'Similar' : 'Different'
+                        }
+                      >
+                        {(record.comparisonMatches?.[index] ?? passenger === entry) ? 'Same' : field === 'Name' ? 'Similar' : 'Different'}
                       </Badge>
                     </td>
                   </tr>
@@ -171,12 +179,16 @@ export function ScreeningReview({
                 <span>PASSENGER</span>
                 <span>WATCHLIST ENTRY</span>
               </div>
-              {record.comparison.map(([field, passenger, entry]) => (
+              {record.comparison.map(([field, passenger, entry], index) => (
                 <div className="sq-compare-field" key={field}>
                   <div>
                     <span>{field}</span>
-                    <Badge tone={passenger === entry ? 'Same' : field === 'Name' ? 'Similar' : 'Different'}>
-                      {passenger === entry ? 'Same' : field === 'Name' ? 'Similar' : 'Different'}
+                    <Badge
+                      tone={
+                        (record.comparisonMatches?.[index] ?? passenger === entry) ? 'Same' : field === 'Name' ? 'Similar' : 'Different'
+                      }
+                    >
+                      {(record.comparisonMatches?.[index] ?? passenger === entry) ? 'Same' : field === 'Name' ? 'Similar' : 'Different'}
                     </Badge>
                   </div>
                   <div>
@@ -189,6 +201,11 @@ export function ScreeningReview({
           </InfoCard>
           <div className="sq-info-pair">
             <InfoCard title="BOOKING & FLIGHT">
+              {record.bookingSource && (
+                <p className="sq-fine-print">
+                  {record.bookingSource === 'mock' ? 'Demo booking details' : 'Booking details are not connected yet.'}
+                </p>
+              )}
               <Facts
                 items={[
                   ['Booking', record.booking],
@@ -202,7 +219,7 @@ export function ScreeningReview({
               <Facts
                 items={[
                   ['List type', record.listType],
-                  ['Authority', '[Demo authority]'],
+                  ['Authority', record.authority ?? 'Not recorded'],
                   ['Reason', record.reason],
                   ['Listed', record.listed],
                 ]}
@@ -227,7 +244,7 @@ export function ScreeningReview({
               </thead>
               <tbody>
                 {history.map((row, i) => {
-                  const review = orderedReviews[i - record.history.length]
+                  const review = i < record.history.length ? record.historyReviews?.[i] : orderedReviews[i - record.history.length]
                   const noteId = `sq-review-note-desktop-${review?.id ?? i}`
                   return (
                     <tr key={i}>
@@ -254,7 +271,7 @@ export function ScreeningReview({
             </table>
             <div className="sq-history-mobile">
               {history.map((row, i) => {
-                const review = orderedReviews[i - record.history.length]
+                const review = i < record.history.length ? record.historyReviews?.[i] : orderedReviews[i - record.history.length]
                 const noteId = `sq-review-note-mobile-${review?.id ?? i}`
                 return (
                   <div key={i}>
@@ -283,14 +300,14 @@ export function ScreeningReview({
                 <Facts
                   items={[
                     ['Decided by', `${decision.by} · Security`],
-                    ['Decided at', formatDeparture(decision.reviewedAt)],
+                    ['Decided at', formatDeparture(decision.reviewedAt, record.now)],
                     ['Passport check', decision.passportCompared ? 'Compared in person ✓' : 'Not recorded'],
                   ]}
                 />
                 <h4>Note</h4>
                 <p className="sq-saved-note">{decision.note}</p>
                 {decision.decision === 'confirmed' && (
-                  <p className="sq-error">Check-in denied. The authority was notified through Feature 13 (mocked).</p>
+                  <p className="sq-error">Screening outcome: check-in denied. Authority notification is simulated.</p>
                 )}
               </>
             ) : (
@@ -299,12 +316,12 @@ export function ScreeningReview({
                 <div className="sq-desktop-notice">
                   <MatchNotice record={record} />
                 </div>
-                <DecisionForm outcome={record.outcome} onSave={onSave} />
+                <DecisionForm outcome={record.outcome} onSave={onSave} submission={submission} />
               </>
             )}
           </InfoCard>
           {decision && (
-            <button className="sq-button sq-new-review" onClick={() => setDialogOpen(true)}>
+            <button className="sq-button sq-new-review" onClick={() => setDialogOpen(true)} disabled={submission.saving}>
               <img src={editIcon} alt="" />
               Add a new review
             </button>
@@ -312,7 +329,7 @@ export function ScreeningReview({
           {decision && (
             <p
               className="sq-fine-print"
-              title="Frontend prototype: reviews are stored locally; notification and audit services are not connected."
+              title="Reviews are saved to the screening database. The highest revision is the current decision. Authority notification is simulated."
             >
               Read-only. Reviews are append-only: if a decision was wrong, a new review is added and the latest one wins. Logged in Feature
               15’s audit log.
@@ -320,7 +337,7 @@ export function ScreeningReview({
           )}
         </aside>
       </div>
-      {dialogOpen && <ReviewDialog record={record} onClose={() => setDialogOpen(false)} onSave={onSave} />}
+      {dialogOpen && <ReviewDialog record={record} onClose={() => setDialogOpen(false)} onSave={onSave} submission={submission} />}
     </div>
   )
 }

@@ -322,7 +322,7 @@ body:has(.sq-app) {
 .sq-queue-description {
   color: var(--sq-muted);
   margin: 16px 0 0 !important;
-  line-height: 16px;
+  line-height: 20px;
 }
 .sq-queue-table {
   margin-top: 16px;
@@ -477,15 +477,43 @@ body:has(.sq-app) {
   font-size: 20px;
 }
 .sq-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 224px;
+  margin-top: 20px;
+  padding: 40px 32px;
   text-align: center;
-  padding: 48px 24px;
   background: white;
-  border: 1px solid #dbe2ea;
+  border: 1px solid var(--sq-border);
   border-radius: 12px;
 }
-.sq-empty h2 {
-  font-size: 20px;
-  margin-bottom: 8px;
+.sq-app .sq-empty h2 {
+  max-width: 560px;
+  margin: 0;
+  color: var(--sq-ink);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+  text-wrap: balance;
+}
+.sq-empty p {
+  max-width: 520px;
+  color: var(--sq-muted);
+  font-size: 13px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.sq-empty > .sq-button {
+  min-width: 120px;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
 }
 .sq-back {
   border: 0;
@@ -1286,5 +1314,54 @@ body:has(.sq-app) {
   }
   .sq-current-decision {
     padding: 12px;
+  }
+}
+
+.sq-decision-form fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.sq-app button:disabled,
+.sq-review-dialog button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.sq-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.sq-decision-form > .sq-error {
+  line-height: 20px;
+}
+.sq-decision-form > .sq-error .sq-button {
+  margin-top: 12px;
+  padding: 10px 16px;
+  line-height: 20px;
+}
+@media (max-width: 767px) {
+  .sq-empty {
+    min-height: 208px;
+    margin-top: 16px;
+    padding: 32px 20px;
+  }
+  .sq-app .sq-empty h2 {
+    font-size: 17px;
+    line-height: 24px;
+  }
+  .sq-empty p {
+    line-height: 21px;
+  }
+  .sq-queue-description {
+    line-height: 20px;
   }
 }
