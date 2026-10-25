@@ -15,12 +15,7 @@ interface State<T> {
 // Takes a path under the API root, like AppAuthProvider's fetchWithAuth.
 export type Fetcher = (path: string, init?: RequestInit) => Promise<Response>
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 export const BASE = '/api/flight-scheduling'
-
-// ponytail: TEMP plain fetch for the schedule board, whose list endpoints are public for now.
-// Pass useAppAuth().fetchWithAuth for endpoints that need sign-in.
-export const publicFetch: Fetcher = (path, init) => fetch(`${API_URL}${path}`, init)
 
 // "400 Bad Request. icao_code must be 4 letters" from a Nest error body ({ error, message: string | string[] }), else the HTTP status.
 export async function errorMessage(res: Response) {
@@ -35,7 +30,7 @@ export async function errorMessage(res: Response) {
 
 // GET a cursor-paged list from the flight-scheduling API; `loadMore` appends the next page and `reload` starts over.
 // ponytail: local to this feature, no cache. Swap for TanStack Query once the Dev Leads add the shared setup.
-export function usePagedList<T>(path: string, fetcher: Fetcher = publicFetch) {
+export function usePagedList<T>(path: string, fetcher: Fetcher) {
   const fetchRef = useRef(fetcher)
   useEffect(() => {
     fetchRef.current = fetcher

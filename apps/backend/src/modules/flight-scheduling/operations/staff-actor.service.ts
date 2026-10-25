@@ -13,13 +13,6 @@ export class StaffActorService {
       if (!staff || staff.deleted_at) throw new ForbiddenException('Only staff can change flights')
       return staff.id
     }
-    // TEMP-NO-LOGIN: signed out, act as the staff row named by F2_TEMP_NO_LOGIN_STAFF_CODE (set in the shell). Remove before committing.
-    const tempStaffCode = process.env.F2_TEMP_NO_LOGIN_STAFF_CODE?.trim()
-    if (tempStaffCode) {
-      const staff = await this.db.staff.findUnique({ where: { staff_code: tempStaffCode }, select: { id: true, deleted_at: true } })
-      if (!staff || staff.deleted_at) throw new ForbiddenException(`TEMP-NO-LOGIN: no active staff with staff_code ${tempStaffCode}`)
-      return staff.id
-    }
     // A route marked @Public() has no user; operations writes must not run anonymously.
     throw new UnauthorizedException('Sign in as staff to change flights')
   }
