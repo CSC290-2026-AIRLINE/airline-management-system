@@ -199,6 +199,26 @@ describe('AircraftService', () => {
     })
   })
 
+  describe('getStatus', () => {
+    it('reports an aircraft that does not exist as not found instead of in service', async () => {
+      db.aircraft.findFirst.mockResolvedValue(null)
+
+      await expect(service.getStatus('a1')).rejects.toBeInstanceOf(NotFoundException)
+      expect(db.aircraft_status_period.findMany).not.toHaveBeenCalled()
+    })
+
+    it('reports the current status of an existing aircraft', async () => {
+      db.aircraft.findFirst.mockResolvedValue({ id: 'a1' })
+      db.aircraft_status_period.findMany.mockResolvedValue([
+        { status: 'grounded', origin: 'manual', reason: 'AOG', start_date: new Date(dateOnly(-2)), end_date: null },
+      ])
+
+      const status = await service.getStatus('a1')
+
+      expect(status.status).toBe('grounded')
+    })
+  })
+
   describe('createStatus', () => {
     const period = (overrides: Record<string, unknown>) => ({
       id: 'p1',

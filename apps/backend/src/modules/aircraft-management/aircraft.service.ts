@@ -204,6 +204,11 @@ export class AircraftService {
   }
 
   async getStatus(aircraftId: string): Promise<AircraftStatusSummary> {
+    const aircraft = await this.db.aircraft.findFirst({ where: { id: aircraftId, deleted_at: null }, select: { id: true } })
+    if (!aircraft) {
+      throw new NotFoundException(`Aircraft with ID ${aircraftId} not found`)
+    }
+
     const periods = await this.db.aircraft_status_period.findMany({
       where: { aircraft_id: aircraftId, deleted_at: null },
       orderBy: { start_date: 'desc' },
