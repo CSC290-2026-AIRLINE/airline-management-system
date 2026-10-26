@@ -87,13 +87,14 @@ describe('Screening authorization through the JWT guard and real services', () =
     verifier.mockResolvedValue({ sub: userId, email: 'synthetic@example.test' })
     // Model Prisma's filtering so removing an eligibility predicate makes the rejection tests fail.
     tx.staff.findFirst.mockImplementation(({ where }: { where: Record<string, unknown> }) => {
-      if (!caller) return null
+      const currentCaller = caller
+      if (!currentCaller) return null
       const userWhere = where.user as Record<string, unknown>
       const eligible =
-        caller.user_id === where.user_id &&
-        caller.deleted_at === where.deleted_at &&
-        Object.entries(userWhere).every(([key, value]) => caller!.user[key as keyof typeof caller.user] === value)
-      return eligible ? { id: caller.id, role: caller.role } : null
+        currentCaller.user_id === where.user_id &&
+        currentCaller.deleted_at === where.deleted_at &&
+        Object.entries(userWhere).every(([key, value]) => currentCaller.user[key as keyof typeof currentCaller.user] === value)
+      return eligible ? { id: currentCaller.id, role: currentCaller.role } : null
     })
     const flight = {
       id: flightId,
