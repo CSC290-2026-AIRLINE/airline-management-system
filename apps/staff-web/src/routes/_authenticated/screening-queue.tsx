@@ -10,5 +10,5 @@ export const Route = createFileRoute('/_authenticated/screening-queue')({
 
 function ScreeningQueueRoute() {
   const { logout } = useAppAuth()
-  return <ScreeningQueue onSignOut={() => void logout()} />
+  return <ScreeningQueue onSignOut={logout} />
 }

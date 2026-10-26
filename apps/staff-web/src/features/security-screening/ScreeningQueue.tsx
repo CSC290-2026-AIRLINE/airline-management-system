@@ -12,8 +12,6 @@ import { QueueToolbar } from './components/QueueToolbar'
 import { QueueList } from './components/QueueList'
 import { ScreeningShell } from './components/ScreeningShell'
 import { ScreeningReview } from './components/ScreeningReview'
-import './fonts.css'
-import './screening.css'
 
 class ScreeningBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
@@ -62,6 +60,7 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
   const { fetchWithAuth } = useAppAuth()
   const [refresh, setRefresh] = useState(0)
   const [banner, setBanner] = useState('')
+  const [pageMenuOpen, setPageMenuOpen] = useState(false)
   const [pagination, setPagination] = useState<{ scope: string; cursors: string[]; index: number }>({ scope: '', cursors: [''], index: 0 })
   const [mutation, setMutation] = useState<{ id: string; saving: boolean; error?: string; requiresReload: boolean }>()
   const saving = useRef(false)
@@ -83,7 +82,10 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
   const queue = useScreeningRead<ApiQueue>(`/api/security/screenings?${params}`, refresh)
   const detail = useScreeningRead<ApiDetail>(query.review ? `/api/security/screenings/${encodeURIComponent(query.review)}` : '', refresh)
   const selected = detail.data ? mapDetail(detail.data) : undefined
-  const counts = queue.data ? mapCounts(queue.data) : { 'Needs review': 0, Held: 0, Flagged: 0, 'Decided today': 0 }
+  const [lastQueue, setLastQueue] = useState<ApiQueue>()
+  if (queue.data && queue.data !== lastQueue) setLastQueue(queue.data)
+  const countData = queue.data ?? lastQueue
+  const counts = countData ? mapCounts(countData) : { 'Needs review': 0, Held: 0, Flagged: 0, 'Decided today': 0 }
   const filter = statusFilters[query.status]
   const decided = filter === 'Decided today'
   const description = decided
@@ -138,7 +140,13 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
   const detailError = detail.authError ?? detail.error?.message
   const queueError = queue.authError ?? queue.error?.message
   return (
-    <ScreeningShell reviewing={!!selected && !latestReview(selected)} held={counts.Held} onQueue={goToQueue} onSignOut={onSignOut}>
+    <ScreeningShell
+      reviewing={!!selected && !latestReview(selected)}
+      held={counts.Held}
+      onQueue={goToQueue}
+      onSignOut={onSignOut}
+      navigationDisabled={!!mutation?.saving}
+    >
       {query.review ? (
         detail.loading || detailError ? (
           <RequestState loading={detail.loading} error={detailError} onRetry={reload} />
@@ -186,7 +194,18 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
             onSort={(value) => void navigate({ search: (previous) => ({ ...previous, sort: sortValues[value] }), resetScroll: false })}
           />
           {description && <p className="sq-queue-description">{description}</p>}
-          {queue.loading || queueError ? (
+          {queue.loading && !queueError ? (
+            <div className="sq-queue-loading" role="status" aria-label="Loading queue" aria-busy="true">
+              <span className="sq-sr-only">Loading screening data…</span>
+              {[0, 1, 2].map((row) => (
+                <div className="sq-loading-row" key={row}>
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ))}
+            </div>
+          ) : queueError ? (
             <RequestState loading={queue.loading} error={queueError} onRetry={reload} />
           ) : (
             queue.data && (
@@ -204,7 +223,49 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
                   >
                     Previous
                   </button>
-                  <span>Page {page.index + 1}</span>
+                  <div
+                    className="sq-sort sq-page-picker"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setPageMenuOpen(false)
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        setPageMenuOpen(false)
+                        event.currentTarget.querySelector<HTMLButtonElement>('.sq-sort-trigger')?.focus()
+                      }
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="sq-sort-trigger"
+                      aria-label={`Queue page ${page.index + 1}`}
+                      aria-expanded={pageMenuOpen}
+                      aria-controls="sq-page-options"
+                      onClick={() => setPageMenuOpen((open) => !open)}
+                    >
+                      Page {page.index + 1}
+                      <span aria-hidden="true">▾</span>
+                    </button>
+                    {pageMenuOpen && (
+                      <div className="sq-sort-options" id="sq-page-options" role="group" aria-label="Select a previously opened queue page">
+                        {page.cursors.map((_, index) => (
+                          <button
+                            type="button"
+                            key={index}
+                            aria-pressed={page.index === index}
+                            onClick={(event) => {
+                              setPagination({ ...page, index })
+                              setPageMenuOpen(false)
+                              event.currentTarget.closest('.sq-page-picker')?.querySelector<HTMLButtonElement>('.sq-sort-trigger')?.focus()
+                            }}
+                          >
+                            <span aria-hidden="true">{page.index === index ? '✓' : ''}</span>
+                            Page {index + 1}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     className="sq-button"
                     disabled={!queue.data.nextCursor}
@@ -218,15 +279,6 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
                     }}
                   >
                     Next
-                  </button>
-                  <button
-                    className="sq-button"
-                    onClick={() => {
-                      setPagination({ scope, cursors: [''], index: 0 })
-                      reload()
-                    }}
-                  >
-                    Refresh
                   </button>
                 </div>
               </>

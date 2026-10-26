@@ -1,7 +1,11 @@
 /* Scope scaffold overrides to this feature; other staff screens keep their styles. */
-body:has(.sq-app) {
+html:has(.sq-app),
+body:has(.sq-app),
+#root:has(.sq-app) {
   background: #f7f9fc;
   color-scheme: light;
+  overscroll-behavior-y: none;
+  min-height: 100dvh;
 }
 #root:has(.sq-app) {
   width: 100%;
@@ -22,7 +26,9 @@ body:has(.sq-app) {
     Arial,
     sans-serif;
   letter-spacing: 0;
-  min-height: 100svh;
+  min-height: 100dvh;
+  flex: 1 0 auto;
+  width: 100%;
 }
 .sq-app *,
 .sq-review-dialog * {
@@ -179,7 +185,8 @@ body:has(.sq-app) {
   background: #eef2f7;
   margin-top: 21px;
 }
-.sq-tabs button {
+.sq-tabs :is(button, a) {
+  text-decoration: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -193,7 +200,7 @@ body:has(.sq-app) {
   font-weight: 600;
   color: #475569;
 }
-.sq-tabs button.sq-tab-active {
+.sq-tabs :is(button, a).sq-tab-active {
   width: 230px;
   background: #162744;
   color: white;
@@ -1016,7 +1023,7 @@ body:has(.sq-app) {
   }
   .sq-mobile-heading {
     display: block;
-    min-height: 70px;
+    min-height: 0;
   }
   .sq-heading h1 {
     font-size: 24px;
@@ -1029,14 +1036,14 @@ body:has(.sq-app) {
     line-height: 16px;
   }
   .sq-tabs {
-    margin-top: 14px;
+    margin-top: 16px;
     border-radius: 0;
     height: 40.5px;
     background: none;
     border-bottom: 1px solid #e2e8f0;
   }
-  .sq-tabs button,
-  .sq-tabs button.sq-tab-active {
+  .sq-tabs :is(button, a),
+  .sq-tabs :is(button, a).sq-tab-active {
     flex: 1;
     width: 50%;
     height: 39.5px;
@@ -1049,7 +1056,7 @@ body:has(.sq-app) {
     gap: 6px;
     white-space: nowrap;
   }
-  .sq-tabs button.sq-tab-active {
+  .sq-tabs :is(button, a).sq-tab-active {
     color: #0a1424;
     border-bottom: 2.5px solid #102544;
   }
@@ -1372,4 +1379,196 @@ body:has(.sq-app) {
   .sq-queue-description {
     line-height: 20px;
   }
+}
+
+/* Reserve room for the live count on either active tab. */
+.sq-tabs :is(button, a),
+.sq-held-count {
+  white-space: nowrap;
+}
+.sq-held-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.sq-tabs img {
+  flex-shrink: 0;
+}
+@media (min-width: 768px) {
+  .sq-tabs > :first-child {
+    width: 230px;
+    flex-shrink: 0;
+  }
+  .sq-tabs > :last-child {
+    width: 170px;
+    flex-shrink: 0;
+  }
+}
+
+/* Keep page width stable when switching between short and scrollable lists. */
+html:has(.sq-app) {
+  scrollbar-gutter: stable;
+}
+.sq-sidebar {
+  view-transition-name: screening-sidebar;
+}
+.sq-header {
+  view-transition-name: screening-header;
+}
+.sq-content {
+  min-block-size: 320px;
+}
+.sq-tabs :is(button, a) {
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+html:has(.sq-app)::view-transition-group(root) {
+  animation-duration: 160ms;
+}
+html:has(.sq-app)::view-transition-old(root),
+html:has(.sq-app)::view-transition-new(root) {
+  animation-duration: 160ms;
+  animation-timing-function: ease-out;
+}
+html:has(.sq-app)::view-transition-group(screening-sidebar),
+html:has(.sq-app)::view-transition-group(screening-header) {
+  animation-duration: 0s;
+}
+html:has(.sq-app)::view-transition-old(screening-sidebar),
+html:has(.sq-app)::view-transition-new(screening-sidebar),
+html:has(.sq-app)::view-transition-old(screening-header),
+html:has(.sq-app)::view-transition-new(screening-header) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sq-tabs :is(button, a) {
+    transition: none;
+  }
+  html:has(.sq-app)::view-transition-group(*),
+  html:has(.sq-app)::view-transition-old(*),
+  html:has(.sq-app)::view-transition-new(*) {
+    animation: none;
+  }
+}
+
+/* Long identity strings must wrap instead of widening mobile queue cards. */
+@media (max-width: 767px) {
+  .sq-main,
+  .sq-content,
+  .sq-queue-cards,
+  .sq-queue-card {
+    min-width: 0;
+  }
+  .sq-queue-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sq-queue-card {
+    max-width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    white-space: normal;
+  }
+  .sq-card-line > span:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .sq-card-line .sq-badge {
+    flex-shrink: 0;
+  }
+  .sq-card-times {
+    flex-wrap: wrap;
+  }
+  .sq-card-times > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Match Watchlist page selection and keep the menu within the viewport. */
+.sq-pagination .sq-page-picker {
+  width: auto;
+  min-width: 100px;
+}
+.sq-pagination .sq-page-picker .sq-sort-trigger {
+  height: 42px;
+  gap: 8px;
+}
+.sq-pagination .sq-page-picker .sq-sort-trigger:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: -3px;
+}
+.sq-pagination .sq-page-picker .sq-sort-options {
+  top: auto;
+  bottom: calc(100% + 4px);
+  width: 100%;
+  max-height: 230px;
+  overflow-y: auto;
+}
+
+/* Keep the decision note focus border flush, matching the page picker. */
+.sq-app .sq-note-label textarea:focus,
+.sq-review-dialog .sq-note-label textarea:focus {
+  border-color: #172b4d;
+  outline: none;
+  box-shadow: inset 0 0 0 1px #172b4d;
+}
+
+/* Match the page picker border while typing in queue search. */
+.sq-app .sq-search-sort input:focus {
+  border-color: #172b4d;
+  outline: none;
+  box-shadow: inset 0 0 0 1px #172b4d;
+}
+
+/* Keep status navigation steady while the next queue is loading. */
+.sq-filters a {
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    border-color 140ms ease;
+}
+.sq-queue-loading {
+  min-height: 240px;
+  overflow: hidden;
+  border: 1px solid #dbe2ea;
+  border-radius: 12px;
+  background: white;
+}
+.sq-loading-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 24px;
+  align-items: center;
+  min-height: 80px;
+  padding: 20px;
+  border-bottom: 1px solid #dbe2ea;
+}
+.sq-loading-row:last-child {
+  border-bottom: 0;
+}
+.sq-loading-row span {
+  height: 14px;
+  border-radius: 6px;
+  background: #edf2f7;
+}
+@media (max-width: 767px) {
+  .sq-queue-loading {
+    min-height: 180px;
+  }
+  .sq-loading-row {
+    min-height: 60px;
+    gap: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sq-filters a {
+    transition: none;
+  }
+}
+
+/* Separate the outcome explanation from the saved decision note. */
+.sq-decision-column .sq-saved-note + .sq-error {
+  margin-top: 10px;
+  margin-left: 8px;
 }

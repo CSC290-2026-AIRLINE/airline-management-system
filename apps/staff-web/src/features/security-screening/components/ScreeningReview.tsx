@@ -65,28 +65,6 @@ export function ScreeningReview({
   submission: ReviewSubmission
 }) {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [expandedReviews, setExpandedReviews] = useState<Set<string>>(() => new Set())
-  function toggleReview(id: string) {
-    setExpandedReviews((previous) => {
-      const expanded = new Set(previous)
-      if (expanded.has(id)) expanded.delete(id)
-      else expanded.add(id)
-      return expanded
-    })
-  }
-  function reviewLink(review: Decision, noteId: string) {
-    return (
-      <button
-        type="button"
-        className="sq-history-review-link"
-        aria-expanded={expandedReviews.has(review.id)}
-        aria-controls={noteId}
-        onClick={() => toggleReview(review.id)}
-      >
-        Review
-      </button>
-    )
-  }
   const decision = latestReview(record)
   const history = reviewHistory(record)
   const orderedReviews = [...record.reviews].sort(compareReviews)
@@ -201,11 +179,7 @@ export function ScreeningReview({
           </InfoCard>
           <div className="sq-info-pair">
             <InfoCard title="BOOKING & FLIGHT">
-              {record.bookingSource && (
-                <p className="sq-fine-print">
-                  {record.bookingSource === 'mock' ? 'Demo booking details' : 'Booking details are not connected yet.'}
-                </p>
-              )}
+              {record.bookingSource === 'mock' && <p className="sq-fine-print">Demo booking details</p>}
               <Facts
                 items={[
                   ['Booking', record.booking],
@@ -251,14 +225,9 @@ export function ScreeningReview({
                       {row.map((cell, j) => (
                         <td key={j}>
                           {j === 1 && review ? (
-                            reviewLink(review, noteId)
+                            'Review'
                           ) : j === 4 ? (
-                            <ReviewHistoryNote
-                              review={review}
-                              text={cell}
-                              id={noteId}
-                              expanded={!!review && expandedReviews.has(review.id)}
-                            />
+                            <ReviewHistoryNote review={review} text={cell} id={noteId} expanded={true} />
                           ) : (
                             cell
                           )}
@@ -277,13 +246,13 @@ export function ScreeningReview({
                   <div key={i}>
                     <div>
                       <span>
-                        {row[0]} · {review ? reviewLink(review, noteId) : row[1]}
+                        {row[0]} · {review ? 'Review' : row[1]}
                       </span>
                       <Badge tone={row[2]}>{row[2]}</Badge>
                       <Badge tone={row[3]}>{row[3]}</Badge>
                     </div>
                     <div>
-                      <ReviewHistoryNote review={review} text={row[4]} id={noteId} expanded={!!review && expandedReviews.has(review.id)} />
+                      <ReviewHistoryNote review={review} text={row[4]} id={noteId} expanded={true} />
                     </div>
                   </div>
                 )
@@ -325,15 +294,6 @@ export function ScreeningReview({
               <img src={editIcon} alt="" />
               Add a new review
             </button>
-          )}
-          {decision && (
-            <p
-              className="sq-fine-print"
-              title="Reviews are saved to the screening database. The highest revision is the current decision. Authority notification is simulated."
-            >
-              Read-only. Reviews are append-only: if a decision was wrong, a new review is added and the latest one wins. Logged in Feature
-              15’s audit log.
-            </p>
           )}
         </aside>
       </div>
