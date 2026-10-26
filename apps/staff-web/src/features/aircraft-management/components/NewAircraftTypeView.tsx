@@ -188,22 +188,22 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
 
   return (
     <>
-      <button type="button" className="f9-backlink" onClick={onCancel}>
-        ← Aircraft Types
-      </button>
-      <h2 className="f9-heading" style={{ marginTop: 14 }}>
-        New Aircraft Type
-      </h2>
-
-      {error && (
-        <div className="f9-error" role="alert" style={{ marginTop: 16 }}>
-          <span>{error}</span>
-        </div>
-      )}
-
       <div className="f9-typegrid">
         <div className="f9-stack">
-          <form id="new-aircraft-type" className="f9-card f9-card--pad" onSubmit={(event) => void handleSubmit(event)}>
+          <div className="f9-typehead">
+            <button type="button" className="f9-backlink" onClick={onCancel}>
+              ← Aircraft Types
+            </button>
+            <h2 className="f9-heading">New Aircraft Type</h2>
+          </div>
+
+          {error && (
+            <div className="f9-error" role="alert">
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form id="new-aircraft-type" className="f9-card f9-card--pad f9-card--form" onSubmit={(event) => void handleSubmit(event)}>
             <div className="f9-formgrid">
               <label className="f9-field">
                 <span className="f9-field__label">Code</span>
@@ -299,7 +299,7 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
             </div>
           </form>
 
-          <div className="f9-card f9-card--pad">
+          <div className="f9-card f9-card--pad f9-card--cabins">
             <h3 className="f9-card__title">Cabins</h3>
 
             {cabins.length === 0 ? (
@@ -336,7 +336,7 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
                 />
               </label>
 
-              <div className="f9-formgrid" style={{ marginTop: 12 }}>
+              <div className="f9-formgrid" style={{ marginTop: 8 }}>
                 <label className="f9-field">
                   <span className="f9-field__label">First row</span>
                   <input
@@ -359,7 +359,7 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
                 </label>
               </div>
 
-              <label className="f9-field" style={{ marginTop: 12 }}>
+              <label className="f9-field" style={{ marginTop: 8 }}>
                 <span className="f9-field__label">Seat layout (letters, "|" marks the aisle)</span>
                 <select className="f9-select" value={draftLayoutId} onChange={(event) => setDraftLayoutId(event.target.value)}>
                   {SEAT_LAYOUT_OPTIONS.map((option) => (
@@ -370,11 +370,11 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
                 </select>
               </label>
 
-              <button type="button" className="f9-btn f9-btn--ghost f9-addcabin__add" onClick={handleAddCabin}>
+              <button type="button" className="f9-btn f9-btn--outline f9-addcabin__add" onClick={handleAddCabin}>
                 + Add cabin
               </button>
 
-              <p className="f9-note" style={{ marginTop: 10 }}>
+              <p className="f9-note f9-note--small" style={{ marginTop: 12 }}>
                 Enter a class name and both row numbers to add this cabin.
               </p>
             </div>
@@ -396,10 +396,10 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
           </div>
         </div>
 
-        <div className="f9-stack">
-          <div className="f9-card f9-card--pad">
+        <div className="f9-stack f9-stack--tight">
+          <div className="f9-card f9-card--pad f9-card--capacity">
             <h3 className="f9-card__title">Capacity summary</h3>
-            <div className="f9-metrics" style={{ marginTop: 14 }}>
+            <div className="f9-metrics">
               <div className="f9-metric">
                 <div className="f9-metric__label">TOTAL SEATS</div>
                 <div className="f9-metric__value">{capacity.total}</div>

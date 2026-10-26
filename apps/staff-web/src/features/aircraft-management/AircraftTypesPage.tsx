@@ -132,7 +132,7 @@ export function AircraftTypesPage() {
       <StaffShell activeTab="types">
         {actionError && !isCloneOpen && !selectedType && <ErrorMessage message={actionError} />}
 
-        <div className="f9-sectionhead" style={{ marginTop: 20 }}>
+        <div className="f9-sectionhead" style={{ marginTop: 24 }}>
           <div>
             <h2 className="f9-heading">Aircraft types</h2>
             <p className="f9-lead">
