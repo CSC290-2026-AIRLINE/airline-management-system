@@ -837,6 +837,7 @@
 
 .f9-detail__list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
@@ -876,6 +877,32 @@
 .f9-detail__cancel:disabled {
   color: var(--f9-muted);
   cursor: not-allowed;
+}
+
+.f9-detail__rowactions {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.f9-detail__rowactions .f9-detail__cancel,
+.f9-detail__rowactions .f9-detail__keep {
+  margin-left: 0;
+}
+
+.f9-detail__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--f9-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.f9-detail__link:hover {
+  text-decoration: underline;
 }
 
 .f9-detail__hint {

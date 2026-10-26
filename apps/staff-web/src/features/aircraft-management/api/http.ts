@@ -11,10 +11,17 @@ export class ApiError extends Error {
   }
 }
 
-/** Nest answers with `{ message: string | string[] }`; validation errors carry an array. */
+/**
+ * The routes of this feature answer `{ error: { code, message, details? } }`; an error from the platform (a missing token, for
+ * example) still answers Nest's `{ message: string | string[] }`, and a validation error there carries an array.
+ */
 async function readErrorMessage(res: Response): Promise<string | null> {
   try {
-    const body = (await res.json()) as { message?: string | string[] }
+    const parsed = (await res.json()) as { error?: { message?: string }; message?: string | string[] }
+    if (typeof parsed.error?.message === 'string') {
+      return parsed.error.message
+    }
+    const body = parsed
     if (Array.isArray(body.message)) {
       return body.message.join(', ')
     }
