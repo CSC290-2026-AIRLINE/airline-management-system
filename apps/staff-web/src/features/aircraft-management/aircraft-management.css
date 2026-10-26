@@ -176,6 +176,11 @@
   text-decoration: underline;
 }
 
+/* The blue ring of the other controls is too close to the navy sidebar. */
+.f9-sidebar .f9-sidebar__signout:focus-visible {
+  outline-color: #fff;
+}
+
 /* -------------------------------------------------------------- main area */
 
 .f9-main {
@@ -443,7 +448,17 @@
 .f9-table__pick:focus-visible,
 .f9-chip:focus-visible,
 .f9-pillbtn:focus-visible,
-.f9-seat:focus-visible {
+.f9-seat:focus-visible,
+.f9-search:focus-visible,
+.f9-detail__link:focus-visible,
+.f9-detail__cancel:focus-visible,
+.f9-detail__keep:focus-visible,
+.f9-modal__close:focus-visible,
+.f9-backlink:focus-visible,
+.f9-cabinrow__remove:focus-visible,
+.f9-seatmap__rownum:focus-visible,
+.f9-sidebar__signout:focus-visible,
+.f9-error button:focus-visible {
   outline: 2px solid var(--f9-primary);
   outline-offset: 2px;
 }
