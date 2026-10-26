@@ -58,6 +58,7 @@ interface MockDocument {
   visaRequired: boolean
   nameMismatch: boolean
   nameMismatchClearedAt: string | null
+  visaCheckedAt: string | null
   profileDifferences: string[]
 }
 
@@ -155,10 +156,12 @@ export function createMockStaffApi(opts?: { now?: Date }): StaffApi {
       issuingCountry: nationality,
       nationality: profile?.nationality ?? null,
       expiryDate: SEEDED_DOC_EXPIRY,
-      visaNumber: null,
+      // Seeded passengers who need a visa entered one online; staff still check it at the counter (VISA_CHECK).
+      visaNumber: visaRequired(nationality, flight?.destination.country ?? '') ? `V-${seed.reference.slice(0, 4)}` : null,
       visaRequired: visaRequired(nationality, flight?.destination.country ?? ''),
       nameMismatch: false,
       nameMismatchClearedAt: null,
+      visaCheckedAt: null,
       profileDifferences: [],
     }
     documents.set(document.id, document)
@@ -219,7 +222,8 @@ export function createMockStaffApi(opts?: { now?: Date }): StaffApi {
     if (checkIn.status === 'on_hold' || checkIn.status === 'denied') issues.push('ON_HOLD')
     if (totalsOf(checkIn).unpaidFee > 0) issues.push('EXCESS_UNPAID')
     if (document?.nameMismatch && !document.nameMismatchClearedAt) issues.push('NAME_MISMATCH')
-    if (document?.visaRequired && !document.visaNumber) issues.push('VISA_CHECK')
+    // Same rule as the backend: a visa number was entered and staff have not checked it yet.
+    if (document?.visaRequired && document.visaNumber && !document.visaCheckedAt) issues.push('VISA_CHECK')
     if (document && document.profileDifferences.length > 0) issues.push('PROFILE_DIFFERS')
     return issues
   }
@@ -484,9 +488,8 @@ export function createMockStaffApi(opts?: { now?: Date }): StaffApi {
     async tagBag(bagId: string): Promise<{ bag: CheckedBagView; view: StaffCheckInView }> {
       const bag = bags.get(bagId)
       if (!bag) throw notFound('Bag')
-      if (bag.tagNumber) {
-        throw new ApiRequestError(409, 'INVALID_STATE', 'This bag is already tagged')
-      }
+      // Already tagged: return it as is (reprint), like the backend.
+      if (bag.tagNumber) return { bag: bagView(bag), view: staffView(mustCheckIn(bag.checkInId)) }
       // The bags of one passenger are paid together, so the unpaid excess of all of them is charged first.
       const unpaid = bagsOf(bag.checkInId).filter((b) => !b.excessPaymentId && b.excessFee > 0)
       if (unpaid.length > 0) {
@@ -523,7 +526,8 @@ export function createMockStaffApi(opts?: { now?: Date }): StaffApi {
     async checkVisa(documentId: string): Promise<StaffCheckInView> {
       const document = documents.get(documentId)
       if (!document) throw notFound('Travel document')
-      if (!document.visaNumber) document.visaNumber = 'DEMO-VISA-0001'
+      if (!document.visaNumber) throw new ApiRequestError(409, 'INVALID_STATE', 'No visa number to check')
+      document.visaCheckedAt = nowIso()
       return staffView(mustCheckIn(document.checkInId))
     },
 
