@@ -333,34 +333,26 @@
 
 .sr-table-scroll {
   /* `position: relative` makes this the containing block of the visually-hidden "Edit" header label. Without it that
-     absolutely positioned span escaped the scroll box and widened the whole document on phones. */
+     absolutely positioned span could widen the whole document. */
   position: relative;
-  overflow-x: auto;
 }
 
 .sr-table {
   width: 100%;
-  min-width: 900px;
   border-collapse: collapse;
   table-layout: fixed;
 }
-.sr-col-name {
-  width: 16.5%;
-}
-.sr-col-email {
-  width: 19.6%;
-}
+/* The table always fits its card — no horizontal scroll bar, as in the design. The short columns get fixed widths
+   that hold their content; name, email and role share what is left equally and cut long text with "…". Below 600px
+   the card list replaces the table. */
 .sr-col-code {
-  width: 10.6%;
-}
-.sr-col-role {
-  width: 19.6%;
+  width: 92px;
 }
 .sr-col-status {
-  width: 14%;
+  width: 124px;
 }
 .sr-col-signin {
-  width: 13.3%;
+  width: 112px;
 }
 .sr-col-edit {
   width: 48px;
@@ -829,109 +821,15 @@
   }
 }
 
-/* ----- Phone (mobile frames of the design) ----- */
+/* ----- Narrow list: cards instead of the table -----
+   Switches on the width of the list card itself, not the window, so the table never needs a horizontal scroll bar:
+   a phone, a narrow window or a zoomed-in browser all get the card list once the table would be too cramped. */
 
-@media (max-width: 600px) {
-  .sr-page {
-    gap: 12px;
-  }
-  .sr-desktop-only {
-    display: none;
-  }
-  .sr-phone-only {
-    display: inline;
-  }
+.sr-table-card {
+  container: staff-list / inline-size;
+}
 
-  /* The phone design has no summary cards. */
-  .sr-stats {
-    display: none;
-  }
-
-  .sr-notice {
-    min-height: 0;
-    padding: 10px 12px;
-    border-radius: 8px;
-  }
-  .sr-notice-parts {
-    flex-direction: column;
-    row-gap: 4px;
-  }
-  .sr-notice-parts strong {
-    font-size: 13px;
-    color: #1f8a4c;
-  }
-  .sr-notice.is-error .sr-notice-parts strong {
-    color: #b8171f;
-  }
-  .sr-notice-parts span {
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  /* Filters become a card: search on its own row, role + status side by side, then two full-width buttons. */
-  .sr-filters {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 10px 8px;
-    padding: 12px;
-    background: #ffffff;
-    border: 1px solid #d9dfe9;
-    border-radius: 10px;
-  }
-  .sr-filter,
-  .sr-filter--search {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-  }
-  .sr-filter--search {
-    grid-column: 1 / -1;
-  }
-  .sr-filter-label {
-    display: block;
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 100%;
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-    color: #6f7c91;
-  }
-  .sr-search,
-  .sr-dropdown--filter .sr-dropdown-trigger {
-    height: 40px;
-    border-radius: 6px;
-    font-size: 13px;
-  }
-  .sr-dropdown--filter .sr-dropdown-menu {
-    min-width: 100%;
-    max-width: calc(100vw - 56px);
-  }
-  .sr-btn--clear,
-  .sr-btn--create {
-    grid-column: 1 / -1;
-    width: auto;
-    min-width: 0;
-    height: 38px;
-    margin: 0;
-    border-radius: 6px;
-    font-size: 13px;
-  }
-
-  /* Staff list: cards instead of the table. */
-  .sr-table-card {
-    padding: 12px;
-    border-radius: 10px;
-  }
-  .sr-table-head {
-    padding: 0 0 10px;
-  }
-  .sr-table-head h2 {
-    font-size: 16px;
-  }
-  .sr-table-count {
-    font-size: 11px;
-  }
+@container staff-list (max-width: 680px) {
   .sr-table-scroll {
     display: none;
   }
@@ -1044,7 +942,111 @@
     color: #0a1424;
     cursor: pointer;
   }
+}
 
+/* ----- Phone (mobile frames of the design) ----- */
+
+@media (max-width: 600px) {
+  .sr-page {
+    gap: 12px;
+  }
+  .sr-desktop-only {
+    display: none;
+  }
+  .sr-phone-only {
+    display: inline;
+  }
+
+  /* The phone design has no summary cards. */
+  .sr-stats {
+    display: none;
+  }
+
+  .sr-notice {
+    min-height: 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+  }
+  .sr-notice-parts {
+    flex-direction: column;
+    row-gap: 4px;
+  }
+  .sr-notice-parts strong {
+    font-size: 13px;
+    color: #1f8a4c;
+  }
+  .sr-notice.is-error .sr-notice-parts strong {
+    color: #b8171f;
+  }
+  .sr-notice-parts span {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  /* Filters become a card: search on its own row, role + status side by side, then two full-width buttons. */
+  .sr-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px 8px;
+    padding: 12px;
+    background: #ffffff;
+    border: 1px solid #d9dfe9;
+    border-radius: 10px;
+  }
+  .sr-filter,
+  .sr-filter--search {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .sr-filter--search {
+    grid-column: 1 / -1;
+  }
+  .sr-filter-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 100%;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    color: #6f7c91;
+  }
+  .sr-search,
+  .sr-dropdown--filter .sr-dropdown-trigger {
+    height: 40px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .sr-dropdown--filter .sr-dropdown-menu {
+    min-width: 100%;
+    max-width: calc(100vw - 56px);
+  }
+  .sr-btn--clear,
+  .sr-btn--create {
+    grid-column: 1 / -1;
+    width: auto;
+    min-width: 0;
+    height: 38px;
+    margin: 0;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  /* Staff list: cards instead of the table. */
+  .sr-table-card {
+    padding: 12px;
+    border-radius: 10px;
+  }
+  .sr-table-head {
+    padding: 0 0 10px;
+  }
+  .sr-table-head h2 {
+    font-size: 16px;
+  }
+  .sr-table-count {
+    font-size: 11px;
+  }
   /* Create / Edit: a page in the content area instead of a pop-up. The list and the tab bar step aside while it is
      open, as in the phone frames ("ADMINISTRATION" → "← Back" → the form). */
   .page-body-host:has(.sr-backdrop--sheet) .sr-page,
