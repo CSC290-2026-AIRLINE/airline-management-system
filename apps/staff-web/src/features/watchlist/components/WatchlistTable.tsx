@@ -29,7 +29,7 @@ export function WatchlistTable({ entries, onEdit }: { entries: WatchlistEntry[];
               <th scope="row">{entryName(entry)}</th>
               <td data-label="Date of birth">{formatDate(entry.dateOfBirth)}</td>
               <td data-label="Nationality">{nationalityName(entry.nationality)}</td>
-              <td data-label="Passport">{maskedPassport(entry.passportNumber)}</td>
+              <td data-label="Passport">{maskedPassport(entry.passportNumber || entry.passportLast4 || '')}</td>
               <td data-label="List type">{listTypes[entry.listType]}</td>
               <td className="wl-status-cell">
                 <span className={`wl-chip wl-${entry.status}`}>{entry.status === 'active' ? 'Active' : 'Cleared'}</span>

@@ -16,6 +16,7 @@ export interface EntryFields {
 export interface WatchlistEntry extends EntryFields {
   id: string
   status: EntryStatus
+  passportLast4?: string
   listedAt: string
   clearReason?: string
   clearedAt?: string

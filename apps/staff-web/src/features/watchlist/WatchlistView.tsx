@@ -38,6 +38,21 @@ export function WatchlistView({ onSignOut }: { onSignOut?: () => Promise<void> }
 
 function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
   const watchlist = useWatchlist()
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState('')
+  async function edit(entry: WatchlistEntry) {
+    setDetailLoading(true)
+    setDetailError('')
+    watchlist.setMessage('')
+    try {
+      setSelected(await watchlist.detail(entry.id))
+      setModal('edit')
+    } catch (error) {
+      setDetailError(error instanceof Error ? error.message : 'Could not load entry.')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
   const [modal, setModal] = useState<'add' | 'edit' | 'clear' | null>(null)
   const [selected, setSelected] = useState<WatchlistEntry>()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -82,7 +97,7 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
         <p className="wl-workspace">ADMIN WORKSPACE</p>
         <nav>{navigation}</nav>
         <div className="wl-account">
-          <strong>Administrator</strong>
+          <strong>Security staff</strong>
           <p>Navigation follows assigned staff permissions.</p>
           {signOutButton}
         </div>
@@ -167,6 +182,7 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
             />
             <button
               className="wl-primary wl-add"
+              disabled={watchlist.saving || detailLoading}
               onClick={() => {
                 watchlist.setMessage('')
                 setSelected(undefined)
@@ -177,24 +193,48 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
               <span className="wl-mobile-label">Add watchlist entry</span>
             </button>
           </div>
-          <WatchlistResults
-            key={`${watchlist.query}:${watchlist.status}:${watchlist.listType}`}
-            entries={watchlist.visibleEntries}
-            onEdit={(entry) => {
-              watchlist.setMessage('')
-              setSelected(entry)
-              setModal('edit')
-            }}
-          />
+          {detailError && (
+            <p className="wl-error" role="alert">
+              {detailError}
+            </p>
+          )}
+          {detailLoading && <p role="status">Loading entry…</p>}
+          {watchlist.error && (
+            <div role="alert">
+              <p className="wl-error">{watchlist.error}</p>
+              <button onClick={watchlist.retry}>Retry</button>
+            </div>
+          )}
+          {watchlist.loading ? (
+            <p role="status">Loading watchlist…</p>
+          ) : (
+            !watchlist.error && (
+              <WatchlistResults
+                key={`${watchlist.query}:${watchlist.status}:${watchlist.listType}`}
+                entries={watchlist.visibleEntries}
+                onEdit={(entry) => {
+                  if (!detailLoading && !watchlist.saving) void edit(entry)
+                }}
+              />
+            )
+          )}
+          {watchlist.nextCursor && !watchlist.loading && !watchlist.error && (
+            <button onClick={watchlist.loadMore}>Load more entries</button>
+          )}
         </section>
       </main>
       {(modal === 'add' || modal === 'edit') && (
-        <WatchlistDialog title={modal === 'add' ? 'Add watchlist entry' : 'Edit watchlist entry'} onClose={() => setModal(null)}>
+        <WatchlistDialog
+          title={modal === 'add' ? 'Add watchlist entry' : 'Edit watchlist entry'}
+          onClose={() => {
+            if (!watchlist.saving) setModal(null)
+          }}
+        >
           <WatchlistEntryForm
             key={selected?.id ?? 'add'}
             entry={selected}
-            onSave={(fields) => {
-              watchlist.save(fields, selected)
+            onSave={async (fields) => {
+              await watchlist.save(fields, selected)
               setModal(null)
             }}
             onCancel={() => setModal(null)}
@@ -206,8 +246,8 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
         <ClearEntryModal
           entry={selected}
           onCancel={() => setModal('edit')}
-          onClear={(reason) => {
-            watchlist.clear(selected, reason)
+          onClear={async (reason) => {
+            await watchlist.clear(selected, reason)
             setModal(null)
           }}
         />

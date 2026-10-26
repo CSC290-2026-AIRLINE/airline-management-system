@@ -25,15 +25,17 @@ export function WatchlistEntryForm({
   onClear,
 }: {
   entry?: WatchlistEntry
-  onSave: (fields: EntryFields) => void
+  onSave: (fields: EntryFields) => Promise<void>
   onCancel: () => void
   onClear: () => void
 }) {
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [listType, setListType] = useState(entry?.listType ?? '')
   const [nationality, setNationality] = useState(entry?.nationality ?? '')
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (submitting) return
     const data = new FormData(event.currentTarget)
     const value = (key: string) => String(data.get(key) ?? '').trim()
     if (!value('firstName') || !value('lastName') || !value('issuingAuthority')) {
@@ -58,109 +60,116 @@ export function WatchlistEntryForm({
       setError('Use up to 20 letters and numbers for the passport.')
       return
     }
-    onSave({
-      firstName: value('firstName').toUpperCase(),
-      lastName: value('lastName').toUpperCase(),
-      dateOfBirth,
-      nationality,
-      passportNumber: passportNumber.toUpperCase(),
-      listType,
-      issuingAuthority: value('issuingAuthority'),
-      reason: value('reason'),
-    })
+    setSubmitting(true)
+    setError('')
+    try {
+      await onSave({
+        firstName: value('firstName').toUpperCase(),
+        lastName: value('lastName').toUpperCase(),
+        dateOfBirth,
+        nationality,
+        passportNumber: passportNumber.toUpperCase(),
+        listType,
+        issuingAuthority: value('issuingAuthority'),
+        reason: value('reason'),
+      })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save entry.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
-    <form onSubmit={submit} className="wl-form">
-      <p>
-        Use the spelling on the passport.{' '}
-        {entry ? 'Active entries are checked at booking and check-in.' : 'New entries re-screen upcoming flights straight away.'}
-      </p>
-      {error && (
-        <p className="wl-error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="wl-form-row">
-        <label>
-          First name
-          <input name="firstName" defaultValue={entry?.firstName} placeholder="e.g. SOMSAK" required maxLength={100} />
-        </label>
-        <label>
-          Last name
-          <input name="lastName" defaultValue={entry?.lastName} placeholder="e.g. JAIDEE" required maxLength={100} />
-        </label>
-      </div>
-      <div className="wl-form-row wl-identity-row">
-        <label>
-          Date of birth
-          <input
-            name="dateOfBirth"
-            defaultValue={inputDate(entry?.dateOfBirth)}
-            placeholder="DD / MM / YYYY"
-            inputMode="numeric"
-            maxLength={14}
-          />
-        </label>
-        <div className="wl-field">
-          <span>Nationality</span>
-          <NationalitySelect value={nationality} onChange={setNationality} />
-        </div>
-        <label>
-          Passport number (optional)
-          <input
-            name="passportNumber"
-            defaultValue={entry?.passportNumber ?? ''}
-            placeholder="Optional"
-            maxLength={20}
-            autoCapitalize="characters"
-            spellCheck={false}
-          />
-        </label>
-      </div>
-      <div className="wl-form-row">
-        <div className="wl-field">
-          <span>List type</span>
-          <WatchlistSelect
-            label="List type"
-            name="listType"
-            value={listType}
-            onChange={setListType}
-            field
-            options={[{ value: '', label: 'Select list type' }, ...Object.entries(listTypes).map(([value, label]) => ({ value, label }))]}
-          />
-        </div>
-        <label>
-          Issuing authority
-          <input
-            name="issuingAuthority"
-            defaultValue={entry?.issuingAuthority}
-            placeholder="e.g. [Demo authority]"
-            required
-            maxLength={200}
-          />
-        </label>
-      </div>
-      <label>
-        Reason
-        <textarea name="reason" defaultValue={entry?.reason} placeholder="e.g. Case reference DEMO-0142" maxLength={2000} />
-      </label>
-      <p className="wl-help">Matching uses passport + nationality first (Strong), then name + date of birth (Probable).</p>
-      {entry?.status === 'cleared' && <p className="wl-help">This entry is cleared. Saving changes keeps its cleared status.</p>}
-      <div className="wl-form-actions">
-        {entry?.status === 'active' && (
-          <button type="button" className="wl-danger-outline" onClick={onClear}>
-            Clear entry
-          </button>
+    <form onSubmit={(event) => void submit(event)} className="wl-form">
+      <fieldset className="wl-form-fields" disabled={submitting} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <p>Use the spelling on the passport.</p>
+        {error && (
+          <p className="wl-error" role="alert">
+            {error}
+          </p>
         )}
-        <span className="wl-spacer" />
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="wl-primary" type="submit">
-          {entry ? 'Save changes' : 'Add entry'}
-        </button>
-      </div>
+        <div className="wl-form-row">
+          <label>
+            First name
+            <input name="firstName" defaultValue={entry?.firstName} placeholder="e.g. SOMSAK" required maxLength={100} />
+          </label>
+          <label>
+            Last name
+            <input name="lastName" defaultValue={entry?.lastName} placeholder="e.g. JAIDEE" required maxLength={100} />
+          </label>
+        </div>
+        <div className="wl-form-row wl-identity-row">
+          <label>
+            Date of birth
+            <input
+              name="dateOfBirth"
+              defaultValue={inputDate(entry?.dateOfBirth)}
+              placeholder="DD / MM / YYYY"
+              inputMode="numeric"
+              maxLength={14}
+            />
+          </label>
+          <div className="wl-field">
+            <span>Nationality</span>
+            <NationalitySelect value={nationality} onChange={setNationality} />
+          </div>
+          <label>
+            Passport number (optional)
+            <input
+              name="passportNumber"
+              defaultValue={entry?.passportNumber ?? ''}
+              placeholder="Optional"
+              maxLength={20}
+              autoCapitalize="characters"
+              spellCheck={false}
+            />
+          </label>
+        </div>
+        <div className="wl-form-row">
+          <div className="wl-field">
+            <span>List type</span>
+            <WatchlistSelect
+              label="List type"
+              name="listType"
+              value={listType}
+              onChange={setListType}
+              field
+              options={[{ value: '', label: 'Select list type' }, ...Object.entries(listTypes).map(([value, label]) => ({ value, label }))]}
+            />
+          </div>
+          <label>
+            Issuing authority
+            <input
+              name="issuingAuthority"
+              defaultValue={entry?.issuingAuthority}
+              placeholder="e.g. [Demo authority]"
+              required
+              maxLength={200}
+            />
+          </label>
+        </div>
+        <label>
+          Reason
+          <textarea name="reason" defaultValue={entry?.reason} placeholder="e.g. Case reference DEMO-0142" maxLength={2000} />
+        </label>
+        <p className="wl-help">Matching uses passport + nationality first (Strong), then name + date of birth (Probable).</p>
+        {entry?.status === 'cleared' && <p className="wl-help">This entry is cleared. Saving changes keeps its cleared status.</p>}
+        <div className="wl-form-actions">
+          {entry?.status === 'active' && (
+            <button type="button" className="wl-danger-outline" onClick={onClear}>
+              Clear entry
+            </button>
+          )}
+          <span className="wl-spacer" />
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="wl-primary" type="submit">
+            {submitting ? 'Saving…' : entry ? 'Save changes' : 'Add entry'}
+          </button>
+        </div>
+      </fieldset>
     </form>
   )
 }
