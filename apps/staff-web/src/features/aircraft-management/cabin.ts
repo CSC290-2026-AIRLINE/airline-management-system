@@ -33,11 +33,11 @@ export const SEAT_LAYOUT_OPTIONS: SeatLayoutOption[] = [
 ]
 
 /** The row types a row number can cycle through. */
-export const ROW_TYPES = ['exit', 'extra_legroom', 'normal'] as const
+export const ROW_TYPES = ['exit_row', 'extra_legroom', 'normal'] as const
 export type RowType = (typeof ROW_TYPES)[number]
 
 export const ROW_TYPE_LABELS: Record<RowType, string> = {
-  exit: 'Exit row',
+  exit_row: 'Exit row',
   extra_legroom: 'Extra legroom',
   normal: 'Normal row',
 }

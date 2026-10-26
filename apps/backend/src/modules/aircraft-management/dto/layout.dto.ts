@@ -18,7 +18,7 @@ export const CABIN_CLASSES = ['first', 'business', 'premium_economy', 'economy']
 export type CabinClass = (typeof CABIN_CLASSES)[number]
 
 /** The row types a row can carry; a row without an entry is a normal row. */
-export const ROW_TYPE_KEYS = ['exit', 'extra_legroom', 'normal'] as const
+export const ROW_TYPE_KEYS = ['exit_row', 'extra_legroom', 'normal'] as const
 
 /**
  * Upper bounds of a layout. A layout is expanded seat by seat when a seat map is requested, so an unbounded

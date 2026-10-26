@@ -130,7 +130,7 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
         }
 
         const currentType = Object.entries(cabin.row_types).find(([, rows]) => rows.includes(row))?.[0] ?? 'normal'
-        const nextType = currentType === 'exit' ? 'extra_legroom' : currentType === 'extra_legroom' ? 'normal' : 'exit'
+        const nextType = currentType === 'exit_row' ? 'extra_legroom' : currentType === 'extra_legroom' ? 'normal' : 'exit_row'
         if (nextType !== 'normal') {
           rowTypes[nextType] = [...(rowTypes[nextType] ?? []), row].sort((a, b) => a - b)
         }

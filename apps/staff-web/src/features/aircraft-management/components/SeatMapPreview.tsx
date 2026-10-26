@@ -89,7 +89,7 @@ export function SeatMapPreview({ cabins, onToggleSeat, onCycleRow }: SeatMapPrev
                 {rows.map((row) => {
                   const rowType = rowTypeOf(cabin, row)
                   const rowClasses = ['f9-seatmap__rownum']
-                  if (rowType === 'exit') {
+                  if (rowType === 'exit_row') {
                     rowClasses.push('f9-seatmap__rownum--exit')
                   }
                   if (rowType === 'extra_legroom') {

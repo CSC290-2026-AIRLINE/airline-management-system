@@ -104,8 +104,8 @@ describe('AircraftTypeService', () => {
     it.each([
       ['a layout with more seats than any aircraft has', [cabin({ last_row: 200, columns: ['A', 'B', 'C', 'D', 'E', 'F'] })]],
       ['a row type that does not exist', [cabin({ row_types: { window: [2] } })]],
-      ['row types that list rows outside the cabin', [cabin({ row_types: { exit: [99] } })]],
-      ['row types that are not a list of rows', [cabin({ row_types: { exit: 5 as unknown as number[] } })]],
+      ['row types that list rows outside the cabin', [cabin({ row_types: { exit_row: [99] } })]],
+      ['row types that are not a list of rows', [cabin({ row_types: { exit_row: 5 as unknown as number[] } })]],
       ['skipped rows outside the cabin', [cabin({ skip_rows: [50] })]],
       ['a blocked seat in a column the cabin does not have', [cabin({ blocked_seats: ['2Z'] })]],
       ['a blocked seat in a skipped row', [cabin({ skip_rows: [2], blocked_seats: ['2A'] })]],
@@ -119,7 +119,7 @@ describe('AircraftTypeService', () => {
       db.aircraft_type.findFirst.mockResolvedValue(null)
       db.aircraft_type.create.mockResolvedValue(typeRow)
 
-      await service.create(dtoWith([cabin({ row_types: { exit: [4], extra_legroom: [1] }, skip_rows: [3], blocked_seats: ['2B'] })]))
+      await service.create(dtoWith([cabin({ row_types: { exit_row: [4], extra_legroom: [1] }, skip_rows: [3], blocked_seats: ['2B'] })]))
 
       expect(db.aircraft_type.create).toHaveBeenCalled()
     })
