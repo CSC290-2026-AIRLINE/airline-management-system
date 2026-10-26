@@ -10,6 +10,11 @@ import { DbService } from '@backend/db/db.service'
 export class CurrentStaffService {
   constructor(private readonly db: DbService) {}
 
+  async isStaff(userId: string): Promise<boolean> {
+    const staff = await this.db.staff.findUnique({ where: { user_id: userId }, select: { id: true } })
+    return staff !== null
+  }
+
   async resolveStaffId(userId: string): Promise<string> {
     const staff = await this.db.staff.findUnique({ where: { user_id: userId }, select: { id: true } })
     if (!staff) {

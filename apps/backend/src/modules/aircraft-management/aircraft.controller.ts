@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { AircraftService } from './aircraft.service'
@@ -15,6 +15,7 @@ import {
   UpdateAircraftDto,
   UpdateAircraftMaintenanceDto,
 } from './dto/aircraft.dto'
+import { StaffGuard } from './staff.guard'
 
 @Controller('aircraft')
 @UsePipes(ApiValidationPipe)
@@ -29,6 +30,7 @@ export class AircraftController {
     return this.aircraftService.findAll(query)
   }
 
+  @UseGuards(StaffGuard)
   @Post()
   async create(@Body() dto: CreateAircraftDto, @CurrentUser() user: AuthenticatedUser) {
     const staffId = await this.currentStaff.resolveStaffId(user.id)
@@ -50,6 +52,7 @@ export class AircraftController {
     return this.aircraftService.findOne(id)
   }
 
+  @UseGuards(StaffGuard)
   @Put(':id')
   update(@Param('id') id: string, @Body() dto: UpdateAircraftDto) {
     return this.aircraftService.update(id, dto)
@@ -60,12 +63,14 @@ export class AircraftController {
     return this.aircraftService.getStatus(id)
   }
 
+  @UseGuards(StaffGuard)
   @Post(':id/status')
   async createStatus(@Param('id') id: string, @Body() dto: CreateAircraftStatusDto, @CurrentUser() user: AuthenticatedUser) {
     const staffId = await this.currentStaff.resolveStaffId(user.id)
     return this.aircraftService.createStatus(id, dto, staffId)
   }
 
+  @UseGuards(StaffGuard)
   @Delete(':id/status/:periodId')
   removeStatus(@Param('id') id: string, @Param('periodId') periodId: string) {
     return this.aircraftService.removeStatus(id, periodId)
@@ -96,12 +101,14 @@ export class AircraftController {
     return this.aircraftService.getMaintenanceList(id)
   }
 
+  @UseGuards(StaffGuard)
   @Post(':id/maintenance')
   async createMaintenance(@Param('id') id: string, @Body() dto: CreateAircraftMaintenanceDto, @CurrentUser() user: AuthenticatedUser) {
     const staffId = await this.currentStaff.resolveStaffId(user.id)
     return this.aircraftService.createMaintenance(id, dto, staffId)
   }
 
+  @UseGuards(StaffGuard)
   @Put(':id/maintenance/:maintenanceId')
   updateMaintenance(@Param('id') id: string, @Param('maintenanceId') maintenanceId: string, @Body() dto: UpdateAircraftMaintenanceDto) {
     return this.aircraftService.updateMaintenance(id, maintenanceId, dto)
@@ -112,6 +119,7 @@ export class AircraftController {
     return this.aircraftService.getOperatingDays(id)
   }
 
+  @UseGuards(StaffGuard)
   @Put(':id/operating-days')
   setOperatingDays(@Param('id') id: string, @Body() dto: SetOperatingDaysDto) {
     return this.aircraftService.setOperatingDays(id, dto)
