@@ -81,22 +81,50 @@ function Brand() {
 export function AppShell({ children }: AppShellProps) {
   const { logout } = useAppAuth()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   // The design shows the staff role, not an account name. `AppUser` only carries
   // an email and a type, so naming a person here would mean inventing one.
   const displayName = 'Administrator'
 
   return (
-    <div className="cs-app">
+    <div className={`cs-app${collapsed ? ' is-sidebar-collapsed' : ''}`}>
       <aside className="sq-sidebar cs-screening-sidebar" aria-label="Primary">
-        <div className="sq-brand">Airlines</div>
+        <button
+          type="button"
+          className="cs-screening-collapse"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+          aria-controls="cs-desktop-navigation"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => setCollapsed((value) => !value)}
+        >
+          {collapsed ? '›' : '‹'}
+        </button>
+        <div className="sq-brand" aria-label="Airlines">
+          {collapsed ? 'A' : 'Airlines'}
+        </div>
         <div className="sq-brand-line" />
         <p className="sq-workspace">ADMIN WORKSPACE</p>
-        <nav aria-label="Staff navigation">
-          <Link to="/customer-search" className="sq-nav-active" aria-current="page" viewTransition>
+        <nav id="cs-desktop-navigation" aria-label="Staff navigation">
+          <Link
+            to="/customer-search"
+            className="sq-nav-active"
+            aria-current="page"
+            aria-label="Customer Search"
+            title="Customer Search"
+            viewTransition
+          >
             Customer Search
           </Link>
-          <Link to="/security-screening/screening-queue" search={{ status: 'needs-review' }} viewTransition preload="intent">
+          <Link
+            to="/security-screening/screening-queue"
+            search={{ status: 'needs-review' }}
+            aria-label="Security Screening"
+            title="Security Screening"
+            viewTransition
+            preload="intent"
+          >
             Security Screening
           </Link>
         </nav>

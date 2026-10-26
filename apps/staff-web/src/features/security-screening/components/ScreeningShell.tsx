@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import screeningIcon from '../assets/screening.svg'
@@ -27,6 +27,46 @@ export function ScreeningShell({
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const sidebarId = useId()
+  const mobileMenuId = useId()
+  const mobileMenu = useRef<HTMLDialogElement>(null)
+  const closingAnimation = useRef<Animation | null>(null)
+  function closeMobileMenu() {
+    const dialog = mobileMenu.current
+    if (!dialog || closingAnimation.current) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setMenuOpen(false)
+      return
+    }
+    const animation = dialog.animate([{ transform: getComputedStyle(dialog).transform }, { transform: 'translateX(-100%)' }], {
+      duration: 180,
+      easing: 'cubic-bezier(0.4, 0, 1, 1)',
+      fill: 'forwards',
+    })
+    closingAnimation.current = animation
+    void animation.finished.then(
+      () => setMenuOpen(false),
+      () => {},
+    )
+  }
+  useEffect(() => {
+    const dialog = mobileMenu.current
+    if (!dialog || !menuOpen) return
+    dialog.showModal()
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const desktop = window.matchMedia('(min-width: 768px)')
+    const closeOnDesktop = () => {
+      if (desktop.matches) setMenuOpen(false)
+    }
+    desktop.addEventListener('change', closeOnDesktop)
+    return () => {
+      closingAnimation.current?.cancel()
+      closingAnimation.current = null
+      dialog.close()
+      document.body.style.overflow = previousOverflow
+      desktop.removeEventListener('change', closeOnDesktop)
+    }
+  }, [menuOpen])
   const queueClass = activeTab === 'queue' ? 'sq-tab-active' : undefined
   const queueLabel = (
     <>
@@ -54,7 +94,7 @@ export function ScreeningShell({
   }
   return (
     <div className="sq-app">
-      <aside id={sidebarId} className={`sq-sidebar ${menuOpen ? 'sq-sidebar-open' : ''}`}>
+      <aside id={sidebarId} className="sq-sidebar">
         <div className="sq-brand">Airlines</div>
         <div className="sq-brand-line" />
         <p className="sq-workspace">ADMIN WORKSPACE</p>
@@ -94,6 +134,60 @@ export function ScreeningShell({
           </button>
         </div>
       </aside>
+      <dialog
+        ref={mobileMenu}
+        id={mobileMenuId}
+        className="sq-mobile-navigation"
+        aria-label="Staff navigation"
+        onCancel={(event) => {
+          event.preventDefault()
+          closeMobileMenu()
+        }}
+      >
+        <div className="sq-mobile-navigation-top">
+          <span className="sq-mobile-navigation-brand">Airlines</span>
+          <button type="button" className="sq-mobile-navigation-close" aria-label="Close navigation" onClick={closeMobileMenu}>
+            ✕
+          </button>
+        </div>
+        <div className="sq-mobile-navigation-line" />
+        <nav aria-label="Mobile staff navigation">
+          <Link to="/customer-search" disabled={navigationDisabled} onClick={() => setMenuOpen(false)}>
+            <span>Customer Search</span>
+            <small>Find any customer or passenger · read-only</small>
+          </Link>
+          {onQueue ? (
+            <button
+              type="button"
+              disabled={navigationDisabled}
+              onClick={() => {
+                onQueue()
+                setMenuOpen(false)
+              }}
+            >
+              <span>Security Screening</span>
+              <small>Screening Queue · Watchlist · security role only</small>
+            </button>
+          ) : (
+            <Link
+              to="/security-screening/screening-queue"
+              search={{ status: 'needs-review' }}
+              disabled={navigationDisabled}
+              onClick={() => setMenuOpen(false)}
+            >
+              <span>Security Screening</span>
+              <small>Screening Queue · Watchlist · security role only</small>
+            </Link>
+          )}
+        </nav>
+        <div className="sq-mobile-navigation-footer">
+          <strong>Administrator</strong>
+          <button type="button" disabled={!onSignOut || signingOut || navigationDisabled} onClick={() => void signOut()}>
+            {signingOut ? 'Signing out…' : 'Sign out'}
+          </button>
+          {signOutError && <p role="alert">{signOutError}</p>}
+        </div>
+      </dialog>
       <div className="sq-main">
         <header className="sq-header">
           <div className="sq-mobile-header">
@@ -103,7 +197,7 @@ export function ScreeningShell({
               className="sq-menu"
               aria-label="Toggle staff menu"
               aria-expanded={menuOpen}
-              aria-controls={sidebarId}
+              aria-controls={mobileMenuId}
               onClick={() => setMenuOpen(!menuOpen)}
             >
               <span />
