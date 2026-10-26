@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { CreateTurnaroundDto, TURNAROUND_TASK_TYPES, UpdateTaskStatusDto } from './dto/turnaround.dto'
 import { hasPrismaErrorCode, PRISMA_UNIQUE_VIOLATION } from './prisma-error'
@@ -31,7 +31,7 @@ export class TurnaroundService {
     const [aircraft, airport, flight] = await Promise.all([
       this.db.aircraft.findFirst({ where: { id: aircraftId, deleted_at: null }, select: { id: true } }),
       this.db.airport.findUnique({ where: { iata_code: dto.airport_code.trim().toUpperCase() }, select: { iata_code: true } }),
-      this.db.flight.findFirst({ where: { id: dto.flight_id }, select: { id: true } }),
+      this.db.flight.findFirst({ where: { id: dto.flight_id }, select: { id: true, aircraft_id: true } }),
     ])
 
     if (!aircraft) {
@@ -44,7 +44,14 @@ export class TurnaroundService {
       throw new NotFoundException(`Flight with ID ${dto.flight_id} not found`)
     }
 
+    if (flight.aircraft_id !== aircraftId) {
+      throw new BadRequestException(`Flight ${dto.flight_id} is not operated by this aircraft`)
+    }
+
     const taskTypes = dto.tasks?.length ? dto.tasks.map((task) => task.task_type) : [...TURNAROUND_TASK_TYPES]
+    if (new Set(taskTypes).size !== taskTypes.length) {
+      throw new BadRequestException('Each task type can only appear once in a turnaround')
+    }
 
     try {
       const turnaround = await this.db.aircraft_turnaround.create({
@@ -96,6 +103,15 @@ export class TurnaroundService {
       started_at?: Date | null
       completed_at?: Date | null
     } = { status: dto.status }
+
+    // A task that goes back to an earlier state forgets the times of the later ones; otherwise a task that is completed again
+    // would keep its first completion time, and the readiness time of the turnaround would be computed from it.
+    if (dto.status === 'pending') {
+      updateData.started_at = null
+      updateData.completed_at = null
+    } else if (dto.status === 'in_progress') {
+      updateData.completed_at = null
+    }
 
     if (dto.started_at !== undefined) {
       updateData.started_at = dto.started_at ? new Date(dto.started_at) : null

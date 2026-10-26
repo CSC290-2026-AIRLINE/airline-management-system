@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { TurnaroundService } from './turnaround.service'
 
@@ -28,7 +28,7 @@ describe('TurnaroundService', () => {
     db = {
       aircraft: { findFirst: jest.fn().mockResolvedValue({ id: 'a1' }) },
       airport: { findUnique: jest.fn().mockResolvedValue({ iata_code: 'BKK' }) },
-      flight: { findFirst: jest.fn().mockResolvedValue({ id: 'f1' }) },
+      flight: { findFirst: jest.fn().mockResolvedValue({ id: 'f1', aircraft_id: 'a1' }) },
       aircraft_turnaround: { create: jest.fn(), findFirst: jest.fn() },
       aircraft_turnaround_task: { findFirst: jest.fn(), update: jest.fn() },
     }
@@ -84,6 +84,27 @@ describe('TurnaroundService', () => {
     ).rejects.toBeInstanceOf(NotFoundException)
   })
 
+  it('refuses a flight that another aircraft operates', async () => {
+    db.flight.findFirst.mockResolvedValue({ id: 'f1', aircraft_id: 'a2' })
+
+    await expect(
+      service.create('a1', { flight_id: 'f1', airport_code: 'BKK', arrived_at: '2026-01-01T09:00:00.000Z' }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(db.aircraft_turnaround.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses a task type that is listed twice instead of blaming the flight', async () => {
+    await expect(
+      service.create('a1', {
+        flight_id: 'f1',
+        airport_code: 'BKK',
+        arrived_at: '2026-01-01T09:00:00.000Z',
+        tasks: [{ task_type: 'refuel' }, { task_type: 'refuel' }],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(db.aircraft_turnaround.create).not.toHaveBeenCalled()
+  })
+
   it('derives readiness from the tasks, counting a skipped task as finished', async () => {
     db.aircraft_turnaround.findFirst.mockResolvedValue({
       id: 't1',
@@ -112,6 +133,38 @@ describe('TurnaroundService', () => {
     expect(db.aircraft_turnaround_task.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'completed', completed_at: expect.any(Date) }) }),
     )
+  })
+
+  it('clears both times when a task goes back to pending', async () => {
+    db.aircraft_turnaround_task.findFirst.mockResolvedValue(task({ status: 'skipped' }))
+    db.aircraft_turnaround_task.update.mockResolvedValue(task({ status: 'pending', started_at: null, completed_at: null }))
+
+    await service.updateTask('t1', 'k1', { status: 'pending' })
+
+    expect(db.aircraft_turnaround_task.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'pending', started_at: null, completed_at: null } }),
+    )
+  })
+
+  it('clears the completion time but keeps the start time when a completed task is reopened', async () => {
+    db.aircraft_turnaround_task.findFirst.mockResolvedValue(task({ status: 'completed' }))
+    db.aircraft_turnaround_task.update.mockResolvedValue(task({ status: 'in_progress', completed_at: null }))
+
+    await service.updateTask('t1', 'k1', { status: 'in_progress' })
+
+    expect(db.aircraft_turnaround_task.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'in_progress', completed_at: null } }),
+    )
+  })
+
+  it('gives a task that is completed again a fresh completion time', async () => {
+    db.aircraft_turnaround_task.findFirst.mockResolvedValue(task({ status: 'pending', started_at: null, completed_at: null }))
+    db.aircraft_turnaround_task.update.mockResolvedValue(task({ status: 'completed' }))
+
+    await service.updateTask('t1', 'k1', { status: 'completed' })
+
+    const data = db.aircraft_turnaround_task.update.mock.calls[0][0].data
+    expect(data.completed_at).toBeInstanceOf(Date)
   })
 
   it('refuses a task that belongs to another turnaround', async () => {
