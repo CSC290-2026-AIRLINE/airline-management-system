@@ -49,8 +49,11 @@ test('errors carry the backend codes', async () => {
 test('security hold stops the flow with ON_HOLD', async () => {
   const api = createMockApi({ now: DEMO_NOW })
   const c = await api.start({ pnr: 'HD204H', lastName: 'Kowalski' })
-  await assert.rejects(api.submitDocument(c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() }), isCode('ON_HOLD'))
-  assert.equal((await api.get(c.id)).status, 'on_hold')
+  const held = await api.submitDocument(c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+  assert.equal(held.status, 'on_hold')
+  await assert.rejects(api.holdSeat(c.flight.id, { checkInId: c.id, seatCode: '18B' }), isCode('ON_HOLD'))
+  await assert.rejects(api.declareBags(c.id, { declaredBags: 1 }), isCode('ON_HOLD'))
+  await assert.rejects(api.complete(c.id), isCode('ON_HOLD'))
 })
 
 test('visa needed on FY 318 for a UTO passport', async () => {

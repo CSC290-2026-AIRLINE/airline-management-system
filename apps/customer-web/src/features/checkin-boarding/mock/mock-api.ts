@@ -371,7 +371,6 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
     // Feature 7 screens every passenger; F6 never says why somebody is held.
     if (data.numberLast4 === HOLD_LAST4 || booking.lastName.toUpperCase() === 'KOWALSKI') {
       record.status = 'on_hold'
-      fail(409, 'ON_HOLD', 'Please see an agent at the airport')
     }
     return view(record)
   }
@@ -421,6 +420,7 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
   async function holdSeat(flightId: string, input: { checkInId: string; seatCode: string }): Promise<SeatLock> {
     await tick()
     const record = checkInOf(input.checkInId)
+    if (record.status === 'on_hold') fail(409, 'ON_HOLD', 'Please see an agent at the airport')
     if (!record.document) fail(409, 'INVALID_STATE', 'The travel document must be submitted before a seat can be picked')
     const seat = seatOf(input.seatCode)
     if (!seat) fail(400, 'VALIDATION', `Seat ${input.seatCode} does not exist`)
@@ -464,6 +464,7 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
   async function confirmSeat(id: string, input: { lockId: string }): Promise<CheckInView> {
     await tick()
     const record = checkInOf(id)
+    if (record.status === 'on_hold') fail(409, 'ON_HOLD', 'Please see an agent at the airport')
     const entry = locks.get(input.lockId)
     if (!entry || entry.bookingPassengerId !== record.bookingPassengerId) fail(404, 'NOT_FOUND', 'Seat hold not found')
     if (new Date(entry.lock.expiresAt).getTime() <= now().getTime()) {
@@ -485,6 +486,7 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
   async function declareBags(id: string, input: { declaredBags: number }): Promise<CheckInView> {
     await tick()
     const record = checkInOf(id)
+    if (record.status === 'on_hold') fail(409, 'ON_HOLD', 'Please see an agent at the airport')
     if (!Number.isInteger(input.declaredBags) || input.declaredBags < 0 || input.declaredBags > 10) {
       fail(400, 'VALIDATION', 'The number of bags must be a whole number between 0 and 10', { declaredBags: input.declaredBags })
     }

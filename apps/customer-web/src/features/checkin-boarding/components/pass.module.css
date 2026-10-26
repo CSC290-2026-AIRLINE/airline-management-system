@@ -1,0 +1,129 @@
+/* The boarding pass card. */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  font-family: var(--f6-brand);
+  font-size: 22px;
+  margin: 0;
+}
+
+.hint {
+  margin: -8px 0 0;
+  color: var(--f6-muted);
+  font-size: 14px;
+}
+
+.card {
+  border: 1px solid var(--f6-line);
+  border-radius: 14px;
+  background: var(--f6-paper);
+  overflow: hidden;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--f6-navy);
+  color: #fff;
+  padding: 12px 18px;
+}
+
+.brand {
+  font-family: var(--f6-brand);
+  font-size: 18px;
+  color: var(--f6-amber);
+}
+
+.reference {
+  font-family: var(--f6-mono);
+  letter-spacing: 0.12em;
+}
+
+.cardBody {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 18px;
+}
+
+.fields {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.name {
+  font-family: var(--f6-brand);
+  font-size: 20px;
+  margin: 0 0 6px;
+}
+
+.route {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  margin-bottom: 14px;
+}
+
+.code {
+  font-family: var(--f6-brand);
+  font-size: 20px;
+}
+
+.arrow {
+  color: var(--f6-amber);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+
+.grid dt {
+  font-size: 12px;
+  color: var(--f6-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.grid dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.qr {
+  width: 132px;
+  height: 132px;
+  flex: 0 0 auto;
+  border: 1px solid var(--f6-line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .cardBody {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .route {
+    justify-content: center;
+  }
+}
