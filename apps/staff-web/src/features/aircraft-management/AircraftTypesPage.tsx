@@ -130,7 +130,7 @@ export function AircraftTypesPage() {
   return (
     <FeatureErrorBoundary>
       <StaffShell activeTab="types">
-        {actionError && <ErrorMessage message={actionError} />}
+        {actionError && !isCloneOpen && !selectedType && <ErrorMessage message={actionError} />}
 
         <div className="f9-sectionhead" style={{ marginTop: 20 }}>
           <div>
@@ -198,7 +198,11 @@ export function AircraftTypesPage() {
           <AircraftTypeDetailModal
             aircraftType={selectedType}
             isWorking={isWorking}
-            onClose={() => setSelectedId(null)}
+            error={isCloneOpen ? null : actionError}
+            onClose={() => {
+              setSelectedId(null)
+              setActionError(null)
+            }}
             onClone={openClone}
             onRetire={() => void handleRetire()}
           />
@@ -208,6 +212,7 @@ export function AircraftTypesPage() {
           <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Clone aircraft type">
             <div className="f9-modal__card">
               <h3 className="f9-modal__title">Clone {selectedType.code}</h3>
+              {actionError && <ErrorMessage message={actionError} />}
               <form onSubmit={(event) => void handleClone(event)}>
                 <div className="f9-modal__field">
                   <label className="f9-field" htmlFor="clone-code">
@@ -224,7 +229,14 @@ export function AircraftTypesPage() {
                 </div>
                 <p className="f9-modal__hint">The clone starts with the layout of {selectedType.code}.</p>
                 <div className="f9-modal__actions">
-                  <button type="button" className="f9-btn f9-btn--outline" onClick={() => setIsCloneOpen(false)}>
+                  <button
+                    type="button"
+                    className="f9-btn f9-btn--outline"
+                    onClick={() => {
+                      setIsCloneOpen(false)
+                      setActionError(null)
+                    }}
+                  >
                     Cancel
                   </button>
                   <button type="submit" className="f9-btn" disabled={isWorking}>

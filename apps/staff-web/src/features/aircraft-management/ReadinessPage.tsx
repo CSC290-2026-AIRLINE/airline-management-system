@@ -237,7 +237,7 @@ export function ReadinessPage() {
   return (
     <FeatureErrorBoundary>
       <StaffShell activeTab="readiness">
-        {actionError && <ErrorMessage message={actionError} />}
+        {actionError && !isStartOpen && <ErrorMessage message={actionError} />}
 
         <div className="f9-readiness">
           <div className="f9-card f9-readiness__card">
@@ -368,6 +368,7 @@ export function ReadinessPage() {
           <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Start a turnaround">
             <div className="f9-modal__card">
               <h3 className="f9-modal__title">Start a turnaround by hand</h3>
+              {actionError && <ErrorMessage message={actionError} />}
               <form onSubmit={(event) => void handleStart(event)}>
                 <div className="f9-modal__field">
                   <label className="f9-field" htmlFor="start-aircraft">
@@ -438,7 +439,14 @@ export function ReadinessPage() {
                 </p>
 
                 <div className="f9-modal__actions">
-                  <button type="button" className="f9-btn f9-btn--outline" onClick={() => setIsStartOpen(false)}>
+                  <button
+                    type="button"
+                    className="f9-btn f9-btn--outline"
+                    onClick={() => {
+                      setIsStartOpen(false)
+                      setActionError(null)
+                    }}
+                  >
                     Cancel
                   </button>
                   <button type="submit" className="f9-btn" disabled={isSaving}>

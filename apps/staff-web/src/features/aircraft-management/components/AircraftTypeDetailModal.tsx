@@ -1,16 +1,19 @@
 import { CABIN_CLASS_LABELS, layoutSummary, rowCount } from '../cabin'
+import { ErrorMessage } from './StateMessage'
 import { formatCurrency, formatNumber } from '../format'
 import type { AircraftType } from '../types'
 
 interface AircraftTypeDetailModalProps {
   aircraftType: AircraftType
   isWorking: boolean
+  /** The error of the last action taken in this dialog, such as a refused retire. */
+  error?: string | null
   onClose: () => void
   onClone: () => void
   onRetire: () => void
 }
 
-export function AircraftTypeDetailModal({ aircraftType, isWorking, onClose, onClone, onRetire }: AircraftTypeDetailModalProps) {
+export function AircraftTypeDetailModal({ aircraftType, isWorking, error, onClose, onClone, onRetire }: AircraftTypeDetailModalProps) {
   const cabins = aircraftType.layout?.cabins ?? []
   const blockedSeats = cabins.reduce((total, cabin) => total + (cabin.blocked_seats?.length ?? 0), 0)
 
@@ -27,6 +30,12 @@ export function AircraftTypeDetailModal({ aircraftType, isWorking, onClose, onCl
             {aircraftType.manufacturer} {aircraftType.model}
           </p>
         </div>
+
+        {error && (
+          <div style={{ marginTop: 14 }}>
+            <ErrorMessage message={error} />
+          </div>
+        )}
 
         <div className="f9-detail__list" style={{ marginTop: 18 }}>
           <div className="f9-typerow">

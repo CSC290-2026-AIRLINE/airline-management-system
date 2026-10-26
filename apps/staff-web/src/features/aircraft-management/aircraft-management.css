@@ -703,13 +703,13 @@
 .f9-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .f9-chip {
-  min-width: 48px;
+  min-width: 46px;
   height: 29px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 1px solid var(--f9-border);
   border-radius: 15px;
   background: #fff;
@@ -1323,6 +1323,10 @@
 
 .f9-modal__field {
   margin-bottom: 12px;
+}
+
+.f9-modal__card .f9-error {
+  margin-bottom: 14px;
 }
 
 .f9-modal__row {

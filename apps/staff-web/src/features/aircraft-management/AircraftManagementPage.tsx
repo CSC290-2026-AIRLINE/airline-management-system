@@ -93,6 +93,9 @@ export function AircraftManagementPage() {
   const [maintenanceStart, setMaintenanceStart] = useState(() => toDateInputValue(new Date()))
   const [maintenanceEnd, setMaintenanceEnd] = useState(() => toDateInputValue(addDays(new Date(), 7)))
 
+  // An error from a dialog is shown inside it; one from the page itself is shown above the fleet.
+  const isModalOpen = isRegisterOpen || isStatusOpen || isMaintenanceOpen
+
   const reloadFleet = () => setReloadToken((token) => token + 1)
   const retryFleet = () => {
     setFleetState('loading')
@@ -354,7 +357,7 @@ export function AircraftManagementPage() {
   return (
     <FeatureErrorBoundary>
       <StaffShell activeTab="fleet">
-        {actionError && <ErrorMessage message={actionError} />}
+        {actionError && !isModalOpen && <ErrorMessage message={actionError} />}
 
         <div className="f9-fleet">
           <div>
@@ -553,6 +556,7 @@ export function AircraftManagementPage() {
           <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Register Aircraft">
             <div className="f9-modal__card">
               <h3 className="f9-modal__title">Register Aircraft</h3>
+              {actionError && <ErrorMessage message={actionError} />}
               <form onSubmit={(event) => void handleRegister(event)}>
                 <div className="f9-modal__field">
                   <label className="f9-field" htmlFor="register-tail">
@@ -619,7 +623,14 @@ export function AircraftManagementPage() {
                 </div>
 
                 <div className="f9-modal__actions">
-                  <button type="button" className="f9-btn f9-btn--outline" onClick={() => setIsRegisterOpen(false)}>
+                  <button
+                    type="button"
+                    className="f9-btn f9-btn--outline"
+                    onClick={() => {
+                      setIsRegisterOpen(false)
+                      setActionError(null)
+                    }}
+                  >
                     Cancel
                   </button>
                   <button type="submit" className="f9-btn" disabled={isSubmitting}>
@@ -635,6 +646,7 @@ export function AircraftManagementPage() {
           <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Set Status">
             <div className="f9-modal__card">
               <h3 className="f9-modal__title">Set Status · {selectedAircraft.tail_number}</h3>
+              {actionError && <ErrorMessage message={actionError} />}
               <form onSubmit={(event) => void handleSaveStatus(event)}>
                 <div className="f9-modal__field">
                   <label className="f9-field" htmlFor="status-value">
@@ -693,7 +705,14 @@ export function AircraftManagementPage() {
                 </div>
 
                 <div className="f9-modal__actions">
-                  <button type="button" className="f9-btn f9-btn--outline" onClick={() => setIsStatusOpen(false)}>
+                  <button
+                    type="button"
+                    className="f9-btn f9-btn--outline"
+                    onClick={() => {
+                      setIsStatusOpen(false)
+                      setActionError(null)
+                    }}
+                  >
                     Cancel
                   </button>
                   <button type="submit" className="f9-btn" disabled={isSubmitting}>
@@ -709,6 +728,7 @@ export function AircraftManagementPage() {
           <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Schedule Maintenance">
             <div className="f9-modal__card">
               <h3 className="f9-modal__title">Schedule Maintenance · {selectedAircraft.tail_number}</h3>
+              {actionError && <ErrorMessage message={actionError} />}
               <form onSubmit={(event) => void handleScheduleMaintenance(event)}>
                 <div className="f9-modal__field">
                   <label className="f9-field" htmlFor="maintenance-type">
@@ -756,7 +776,14 @@ export function AircraftManagementPage() {
                 <p className="f9-modal__hint">Saving also sets the aircraft to In maintenance for these dates.</p>
 
                 <div className="f9-modal__actions">
-                  <button type="button" className="f9-btn f9-btn--outline" onClick={() => setIsMaintenanceOpen(false)}>
+                  <button
+                    type="button"
+                    className="f9-btn f9-btn--outline"
+                    onClick={() => {
+                      setIsMaintenanceOpen(false)
+                      setActionError(null)
+                    }}
+                  >
                     Cancel
                   </button>
                   <button type="submit" className="f9-btn" disabled={isSubmitting}>
