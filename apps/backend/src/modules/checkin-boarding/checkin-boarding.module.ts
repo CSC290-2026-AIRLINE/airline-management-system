@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { CheckInService } from './checkin.service'
 import {
   FixtureBookings,
   FixtureClock,
@@ -53,6 +54,7 @@ import { CheckInStore } from './store/checkin-store'
     { provide: STAFF_IDENTITY, useClass: FixtureStaffIdentity },
     { provide: SETTINGS, useClass: FixtureSettings },
     CheckInStore,
+    CheckInService,
   ],
   exports: [
     CLOCK,
@@ -71,6 +73,7 @@ import { CheckInStore } from './store/checkin-store'
     STAFF_IDENTITY,
     SETTINGS,
     CheckInStore,
+    CheckInService,
   ],
 })
 export class CheckinBoardingModule {}

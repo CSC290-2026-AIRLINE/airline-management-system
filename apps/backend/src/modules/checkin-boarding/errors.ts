@@ -21,6 +21,7 @@ export type ErrorCode =
 
 export class CheckInError extends HttpException {
   readonly code: ErrorCode
+  readonly details?: Record<string, unknown>
 
   constructor(status: number, code: ErrorCode, message: string, details?: Record<string, unknown>) {
     const body: ApiError = { error: { code, message } }
@@ -29,6 +30,7 @@ export class CheckInError extends HttpException {
     }
     super(body, status)
     this.code = code
+    this.details = details
   }
 }
 

@@ -241,8 +241,23 @@ export class CheckInStore {
     return null
   }
 
+  listCheckIns(): CheckInRecord[] {
+    return [...this.checkIns.values()]
+  }
+
   listCheckInsByFlight(flightId: string): CheckInRecord[] {
     return [...this.checkIns.values()].filter((c) => c.flight_id === flightId)
+  }
+
+  /** The check-in a customer started, used to show them their own seat on the map. */
+  findActiveCheckInByUser(userId: string, flightId?: string): CheckInRecord | null {
+    for (const record of this.checkIns.values()) {
+      if (record.started_by_user_id !== userId) continue
+      if (flightId && record.flight_id !== flightId) continue
+      if (record.status === 'cancelled') continue
+      return record
+    }
+    return null
   }
 
   searchCheckIns(query: { flightId?: string; pnr?: string; name?: string }): CheckInRecord[] {
