@@ -22,6 +22,7 @@ const row: watchlist_entry = {
   id: entryId,
   first_name: 'SOMSAK',
   last_name: 'JAIDEE',
+  gender: null,
   date_of_birth: null,
   nationality: 'th',
   passport_number: 'AB1239037',
