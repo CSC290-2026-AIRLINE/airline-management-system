@@ -204,12 +204,19 @@ export class AircraftTypeService {
       }
     }
 
+    const typedRows = new Set<number>()
     for (const [type, rows] of Object.entries(cabin.row_types ?? {})) {
       if (!(ROW_TYPE_KEYS as readonly string[]).includes(type)) {
         throw new BadRequestException(`Invalid row type "${type}"`)
       }
       if (!Array.isArray(rows) || rows.length > MAX_ROW || !rows.every(inRange)) {
         throw new BadRequestException(`row_types "${type}" must list rows within ${cabin.first_row}-${cabin.last_row}`)
+      }
+      for (const row of rows) {
+        if (typedRows.has(row)) {
+          throw new BadRequestException(`Row ${row} has more than one row type`)
+        }
+        typedRows.add(row)
       }
     }
 

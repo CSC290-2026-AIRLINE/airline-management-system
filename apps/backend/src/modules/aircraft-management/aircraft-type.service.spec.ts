@@ -104,6 +104,7 @@ describe('AircraftTypeService', () => {
     it.each([
       ['a layout with more seats than any aircraft has', [cabin({ last_row: 200, columns: ['A', 'B', 'C', 'D', 'E', 'F'] })]],
       ['a row type that does not exist', [cabin({ row_types: { window: [2] } })]],
+      ['a row that has two row types', [cabin({ row_types: { exit_row: [4], extra_legroom: [4] } })]],
       ['row types that list rows outside the cabin', [cabin({ row_types: { exit_row: [99] } })]],
       ['row types that are not a list of rows', [cabin({ row_types: { exit_row: 5 as unknown as number[] } })]],
       ['skipped rows outside the cabin', [cabin({ skip_rows: [50] })]],

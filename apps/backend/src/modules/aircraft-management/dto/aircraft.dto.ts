@@ -49,6 +49,11 @@ export class UpdateAircraftDto {
   @MaxLength(20)
   tail_number?: string
 
+  /** The type can change only while no flight uses the aircraft; the backend answers 409 otherwise. */
+  @IsOptional()
+  @IsUUID()
+  aircraft_type_id?: string
+
   @IsOptional()
   @IsString()
   @Matches(/^[A-Za-z]{3}$/, { message: 'base_airport_code must be a 3-letter IATA code' })
