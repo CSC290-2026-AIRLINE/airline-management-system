@@ -1,7 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { CreateTurnaroundDto, TURNAROUND_TASK_TYPES, UpdateTaskStatusDto } from './dto/turnaround.dto'
+import { FlightLandingSource } from './flight-landing.source'
 import { hasPrismaErrorCode, PRISMA_UNIQUE_VIOLATION } from './prisma-error'
+import { SimulationClockService } from './simulation-clock.service'
 
 export type TurnaroundTaskSummary = {
   id: string
@@ -24,7 +26,28 @@ export type TurnaroundSummary = {
 
 @Injectable()
 export class TurnaroundService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly landings: FlightLandingSource,
+    private readonly clock: SimulationClockService,
+  ) {}
+
+  /**
+   * The job of the simulation clock: starts a turnaround for each flight whose arrival time has passed. Starting one is
+   * idempotent, so a flight that already has its turnaround is answered with it and the job can run on every clock step.
+   * Returns how many landed flights it went through.
+   */
+  async startForLandedFlights(): Promise<number> {
+    const landed = await this.landings.listLanded(this.clock.now())
+    for (const flight of landed) {
+      await this.create(flight.aircraft_id, {
+        flight_id: flight.flight_id,
+        airport_code: flight.airport_code,
+        arrived_at: flight.arrived_at.toISOString(),
+      })
+    }
+    return landed.length
+  }
 
   /** Starts the ground-service session of a landed flight with the standard task set. */
   async create(aircraftId: string, dto: CreateTurnaroundDto): Promise<TurnaroundSummary> {

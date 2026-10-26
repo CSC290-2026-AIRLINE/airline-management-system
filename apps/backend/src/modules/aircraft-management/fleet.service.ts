@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { AuditService } from './audit.service'
 
 export const RESERVE_RATIO_KEY = 'reserve_ratio'
 export const DEFAULT_RESERVE_RATIO = 1.1
@@ -28,7 +29,10 @@ function toIsoDate(value: Date | string): string {
 export class FleetService {
   private readonly logger = new Logger(FleetService.name)
 
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: AuditService,
+  ) {}
 
   async getSettings(): Promise<FleetSettingSummary[]> {
     const settings = await this.db.fleet_setting.findMany({ orderBy: { key: 'asc' } })
@@ -47,6 +51,7 @@ export class FleetService {
       create: { key: RESERVE_RATIO_KEY, value: String(value), updated_by: staffId },
     })
 
+    this.audit.record({ action: 'fleet_setting.updated', entity: 'fleet_setting', entity_id: updated.key, actor_staff_id: staffId })
     return {
       key: updated.key,
       value: updated.value,

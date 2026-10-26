@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { LandedFlight } from './flight-landing.source'
+import { SimulationClockService } from './simulation-clock.service'
 import { TurnaroundService } from './turnaround.service'
 
 // ESM-only dependencies that Jest cannot load here; the service under test never calls into them.
@@ -14,6 +16,7 @@ describe('TurnaroundService', () => {
     aircraft_turnaround_task: { findFirst: jest.Mock; update: jest.Mock }
   }
   let service: TurnaroundService
+  let landings: { listLanded: jest.Mock }
 
   const task = (overrides: Record<string, unknown> = {}) => ({
     id: 'k1',
@@ -32,7 +35,8 @@ describe('TurnaroundService', () => {
       aircraft_turnaround: { create: jest.fn(), findFirst: jest.fn() },
       aircraft_turnaround_task: { findFirst: jest.fn(), update: jest.fn() },
     }
-    service = new TurnaroundService(db as unknown as DbService)
+    landings = { listLanded: jest.fn().mockResolvedValue([]) }
+    service = new TurnaroundService(db as unknown as DbService, landings, new SimulationClockService())
   })
 
   it('opens a turnaround with the four standard tasks', async () => {
@@ -199,5 +203,35 @@ describe('TurnaroundService', () => {
     db.aircraft_turnaround_task.findFirst.mockResolvedValue(null)
 
     await expect(service.updateTask('t1', 'k9', { status: 'completed' })).rejects.toBeInstanceOf(NotFoundException)
+  })
+
+  describe('the job of the simulation clock', () => {
+    const landed = (flightId: string): LandedFlight => ({
+      flight_id: flightId,
+      aircraft_id: 'a1',
+      airport_code: 'BKK',
+      arrived_at: new Date('2026-01-01T09:00:00.000Z'),
+    })
+
+    it('starts a turnaround for every landed flight and answers how many it went through', async () => {
+      landings.listLanded.mockResolvedValue([landed('f1'), landed('f2')])
+      db.flight.findFirst.mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id, aircraft_id: 'a1' }))
+      db.aircraft_turnaround.create.mockResolvedValue({
+        id: 't1',
+        aircraft_id: 'a1',
+        flight_id: 'f1',
+        airport_code: 'BKK',
+        arrived_at: new Date('2026-01-01T09:00:00.000Z'),
+        aircraft_turnaround_task: [],
+      })
+
+      await expect(service.startForLandedFlights()).resolves.toBe(2)
+      expect(db.aircraft_turnaround.create).toHaveBeenCalledTimes(2)
+    })
+
+    it('starts nothing while no flight source reports a landing, as with the mock', async () => {
+      await expect(service.startForLandedFlights()).resolves.toBe(0)
+      expect(db.aircraft_turnaround.create).not.toHaveBeenCalled()
+    })
   })
 })

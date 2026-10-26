@@ -1,4 +1,5 @@
 import type { DbService } from '@backend/db/db.service'
+import { AuditService } from './audit.service'
 import { FleetService } from './fleet.service'
 
 // ESM-only dependencies that Jest cannot load here; the service under test never calls into them.
@@ -30,7 +31,7 @@ describe('FleetService', () => {
       fleet_setting: { findMany: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
       aircraft: { findMany: jest.fn() },
     }
-    service = new FleetService(db as unknown as DbService)
+    service = new FleetService(db as unknown as DbService, new AuditService())
   })
 
   it('uses the stored reserve ratio', async () => {
