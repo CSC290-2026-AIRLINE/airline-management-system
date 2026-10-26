@@ -120,3 +120,13 @@ npm run test -w apps/backend -- http   # the HTTP smoke test of the routes
 
 `checkin-boarding.http.spec.ts` builds the Nest application from this module alone — no database, no Clerk — and
 signs a user in with an `x-test-user` header.
+
+## Known gaps (as of 2026-10-27)
+
+- **Staff guard** is a placeholder (`FixtureStaffIdentity` says everyone is staff). Real enforcement needs F1 roles; swap the `STAFF_IDENTITY` provider.
+- **F3 seat API**: `FixtureSeats` fakes the map, 5-minute holds, confirm and release. Replace with G13's contract when it exists.
+- **F11 tier**: `FixtureTiers` returns none, so nobody gets the tier bag bonus or boarding group 2/3 by tier.
+- **Seat payment id** lives in `CheckInService` memory; the F6 migration has no column for it (raise with the DB team).
+- **OCR** (`POST /check-ins/:id/document/ocr`) is not implemented (stretch goal).
+- **QR**: the boarding pass shows the reference and a pseudo-QR drawn from it; a real QR encoder is a dependency decision for the team.
+- **Persistence**: everything is in `CheckInStore` (memory) until Freddie's F6 migration lands; see "Moving to Prisma".
