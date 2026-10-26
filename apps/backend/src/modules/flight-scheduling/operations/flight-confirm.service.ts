@@ -33,10 +33,15 @@ export class FlightConfirmService {
         origin: true,
         destination: true,
         distance_km: true,
-        airport_route_originToairport: { select: { timezone: true } },
+        airport_route_originToairport: { select: { timezone: true, is_active: true } },
+        airport_route_destinationToairport: { select: { is_active: true } },
       },
     })
     if (!route?.is_active) throw new UnprocessableEntityException('Route is unknown or not active')
+    if (!route.airport_route_originToairport.is_active) throw new UnprocessableEntityException(`Airport ${route.origin} is not active`)
+    if (!route.airport_route_destinationToairport.is_active) {
+      throw new UnprocessableEntityException(`Airport ${route.destination} is not active`)
+    }
     // service_date is the local origin date of the original departure and never changes (Iteration-03).
     const localDate = formatLocal(input.scheduled_dep_at, route.airport_route_originToairport.timezone).slice(0, 10)
     if (localDate !== input.service_date.toISOString().slice(0, 10)) {
