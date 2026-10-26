@@ -51,6 +51,12 @@ function toIsoDate(value: Date | string): string {
   return typeof value === 'string' ? value.slice(0, 10) : value.toISOString().slice(0, 10)
 }
 
+function dayBefore(value: Date | string): Date {
+  const day = new Date(toIsoDate(value))
+  day.setUTCDate(day.getUTCDate() - 1)
+  return day
+}
+
 function dayOfWeek(date: Date | string): number {
   const day = new Date(date).getUTCDay()
   return day === 0 ? 7 : day
@@ -268,7 +274,39 @@ export class AircraftService {
       throw new ConflictException('Cannot manually delete a period created by maintenance')
     }
 
-    await this.db.aircraft_status_period.update({ where: { id: periodId }, data: { deleted_at: new Date() } })
+    await this.db.$transaction(async (tx) => {
+      const now = new Date()
+      await tx.aircraft_status_period.update({ where: { id: periodId }, data: { deleted_at: now, updated_at: now } })
+      await this.restorePredecessor(tx, aircraftId, period)
+    })
+  }
+
+  /**
+   * Creating a period ends the open period before it the day before, so deleting it would leave a gap that reads as
+   * `in_service`. A grounded or other non-default manual period that ends right before the deleted one is therefore
+   * extended over the gap, up to the next period (or without an end). Staying grounded until someone sets the status
+   * again is the safe side of that guess; an `in_service` predecessor needs nothing, because a gap already means that.
+   */
+  private async restorePredecessor(tx: Prisma.TransactionClient, aircraftId: string, deleted: aircraft_status_period): Promise<void> {
+    const remaining = await tx.aircraft_status_period.findMany({ where: { aircraft_id: aircraftId, deleted_at: null } })
+    const adjacentEnd = toIsoDate(dayBefore(deleted.start_date))
+
+    const predecessor = remaining.find(
+      (item) =>
+        item.origin === 'manual' && item.status !== 'in_service' && item.end_date !== null && toIsoDate(item.end_date) === adjacentEnd,
+    )
+    if (!predecessor) {
+      return
+    }
+
+    const next = remaining
+      .filter((item) => toIsoDate(item.start_date) > toIsoDate(deleted.start_date))
+      .sort((left, right) => toIsoDate(left.start_date).localeCompare(toIsoDate(right.start_date)))[0]
+
+    await tx.aircraft_status_period.update({
+      where: { id: predecessor.id },
+      data: { end_date: next ? dayBefore(next.start_date) : null, updated_at: new Date() },
+    })
   }
 
   async getSeatMap(aircraftId: string) {
@@ -366,7 +404,8 @@ export class AircraftService {
   async getStatusChanges(query: StatusChangesQueryDto): Promise<{ aircraft_id: string; changed_at: string }[]> {
     const since = query.since ? new Date(query.since) : new Date(0)
     const changed = await this.db.aircraft_status_period.findMany({
-      where: { deleted_at: null, updated_at: { gt: since } },
+      // Deleted periods stay in the feed: deleting or cancelling one changes the status, and it bumps updated_at.
+      where: { updated_at: { gt: since } },
       select: { aircraft_id: true, updated_at: true },
       distinct: ['aircraft_id'],
       orderBy: { updated_at: 'desc' },

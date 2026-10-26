@@ -199,6 +199,86 @@ describe('AircraftService', () => {
     })
   })
 
+  describe('removeStatus', () => {
+    const live = (overrides: Record<string, unknown>) => ({
+      id: 'p0',
+      aircraft_id: 'a1',
+      status: 'grounded',
+      origin: 'manual',
+      start_date: new Date('2026-03-01'),
+      end_date: new Date('2026-03-09'),
+      ...overrides,
+    })
+    const deleted = live({ id: 'p1', status: 'in_service', start_date: new Date('2026-03-10'), end_date: null })
+
+    beforeEach(() => {
+      db.aircraft_status_period.findFirst.mockResolvedValue(deleted)
+    })
+
+    it('marks the period as changed so that the status feed reports the deletion', async () => {
+      tx.aircraft_status_period.findMany.mockResolvedValue([])
+
+      await service.removeStatus('a1', 'p1')
+
+      expect(tx.aircraft_status_period.update).toHaveBeenCalledWith({
+        where: { id: 'p1' },
+        data: { deleted_at: expect.any(Date), updated_at: expect.any(Date) },
+      })
+    })
+
+    it('keeps an aircraft grounded when the period that ended its grounding is deleted', async () => {
+      tx.aircraft_status_period.findMany.mockResolvedValue([live({})])
+
+      await service.removeStatus('a1', 'p1')
+
+      expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'p0' }, data: expect.objectContaining({ end_date: null }) }),
+      )
+    })
+
+    it('extends the predecessor only up to the next period', async () => {
+      tx.aircraft_status_period.findMany.mockResolvedValue([
+        live({}),
+        live({
+          id: 'p2',
+          status: 'in_maintenance',
+          origin: 'maintenance',
+          start_date: new Date('2026-04-01'),
+          end_date: new Date('2026-04-05'),
+        }),
+      ])
+
+      await service.removeStatus('a1', 'p1')
+
+      expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'p0' }, data: expect.objectContaining({ end_date: new Date('2026-03-31') }) }),
+      )
+    })
+
+    it.each([
+      ['an in_service predecessor, because a gap already means in service', { status: 'in_service' }],
+      ['a maintenance predecessor, which has a planned end of its own', { origin: 'maintenance', status: 'in_maintenance' }],
+      ['a predecessor that does not end the day before', { end_date: new Date('2026-03-05') }],
+    ])('leaves %s alone', async (_name, overrides) => {
+      tx.aircraft_status_period.findMany.mockResolvedValue([live(overrides)])
+
+      await service.removeStatus('a1', 'p1')
+
+      expect(tx.aircraft_status_period.update).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('getStatusChanges', () => {
+    it('includes deleted periods, because a deletion changes the status', async () => {
+      db.aircraft_status_period.findMany.mockResolvedValue([])
+
+      await service.getStatusChanges({ since: '2026-01-01T00:00:00.000Z' })
+
+      const where = db.aircraft_status_period.findMany.mock.calls[0][0].where
+      expect(where).not.toHaveProperty('deleted_at')
+    })
+  })
+
   describe('getStatus', () => {
     it('reports an aircraft that does not exist as not found instead of in service', async () => {
       db.aircraft.findFirst.mockResolvedValue(null)
