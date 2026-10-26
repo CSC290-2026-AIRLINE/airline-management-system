@@ -59,9 +59,9 @@ export function ScreeningShell({
         <div className="sq-brand-line" />
         <p className="sq-workspace">ADMIN WORKSPACE</p>
         <nav aria-label="Staff navigation">
-          <button disabled title="Customer Search is not available in this branch">
+          <Link to="/customer-search" viewTransition preload="intent" disabled={navigationDisabled} onClick={() => setMenuOpen(false)}>
             Customer Search
-          </button>
+          </Link>
           {onQueue ? (
             <button
               className="sq-nav-active"
@@ -77,7 +77,7 @@ export function ScreeningShell({
             <Link
               viewTransition
               preload="render"
-              to="/screening-queue"
+              to="/security-screening/screening-queue"
               search={{ status: 'needs-review' }}
               className="sq-nav-active"
               disabled={navigationDisabled}
@@ -131,7 +131,7 @@ export function ScreeningShell({
               <Link
                 viewTransition
                 preload="render"
-                to="/screening-queue"
+                to="/security-screening/screening-queue"
                 search={{ status: 'needs-review' }}
                 className={queueClass}
                 disabled={navigationDisabled}
@@ -143,7 +143,7 @@ export function ScreeningShell({
             <Link
               viewTransition
               preload="render"
-              to="/watchlist"
+              to="/security-screening/watchlist"
               className={activeTab === 'watchlist' ? 'sq-tab-active' : undefined}
               disabled={navigationDisabled}
               aria-current={activeTab === 'watchlist' ? 'page' : undefined}

@@ -2293,3 +2293,28 @@
     font-size: 14px;
   }
 }
+
+/* Use the Security Screening desktop sidebar and its fixed geometry. */
+.cs-screening-sidebar {
+  font:
+    13px/1.25 'Inter',
+    Arial,
+    sans-serif;
+}
+.cs-screening-sidebar .sq-account p {
+  margin-bottom: 14px;
+}
+.cs-screening-sidebar .sq-account button {
+  font-family: inherit;
+  cursor: pointer;
+}
+@media (min-width: 768px) {
+  .cs-app > .cs-shell {
+    margin-left: 260px;
+  }
+}
+@media (max-width: 767px) {
+  .cs-app > .cs-screening-sidebar {
+    display: none;
+  }
+}

@@ -37,7 +37,7 @@ export function QueueToolbar({
         {filters.map((item) => (
           <Link
             key={item}
-            to="/screening-queue"
+            to="/security-screening/screening-queue"
             search={(previous) => ({ ...previous, status: filterStatuses[item], review: undefined })}
             resetScroll={false}
             viewTransition
