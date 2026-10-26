@@ -46,6 +46,9 @@ export const createAircraftStatus = (fetcher: Fetcher, id: string, payload: Crea
 export const listStatusHistory = (fetcher: Fetcher, id: string): Promise<StatusPeriod[]> =>
   requestJson<StatusPeriod[]>(fetcher, `/api/aircraft/${id}/status/history`)
 
+export const removeStatusPeriod = (fetcher: Fetcher, id: string, periodId: string): Promise<void> =>
+  requestJson<void>(fetcher, `/api/aircraft/${id}/status/${periodId}`, { method: 'DELETE' })
+
 export const listMaintenance = (fetcher: Fetcher, id: string): Promise<MaintenanceWindow[]> =>
   requestJson<MaintenanceWindow[]>(fetcher, `/api/aircraft/${id}/maintenance`)
 

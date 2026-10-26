@@ -7,6 +7,7 @@ import {
   listAircraft,
   listMaintenance,
   listStatusHistory,
+  removeStatusPeriod,
   setOperatingDays,
   updateAircraft,
 } from './api/aircraft'
@@ -19,10 +20,12 @@ import { EmptyMessage, ErrorMessage, LoadingMessage } from './components/StateMe
 import { addDays, formatDate, toDateInputValue } from './format'
 import { useApiFetcher, useAuthReady } from './hooks/useApiFetcher'
 import {
+  AIRCRAFT_STATUSES,
   MAINTENANCE_TYPES,
   MANUAL_AIRCRAFT_STATUSES,
   WEEKDAYS,
   type Aircraft,
+  type AircraftStatus,
   type AircraftType,
   type MaintenanceWindow,
   type ManualAircraftStatus,
@@ -35,6 +38,12 @@ const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
   c_check: 'C check',
   d_check: 'D check',
   unscheduled: 'Unscheduled repair',
+}
+
+const STATUS_FILTER_LABELS: Record<AircraftStatus, string> = {
+  in_service: 'In service',
+  in_maintenance: 'In maintenance',
+  grounded: 'Grounded',
 }
 
 const MANUAL_STATUS_LABELS: Record<ManualAircraftStatus, string> = {
@@ -75,6 +84,10 @@ export function AircraftManagementPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [baseFilter, setBaseFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [cancelPeriodId, setCancelPeriodId] = useState<string | null>(null)
 
   const [isRegisterOpen, setIsRegisterOpen] = useState(false)
   const [newTailNumber, setNewTailNumber] = useState('')
@@ -189,21 +202,27 @@ export function AircraftManagementPage() {
 
   const visibleAircraft = useMemo(() => {
     const needle = searchTerm.trim().toLowerCase()
-    if (!needle) {
-      return aircraft
-    }
     return aircraft.filter(
       (item) =>
-        item.tail_number.toLowerCase().includes(needle) ||
-        typeOf(item, aircraftTypes).toLowerCase().includes(needle) ||
-        item.base_airport_code.toLowerCase().includes(needle),
+        (!typeFilter || item.aircraft_type_id === typeFilter) &&
+        (!baseFilter || item.base_airport_code === baseFilter) &&
+        (!statusFilter || item.current_status.status === statusFilter) &&
+        (!needle ||
+          item.tail_number.toLowerCase().includes(needle) ||
+          typeOf(item, aircraftTypes).toLowerCase().includes(needle) ||
+          item.base_airport_code.toLowerCase().includes(needle)),
     )
-  }, [aircraft, aircraftTypes, searchTerm])
+  }, [aircraft, aircraftTypes, searchTerm, typeFilter, baseFilter, statusFilter])
+
+  // A retired type cannot take new aircraft, so it is not offered in the register dialog.
+  const activeTypes = useMemo(() => aircraftTypes.filter((type) => type.is_active), [aircraftTypes])
+
+  const baseOptions = useMemo(() => Array.from(new Set(aircraft.map((item) => item.base_airport_code))).sort(), [aircraft])
 
   const openRegister = () => {
     setActionError(null)
     setNewTailNumber('')
-    setNewTypeId(aircraftTypes[0]?.id ?? '')
+    setNewTypeId(activeTypes[0]?.id ?? '')
     setNewBase('')
     setNewEntryDate(toDateInputValue(new Date()))
     setIsRegisterOpen(true)
@@ -304,6 +323,26 @@ export function AircraftManagementPage() {
     }
   }
 
+  const handleCancelPeriod = async (periodId: string) => {
+    if (!selectedAircraft) {
+      return
+    }
+
+    setActionError(null)
+    setIsSubmitting(true)
+    try {
+      await removeStatusPeriod(fetcher.current, selectedAircraft.id, periodId)
+      setCancelPeriodId(null)
+      reloadFleet()
+      reloadDetail()
+    } catch (err) {
+      setCancelPeriodId(null)
+      setActionError(errorMessage(err, 'Failed to cancel the status record'))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleToggleRetired = async () => {
     if (!selectedAircraft) {
       return
@@ -370,9 +409,51 @@ export function AircraftManagementPage() {
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
               />
-              <button type="button" className="f9-btn" onClick={openRegister}>
+              <button type="button" className="f9-btn" disabled={fleetState !== 'ready'} onClick={openRegister}>
                 + Register Aircraft
               </button>
+            </div>
+
+            <div className="f9-filters">
+              <select
+                className="f9-select"
+                aria-label="Filter by type"
+                value={typeFilter}
+                onChange={(event) => setTypeFilter(event.target.value)}
+              >
+                <option value="">All types</option>
+                {aircraftTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.code}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="f9-select"
+                aria-label="Filter by base"
+                value={baseFilter}
+                onChange={(event) => setBaseFilter(event.target.value)}
+              >
+                <option value="">All bases</option>
+                {baseOptions.map((base) => (
+                  <option key={base} value={base}>
+                    {base}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="f9-select"
+                aria-label="Filter by status"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="">All statuses</option>
+                {AIRCRAFT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {STATUS_FILTER_LABELS[status]}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="f9-card f9-fleet__table">
@@ -381,7 +462,11 @@ export function AircraftManagementPage() {
               ) : fleetState === 'error' ? (
                 <ErrorMessage message={fleetError ?? 'Failed to load the fleet'} onRetry={retryFleet} />
               ) : visibleAircraft.length === 0 ? (
-                <EmptyMessage>No aircraft found. Click &quot;+ Register Aircraft&quot; to add one.</EmptyMessage>
+                <EmptyMessage>
+                  {aircraft.length === 0
+                    ? 'No aircraft found. Click "+ Register Aircraft" to add one.'
+                    : 'No aircraft match the search and the filters.'}
+                </EmptyMessage>
               ) : (
                 <table className="f9-table">
                   <thead>
@@ -539,6 +624,26 @@ export function AircraftManagementPage() {
                           <span>
                             {formatDate(period.start_date)}
                             {period.end_date ? ` to ${formatDate(period.end_date)}` : ' onwards'}
+                            {period.origin !== 'maintenance' &&
+                              (cancelPeriodId === period.id ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="f9-detail__cancel"
+                                    disabled={isSubmitting}
+                                    onClick={() => void handleCancelPeriod(period.id)}
+                                  >
+                                    Yes, cancel
+                                  </button>
+                                  <button type="button" className="f9-detail__keep" onClick={() => setCancelPeriodId(null)}>
+                                    Keep
+                                  </button>
+                                </>
+                              ) : (
+                                <button type="button" className="f9-detail__cancel" onClick={() => setCancelPeriodId(period.id)}>
+                                  Cancel record
+                                </button>
+                              ))}
                           </span>
                         </li>
                       ))}
@@ -586,7 +691,7 @@ export function AircraftManagementPage() {
                       <option value="" disabled>
                         Select a type
                       </option>
-                      {aircraftTypes.map((type) => (
+                      {activeTypes.map((type) => (
                         <option key={type.id} value={type.id}>
                           {type.code} · {type.model}
                         </option>
