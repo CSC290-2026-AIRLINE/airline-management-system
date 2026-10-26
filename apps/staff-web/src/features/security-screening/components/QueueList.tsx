@@ -30,7 +30,7 @@ export function QueueList({ records, decided, onOpen }: { records: ScreeningReco
           </thead>
           <tbody>
             {records.map((record) => (
-              <tr key={record.id} className={isUrgent(record) && !decided ? 'sq-urgent' : ''}>
+              <tr key={record.id} className={record.match === 'Probable' && !decided ? 'sq-urgent' : ''}>
                 <td>
                   <strong>{record.name}</strong>
                   <small>
@@ -68,7 +68,7 @@ export function QueueList({ records, decided, onOpen }: { records: ScreeningReco
         {records.map((record) => (
           <button
             key={record.id}
-            className={`sq-queue-card ${isUrgent(record) && !decided ? 'sq-urgent' : ''}`}
+            className={`sq-queue-card ${record.match === 'Probable' && !decided ? 'sq-urgent' : ''}`}
             onClick={() => onOpen(record.id)}
           >
             <span className="sq-card-line">

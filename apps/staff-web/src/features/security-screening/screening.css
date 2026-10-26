@@ -284,6 +284,10 @@ body:has(.sq-app) {
   border-radius: 8px;
   background: white;
 }
+.sq-sort-trigger[aria-expanded='true'] {
+  border-color: #172b4d;
+  box-shadow: 0 0 0 1px #172b4d;
+}
 .sq-sort-trigger span {
   color: #677287;
   font-size: 10px;
@@ -312,8 +316,12 @@ body:has(.sq-app) {
   min-height: 40px;
   padding: 8px 10px;
 }
+.sq-sort-options button:hover,
+.sq-sort-options button:focus-visible {
+  background: #f2f7ff;
+}
 .sq-sort-options button[aria-pressed='true'] {
-  background: #eef2f7;
+  background: #e8f1ff;
   font-weight: 600;
 }
 .sq-sort-options button span {
