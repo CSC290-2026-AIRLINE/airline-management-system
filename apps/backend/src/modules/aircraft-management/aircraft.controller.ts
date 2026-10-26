@@ -17,6 +17,10 @@ import {
 } from './dto/aircraft.dto'
 import { StaffGuard } from './staff.guard'
 
+/**
+ * Every route needs a staff account, except the seat map and the capacity: Features 3b, 6, 10 and 17 read those
+ * during booking, check-in and baggage handling, where the caller may hold a customer token.
+ */
 @Controller('aircraft')
 @UsePipes(ApiValidationPipe)
 export class AircraftController {
@@ -25,6 +29,7 @@ export class AircraftController {
     private readonly currentStaff: CurrentStaffService,
   ) {}
 
+  @UseGuards(StaffGuard)
   @Get()
   findAll(@Query() query: AircraftListQueryDto) {
     return this.aircraftService.findAll(query)
@@ -37,16 +42,19 @@ export class AircraftController {
     return this.aircraftService.create(dto, staffId)
   }
 
+  @UseGuards(StaffGuard)
   @Get('available')
   getAvailable(@Query() query: AvailabilityQueryDto) {
     return this.aircraftService.getAvailableAircraft(query)
   }
 
+  @UseGuards(StaffGuard)
   @Get('status-changes')
   getStatusChanges(@Query() query: StatusChangesQueryDto) {
     return this.aircraftService.getStatusChanges(query)
   }
 
+  @UseGuards(StaffGuard)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.aircraftService.findOne(id)
@@ -58,6 +66,7 @@ export class AircraftController {
     return this.aircraftService.update(id, dto)
   }
 
+  @UseGuards(StaffGuard)
   @Get(':id/status')
   getStatus(@Param('id', ParseUUIDPipe) id: string) {
     return this.aircraftService.getStatus(id)
@@ -76,6 +85,7 @@ export class AircraftController {
     return this.aircraftService.removeStatus(id, periodId)
   }
 
+  @UseGuards(StaffGuard)
   @Get(':id/status/history')
   getStatusHistory(@Param('id', ParseUUIDPipe) id: string) {
     return this.aircraftService.getStatusHistory(id)
@@ -91,11 +101,13 @@ export class AircraftController {
     return this.aircraftService.getCapacity(id)
   }
 
+  @UseGuards(StaffGuard)
   @Get(':id/availability')
   getAvailability(@Param('id', ParseUUIDPipe) id: string, @Query() query: AvailabilityQueryDto) {
     return this.aircraftService.getAvailability(id, query)
   }
 
+  @UseGuards(StaffGuard)
   @Get(':id/maintenance')
   getMaintenanceList(@Param('id', ParseUUIDPipe) id: string) {
     return this.aircraftService.getMaintenanceList(id)
@@ -122,6 +134,7 @@ export class AircraftController {
     return this.aircraftService.updateMaintenance(id, maintenanceId, dto)
   }
 
+  @UseGuards(StaffGuard)
   @Get(':id/operating-days')
   getOperatingDays(@Param('id', ParseUUIDPipe) id: string) {
     return this.aircraftService.getOperatingDays(id)

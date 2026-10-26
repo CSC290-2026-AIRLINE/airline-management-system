@@ -5,11 +5,11 @@ import { TurnaroundService } from './turnaround.service'
 import { StaffGuard } from './staff.guard'
 
 @Controller()
+@UseGuards(StaffGuard)
 @UsePipes(ApiValidationPipe)
 export class TurnaroundController {
   constructor(private readonly turnaroundService: TurnaroundService) {}
 
-  @UseGuards(StaffGuard)
   @Post('aircraft/:id/turnarounds')
   create(@Param('id', ParseUUIDPipe) aircraftId: string, @Body() dto: CreateTurnaroundDto) {
     return this.turnaroundService.create(aircraftId, dto)
@@ -20,7 +20,6 @@ export class TurnaroundController {
     return this.turnaroundService.getLatest(aircraftId)
   }
 
-  @UseGuards(StaffGuard)
   @Put('turnarounds/:id/tasks/:taskId')
   updateTask(
     @Param('id', ParseUUIDPipe) turnaroundId: string,

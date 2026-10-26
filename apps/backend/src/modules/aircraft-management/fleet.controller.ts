@@ -8,6 +8,7 @@ import { FleetService } from './fleet.service'
 import { StaffGuard } from './staff.guard'
 
 @Controller('fleet')
+@UseGuards(StaffGuard)
 @UsePipes(ApiValidationPipe)
 export class FleetController {
   constructor(
@@ -25,7 +26,6 @@ export class FleetController {
     return this.fleetService.getSettings()
   }
 
-  @UseGuards(StaffGuard)
   @Put('settings/reserve_ratio')
   async setReserveRatio(@Body() dto: UpdateReserveRatioDto, @CurrentUser() user: AuthenticatedUser) {
     const staffId = await this.currentStaff.resolveStaffId(user.id)

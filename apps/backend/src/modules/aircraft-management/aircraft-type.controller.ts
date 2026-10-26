@@ -5,6 +5,7 @@ import { CloneAircraftTypeDto, CreateAircraftTypeDto, UpdateAircraftTypeDto } fr
 import { StaffGuard } from './staff.guard'
 
 @Controller('aircraft-types')
+@UseGuards(StaffGuard)
 @UsePipes(ApiValidationPipe)
 export class AircraftTypeController {
   constructor(private readonly aircraftTypeService: AircraftTypeService) {}
@@ -14,7 +15,6 @@ export class AircraftTypeController {
     return this.aircraftTypeService.findAll()
   }
 
-  @UseGuards(StaffGuard)
   @Post()
   create(@Body() dto: CreateAircraftTypeDto) {
     return this.aircraftTypeService.create(dto)
@@ -25,13 +25,11 @@ export class AircraftTypeController {
     return this.aircraftTypeService.findOne(id)
   }
 
-  @UseGuards(StaffGuard)
   @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAircraftTypeDto) {
     return this.aircraftTypeService.update(id, dto)
   }
 
-  @UseGuards(StaffGuard)
   @Post(':id/clone')
   clone(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CloneAircraftTypeDto) {
     return this.aircraftTypeService.clone(id, dto)
