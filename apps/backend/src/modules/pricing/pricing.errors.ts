@@ -6,6 +6,10 @@ export const PricingErrorCode = {
   BASE_FARE_NOT_FOUND: 'BASE_FARE_NOT_FOUND',
   BASE_FARE_EXISTS: 'BASE_FARE_EXISTS',
   ROUTE_NOT_FOUND: 'ROUTE_NOT_FOUND',
+  SETTING_NOT_FOUND: 'SETTING_NOT_FOUND',
+  SETTING_READ_ONLY: 'SETTING_READ_ONLY',
+  SETTING_INVALID: 'SETTING_INVALID',
+  STAFF_NOT_FOUND: 'STAFF_NOT_FOUND',
 } as const
 export type PricingErrorCode = (typeof PricingErrorCode)[keyof typeof PricingErrorCode]
 
