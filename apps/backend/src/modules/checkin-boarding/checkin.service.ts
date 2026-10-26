@@ -4,7 +4,7 @@ import type { Actor } from './actor'
 import { boardingGroup } from './domain/boarding'
 import { toAlpha2 } from './domain/countries'
 import type { MrzData } from './domain/mrz'
-import { compareNames, isPassportValidForTravel, profileSync, validateMrz } from './domain/mrz'
+import { compareNames, isPassportValidForTravel, profileSync, stripNonLetters, validateMrz } from './domain/mrz'
 import { computeWindow, isWindowOpen } from './domain/window'
 import type { Window } from './domain/window'
 import { CheckInError, invalidState, notFound, validation } from './errors'
@@ -93,7 +93,16 @@ export class CheckInService {
     this.assertWindowOpen(flight, await this.windowOf(flight))
 
     const existing = this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId)
-    if (existing) return this.viewOf(existing)
+    if (existing) {
+      // The PNR and the surname proved the booking: the caller takes the check-in over from a previous session.
+      const takenOver = actor.staffId === null && existing.started_by_user_id !== actor.userId
+      const record = takenOver ? this.store.updateCheckIn(existing.id, { started_by_user_id: actor.userId }) : existing
+      if (takenOver) await this.record(actor, 'check_in.start', 'check_in', record.id, 'resumed')
+      if (this.store.getDocumentByCheckIn(record.id)) {
+        await this.record(actor, 'view_sensitive', 'check_in', record.id, 'check-in read', true)
+      }
+      return this.viewOf(record)
+    }
 
     const record = this.store.createCheckIn({
       booking_passenger_id: booking.bookingPassengerId,
@@ -122,7 +131,7 @@ export class CheckInService {
     const flight = await this.flightOf(record.flight_id)
     this.assertWindowOpen(flight, await this.windowOf(flight))
 
-    const mrz = validateMrz(input.mrzLine1, input.mrzLine2)
+    const mrz = validateMrz(input.mrzLine1, input.mrzLine2, { todayYear: this.clock.now().getFullYear() % 100 })
     if (!mrz.ok) throw new CheckInError(422, 'MRZ_INVALID', mrz.message, { failedCheck: mrz.failedCheck })
     const data = mrz.data
     if (!isPassportValidForTravel(data.expiryDate, flight.serviceDate)) {
@@ -185,7 +194,10 @@ export class CheckInService {
 
   async holdSeat(actor: Actor, flightId: string, input: { checkInId: string; seatCode: string }): Promise<SeatLock> {
     const record = this.require(actor, input.checkInId)
+    if (record.flight_id !== flightId) throw notFound('Flight')
     this.assertOpen(record, 'A seat can only be picked while the check-in is open')
+    const flight = await this.flightOf(record.flight_id)
+    this.assertWindowOpen(flight, await this.windowOf(flight))
     if (!this.store.getDocumentByCheckIn(record.id)) {
       throw invalidState('The travel document must be submitted before a seat can be picked')
     }
@@ -217,14 +229,23 @@ export class CheckInService {
 
   async confirmSeat(actor: Actor, id: string, input: { lockId: string }): Promise<CheckInView> {
     const record = this.require(actor, id)
-    const fee = this.holds.get(input.lockId)?.lock.fee ?? 0
-    let paymentId: string | null = null
-    if (fee > 0) {
-      const charge = await this.payments.charge({ amount: fee, currency: 'THB', purpose: 'seat', reference: record.id })
-      paymentId = charge.paymentId
-    }
+    this.assertOpen(record, 'The seat can only be confirmed while the check-in is open')
+    const flight = await this.flightOf(record.flight_id)
+    this.assertWindowOpen(flight, await this.windowOf(flight))
+    const held = this.holds.get(input.lockId)
+    if (!held || held.checkInId !== record.id) throw notFound('Seat hold')
     const confirmed = await this.seats.confirm(input.lockId)
     this.holds.delete(input.lockId)
+    let paymentId: string | null = null
+    if (held.lock.fee > 0) {
+      const charge = await this.payments.charge({
+        amount: held.lock.fee,
+        currency: 'THB',
+        purpose: 'seat',
+        reference: record.id,
+      })
+      paymentId = charge.paymentId
+    }
     this.seatPayments.set(record.booking_passenger_id, paymentId)
     const pass = this.store.passesForCheckIn(record.id)[0]
     if (pass) this.store.updatePass(pass.id, { seat_code: confirmed.seatCode })
@@ -235,6 +256,8 @@ export class CheckInService {
   async declareBags(actor: Actor, id: string, input: { declaredBags: number }): Promise<CheckInView> {
     const record = this.require(actor, id)
     this.assertStarted(record, 'The bags can only be declared while the check-in is open')
+    const flight = await this.flightOf(record.flight_id)
+    this.assertWindowOpen(flight, await this.windowOf(flight))
     if (!Number.isInteger(input.declaredBags) || input.declaredBags < 0 || input.declaredBags > 10) {
       throw validation('The number of bags must be a whole number between 0 and 10', { declaredBags: input.declaredBags })
     }
@@ -265,12 +288,14 @@ export class CheckInService {
       ? 1
       : boardingGroup({ specialAssistance: booking.specialAssistance, cabin: booking.cabin, tier: tier?.level ?? null })
 
-    const pass = this.store.createPass({
+    this.store.createPass({
       check_in_id: record.id,
       reference: newReference(),
       seat_code: seat.seatCode,
       boarding_group: group,
     })
+    // A concurrent complete may have issued the pass first: read it back so both callers see the same one.
+    const pass = this.store.passesForCheckIn(record.id)[0]
     this.store.updateCheckIn(record.id, { status: 'checked_in', checked_in_at: this.clock.now() })
     await this.notify.send('boarding_pass', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
     await this.record(actor, 'check_in.complete', 'boarding_pass', pass.id, 'boarding pass issued')
@@ -359,8 +384,8 @@ export class CheckInService {
     for (const row of await this.passengers.findByPassportNumber(mrz.number)) {
       if (row.id === record.passenger_id) continue
       const sameName =
-        row.firstName.trim().toUpperCase() === booking.firstName.trim().toUpperCase() &&
-        row.lastName.trim().toUpperCase() === booking.lastName.trim().toUpperCase()
+        stripNonLetters(row.firstName) === stripNonLetters(booking.firstName) &&
+        stripNonLetters(row.lastName) === stripNonLetters(booking.lastName)
       const sameBirth = !row.dateOfBirth || row.dateOfBirth === mrz.dateOfBirth
       const sameNationality = !row.nationality || !nationality2 || row.nationality.toLowerCase() === nationality2
       if (!sameName || !sameBirth || !sameNationality) {

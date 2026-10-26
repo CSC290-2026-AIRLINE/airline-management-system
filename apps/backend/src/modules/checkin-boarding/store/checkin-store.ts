@@ -468,6 +468,9 @@ export class CheckInStore {
   }
 
   createPass(input: { check_in_id: string; reference: string; seat_code: string; boarding_group: number }): BoardingPassRecord {
+    // Mirrors the UNIQUE index on boarding_pass.check_in_id: one pass per check-in, even on a double submit.
+    const existing = this.passesForCheckIn(input.check_in_id)[0]
+    if (existing) return existing
     const now = this.now()
     const record: BoardingPassRecord = {
       id: `pass-${(this.seq += 1)}`,

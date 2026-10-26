@@ -6,6 +6,9 @@ import { CheckinBoardingModule } from './checkin-boarding.module'
 import { SPECIMEN_LINE1, buildSpecimenLine2 } from './domain/mrz'
 import { STAFF_IDENTITY } from './providers/providers'
 
+// The generated Prisma client is ESM only and the module never talks to a real database here.
+jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
+
 const CUSTOMER = 'user-anna'
 const STAFF = 'staff-demo'
 

@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common'
+import { DbModule } from '@backend/db/db.module'
 import { CheckInController } from './checkin.controller'
 import { CheckInService } from './checkin.service'
 import { CounterService } from './counter.service'
 import { GateService } from './gate.service'
 import { ActorGuard, StaffGuard } from './guards/staff.guard'
 import { StaffController } from './staff.controller'
+import { DbStaffIdentity } from './providers/db-staff-identity'
 import {
   FixtureBookings,
   FixtureClock,
@@ -17,7 +19,6 @@ import {
   FixtureSeats,
   FixtureSensor,
   FixtureSettings,
-  FixtureStaffIdentity,
   FixtureTiers,
   LoggerAudit,
   LoggerNotify,
@@ -42,6 +43,7 @@ import {
 import { CheckInStore } from './store/checkin-store'
 
 @Module({
+  imports: [DbModule],
   controllers: [CheckInController, StaffController],
   providers: [
     { provide: CLOCK, useClass: FixtureClock },
@@ -57,7 +59,7 @@ import { CheckInStore } from './store/checkin-store'
     { provide: NOTIFY, useClass: LoggerNotify },
     { provide: AUDIT, useClass: LoggerAudit },
     { provide: SENSOR, useClass: FixtureSensor },
-    { provide: STAFF_IDENTITY, useClass: FixtureStaffIdentity },
+    { provide: STAFF_IDENTITY, useClass: DbStaffIdentity },
     { provide: SETTINGS, useClass: FixtureSettings },
     CheckInStore,
     CheckInService,

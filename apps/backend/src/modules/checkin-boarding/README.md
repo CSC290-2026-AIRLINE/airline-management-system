@@ -73,15 +73,17 @@ One interface per feature we do not own, in `providers/providers.ts`. The fixtur
 | `NOTIFY`         | `NotifyProvider`           | F13 notifications                | `LoggerNotify`                                                |
 | `AUDIT`          | `AuditProvider`            | F15 audit log                    | `LoggerAudit` (never writes an MRZ line or a passport number) |
 | `SENSOR`         | `SensorProvider`           | F16 head-count sensor            | `FixtureSensor` (an override of `null` switches it off)       |
-| `STAFF_IDENTITY` | `StaffIdentityProvider`    | F1 roles                         | `FixtureStaffIdentity` (placeholder, see below)               |
+| `STAFF_IDENTITY` | `StaffIdentityProvider`    | F1 roles                         | `DbStaffIdentity` (reads `user.type`, see below)              |
 | `SETTINGS`       | `SettingsProvider`         | F6 settings (`check_in_setting`) | `FixtureSettings`                                             |
 
-### The staff guard is a placeholder
+### The staff guard reads `user.type`
 
-The platform has no staff guard yet: every sign-in creates an `admin` user and the token carries only `sub` and
-`email`. `StaffGuard` therefore asks `STAFF_IDENTITY` who the caller is, and the fixture treats every signed-in
-user as staff. When feature 1 ships roles, replace `FixtureStaffIdentity` with the real lookup — the guard and
-the routes do not change. Until then the guard is the first line of defence, the services check `staffId` again.
+`StaffGuard` asks `STAFF_IDENTITY` who the caller is. `DbStaffIdentity` looks the `user` row up by the id the
+token carries and reads `user.type`: a `staff` user is staff and its live `staff` row gives the id the feature 6
+tables point at, a `customer` user is not. Roles are **not** enforced yet — feature 1 owns them, so every staff
+user passes the guard whatever its role is. The guard is the first line of defence, the services check `staffId`
+again. `FixtureStaffIdentity` (every signed-in user is staff) stays in `providers/fixture-providers.ts` for the
+demo and the tests; it is no longer bound in the module.
 
 ## Demo fixtures
 
@@ -123,7 +125,7 @@ signs a user in with an `x-test-user` header.
 
 ## Known gaps (as of 2026-10-27)
 
-- **Staff guard** is a placeholder (`FixtureStaffIdentity` says everyone is staff). Real enforcement needs F1 roles; swap the `STAFF_IDENTITY` provider.
+- **Staff roles** are not enforced: `DbStaffIdentity` only reads `user.type`. Feature 1's roles decide who may do what.
 - **F3 seat API**: `FixtureSeats` fakes the map, 5-minute holds, confirm and release. Replace with G13's contract when it exists.
 - **F11 tier**: `FixtureTiers` returns none, so nobody gets the tier bag bonus or boarding group 2/3 by tier.
 - **Seat payment id** lives in `CheckInService` memory; the F6 migration has no column for it (raise with the DB team).

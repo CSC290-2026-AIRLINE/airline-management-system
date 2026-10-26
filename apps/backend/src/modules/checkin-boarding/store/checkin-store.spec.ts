@@ -63,6 +63,21 @@ describe('CheckInStore', () => {
     expect(s.listEvents('flt-fy204')).toHaveLength(2)
   })
 
+  it('createPass hands out one pass per check-in', () => {
+    const s = store()
+    const checkIn = s.createCheckIn({
+      booking_passenger_id: 'bp-test-pass',
+      passenger_id: 'pax-test-pass',
+      flight_id: 'flt-fy204',
+      pnr: 'TST001',
+      passenger_name: 'Test One',
+    })
+    const first = s.createPass({ check_in_id: checkIn.id, reference: 'AAAA1111', seat_code: '5A', boarding_group: 4 })
+    const second = s.createPass({ check_in_id: checkIn.id, reference: 'BBBB2222', seat_code: '5B', boarding_group: 4 })
+    expect(second).toBe(first)
+    expect(s.passesForCheckIn(checkIn.id)).toHaveLength(1)
+  })
+
   it('updateCheckIn bumps updated_at', () => {
     const clock = new FixtureClock()
     const s = new CheckInStore()

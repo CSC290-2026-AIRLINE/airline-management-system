@@ -122,7 +122,7 @@ export function isPassportValidForTravel(expiryDate: string, travelDate: string)
   return expiryDate >= minExpiry.toISOString().slice(0, 10)
 }
 
-const stripNonLetters = (s: string): string => s.toUpperCase().replace(/[^A-Z]/g, '')
+export const stripNonLetters = (s: string): string => s.toUpperCase().replace(/[^A-Z]/g, '')
 
 /** True when the MRZ name and the booking name disagree (a flag for staff, never a hard block). */
 export function compareNames(mrz: { surname: string; givenNames: string[] }, booking: { firstName: string; lastName: string }): boolean {
