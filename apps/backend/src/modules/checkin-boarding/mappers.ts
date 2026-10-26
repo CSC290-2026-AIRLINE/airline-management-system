@@ -1,6 +1,20 @@
-import type { BoardingPassView, Cabin, CheckInView, CheckInWindow, FlightSummary, SeatChoice, TravelDocumentView } from './api-types'
+import type {
+  BagAllowance,
+  BoardingPassView,
+  Cabin,
+  CarryOnAllowance,
+  CheckedBagView,
+  CheckInView,
+  CheckInWindow,
+  FlightSummary,
+  IssueCode,
+  SeatChoice,
+  StaffCheckInRow,
+  StaffCheckInView,
+  TravelDocumentView,
+} from './api-types'
 import type { FlightRecord } from './providers/providers'
-import type { BoardingPassRecord, CheckInRecord, TravelDocumentRecord } from './store/checkin-store'
+import type { BoardingPassRecord, CarryOnCheckRecord, CheckedBagRecord, CheckInRecord, TravelDocumentRecord } from './store/checkin-store'
 
 export function toFlightSummary(flight: FlightRecord, gate: { id: string; code: string } | null, boardingAt: Date): FlightSummary {
   return {
@@ -114,5 +128,64 @@ export function toBoardingPassView(input: BoardingPassViewInput): BoardingPassVi
       seat: input.seat,
       passengerName: input.passengerName,
     },
+  }
+}
+
+export function toBagView(bag: CheckedBagRecord): CheckedBagView {
+  return {
+    id: bag.id,
+    checkInId: bag.check_in_id,
+    weightKg: bag.weight_kg,
+    excessKg: bag.excess_kg,
+    ratePerKg: bag.rate_per_kg,
+    excessFee: bag.excess_fee,
+    excessPaymentId: bag.excess_payment_id,
+    tagNumber: bag.tag_number,
+    status: bag.status,
+    weighedAt: (bag.weighed_at ?? bag.created_at).toISOString(),
+  }
+}
+
+export interface StaffCheckInViewInput {
+  checkIn: CheckInView
+  bags: CheckedBagView[]
+  allowance: BagAllowance
+  carryOn: CarryOnAllowance
+  carryOnCheck: CarryOnCheckRecord | null
+  issues: IssueCode[]
+  totals: { weightKg: number; excessKg: number; unpaidFee: number }
+  boardingPass: BoardingPassView | null
+  isPolice: boolean
+}
+
+export function toStaffCheckInView(input: StaffCheckInViewInput): StaffCheckInView {
+  return {
+    checkIn: input.checkIn,
+    bags: input.bags,
+    allowance: input.allowance,
+    carryOn: input.carryOn,
+    carryOnCheck: input.carryOnCheck
+      ? {
+          weightKg: input.carryOnCheck.weight_kg,
+          withinSize: input.carryOnCheck.within_size,
+          result: input.carryOnCheck.result,
+          checkedAt: input.carryOnCheck.checked_at.toISOString(),
+        }
+      : null,
+    issues: input.issues,
+    totals: input.totals,
+    boardingPass: input.boardingPass,
+    isPolice: input.isPolice,
+  }
+}
+
+export function toStaffRow(input: { checkIn: CheckInRecord; flightNumber: string; issues: IssueCode[] }): StaffCheckInRow {
+  return {
+    id: input.checkIn.id,
+    pnr: input.checkIn.pnr,
+    passengerName: input.checkIn.passenger_name,
+    flightNumber: input.flightNumber,
+    status: input.checkIn.status,
+    issues: input.issues,
   }
 }

@@ -33,6 +33,9 @@ export interface TravelDocumentRecord {
   expiry_date: string
   visa_number: string | null
   visa_required: boolean
+  /** In-memory only until the migration carries the visa review columns. */
+  visa_checked_by: string | null
+  visa_checked_at: Date | null
   name_mismatch: boolean
   name_mismatch_cleared_by: string | null
   name_mismatch_cleared_at: Date | null
@@ -293,6 +296,8 @@ export class CheckInStore {
       expiry_date: input.expiry_date,
       visa_number: input.visa_number ?? null,
       visa_required: input.visa_required ?? false,
+      visa_checked_by: null,
+      visa_checked_at: null,
       name_mismatch: input.name_mismatch ?? false,
       name_mismatch_cleared_by: null,
       name_mismatch_cleared_at: null,
@@ -365,6 +370,14 @@ export class CheckInStore {
 
   listBags(checkInId: string): CheckedBagRecord[] {
     return [...this.bags.values()].filter((b) => b.check_in_id === checkInId && b.deleted_at === null)
+  }
+
+  /** Feature 10 looks a bag up by the number on its tag. */
+  findBagByTag(tagNumber: string): CheckedBagRecord | null {
+    for (const bag of this.bags.values()) {
+      if (bag.tag_number === tagNumber && bag.deleted_at === null) return bag
+    }
+    return null
   }
 
   updateBag(id: string, patch: Partial<Omit<CheckedBagRecord, 'id' | 'check_in_id' | 'created_at'>>): CheckedBagRecord {
