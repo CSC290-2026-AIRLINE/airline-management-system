@@ -94,6 +94,8 @@ test('close gate: needs a count, mismatch then confirm, freezes count and marks 
   assert.equal(tomEntry?.status, 'no_show')
   const view = await api.detail(tom.id)
   assert.equal(view.bags[0].status, 'offloaded')
+  // An offloaded bag keeps its tag, so it is never removed.
+  await assert.rejects(() => api.removeBag(view.bags[0].id), { code: 'INVALID_STATE' })
 
   const late = await api.scan(A1, { flightId: FY204, reference: 'Z5HB8RTU' })
   assert.equal(late.reason, 'GATE_CLOSED')
@@ -183,6 +185,19 @@ test('counter actions: remove a bag, check the carry-on, print the pass', async 
   assert.ok(passId)
   const printed = await api.printPass(passId)
   assert.notEqual(printed.printedAt, null)
+})
+
+test('a tagged or paid bag is never removed', async () => {
+  const api = createMockStaffApi()
+  const [anna] = await api.search({ pnr: 'ER204F' })
+
+  const weighed = await api.weighBag(anna.id, { weightKg: 25, ...BAG })
+  const second = await api.weighBag(anna.id, { weightKg: 10, ...BAG })
+  const tagged = await api.tagBag(weighed.bags[0].id)
+  await assert.rejects(() => api.removeBag(tagged.bag.id), { code: 'INVALID_STATE' })
+  // The second bag was charged in the same payment, so it may not be removed either.
+  await assert.rejects(() => api.removeBag(second.bags[1].id), { code: 'INVALID_STATE' })
+  assert.equal((await api.detail(anna.id)).bags.length, 2)
 })
 
 test('issue list flags a security hold and a visa check, staff clear the visa', async () => {

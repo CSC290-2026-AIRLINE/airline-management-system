@@ -153,7 +153,9 @@ export class CounterService {
     this.staffIdOf(actor)
     const bag = this.store.getBag(bagId)
     if (!bag || bag.deleted_at) throw notFound('Bag')
-    if (bag.status === 'tagged') throw invalidState('A tagged bag cannot be removed')
+    // The gate offloads the bags of a no-show, so the tag is the guard and not the status.
+    if (bag.tag_number !== null || bag.status !== 'weighed') throw invalidState('A tagged bag cannot be removed')
+    if (bag.excess_payment_id) throw invalidState('A paid bag cannot be removed; refund through Feature 5')
     const record = this.requireCheckIn(bag.check_in_id)
     this.store.deleteBag(bagId)
 
@@ -182,6 +184,9 @@ export class CounterService {
     const bag = this.store.getBag(bagId)
     if (!bag || bag.deleted_at) throw notFound('Bag')
     const record = this.requireCheckIn(bag.check_in_id)
+    if (record.status !== 'started' && record.status !== 'checked_in') {
+      throw invalidState('Bags can only be tagged while the check-in is open')
+    }
     if (bag.status === 'tagged') {
       return { bag: toBagView(bag), view: await this.detail(actor, record.id) }
     }
@@ -192,8 +197,8 @@ export class CounterService {
       const amount = Math.round(unpaid.reduce((sum, b) => sum + b.excess_fee, 0) * 100) / 100
       const charge = await this.payments.charge({ amount, currency: 'THB', purpose: 'excess_baggage', reference: record.id })
       // Bags paid together share one payment id.
-      for (const other of bags) {
-        if (!other.excess_payment_id) this.store.updateBag(other.id, { excess_payment_id: charge.paymentId })
+      for (const other of unpaid) {
+        this.store.updateBag(other.id, { excess_payment_id: charge.paymentId })
       }
     }
 

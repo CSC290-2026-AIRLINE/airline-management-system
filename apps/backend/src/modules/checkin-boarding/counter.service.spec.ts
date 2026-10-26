@@ -143,7 +143,8 @@ describe('CounterService.tagBag', () => {
     const [b1, b2] = v.bags
     const t = await counter.tagBag(staff, b2.id)
     expect(t.bag).toMatchObject({ tagNumber: '0402000001', status: 'tagged', excessPaymentId: 'pay-1' })
-    expect(t.view.bags[0].excessPaymentId).toBe('pay-1')
+    // The 15 kg bag has no excess, the payment of 1500 baht never covered it.
+    expect(t.view.bags[0].excessPaymentId).toBeNull()
     expect((await counter.tagBag(staff, b1.id)).bag.tagNumber).toBe('0402000002')
     expect(t.view.issues).not.toContain('EXCESS_UNPAID')
     expect(payments.charges).toEqual([{ amount: 1500, currency: 'THB', purpose: 'excess_baggage', reference: id }])
@@ -156,6 +157,23 @@ describe('CounterService.tagBag', () => {
     const t = await counter.tagBag(staff, v.bags[0].id)
     expect(t.bag).toMatchObject({ tagNumber: '0402000001', status: 'tagged', excessPaymentId: null })
     expect(payments.charges).toHaveLength(0)
+  })
+
+  it('a bag without excess is not marked as paid', async () => {
+    const { counter, store } = build()
+    const id = pimId(store)
+    const v = await weigh(counter, id, 5, 25)
+    const t = await counter.tagBag(staff, v.bags[1].id)
+    expect(t.bag.excessPaymentId).toBe('pay-1')
+    expect(t.view.bags[0]).toMatchObject({ excessFee: 0, excessPaymentId: null })
+  })
+
+  it('a bag is only tagged while the check-in is open', async () => {
+    const { counter, store } = build()
+    const id = pimId(store)
+    const v = await weigh(counter, id, 15)
+    store.updateCheckIn(id, { status: 'on_hold' })
+    await expect(counter.tagBag(staff, v.bags[0].id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
   })
 
   it('tagging an already tagged bag keeps its number', async () => {
@@ -177,6 +195,29 @@ describe('CounterService.removeBag', () => {
     expect((await counter.detail(staff, id)).bags.map((b) => b.excessKg)).toEqual([0, 0])
     const t = await counter.tagBag(staff, (await counter.detail(staff, id)).bags[0].id)
     await expect(counter.removeBag(staff, t.bag.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+  })
+
+  it('never removes a tagged bag, not even after the gate offloaded it', async () => {
+    const { counter, store } = build()
+    const id = pimId(store)
+    const v = await weigh(counter, id, 15)
+    const tagged = await counter.tagBag(staff, v.bags[0].id)
+    // The gate offloads the bags of a no-show, the printed tag stays on the bag.
+    store.updateBag(tagged.bag.id, { status: 'offloaded' })
+    await expect(counter.removeBag(staff, tagged.bag.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    expect((await counter.detail(staff, id)).bags).toHaveLength(1)
+  })
+
+  it('never removes a bag that was paid together with another one', async () => {
+    const { counter, store, payments } = build()
+    const id = pimId(store)
+    const v = await weigh(counter, id, 25, 10)
+    const tagged = await counter.tagBag(staff, v.bags[0].id)
+    expect(tagged.bag.excessPaymentId).toBe('pay-1')
+    // The second bag was charged in the same payment, so it may not be removed.
+    await expect(counter.removeBag(staff, v.bags[1].id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    expect(payments.charges).toEqual([{ amount: 7500, currency: 'THB', purpose: 'excess_baggage', reference: id }])
+    expect((await counter.detail(staff, id)).bags).toHaveLength(2)
   })
 })
 

@@ -477,8 +477,12 @@ export function createMockStaffApi(opts?: { now?: Date }): StaffApi {
     async removeBag(bagId: string): Promise<StaffCheckInView> {
       const bag = bags.get(bagId)
       if (!bag) throw notFound('Bag')
-      if (bag.status === 'tagged') {
+      // The gate offloads the bags of a no-show, so the tag is the guard and not the status.
+      if (bag.tagNumber !== null || bag.status !== 'weighed') {
         throw new ApiRequestError(409, 'INVALID_STATE', 'A tagged bag cannot be removed')
+      }
+      if (bag.excessPaymentId) {
+        throw new ApiRequestError(409, 'INVALID_STATE', 'A paid bag cannot be removed; refund through Feature 5')
       }
       bags.delete(bagId)
       reallocate(bag.checkInId)

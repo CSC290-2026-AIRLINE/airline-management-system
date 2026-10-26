@@ -166,7 +166,7 @@ export function BagDrop({ api, view, onUpdated }: Props) {
                       <button
                         type="button"
                         className={ui.btnGhost}
-                        disabled={busy || bag.status === 'tagged'}
+                        disabled={busy || bag.status !== 'weighed' || Boolean(bag.tagNumber) || Boolean(bag.excessPaymentId)}
                         onClick={() => void remove(bag.id)}
                       >
                         Remove

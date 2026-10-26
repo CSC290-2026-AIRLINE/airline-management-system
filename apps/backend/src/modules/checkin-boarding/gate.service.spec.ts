@@ -240,6 +240,24 @@ describe('GateService head-count and close', () => {
     })
   })
 
+  it('the head-count is audited', async () => {
+    const { gate, audit } = build()
+    const spy = jest.spyOn(audit, 'record')
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 3 })
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'gate.headcount', entityType: 'flight', entityId: 'flt-fy204' }))
+  })
+
+  it('a bag offloaded by the gate close is never removed', async () => {
+    const { gate, counter, store } = build()
+    const pim = idOf(store, 'EC204G')
+    const weighed = await counter.weighBag(staff, pim, { weightKg: 10, lengthCm: 60, widthCm: 40, heightCm: 20 })
+    const tagged = await counter.tagBag(staff, weighed.bags[0].id)
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    await gate.closeGate(staff, 'flt-fy204', {})
+    expect(store.getBag(tagged.bag.id)?.status).toBe('offloaded')
+    await expect(counter.removeBag(staff, tagged.bag.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+  })
+
   it('close needs a count, shows a mismatch, confirms, freezes, marks no-shows and offloads bags', async () => {
     const { gate, counter, store } = build()
     const pim = idOf(store, 'EC204G')

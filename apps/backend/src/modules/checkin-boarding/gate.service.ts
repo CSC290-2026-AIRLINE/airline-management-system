@@ -273,11 +273,29 @@ export class GateService {
       const count = await this.sensor.read(boarding.gate_id, { boardedCount: this.boardedCountOf(flightId) })
       if (count === null) throw validation('The head-count sensor is not available', { reason: 'sensor_unavailable' })
       this.store.updateFlightBoarding(flightId, { sensor_count: count })
+      await this.audit.record({
+        actorType: 'staff',
+        actorId: actor.userId,
+        action: 'gate.headcount',
+        entityType: 'flight',
+        entityId: flightId,
+        summary: `sensor head-count ${count}`,
+        after: { source: 'sensor', count },
+      })
     } else {
       if (!Number.isInteger(input.count) || input.count < 0) {
         throw validation('The manual count must be a whole number of zero or more', { count: input.count })
       }
       this.store.updateFlightBoarding(flightId, { manual_count: input.count })
+      await this.audit.record({
+        actorType: 'staff',
+        actorId: actor.userId,
+        action: 'gate.headcount',
+        entityType: 'flight',
+        entityId: flightId,
+        summary: `manual head-count ${input.count}`,
+        after: { source: 'manual', count: input.count },
+      })
     }
     return this.headcount(actor, flightId)
   }
