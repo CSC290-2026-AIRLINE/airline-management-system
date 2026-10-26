@@ -4,6 +4,11 @@ export type Cabin = (typeof CABINS)[number]
 export const SEAT_TYPES = ['normal', 'exit_row', 'extra_legroom'] as const
 export type SeatType = (typeof SEAT_TYPES)[number]
 
+export const TAX_FEE_KINDS = ['tax', 'surcharge', 'fee'] as const
+export type TaxFeeKind = (typeof TAX_FEE_KINDS)[number]
+
+export const TAX_FEE_CALC_TYPES = ['flat', 'pct'] as const
+export type TaxFeeCalcType = (typeof TAX_FEE_CALC_TYPES)[number]
 // Closed list, matching the CHECK on pricing_setting.key. The defaults are used only while the seed has not inserted a row.
 export const PRICING_SETTING_DEFAULTS = {
   quote_hold_minutes: '15',
