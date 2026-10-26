@@ -10,6 +10,7 @@ import {
   removeStatusPeriod,
   setOperatingDays,
   updateAircraft,
+  updateMaintenance,
 } from './api/aircraft'
 import { listAircraftTypes } from './api/aircraftType'
 import { errorMessage } from './api/http'
@@ -89,6 +90,14 @@ export function AircraftManagementPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [cancelPeriodId, setCancelPeriodId] = useState<string | null>(null)
 
+  // A maintenance window being rescheduled or completed, and the window whose cancel is waiting for a confirm.
+  const [windowAction, setWindowAction] = useState<{ kind: 'reschedule' | 'complete'; window: MaintenanceWindow } | null>(null)
+  const [windowStart, setWindowStart] = useState('')
+  const [windowEnd, setWindowEnd] = useState('')
+  const [cancelWindowId, setCancelWindowId] = useState<string | null>(null)
+  // Set when the last operating day was switched off: no weekday means the aircraft flies every day, and the screen says so.
+  const [everyDayNotice, setEveryDayNotice] = useState(false)
+
   const [isRegisterOpen, setIsRegisterOpen] = useState(false)
   const [newTailNumber, setNewTailNumber] = useState('')
   const [newTypeId, setNewTypeId] = useState('')
@@ -107,7 +116,7 @@ export function AircraftManagementPage() {
   const [maintenanceEnd, setMaintenanceEnd] = useState(() => toDateInputValue(addDays(new Date(), 7)))
 
   // An error from a dialog is shown inside it; one from the page itself is shown above the fleet.
-  const isModalOpen = isRegisterOpen || isStatusOpen || isMaintenanceOpen
+  const isModalOpen = isRegisterOpen || isStatusOpen || isMaintenanceOpen || windowAction !== null
 
   const reloadFleet = () => setReloadToken((token) => token + 1)
   const retryFleet = () => {
@@ -121,6 +130,7 @@ export function AircraftManagementPage() {
     setDetailToken((token) => token + 1)
   }
   const selectAircraft = (id: string) => {
+    setEveryDayNotice(false)
     setDetailState('loading')
     setDetailError(null)
     setSelectedId(id)
@@ -206,7 +216,7 @@ export function AircraftManagementPage() {
       (item) =>
         (!typeFilter || item.aircraft_type_id === typeFilter) &&
         (!baseFilter || item.base_airport_code === baseFilter) &&
-        (!statusFilter || item.current_status.status === statusFilter) &&
+        (!statusFilter || item.current_status === statusFilter) &&
         (!needle ||
           item.tail_number.toLowerCase().includes(needle) ||
           typeOf(item, aircraftTypes).toLowerCase().includes(needle) ||
@@ -259,10 +269,10 @@ export function AircraftManagementPage() {
       return
     }
     setActionError(null)
-    setStatusValue(selectedAircraft.current_status.status === 'grounded' ? 'grounded' : 'in_service')
-    setStatusReason(selectedAircraft.current_status.reason ?? '')
-    setStatusStart(selectedAircraft.current_status.start_date ?? toDateInputValue(new Date()))
-    setStatusEnd(selectedAircraft.current_status.end_date ?? '')
+    setStatusValue(selectedAircraft.current_status === 'grounded' ? 'grounded' : 'in_service')
+    setStatusReason('')
+    setStatusStart('')
+    setStatusEnd('')
     setIsStatusOpen(true)
   }
 
@@ -323,6 +333,60 @@ export function AircraftManagementPage() {
     }
   }
 
+  const openWindowAction = (kind: 'reschedule' | 'complete', window: MaintenanceWindow) => {
+    setActionError(null)
+    setWindowStart(window.planned_start_date)
+    setWindowEnd(window.planned_end_date)
+    setWindowAction({ kind, window })
+  }
+
+  const handleSaveWindow = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!selectedAircraft || !windowAction) {
+      return
+    }
+
+    setActionError(null)
+    setIsSubmitting(true)
+    try {
+      await updateMaintenance(
+        fetcher.current,
+        selectedAircraft.id,
+        windowAction.window.id,
+        windowAction.kind === 'complete'
+          ? { status: 'completed', actual_end_date: windowEnd }
+          : { planned_start_date: windowStart, planned_end_date: windowEnd },
+      )
+      setWindowAction(null)
+      reloadFleet()
+      reloadDetail()
+    } catch (err) {
+      setActionError(errorMessage(err, 'Failed to update the maintenance window'))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleCancelWindow = async (windowId: string) => {
+    if (!selectedAircraft) {
+      return
+    }
+
+    setActionError(null)
+    setIsSubmitting(true)
+    try {
+      await updateMaintenance(fetcher.current, selectedAircraft.id, windowId, { status: 'cancelled' })
+      setCancelWindowId(null)
+      reloadFleet()
+      reloadDetail()
+    } catch (err) {
+      setCancelWindowId(null)
+      setActionError(errorMessage(err, 'Failed to cancel the maintenance window'))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleCancelPeriod = async (periodId: string) => {
     if (!selectedAircraft) {
       return
@@ -370,11 +434,6 @@ export function AircraftManagementPage() {
 
     const activeDays = detail.operatingDays.length > 0 ? detail.operatingDays : [1, 2, 3, 4, 5, 6, 7]
     const nextDays = activeDays.includes(day) ? activeDays.filter((value) => value !== day) : [...activeDays, day]
-    if (nextDays.length === 0) {
-      setActionError('An aircraft has to keep at least one operating day')
-      return
-    }
-
     setActionError(null)
     setIsSubmitting(true)
     try {
@@ -384,6 +443,7 @@ export function AircraftManagementPage() {
         nextDays.sort((a, b) => a - b),
       )
       setDetail((current) => (current ? { ...current, operatingDays: saved.days } : current))
+      setEveryDayNotice(saved.days.length === 0)
     } catch (err) {
       setActionError(errorMessage(err, 'Failed to save the operating days'))
     } finally {
@@ -494,7 +554,7 @@ export function AircraftManagementPage() {
                         <td>{item.base_airport_code}</td>
                         <td>{formatDate(item.retired_on)}</td>
                         <td>
-                          <StatusBadge status={item.current_status.status} />
+                          <StatusBadge status={item.current_status} />
                         </td>
                       </tr>
                     ))}
@@ -526,7 +586,7 @@ export function AircraftManagementPage() {
                 </div>
 
                 <div className="f9-detail__badge">
-                  <StatusBadge status={selectedAircraft.current_status.status} />
+                  <StatusBadge status={selectedAircraft.current_status} />
                 </div>
 
                 <div className="f9-detail__row">
@@ -575,7 +635,11 @@ export function AircraftManagementPage() {
                     })}
                   </div>
                   <p className="f9-detail__hint">
-                    {activeOperatingDays.length === 7 ? 'Flies every day.' : `Flies ${activeOperatingDays.length} days a week.`}
+                    {everyDayNotice
+                      ? 'No weekday is selected, so the aircraft flies every day.'
+                      : activeOperatingDays.length === 7
+                        ? 'Flies every day.'
+                        : `Flies ${activeOperatingDays.length} days a week.`}
                   </p>
                 </section>
 
@@ -601,11 +665,41 @@ export function AircraftManagementPage() {
                       {detail.maintenance.map((window) => (
                         <li key={window.id}>
                           <strong>
-                            {MAINTENANCE_TYPE_LABELS[window.maintenance_type] ?? window.maintenance_type} · {window.status}
+                            {MAINTENANCE_TYPE_LABELS[window.maintenance_type] ?? window.maintenance_type} ·{' '}
+                            {window.status.replace('_', ' ')}
                           </strong>
                           <span>
                             {formatDate(window.planned_start_date)} to {formatDate(window.planned_end_date)}
                           </span>
+                          {(window.status === 'planned' || window.status === 'in_progress') && (
+                            <span className="f9-detail__rowactions">
+                              <button type="button" className="f9-detail__link" onClick={() => openWindowAction('reschedule', window)}>
+                                Reschedule
+                              </button>
+                              <button type="button" className="f9-detail__link" onClick={() => openWindowAction('complete', window)}>
+                                Complete
+                              </button>
+                              {cancelWindowId === window.id ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="f9-detail__cancel"
+                                    disabled={isSubmitting}
+                                    onClick={() => void handleCancelWindow(window.id)}
+                                  >
+                                    Yes, cancel
+                                  </button>
+                                  <button type="button" className="f9-detail__keep" onClick={() => setCancelWindowId(null)}>
+                                    Keep
+                                  </button>
+                                </>
+                              ) : (
+                                <button type="button" className="f9-detail__cancel" onClick={() => setCancelWindowId(window.id)}>
+                                  Cancel window
+                                </button>
+                              )}
+                            </span>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -893,6 +987,86 @@ export function AircraftManagementPage() {
                   </button>
                   <button type="submit" className="f9-btn" disabled={isSubmitting}>
                     {isSubmitting ? 'Scheduling...' : 'Schedule'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {windowAction && selectedAircraft && (
+          <div
+            className="f9-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={windowAction.kind === 'complete' ? 'Complete Maintenance' : 'Reschedule Maintenance'}
+          >
+            <div className="f9-modal__card">
+              <h3 className="f9-modal__title">
+                {windowAction.kind === 'complete' ? 'Complete Maintenance' : 'Reschedule Maintenance'} · {selectedAircraft.tail_number}
+              </h3>
+              {actionError && <ErrorMessage message={actionError} />}
+              <form onSubmit={(event) => void handleSaveWindow(event)}>
+                {windowAction.kind === 'reschedule' ? (
+                  <div className="f9-modal__row">
+                    <label className="f9-field" htmlFor="window-start">
+                      <span className="f9-field__label">Planned start</span>
+                      <input
+                        id="window-start"
+                        type="date"
+                        className="f9-input"
+                        value={windowStart}
+                        onChange={(event) => setWindowStart(event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label className="f9-field" htmlFor="window-end">
+                      <span className="f9-field__label">Planned end (available again)</span>
+                      <input
+                        id="window-end"
+                        type="date"
+                        className="f9-input"
+                        value={windowEnd}
+                        onChange={(event) => setWindowEnd(event.target.value)}
+                        required
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="f9-modal__field">
+                    <label className="f9-field" htmlFor="window-actual-end">
+                      <span className="f9-field__label">Actual end (available again)</span>
+                      <input
+                        id="window-actual-end"
+                        type="date"
+                        className="f9-input"
+                        value={windowEnd}
+                        onChange={(event) => setWindowEnd(event.target.value)}
+                        required
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <p className="f9-modal__hint">
+                  {windowAction.kind === 'complete'
+                    ? 'Saving shortens or extends the In maintenance dates of the aircraft to this date.'
+                    : 'Saving also moves the In maintenance dates of the aircraft.'}
+                </p>
+
+                <div className="f9-modal__actions">
+                  <button
+                    type="button"
+                    className="f9-btn f9-btn--outline"
+                    onClick={() => {
+                      setWindowAction(null)
+                      setActionError(null)
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="f9-btn" disabled={isSubmitting}>
+                    {isSubmitting ? 'Saving...' : windowAction.kind === 'complete' ? 'Complete' : 'Reschedule'}
                   </button>
                 </div>
               </form>

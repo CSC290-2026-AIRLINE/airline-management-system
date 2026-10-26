@@ -33,6 +33,7 @@ export interface AircraftTypeRef {
   model: string
 }
 
+/** One row of the fleet list: the status is one word, as the requirement document gives it. */
 export interface Aircraft {
   id: string
   tail_number: string
@@ -40,8 +41,13 @@ export interface Aircraft {
   entry_into_service_date: string
   retired_on: string | null
   base_airport_code: string
-  current_status: AircraftStatusSummary
+  current_status: AircraftStatus
   aircraft_type?: AircraftTypeRef
+}
+
+/** The aircraft as the detail, create and edit routes answer it, with the whole current status period. */
+export interface AircraftDetail extends Omit<Aircraft, 'current_status' | 'aircraft_type'> {
+  current_status: AircraftStatusSummary
 }
 
 export interface CabinLayout {
@@ -94,6 +100,7 @@ export interface MaintenanceWindow {
   planned_start_date: string
   planned_end_date: string
   actual_end_date: string | null
+  /** `in_progress` is derived by the backend from the planned start date on the simulation clock. */
   status: string
   status_period_id: string | null
 }

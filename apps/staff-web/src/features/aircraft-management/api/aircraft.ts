@@ -1,5 +1,5 @@
 import { requestJson, type Fetcher } from './http'
-import type { Aircraft, AircraftStatusSummary, MaintenanceWindow, StatusPeriod } from '../types'
+import type { Aircraft, AircraftDetail, AircraftStatusSummary, MaintenanceWindow, StatusPeriod } from '../types'
 
 export interface CreateAircraftPayload {
   tail_number: string
@@ -21,6 +21,13 @@ export interface CreateAircraftStatusPayload {
   end_date?: string | null
 }
 
+export interface UpdateMaintenancePayload {
+  status?: 'cancelled' | 'completed'
+  planned_start_date?: string
+  planned_end_date?: string
+  actual_end_date?: string
+}
+
 export interface CreateMaintenancePayload {
   maintenance_type: string
   planned_start_date: string
@@ -29,13 +36,14 @@ export interface CreateMaintenancePayload {
 
 export const listAircraft = (fetcher: Fetcher): Promise<Aircraft[]> => requestJson<Aircraft[]>(fetcher, '/api/aircraft')
 
-export const getAircraft = (fetcher: Fetcher, id: string): Promise<Aircraft> => requestJson<Aircraft>(fetcher, `/api/aircraft/${id}`)
+export const getAircraft = (fetcher: Fetcher, id: string): Promise<AircraftDetail> =>
+  requestJson<AircraftDetail>(fetcher, `/api/aircraft/${id}`)
 
-export const createAircraft = (fetcher: Fetcher, payload: CreateAircraftPayload): Promise<Aircraft> =>
-  requestJson<Aircraft>(fetcher, '/api/aircraft', { method: 'POST', body: JSON.stringify(payload) })
+export const createAircraft = (fetcher: Fetcher, payload: CreateAircraftPayload): Promise<AircraftDetail> =>
+  requestJson<AircraftDetail>(fetcher, '/api/aircraft', { method: 'POST', body: JSON.stringify(payload) })
 
-export const updateAircraft = (fetcher: Fetcher, id: string, payload: UpdateAircraftPayload): Promise<Aircraft> =>
-  requestJson<Aircraft>(fetcher, `/api/aircraft/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+export const updateAircraft = (fetcher: Fetcher, id: string, payload: UpdateAircraftPayload): Promise<AircraftDetail> =>
+  requestJson<AircraftDetail>(fetcher, `/api/aircraft/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
 
 export const getAircraftStatus = (fetcher: Fetcher, id: string): Promise<AircraftStatusSummary> =>
   requestJson<AircraftStatusSummary>(fetcher, `/api/aircraft/${id}/status`)
@@ -54,6 +62,17 @@ export const listMaintenance = (fetcher: Fetcher, id: string): Promise<Maintenan
 
 export const createMaintenance = (fetcher: Fetcher, id: string, payload: CreateMaintenancePayload): Promise<MaintenanceWindow> =>
   requestJson<MaintenanceWindow>(fetcher, `/api/aircraft/${id}/maintenance`, { method: 'POST', body: JSON.stringify(payload) })
+
+export const updateMaintenance = (
+  fetcher: Fetcher,
+  id: string,
+  maintenanceId: string,
+  payload: UpdateMaintenancePayload,
+): Promise<MaintenanceWindow> =>
+  requestJson<MaintenanceWindow>(fetcher, `/api/aircraft/${id}/maintenance/${maintenanceId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
 
 export const getOperatingDays = (fetcher: Fetcher, id: string): Promise<{ days: number[] }> =>
   requestJson<{ days: number[] }>(fetcher, `/api/aircraft/${id}/operating-days`)
