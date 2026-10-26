@@ -1,0 +1,1090 @@
+.wl-content,
+.wl-dialog {
+  --wl-ink: #0a1424;
+  --wl-muted: #677287;
+  --wl-navy: #102544;
+  color-scheme: light;
+  color: var(--wl-ink);
+  font:
+    14px/1.3 'Inter',
+    'Segoe UI',
+    sans-serif;
+  letter-spacing: 0;
+}
+.wl-content *,
+.wl-dialog * {
+  box-sizing: border-box;
+}
+.wl-content h1,
+.wl-content h2,
+.wl-dialog h2 {
+  color: var(--wl-ink);
+  font-family: inherit;
+  letter-spacing: 0;
+}
+.wl-content button,
+.wl-content input,
+.wl-content select,
+.wl-dialog button,
+.wl-dialog input,
+.wl-dialog select,
+.wl-dialog textarea {
+  font: inherit;
+  color: inherit;
+}
+.wl-content button,
+.wl-dialog button {
+  cursor: pointer;
+}
+.wl-content button:disabled {
+  cursor: not-allowed;
+}
+.wl-content :focus-visible,
+.wl-dialog :focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
+.wl-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 190px 190px auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  min-height: 36px;
+}
+.wl-toolbar input,
+.wl-toolbar select,
+.wl-dialog input,
+.wl-dialog select,
+.wl-dialog textarea {
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  min-width: 0;
+  width: 100%;
+  padding: 11px 12px;
+  height: 42px;
+}
+.wl-toolbar input {
+  padding-left: 14px;
+}
+.wl-content .wl-toolbar input[type='search']:focus-visible,
+.wl-content .wl-pagination select:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: -3px;
+}
+.wl-toolbar ::placeholder,
+.wl-dialog ::placeholder {
+  color: #8a96a8;
+  opacity: 1;
+}
+.wl-toolbar select {
+  font-weight: 500;
+}
+.wl-content .wl-primary,
+.wl-dialog .wl-primary {
+  color: white;
+  background: #102544;
+  border: 1px solid #102544;
+}
+.wl-add {
+  height: 42px;
+  border-radius: 8px;
+  padding: 0 18px;
+  font-weight: 600 !important;
+  white-space: nowrap;
+}
+.wl-results {
+  background: white;
+  border: 1px solid #dbe2ea;
+  border-radius: 12px;
+  padding: 6px 16px;
+  overflow-x: auto;
+}
+.wl-results table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  table-layout: fixed;
+  min-width: 900px;
+}
+.wl-results th,
+.wl-results td {
+  background: white;
+  border-bottom: 1px solid #dbe2ea;
+  padding: 0 10px;
+  height: 48px;
+  font-size: 13px;
+  color: var(--wl-muted);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.wl-results thead th {
+  height: 40px;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.wl-results tbody th {
+  color: var(--wl-ink);
+  font-weight: 700;
+}
+.wl-results th:first-child {
+  width: 19%;
+}
+.wl-results th:nth-child(2) {
+  width: 13.4%;
+}
+.wl-results th:nth-child(3) {
+  width: 11.5%;
+}
+.wl-results th:nth-child(4),
+.wl-results th:nth-child(5),
+.wl-results th:nth-child(7) {
+  width: 12.4%;
+}
+.wl-results th:nth-child(6) {
+  width: 10.5%;
+}
+.wl-results th:last-child {
+  width: 8%;
+}
+.wl-results .wl-actions-heading {
+  font-size: 0;
+}
+.wl-chip {
+  display: inline-block;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+}
+.wl-active {
+  background: #ffebeb;
+  color: #b8171f;
+}
+.wl-cleared {
+  background: #eef2f7;
+  color: #475569;
+}
+.wl-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0;
+}
+.wl-empty {
+  background: white;
+  border: 1px solid #dbe2ea;
+  border-radius: 12px;
+  padding: 36px 24px;
+  text-align: center;
+}
+.wl-empty h2 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+.wl-empty p {
+  color: var(--wl-muted);
+}
+.wl-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #166534;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.wl-banner button {
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+}
+.wl-mobile-label {
+  display: none;
+}
+.wl-dialog {
+  width: 660px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100svh - 32px);
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 26px 28px;
+  background: white;
+  box-shadow: 0 12px 16px #0f1a332e;
+}
+.wl-dialog::backdrop {
+  background: #0009;
+}
+.wl-dialog-compact {
+  width: 520px;
+}
+.wl-dialog h2 {
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+.wl-form,
+.wl-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.wl-form > p,
+.wl-form-fields > p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--wl-muted);
+}
+.wl-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+}
+.wl-form .wl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.wl-select {
+  position: relative;
+  min-width: 0;
+}
+.wl-select .wl-select-trigger {
+  display: none;
+}
+.wl-select-options {
+  display: none;
+}
+.wl-select.wl-select-searchable .wl-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 17px;
+  text-align: left;
+}
+.wl-select-searchable .wl-select-trigger > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-select-searchable .wl-select-arrow {
+  margin-left: auto;
+  color: #677287;
+}
+.wl-select-searchable .wl-placeholder {
+  color: #8a96a8;
+}
+.wl-select-searchable .wl-nationality-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 3px);
+  left: 0;
+  width: max(100%, 260px);
+  max-width: calc(100vw - 64px);
+  padding: 6px;
+  border: 1px solid #dbe2ea;
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 12px 32px #0f1a332e;
+  overflow: visible;
+}
+.wl-nationality-popup input[type='search'] {
+  height: 36px;
+  min-height: 36px;
+  padding: 8px;
+  font-size: 13px;
+}
+.wl-nationality-list {
+  max-height: 170px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.wl-nationality-list [role='option'] {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: #0a1424;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 16px;
+  cursor: pointer;
+}
+.wl-nationality-list .wl-option-check {
+  width: 11px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.wl-nationality-list .wl-option-selected {
+  background: #eaf2ff;
+  font-weight: 600;
+}
+.wl-nationality-list .wl-option-active:not(.wl-option-selected) {
+  background: #f1f5f9;
+}
+.wl-nationality-empty {
+  padding: 10px;
+  margin: 0;
+  color: #677287;
+  font-size: 13px;
+}
+.wl-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.wl-identity-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.wl-dialog input,
+.wl-dialog select,
+.wl-dialog textarea {
+  font-size: 14px;
+  font-weight: 400;
+}
+.wl-dialog textarea {
+  height: 84px;
+  resize: vertical;
+}
+.wl-form > .wl-help,
+.wl-form-fields > .wl-help {
+  font-size: 12px;
+  line-height: 1.35;
+}
+.wl-form-actions {
+  display: flex;
+  gap: 12px;
+  padding-top: 4px;
+  align-items: center;
+}
+.wl-spacer {
+  flex: 1;
+}
+.wl-form-actions button {
+  border: 1px solid #cbd5e1;
+  background: white;
+  border-radius: 8px;
+  height: 42px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.wl-form-actions .wl-danger-outline {
+  border-color: #b8171f;
+  color: #b8171f;
+}
+.wl-form-actions .wl-danger {
+  background: #b8171f;
+  border-color: #b8171f;
+  color: white;
+}
+.wl-entry-summary {
+  border: 1px solid #dbe2ea;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+.wl-entry-summary p {
+  color: var(--wl-muted);
+  font-size: 12px;
+  margin: 0;
+}
+.wl-entry-summary strong {
+  font-size: 18px;
+}
+.wl-form .wl-error,
+.wl-error {
+  color: #b8171f;
+  font-size: 13px;
+}
+@media (hover: hover) {
+  .wl-edit:hover,
+  .wl-form-actions button:hover {
+    background: #eef2f7;
+  }
+  .wl-content .wl-primary:hover,
+  .wl-dialog .wl-primary:hover {
+    background: #203c64;
+  }
+  .wl-form-actions .wl-danger:hover {
+    background: #991b1b;
+  }
+}
+@media (min-width: 768px) {
+  .wl-toolbar {
+    margin-bottom: 16px;
+  }
+  .wl-toolbar input {
+    height: 36px;
+    font-weight: 400;
+    padding: 0 12px;
+  }
+  .wl-add {
+    height: 36px;
+    width: 116px;
+    border: 0 !important;
+    line-height: 17px;
+  }
+  .wl-results th:first-child {
+    width: 19.157%;
+  }
+  .wl-results table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .wl-results th:nth-child(2) {
+    width: 13.41%;
+  }
+  .wl-results th:nth-child(3) {
+    width: 11.494%;
+  }
+  .wl-results th:nth-child(4),
+  .wl-results th:nth-child(5),
+  .wl-results th:nth-child(7) {
+    width: 12.452%;
+  }
+  .wl-results th:nth-child(6) {
+    width: 10.536%;
+  }
+  .wl-results th:last-child {
+    width: 8.046%;
+  }
+  .wl-results th,
+  .wl-results td {
+    height: 49px;
+    line-height: 16px;
+  }
+  .wl-results thead th {
+    height: 41px;
+    line-height: 13px;
+  }
+  .wl-chip {
+    line-height: 13px;
+  }
+  .wl-select .wl-native-select {
+    display: none;
+  }
+  .wl-select .wl-select-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    height: 43px;
+    padding: 0 14px;
+    background: white;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 17px;
+    text-align: left;
+  }
+  .wl-select-arrow {
+    font-size: 10px;
+    line-height: 1;
+  }
+  .wl-select-field .wl-select-trigger[aria-expanded='true'] {
+    border-color: #102544;
+  }
+  .wl-select-trigger:focus-visible {
+    outline: 2px solid #102544;
+    outline-offset: 1px;
+  }
+  .wl-select-options {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 1.5px);
+    left: 0;
+    width: 100%;
+    padding: 3px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: white;
+    box-shadow: 0 5px 6px #00000029;
+    max-height: 230px;
+    overflow-y: auto;
+  }
+  .wl-select-options [role='option'] {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    flex-shrink: 0;
+    gap: 7px;
+    padding: 0 9px;
+    border-radius: 7px;
+    color: #102544;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 18px;
+    cursor: pointer;
+  }
+  .wl-select-options .wl-option-check:empty {
+    display: none;
+  }
+  .wl-select-options .wl-option-selected {
+    background: #eaf2ff;
+    color: #2563eb;
+    font-weight: 600;
+  }
+  .wl-select-options .wl-option-active:not(.wl-option-selected) {
+    background: #f1f5f9;
+  }
+  .wl-dialog {
+    box-sizing: border-box;
+    min-height: 558px;
+    outline: none;
+    line-height: normal;
+  }
+  .wl-dialog h2 {
+    line-height: 27px;
+  }
+  .wl-form > p,
+  .wl-form-fields > p {
+    line-height: 16px;
+  }
+  .wl-form label,
+  .wl-form .wl-field {
+    line-height: 16px;
+  }
+  .wl-dialog input,
+  .wl-dialog textarea {
+    line-height: 17px;
+  }
+  .wl-dialog textarea {
+    resize: none;
+  }
+  .wl-dialog .wl-select-trigger {
+    height: 42px;
+    padding: 0 12px;
+    font-weight: 400;
+  }
+  .wl-select-field .wl-select-arrow {
+    margin-left: auto;
+    color: #677287;
+  }
+  .wl-select-field .wl-select-options {
+    padding: 6px;
+    gap: 2px;
+    border-color: #dbe2ea;
+    top: calc(100% + 3px);
+    box-shadow: 0 12px 32px #0f1a332e;
+  }
+  .wl-select-field .wl-select-options [role='option'] {
+    min-height: 36px;
+    padding: 0 10px;
+    gap: 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #0a1424;
+    line-height: 16px;
+  }
+  .wl-select-field .wl-select-options .wl-option-check {
+    display: block;
+    width: 11px;
+    flex-shrink: 0;
+    color: #102544;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .wl-select-field .wl-option-placeholder:not(.wl-option-selected),
+  .wl-select-trigger.wl-placeholder {
+    color: #8a96a8;
+  }
+  .wl-form > .wl-help,
+  .wl-form-fields > .wl-help {
+    line-height: 15px;
+  }
+  .wl-form-actions {
+    padding-top: 4px;
+  }
+  .wl-dialog-compact {
+    min-height: 493px;
+  }
+  .wl-dialog-compact h2 {
+    margin-bottom: 16px;
+  }
+  .wl-dialog-compact .wl-form > .wl-summary-label {
+    color: #0a1424;
+    font-weight: 600;
+  }
+  .wl-dialog-compact textarea {
+    height: 76px;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 16px;
+  }
+  .wl-entry-summary p {
+    line-height: 15px;
+  }
+  .wl-entry-summary strong {
+    line-height: 22px;
+  }
+  .wl-dialog-compact .wl-danger {
+    height: 40px;
+    padding: 0 16px 0 14px;
+  }
+  .wl-banner {
+    background: #e7f6ec;
+    border-color: #b7e4c7;
+    color: #087338;
+    border-radius: 10px;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 600;
+  }
+  .wl-banner-check {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 17px;
+  }
+  .wl-toolbar,
+  .wl-banner {
+    flex-shrink: 0;
+  }
+  .wl-results {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+}
+@media (min-width: 768px) and (max-width: 1199px) {
+  .wl-toolbar {
+    grid-template-columns: minmax(160px, 1fr) 145px 145px;
+  }
+  .wl-add {
+    grid-column: 3;
+  }
+}
+@media (max-width: 767px) {
+  .wl-select-searchable .wl-nationality-popup {
+    left: auto;
+    right: 0;
+    width: min(260px, calc(100vw - 74px));
+  }
+  .wl-desktop-label {
+    display: none;
+  }
+  .wl-mobile-label {
+    display: inline;
+  }
+  .wl-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 8px;
+    margin-bottom: 14px;
+  }
+  .wl-toolbar input {
+    grid-column: 1 / -1;
+    height: 40px;
+  }
+  .wl-toolbar select {
+    height: 40px;
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+  .wl-add {
+    grid-column: 1 / -1;
+    height: 40px;
+    border-radius: 10px;
+    font-size: 13px !important;
+  }
+  .wl-results {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    overflow: visible;
+  }
+  .wl-results table,
+  .wl-results tbody {
+    display: block;
+    min-width: 0;
+  }
+  .wl-results thead {
+    display: none;
+  }
+  .wl-results tr {
+    display: grid;
+    grid-template-columns: auto auto 1fr 48px;
+    grid-template-rows: auto auto auto;
+    gap: 3px 0;
+    border: 1px solid #dbe2ea;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+    min-height: 90px;
+    background: white;
+  }
+  .wl-results tbody th,
+  .wl-results td {
+    width: auto;
+    height: auto;
+    border: 0;
+    padding: 0;
+    overflow-wrap: normal;
+  }
+  .wl-results tbody th {
+    grid-column: 1 / 4;
+    grid-row: 1;
+    font-size: 13px;
+  }
+  .wl-results tbody th:first-child {
+    width: auto;
+  }
+  .wl-results td[data-label='Date of birth'] {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .wl-results td[data-label='Nationality'] {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .wl-results td[data-label='Passport'] {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  .wl-results td[data-label='Nationality']::before,
+  .wl-results td[data-label='Passport']::before {
+    content: ' · ';
+    white-space: pre;
+  }
+  .wl-results td[data-label] {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .wl-results td[data-label='List type'] {
+    grid-column: 1 / 4;
+    grid-row: 3;
+    font-weight: 600;
+    color: var(--wl-ink);
+  }
+  .wl-results td[data-label='Listed'] {
+    display: none;
+  }
+  .wl-results .wl-status-cell {
+    grid-column: 4;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .wl-chip {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+  .wl-results .wl-edit-cell {
+    grid-column: 4;
+    grid-row: 2 / 4;
+    justify-self: end;
+    margin-top: 7px;
+  }
+  .wl-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 14px;
+    font-size: 11px;
+    color: var(--wl-muted);
+  }
+  .wl-pagination button {
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: white;
+    color: var(--wl-navy);
+    font-size: 12px;
+  }
+  .wl-pagination button:disabled {
+    opacity: 0.45;
+  }
+  .wl-dialog {
+    width: 340px;
+    padding: 20px;
+  }
+  .wl-dialog h2 {
+    font-size: 20px;
+  }
+  .wl-form,
+  .wl-form-fields {
+    gap: 12px;
+  }
+  .wl-form > p,
+  .wl-form-fields > p {
+    font-size: 12px;
+  }
+  .wl-form-row {
+    gap: 12px;
+  }
+  .wl-identity-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wl-identity-row label:last-child {
+    grid-column: 1 / -1;
+  }
+  .wl-form label {
+    font-size: 12px;
+  }
+  .wl-dialog input,
+  .wl-dialog select,
+  .wl-dialog textarea {
+    font-size: 13px;
+    padding: 10px;
+  }
+  .wl-form-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .wl-form-actions button {
+    padding: 0 12px;
+  }
+  .wl-form-actions .wl-danger-outline {
+    margin-right: auto;
+  }
+  .wl-form-actions:has(.wl-danger-outline) .wl-spacer {
+    display: none;
+  }
+}
+
+/* Keep focused form fields aligned with the dropdown's solid reference border. */
+.wl-dialog .wl-form input:not([type='hidden']):focus,
+.wl-dialog .wl-form textarea:focus,
+.wl-dialog .wl-form select:focus,
+.wl-dialog .wl-select-trigger:focus,
+.wl-dialog .wl-select-trigger[aria-expanded='true'] {
+  border-color: #102544;
+  outline: none;
+  box-shadow: inset 0 0 0 1px #102544;
+}
+
+/* Watchlist owns only its content; the Screening Queue shell owns page geometry. */
+.wl-content {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.25;
+}
+/* Match the Screening Queue search and sort controls without resizing dialogs. */
+.wl-content .wl-select-filter .wl-select-trigger {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 17px;
+}
+@media (max-width: 767px) {
+  .wl-content .wl-select-filter .wl-native-select {
+    height: 40px;
+    font-size: 13px;
+  }
+}
+
+/* Keep shared Screening Queue header shading out of the Watchlist table. */
+.wl-content .wl-results th {
+  background: white;
+}
+
+/* Server pagination is shared by desktop tables and mobile cards. */
+.wl-content .wl-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0 0;
+  font-size: 13px;
+  color: var(--wl-ink);
+}
+.wl-content .wl-pagination button,
+.wl-content .wl-pagination select {
+  min-height: 42px;
+  height: auto;
+  padding: 10px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  color: var(--wl-ink);
+  font: inherit;
+}
+.wl-content .wl-pagination button:disabled,
+.wl-content .wl-pagination select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media (max-width: 767px) {
+  .wl-content .wl-pagination {
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .wl-content .wl-pagination button,
+  .wl-content .wl-pagination select {
+    padding: 8px 10px;
+  }
+}
+
+/* Match Screening Queue custom menus on mobile instead of native selects. */
+@media (max-width: 767px) {
+  .wl-select .wl-native-select {
+    display: none;
+  }
+  .wl-select .wl-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: white;
+    color: var(--wl-ink);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+  }
+  .wl-content .wl-select-filter .wl-select-trigger {
+    height: 40px;
+  }
+  .wl-select-trigger > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wl-select-arrow {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: #677287;
+    font-size: 10px;
+    line-height: 1;
+  }
+  .wl-select-trigger[aria-expanded='true'] {
+    border-color: #172b4d;
+    box-shadow: inset 0 0 0 1px #172b4d;
+  }
+  .wl-select-trigger:focus-visible {
+    outline: 2px solid #102544;
+    outline-offset: 1px;
+  }
+  .wl-select-options {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    z-index: 15;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 100%;
+    max-height: 230px;
+    overflow-y: auto;
+    padding: 6px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: white;
+    box-shadow: 0 8px 24px #0f1a331f;
+  }
+  .wl-select-options [role='option'] {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    color: var(--wl-ink);
+    font-size: 13px;
+    line-height: 18px;
+    cursor: pointer;
+  }
+  .wl-select-options .wl-option-check {
+    width: 11px;
+    flex-shrink: 0;
+  }
+  .wl-select-options .wl-option-selected {
+    background: #e8f1ff;
+    font-weight: 600;
+  }
+  .wl-select-options .wl-option-active:not(.wl-option-selected) {
+    background: #f2f7ff;
+  }
+}
+
+/* Reuse the List type menu for page selection; open upward near the footer. */
+.wl-content .wl-page-picker {
+  min-width: 100px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.wl-content .wl-page-picker .wl-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  height: auto;
+  padding: 10px 12px;
+  font-weight: 400;
+}
+.wl-content .wl-page-picker .wl-select-trigger[aria-expanded='true'] {
+  border-color: #172b4d;
+  box-shadow: 0 0 0 1px #172b4d;
+}
+.wl-content .wl-page-picker .wl-select-trigger:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: -3px;
+}
+.wl-content .wl-page-picker .wl-select-options {
+  top: auto;
+  bottom: calc(100% + 4px);
+  min-width: 100%;
+}
+.wl-content .wl-page-picker:disabled .wl-select-options {
+  display: none;
+}
+
+/* Match the page picker border while typing in Watchlist search. */
+.wl-content .wl-toolbar input[type='search']:focus {
+  border-color: #172b4d;
+  outline: none;
+  box-shadow: inset 0 0 0 1px #172b4d;
+}

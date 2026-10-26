@@ -186,7 +186,7 @@ export function CorrectIdentityDialog({ person, variant, saving = false, saveErr
                     <span className="cs-fields__label">Gender</span>
                     <span className="cs-fields__now">Now: {currentGender(person)}</span>
                   </div>
-                  <Select value={gender} options={GENDER_OPTIONS} onChange={setGender} ariaLabel="Corrected gender" />
+                  <Select<Gender | 'nochange'> value={gender} options={GENDER_OPTIONS} onChange={setGender} ariaLabel="Corrected gender" />
                 </div>
 
                 <div className="cs-fields__row">
@@ -231,7 +231,12 @@ export function CorrectIdentityDialog({ person, variant, saving = false, saveErr
                     <th scope="row">Gender</th>
                     <td>{currentGender(person)}</td>
                     <td>
-                      <Select value={gender} options={GENDER_OPTIONS} onChange={setGender} ariaLabel="Corrected gender" />
+                      <Select<Gender | 'nochange'>
+                        value={gender}
+                        options={GENDER_OPTIONS}
+                        onChange={setGender}
+                        ariaLabel="Corrected gender"
+                      />
                     </td>
                   </tr>
                   <tr>

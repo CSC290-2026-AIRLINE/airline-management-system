@@ -6,9 +6,18 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { validateEnv } from './config/env.validation'
 import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
+import { ScreeningModule } from '@backend/modules/screening/screening.module'
+import { WatchlistModule } from '@backend/modules/watchlist/watchlist.module'
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), DbModule, AuthModule, PassengerProfilesModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    DbModule,
+    AuthModule,
+    PassengerProfilesModule,
+    ScreeningModule,
+    WatchlistModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

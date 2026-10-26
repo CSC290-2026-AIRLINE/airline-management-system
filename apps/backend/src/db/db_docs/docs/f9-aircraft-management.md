@@ -1,6 +1,6 @@
 # F9 — Aircraft management
 
-> **Status: MERGED LEVEL 1 SCHEMA — verified against `dev` on 21 Oct 2026 (`752428e732da`).** [PR #14](https://github.com/CSC290-2026-AIRLINE/airline-management-system/pull/14) merged on 12 Oct 2026 (16:54 UTC). The F1/F2/F4/F7/F9/F12/F15 SQL dictionary describes the committed 69-table Level 1 schema; Feature 8 is documented separately as an **unmerged proposal**. Repository merge is not proof of deployment to any running database or final feature-owner approval.
+> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
 **Tables (8):** [`aircraft_type`](#table-aircraft_type) · [`aircraft`](#table-aircraft) · [`aircraft_status_period`](#table-aircraft_status_period) · [`aircraft_maintenance`](#table-aircraft_maintenance) · [`aircraft_operating_day`](#table-aircraft_operating_day) · [`aircraft_turnaround`](#table-aircraft_turnaround) · [`aircraft_turnaround_task`](#table-aircraft_turnaround_task) · [`fleet_setting`](#table-fleet_setting)
 
@@ -54,7 +54,7 @@ Individual registered aircraft and its type, service dates, and base airport.
 
 **Indexes:** `aircraft_tail_number_uq` (unique; `(tail_number) WHERE deleted_at IS NULL`); `aircraft_type_idx` (index; `(aircraft_type_id)`); `aircraft_base_idx` (index; `(base_airport_code)`).
 
-**Cross-feature linkage:** `base_airport_code` → `airport(iata_code)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `base_airport_code` → `airport(iata_code)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-aircraft_status_period"></a>
 
@@ -142,7 +142,7 @@ Ground-service session that starts when an aircraft lands after a flight.
 
 **Indexes:** `aircraft_turnaround_flight_uq` (unique; `(flight_id) WHERE deleted_at IS NULL`); `aircraft_turnaround_latest_idx` (index; `(aircraft_id, arrived_at DESC) WHERE deleted_at IS NULL`).
 
-**Cross-feature linkage:** `flight_id` → `flight(id)`; `airport_code` → `airport(iata_code)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `flight_id` → `flight(id)`; `airport_code` → `airport(iata_code)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-aircraft_turnaround_task"></a>
 
@@ -178,9 +178,9 @@ Fleet configuration key/value settings, including reserve ratio.
 | `updated_at` | `TIMESTAMPTZ` | required; default `now()`            | Last modification timestamp (application-maintained). |
 | `updated_by` | `UUID`        | FK → `staff(id)`; nullable           | Staff member who last changed this setting.           |
 
-## F8 integration (proposed; unmerged)
+## F8 integration
 
-F8 will use `aircraft.aircraft_type_id` and pilot type ratings to check qualifications. Current `aircraft_type` provides `id` and `code`, but has **no dedicated required-cabin-crew-count field**; F9/F8 must agree on the rule. `aircraft_type.code` is unique only while `deleted_at IS NULL`, so a stable UUID link or approved mapping is preferable to an unconditional text FK. See [F8 proposed dictionary](./f8-crew-management-and-rostering.md).
+F8 is committed. Crew fleet and certification types store `aircraft_type.model` (e.g. A320), shared across layout-specific codes such as A320-V2; they are TEXT without a SQL FK. Active-model validation requires the backend. Cabin staffing is specified as `ceil(layout seats / crew_setting.seats_per_cabin_crew)`, with an inserted default of 50 seats per cabin crew member. No dedicated cabin-crew-count column was added to F9. See [F8 dictionary](./f8-crew-management-and-rostering.md).
 
 ---
 
