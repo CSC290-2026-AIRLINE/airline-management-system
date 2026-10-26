@@ -36,11 +36,11 @@
   --f9-accent: #f2a800;
   --f9-green-bg: #d9f5e3;
   --f9-green: #128c4c;
-  --f9-green-hover: #c3eddb;
+  --f9-green-hover: #c3edd3;
   --f9-amber-bg: #fff0c7;
   --f9-amber: #b86e08;
   --f9-red-bg: #ffe3e5;
-  --f9-red-bg-hover: #f8d3d5;
+  --f9-red-bg-hover: #ffcdd1;
   --f9-red: #db1f29;
   --f9-disabled-bg: #eef1f7;
   --f9-tab-line: #455266;
@@ -270,6 +270,7 @@
 }
 
 .f9-tab:hover {
+  border-bottom-color: var(--f9-border);
   color: var(--f9-navy);
 }
 
@@ -293,7 +294,8 @@
 }
 
 .f9-backlink:hover {
-  color: var(--f9-navy);
+  color: var(--f9-primary);
+  text-decoration: underline;
 }
 
 /* ------------------------------------------------------------ page blocks */
@@ -395,8 +397,8 @@
 }
 
 .f9-btn:hover {
-  background: var(--f9-navy);
-  filter: brightness(1.15);
+  background: #1f3d6b;
+  filter: none;
 }
 
 .f9-btn:disabled {
@@ -415,7 +417,7 @@
 
 .f9-btn--outline:hover {
   border-color: var(--f9-border-strong);
-  background: #fff;
+  background: #eef1f7;
   filter: none;
 }
 
@@ -504,7 +506,7 @@
 
 .f9-input:focus,
 .f9-select:focus {
-  border-color: var(--f9-primary);
+  border-color: var(--f9-border-strong);
   outline: none;
 }
 
@@ -582,7 +584,7 @@
 }
 
 .f9-table tbody tr:hover {
-  background: var(--f9-selected);
+  background: #f3f4f6;
 }
 
 .f9-table tbody tr.f9-table__row--selected {
@@ -715,6 +717,7 @@
 
 .f9-pillbtn--pending:hover {
   border-color: var(--f9-border-strong);
+  background: #eef1f7;
 }
 
 .f9-pillbtn--progress {
@@ -739,10 +742,14 @@
 }
 
 .f9-pillbtn--skipped {
-  border-color: var(--f9-border-strong);
-  background: var(--f9-disabled-bg);
+  border-color: var(--f9-border);
+  background: var(--f9-green-bg);
   color: var(--f9-muted);
-  text-decoration: line-through;
+}
+
+.f9-pillbtn--skipped:hover {
+  border-color: var(--f9-border-strong);
+  background: var(--f9-green-hover);
 }
 
 /* ---------------------------------------------------------- weekday chips */
@@ -770,12 +777,20 @@
 
 .f9-chip:hover {
   border-color: var(--f9-border-strong);
+  background: #eef1f7;
+  color: var(--f9-ink);
 }
 
 .f9-chip--on {
   border-color: var(--f9-primary);
   background: var(--f9-selected);
   color: var(--f9-primary);
+}
+
+.f9-chip--on:hover {
+  border-color: var(--f9-primary-dark);
+  background: var(--f9-primary-soft);
+  color: var(--f9-primary-dark);
 }
 
 /* -------------------------------------------------------------- fleet page */
@@ -1023,7 +1038,9 @@
 }
 
 .f9-cabinrow__remove {
-  padding: 0;
+  margin-right: -10px;
+  padding: 6px 10px;
+  border-radius: 6px;
   border: 0;
   background: none;
   color: var(--f9-red);
@@ -1033,7 +1050,7 @@
 }
 
 .f9-cabinrow__remove:hover {
-  text-decoration: underline;
+  background: var(--f9-red-bg);
 }
 
 .f9-addcabin {
@@ -1272,7 +1289,18 @@
 }
 
 .f9-seatmap__rownum:hover {
+  background: #eef1f7;
   box-shadow: inset 0 0 0 1px var(--f9-border-strong);
+}
+
+.f9-seatmap__rownum--exit:hover {
+  background: var(--f9-amber-bg);
+  box-shadow: inset 0 0 0 1px var(--f9-amber);
+}
+
+.f9-seatmap__rownum--legroom:hover {
+  background: var(--f9-green-bg);
+  box-shadow: inset 0 0 0 1px var(--f9-green);
 }
 
 .f9-seatmap__rownum--exit {
