@@ -528,7 +528,7 @@ export function AircraftManagementPage() {
                     : 'No aircraft match the search and the filters.'}
                 </EmptyMessage>
               ) : (
-                <table className="f9-table">
+                <table className="f9-table f9-table--fleet">
                   <thead>
                     <tr>
                       <th>TAIL #</th>
