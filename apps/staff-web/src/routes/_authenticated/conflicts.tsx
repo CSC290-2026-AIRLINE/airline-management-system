@@ -1,6 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { AuthGate } from '@staff-web/features/flight-scheduling/components/AuthGate'
 import { ConflictsPage } from '@staff-web/features/flight-scheduling/pages/ConflictsPage'
 
 export const Route = createFileRoute('/_authenticated/conflicts')({
-  component: ConflictsPage,
+  component: () => (
+    <AuthGate>
+      <ConflictsPage />
+    </AuthGate>
+  ),
 })

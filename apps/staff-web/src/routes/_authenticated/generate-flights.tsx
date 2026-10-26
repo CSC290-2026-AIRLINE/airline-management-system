@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { AuthGate } from '@staff-web/features/flight-scheduling/components/AuthGate'
 import { GenerateFlightsPage } from '@staff-web/features/flight-scheduling/pages/GenerateFlightsPage'
 
 export const Route = createFileRoute('/_authenticated/generate-flights')({
@@ -10,5 +11,9 @@ export const Route = createFileRoute('/_authenticated/generate-flights')({
 
 function GenerateFlightsRoute() {
   const { pattern } = Route.useSearch()
-  return <GenerateFlightsPage pattern={pattern} />
+  return (
+    <AuthGate>
+      <GenerateFlightsPage pattern={pattern} />
+    </AuthGate>
+  )
 }
