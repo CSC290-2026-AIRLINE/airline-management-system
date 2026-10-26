@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { cloneAircraftType, listAircraftTypes, updateAircraftType } from './api/aircraftType'
 import { errorMessage } from './api/http'
-import { CABIN_CLASS_LABELS } from './cabin'
+import { CABIN_CLASS_NAMES } from './cabin'
 import { AircraftTypeDetailModal } from './components/AircraftTypeDetailModal'
 import { FeatureErrorBoundary } from './components/FeatureErrorBoundary'
 import { NewAircraftTypeView } from './components/NewAircraftTypeView'
@@ -167,7 +167,7 @@ export function AircraftTypesPage() {
               <tbody>
                 {types.map((type) => {
                   const cabins = type.layout?.cabins ?? []
-                  const cabinLabel = cabins.length === 1 ? CABIN_CLASS_LABELS[cabins[0].cabin_class] : `${cabins.length} cabins`
+                  const cabinLabel = cabins.length === 1 ? CABIN_CLASS_NAMES[cabins[0].cabin_class] : `${cabins.length} cabins`
 
                   return (
                     <tr key={type.id} onClick={() => setSelectedId(type.id)}>

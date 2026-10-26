@@ -1,21 +1,22 @@
 import type { CabinClass, CabinLayout } from './types'
 
-export const CABIN_CLASS_LABELS: Record<CabinClass, string> = {
-  first: 'First Class',
-  business: 'Business Class',
-  premium_economy: 'Premium Economy Class',
-  economy: 'Economy Class',
-}
-
-/** The classes the design offers in the cabin form. */
-export const CABIN_CLASS_OPTIONS: CabinClass[] = ['first', 'business', 'economy']
-
-/** The short class names the design writes in the cabin list and in the seat map. */
+/** The class names the design writes in the cabin list, in the seat map and in the type table. */
 export const CABIN_CLASS_NAMES: Record<CabinClass, string> = {
   first: 'First',
   business: 'Business',
   premium_economy: 'Premium Economy',
   economy: 'Economy',
+}
+
+/** The cabin class a typed class name stands for, or null when it names none; "Economy" and "economy class" both work. */
+export function parseCabinClass(text: string): CabinClass | null {
+  const name = text
+    .trim()
+    .toLowerCase()
+    .replace(/\s+class$/, '')
+    .replace(/[\s_-]+/g, ' ')
+  const match = (Object.keys(CABIN_CLASS_NAMES) as CabinClass[]).find((cabinClass) => CABIN_CLASS_NAMES[cabinClass].toLowerCase() === name)
+  return match ?? null
 }
 
 /** The seat arrangements the design offers; `|` in the label marks the aisle. */

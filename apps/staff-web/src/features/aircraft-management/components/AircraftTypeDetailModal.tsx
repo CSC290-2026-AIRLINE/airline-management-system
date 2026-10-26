@@ -1,4 +1,4 @@
-import { CABIN_CLASS_LABELS, layoutSummary, rowCount } from '../cabin'
+import { CABIN_CLASS_NAMES, layoutSummary, rowCount } from '../cabin'
 import { ErrorMessage } from './StateMessage'
 import { formatCurrency, formatNumber } from '../format'
 import type { AircraftType } from '../types'
@@ -44,7 +44,7 @@ export function AircraftTypeDetailModal({ aircraftType, isWorking, error, onClos
           </div>
           <div className="f9-typerow">
             <span>Status</span>
-            <span>{aircraftType.is_active ? 'Active' : 'Retired'}</span>
+            <span>{aircraftType.is_active ? 'active' : 'retired'}</span>
           </div>
           <div className="f9-typerow">
             <span>Hold weight limit</span>
@@ -60,7 +60,7 @@ export function AircraftTypeDetailModal({ aircraftType, isWorking, error, onClos
           </div>
           <div className="f9-typerow">
             <span>Operating cost</span>
-            <span>{formatCurrency(aircraftType.operating_cost_per_hour, aircraftType.cost_currency, 0)}</span>
+            <span>{formatCurrency(aircraftType.operating_cost_per_hour, aircraftType.cost_currency, 0)} / hour</span>
           </div>
           <div className="f9-typerow">
             <span>Total seats</span>
@@ -72,13 +72,11 @@ export function AircraftTypeDetailModal({ aircraftType, isWorking, error, onClos
           </div>
         </div>
 
-        <h3 className="f9-label" style={{ marginTop: 20 }}>
-          CABINS
-        </h3>
+        <h3 className="f9-label f9-modal__section">CABINS</h3>
         {cabins.map((cabin, index) => (
           <div className="f9-typecabin" key={`${cabin.cabin_class}-${index}`}>
             <span>
-              {CABIN_CLASS_LABELS[cabin.cabin_class]} (rows {cabin.first_row}-{cabin.last_row})
+              {CABIN_CLASS_NAMES[cabin.cabin_class]} (rows {cabin.first_row}-{cabin.last_row})
             </span>
             <span>
               {rowCount(cabin)} rows · {layoutSummary(cabin.columns, cabin.aisle_after ?? [])}
@@ -86,16 +84,16 @@ export function AircraftTypeDetailModal({ aircraftType, isWorking, error, onClos
           </div>
         ))}
 
-        <p className="f9-note" style={{ marginTop: 18 }}>
+        <p className="f9-note f9-note--warn">
           Layout is locked. To change it, clone this type (the clone starts with this layout) and retire the old one.
         </p>
 
-        <div className="f9-modal__actions">
-          <button type="button" className="f9-btn f9-btn--outline" disabled={isWorking} onClick={onRetire}>
-            {aircraftType.is_active ? 'Retire type' : 'Reactivate type'}
-          </button>
+        <div className="f9-modal__actions f9-modal__actions--start">
           <button type="button" className="f9-btn" disabled={isWorking} onClick={onClone}>
             Clone type
+          </button>
+          <button type="button" className="f9-btn f9-btn--outline" disabled={isWorking} onClick={onRetire}>
+            {aircraftType.is_active ? 'Retire type' : 'Reactivate type'}
           </button>
         </div>
       </div>
