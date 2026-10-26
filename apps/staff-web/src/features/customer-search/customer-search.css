@@ -2318,3 +2318,100 @@
     display: none;
   }
 }
+
+/* Cover the full document with the page background, including scroll edges. */
+html:has(.cs-app),
+body:has(.cs-app),
+#root:has(.cs-app) {
+  background: #f7f9fc;
+  color-scheme: light;
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+}
+.cs-app {
+  min-height: 100dvh;
+  width: 100%;
+}
+
+/* Customer Search alone supports the Figma sidebar collapse control. */
+.cs-screening-sidebar .cs-screening-collapse {
+  position: absolute;
+  top: 22px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #6e87b2cc;
+  border-radius: 6px;
+  background: #ffffff1a;
+  color: white;
+  font:
+    600 24px/1 'Inter',
+    sans-serif;
+  cursor: pointer;
+}
+@media (min-width: 768px) {
+  .cs-app > .cs-screening-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    transition: width 150ms ease;
+  }
+  .cs-screening-sidebar .sq-brand {
+    flex-shrink: 0;
+  }
+  .cs-screening-sidebar .sq-brand-line {
+    flex-shrink: 0;
+  }
+  .cs-screening-sidebar .sq-account {
+    position: static;
+    margin: auto 0 0 12px;
+    padding-top: 32px;
+    flex-shrink: 0;
+  }
+  .cs-app > .cs-shell {
+    transition: margin-left 150ms ease;
+  }
+  .cs-app.is-sidebar-collapsed > .cs-screening-sidebar {
+    width: 72px;
+    padding: 29px 10px 24px;
+  }
+  .cs-app.is-sidebar-collapsed > .cs-shell {
+    margin-left: 72px;
+  }
+  .cs-app.is-sidebar-collapsed .cs-screening-sidebar .sq-workspace,
+  .cs-app.is-sidebar-collapsed .cs-screening-sidebar .sq-account {
+    display: none;
+  }
+  .cs-app.is-sidebar-collapsed .cs-screening-sidebar nav {
+    display: none;
+  }
+  .cs-app.is-sidebar-collapsed .cs-screening-sidebar .sq-brand {
+    padding: 0;
+    text-align: center;
+  }
+  .cs-app.is-sidebar-collapsed .cs-screening-sidebar .sq-brand-line {
+    width: 30px;
+    margin: 2px auto 0;
+  }
+  .cs-app.is-sidebar-collapsed .cs-screening-collapse {
+    top: 128px;
+    right: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 7px;
+    background: #2a4372;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-app > .cs-screening-sidebar,
+  .cs-app > .cs-shell {
+    transition: none;
+  }
+}
