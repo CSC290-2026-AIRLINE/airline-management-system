@@ -238,7 +238,7 @@
 }
 
 .f9-title {
-  margin: 12px 0 0;
+  margin: 9px 0 0;
   font-size: 36px;
   font-weight: 700;
   line-height: 1.2;
@@ -257,12 +257,12 @@
 .f9-tabs {
   display: flex;
   gap: 24px;
-  margin-top: 18px;
+  margin-top: 12px;
   border-bottom: 1px solid var(--f9-border);
 }
 
 .f9-tab {
-  padding: 4px 0 10px;
+  padding: 4px 0 6px;
   border-bottom: 3px solid transparent;
   color: var(--f9-muted);
   font-size: 18px;
@@ -280,9 +280,10 @@
 }
 
 .f9-backlink {
-  display: inline-block;
-  margin-top: 16px;
+  display: block;
+  margin: 0;
   padding: 0;
+  line-height: 1.2;
   border: 0;
   background: none;
   color: var(--f9-muted);
@@ -312,7 +313,7 @@
 }
 
 .f9-lead {
-  margin: 6px 0 0;
+  margin: 0;
   max-width: 700px;
   color: var(--f9-muted);
   font-size: 13px;
@@ -341,7 +342,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 11px;
   margin-bottom: 11px;
 }
 
@@ -365,8 +366,9 @@
 }
 
 .f9-note--warn {
-  margin-top: 16px;
-  padding: 12px 14px;
+  margin-top: 0;
+  padding: 10px 14px;
+  line-height: 15px;
   border-radius: 8px;
   background: var(--f9-amber-bg);
   color: var(--f9-amber);
@@ -379,7 +381,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 37px;
+  height: 36px;
   padding: 0 18px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -433,7 +435,7 @@
 
 .f9-btn--sm {
   height: 27px;
-  padding: 0 12px;
+  padding: 0 10.5px;
   font-size: 12px;
 }
 
@@ -551,7 +553,8 @@
 }
 
 .f9-table th {
-  height: 37px;
+  height: 38px;
+  border-bottom: 1px solid var(--f9-border);
   padding: 0 17px;
   background: var(--f9-table-head);
   color: var(--f9-muted);
@@ -564,7 +567,7 @@
 .f9-table td {
   height: 50px;
   padding: 0 17px;
-  border-bottom: 1px solid var(--f9-table-head);
+  border-bottom: 1px solid var(--f9-border);
   color: var(--f9-muted);
   font-size: 14px;
   vertical-align: middle;
@@ -572,6 +575,10 @@
 
 .f9-table tbody tr {
   cursor: pointer;
+}
+
+.f9-table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .f9-table tbody tr:hover {
@@ -601,36 +608,59 @@
   color: var(--f9-primary);
 }
 
-/* The types table has a wide manufacturer column and narrow metric columns. */
-.f9-table--types th:nth-child(1),
+/* The fleet table: the columns start where they do in the design, so the status badges line up under STATUS. */
+.f9-table--fleet {
+  table-layout: fixed;
+}
+
+.f9-table--fleet th:nth-child(1) {
+  width: 109px;
+}
+
+.f9-table--fleet th:nth-child(2),
+.f9-table--fleet th:nth-child(3) {
+  width: 70px;
+}
+
+.f9-table--fleet th:nth-child(4) {
+  width: 110px;
+}
+
+/* The types table: the columns start where they do in the design. A code that is too long for its column is cut. */
+.f9-table--types {
+  table-layout: fixed;
+}
+
+.f9-table--types td {
+  height: 46px;
+}
+
+.f9-table--types th {
+  height: 36px;
+}
+
 .f9-table--types td:nth-child(1) {
-  width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.f9-table--types th:nth-child(2),
-.f9-table--types td:nth-child(2) {
+.f9-table--types th:nth-child(1) {
+  width: 89px;
+}
+
+.f9-table--types th:nth-child(2) {
   width: 250px;
 }
 
 .f9-table--types th:nth-child(3),
-.f9-table--types td:nth-child(3) {
-  width: 110px;
-}
-
-.f9-table--types th:nth-child(4),
-.f9-table--types td:nth-child(4) {
-  width: 70px;
-}
-
 .f9-table--types th:nth-child(5),
-.f9-table--types td:nth-child(5) {
+.f9-table--types th:nth-child(6) {
   width: 110px;
 }
 
-.f9-table--types th:nth-child(6),
-.f9-table--types td:nth-child(6) {
-  width: 110px;
+.f9-table--types th:nth-child(4) {
+  width: 70px;
 }
 
 /* ----------------------------------------------------------------- badges */
@@ -638,8 +668,8 @@
 .f9-badge {
   display: inline-flex;
   align-items: center;
-  height: 25px;
-  padding: 0 12px;
+  height: 24px;
+  padding: 0 10px;
   border-radius: 13px;
   font-size: 11px;
   font-weight: 700;
@@ -673,7 +703,7 @@
 
 .f9-pillbtn {
   height: 29px;
-  padding: 0 12px;
+  padding: 0 13.5px;
   border: 1px solid var(--f9-border);
   border-radius: 15px;
   background: #fff;
@@ -721,10 +751,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin-top: 7px;
 }
 
 .f9-chip {
-  min-width: 46px;
+  flex: 1 1 44px;
+  min-width: 44px;
   height: 29px;
   padding: 0 8px;
   border: 1px solid var(--f9-border);
@@ -753,7 +785,7 @@
   grid-template-columns: minmax(0, 560px) minmax(0, 417px);
   gap: 20px;
   align-items: start;
-  margin-top: 20px;
+  margin-top: 22px;
 }
 
 .f9-fleet__table {
@@ -803,7 +835,7 @@
 .f9-detail__badge {
   margin-top: 14px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--f9-table-head);
+  border-bottom: 1px solid var(--f9-border);
 }
 
 .f9-detail__row {
@@ -813,6 +845,15 @@
   gap: 12px;
   margin-top: 12px;
   font-size: 13px;
+}
+
+/* Row spacing measured on the design: the rows after the button sit 26px apart. */
+.f9-detail__actions + .f9-detail__row {
+  margin-top: 9px;
+}
+
+.f9-detail__row + .f9-detail__row {
+  margin-top: 7px;
 }
 
 .f9-detail__row span:first-child {
@@ -825,13 +866,13 @@
 }
 
 .f9-detail__actions {
-  margin-top: 12px;
+  margin-top: 9px;
 }
 
 .f9-detail__section {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--f9-table-head);
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--f9-border);
 }
 
 .f9-detail__sectionhead {
@@ -839,7 +880,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 9px;
 }
 
 .f9-detail__list {
@@ -922,7 +963,7 @@
 }
 
 .f9-detail__hint {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: var(--f9-muted);
   font-size: 12px;
 }
@@ -938,16 +979,16 @@
   display: inline-flex;
   align-items: center;
   height: 23px;
-  padding: 0 9px;
+  padding: 0 7px;
   border: 1px solid var(--f9-border);
   border-radius: 6px;
   color: var(--f9-muted);
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
 .f9-typegrid {
-  margin-top: 16px;
+  margin-top: 22px;
   display: grid;
   grid-template-columns: minmax(0, 400px) minmax(0, 577px);
   gap: 20px;
@@ -969,7 +1010,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  height: 45px;
+  height: 43px;
   padding: 0 13px;
   border: 1px solid var(--f9-border);
   border-radius: 6px;
@@ -978,7 +1019,7 @@
 }
 
 .f9-cabinrow + .f9-cabinrow {
-  margin-top: 11px;
+  margin-top: 14px;
 }
 
 .f9-cabinrow__remove {
@@ -996,13 +1037,13 @@
 }
 
 .f9-addcabin {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 14px;
+  padding-top: 13px;
   border-top: 1px solid var(--f9-border);
 }
 
 .f9-addcabin__title {
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   color: var(--f9-muted);
   font-size: 12px;
   font-weight: 700;
@@ -1011,7 +1052,9 @@
 
 .f9-addcabin__add {
   display: flex;
-  margin: 14px auto 0;
+  width: 100%;
+  margin: 10px 0 0;
+  color: var(--f9-muted);
 }
 
 .f9-metrics {
@@ -1021,7 +1064,7 @@
 }
 
 .f9-metric {
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-radius: 6px;
   background: var(--f9-page);
 }
@@ -1029,14 +1072,16 @@
 .f9-metric__label {
   color: var(--f9-muted);
   font-size: 11px;
+  line-height: 15px;
   font-weight: 700;
   letter-spacing: 0.5px;
 }
 
 .f9-metric__value {
-  margin-top: 2px;
+  margin-top: 0;
   color: var(--f9-ink);
   font-size: 20px;
+  line-height: 26px;
   font-weight: 700;
 }
 
@@ -1050,7 +1095,17 @@
 
 .f9-seatmap {
   margin-top: 0;
-  padding: 18px 20px 24px;
+  padding: 18px 20px 19px;
+}
+
+.f9-seatmap .f9-card__title {
+  line-height: 1.2;
+}
+
+/* The two lines under the legend sit 12px below it and 16px apart, as in the design. */
+.f9-seatmap > .f9-note {
+  margin-top: 12px;
+  line-height: 16px;
 }
 
 /** The fuselage the seats are drawn in: a capsule with a double outline, as in the design. */
@@ -1058,7 +1113,7 @@
   position: relative;
   width: 290px;
   max-width: 100%;
-  margin: 18px auto 0;
+  margin: 22px auto 0;
   padding: 48px 0 48px;
   border: 1px solid var(--f9-border);
   border-radius: 145px 145px 48px 48px;
@@ -1269,6 +1324,60 @@
   flex: 0 0 30px;
 }
 
+/* The back link and the title above the first card of the new aircraft type screen, as in the design. */
+.f9-typehead .f9-heading {
+  margin-top: 15px;
+  line-height: 1.2;
+}
+
+.f9-typehead {
+  margin-top: -1px;
+}
+
+.f9-stack > .f9-typehead + * {
+  margin-top: 17px;
+}
+
+/* Card paddings and spacing measured on the design of the new aircraft type screen. */
+.f9-card--form {
+  padding-top: 15px;
+}
+
+.f9-card--form .f9-formgrid {
+  row-gap: 10px;
+}
+
+.f9-card--cabins {
+  padding-top: 12px;
+  padding-bottom: 16px;
+}
+
+.f9-card--cabins .f9-card__title,
+.f9-card--capacity .f9-card__title {
+  line-height: 1.2;
+}
+
+.f9-card--cabins .f9-card__title {
+  margin-bottom: 14px;
+}
+
+.f9-stack > .f9-card--cabins + * {
+  margin-top: 17px;
+}
+
+.f9-card--capacity {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.f9-card--capacity .f9-card__title {
+  margin-bottom: 12px;
+}
+
+.f9-stack.f9-stack--tight > * + * {
+  margin-top: 16px;
+}
+
 /* Stacks the cards of one column of the new aircraft type screen. */
 .f9-stack > * + * {
   margin-top: 20px;
@@ -1281,7 +1390,7 @@
   grid-template-columns: minmax(0, 380px) minmax(0, 597px);
   gap: 20px;
   align-items: start;
-  margin-top: 20px;
+  margin-top: 22px;
 }
 
 .f9-readiness__card {
@@ -1296,17 +1405,17 @@
 }
 
 .f9-readiness__lead {
-  margin: 4px 0 0;
+  margin: 0;
   color: var(--f9-muted);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 16px;
 }
 
 .f9-readiness__fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .f9-readiness__metrics {
@@ -1317,7 +1426,7 @@
 }
 
 .f9-readiness__tile {
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-radius: 6px;
   background: var(--f9-page);
 }
@@ -1328,6 +1437,14 @@
 
 .f9-readiness__tile--short .f9-metric__value {
   color: var(--f9-red);
+}
+
+.f9-readiness__card > .f9-note {
+  line-height: 15px;
+}
+
+.f9-readiness__card > .f9-note--small {
+  line-height: 13px;
 }
 
 .f9-readiness__bar {
@@ -1361,11 +1478,16 @@
 }
 
 .f9-turnaround {
-  margin-top: 12px;
-  padding: 16px 17px;
+  margin-top: 13px;
+  padding: 15px 16px 16px;
   border: 1px solid var(--f9-border);
   border-radius: 10px;
   background: #fff;
+}
+
+/* The first card sits 12px below the heading of the list, the others 13px apart, as in the design. */
+.f9-stack > .f9-turnaround:first-child {
+  margin-top: 12px;
 }
 
 .f9-turnaround__head {
@@ -1390,7 +1512,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 13px;
 }
 
 /* ------------------------------------------------------------------ modal */
