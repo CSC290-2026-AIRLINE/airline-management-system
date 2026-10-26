@@ -404,12 +404,14 @@ body:has(.wl-page),
   font-weight: 800;
   margin: 0 0 6px;
 }
-.wl-form {
+.wl-form,
+.wl-form-fields {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.wl-form > p {
+.wl-form > p,
+.wl-form-fields > p {
   margin: 0;
   font-size: 13px;
   color: var(--wl-muted);
@@ -545,7 +547,8 @@ body:has(.wl-page),
   height: 84px;
   resize: vertical;
 }
-.wl-form > .wl-help {
+.wl-form > .wl-help,
+.wl-form-fields > .wl-help {
   font-size: 12px;
   line-height: 1.35;
 }
@@ -789,7 +792,8 @@ body:has(.wl-page),
   .wl-dialog h2 {
     line-height: 27px;
   }
-  .wl-form > p {
+  .wl-form > p,
+  .wl-form-fields > p {
     line-height: 16px;
   }
   .wl-form label,
@@ -840,7 +844,8 @@ body:has(.wl-page),
   .wl-select-trigger.wl-placeholder {
     color: #8a96a8;
   }
-  .wl-form > .wl-help {
+  .wl-form > .wl-help,
+  .wl-form-fields > .wl-help {
     line-height: 15px;
   }
   .wl-form-actions {
@@ -1198,10 +1203,12 @@ body:has(.wl-page),
   .wl-dialog h2 {
     font-size: 20px;
   }
-  .wl-form {
+  .wl-form,
+  .wl-form-fields {
     gap: 12px;
   }
-  .wl-form > p {
+  .wl-form > p,
+  .wl-form-fields > p {
     font-size: 12px;
   }
   .wl-form-row {
@@ -1235,4 +1242,15 @@ body:has(.wl-page),
   .wl-form-actions:has(.wl-danger-outline) .wl-spacer {
     display: none;
   }
+}
+
+/* Keep focused form fields aligned with the dropdown's solid reference border. */
+.wl-dialog .wl-form input:not([type='hidden']):focus,
+.wl-dialog .wl-form textarea:focus,
+.wl-dialog .wl-form select:focus,
+.wl-dialog .wl-select-trigger:focus,
+.wl-dialog .wl-select-trigger[aria-expanded='true'] {
+  border-color: #102544;
+  outline: none;
+  box-shadow: inset 0 0 0 1px #102544;
 }
