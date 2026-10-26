@@ -193,6 +193,18 @@
   border-color: #6e87b2;
 }
 
+/* Which wordmark shows. Both are in the DOM (see AdminShell.tsx); `display: none` also hides the other one from
+   screen readers. */
+.admin-sidebar .brand-mono {
+  display: none;
+}
+.admin-shell.is-collapsed .admin-sidebar .brand-mono {
+  display: inline;
+}
+.admin-shell.is-collapsed .admin-sidebar .brand-full {
+  display: none;
+}
+
 /* Collapsed state — sidebar shrinks to icon-only column, brand switches to "A". */
 .admin-shell.is-collapsed .admin-sidebar {
   width: 64px;
@@ -327,6 +339,12 @@
   .admin-sidebar {
     width: 200px;
   }
+  /* At 40px "Airlines" is wider than the 200px sidebar and wrapped onto two lines ("Air" / "lines"); 28px fits beside
+     the collapse button. */
+  .admin-sidebar .brand-word {
+    font-size: 28px;
+    white-space: nowrap;
+  }
   .shell-header,
   .tab-bar,
   .page-body-host {
@@ -363,13 +381,22 @@
   .admin-sidebar .brand {
     padding: 0;
   }
-  /* The collapsed monogram switch is a desktop-only affordance — the bar has no room for a 64px column. */
+  /* The collapsed monogram switch is a desktop-only affordance — the bar has no room for a 64px column, so the full
+     "Airlines" wordmark always shows here, collapsed or not, at the size of the phone design's top bar. */
   .admin-shell.is-collapsed .admin-sidebar .brand {
+    padding: 0;
     text-align: left;
   }
-  .admin-shell.is-collapsed .admin-sidebar .brand-word,
-  .admin-shell.is-collapsed .admin-sidebar .brand-ink--rule::after {
-    font-size: 28px;
+  .admin-sidebar .brand-word,
+  .admin-shell.is-collapsed .admin-sidebar .brand-word {
+    font-size: 22px;
+    padding-bottom: 6px;
+  }
+  .admin-shell.is-collapsed .admin-sidebar .brand-mono {
+    display: none;
+  }
+  .admin-shell.is-collapsed .admin-sidebar .brand-full {
+    display: inline;
   }
   .admin-shell.is-collapsed .admin-sidebar .brand-ink--rule::after {
     left: 0;

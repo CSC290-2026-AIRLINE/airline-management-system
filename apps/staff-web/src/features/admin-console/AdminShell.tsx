@@ -34,14 +34,16 @@ export function AdminShell({ chrome = 'full', children }: { chrome?: 'full' | 's
       <aside className="admin-sidebar">
         <div className="brand">
           <span className="brand-word">
-            {collapsed ? (
+            {/* Both forms are always rendered and the CSS picks one. The "A" monogram belongs to the collapsed desktop
+                sidebar only: below 768px the sidebar is a top bar with no collapse button, so a collapse made on a wide
+                screen must not leave the bar stuck on "A". */}
+            <span className="brand-mono">
               <span className="brand-ink brand-ink--rule">A</span>
-            ) : (
-              <>
-                <span className="brand-ink brand-ink--rule">Air</span>
-                <span className="brand-ink">lines</span>
-              </>
-            )}
+            </span>
+            <span className="brand-full">
+              <span className="brand-ink brand-ink--rule">Air</span>
+              <span className="brand-ink">lines</span>
+            </span>
           </span>
         </div>
 
