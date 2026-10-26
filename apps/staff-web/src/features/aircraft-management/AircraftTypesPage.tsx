@@ -8,11 +8,12 @@ import { NewAircraftTypeView } from './components/NewAircraftTypeView'
 import { StaffShell } from './components/StaffShell'
 import { EmptyMessage, ErrorMessage, LoadingMessage } from './components/StateMessage'
 import { formatCurrency, formatNumber } from './format'
-import { useApiFetcher } from './hooks/useApiFetcher'
+import { useApiFetcher, useAuthReady } from './hooks/useApiFetcher'
 import type { AircraftType } from './types'
 
 export function AircraftTypesPage() {
   const fetcher = useApiFetcher()
+  const ready = useAuthReady()
 
   const [types, setTypes] = useState<AircraftType[]>([])
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -27,6 +28,10 @@ export function AircraftTypesPage() {
   const [isWorking, setIsWorking] = useState(false)
 
   useEffect(() => {
+    if (!ready) {
+      return
+    }
+
     let cancelled = false
 
     async function loadTypes() {
@@ -50,7 +55,7 @@ export function AircraftTypesPage() {
     return () => {
       cancelled = true
     }
-  }, [fetcher, reloadToken])
+  }, [ready, fetcher, reloadToken])
 
   const selectedType = useMemo(() => types.find((type) => type.id === selectedId) ?? null, [types, selectedId])
 

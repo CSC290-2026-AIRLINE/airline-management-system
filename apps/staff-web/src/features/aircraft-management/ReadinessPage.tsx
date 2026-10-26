@@ -6,7 +6,7 @@ import { FeatureErrorBoundary } from './components/FeatureErrorBoundary'
 import { StaffShell } from './components/StaffShell'
 import { EmptyMessage, ErrorMessage, LoadingMessage } from './components/StateMessage'
 import { formatNumber, formatRatio, formatTime, toDateInputValue } from './format'
-import { useApiFetcher } from './hooks/useApiFetcher'
+import { useApiFetcher, useAuthReady } from './hooks/useApiFetcher'
 import {
   TURNAROUND_TASK_STATUSES,
   type Aircraft,
@@ -61,6 +61,7 @@ function withTasks(row: TurnaroundRow, tasks: TurnaroundTask[]): TurnaroundRow {
 
 export function ReadinessPage() {
   const fetcher = useApiFetcher()
+  const ready = useAuthReady()
 
   const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()))
   const [aircraftNeeded, setAircraftNeeded] = useState(1)
@@ -85,6 +86,10 @@ export function ReadinessPage() {
   const [startArrivedAt, setStartArrivedAt] = useState('')
 
   useEffect(() => {
+    if (!ready) {
+      return
+    }
+
     let cancelled = false
 
     async function loadReserve() {
@@ -109,9 +114,13 @@ export function ReadinessPage() {
     return () => {
       cancelled = true
     }
-  }, [fetcher, selectedDate, aircraftNeeded])
+  }, [ready, fetcher, selectedDate, aircraftNeeded])
 
   useEffect(() => {
+    if (!ready) {
+      return
+    }
+
     let cancelled = false
 
     async function loadTurnarounds() {
@@ -145,7 +154,7 @@ export function ReadinessPage() {
     return () => {
       cancelled = true
     }
-  }, [fetcher, selectedDate, reloadToken])
+  }, [ready, fetcher, selectedDate, reloadToken])
 
   const openStart = () => {
     setActionError(null)

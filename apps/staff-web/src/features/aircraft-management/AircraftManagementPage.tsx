@@ -17,7 +17,7 @@ import { StaffShell } from './components/StaffShell'
 import { StatusBadge } from './components/StatusBadge'
 import { EmptyMessage, ErrorMessage, LoadingMessage } from './components/StateMessage'
 import { addDays, formatDate, toDateInputValue } from './format'
-import { useApiFetcher } from './hooks/useApiFetcher'
+import { useApiFetcher, useAuthReady } from './hooks/useApiFetcher'
 import {
   MAINTENANCE_TYPES,
   MANUAL_AIRCRAFT_STATUSES,
@@ -58,6 +58,7 @@ function typeOf(item: Aircraft, types: AircraftType[]): string {
 
 export function AircraftManagementPage() {
   const fetcher = useApiFetcher()
+  const ready = useAuthReady()
 
   const [aircraft, setAircraft] = useState<Aircraft[]>([])
   const [aircraftTypes, setAircraftTypes] = useState<AircraftType[]>([])
@@ -110,6 +111,10 @@ export function AircraftManagementPage() {
   }
 
   useEffect(() => {
+    if (!ready) {
+      return
+    }
+
     let cancelled = false
 
     async function loadFleet() {
@@ -135,9 +140,13 @@ export function AircraftManagementPage() {
     return () => {
       cancelled = true
     }
-  }, [fetcher, reloadToken])
+  }, [ready, fetcher, reloadToken])
 
   useEffect(() => {
+    if (!ready) {
+      return
+    }
+
     if (!selectedId) {
       return
     }
@@ -171,7 +180,7 @@ export function AircraftManagementPage() {
     return () => {
       cancelled = true
     }
-  }, [fetcher, selectedId, detailToken])
+  }, [ready, fetcher, selectedId, detailToken])
 
   const selectedAircraft = useMemo(() => aircraft.find((item) => item.id === selectedId) ?? null, [aircraft, selectedId])
 

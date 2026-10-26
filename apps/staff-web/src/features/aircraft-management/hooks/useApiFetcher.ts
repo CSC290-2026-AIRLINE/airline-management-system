@@ -17,3 +17,13 @@ export function useApiFetcher(): React.RefObject<Fetcher> {
 
   return fetcherRef
 }
+
+/**
+ * True once the shared auth provider has finished signing the user in. A page that loads data before that sends its
+ * requests without a token; every one of them then asks for a new token at the same time, and the backend revokes
+ * the whole session when it sees a refresh token used twice. Pages therefore wait for this before they load.
+ */
+export function useAuthReady(): boolean {
+  const { isLoading } = useAppAuth()
+  return !isLoading
+}
