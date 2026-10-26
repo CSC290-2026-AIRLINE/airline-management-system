@@ -199,6 +199,87 @@ describe('AircraftService', () => {
     })
   })
 
+  describe('createStatus', () => {
+    const period = (overrides: Record<string, unknown>) => ({
+      id: 'p1',
+      status: 'in_service',
+      start_date: new Date('2026-01-01'),
+      end_date: null,
+      ...overrides,
+    })
+
+    beforeEach(() => {
+      db.aircraft.findFirst.mockResolvedValue({ id: 'a1' })
+    })
+
+    it('closes an open period that started earlier the day before the new one', async () => {
+      tx.aircraft_status_period.findMany.mockResolvedValue([period({})])
+
+      await service.createStatus('a1', { status: 'grounded', start_date: '2026-03-10' }, 'staff-1')
+
+      expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'p1' }, data: expect.objectContaining({ end_date: new Date('2026-03-09') }) }),
+      )
+      expect(tx.aircraft_status_period.create).toHaveBeenCalled()
+    })
+
+    it('replaces an open period that starts on the same day instead of ending it before it starts', async () => {
+      tx.aircraft_status_period.findMany.mockResolvedValue([period({ start_date: new Date('2026-03-10') })])
+
+      await service.createStatus('a1', { status: 'grounded', start_date: '2026-03-10' }, 'staff-1')
+
+      expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'p1' }, data: expect.objectContaining({ deleted_at: expect.any(Date) }) }),
+      )
+      expect(tx.aircraft_status_period.create).toHaveBeenCalled()
+    })
+
+    it('reports a start date inside a maintenance window as a conflict', async () => {
+      tx.aircraft_status_period.findMany.mockResolvedValue([
+        period({ status: 'in_maintenance', start_date: new Date('2026-03-10'), end_date: new Date('2026-03-20') }),
+      ])
+
+      await expect(service.createStatus('a1', { status: 'grounded', start_date: '2026-03-15' }, 'staff-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      )
+      expect(tx.aircraft_status_period.create).not.toHaveBeenCalled()
+    })
+
+    it('reports an open-ended period that would run into a later period as a conflict', async () => {
+      tx.aircraft_status_period.findMany.mockResolvedValue([period({ start_date: new Date('2026-06-01') })])
+
+      await expect(service.createStatus('a1', { status: 'grounded', start_date: '2026-03-10' }, 'staff-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      )
+    })
+
+    it('accepts a bounded period that ends before a later open-ended one starts', async () => {
+      tx.aircraft_status_period.findMany.mockResolvedValue([period({ start_date: new Date('2026-06-01') })])
+
+      await service.createStatus('a1', { status: 'grounded', start_date: '2026-03-10', end_date: '2026-03-20' }, 'staff-1')
+
+      expect(tx.aircraft_status_period.create).toHaveBeenCalled()
+    })
+  })
+
+  describe('createMaintenance', () => {
+    it('reports a window that overlaps an existing maintenance window as a conflict', async () => {
+      db.aircraft.findFirst.mockResolvedValue({ id: 'a1' })
+      tx.aircraft_status_period.findMany.mockResolvedValue([
+        { id: 'p1', status: 'in_maintenance', start_date: new Date('2026-03-10'), end_date: new Date('2026-03-20') },
+      ])
+
+      await expect(
+        service.createMaintenance(
+          'a1',
+          { maintenance_type: 'a_check', planned_start_date: '2026-03-12', planned_end_date: '2026-03-14' },
+          'staff-1',
+        ),
+      ).rejects.toBeInstanceOf(ConflictException)
+      expect(tx.aircraft_maintenance.create).not.toHaveBeenCalled()
+    })
+  })
+
   describe('updateMaintenance', () => {
     it('requires an actual end date when a window is completed', async () => {
       db.aircraft_maintenance.findFirst.mockResolvedValue({ id: 'm1', aircraft_id: 'a1', status_period_id: 'p1' })

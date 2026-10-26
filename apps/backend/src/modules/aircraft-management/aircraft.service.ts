@@ -236,7 +236,7 @@ export class AircraftService {
     }
 
     return this.db.$transaction(async (tx) => {
-      await this.closeOpenPeriods(tx, aircraftId, startDate)
+      await this.resolveOverlaps(tx, aircraftId, startDate, endDate)
 
       return tx.aircraft_status_period.create({
         data: {
@@ -394,7 +394,7 @@ export class AircraftService {
     }
 
     return this.db.$transaction(async (tx) => {
-      await this.closeOpenPeriods(tx, aircraftId, plannedStart)
+      await this.resolveOverlaps(tx, aircraftId, plannedStart, plannedEnd)
 
       const statusPeriod = await tx.aircraft_status_period.create({
         data: {
@@ -504,24 +504,43 @@ export class AircraftService {
   }
 
   /**
-   * A status period is closed the day before a new one starts, so the periods of one aircraft never
-   * overlap (the table has an exclusion constraint for exactly that).
+   * Makes room for a new status period [startDate, endDate] (an open end when `endDate` is null). The live periods of one
+   * aircraft may not overlap (the table has an exclusion constraint for exactly that), so every existing period is
+   * checked first and an overlap is reported as a 409 instead of surfacing as a database error:
+   * - an open-ended period that started before the new one is closed the day before it starts,
+   * - an open-ended period that starts on the same day is replaced (it would have no days left),
+   * - any other overlap, including with a bounded period such as a maintenance window, is a conflict.
    */
-  private async closeOpenPeriods(tx: Prisma.TransactionClient, aircraftId: string, startDate: string): Promise<void> {
-    const openPeriods = await tx.aircraft_status_period.findMany({
-      where: { aircraft_id: aircraftId, deleted_at: null, end_date: null },
-    })
+  private async resolveOverlaps(
+    tx: Prisma.TransactionClient,
+    aircraftId: string,
+    startDate: string,
+    endDate: string | null,
+  ): Promise<void> {
+    const periods = await tx.aircraft_status_period.findMany({ where: { aircraft_id: aircraftId, deleted_at: null } })
 
-    for (const period of openPeriods) {
-      if (toIsoDate(period.start_date) > startDate) {
+    for (const period of periods) {
+      const periodStart = toIsoDate(period.start_date)
+      const periodEnd = period.end_date ? toIsoDate(period.end_date) : null
+
+      if (periodEnd === null && periodStart < startDate) {
+        const dayBefore = new Date(startDate)
+        dayBefore.setUTCDate(dayBefore.getUTCDate() - 1)
+        await tx.aircraft_status_period.update({ where: { id: period.id }, data: { end_date: dayBefore, updated_at: new Date() } })
         continue
       }
-      const dayBefore = new Date(startDate)
-      dayBefore.setUTCDate(dayBefore.getUTCDate() - 1)
-      await tx.aircraft_status_period.update({
-        where: { id: period.id },
-        data: { end_date: dayBefore, updated_at: new Date() },
-      })
+      if (periodEnd === null && periodStart === startDate) {
+        await tx.aircraft_status_period.update({ where: { id: period.id }, data: { deleted_at: new Date(), updated_at: new Date() } })
+        continue
+      }
+
+      const startsBeforeNewEnds = endDate === null || periodStart <= endDate
+      const endsAfterNewStarts = periodEnd === null || periodEnd >= startDate
+      if (startsBeforeNewEnds && endsAfterNewStarts) {
+        throw new ConflictException(
+          `The dates overlap an existing ${period.status} period (${periodStart} to ${periodEnd ?? 'onwards'}) of this aircraft`,
+        )
+      }
     }
   }
 
