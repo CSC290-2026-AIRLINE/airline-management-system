@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common'
+import { CheckInController } from './checkin.controller'
 import { CheckInService } from './checkin.service'
 import { CounterService } from './counter.service'
 import { GateService } from './gate.service'
+import { ActorGuard, StaffGuard } from './guards/staff.guard'
+import { StaffController } from './staff.controller'
 import {
   FixtureBookings,
   FixtureClock,
@@ -39,6 +42,7 @@ import {
 import { CheckInStore } from './store/checkin-store'
 
 @Module({
+  controllers: [CheckInController, StaffController],
   providers: [
     { provide: CLOCK, useClass: FixtureClock },
     { provide: FLIGHTS, useClass: FixtureFlights },
@@ -59,6 +63,8 @@ import { CheckInStore } from './store/checkin-store'
     CheckInService,
     CounterService,
     GateService,
+    ActorGuard,
+    StaffGuard,
   ],
   exports: [
     CLOCK,
@@ -80,6 +86,8 @@ import { CheckInStore } from './store/checkin-store'
     CheckInService,
     CounterService,
     GateService,
+    ActorGuard,
+    StaffGuard,
   ],
 })
 export class CheckinBoardingModule {}

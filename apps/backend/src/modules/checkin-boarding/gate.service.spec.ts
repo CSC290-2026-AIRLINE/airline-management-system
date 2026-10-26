@@ -13,25 +13,16 @@ import {
   FixturePricing,
   FixtureScreening,
   FixtureSeats,
+  FixtureSensor,
   FixtureSettings,
   FixtureTiers,
   LoggerAudit,
   LoggerNotify,
 } from './providers/fixture-providers'
-import type { SensorProvider } from './providers/providers'
 import { CheckInStore } from './store/checkin-store'
 
 const staff: Actor = { userId: 'user-staff', staffId: 'staff-demo' }
 const cust: Actor = { userId: 'user-anna', staffId: null }
-
-/** The fixture sensor cannot switch off (a null override falls back to the hint), so the spec has its own. */
-class SensorDouble implements SensorProvider {
-  count: number | null = null
-
-  read(): Promise<number | null> {
-    return Promise.resolve(this.count)
-  }
-}
 
 function build() {
   const clock = new FixtureClock()
@@ -43,7 +34,7 @@ function build() {
   const bookings = new FixtureBookings()
   const settings = new FixtureSettings()
   const seats = new FixtureSeats(clock)
-  const sensor = new SensorDouble()
+  const sensor = new FixtureSensor()
   const checkins = new CheckInService(
     clock,
     flights,
@@ -230,9 +221,9 @@ describe('GateService.setGate', () => {
 describe('GateService head-count and close', () => {
   it('sensor headcount reads the sensor; sensor down is a validation error', async () => {
     const { gate, sensor } = build()
-    sensor.count = 5
+    sensor.setOverride('gate-a1', 5)
     expect(await gate.setHeadcount(staff, 'flt-fy204', { source: 'sensor' })).toMatchObject({ sensorCount: 5 })
-    sensor.count = null
+    sensor.setOverride('gate-a1', null)
     await expect(gate.setHeadcount(staff, 'flt-fy204', { source: 'sensor' })).rejects.toMatchObject({
       code: 'VALIDATION',
       details: { reason: 'sensor_unavailable' },

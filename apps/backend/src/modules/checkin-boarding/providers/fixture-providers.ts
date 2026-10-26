@@ -360,8 +360,10 @@ export class LoggerAudit implements AuditProvider {
 export class FixtureSensor implements SensorProvider {
   private readonly overrides = new Map<string, number | null>()
 
+  /** No override reads the hint, an override of null switches the sensor off. */
   async read(gateId: string, hint: { boardedCount: number }): Promise<number | null> {
-    return this.overrides.get(gateId) ?? hint.boardedCount
+    if (!this.overrides.has(gateId)) return hint.boardedCount
+    return this.overrides.get(gateId) ?? null
   }
 
   setOverride(gateId: string, count: number | null): void {
