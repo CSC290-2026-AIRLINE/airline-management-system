@@ -1,6 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-import WatchlistPage from '@staff-web/features/watchlist/pages/WatchlistPage'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_authenticated/watchlist')({
-  component: WatchlistPage,
+  beforeLoad: () => {
+    throw redirect({ to: '/security-screening/watchlist', replace: true })
+  },
 })

@@ -1,3 +1,4 @@
+import { PageSelect } from './components/PageSelect'
 import { Component, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
@@ -55,12 +56,11 @@ function RequestState({ loading, error, onRetry }: { loading: boolean; error?: s
   )
 }
 function QueueContent({ onSignOut }: { onSignOut: () => void }) {
-  const query = useSearch({ from: '/_authenticated/screening-queue' })
-  const navigate = useNavigate({ from: '/screening-queue' })
+  const query = useSearch({ from: '/_authenticated/security-screening/screening-queue' })
+  const navigate = useNavigate({ from: '/security-screening/screening-queue' })
   const { fetchWithAuth } = useAppAuth()
   const [refresh, setRefresh] = useState(0)
   const [banner, setBanner] = useState('')
-  const [pageMenuOpen, setPageMenuOpen] = useState(false)
   const [pagination, setPagination] = useState<{ scope: string; cursors: string[]; index: number }>({ scope: '', cursors: [''], index: 0 })
   const [mutation, setMutation] = useState<{ id: string; saving: boolean; error?: string; requiresReload: boolean }>()
   const saving = useRef(false)
@@ -223,49 +223,12 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
                   >
                     Previous
                   </button>
-                  <div
-                    className="sq-sort sq-page-picker"
-                    onBlur={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget)) setPageMenuOpen(false)
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape') {
-                        setPageMenuOpen(false)
-                        event.currentTarget.querySelector<HTMLButtonElement>('.sq-sort-trigger')?.focus()
-                      }
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="sq-sort-trigger"
-                      aria-label={`Queue page ${page.index + 1}`}
-                      aria-expanded={pageMenuOpen}
-                      aria-controls="sq-page-options"
-                      onClick={() => setPageMenuOpen((open) => !open)}
-                    >
-                      Page {page.index + 1}
-                      <span aria-hidden="true">▾</span>
-                    </button>
-                    {pageMenuOpen && (
-                      <div className="sq-sort-options" id="sq-page-options" role="group" aria-label="Select a previously opened queue page">
-                        {page.cursors.map((_, index) => (
-                          <button
-                            type="button"
-                            key={index}
-                            aria-pressed={page.index === index}
-                            onClick={(event) => {
-                              setPagination({ ...page, index })
-                              setPageMenuOpen(false)
-                              event.currentTarget.closest('.sq-page-picker')?.querySelector<HTMLButtonElement>('.sq-sort-trigger')?.focus()
-                            }}
-                          >
-                            <span aria-hidden="true">{page.index === index ? '✓' : ''}</span>
-                            Page {index + 1}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <PageSelect
+                    label="Queue page"
+                    value={page.index}
+                    count={page.cursors.length}
+                    onChange={(index) => setPagination({ ...page, index })}
+                  />
                   <button
                     className="sq-button"
                     disabled={!queue.data.nextCursor}

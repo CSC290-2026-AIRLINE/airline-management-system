@@ -1,6 +1,9 @@
+import { Link } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, MenuIcon } from './Icons'
+import { CloseIcon, MenuIcon } from './Icons'
+import '@staff-web/features/security-screening/fonts.css'
+import '@staff-web/features/security-screening/screening.css'
 
 /**
  * Admin chrome for the Customer Search screens: the dark workspace sidebar on
@@ -20,9 +23,11 @@ interface NavItemProps {
   active?: boolean
   disabled?: boolean
   disabledReason?: string
+  to?: '/customer-search' | '/security-screening/screening-queue'
+  onNavigate?: () => void
 }
 
-function NavItem({ label, caption, active = false, disabled = false, disabledReason }: NavItemProps) {
+function NavItem({ label, caption, active = false, disabled = false, disabledReason, to, onNavigate }: NavItemProps) {
   const className = ['cs-nav-item', active && 'is-active', disabled && 'is-disabled'].filter(Boolean).join(' ')
   const content = (
     <>
@@ -31,12 +36,23 @@ function NavItem({ label, caption, active = false, disabled = false, disabledRea
     </>
   )
 
-  // `Security Screening` appears in the design but is outside this feature, so
-  // it is rendered inert rather than linked to a route that does not exist.
   return disabled ? (
     <span className={className} aria-disabled="true" title={disabledReason}>
       {content}
     </span>
+  ) : to ? (
+    <Link
+      to={to}
+      search={to === '/security-screening/screening-queue' ? { status: 'needs-review' } : undefined}
+      viewTransition
+      preload="intent"
+      className={className}
+      aria-current={active ? 'page' : undefined}
+      onClick={onNavigate}
+      style={{ textDecoration: 'none' }}
+    >
+      {content}
+    </Link>
   ) : (
     <span className={className} aria-current={active ? 'page' : undefined}>
       {content}
@@ -44,18 +60,12 @@ function NavItem({ label, caption, active = false, disabled = false, disabledRea
   )
 }
 
-const NAV_ITEMS: ReadonlyArray<NavItemProps> = [
-  { label: 'Customer Search', active: true },
-  { label: 'Security Screening', disabled: true, disabledReason: 'Not part of this feature' },
-]
-
 const DRAWER_ITEMS: ReadonlyArray<NavItemProps> = [
-  { label: 'Customer Search', caption: 'Find any customer or passenger · read-only', active: true },
+  { label: 'Customer Search', caption: 'Find any customer or passenger · read-only', active: true, to: '/customer-search' },
   {
     label: 'Security Screening',
     caption: 'Screening queue · Watchlist · security role only',
-    disabled: true,
-    disabledReason: 'Not part of this feature',
+    to: '/security-screening/screening-queue',
   },
 ]
 
@@ -70,7 +80,6 @@ function Brand() {
 
 export function AppShell({ children }: AppShellProps) {
   const { logout } = useAppAuth()
-  const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   // The design shows the staff role, not an account name. `AppUser` only carries
@@ -78,39 +87,26 @@ export function AppShell({ children }: AppShellProps) {
   const displayName = 'Administrator'
 
   return (
-    <div className={['cs-app', collapsed && 'is-sidebar-collapsed'].filter(Boolean).join(' ')}>
-      <aside className="cs-sidebar" aria-label="Primary">
-        <div className="cs-sidebar__top">
-          <span className="cs-brand">
-            <Brand />
-          </span>
-          <button
-            type="button"
-            className="cs-sidebar__collapse"
-            onClick={() => setCollapsed((value) => !value)}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+    <div className="cs-app">
+      <aside className="sq-sidebar cs-screening-sidebar" aria-label="Primary">
+        <div className="sq-brand">Airlines</div>
+        <div className="sq-brand-line" />
+        <p className="sq-workspace">ADMIN WORKSPACE</p>
+        <nav aria-label="Staff navigation">
+          <Link to="/customer-search" className="sq-nav-active" aria-current="page" viewTransition>
+            Customer Search
+          </Link>
+          <Link to="/security-screening/screening-queue" search={{ status: 'needs-review' }} viewTransition preload="intent">
+            Security Screening
+          </Link>
+        </nav>
+        <div className="sq-account">
+          <strong>{displayName}</strong>
+          <p>Navigation follows assigned staff permissions.</p>
+          <button type="button" onClick={() => void logout()}>
+            Sign out
           </button>
         </div>
-
-        {!collapsed ? <p className="cs-sidebar__eyebrow">Admin workspace</p> : null}
-
-        <nav className="cs-nav" aria-label="Workspace">
-          {NAV_ITEMS.map((item) => (
-            <NavItem key={item.label} {...item} />
-          ))}
-        </nav>
-
-        {!collapsed ? (
-          <div className="cs-sidebar__footer">
-            <p className="cs-sidebar__user">{displayName}</p>
-            <p className="cs-sidebar__note">Navigation follows assigned staff permissions.</p>
-            <button type="button" className="cs-sidebar__signout" onClick={() => void logout()}>
-              Sign out
-            </button>
-          </div>
-        ) : null}
       </aside>
 
       <div className="cs-shell">
@@ -150,7 +146,7 @@ export function AppShell({ children }: AppShellProps) {
 
           <nav className="cs-drawer__nav" aria-label="Workspace">
             {DRAWER_ITEMS.map((item) => (
-              <NavItem key={item.label} {...item} />
+              <NavItem key={item.label} {...item} onNavigate={() => setDrawerOpen(false)} />
             ))}
           </nav>
 

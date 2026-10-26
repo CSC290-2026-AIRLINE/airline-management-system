@@ -1,3 +1,4 @@
+import { PageSelect } from '@staff-web/features/security-screening/components/PageSelect'
 import { Component, useEffect, useState, type ReactNode } from 'react'
 import { ScreeningShell } from '@staff-web/features/security-screening/components/ScreeningShell'
 import { useScreeningRead } from '@staff-web/features/security-screening/use-screening-api'
@@ -144,17 +145,13 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
             <button disabled={watchlist.pageNumber === 1 || watchlist.loading || watchlist.saving} onClick={watchlist.previousPage}>
               Previous
             </button>
-            <fieldset className="wl-page-picker" disabled={watchlist.loading || watchlist.saving}>
-              <WatchlistSelect
-                label="Watchlist page"
-                value={String(watchlist.pageNumber - 1)}
-                options={Array.from({ length: watchlist.visitedPages }, (_, index) => ({
-                  value: String(index),
-                  label: `Page ${index + 1}`,
-                }))}
-                onChange={(value) => watchlist.selectPage(Number(value))}
-              />
-            </fieldset>
+            <PageSelect
+              label="Watchlist page"
+              value={watchlist.pageNumber - 1}
+              count={watchlist.visitedPages}
+              disabled={watchlist.loading || watchlist.saving}
+              onChange={watchlist.selectPage}
+            />
             <button
               disabled={!watchlist.nextCursor || watchlist.loading || watchlist.saving || !!watchlist.error}
               onClick={watchlist.nextPage}

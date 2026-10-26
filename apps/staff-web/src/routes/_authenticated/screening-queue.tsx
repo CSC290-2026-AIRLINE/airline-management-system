@@ -1,14 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { ScreeningQueue } from '@staff-web/features/security-screening/ScreeningQueue'
-import { useAppAuth } from '@staff-web/auth/AuthProvider'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { validateQueueSearch } from '@staff-web/features/security-screening/queue-search'
 
 export const Route = createFileRoute('/_authenticated/screening-queue')({
   validateSearch: validateQueueSearch,
-  component: ScreeningQueueRoute,
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: '/security-screening/screening-queue', search, replace: true })
+  },
 })
-
-function ScreeningQueueRoute() {
-  const { logout } = useAppAuth()
-  return <ScreeningQueue onSignOut={logout} />
-}
