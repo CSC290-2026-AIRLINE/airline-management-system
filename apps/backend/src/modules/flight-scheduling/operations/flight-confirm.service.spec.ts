@@ -50,7 +50,8 @@ describe('FlightConfirmService.confirm', () => {
       origin: 'ZZB',
       destination: 'ZZC',
       distance_km: 800,
-      airport_route_originToairport: { timezone: 'Asia/Bangkok' },
+      airport_route_originToairport: { timezone: 'Asia/Bangkok', is_active: true },
+      airport_route_destinationToairport: { is_active: true },
     })
     feasibility.checkAircraftFeasibility.mockImplementation(() => {
       order.push('gates')
@@ -131,6 +132,25 @@ describe('FlightConfirmService.confirm', () => {
   it('rejects an inactive route with 422', async () => {
     db.route.findUnique.mockResolvedValue({ is_active: false })
     await expect(service.confirm(input(), STAFF)).rejects.toThrow(UnprocessableEntityException)
+  })
+
+  it('rejects an inactive origin or destination airport with 422', async () => {
+    const route = {
+      is_active: true,
+      origin: 'ZZB',
+      destination: 'ZZC',
+      distance_km: 800,
+      airport_route_originToairport: { timezone: 'Asia/Bangkok', is_active: true },
+      airport_route_destinationToairport: { is_active: true },
+    }
+    db.route.findUnique.mockResolvedValueOnce({
+      ...route,
+      airport_route_originToairport: { ...route.airport_route_originToairport, is_active: false },
+    })
+    await expect(service.confirm(input(), STAFF)).rejects.toThrow(/ZZB is not active/)
+    db.route.findUnique.mockResolvedValueOnce({ ...route, airport_route_destinationToairport: { is_active: false } })
+    await expect(service.confirm(input(), STAFF)).rejects.toThrow(/ZZC is not active/)
+    expect(db.$transaction).not.toHaveBeenCalled()
   })
 
   it('maps a duplicate flight number and date, and the exclusion constraint, to 409', async () => {
