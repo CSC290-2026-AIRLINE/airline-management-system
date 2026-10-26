@@ -29,8 +29,7 @@ export const AIRCRAFT: AircraftOption[] = []
 // Partner airlines that can carry a route. Empty until partner_airline_route exists.
 export const partnersFor: (origin: string, destination: string) => string[] = () => []
 
-// ponytail: the staff shell is also shown on the public schedule board, outside the signed-in layout, so it cannot call GET /conflicts
-// yet. Return the open count here once the board moves under routes/_authenticated/.
+// ponytail: stub. The board is under routes/_authenticated/ now, so GET /conflicts can feed this count; wire it when the badge is needed.
 export const openConflictCount = (): number | null => null
 
 export const checkGates: (aircraftId: string) => Promise<GateResult> = () => notConnected('The gate check (POST /flights/check)')

@@ -1,6 +1,6 @@
 # G02 staff-web: demo data removed, unfinished parts hidden
 
-Written 23 Oct 2026 by Kewalin (side B) for Nontouch (side A). Branch `feat-02-aircraft-operations`. **Nothing here is committed yet.**
+Written 23 Oct 2026 by Kewalin (side B) for Nontouch (side A). Branch `feat-02-aircraft-operations`. This work is now committed on `feat-02-flight-schedule-and-network-ops`.
 
 ## Summary
 
@@ -77,7 +77,7 @@ Dismiss returns 502 until F15 audit exists, and the page shows that error.
 | `components/BatchActions.tsx` | Real delay and aircraft calls; takes a `fetcher` prop; the board reloads after a batch |
 | `components/TopBar.tsx`, `components/StaffShell.tsx` | Clock chip and conflict badge hidden while their source is `null` |
 | `hooks/useResource.ts` | Added `reload()` |
-| `hooks/usePagedList.ts` | `publicFetch` exported |
+| `hooks/usePagedList.ts` | Paged list hook (no longer exports `publicFetch`) |
 | `pages/*.tsx` | Mocks replaced with real calls, or hidden by flags: Approval policy, Approvals, Approver console, Conflicts, Disruption log, Flight detail, Generate flights, Routes, Schedule board, Settings |
 | `flight-scheduling.css` | Selector renamed to `Partner airlines` (dropped "(demo)") |
 | `CLAUDE.md`, `README.md` (feature) | Rule changed from "use mocks" to "no demo data; hide behind `connected.ts`" |
@@ -88,20 +88,12 @@ Dismiss returns 502 until F15 audit exists, and the page shows that error.
 - [ ] **The rule in the feature `CLAUDE.md` changed.** Mocks in `mocks/` are no longer allowed.
 - [ ] **The types for hidden parts are assumptions.** `ApprovalRequest`, `ApproverRequest`, `ApprovalPolicy`, `DisruptionLogRow`, `CostInputs`, `FlightImpact`, `AircraftOption`, `GateResult` and `RescheduleCheck` are marked `ponytail:`. They describe what the screens need, not an agreed contract.
 - [ ] **One behaviour changed on Generate flights.** Picking an offered slot no longer marks the flight approved. It goes back to "request approval again", because the approver has to answer the new time.
-- [ ] **The schedule board is outside the signed-in layout.** Its batch actions use a plain fetch (`publicFetch`), which only works while TEMP-NO-LOGIN is on. Move the board under `routes/_authenticated/` and pass `useAppAuth().fetchWithAuth`. The open-conflict badge and stat can then read `GET /conflicts` (see `openConflictCount()` in `connected.ts`).
+- [x] **The schedule board is under the signed-in layout.** It lives in `routes/_authenticated/schedule-board.tsx` and uses `useAppAuth().fetchWithAuth`. The open-conflict badge and stat can read `GET /conflicts` once `openConflictCount()` in `connected.ts` is wired.
 
-## TEMP-NO-LOGIN is on: remove it before any commit
+## Sign-in bypass is removed
 
-It is still on for local testing. Remove all of it before committing:
-
-- `apps/staff-web/src/routes/_authenticated.tsx`: the `TEMP_NO_LOGIN` flag that skips the login redirect.
-- All 9 `flight-scheduling` controllers: the class-level `@Public()` marked `TEMP-NO-LOGIN`.
-- `operations/staff-actor.service.ts`: the fallback that reads `F2_TEMP_NO_LOGIN_STAFF_CODE`.
-
-The 5 tests in `flight-operations.controller.spec.ts` fail on purpose while it is on. Before you commit, this command must print nothing:
+The temporary no-login fallback (`TEMP-NO-LOGIN`, the class-level `@Public()` markers and the staff-actor fallback) is gone from the tree. Testing needs a real staff sign-in. This command prints nothing:
 
 ```bash
 git grep -n "TEMP-NO-LOGIN"
 ```
-
-Separately, the `@Public()` on `GET flights`, `GET disruption-reasons` and `GET routes` in commit `781b405` (side A) must also go before the PR.

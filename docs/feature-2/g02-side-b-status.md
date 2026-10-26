@@ -47,8 +47,8 @@ readiness). No backend API yet.
 
 ## Before opening a PR
 
-- A's committed `@Public()` on `GET flights`, `GET disruption-reasons` and `GET routes` (commit `781b405`) must be
-  removed by A.
+- A's `@Public()` markers on `GET flights`, `GET disruption-reasons` and `GET routes` (commit `781b405`) are removed
+  (reverted by `48bda02`).
 - The only file of A's we changed is `flight-scheduling.module.ts` (registered B's providers and controller). Tell A to
   avoid merge conflicts.
 - The branch name does not follow `<type>/<team-id>-<desc>`, for example `feature/g02-aircraft-operations`.
