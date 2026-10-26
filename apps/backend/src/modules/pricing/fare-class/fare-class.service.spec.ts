@@ -12,6 +12,7 @@ describe('FareClassService', () => {
   let service: FareClassService
   const db = {
     fare_class: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    base_fare: { count: jest.fn() },
   }
 
   beforeEach(() => {
@@ -61,8 +62,20 @@ describe('FareClassService', () => {
     })
   })
 
+  it('refuses to delete a class that still has live base fares', async () => {
+    db.fare_class.findFirst.mockResolvedValue(fareClass)
+    db.base_fare.count.mockResolvedValue(2)
+
+    const error = await service.remove(ID).catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ConflictException)
+    expect((error as ConflictException).getResponse()).toMatchObject({ code: 'FARE_CLASS_IN_USE', details: { base_fare_count: 2 } })
+    expect(db.fare_class.update).not.toHaveBeenCalled()
+  })
+
   it('soft deletes and never hard deletes', async () => {
     db.fare_class.findFirst.mockResolvedValue(fareClass)
+    db.base_fare.count.mockResolvedValue(0)
 
     await service.remove(ID)
 
