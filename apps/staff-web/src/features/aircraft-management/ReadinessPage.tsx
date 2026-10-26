@@ -320,7 +320,7 @@ export function ReadinessPage() {
                   />
                 </div>
 
-                <p className="f9-note" style={{ marginTop: 18 }}>
+                <p className="f9-note" style={{ marginTop: 14 }}>
                   {reserveMessage}
                 </p>
               </>
