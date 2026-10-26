@@ -1,6 +1,8 @@
 export const PricingErrorCode = {
   FARE_CLASS_NOT_FOUND: 'FARE_CLASS_NOT_FOUND',
   FARE_CLASS_CODE_TAKEN: 'FARE_CLASS_CODE_TAKEN',
+  SEAT_FEE_NOT_FOUND: 'SEAT_FEE_NOT_FOUND',
+  SEAT_FEE_EXISTS: 'SEAT_FEE_EXISTS',
 } as const
 export type PricingErrorCode = (typeof PricingErrorCode)[keyof typeof PricingErrorCode]
 
