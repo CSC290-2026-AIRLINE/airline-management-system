@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { listAircraft } from './api/aircraft'
 import { errorMessage } from './api/http'
-import { getFleetReserve, getLatestTurnaround, startTurnaround, updateTurnaroundTask } from './api/readiness'
+import { getFleetReserve, getLatestTurnaround, setReserveRatio, startTurnaround, updateTurnaroundTask } from './api/readiness'
 import { FeatureErrorBoundary } from './components/FeatureErrorBoundary'
 import { StaffShell } from './components/StaffShell'
 import { EmptyMessage, ErrorMessage, LoadingMessage } from './components/StateMessage'
@@ -70,6 +70,12 @@ export function ReadinessPage() {
   const [reserveState, setReserveState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [reserveError, setReserveError] = useState<string | null>(null)
 
+  // The reserve ratio being typed; null while the stored one is shown. A save reloads the reserve check.
+  const [ratioDraft, setRatioDraft] = useState<string | null>(null)
+  const [ratioError, setRatioError] = useState<string | null>(null)
+  const [isSavingRatio, setIsSavingRatio] = useState(false)
+  const [ratioToken, setRatioToken] = useState(0)
+
   const [rows, setRows] = useState<TurnaroundRow[]>([])
   const [fleet, setFleet] = useState<Aircraft[]>([])
   const [turnaroundsState, setTurnaroundsState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -114,7 +120,7 @@ export function ReadinessPage() {
     return () => {
       cancelled = true
     }
-  }, [ready, fetcher, selectedDate, aircraftNeeded])
+  }, [ready, fetcher, selectedDate, aircraftNeeded, ratioToken])
 
   useEffect(() => {
     if (!ready) {
@@ -225,6 +231,27 @@ export function ReadinessPage() {
     }
   }
 
+  const handleSaveRatio = async (event: FormEvent) => {
+    event.preventDefault()
+    const value = Number(ratioDraft)
+    if (ratioDraft === null || !Number.isFinite(value) || value < 1 || value > 9.99) {
+      setRatioError('The reserve ratio has to be between 1.00 and 9.99')
+      return
+    }
+
+    setRatioError(null)
+    setIsSavingRatio(true)
+    try {
+      await setReserveRatio(fetcher.current, value)
+      setRatioDraft(null)
+      setRatioToken((token) => token + 1)
+    } catch (err) {
+      setRatioError(errorMessage(err, 'Failed to save the reserve ratio'))
+    } finally {
+      setIsSavingRatio(false)
+    }
+  }
+
   const reserveMessage = useMemo(() => {
     if (!reserve) {
       return ''
@@ -302,6 +329,29 @@ export function ReadinessPage() {
             <p className="f9-note f9-note--small" style={{ marginTop: 14 }}>
               Ready = in the fleet, in service all day, operating that weekday, not in maintenance.
             </p>
+
+            <form className="f9-readiness__ratio" onSubmit={(event) => void handleSaveRatio(event)}>
+              <label className="f9-field">
+                <span className="f9-field__label">Reserve ratio setting (1.00 to 9.99)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={1}
+                  max={9.99}
+                  className="f9-input"
+                  value={ratioDraft ?? (reserve ? reserve.reserve_ratio.toFixed(2) : '')}
+                  onChange={(event) => setRatioDraft(event.target.value)}
+                />
+              </label>
+              <button type="submit" className="f9-btn f9-btn--outline" disabled={isSavingRatio || ratioDraft === null}>
+                {isSavingRatio ? 'Saving...' : 'Save'}
+              </button>
+            </form>
+            {ratioError && (
+              <div style={{ marginTop: 10 }}>
+                <ErrorMessage message={ratioError} />
+              </div>
+            )}
           </div>
 
           <div>

@@ -34,3 +34,7 @@ export const startTurnaround = (fetcher: Fetcher, aircraftId: string, payload: S
     method: 'POST',
     body: JSON.stringify(payload),
   })
+
+/** Sets the reserve ratio, a number from 1.00 to 9.99; the backend validates the range again. */
+export const setReserveRatio = (fetcher: Fetcher, value: number): Promise<unknown> =>
+  requestJson<unknown>(fetcher, '/api/fleet/settings/reserve_ratio', { method: 'PUT', body: JSON.stringify({ value }) })
