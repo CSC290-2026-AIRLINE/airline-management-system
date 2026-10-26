@@ -1,0 +1,84 @@
+.page {
+  display: grid;
+  gap: 20px;
+  text-align: left;
+  font-family: var(--f6-ui);
+  font-size: 15px;
+  color: var(--f6-ink);
+}
+
+.passenger {
+  display: grid;
+  gap: 20px;
+  text-align: left;
+  font-family: var(--f6-ui);
+  font-size: 15px;
+  color: var(--f6-ink);
+}
+
+/* Printing a boarding pass prints the pass card only. */
+@media print {
+  .passenger > *:not([data-print='keep']) {
+    display: none;
+  }
+}
+
+.search {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(120px, 0.6fr) minmax(160px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.linkBtn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: 600 14px var(--f6-ui);
+  color: var(--f6-navy);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+}
+
+.selected td {
+  background: var(--f6-warn-bg);
+}
+
+.pillRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.weighForm {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.carryOnForm {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+@media (max-width: 760px) {
+  .search,
+  .weighForm,
+  .carryOnForm {
+    grid-template-columns: 1fr;
+  }
+
+  .fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

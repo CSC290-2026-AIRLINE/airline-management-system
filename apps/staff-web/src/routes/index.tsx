@@ -17,6 +17,8 @@ function HomePage() {
       </SignedOut>
       <SignedIn>
         <Link to="/dashboard">Go to dashboard</Link>
+        <Link to="/check-in/counter">Check-in counter</Link>
+        <Link to="/check-in/gate">Gate</Link>
       </SignedIn>
     </section>
   )
