@@ -28,10 +28,9 @@ async function readErrorMessage(res: Response): Promise<string | null> {
 }
 
 export async function requestJson<T>(fetcher: Fetcher, path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers)
-  if (init?.body) {
-    headers.set('Content-Type', 'application/json')
-  }
+  // A plain object, not a `Headers` instance: the shared `fetchWithAuth` spreads `init.headers`, and spreading a `Headers`
+  // instance gives an empty object, which would drop the content type and leave the backend with an empty body.
+  const headers: Record<string, string> = init?.body ? { 'Content-Type': 'application/json' } : {}
 
   const res = await fetcher(path, { ...init, headers })
   if (!res.ok) {
