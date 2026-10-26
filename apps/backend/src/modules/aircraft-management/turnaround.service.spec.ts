@@ -68,12 +68,40 @@ describe('TurnaroundService', () => {
     expect(turnaround.is_ready).toBe(false)
   })
 
-  it('reports a flight that already has a turnaround as a conflict', async () => {
+  const stored = () => ({
+    id: 't1',
+    aircraft_id: 'a1',
+    flight_id: 'f1',
+    airport_code: 'BKK',
+    arrived_at: new Date('2026-01-01T09:00:00.000Z'),
+    aircraft_turnaround_task: [task({ id: 'k1', status: 'in_progress', completed_at: null })],
+  })
+  const input = { flight_id: 'f1', airport_code: 'BKK', arrived_at: '2026-01-01T09:00:00.000Z' }
+
+  it('returns the turnaround that already exists for the flight instead of opening a second one', async () => {
+    db.aircraft_turnaround.findFirst.mockResolvedValue(stored())
+
+    const turnaround = await service.create('a1', input)
+
+    expect(turnaround.id).toBe('t1')
+    expect(turnaround.tasks[0].status).toBe('in_progress')
+    expect(db.aircraft_turnaround.create).not.toHaveBeenCalled()
+  })
+
+  it('returns the turnaround of the winner when two requests for one flight race', async () => {
+    db.aircraft_turnaround.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(stored())
     db.aircraft_turnaround.create.mockRejectedValue({ code: 'P2002' })
 
-    await expect(
-      service.create('a1', { flight_id: 'f1', airport_code: 'BKK', arrived_at: '2026-01-01T09:00:00.000Z' }),
-    ).rejects.toBeInstanceOf(ConflictException)
+    const turnaround = await service.create('a1', input)
+
+    expect(turnaround.id).toBe('t1')
+  })
+
+  it('still reports a conflict when the unique violation has no turnaround behind it', async () => {
+    db.aircraft_turnaround.findFirst.mockResolvedValue(null)
+    db.aircraft_turnaround.create.mockRejectedValue({ code: 'P2002' })
+
+    await expect(service.create('a1', input)).rejects.toBeInstanceOf(ConflictException)
   })
 
   it('reports an unknown flight', async () => {

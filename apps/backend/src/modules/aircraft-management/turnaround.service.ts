@@ -48,6 +48,12 @@ export class TurnaroundService {
       throw new BadRequestException(`Flight ${dto.flight_id} is not operated by this aircraft`)
     }
 
+    // One turnaround per flight: starting it again returns the one that exists, so a retry is safe.
+    const existing = await this.findByFlight(dto.flight_id)
+    if (existing) {
+      return this.toSummary(existing)
+    }
+
     const taskTypes = dto.tasks?.length ? dto.tasks.map((task) => task.task_type) : [...TURNAROUND_TASK_TYPES]
     if (new Set(taskTypes).size !== taskTypes.length) {
       throw new BadRequestException('Each task type can only appear once in a turnaround')
@@ -69,10 +75,22 @@ export class TurnaroundService {
       return this.toSummary(turnaround)
     } catch (error) {
       if (hasPrismaErrorCode(error, PRISMA_UNIQUE_VIOLATION)) {
+        // Two requests for the same flight raced: the other one won, so answer with its turnaround.
+        const winner = await this.findByFlight(dto.flight_id)
+        if (winner) {
+          return this.toSummary(winner)
+        }
         throw new ConflictException('A turnaround is already open for this flight')
       }
       throw error
     }
+  }
+
+  private findByFlight(flightId: string) {
+    return this.db.aircraft_turnaround.findFirst({
+      where: { flight_id: flightId, deleted_at: null },
+      include: { aircraft_turnaround_task: true },
+    })
   }
 
   async getLatest(aircraftId: string): Promise<TurnaroundSummary | null> {
