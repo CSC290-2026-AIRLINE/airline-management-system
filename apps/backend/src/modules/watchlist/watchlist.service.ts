@@ -1,3 +1,4 @@
+import { validateBirthDate } from '@backend/common/validation/birth-date'
 import {
   BadRequestException,
   ConflictException,
@@ -97,7 +98,7 @@ export class WatchlistService {
 
   async create(userId: string, input: CreateWatchlistEntryDto) {
     return this.run(userId, async (tx, actor, now) => {
-      this.checkBirthDate(input.dateOfBirth, now)
+      validateBirthDate(input.dateOfBirth, now)
       const entry = await tx.watchlist_entry.create({
         data: {
           first_name: input.firstName,
@@ -121,7 +122,7 @@ export class WatchlistService {
   async update(userId: string, id: string, input: UpdateWatchlistEntryDto) {
     return this.run(userId, async (tx, actor, now) => {
       if (!Object.values(input).some((value) => value !== undefined)) throw new BadRequestException('Provide at least one field to update')
-      this.checkBirthDate(input.dateOfBirth, now)
+      validateBirthDate(input.dateOfBirth, now)
       const before = await this.find(tx, id)
       const data: Prisma.watchlist_entryUpdateInput = { updated_at: new Date() }
       if (input.firstName !== undefined) data.first_name = input.firstName
@@ -162,9 +163,5 @@ export class WatchlistService {
     const entry = await tx.watchlist_entry.findUnique({ where: { id } })
     if (!entry) throw new NotFoundException('Watchlist entry was not found')
     return entry
-  }
-
-  private checkBirthDate(value: string | null | undefined, now: Date) {
-    if (value && value > now.toISOString().slice(0, 10)) throw new BadRequestException('dateOfBirth cannot be in the future')
   }
 }
