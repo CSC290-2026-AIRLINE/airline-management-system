@@ -4,7 +4,6 @@ import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.er
 import { CreateFareClassDto } from './dto/create-fare-class.dto'
 import { UpdateFareClassDto } from './dto/update-fare-class.dto'
 
-
 // fare services
 @Injectable()
 export class FareClassService {
@@ -47,8 +46,17 @@ export class FareClassService {
   }
 
   // Soft delete: the row stays so old quotes and base fares that point at it still resolve.
+  // A class that still has live base fares is refused, so it cannot vanish from staff lists while routes still sell it.
   async remove(id: string) {
     await this.findOne(id)
+    const liveBaseFares = await this.db.base_fare.count({ where: { fare_class_id: id, deleted_at: null } })
+    if (liveBaseFares > 0) {
+      throw new ConflictException(
+        pricingError(PricingErrorCode.FARE_CLASS_IN_USE, `Fare class ${id} still has ${liveBaseFares} base fare(s); delete them first`, {
+          base_fare_count: liveBaseFares,
+        }),
+      )
+    }
     const now = new Date()
     await this.db.fare_class.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
   }

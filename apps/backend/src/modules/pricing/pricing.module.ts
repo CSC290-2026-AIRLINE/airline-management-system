@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common'
+import { BaseFareController } from './base-fare/base-fare.controller'
+import { BaseFareService } from './base-fare/base-fare.service'
 import { FareClassController } from './fare-class/fare-class.controller'
 import { FareClassService } from './fare-class/fare-class.service'
 
 @Module({
-  controllers: [FareClassController],
-  providers: [FareClassService],
-  exports: [FareClassService],
+  controllers: [FareClassController, BaseFareController],
+  providers: [FareClassService, BaseFareService],
+  exports: [FareClassService, BaseFareService],
 })
 export class PricingModule {}
