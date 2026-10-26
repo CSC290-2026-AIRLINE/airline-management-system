@@ -93,3 +93,34 @@ test('no seat picked gets any free standard seat, marked as mine on the map', as
   assert.equal(mine.length, 1)
   assert.equal(mine[0].code, p.seat)
 })
+
+test('the document and the pass are refused once the window closes', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'] })
+  const api = createMockApi({ now: DEMO_NOW })
+  const c = await api.start({ pnr: 'ER204F', lastName: 'Eriksson' })
+  await api.submitDocument(c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+  // The FY 204 window closes at 02:25Z and the demo clock starts at 01:00Z.
+  t.mock.timers.tick(90 * 60 * 1000)
+  await assert.rejects(api.submitDocument(c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() }), isCode('WINDOW_CLOSED'))
+  await assert.rejects(api.complete(c.id), isCode('WINDOW_CLOSED'))
+})
+
+test('a check-in that already has a pass refuses a new document and new bags', async () => {
+  const api = createMockApi({ now: DEMO_NOW })
+  const c = await api.start({ pnr: 'ER204F', lastName: 'Eriksson' })
+  await api.submitDocument(c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+  await api.complete(c.id)
+  await assert.rejects(api.submitDocument(c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() }), isCode('INVALID_STATE'))
+  await assert.rejects(api.declareBags(c.id, { declaredBags: 1 }), isCode('INVALID_STATE'))
+})
+
+test('an unmapped issuing country is stored as zz and flagged', async () => {
+  const api = createMockApi({ now: DEMO_NOW })
+  const c = await api.start({ pnr: 'ER204F', lastName: 'Eriksson' })
+  const view = await api.submitDocument(c.id, {
+    mrzLine1: `P<XYZ${SPECIMEN_LINE1.slice(5)}`,
+    mrzLine2: buildSpecimenLine2(),
+  })
+  assert.equal(view.document?.issuingCountry, 'zz')
+  assert.ok(view.document?.profileDifferences.includes('issuing_country_unmapped'))
+})

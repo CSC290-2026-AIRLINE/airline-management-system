@@ -126,6 +126,22 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
     return record
   }
 
+  /** The backend only works on a started check-in that is not held by security. */
+  function assertStarted(record: MockCheckIn, message: string): void {
+    if (record.status === 'on_hold' || record.status === 'denied') fail(409, 'ON_HOLD', 'Security is holding this check-in')
+    if (record.status !== 'started') fail(409, 'INVALID_STATE', message)
+  }
+
+  /** The window is derived from the departure every time, so a delay moves it. */
+  function assertWindowOpen(flight: FlightRecord): void {
+    const window = computeWindow(flight.depAt, SETTINGS.window)
+    if (isWindowOpen(now(), window)) return
+    fail(409, 'WINDOW_CLOSED', 'Check-in is not open for this flight', {
+      opensAt: window.opensAt.toISOString(),
+      closesAt: window.closesAt.toISOString(),
+    })
+  }
+
   function bookingOf(bookingPassengerId: string): BookingPassenger {
     const booking = BOOKINGS.find((b) => b.bookingPassengerId === bookingPassengerId)
     if (!booking) fail(404, 'NOT_FOUND', 'Booking not found')
@@ -310,14 +326,15 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
   async function submitDocument(id: string, input: { mrzLine1: string; mrzLine2: string; visaNumber?: string }): Promise<CheckInView> {
     await tick()
     const record = checkInOf(id)
-    if (record.status === 'on_hold') fail(409, 'ON_HOLD', 'Please see an agent at the airport')
+    assertStarted(record, 'The travel document can only be submitted while the check-in is open')
+    const flight = flightOf(record.flightId)
+    assertWindowOpen(flight)
 
     const mrz = validateMrz(input.mrzLine1, input.mrzLine2)
     if (!mrz.ok) fail(422, 'MRZ_INVALID', mrz.message, { failedCheck: mrz.failedCheck })
     const data = mrz.data
 
     const booking = bookingOf(record.bookingPassengerId)
-    const flight = flightOf(record.flightId)
     if (!isPassportValidForTravel(data.expiryDate, flight.serviceDate)) {
       fail(422, 'PASSPORT_EXPIRING', 'The passport expires less than six months after travel')
     }
@@ -347,17 +364,21 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
       },
       data,
     )
+    // An issuing country we cannot map is kept as 'zz' and flagged, the way the backend stores it.
+    const issuingCountry = toAlpha2(data.issuingCountry3)
+    const differences: string[] = [...sync.differences]
+    if (!issuingCountry) differences.push('issuing_country_unmapped')
     record.document = {
       id: `td-mock-${(seq += 1)}`,
       numberLast4: data.numberLast4,
-      issuingCountry: toAlpha2(data.issuingCountry3) ?? data.issuingCountry3.toLowerCase(),
+      issuingCountry: issuingCountry ?? 'zz',
       nationality,
       expiryDate: data.expiryDate,
       visaNumber: visaRequired ? visaNumber : null,
       visaRequired,
       nameMismatch: compareNames(data, { firstName: booking.firstName, lastName: booking.lastName }),
       nameMismatchClearedAt: null,
-      profileDifferences: sync.differences,
+      profileDifferences: differences,
     }
 
     // Feature 7 owns the passenger profile: fill the empty fields, never overwrite one.
@@ -486,7 +507,7 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
   async function declareBags(id: string, input: { declaredBags: number }): Promise<CheckInView> {
     await tick()
     const record = checkInOf(id)
-    if (record.status === 'on_hold') fail(409, 'ON_HOLD', 'Please see an agent at the airport')
+    assertStarted(record, 'The bags can only be declared while the check-in is open')
     if (!Number.isInteger(input.declaredBags) || input.declaredBags < 0 || input.declaredBags > 10) {
       fail(400, 'VALIDATION', 'The number of bags must be a whole number between 0 and 10', { declaredBags: input.declaredBags })
     }
@@ -499,11 +520,12 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
     const record = checkInOf(id)
     const existing = passes.get(record.id)
     if (existing) return passView(existing)
-    if (record.status === 'on_hold') fail(409, 'ON_HOLD', 'Please see an agent at the airport')
+    assertStarted(record, 'The boarding pass can only be issued while the check-in is open')
     if (!record.document) fail(409, 'INVALID_STATE', 'The travel document must be submitted before the boarding pass is issued')
 
-    const booking = bookingOf(record.bookingPassengerId)
     const flight = flightOf(record.flightId)
+    assertWindowOpen(flight)
+    const booking = bookingOf(record.bookingPassengerId)
     // No seat picked: any free standard seat.
     const seat = assignments.get(booking.bookingPassengerId) ?? assignAnyStandard(flight.id, booking, booking.specialAssistance.length > 0)
     const pass: MockPass = {

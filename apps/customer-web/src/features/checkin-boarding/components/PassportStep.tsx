@@ -1,23 +1,9 @@
 import { useState } from 'react'
 import { F6_MOCK } from '../api/index.ts'
 import type { FlowError } from './flow-error.ts'
-import { buildLine2, buildSpecimenLine2, checkDigit, SPECIMEN_LINE1 } from '../domain/mrz.ts'
+import { buildLine2, buildSpecimenLine2, SPECIMEN_LINE1 } from '../domain/mrz.ts'
+import { MRZ_CHECKS, MRZ_LENGTH, inlineMrzChecks, mrzLineReady } from './mrz-input.ts'
 import styles from './flow.module.css'
-
-const MRZ_LENGTH = 44
-
-/** The four ICAO 9303 check digits, in the order the passport prints them. */
-const CHECKS = [
-  { key: 'number', label: 'Passport number check digit', field: (l2: string) => l2.slice(0, 9), digit: 9 },
-  { key: 'date_of_birth', label: 'Date of birth check digit', field: (l2: string) => l2.slice(13, 19), digit: 19 },
-  { key: 'expiry', label: 'Expiry date check digit', field: (l2: string) => l2.slice(21, 27), digit: 27 },
-  {
-    key: 'composite',
-    label: 'Composite check digit',
-    field: (l2: string) => l2.slice(0, 10) + l2.slice(13, 20) + l2.slice(21, 43),
-    digit: 43,
-  },
-] as const
 
 /** A valid MRZ whose passport number ends in 0000: the screening fixture holds that document. */
 const HOLD_LINE2 = buildLine2({
@@ -47,7 +33,8 @@ export function PassportStep({
 
   const needsVisa = error?.code === 'VISA_REQUIRED'
   const failedCheck = typeof error?.details?.failedCheck === 'string' ? error.details.failedCheck : null
-  const ready = line1.length === MRZ_LENGTH && line2.length === MRZ_LENGTH
+  const ready = mrzLineReady(line1) && mrzLineReady(line2)
+  const results = new Map(inlineMrzChecks(line2).map((check) => [check.name, check.ok]))
 
   return (
     <form
@@ -68,13 +55,12 @@ export function PassportStep({
           className={`${styles.input} ${styles.mrz}`}
           value={line1}
           onChange={(event) => setLine1(event.target.value.toUpperCase())}
-          maxLength={MRZ_LENGTH}
           autoComplete="off"
           spellCheck={false}
           required
         />
         <span className={styles.counter}>
-          {line1.length} / {MRZ_LENGTH}
+          {line1.trim().length} / {MRZ_LENGTH}
         </span>
       </label>
 
@@ -84,13 +70,12 @@ export function PassportStep({
           className={`${styles.input} ${styles.mrz}`}
           value={line2}
           onChange={(event) => setLine2(event.target.value.toUpperCase())}
-          maxLength={MRZ_LENGTH}
           autoComplete="off"
           spellCheck={false}
           required
         />
         <span className={styles.counter}>
-          {line2.length} / {MRZ_LENGTH}
+          {line2.trim().length} / {MRZ_LENGTH}
         </span>
       </label>
 
@@ -109,11 +94,11 @@ export function PassportStep({
       ) : null}
 
       <ul className={styles.checks} aria-label="Passport checks">
-        {CHECKS.map((check) => {
-          const ok = line2.length === MRZ_LENGTH && checkDigit(check.field(line2)) === Number(line2[check.digit])
-          const failed = failedCheck === check.key && !ok
+        {MRZ_CHECKS.map((check) => {
+          const ok = results.get(check.name) ?? false
+          const failed = failedCheck === check.name && !ok
           return (
-            <li key={check.key} className={styles.check} data-ok={ok} data-failed={failed}>
+            <li key={check.name} className={styles.check} data-ok={ok} data-failed={failed}>
               <span aria-hidden="true">{ok ? '✓' : '✕'}</span> {check.label}
             </li>
           )

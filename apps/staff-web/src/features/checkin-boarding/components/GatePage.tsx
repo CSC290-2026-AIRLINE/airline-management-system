@@ -145,6 +145,9 @@ export function GatePage({ api }: { api: StaffApi }) {
     setError(null)
     try {
       setHeadcount(await api.setHeadcount(flight.id, { source: 'sensor' }))
+      // The count changed, so a mismatch that is no longer true must not stay armed.
+      setConfirmClose(false)
+      setMismatch(null)
     } catch (err) {
       setError(messageOf(err))
     } finally {
@@ -163,6 +166,9 @@ export function GatePage({ api }: { api: StaffApi }) {
     setError(null)
     try {
       setHeadcount(await api.setHeadcount(flight.id, { source: 'manual', count }))
+      // The count changed, so a mismatch that is no longer true must not stay armed.
+      setConfirmClose(false)
+      setMismatch(null)
     } catch (err) {
       setError(messageOf(err))
     } finally {

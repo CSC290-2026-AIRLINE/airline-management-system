@@ -68,6 +68,13 @@ export function SeatStep({
     void api.releaseSeat(lock.id)
   }, [lock, remaining, api])
 
+  // Leaving the step gives the seat back, otherwise the hold blocks it for the rest of the five minutes.
+  useEffect(() => {
+    return () => {
+      if (lock) void api.releaseSeat(lock.id)
+    }
+  }, [lock, api])
+
   async function pick(seatCode: string) {
     if (holding) return
     setHolding(true)
