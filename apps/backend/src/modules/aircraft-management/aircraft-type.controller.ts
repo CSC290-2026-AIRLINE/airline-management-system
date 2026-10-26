@@ -1,11 +1,13 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseGuards, UsePipes } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseFilters, UseGuards, UsePipes } from '@nestjs/common'
 import { AircraftTypeService } from './aircraft-type.service'
+import { ApiExceptionFilter } from './api-exception.filter'
 import { ApiValidationPipe } from './api-validation.pipe'
 import { CloneAircraftTypeDto, CreateAircraftTypeDto, UpdateAircraftTypeDto } from './dto/aircraft-type.dto'
 import { StaffGuard } from './staff.guard'
 
 @Controller('aircraft-types')
 @UseGuards(StaffGuard)
+@UseFilters(ApiExceptionFilter)
 @UsePipes(ApiValidationPipe)
 export class AircraftTypeController {
   constructor(private readonly aircraftTypeService: AircraftTypeService) {}

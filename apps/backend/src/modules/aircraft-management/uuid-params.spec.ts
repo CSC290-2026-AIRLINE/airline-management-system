@@ -62,6 +62,19 @@ describe('path parameters of the aircraft management routes', () => {
     expect(response.status).toBe(400)
   })
 
+  it('answers an error as { error: { code, message } }', async () => {
+    const response = await request(app.getHttpServer()).get('/aircraft/not-a-uuid')
+
+    expect(response.body).toEqual({ error: { code: 'bad_request', message: expect.stringContaining('uuid') as string } })
+  })
+
+  it('answers 204 to cancelling a status record', async () => {
+    const response = await request(app.getHttpServer()).delete(`/aircraft/${VALID_ID}/status/${VALID_ID}`)
+
+    expect(response.status).toBe(204)
+    expect(aircraftService.removeStatus).toHaveBeenCalledWith(VALID_ID, VALID_ID)
+  })
+
   it('lets a valid id through to the service', async () => {
     const response = await request(app.getHttpServer()).get(`/aircraft/${VALID_ID}`)
 

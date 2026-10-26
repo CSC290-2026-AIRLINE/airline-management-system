@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseGuards, UsePipes } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseFilters, UseGuards, UsePipes } from '@nestjs/common'
+import { ApiExceptionFilter } from './api-exception.filter'
 import { ApiValidationPipe } from './api-validation.pipe'
 import { CreateTurnaroundDto, UpdateTaskStatusDto } from './dto/turnaround.dto'
 import { TurnaroundService } from './turnaround.service'
@@ -6,6 +7,7 @@ import { StaffGuard } from './staff.guard'
 
 @Controller()
 @UseGuards(StaffGuard)
+@UseFilters(ApiExceptionFilter)
 @UsePipes(ApiValidationPipe)
 export class TurnaroundController {
   constructor(private readonly turnaroundService: TurnaroundService) {}

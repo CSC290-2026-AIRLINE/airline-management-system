@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Put, Query, UseGuards, UsePipes } from '@nestjs/common'
+import { Body, Controller, Get, Put, Query, UseFilters, UseGuards, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
+import { ApiExceptionFilter } from './api-exception.filter'
 import { ApiValidationPipe } from './api-validation.pipe'
 import { CurrentStaffService } from './current-staff.service'
 import { FleetReserveQueryDto, UpdateReserveRatioDto } from './dto/fleet.dto'
@@ -9,6 +10,7 @@ import { StaffGuard } from './staff.guard'
 
 @Controller('fleet')
 @UseGuards(StaffGuard)
+@UseFilters(ApiExceptionFilter)
 @UsePipes(ApiValidationPipe)
 export class FleetController {
   constructor(

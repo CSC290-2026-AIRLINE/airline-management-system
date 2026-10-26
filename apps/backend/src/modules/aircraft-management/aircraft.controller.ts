@@ -1,7 +1,22 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards, UsePipes } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  UseFilters,
+  UseGuards,
+  UsePipes,
+} from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { AircraftService } from './aircraft.service'
+import { ApiExceptionFilter } from './api-exception.filter'
 import { ApiValidationPipe } from './api-validation.pipe'
 import { CurrentStaffService } from './current-staff.service'
 import {
@@ -22,6 +37,7 @@ import { StaffGuard } from './staff.guard'
  * during booking, check-in and baggage handling, where the caller may hold a customer token.
  */
 @Controller('aircraft')
+@UseFilters(ApiExceptionFilter)
 @UsePipes(ApiValidationPipe)
 export class AircraftController {
   constructor(
@@ -80,6 +96,7 @@ export class AircraftController {
   }
 
   @UseGuards(StaffGuard)
+  @HttpCode(204)
   @Delete(':id/status/:periodId')
   removeStatus(@Param('id', ParseUUIDPipe) id: string, @Param('periodId', ParseUUIDPipe) periodId: string) {
     return this.aircraftService.removeStatus(id, periodId)
