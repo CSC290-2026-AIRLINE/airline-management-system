@@ -1,10 +1,14 @@
+import { IS_PUBLIC_KEY } from '@backend/auth/decorators/public.decorator'
 import type { INestApplication } from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
 import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
+import { CheckInController } from './checkin.controller'
 import { CheckinBoardingModule } from './checkin-boarding.module'
 import { SPECIMEN_LINE1, buildSpecimenLine2 } from './domain/mrz'
 import { STAFF_IDENTITY } from './providers/providers'
+import { StaffController } from './staff.controller'
 
 // The generated Prisma client is ESM only and the module never talks to a real database here.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -92,8 +96,47 @@ describe('customer routes', () => {
     expect(again.body.reference).toBe(pass.body.reference)
   })
 
-  it('the seat map is public', async () => {
-    await req.get('/flights/flt-fy204/seat-map').expect(200)
+  it('an MRZ line that is too long is a validation error', async () => {
+    const started = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F', lastName: 'Eriksson' }).expect(201)
+    const e = await req
+      .put(`/check-ins/${started.body.id}/document`)
+      .set('x-test-user', CUSTOMER)
+      .send({ mrzLine1: 'P'.repeat(100), mrzLine2: buildSpecimenLine2() })
+      .expect(400)
+    expect(e.body.error).toMatchObject({ code: 'VALIDATION', details: { field: 'mrzLine1' } })
+  })
+
+  it('the seat map shows the caller their own seat and hides the other cabin', async () => {
+    const started = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F', lastName: 'Eriksson' }).expect(201)
+    const id = started.body.id
+    await req
+      .put(`/check-ins/${id}/document`)
+      .set('x-test-user', CUSTOMER)
+      .send({ mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+      .expect(200)
+    const lock = await req
+      .post('/flights/flt-fy204/seat-locks')
+      .set('x-test-user', CUSTOMER)
+      .send({ checkInId: id, seatCode: '18B' })
+      .expect(201)
+    await req.put(`/check-ins/${id}/seat`).set('x-test-user', CUSTOMER).send({ lockId: lock.body.id }).expect(200)
+
+    const map = await req.get('/flights/flt-fy204/seat-map').set('x-test-user', CUSTOMER).expect(200)
+    const seats = map.body.rows.flatMap((row: { seats: { code: string; status: string }[] }) => row.seats)
+    expect(seats.find((seat: { code: string }) => seat.code === '18B')?.status).toBe('mine')
+    expect(seats.find((seat: { code: string }) => seat.code === '1C')?.status).toBe('blocked')
+
+    // The route is signed in: the real app's global guard answers 401 without a token. This test app has no
+    // guard, so the handler answers 200 without a viewer and marks no seat as mine.
+    const anonymous = await req.get('/flights/flt-fy204/seat-map').expect(200)
+    const anonymousSeats = anonymous.body.rows.flatMap((row: { seats: { status: string }[] }) => row.seats)
+    expect(anonymousSeats.some((seat: { status: string }) => seat.status === 'mine')).toBe(false)
+  })
+
+  it('the seat map route is not public', () => {
+    const reflector = new Reflector()
+    const handler = Object.getOwnPropertyDescriptor(CheckInController.prototype, 'seatMap')!.value
+    expect(reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [handler])).not.toBe(true)
   })
 })
 
@@ -172,6 +215,24 @@ describe('staff routes', () => {
     const row = search.body[0]
     const e = await req.get(`/staff/check-ins/${row.id}`).set('x-test-user', CUSTOMER).expect(403)
     expect(e.body.error).toMatchObject({ code: 'FORBIDDEN' })
+  })
+
+  it('a staff member may not declare the bags of a passenger', async () => {
+    const staffApp = await startApp(() => Promise.resolve({ isStaff: true, staffId: 'staff-demo' }))
+    try {
+      const r = request(staffApp.getHttpServer())
+      const started = await r.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F', lastName: 'Eriksson' }).expect(201)
+      const e = await r.put(`/check-ins/${started.body.id}/baggage`).set('x-test-user', CUSTOMER).send({ declaredBags: 1 }).expect(403)
+      expect(e.body.error).toMatchObject({ code: 'FORBIDDEN' })
+    } finally {
+      await staffApp.close()
+    }
+  })
+
+  it('the gate list routes need an actor', async () => {
+    const controller = app.get(StaffController)
+    await expect(controller.gates(null)).rejects.toMatchObject({ code: 'FORBIDDEN' })
+    await expect(controller.flights(null)).rejects.toMatchObject({ code: 'FORBIDDEN' })
   })
 })
 

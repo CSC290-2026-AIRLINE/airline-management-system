@@ -8,20 +8,21 @@ The module is registered in `AppModule`, so its routes are served under the glob
 
 ## Routes
 
-`@Controller()` — customer. `@UseGuards(ActorGuard)` resolves the caller, `@Public()` opens the seat map.
+`@Controller()` — customer. `@UseGuards(ActorGuard)` resolves the caller. Every route is signed in, the seat map
+included: it needs the caller to show them their own seat.
 
-| Method | Path                            | Body / query                          | Service                           |
-| ------ | ------------------------------- | ------------------------------------- | --------------------------------- |
-| POST   | `/check-ins`                    | `{ pnr, lastName }`                   | `CheckInService.start`            |
-| GET    | `/check-ins/:id`                |                                       | `CheckInService.get`              |
-| PUT    | `/check-ins/:id/document`       | `{ mrzLine1, mrzLine2, visaNumber? }` | `CheckInService.submitDocument`   |
-| GET    | `/flights/:flightId/seat-map`   |                                       | `CheckInService.seatMap` (public) |
-| POST   | `/flights/:flightId/seat-locks` | `{ checkInId, seatCode }`             | `CheckInService.holdSeat`         |
-| DELETE | `/seat-locks/:id`               |                                       | `CheckInService.releaseSeat`      |
-| PUT    | `/check-ins/:id/seat`           | `{ lockId }`                          | `CheckInService.confirmSeat`      |
-| PUT    | `/check-ins/:id/baggage`        | `{ declaredBags }`                    | `CheckInService.declareBags`      |
-| POST   | `/check-ins/:id/complete`       |                                       | `CheckInService.complete`         |
-| GET    | `/check-ins/:id/boarding-pass`  |                                       | `CheckInService.boardingPass`     |
+| Method | Path                            | Body / query                          | Service                         |
+| ------ | ------------------------------- | ------------------------------------- | ------------------------------- |
+| POST   | `/check-ins`                    | `{ pnr, lastName }`                   | `CheckInService.start`          |
+| GET    | `/check-ins/:id`                |                                       | `CheckInService.get`            |
+| PUT    | `/check-ins/:id/document`       | `{ mrzLine1, mrzLine2, visaNumber? }` | `CheckInService.submitDocument` |
+| GET    | `/flights/:flightId/seat-map`   |                                       | `CheckInService.seatMap`        |
+| POST   | `/flights/:flightId/seat-locks` | `{ checkInId, seatCode }`             | `CheckInService.holdSeat`       |
+| DELETE | `/seat-locks/:id`               |                                       | `CheckInService.releaseSeat`    |
+| PUT    | `/check-ins/:id/seat`           | `{ lockId }`                          | `CheckInService.confirmSeat`    |
+| PUT    | `/check-ins/:id/baggage`        | `{ declaredBags }`                    | `CheckInService.declareBags`    |
+| POST   | `/check-ins/:id/complete`       |                                       | `CheckInService.complete`       |
+| GET    | `/check-ins/:id/boarding-pass`  |                                       | `CheckInService.boardingPass`   |
 
 `@Controller('staff')` — `@UseGuards(StaffGuard)`, a customer token gets `403 FORBIDDEN`.
 
@@ -132,3 +133,7 @@ signs a user in with an `x-test-user` header.
 - **OCR** (`POST /check-ins/:id/document/ocr`) is not implemented (stretch goal).
 - **QR**: the boarding pass shows the reference and a pseudo-QR drawn from it; a real QR encoder is a dependency decision for the team.
 - **Persistence**: everything is in `CheckInStore` (memory) until Freddie's F6 migration lands; see "Moving to Prisma".
+- **Nest-generated 404/400/401 bodies** (unknown route, malformed JSON, missing token) do not use the `{ error }`
+  envelope; a global exception filter in `main.ts` is the platform's call (raised with the Dev leads). The frontends
+  map these to code `UNKNOWN`.
+- **LoggerAudit/LoggerNotify write with `logger.log`**, which `main.ts`'s logger levels (`error`, `warn`) hide.

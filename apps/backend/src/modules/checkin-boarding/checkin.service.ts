@@ -254,6 +254,8 @@ export class CheckInService {
   }
 
   async declareBags(actor: Actor, id: string, input: { declaredBags: number }): Promise<CheckInView> {
+    // The route table gives the bag count to the passenger, the counter weighs the bags.
+    if (actor.staffId !== null) throw new CheckInError(403, 'FORBIDDEN', 'The bag count is declared by the passenger')
     const record = this.require(actor, id)
     this.assertStarted(record, 'The bags can only be declared while the check-in is open')
     const flight = await this.flightOf(record.flight_id)
@@ -410,7 +412,16 @@ export class CheckInService {
     },
   ): TravelDocumentRecord {
     const existing = this.store.getDocumentByCheckIn(checkInId)
-    if (existing) return this.store.updateDocument(existing.id, values)
+    if (existing) {
+      // A new passport is a new document: the staff clearances of the old one do not carry over.
+      return this.store.updateDocument(existing.id, {
+        ...values,
+        name_mismatch_cleared_at: null,
+        name_mismatch_cleared_by: null,
+        visa_checked_at: null,
+        visa_checked_by: null,
+      })
+    }
     return this.store.createDocument({ check_in_id: checkInId, ...values })
   }
 

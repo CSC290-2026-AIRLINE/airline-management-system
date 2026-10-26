@@ -1,7 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import type { CheckInStatus } from '../api-types'
 import { boardingGroup } from '../domain/boarding'
-import { CheckInError } from '../errors'
+import { CheckInError, invalidState } from '../errors'
 import { BOOKINGS, GATES, PROFILES, SEEDED_DOC_EXPIRY, SEEDED_PASSES } from '../providers/fixtures'
 import { CLOCK } from '../providers/providers'
 import type { ClockProvider } from '../providers/providers'
@@ -188,7 +188,10 @@ export class CheckInStore {
         check_in_id: checkIn.id,
         reference: seed.reference,
         seat_code: seed.seat,
-        boarding_group: boardingGroup({ specialAssistance: booking.specialAssistance, cabin: booking.cabin, tier: null }),
+        // The air marshals board first, the same group the service gives them.
+        boarding_group: booking.isPolice
+          ? 1
+          : boardingGroup({ specialAssistance: booking.specialAssistance, cabin: booking.cabin, tier: null }),
       })
     }
   }
@@ -392,6 +395,9 @@ export class CheckInStore {
   deleteBag(id: string): CheckedBagRecord {
     const record = this.bags.get(id)
     if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Bag not found')
+    if (record.tag_number !== null || record.status !== 'weighed') {
+      throw invalidState('Only a weighed bag without a tag can be removed')
+    }
     record.deleted_at = this.now()
     record.updated_at = record.deleted_at
     return record

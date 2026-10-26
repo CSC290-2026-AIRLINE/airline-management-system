@@ -8,6 +8,16 @@ const store = () => {
   return s
 }
 
+/** The error a call throws, so its code can be checked. */
+function failureOf(fn: () => unknown): unknown {
+  try {
+    fn()
+  } catch (error) {
+    return error
+  }
+  throw new Error('the call did not throw')
+}
+
 describe('CheckInStore', () => {
   it('seeds 13 checked-in passengers, two gates and two boarding rows', () => {
     const s = store()
@@ -124,5 +134,37 @@ describe('CheckInStore', () => {
     expect(s.listBags(checkIn.id)).toHaveLength(1)
     s.deleteBag(bag.id)
     expect(s.listBags(checkIn.id)).toHaveLength(0)
+  })
+
+  it('deleteBag refuses a tagged bag and a bag that is not weighed', () => {
+    const s = store()
+    const checkIn = s.listCheckInsByFlight('flt-fy204')[0]
+    const tagged = s.createBag({
+      check_in_id: checkIn.id,
+      weight_kg: 15,
+      excess_kg: 0,
+      rate_per_kg: 500,
+      excess_fee: 0,
+      weighed_by: 'staff-demo',
+    })
+    s.updateBag(tagged.id, { tag_number: '0402000001', status: 'tagged' })
+    expect(failureOf(() => s.deleteBag(tagged.id))).toMatchObject({ code: 'INVALID_STATE', status: 409 })
+
+    const offloaded = s.createBag({
+      check_in_id: checkIn.id,
+      weight_kg: 15,
+      excess_kg: 0,
+      rate_per_kg: 500,
+      excess_fee: 0,
+      weighed_by: 'staff-demo',
+    })
+    s.updateBag(offloaded.id, { status: 'offloaded' })
+    expect(failureOf(() => s.deleteBag(offloaded.id))).toMatchObject({ code: 'INVALID_STATE', status: 409 })
+    expect(s.listBags(checkIn.id)).toHaveLength(2)
+  })
+
+  it('seeds the police passenger in boarding group 1', () => {
+    const s = store()
+    expect(s.passByReference('V3LP9KWE')!.boarding_group).toBe(1)
   })
 })

@@ -373,12 +373,7 @@ export class FixtureSensor implements SensorProvider {
 
 @Injectable()
 export class FixtureStaffIdentity implements StaffIdentityProvider {
-  private readonly logger = new Logger(FixtureStaffIdentity.name)
   readonly seen = new Set<string>()
-
-  constructor() {
-    this.logger.warn('Staff identity is a placeholder: every signed-in user counts as staff until the platform ships roles')
-  }
 
   async resolve(user: { id: string; email: string }): Promise<{ isStaff: boolean; staffId: string | null }> {
     this.seen.add(user.id)

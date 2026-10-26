@@ -98,12 +98,14 @@ export class StaffController {
   }
 
   @Get('gates')
-  async gates(): Promise<GateInfo[]> {
+  async gates(@CurrentActor() actor: Actor | null): Promise<GateInfo[]> {
+    requireActor(actor)
     return this.gate.gates()
   }
 
   @Get('flights')
-  async flights(): Promise<FlightSummary[]> {
+  async flights(@CurrentActor() actor: Actor | null): Promise<FlightSummary[]> {
+    requireActor(actor)
     return this.gate.flights()
   }
 

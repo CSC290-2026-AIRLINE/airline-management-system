@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common'
 import { DEMO_NOW } from './fixtures'
 import {
   FixtureBookings,
@@ -8,6 +9,7 @@ import {
   FixtureScreening,
   FixtureSeats,
   FixtureSettings,
+  FixtureStaffIdentity,
 } from './fixture-providers'
 
 describe('FixtureSeats', () => {
@@ -135,5 +137,14 @@ describe('FixtureClock', () => {
     expect(clock.now().toISOString()).toBe('2026-11-11T01:00:00.000Z')
     clock.set(new Date('2026-11-11T05:00:00.000Z'))
     expect(clock.now().toISOString()).toBe('2026-11-11T05:00:00.000Z')
+  })
+})
+
+describe('FixtureStaffIdentity', () => {
+  it('does not warn when it is built', () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn')
+    new FixtureStaffIdentity()
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

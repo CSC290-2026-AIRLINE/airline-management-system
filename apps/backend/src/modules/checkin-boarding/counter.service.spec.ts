@@ -28,6 +28,10 @@ const cust: Actor = { userId: 'user-anna', staffId: null }
 const SARA_LINE1 = 'P<UTO' + 'LOPEZ'.padEnd(10, '<') + 'MARIA'.padEnd(29, '<')
 const SARA_LINE2 = buildLine2({ number: 'UTO123456', nationality3: 'UTO', dob: '910829', sex: 'F', expiry: '300415' })
 
+/** A second passport of the same passenger: another surname, so the name flags again. */
+const SARA_OTHER_LINE1 = 'P<UTO' + 'GARCIA'.padEnd(10, '<') + 'MARIA'.padEnd(29, '<')
+const SARA_OTHER_LINE2 = buildLine2({ number: 'UTO123456', nationality3: 'UTO', dob: '910829', sex: 'F', expiry: '300415' })
+
 function build() {
   const clock = new FixtureClock()
   const store = new CheckInStore(clock)
@@ -268,6 +272,62 @@ describe('CounterService issues', () => {
   it('a customer cannot use the counter', async () => {
     const { counter } = build()
     await expect(counter.search(cust, {})).rejects.toMatchObject({ code: 'FORBIDDEN' })
+  })
+
+  it('a new document after a cleared name mismatch flags the mismatch again', async () => {
+    const { counter, checkins } = build()
+    const sara: BookingPassenger = {
+      bookingPassengerId: 'bp-test-sara',
+      pnr: 'VS318X',
+      paid: true,
+      flightId: 'flt-fy318',
+      passengerId: 'pax-ec318d',
+      firstName: 'Sara',
+      lastName: 'Lopez',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+    }
+    addedBookings.push(sara)
+    BOOKINGS.push(sara)
+    const c = await checkins.start(cust, { pnr: 'VS318X', lastName: 'Lopez' })
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SARA_LINE1, mrzLine2: SARA_LINE2, visaNumber: 'V123' })
+    const documentId = (await counter.detail(staff, c.id)).checkIn.document!.id
+    await counter.clearMismatch(staff, documentId)
+    expect((await counter.detail(staff, c.id)).issues).not.toContain('NAME_MISMATCH')
+
+    // The clearance belongs to the first passport: a second one has to be looked at again.
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SARA_OTHER_LINE1, mrzLine2: SARA_OTHER_LINE2, visaNumber: 'V123' })
+    expect((await counter.detail(staff, c.id)).issues).toContain('NAME_MISMATCH')
+  })
+
+  it('a new document after a checked visa asks the staff to check the visa again', async () => {
+    const { counter, checkins } = build()
+    const sara: BookingPassenger = {
+      bookingPassengerId: 'bp-test-sara',
+      pnr: 'VS318X',
+      paid: true,
+      flightId: 'flt-fy318',
+      passengerId: 'pax-ec318d',
+      firstName: 'Sara',
+      lastName: 'Lopez',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+    }
+    addedBookings.push(sara)
+    BOOKINGS.push(sara)
+    const c = await checkins.start(cust, { pnr: 'VS318X', lastName: 'Lopez' })
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SARA_LINE1, mrzLine2: SARA_LINE2, visaNumber: 'V123' })
+    const documentId = (await counter.detail(staff, c.id)).checkIn.document!.id
+    await counter.checkVisa(staff, documentId)
+    expect((await counter.detail(staff, c.id)).issues).not.toContain('VISA_CHECK')
+
+    // A new visa number is a new visa: the staff check does not carry over.
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SARA_OTHER_LINE1, mrzLine2: SARA_OTHER_LINE2, visaNumber: 'V456' })
+    expect((await counter.detail(staff, c.id)).issues).toContain('VISA_CHECK')
   })
 
   it('detail audits the sensitive read', async () => {

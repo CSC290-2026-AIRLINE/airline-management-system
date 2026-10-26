@@ -1,5 +1,4 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
-import { Public } from '@backend/auth/decorators/public.decorator'
 import type { BoardingPassView, CheckInView, SeatLock, SeatMap } from './api-types'
 import type { Actor } from './actor'
 import { CheckInService } from './checkin.service'
@@ -28,14 +27,13 @@ export class CheckInController {
   @Put('check-ins/:id/document')
   async submitDocument(@CurrentActor() actor: Actor | null, @Param('id') id: string, @Body() body: unknown): Promise<CheckInView> {
     return this.checkins.submitDocument(requireActor(actor), id, {
-      mrzLine1: requireString(body, 'mrzLine1'),
-      mrzLine2: requireString(body, 'mrzLine2'),
+      mrzLine1: requireString(body, 'mrzLine1', { max: 64 }),
+      mrzLine2: requireString(body, 'mrzLine2', { max: 64 }),
       visaNumber: optionalString(body, 'visaNumber', { max: 32 }),
     })
   }
 
-  /** The seat map is public: the passenger may look at it before signing in. */
-  @Public()
+  /** The seat map needs a signed-in caller: it shows that passenger their own seat. */
   @Get('flights/:flightId/seat-map')
   async seatMap(@CurrentActor() actor: Actor | null, @Param('flightId') flightId: string): Promise<SeatMap> {
     return this.checkins.seatMap(actor, flightId)
