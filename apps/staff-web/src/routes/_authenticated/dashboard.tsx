@@ -1,6 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useUser } from '@clerk/clerk-react'
 import { useAppAuth } from '../../auth/AuthProvider'
+import { Badge } from '../../components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 
 export const Route = createFileRoute('/_authenticated/dashboard')({
   component: Dashboard,
@@ -8,15 +10,46 @@ export const Route = createFileRoute('/_authenticated/dashboard')({
 
 function Dashboard() {
   const { user: clerkUser } = useUser()
-  const { user, isLoading, logout } = useAppAuth()
+  const { user } = useAppAuth()
+
+  const displayName = clerkUser?.firstName ?? user?.email ?? 'Staff'
+  const email = clerkUser?.primaryEmailAddress?.emailAddress ?? user?.email ?? ''
+  const role = user?.type ?? 'admin'
 
   return (
-    <div>
-      <h1>Welcome{user ? `, ${clerkUser?.firstName ?? user.email}` : ''}</h1>
-      <p>{clerkUser?.primaryEmailAddress?.emailAddress}</p>
-      <button type="button" className="counter" onClick={() => void logout()} disabled={isLoading}>
-        Log out
-      </button>
-    </div>
+    <main className="bg-muted min-h-[calc(100svh-57px)] px-6 py-10 font-sans">
+      <div className="max-w-3xl mx-auto flex flex-col gap-6">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold text-foreground m-0 mb-1">Welcome, {displayName}</h1>
+          <p className="text-sm text-muted-foreground m-0">Your staff dashboard. New tools land here as the team ships them.</p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Your account</CardTitle>
+              <Badge variant="secondary">{role}</Badge>
+            </div>
+            <CardDescription>Identity information synced from Clerk.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Name</span>
+              <span className="font-medium text-foreground text-right">
+                {clerkUser?.firstName ? `${clerkUser.firstName}${clerkUser.lastName ? ` ${clerkUser.lastName}` : ''}` : displayName}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Email</span>
+              <span className="font-medium text-foreground text-right">{email}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">User ID</span>
+              <span className="font-mono text-foreground text-right">{user?.id ?? '—'}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </main>
   )
 }

@@ -1,0 +1,55 @@
+import { createFileRoute } from '@tanstack/react-router'
+import { AddExtraServicesPage } from '../../features/onboard-products/AddExtraServicesPage'
+import type { Props as AddExtraServicesPageProps } from '../../features/onboard-products/AddExtraServicesPage'
+
+export const Route = createFileRoute('/_authenticated/bookings/$bookingId_/shop')({
+  component: BookingsBookingIdShopRoute,
+})
+
+function BookingsBookingIdShopRoute() {
+  const { bookingId } = Route.useParams()
+  // Dev-only "Order ready" presets. Visit
+  //   `/bookings/:id/shop?cart=snacks`                 → Page 3 (snacks, $13)
+  //   `/bookings/:id/shop?cart=duty-free`              → Page 4 (duty-free, $62)
+  //   `/bookings/:id/shop?cart=snacks&f5=pending`      → Page 11 (snacks, F5 panel, $13)
+  //   `/bookings/:id/shop?cart=duty-free&f5=pending`   → Page 5 (duty-free, F5 panel, $62)
+  //   `/bookings/:id/shop?cart=snacks&f5=failed`       → Page 12 (snacks, failed, $13)
+  //   `/bookings/:id/shop?cart=duty-free&f5=failed`    → Page 6 (duty-free, failed, $62)
+  //   `/bookings/:id/shop?cart=empty&f5=confirmed`     → Page 7 (empty cart, meals tab, green notice)
+  //   `/bookings/:id/shop?cart=snacks&f5=confirmed`    → Page 13 (snacks tab, empty cart, green notice)
+  //   `/bookings/:id/shop?preset=ready`                → legacy: equivalent to ?cart=snacks (Page 3)
+  //   `/bookings/:id/shop?preset=waiting`              → legacy: equivalent to ?cart=duty-free&f5=pending (Page 5)
+  //   `/bookings/:id/shop?preset=failed`               → legacy: equivalent to ?cart=duty-free&f5=failed (Page 6)
+  //   `/bookings/:id/shop?preset=confirmed`            → legacy: equivalent to ?cart=empty&f5=confirmed (Page 7)
+  // The page itself reads these via `window.location.search` so the
+  // type stays loose (TanStack Router's typed search params would
+  // force every `<Link to="/bookings/$bookingId/shop">` to pass a
+  // `search` prop).
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  // `?preset` is the legacy single-string alias; `?cart` is the new
+  // canonical key. `?cart` wins if both are present.
+  const cartRaw = params?.get('cart') ?? params?.get('preset') ?? null
+  const f5Raw = params?.get('f5') ?? null
+
+  // Back-compat: the legacy single-string `?preset=…` URLs map to
+  // specific (cart, f5) pairs. Any value in this table short-circuits
+  // the bare `?cart=…` / `?f5=…` parsing below.
+  const presetToPair: Record<
+    string,
+    { cart: NonNullable<AddExtraServicesPageProps['cart']>; f5: NonNullable<AddExtraServicesPageProps['f5']> }
+  > = {
+    ready: { cart: 'snacks', f5: 'none' },
+    'duty-free': { cart: 'duty-free', f5: 'none' },
+    waiting: { cart: 'duty-free', f5: 'pending' },
+    failed: { cart: 'duty-free', f5: 'failed' },
+    confirmed: { cart: 'empty', f5: 'confirmed' },
+  }
+  const pair = presetToPair[cartRaw ?? ''] ?? null
+
+  const cart: AddExtraServicesPageProps['cart'] =
+    pair?.cart ?? (cartRaw === 'snacks' || cartRaw === 'duty-free' || cartRaw === 'empty' ? cartRaw : 'none')
+  const f5: AddExtraServicesPageProps['f5'] =
+    pair?.f5 ?? (f5Raw === 'pending' || f5Raw === 'failed' || f5Raw === 'confirmed' ? f5Raw : 'none')
+
+  return <AddExtraServicesPage bookingId={bookingId} cart={cart} f5={f5} />
+}
