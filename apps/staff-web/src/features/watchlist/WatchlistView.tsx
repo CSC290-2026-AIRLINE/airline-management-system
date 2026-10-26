@@ -1,6 +1,7 @@
-import { Component, useState, type ReactNode } from 'react'
-import screeningIcon from './assets/screening.svg'
-import watchlistIcon from './assets/watchlist.svg'
+import { Component, useEffect, useState, type ReactNode } from 'react'
+import { ScreeningShell } from '@staff-web/features/security-screening/components/ScreeningShell'
+import { useScreeningRead } from '@staff-web/features/security-screening/use-screening-api'
+import type { ApiQueue } from '@staff-web/features/security-screening/screening-api'
 import { WatchlistResults } from './components/WatchlistResults'
 import { WatchlistSelect } from './components/WatchlistSelect'
 import { WatchlistDialog } from './components/WatchlistDialog'
@@ -17,11 +18,11 @@ class WatchlistBoundary extends Component<{ children: ReactNode }, { failed: boo
   }
   render() {
     return this.state.failed ? (
-      <main className="wl-page wl-empty">
+      <div className="wl-content wl-empty">
         <h1>Watchlist could not be displayed</h1>
         <p>Please reload the page to try again.</p>
         <button onClick={() => window.location.reload()}>Reload</button>
-      </main>
+      </div>
     ) : (
       this.props.children
     )
@@ -38,6 +39,13 @@ export function WatchlistView({ onSignOut }: { onSignOut?: () => Promise<void> }
 
 function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
   const watchlist = useWatchlist()
+  const [countsRevision, setCountsRevision] = useState(0)
+  const screening = useScreeningRead<ApiQueue>('/api/security/screenings?status=needs-review&limit=1', countsRevision)
+  useEffect(() => {
+    const refreshCounts = () => setCountsRevision((value) => value + 1)
+    window.addEventListener('focus', refreshCounts)
+    return () => window.removeEventListener('focus', refreshCounts)
+  }, [])
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   async function edit(entry: WatchlistEntry) {
@@ -55,90 +63,9 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
   }
   const [modal, setModal] = useState<'add' | 'edit' | 'clear' | null>(null)
   const [selected, setSelected] = useState<WatchlistEntry>()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [signingOut, setSigningOut] = useState(false)
-  const [signOutError, setSignOutError] = useState('')
-  async function signOut() {
-    if (!onSignOut) return
-    setSigningOut(true)
-    try {
-      await onSignOut()
-    } catch {
-      setSignOutError('Could not sign out. Please try again.')
-    } finally {
-      setSigningOut(false)
-    }
-  }
-  const navigation = (
-    <>
-      <button disabled title="Customer Search is not implemented in this checkout">
-        Customer Search
-      </button>
-      <a href="/watchlist" aria-current="page">
-        Security Screening
-      </a>
-    </>
-  )
-  const signOutButton = (
-    <button
-      disabled={!onSignOut || signingOut}
-      title={!onSignOut ? 'No sign-in is required for this UI preview' : undefined}
-      onClick={() => void signOut()}
-    >
-      {signingOut ? 'Signing out…' : 'Sign out'}
-    </button>
-  )
-
   return (
-    <div className={`wl-page${watchlist.message ? ' wl-has-message' : ''}`}>
-      <aside className="wl-sidebar" aria-label="Staff navigation">
-        <div className="wl-brand">Airlines</div>
-        <div className="wl-gold-line" />
-        <p className="wl-workspace">ADMIN WORKSPACE</p>
-        <nav>{navigation}</nav>
-        <div className="wl-account">
-          <strong>Security staff</strong>
-          <p>Navigation follows assigned staff permissions.</p>
-          {signOutButton}
-        </div>
-      </aside>
-      <main className="wl-main">
-        <header className="wl-header">
-          <div className="wl-mobile-header">
-            <span className="wl-brand">Airlines</span>
-            <span className="wl-staff">STAFF</span>
-            <button
-              className="wl-menu"
-              aria-label="Staff menu"
-              aria-expanded={menuOpen}
-              aria-controls="wl-mobile-nav"
-              onClick={() => setMenuOpen(!menuOpen)}
-            >
-              <span />
-              <span />
-              <span />
-            </button>
-          </div>
-          {menuOpen && (
-            <nav className="wl-mobile-nav" id="wl-mobile-nav">
-              {navigation}
-              {signOutButton}
-            </nav>
-          )}
-          <h1>Security Screening</h1>
-          <p>Review possible watchlist matches or manage watchlist entries. Security role only.</p>
-          <nav className="wl-tabs" aria-label="Security screening">
-            <button disabled title="Screening Queue is not implemented in this checkout">
-              <img src={screeningIcon} alt="" width="16" height="16" />
-              <span className="wl-desktop-label">Screening Queue</span>
-              <span className="wl-mobile-label">Screening Queue</span>
-            </button>
-            <a href="/watchlist" aria-current="page">
-              <img src={watchlistIcon} alt="" width="16" height="16" />
-              Watchlist
-            </a>
-          </nav>
-        </header>
+    <ScreeningShell activeTab="watchlist" held={screening.data?.counts.held} onSignOut={onSignOut} navigationDisabled={watchlist.saving}>
+      <div className="wl-content">
         <section aria-label="Watchlist">
           {watchlist.message && (
             <div className="wl-banner" role="status">
@@ -147,11 +74,6 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
               </span>
               <span>{watchlist.message}</span>
             </div>
-          )}
-          {signOutError && (
-            <p className="wl-error" role="alert">
-              {signOutError}
-            </p>
           )}
           <div className="wl-toolbar">
             <input
@@ -218,11 +140,30 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
               />
             )
           )}
-          {watchlist.nextCursor && !watchlist.loading && !watchlist.error && (
-            <button onClick={watchlist.loadMore}>Load more entries</button>
-          )}
+          <nav className="wl-pagination" aria-label="Watchlist pages">
+            <button disabled={watchlist.pageNumber === 1 || watchlist.loading || watchlist.saving} onClick={watchlist.previousPage}>
+              Previous
+            </button>
+            <fieldset className="wl-page-picker" disabled={watchlist.loading || watchlist.saving}>
+              <WatchlistSelect
+                label="Watchlist page"
+                value={String(watchlist.pageNumber - 1)}
+                options={Array.from({ length: watchlist.visitedPages }, (_, index) => ({
+                  value: String(index),
+                  label: `Page ${index + 1}`,
+                }))}
+                onChange={(value) => watchlist.selectPage(Number(value))}
+              />
+            </fieldset>
+            <button
+              disabled={!watchlist.nextCursor || watchlist.loading || watchlist.saving || !!watchlist.error}
+              onClick={watchlist.nextPage}
+            >
+              Next
+            </button>
+          </nav>
         </section>
-      </main>
+      </div>
       {(modal === 'add' || modal === 'edit') && (
         <WatchlistDialog
           title={modal === 'add' ? 'Add watchlist entry' : 'Edit watchlist entry'}
@@ -235,6 +176,7 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
             entry={selected}
             onSave={async (fields) => {
               await watchlist.save(fields, selected)
+              setCountsRevision((value) => value + 1)
               setModal(null)
             }}
             onCancel={() => setModal(null)}
@@ -248,10 +190,11 @@ function WatchlistContent({ onSignOut }: { onSignOut?: () => Promise<void> }) {
           onCancel={() => setModal('edit')}
           onClear={async (reason) => {
             await watchlist.clear(selected, reason)
+            setCountsRevision((value) => value + 1)
             setModal(null)
           }}
         />
       )}
-    </div>
+    </ScreeningShell>
   )
 }

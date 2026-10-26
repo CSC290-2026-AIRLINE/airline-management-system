@@ -40,6 +40,7 @@ export function QueueToolbar({
             to="/screening-queue"
             search={(previous) => ({ ...previous, status: filterStatuses[item], review: undefined })}
             resetScroll={false}
+            viewTransition
             aria-current={filter === item ? 'page' : undefined}
             className={filter === item ? 'sq-filter-active' : ''}
             onClick={() => onFilter(item)}

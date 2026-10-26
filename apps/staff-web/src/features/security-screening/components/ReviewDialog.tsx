@@ -41,7 +41,7 @@ export function ReviewDialog({
       <div className="sq-dialog-heading">
         <div>
           <h2 id="sq-dialog-title">Add a new review</h2>
-          <p>{record.displayName} · The latest review wins; the old one is kept.</p>
+          <p>{record.displayName}</p>
         </div>
         <button className="sq-close" onClick={onClose} disabled={submission.saving} aria-label="Close new review">
           ×

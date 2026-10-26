@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { entryName, type EntryFields, type EntryStatus, type ListType, type WatchlistEntry } from '../watchlist.types'
 
@@ -22,7 +22,19 @@ const toEntry = (row: ApiEntry): WatchlistEntry => ({
   clearedAt: row.clearedAt ?? undefined,
   clearReason: row.clearReason ?? undefined,
 })
+const mobileQuery = '(max-width: 767px)'
+function subscribeToViewport(onChange: () => void) {
+  const media = window.matchMedia(mobileQuery)
+  media.addEventListener('change', onChange)
+  return () => media.removeEventListener('change', onChange)
+}
 export function useWatchlist() {
+  const isMobile = useSyncExternalStore(
+    subscribeToViewport,
+    () => window.matchMedia(mobileQuery).matches,
+    () => false,
+  )
+  const pageSize = isMobile ? 3 : 20
   const { fetchWithAuth } = useAppAuth()
   const fetchRef = useRef(fetchWithAuth)
   useEffect(() => {
@@ -38,7 +50,15 @@ export function useWatchlist() {
   const [saving, setSaving] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [revision, setRevision] = useState(0)
+  const [pagination, setPagination] = useState<{ scope: string; cursors: string[]; index: number }>({ scope: '', cursors: [''], index: 0 })
+  const scope = JSON.stringify([query, status, listType, revision, pageSize])
+  const page = pagination.scope === scope ? pagination : { scope, cursors: [''], index: 0 }
+  const cursor = page.cursors[page.index]
+  const pageKey = JSON.stringify([scope, page.index, cursor])
+  const [loadedKey, setLoadedKey] = useState('')
+  const pending = loading || loadedKey !== pageKey
   const operation = useRef(false)
+  const previousQuery = useRef(query)
   const listController = useRef<AbortController | null>(null)
   const request = useCallback(async <T>(path: string, init?: RequestInit): Promise<T> => {
     let response: Response
@@ -66,35 +86,40 @@ export function useWatchlist() {
     async (cursor?: string, signal?: AbortSignal) => {
       setLoading(true)
       setError('')
-      const params = new URLSearchParams({ status, listType, limit: '100' })
+      const params = new URLSearchParams({ status, listType, limit: String(pageSize) })
       if (query.trim()) params.set('search', query.trim())
       if (cursor) params.set('cursor', cursor)
       try {
         const page = await request<ApiPage>(`?${params}`, { signal })
         if (signal?.aborted) return
-        setEntries((current) => (cursor ? [...current, ...page.items.map(toEntry)] : page.items.map(toEntry)))
+        setEntries(page.items.map(toEntry))
         setNextCursor(page.nextCursor)
       } catch (cause) {
         if (!signal?.aborted) {
           setError(cause instanceof Error ? cause.message : 'Could not load entries.')
-          if (!cursor) setEntries([])
+          setEntries([])
         }
       } finally {
-        if (!signal?.aborted) setLoading(false)
+        if (!signal?.aborted) {
+          setLoading(false)
+          setLoadedKey(pageKey)
+        }
       }
     },
-    [request, query, status, listType],
+    [request, query, status, listType, pageSize, pageKey],
   )
   useEffect(() => {
     listController.current?.abort()
     const controller = new AbortController()
     listController.current = controller
-    const timer = window.setTimeout(() => void load(undefined, controller.signal), 250)
+    const delay = previousQuery.current !== query ? 250 : 0
+    previousQuery.current = query
+    const timer = window.setTimeout(() => void load(cursor || undefined, controller.signal), delay)
     return () => {
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [load, revision])
+  }, [load, revision, query, cursor])
   useEffect(() => {
     if (!message) return
     const timer = window.setTimeout(() => setMessage(''), 5000)
@@ -133,8 +158,14 @@ export function useWatchlist() {
   function retry() {
     setRevision((value) => value + 1)
   }
-  function loadMore() {
-    if (nextCursor && !loading) void load(nextCursor, listController.current?.signal)
+  function selectPage(index: number) {
+    if (pending || saving || !Number.isInteger(index) || index < 0 || index >= page.cursors.length) return
+    setPagination({ ...page, index })
+  }
+  function nextPage() {
+    if (pending || saving || !nextCursor || error) return
+    const cursors = page.cursors[page.index + 1] === nextCursor ? page.cursors : [...page.cursors.slice(0, page.index + 1), nextCursor]
+    setPagination({ scope, cursors, index: page.index + 1 })
   }
   return {
     visibleEntries,
@@ -147,11 +178,15 @@ export function useWatchlist() {
     message,
     setMessage,
     error,
-    loading,
+    loading: pending,
     saving,
     nextCursor,
     retry,
-    loadMore,
+    pageNumber: page.index + 1,
+    visitedPages: page.cursors.length,
+    selectPage,
+    nextPage,
+    previousPage: () => selectPage(page.index - 1),
     save,
     clear,
     detail,
