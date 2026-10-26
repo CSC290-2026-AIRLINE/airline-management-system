@@ -3,6 +3,9 @@ export const PricingErrorCode = {
   FARE_CLASS_CODE_TAKEN: 'FARE_CLASS_CODE_TAKEN',
   SEAT_FEE_NOT_FOUND: 'SEAT_FEE_NOT_FOUND',
   SEAT_FEE_EXISTS: 'SEAT_FEE_EXISTS',
+  TAX_FEE_NOT_FOUND: 'TAX_FEE_NOT_FOUND',
+  TAX_FEE_CODE_TAKEN: 'TAX_FEE_CODE_TAKEN',
+  TAX_FEE_PCT_TOO_HIGH: 'TAX_FEE_PCT_TOO_HIGH',
 } as const
 export type PricingErrorCode = (typeof PricingErrorCode)[keyof typeof PricingErrorCode]
 
