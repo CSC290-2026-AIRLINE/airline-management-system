@@ -1,7 +1,7 @@
 {
 	"env": {
 		"ANTHROPIC_BASE_URL": "https://nrrai2-model.sit.kmutt.ac.th/api",
-		"ANTHROPIC_AUTH_TOKEN": "sk-sit-tinsandar-6JXsJIjoIJJ-rhnHSdQKYX9OlKDvOPyIrFDJD3xVyypT",
+		"ANTHROPIC_AUTH_TOKEN": "your api key",
 		"ANTHROPIC_MODEL": "minimax-m3",
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
 		"CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
