@@ -7,6 +7,10 @@ import type {
   CheckInView,
   CheckInWindow,
   FlightSummary,
+  GateInfo,
+  GateList,
+  GateListEntry,
+  Headcount,
   IssueCode,
   SeatChoice,
   StaffCheckInRow,
@@ -187,5 +191,61 @@ export function toStaffRow(input: { checkIn: CheckInRecord; flightNumber: string
     flightNumber: input.flightNumber,
     status: input.checkIn.status,
     issues: input.issues,
+  }
+}
+
+export function toGateInfo(gate: { id: string; code: string; airport_code: string; is_active: boolean }): GateInfo {
+  return {
+    id: gate.id,
+    code: gate.code,
+    airportCode: gate.airport_code,
+    isActive: gate.is_active,
+  }
+}
+
+export interface GateListInput {
+  gate: { id: string; code: string }
+  flight: FlightSummary
+  closedAt: string | null
+  boardedCount: number
+  entries: GateListEntry[]
+}
+
+/** The air marshals board first, so they are listed apart and never repeated in a group. */
+export function toGateList(input: GateListInput): GateList {
+  const groups: Record<'1' | '2' | '3' | '4', GateListEntry[]> = { '1': [], '2': [], '3': [], '4': [] }
+  const police: GateListEntry[] = []
+  for (const entry of input.entries) {
+    if (entry.isPolice) {
+      police.push(entry)
+      continue
+    }
+    groups[String(entry.boardingGroup) as '1' | '2' | '3' | '4'].push(entry)
+  }
+  return {
+    gate: input.gate,
+    flight: input.flight,
+    closedAt: input.closedAt,
+    boardedCount: input.boardedCount,
+    police,
+    groups,
+  }
+}
+
+export function toHeadcount(input: {
+  flightId: string
+  gateCode: string
+  sensorCount: number | null
+  manualCount: number | null
+  boardedCount: number
+  closedAt: Date | null
+}): Headcount {
+  return {
+    flightId: input.flightId,
+    gateCode: input.gateCode,
+    sensorCount: input.sensorCount,
+    manualCount: input.manualCount,
+    boardedCount: input.boardedCount,
+    closedAt: input.closedAt?.toISOString() ?? null,
   }
 }
