@@ -1,6 +1,10 @@
 export const PricingErrorCode = {
   FARE_CLASS_NOT_FOUND: 'FARE_CLASS_NOT_FOUND',
   FARE_CLASS_CODE_TAKEN: 'FARE_CLASS_CODE_TAKEN',
+  CURRENCY_RATE_NOT_FOUND: 'CURRENCY_RATE_NOT_FOUND',
+  CURRENCY_CODE_TAKEN: 'CURRENCY_CODE_TAKEN',
+  CURRENCY_IS_BASE: 'CURRENCY_IS_BASE',
+  STAFF_NOT_FOUND: 'STAFF_NOT_FOUND',
 } as const
 export type PricingErrorCode = (typeof PricingErrorCode)[keyof typeof PricingErrorCode]
 
