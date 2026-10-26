@@ -132,6 +132,9 @@ export class AircraftService {
     if (!aircraftType) {
       throw new NotFoundException(`Aircraft type with ID ${dto.aircraft_type_id} not found`)
     }
+    if (!aircraftType.is_active) {
+      throw new ConflictException(`Aircraft type ${aircraftType.code} is retired and cannot be used for a new aircraft`)
+    }
     if (!airport) {
       throw new NotFoundException(`Airport with code "${baseAirportCode}" not found`)
     }
@@ -473,13 +476,35 @@ export class AircraftService {
     if (!maintenance) {
       throw new NotFoundException('Maintenance window not found')
     }
+    if (maintenance.status === 'cancelled') {
+      throw new ConflictException('A cancelled maintenance window cannot be changed')
+    }
 
     const actualEnd = dto.actual_end_date === undefined ? undefined : dto.actual_end_date === null ? null : toIsoDate(dto.actual_end_date)
     if (dto.status === 'completed' && !actualEnd) {
       throw new BadRequestException('actual_end_date is required when a maintenance window is completed')
     }
 
+    // The dates are checked as they will be stored: a value that is not sent keeps the stored one.
+    const datesChange = dto.planned_start_date !== undefined || dto.planned_end_date !== undefined || actualEnd !== undefined
+    const plannedStart = toIsoDate(dto.planned_start_date ?? maintenance.planned_start_date)
+    const plannedEnd = toIsoDate(dto.planned_end_date ?? maintenance.planned_end_date)
+    const finalActualEnd =
+      actualEnd === undefined ? (maintenance.actual_end_date ? toIsoDate(maintenance.actual_end_date) : null) : actualEnd
+    if (datesChange) {
+      if (plannedEnd < plannedStart) {
+        throw new BadRequestException('planned_end_date cannot be before planned_start_date')
+      }
+      if (finalActualEnd && finalActualEnd < plannedStart) {
+        throw new BadRequestException('actual_end_date cannot be before planned_start_date')
+      }
+    }
+
     return this.db.$transaction(async (tx) => {
+      if (datesChange && dto.status !== 'cancelled') {
+        await this.resolveOverlaps(tx, aircraftId, plannedStart, finalActualEnd ?? plannedEnd, maintenance.status_period_id)
+      }
+
       const updateData: {
         status?: string
         planned_start_date?: Date
@@ -554,16 +579,21 @@ export class AircraftService {
    * - an open-ended period that started before the new one is closed the day before it starts,
    * - an open-ended period that starts on the same day is replaced (it would have no days left),
    * - any other overlap, including with a bounded period such as a maintenance window, is a conflict.
+   * `ignorePeriodId` leaves out the period that is being changed, so it does not conflict with itself.
    */
   private async resolveOverlaps(
     tx: Prisma.TransactionClient,
     aircraftId: string,
     startDate: string,
     endDate: string | null,
+    ignorePeriodId?: string,
   ): Promise<void> {
     const periods = await tx.aircraft_status_period.findMany({ where: { aircraft_id: aircraftId, deleted_at: null } })
 
     for (const period of periods) {
+      if (period.id === ignorePeriodId) {
+        continue
+      }
       const periodStart = toIsoDate(period.start_date)
       const periodEnd = period.end_date ? toIsoDate(period.end_date) : null
 

@@ -110,7 +110,7 @@ describe('AircraftService', () => {
     }
 
     beforeEach(() => {
-      db.aircraft_type.findFirst.mockResolvedValue({ id: 't1' })
+      db.aircraft_type.findFirst.mockResolvedValue({ id: 't1', code: 'A320', is_active: true })
       db.airport.findUnique.mockResolvedValue({ iata_code: 'BKK' })
       tx.aircraft.create.mockResolvedValue({ id: 'a1' })
       db.aircraft.findFirst.mockResolvedValue(aircraftRow([]))
@@ -131,6 +131,13 @@ describe('AircraftService', () => {
       tx.aircraft.create.mockRejectedValue({ code: 'P2002' })
 
       await expect(service.create(dto, 'staff-1')).rejects.toBeInstanceOf(ConflictException)
+    })
+
+    it('refuses a retired aircraft type', async () => {
+      db.aircraft_type.findFirst.mockResolvedValue({ id: 't1', code: 'A320', is_active: false })
+
+      await expect(service.create(dto, 'staff-1')).rejects.toBeInstanceOf(ConflictException)
+      expect(tx.aircraft.create).not.toHaveBeenCalled()
     })
 
     it('reports an unknown aircraft type', async () => {
@@ -381,14 +388,76 @@ describe('AircraftService', () => {
   })
 
   describe('updateMaintenance', () => {
+    const maintenanceRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'm1',
+      aircraft_id: 'a1',
+      status_period_id: 'p1',
+      status: 'planned',
+      planned_start_date: new Date('2026-03-10'),
+      planned_end_date: new Date('2026-03-20'),
+      actual_end_date: null,
+      ...overrides,
+    })
+
     it('requires an actual end date when a window is completed', async () => {
-      db.aircraft_maintenance.findFirst.mockResolvedValue({ id: 'm1', aircraft_id: 'a1', status_period_id: 'p1' })
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
 
       await expect(service.updateMaintenance('a1', 'm1', { status: 'completed' })).rejects.toBeInstanceOf(BadRequestException)
     })
 
+    it('refuses an end date before the stored start date', async () => {
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
+
+      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-05' })).rejects.toBeInstanceOf(BadRequestException)
+      expect(tx.aircraft_maintenance.update).not.toHaveBeenCalled()
+    })
+
+    it('refuses a start date after the stored end date', async () => {
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
+
+      await expect(service.updateMaintenance('a1', 'm1', { planned_start_date: '2026-03-25' })).rejects.toBeInstanceOf(BadRequestException)
+    })
+
+    it('refuses an actual end date before the start date', async () => {
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
+
+      await expect(service.updateMaintenance('a1', 'm1', { status: 'completed', actual_end_date: '2026-03-01' })).rejects.toBeInstanceOf(
+        BadRequestException,
+      )
+    })
+
+    it('refuses to change a cancelled window', async () => {
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow({ status: 'cancelled' }))
+
+      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' })).rejects.toBeInstanceOf(ConflictException)
+    })
+
+    it('reports new dates that run into another period as a conflict, without conflicting with its own period', async () => {
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
+      tx.aircraft_status_period.findMany.mockResolvedValue([
+        { id: 'p1', status: 'in_maintenance', origin: 'maintenance', start_date: new Date('2026-03-10'), end_date: new Date('2026-03-20') },
+        { id: 'p2', status: 'grounded', origin: 'manual', start_date: new Date('2026-03-22'), end_date: new Date('2026-03-30') },
+      ])
+
+      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' })).rejects.toBeInstanceOf(ConflictException)
+    })
+
+    it('moves the window when the new dates are free', async () => {
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
+      tx.aircraft_status_period.findMany.mockResolvedValue([
+        { id: 'p1', status: 'in_maintenance', origin: 'maintenance', start_date: new Date('2026-03-10'), end_date: new Date('2026-03-20') },
+      ])
+      tx.aircraft_maintenance.update.mockResolvedValue({ id: 'm1' })
+
+      await service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' })
+
+      expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'p1' }, data: expect.objectContaining({ end_date: new Date('2026-03-25') }) }),
+      )
+    })
+
     it('closes the status period of a cancelled window', async () => {
-      db.aircraft_maintenance.findFirst.mockResolvedValue({ id: 'm1', aircraft_id: 'a1', status_period_id: 'p1' })
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
       tx.aircraft_maintenance.update.mockResolvedValue({ id: 'm1' })
 
       await service.updateMaintenance('a1', 'm1', { status: 'cancelled' })
