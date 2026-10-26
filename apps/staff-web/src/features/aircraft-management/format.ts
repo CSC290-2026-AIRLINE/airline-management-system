@@ -3,10 +3,10 @@
  * change here instead of a sweep through the pages.
  */
 
-/** Calendar dates are stored as UTC, so they are formatted in UTC to avoid a day shift. */
-const calendarDate = new Intl.DateTimeFormat('en-GB', {
+/** Calendar dates are stored as UTC, so they are formatted in UTC to avoid a day shift. The design writes them as 2019-03-14. */
+const calendarDate = new Intl.DateTimeFormat('sv-SE', {
   day: '2-digit',
-  month: 'short',
+  month: '2-digit',
   year: 'numeric',
   timeZone: 'UTC',
 })

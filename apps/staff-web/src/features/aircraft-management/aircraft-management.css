@@ -364,7 +364,7 @@
   padding: 12px 14px;
   border-radius: 8px;
   background: var(--f9-amber-bg);
-  color: var(--f9-ink);
+  color: var(--f9-amber);
 }
 
 /* ---------------------------------------------------------------- buttons */
@@ -588,7 +588,8 @@
 /* The types table has a wide manufacturer column and narrow metric columns. */
 .f9-table--types th:nth-child(1),
 .f9-table--types td:nth-child(1) {
-  width: 90px;
+  width: 130px;
+  white-space: nowrap;
 }
 
 .f9-table--types th:nth-child(2),
@@ -743,6 +744,21 @@
   overflow: hidden;
 }
 
+.f9-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 11px;
+}
+
+.f9-filters .f9-select {
+  height: 34px;
+  min-width: 0;
+  font-size: 13px;
+  background-position:
+    calc(100% - 17px) 14px,
+    calc(100% - 12px) 14px;
+}
+
 .f9-detail {
   padding: 20px 21px 24px;
 }
@@ -770,6 +786,8 @@
 
 .f9-detail__badge {
   margin-top: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--f9-table-head);
 }
 
 .f9-detail__row {
@@ -831,6 +849,35 @@
   font-weight: 600;
 }
 
+.f9-detail__cancel,
+.f9-detail__keep {
+  margin-left: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.f9-detail__cancel {
+  color: var(--f9-red);
+}
+
+.f9-detail__keep {
+  color: var(--f9-muted);
+}
+
+.f9-detail__cancel:hover,
+.f9-detail__keep:hover {
+  text-decoration: underline;
+}
+
+.f9-detail__cancel:disabled {
+  color: var(--f9-muted);
+  cursor: not-allowed;
+}
+
 .f9-detail__hint {
   margin: 8px 0 0;
   color: var(--f9-muted);
@@ -870,6 +917,10 @@
   gap: 12px;
 }
 
+.f9-cabinrow__rows {
+  color: var(--f9-muted);
+}
+
 .f9-cabinrow {
   display: flex;
   align-items: center;
@@ -879,6 +930,7 @@
   padding: 0 13px;
   border: 1px solid var(--f9-border);
   border-radius: 6px;
+  background: var(--f9-page);
   font-size: 13px;
 }
 
@@ -1252,6 +1304,19 @@
   background: var(--f9-red);
 }
 
+.f9-readiness__ratio {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--f9-table-head);
+}
+
+.f9-readiness__ratio .f9-field {
+  flex: 1;
+}
+
 .f9-turnaround {
   margin-top: 12px;
   padding: 16px 17px;
@@ -1353,22 +1418,37 @@
   position: absolute;
   top: 22px;
   right: 22px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--f9-muted);
+  height: 27px;
+  padding: 0 12px;
+  border: 1px solid var(--f9-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--f9-ink);
   font: inherit;
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .f9-modal__close:hover {
-  color: var(--f9-navy);
+  border-color: var(--f9-border-strong);
 }
 
 .f9-modal__head {
   position: relative;
   padding-right: 48px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--f9-table-head);
+}
+
+.f9-modal__section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--f9-table-head);
+}
+
+.f9-modal__actions--start {
+  justify-content: flex-start;
 }
 
 .f9-typerow {
@@ -1385,7 +1465,6 @@
 
 .f9-typerow span:last-child {
   color: var(--f9-ink);
-  font-weight: 600;
 }
 
 .f9-typecabin {
@@ -1393,7 +1472,8 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--f9-table-head);
   font-size: 13px;
 }
 
