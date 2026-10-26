@@ -460,6 +460,7 @@
   margin-bottom: 5px;
   color: var(--f9-muted);
   font-size: 12px;
+  line-height: 16px;
 }
 
 .f9-input,
@@ -1387,7 +1388,12 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgb(10 20 36 / 55%);
+  background: rgb(0 0 0 / 25%);
+}
+
+/* The type details dialog has a navy overlay in the design. */
+.f9-modal--details {
+  background: rgb(11 20 35 / 45%);
 }
 
 .f9-modal__card {
@@ -1407,10 +1413,11 @@
 }
 
 .f9-modal__title {
-  margin: 0 0 18px;
+  margin: 0 0 12px;
   color: var(--f9-ink);
   font-size: 16px;
   font-weight: 700;
+  line-height: 1.2;
 }
 
 .f9-modal__field {
@@ -1429,16 +1436,18 @@
 }
 
 .f9-modal__hint {
-  margin: -4px 0 14px;
+  margin: 0;
+  padding-top: 2px;
   color: var(--f9-muted);
   font-size: 11px;
+  line-height: 13px;
 }
 
 .f9-modal__actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
 .f9-modal__close {

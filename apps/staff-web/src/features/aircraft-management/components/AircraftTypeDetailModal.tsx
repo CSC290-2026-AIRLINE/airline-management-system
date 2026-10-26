@@ -18,7 +18,7 @@ export function AircraftTypeDetailModal({ aircraftType, isWorking, error, onClos
   const blockedSeats = cabins.reduce((total, cabin) => total + (cabin.blocked_seats?.length ?? 0), 0)
 
   return (
-    <div className="f9-modal" role="dialog" aria-modal="true" aria-label={`Aircraft type ${aircraftType.code}`}>
+    <div className="f9-modal f9-modal--details" role="dialog" aria-modal="true" aria-label={`Aircraft type ${aircraftType.code}`}>
       <div className="f9-modal__card f9-modal__card--wide">
         <button type="button" className="f9-modal__close" onClick={onClose}>
           Close
