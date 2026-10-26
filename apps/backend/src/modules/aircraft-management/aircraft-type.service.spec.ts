@@ -87,6 +87,44 @@ describe('AircraftTypeService', () => {
     await expect(service.create(dto)).rejects.toBeInstanceOf(BadRequestException)
   })
 
+  describe('layout limits', () => {
+    const dtoWith = (cabins: CabinLayoutDto[]) => ({
+      code: 'A320',
+      manufacturer: 'Airbus',
+      model: 'A320',
+      layout: layout(cabins),
+      hold_weight_limit_kg: 9435,
+      max_takeoff_weight_kg: 78000,
+      max_range_km: 6100,
+      min_turnaround_minutes: 45,
+      operating_cost_per_hour: 5200,
+      cost_currency: 'USD',
+    })
+
+    it.each([
+      ['a layout with more seats than any aircraft has', [cabin({ last_row: 200, columns: ['A', 'B', 'C', 'D', 'E', 'F'] })]],
+      ['a row type that does not exist', [cabin({ row_types: { window: [2] } })]],
+      ['row types that list rows outside the cabin', [cabin({ row_types: { exit: [99] } })]],
+      ['row types that are not a list of rows', [cabin({ row_types: { exit: 5 as unknown as number[] } })]],
+      ['skipped rows outside the cabin', [cabin({ skip_rows: [50] })]],
+      ['a blocked seat in a column the cabin does not have', [cabin({ blocked_seats: ['2Z'] })]],
+      ['a blocked seat in a skipped row', [cabin({ skip_rows: [2], blocked_seats: ['2A'] })]],
+      ['a blocked seat that is not a seat name', [cabin({ blocked_seats: ['seat'] })]],
+    ])('rejects %s', async (_name, cabins) => {
+      await expect(service.create(dtoWith(cabins))).rejects.toBeInstanceOf(BadRequestException)
+      expect(db.aircraft_type.create).not.toHaveBeenCalled()
+    })
+
+    it('accepts row types, skipped rows and blocked seats that belong to the cabin', async () => {
+      db.aircraft_type.findFirst.mockResolvedValue(null)
+      db.aircraft_type.create.mockResolvedValue(typeRow)
+
+      await service.create(dtoWith([cabin({ row_types: { exit: [4], extra_legroom: [1] }, skip_rows: [3], blocked_seats: ['2B'] })]))
+
+      expect(db.aircraft_type.create).toHaveBeenCalled()
+    })
+  })
+
   it('stores the layout of a new type', async () => {
     db.aircraft_type.create.mockResolvedValue(typeRow)
     const dto = {

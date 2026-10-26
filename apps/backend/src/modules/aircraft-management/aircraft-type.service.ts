@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { CloneAircraftTypeDto, CreateAircraftTypeDto, UpdateAircraftTypeDto } from './dto/aircraft-type.dto'
-import { CABIN_CLASSES, type CabinLayout, type SeatLayout } from './dto/layout.dto'
+import { CABIN_CLASSES, MAX_LAYOUT_SEATS, MAX_ROW, ROW_TYPE_KEYS, type CabinLayout, type SeatLayout } from './dto/layout.dto'
 import { countLayoutSeats } from './seat-map'
 import { hasPrismaErrorCode, PRISMA_UNIQUE_VIOLATION } from './prisma-error'
 
@@ -176,6 +176,7 @@ export class AircraftTypeService {
           throw new BadRequestException(`aisle_after "${aisle}" is not in columns`)
         }
       }
+      this.validateCabinDetails(cabin)
     }
 
     const sorted = [...cabins].sort((left, right) => left.first_row - right.first_row)
@@ -185,7 +186,39 @@ export class AircraftTypeService {
       }
     }
 
+    if (countLayoutSeats({ cabins: sorted }) > MAX_LAYOUT_SEATS) {
+      throw new BadRequestException(`A layout cannot have more than ${MAX_LAYOUT_SEATS} seats`)
+    }
+
     return { cabins: sorted }
+  }
+
+  /** The skipped rows, row types and blocked seats of a cabin have to point at rows and seats the cabin has. */
+  private validateCabinDetails(cabin: CabinLayout): void {
+    const inRange = (row: number) => Number.isInteger(row) && row >= cabin.first_row && row <= cabin.last_row
+    const skipped = new Set(cabin.skip_rows ?? [])
+
+    for (const row of skipped) {
+      if (!inRange(row)) {
+        throw new BadRequestException(`skip_rows has row ${row}, which is outside rows ${cabin.first_row}-${cabin.last_row}`)
+      }
+    }
+
+    for (const [type, rows] of Object.entries(cabin.row_types ?? {})) {
+      if (!(ROW_TYPE_KEYS as readonly string[]).includes(type)) {
+        throw new BadRequestException(`Invalid row type "${type}"`)
+      }
+      if (!Array.isArray(rows) || rows.length > MAX_ROW || !rows.every(inRange)) {
+        throw new BadRequestException(`row_types "${type}" must list rows within ${cabin.first_row}-${cabin.last_row}`)
+      }
+    }
+
+    for (const seat of cabin.blocked_seats ?? []) {
+      const match = /^(\d+)([A-Z])$/.exec(seat)
+      if (!match || !inRange(Number(match[1])) || skipped.has(Number(match[1])) || !cabin.columns.includes(match[2])) {
+        throw new BadRequestException(`blocked_seats has "${seat}", which is not a seat of this cabin`)
+      }
+    }
   }
 
   private toSummary(type: {
