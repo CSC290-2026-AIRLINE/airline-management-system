@@ -1,5 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { SignedIn, SignedOut } from '@clerk/clerk-react'
+import { createFileRoute } from '@tanstack/react-router'
 import { Button } from '@staff-web/components/ui/button'
 import { Sitemap } from '@staff-web/components/Sitemap'
 
