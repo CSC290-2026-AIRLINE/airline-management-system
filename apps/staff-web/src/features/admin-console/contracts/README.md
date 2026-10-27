@@ -224,14 +224,22 @@ should get the same shape whichever way they were refused.
 | `homeTo`     | no       | Where "Go to Home" goes. Default `/`.                                                      |
 
 **Neither card writes anything.** Recording the attempt stays on your backend so the
-actor is read from the token and cannot be forged from a request body:
+actor is read from the token and cannot be forged from a request body. Use the audit
+writer (section 5) — it also skips repeats of the same refusal within a minute, so one
+page load that calls several endpoints leaves one row, not five:
 
-```sql
-insert into audit_log (occurred_at, actor_type, actor_id, actor_role,
-                       source_feature, action, entity_type, summary)
-values (now(), 'staff', <from the request token>, <role code>,
-        '7', 'access_denied', 'screen', 'Denied access to f07.refunds');
+```ts
+const actor = await this.audit.resolveActor(req.user.id)
+await this.audit.recordAccessDenied(actor, {
+  sourceFeature: '7',
+  entityType: 'screen',
+  entityId: 'f07.refunds',
+  summary: 'Denied access to f07.refunds',
+})
 ```
+
+The admin console does this itself: every 403 from `/api/admin/*` is recorded against
+`f15.staff_roles`, `f15.role_access` or `f15.audit_log`.
 
 If you do write that row, leave `recorded` on its default — the card then says
 "This attempt was recorded." and shows a `FORBIDDEN · logged in the audit log`
@@ -336,10 +344,59 @@ Filters: `source_feature`, `actor_type` ∈ {`staff`,`customer`,`system`}, `acto
 
 Returns the same row by id, 404 if not found. Same sensitive-masking rules.
 
+### How to write — `AuditService`
+
+Write every row through `AuditService` (`apps/backend/src/modules/admin-console/audit/`)
+rather than inserting into `audit_log` yourself. It checks `action` and the actor against
+the values the table accepts, masks sensitive fields before they are stored, takes
+`occurred_at` from the simulation clock, and leaves `recorded_at` to the database.
+
+```ts
+// your.module.ts
+import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
+@Module({ imports: [AuditModule], providers: [YourService] })
+
+// your.service.ts — inside the transaction that makes the change, so both commit or neither does
+await this.db.$transaction(async (tx) => {
+  const payment = await tx.payment.update({ ... })
+  await this.audit.write(
+    {
+      actor: await this.audit.resolveActor(req.user.id), // never from the request body
+      sourceFeature: '5',
+      action: 'update',
+      entityType: 'payment',
+      entityId: payment.id,
+      summary: 'Refunded booking ABC123',
+      reason: 'Flight cancelled by the airline — full refund policy',
+      before: { status: 'paid', card_number: '4111…' },
+      after: { status: 'refunded', card_number: '4111…' },
+      maskFields: ['card_number'], // stored as "[masked]"; the row is flagged is_sensitive
+    },
+    tx,
+  )
+})
+```
+
+| Method                                  | Use it for                                                                                      |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `write(input, tx?)`                     | Every audited change. Throws on a bad `action` / actor, so a typo fails in your tests.          |
+| `tryWrite(input)`                       | Side records that must never change the request's outcome. Returns `false` instead of throwing. |
+| `resolveActor(userId)`                  | Build the actor from the token's user id: user type plus current staff role code.               |
+| `AuditService.staffActor(principal)`    | Build the actor from a principal you already resolved (`{ id, roleCode }`).                     |
+| `AuditService.systemActor()`            | Rows the system writes on its own (scheduled jobs, simulations).                                |
+| `recordSensitiveView(actor, view, tx?)` | `view_sensitive` — call it from the endpoint that returns sensitive data (passport, card).      |
+| `recordAccessDenied(actor, denial)`     | `access_denied` — see section 3. De-duplicated for a minute; never throws.                      |
+
+**Masking.** `maskFields` names fields (at any depth) whose values are replaced with
+`"[masked]"` in `before` / `after`; the real value never reaches the table. A row with
+`maskFields` is also flagged `is_sensitive`, so the audit endpoints return its `before` /
+`after` as `null`. Pass `sensitive: true` to hide a row's payload without masking fields.
+
 ### What to write
 
 Once you have a `source_feature` (your 2-digit feature number) and start
-producing user actions, write to `audit_log` with these fields:
+producing user actions, write to `audit_log` with these fields (the `AuditService.write`
+input names them in camelCase):
 
 | Field                                  | Type         | Notes                                                                                                                                    |
 | -------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -404,7 +461,7 @@ entry with a clear `summary` such as "correcting booking#1234 status (was X)".
 | Admin console (frontend)         | `GET /api/admin/roles/:id/screens` | admin     | Show which `assignable` screens a role has.          |
 | Admin console (frontend)         | `PUT /api/admin/roles/:id/screens` | admin     | Save the matrix; writes the audit row with it.       |
 | Your feature (frontend, on boot) | `GET /api/me/screens`              | signed-in | Filter your nav to what the signed-in user can open. |
-| Your feature (backend service)   | `insert into audit_log (...)`      | n/a       | Record a sensitive / important action.               |
+| Your feature (backend service)   | `AuditService.write(...)`          | n/a       | Record a sensitive / important action.               |
 | Admin console (frontend)         | `GET /api/admin/audit-log`         | admin     | Show the audit log, optionally filtered by feature.  |
 | Admin console (frontend)         | `GET /api/admin/audit-log/:id`     | admin     | Show one entry's full payload.                       |
 
@@ -419,4 +476,4 @@ If you're starting a new feature, file an issue/PR to update this contract with 
 
 ---
 
-_Maintained by G11 (Feature 15). Last updated: PR 2 — the `PUT /admin/roles/:id/screens` write path._
+_Maintained by G11 (Feature 15). Last updated: the `AuditService` writer and `access_denied` recording._
