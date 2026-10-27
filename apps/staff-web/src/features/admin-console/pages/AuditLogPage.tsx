@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { useListAudit } from '../api/audit'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useNavigate, useParams } from '@tanstack/react-router'
+import { useGetAuditEntry, useListAudit } from '../api/audit'
 import { useAuditLog } from '../hooks/useAuditLog'
 import { usePreviewMode } from '../hooks/usePreviewMode'
 import { previewAudit } from '../preview-data'
@@ -64,14 +65,55 @@ function statusFromError(msg: string): number | undefined {
   return n >= 100 && n < 600 ? n : undefined
 }
 
+/** The 4 detail blocks shown under an open row, and in the linked-entry panel. */
+function EntryDetail({ e }: { e: AuditEntry }): ReactNode {
+  return (
+    <div className="detail-grid">
+      <div>
+        <h5>Before</h5>
+        <pre className="muted small">{e.before ? JSON.stringify(e.before, null, 2) : '(sensitive — hidden)'}</pre>
+      </div>
+      <div>
+        <h5>After</h5>
+        <pre className="muted small">{e.after ? JSON.stringify(e.after, null, 2) : '(sensitive — hidden)'}</pre>
+      </div>
+      <div>
+        <h5>Reason</h5>
+        <p className="muted small detail-reason">{e.reason ?? '—'}</p>
+      </div>
+      <div>
+        <h5>Meta</h5>
+        <p className="muted small">
+          #{e.seq} · Sim {formatDate(e.occurred_at)} · Saved {formatDate(e.recorded_at)} · staff-web · Read only
+        </p>
+      </div>
+    </div>
+  )
+}
+
+interface LinkedEntryState {
+  id: string | null
+  loading: boolean
+  entry: AuditEntry | null
+  notFound: boolean
+}
+
 /**
  * Audit log page. Both access gates live in `routes/_authenticated/admin/route.tsx`, one level up: it owns
  * `RequireStaff` (one `GET /api/me/screens` for all three tabs) and the `?preview=1&denied=1` /
  * `?preview=1&unprovisioned=1` design-review flags. Do not add either back in here.
+ *
+ * The open row lives in the URL — `/admin/audit-log/$auditId`, the spec's deep link — so an entry can be linked to and
+ * closed with Back. The list is paginated, so a linked entry is often not on the page in view; it is then fetched on
+ * its own (`GET /api/admin/audit-log/:id`) and shown in a panel above the table. An id that does not exist falls back
+ * to the list with a "not found" banner.
  */
 export function AuditLogPage() {
   const isPreview = usePreviewMode()
   const listAudit = useListAudit()
+  const getAuditEntry = useGetAuditEntry()
+  const navigate = useNavigate()
+  const { auditId } = useParams({ strict: false })
 
   const [filters, setFilters] = useState<AuditFilters>({
     source_feature: undefined,
@@ -81,7 +123,9 @@ export function AuditLogPage() {
     to: undefined,
   })
   const [limit, setLimit] = useState(25)
-  const [expanded, setExpanded] = useState<string | null>(null)
+  /* The open entry's id, from the URL. */
+  const expanded = auditId ?? null
+  const [notFoundId, setNotFoundId] = useState<string | null>(null)
   /* Only read below the 768px breakpoint, where the filter fields collapse behind a toggle. Desktop always shows
      them, so this staying false there costs nothing. */
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -101,6 +145,51 @@ export function AuditLogPage() {
   const page: AuditPage | null = isPreview ? previewPage : livePage
   const loading = !isPreview && liveHook.loading
   const error = !isPreview ? liveHook.error : null
+
+  /* Linked entry that is not on the page in view. Wait for the page first, so an entry that is on it simply opens in
+     place. `linked.id` tracks which id the state belongs to; a new id resets it while rendering (no setState in an
+     effect body). */
+  const onPage = !!expanded && !!page?.items.some((e) => e.id === expanded)
+  const needsFetch = !!expanded && !onPage && !loading && !!page
+  const [linked, setLinked] = useState<LinkedEntryState>({ id: null, loading: false, entry: null, notFound: false })
+  if (needsFetch && linked.id !== expanded) {
+    setLinked({ id: expanded, loading: true, entry: null, notFound: false })
+  }
+  useEffect(() => {
+    if (!needsFetch || !expanded) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const entry = isPreview ? (previewAudit.items.find((e) => e.id === expanded) ?? null) : await getAuditEntry(expanded)
+        if (cancelled) return
+        setLinked({ id: expanded, loading: false, entry, notFound: entry === null })
+      } catch (e: unknown) {
+        if (cancelled) return
+        // 404 (no such entry) or 400 (not a valid id) both mean the link is wrong; anything else is a real failure
+        // and is shown as one rather than as "not found".
+        const status = statusFromError(e instanceof Error ? e.message : String(e))
+        setLinked({ id: expanded, loading: false, entry: null, notFound: status === 404 || status === 400 })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // `getAuditEntry` closes over `fetchWithAuth`, recreated every render; see `useFetchJson`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsFetch, expanded, isPreview])
+
+  /* A wrong link: remember it for the banner and send the URL back to the list. */
+  const linkIsBad = !!expanded && linked.id === expanded && !linked.loading && linked.notFound
+  if (linkIsBad && notFoundId !== expanded) setNotFoundId(expanded)
+  useEffect(() => {
+    if (linkIsBad) void navigate({ to: '/admin/audit-log', search: true, replace: true })
+  }, [linkIsBad, navigate])
+
+  function openEntry(id: string | null) {
+    setNotFoundId(null)
+    if (id) void navigate({ to: '/admin/audit-log/$auditId', params: { auditId: id }, search: true })
+    else void navigate({ to: '/admin/audit-log', search: true })
+  }
 
   /* Best-effort action inventory across the rows currently loaded — "best-effort" because the endpoint is
    * cursor-paginated, so this counts the page in view, not the whole log. */
@@ -133,11 +222,11 @@ export function AuditLogPage() {
   }, [filters])
 
   function renderRow(e: AuditEntry) {
-    const isOpen = expanded === e.seq
+    const isOpen = expanded === e.id
     return (
       // The `c-*` classes name each cell so the mobile card layout can reorder and restyle them; nth-child would
       // break the moment a column is added or moved.
-      <tr key={e.seq} className={isOpen ? 'is-open' : ''} onClick={() => setExpanded(isOpen ? null : e.seq)}>
+      <tr key={e.seq} className={isOpen ? 'is-open' : ''} onClick={() => openEntry(isOpen ? null : e.id)}>
         <td className="c-seq mono small">#{e.seq}</td>
         <td className="c-actor">
           <span className="email">{e.actor_id ?? '—'}</span>
@@ -320,6 +409,36 @@ export function AuditLogPage() {
         </div>
         <p className="audit-hint muted small">Tap a row to see before and after values.</p>
 
+        {notFoundId && !expanded && (
+          <div className="audit-notice is-error" role="alert">
+            <strong>Audit entry not found</strong>
+            <span>The link may be old, or the entry ID is wrong. Showing the latest entries instead.</span>
+          </div>
+        )}
+
+        {/* Linked entry that is not on the page in view -------------- */}
+        {expanded && !onPage && linked.id === expanded && (linked.loading || linked.entry) && (
+          <div className="audit-linked" aria-live="polite">
+            <div className="audit-linked-head">
+              <span>
+                {linked.entry ? (
+                  <>
+                    Linked entry <span className="mono">#{linked.entry.seq}</span> ·{' '}
+                    <span className={`action-pill ${actionClass(linked.entry.action)}`}>{linked.entry.action.replace(/_/g, ' ')}</span>{' '}
+                    {linked.entry.summary}
+                  </>
+                ) : (
+                  'Loading linked entry…'
+                )}
+              </span>
+              <button type="button" className="btn-ghost" onClick={() => openEntry(null)}>
+                Close
+              </button>
+            </div>
+            {linked.entry && <EntryDetail e={linked.entry} />}
+          </div>
+        )}
+
         {/* Table --------------------------------------------------- */}
         <div className="audit-table-wrap">
           <table className="audit-table">
@@ -338,30 +457,11 @@ export function AuditLogPage() {
               {page && page.items.length > 0 ? (
                 page.items.flatMap((e) => {
                   const rows = [renderRow(e)]
-                  if (expanded === e.seq) {
+                  if (expanded === e.id) {
                     rows.push(
                       <tr key={`${e.seq}-detail`} className="detail-row">
                         <td colSpan={7}>
-                          <div className="detail-grid">
-                            <div>
-                              <h5>Before</h5>
-                              <pre className="muted small">{e.before ? JSON.stringify(e.before, null, 2) : '(sensitive — hidden)'}</pre>
-                            </div>
-                            <div>
-                              <h5>After</h5>
-                              <pre className="muted small">{e.after ? JSON.stringify(e.after, null, 2) : '(sensitive — hidden)'}</pre>
-                            </div>
-                            <div>
-                              <h5>Reason</h5>
-                              <p className="muted small detail-reason">{e.reason ?? '—'}</p>
-                            </div>
-                            <div>
-                              <h5>Meta</h5>
-                              <p className="muted small">
-                                #{e.seq} · Sim {formatDate(e.occurred_at)} · Saved {formatDate(e.recorded_at)} · staff-web · Read only
-                              </p>
-                            </div>
-                          </div>
+                          <EntryDetail e={e} />
                         </td>
                       </tr>,
                     )

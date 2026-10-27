@@ -1,4 +1,4 @@
-import type { AuditFilters, AuditPage } from '../types'
+import type { AuditEntry, AuditFilters, AuditPage } from '../types'
 import { useFetchJson } from './fetch'
 
 export interface AuditQuery extends AuditFilters {
@@ -20,4 +20,10 @@ export function useListAudit() {
     const qs = params.toString()
     return fetchJson<AuditPage>(qs ? `/api/admin/audit-log?${qs}` : '/api/admin/audit-log')
   }
+}
+
+/** One entry by id — the deep link `/admin/audit-log/:id` uses it when the entry is not on the page in view. */
+export function useGetAuditEntry() {
+  const fetchJson = useFetchJson()
+  return (id: string) => fetchJson<AuditEntry>(`/api/admin/audit-log/${encodeURIComponent(id)}`)
 }
