@@ -8,7 +8,8 @@
  * The Vite starter boilerplate that used to live here was removed: `#root` was
  * capped at 1126px and centred, and a `prefers-color-scheme: dark` block
  * repainted the app dark, neither of which the admin workspace design allows.
- * `App.css` is untouched and still styles the landing page.
+ * The landing page (`/`) and `/login` still want that look, so it is restored
+ * at the bottom of this file, scoped to pages that render `<section id="center">`.
  */
 @import './features/crew-rostering/build-pairings/types/tokens.css';
 
@@ -27,3 +28,99 @@ body {
  * `code` still has a user: the missing-Clerk-key fallback in `main.tsx`. Style
  * it there if it ever needs to match the admin workspace.
  */
+
+/*
+ * Public pages (landing and sign-in): the original Vite starter look, kept out of
+ * the admin workspace. `:has()` scopes it to pages whose root child is
+ * `<section id="center">`, so no feature page (which never renders that) is touched.
+ */
+body:has(> #root > #center) {
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font:
+    18px/145% system-ui,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  letter-spacing: 0.18px;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  @media (max-width: 1024px) {
+    font-size: 16px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --bg: #16171d;
+    --border: #2e303a;
+    --code-bg: #1f2028;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --accent-border: rgba(192, 132, 252, 0.5);
+  }
+}
+
+#root:has(> #center) {
+  width: 1126px;
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  border-inline: 1px solid var(--border);
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/*
+ * Zero-specificity scope (`:where`) keeps these as weak as the starter's bare `h1`/`h2`, so Clerk's
+ * own class-based styles still win inside its card.
+ */
+:where(#root:has(> #center)) h1,
+:where(#root:has(> #center)) h2 {
+  font-family: var(--heading);
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+:where(#root:has(> #center)) h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+    margin: 20px 0;
+  }
+}
+
+:where(#root:has(> #center)) h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+
+/* Tailwind's preflight strips link styling; the starter relied on the browser default. */
+:where(#root:has(> #center)) a {
+  color: LinkText;
+  text-decoration: underline;
+}
