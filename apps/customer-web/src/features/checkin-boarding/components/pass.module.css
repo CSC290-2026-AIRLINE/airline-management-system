@@ -1,9 +1,12 @@
 /* The boarding pass card. */
+/* Centred block; the alignment is set here so it does not depend on the shell around it. */
 .wrap {
   display: flex;
   flex-direction: column;
   gap: 16px;
   max-width: 560px;
+  margin: 0 auto;
+  text-align: center;
 }
 
 .title {
@@ -69,6 +72,7 @@
 .route {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   white-space: nowrap;
   font-size: 22px;
@@ -116,7 +120,7 @@
 .actions {
   display: flex;
   gap: 12px;
-  justify-content: flex-end;
+  justify-content: center;
   flex-wrap: wrap;
 }
 
@@ -124,10 +128,10 @@
   .cardBody {
     flex-direction: column;
     align-items: center;
-    text-align: center;
   }
 
-  .route {
-    justify-content: center;
+  /* Full width, so the field grid keeps two columns instead of shrink-wrapping to one. */
+  .fields {
+    width: 100%;
   }
 }

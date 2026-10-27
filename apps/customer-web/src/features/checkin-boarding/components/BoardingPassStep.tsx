@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { BoardingPassView } from '../api/types.ts'
 import { formatDay, formatTime } from '../format.ts'
+import flow from './flow.module.css'
 import styles from './pass.module.css'
 
 /** The pass card shows a pseudo QR drawn from the reference, exactly like the prototype. */
@@ -127,10 +128,10 @@ export function BoardingPassStep({ pass, onStartOver }: { pass: BoardingPassView
       </div>
 
       <div className={styles.actions}>
-        <button className={styles.ghostButton} type="button" onClick={() => downloadWalletPass(pass)}>
+        <button className={flow.ghostButton} type="button" onClick={() => downloadWalletPass(pass)}>
           Add to wallet
         </button>
-        <button className={styles.button} type="button" onClick={onStartOver}>
+        <button className={flow.button} type="button" onClick={onStartOver}>
           Start over
         </button>
       </div>
