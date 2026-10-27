@@ -1492,19 +1492,6 @@
   background: var(--f9-red);
 }
 
-.f9-readiness__ratio {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--f9-table-head);
-}
-
-.f9-readiness__ratio .f9-field {
-  flex: 1;
-}
-
 .f9-turnaround {
   margin-top: 13px;
   padding: 15px 16px 16px;

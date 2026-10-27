@@ -8,16 +8,12 @@ export const CABIN_CLASS_NAMES: Record<CabinClass, string> = {
   economy: 'Economy',
 }
 
-/** The cabin class a typed class name stands for, or null when it names none; "Economy" and "economy class" both work. */
-export function parseCabinClass(text: string): CabinClass | null {
-  const name = text
-    .trim()
-    .toLowerCase()
-    .replace(/\s+class$/, '')
-    .replace(/[\s_-]+/g, ' ')
-  const match = (Object.keys(CABIN_CLASS_NAMES) as CabinClass[]).find((cabinClass) => CABIN_CLASS_NAMES[cabinClass].toLowerCase() === name)
-  return match ?? null
-}
+/** The cabin classes the class name dropdown offers, in the order the design lists them. */
+export const CABIN_CLASS_OPTIONS: { value: CabinClass; label: string }[] = [
+  { value: 'first', label: 'First Class' },
+  { value: 'business', label: 'Business Class' },
+  { value: 'economy', label: 'Economy Class' },
+]
 
 /** The seat arrangements the design offers; `|` in the label marks the aisle. */
 export interface SeatLayoutOption {
@@ -72,26 +68,18 @@ export function cabinMapSummary(cabin: Pick<CabinLayout, 'cabin_class' | 'first_
   return `${CABIN_CLASS_NAMES[cabin.cabin_class].toUpperCase()} · rows ${cabin.first_row}-${cabin.last_row} · ${layoutSummary(cabin.columns, cabin.aisle_after ?? [])}`
 }
 
-/** The column the aisle that holds the row number sits behind: the middle of the cabin. */
-export function middleAisleAfter(columns: string[], aisleAfter: string[] = []): string | null {
+/**
+ * The aisles that hold the row number. A cabin of two seat groups has one aisle in the middle; a cabin of three
+ * groups such as 2-3-2 has an aisle on each side of its middle group, so its row number sits on both sides.
+ */
+export function rowNumberAisles(columns: string[], aisleAfter: string[] = []): string[] {
   const aisles = columns.filter((column) => aisleAfter.includes(column))
-  if (aisles.length === 0) {
-    return null
+  if (aisles.length <= 1) {
+    return aisles
   }
 
-  const middle = columns.length / 2
-  let closest = aisles[0]
-  let closestDistance = Number.POSITIVE_INFINITY
-
-  for (const column of aisles) {
-    const distance = Math.abs(columns.indexOf(column) + 1 - middle)
-    if (distance < closestDistance) {
-      closest = column
-      closestDistance = distance
-    }
-  }
-
-  return closest
+  const middleGroup = Math.floor((aisles.length + 1) / 2)
+  return [aisles[middleGroup - 1], aisles[middleGroup]].filter((column): column is string => column !== undefined)
 }
 
 /** The type of one row, taken from the `row_types` map of a cabin. */

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { listAircraft } from './api/aircraft'
 import { errorMessage } from './api/http'
-import { getFleetReserve, getLatestTurnaround, setReserveRatio, startTurnaround, updateTurnaroundTask } from './api/readiness'
+import { getFleetReserve, getLatestTurnaround, updateTurnaroundTask } from './api/readiness'
 import { FeatureErrorBoundary } from './components/FeatureErrorBoundary'
 import { StaffShell } from './components/StaffShell'
 import { EmptyMessage, ErrorMessage, LoadingMessage } from './components/StateMessage'
@@ -70,26 +70,12 @@ export function ReadinessPage() {
   const [reserveState, setReserveState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [reserveError, setReserveError] = useState<string | null>(null)
 
-  // The reserve ratio being typed; null while the stored one is shown. A save reloads the reserve check.
-  const [ratioDraft, setRatioDraft] = useState<string | null>(null)
-  const [ratioError, setRatioError] = useState<string | null>(null)
-  const [isSavingRatio, setIsSavingRatio] = useState(false)
-  const [ratioToken, setRatioToken] = useState(0)
-
   const [rows, setRows] = useState<TurnaroundRow[]>([])
-  const [fleet, setFleet] = useState<Aircraft[]>([])
   const [turnaroundsState, setTurnaroundsState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [turnaroundsError, setTurnaroundsError] = useState<string | null>(null)
-  const [reloadToken, setReloadToken] = useState(0)
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-
-  const [isStartOpen, setIsStartOpen] = useState(false)
-  const [startAircraftId, setStartAircraftId] = useState('')
-  const [startFlightId, setStartFlightId] = useState('')
-  const [startAirport, setStartAirport] = useState('')
-  const [startArrivedAt, setStartArrivedAt] = useState('')
 
   useEffect(() => {
     if (!ready) {
@@ -120,7 +106,7 @@ export function ReadinessPage() {
     return () => {
       cancelled = true
     }
-  }, [ready, fetcher, selectedDate, aircraftNeeded, ratioToken])
+  }, [ready, fetcher, selectedDate, aircraftNeeded])
 
   useEffect(() => {
     if (!ready) {
@@ -143,7 +129,6 @@ export function ReadinessPage() {
         if (cancelled) {
           return
         }
-        setFleet(aircraft)
         setRows(turnarounds.filter((row): row is TurnaroundRow => row.turnaround !== null))
         setTurnaroundsState('ready')
       } catch (err) {
@@ -160,52 +145,7 @@ export function ReadinessPage() {
     return () => {
       cancelled = true
     }
-  }, [ready, fetcher, selectedDate, reloadToken])
-
-  const openStart = () => {
-    setActionError(null)
-    setStartAircraftId(rows[0]?.aircraft.id ?? fleet[0]?.id ?? '')
-    setStartFlightId('')
-    setStartAirport('')
-    setStartArrivedAt('')
-    setIsStartOpen(true)
-  }
-
-  const handleStart = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!startAircraftId) {
-      setActionError('Choose the aircraft the flight landed with')
-      return
-    }
-    if (!startFlightId.trim()) {
-      setActionError('The flight id is required')
-      return
-    }
-    if (!/^[A-Za-z]{3}$/.test(startAirport.trim())) {
-      setActionError('The airport code is a three letter IATA code, for example BKK')
-      return
-    }
-    if (!startArrivedAt) {
-      setActionError('The landing time is required')
-      return
-    }
-
-    setActionError(null)
-    setIsSaving(true)
-    try {
-      await startTurnaround(fetcher.current, startAircraftId, {
-        flight_id: startFlightId.trim(),
-        airport_code: startAirport.trim().toUpperCase(),
-        arrived_at: new Date(startArrivedAt).toISOString(),
-      })
-      setIsStartOpen(false)
-      setReloadToken((token) => token + 1)
-    } catch (err) {
-      setActionError(errorMessage(err, 'Failed to start the turnaround'))
-    } finally {
-      setIsSaving(false)
-    }
-  }
+  }, [ready, fetcher, selectedDate])
 
   const handleCycleTaskStatus = async (turnaroundId: string, taskId: string, current: TurnaroundTaskStatus) => {
     const target = nextStatus(current)
@@ -231,27 +171,6 @@ export function ReadinessPage() {
     }
   }
 
-  const handleSaveRatio = async (event: FormEvent) => {
-    event.preventDefault()
-    const value = Number(ratioDraft)
-    if (ratioDraft === null || !Number.isFinite(value) || value < 1 || value > 9.99) {
-      setRatioError('The reserve ratio has to be between 1.00 and 9.99')
-      return
-    }
-
-    setRatioError(null)
-    setIsSavingRatio(true)
-    try {
-      await setReserveRatio(fetcher.current, value)
-      setRatioDraft(null)
-      setRatioToken((token) => token + 1)
-    } catch (err) {
-      setRatioError(errorMessage(err, 'Failed to save the reserve ratio'))
-    } finally {
-      setIsSavingRatio(false)
-    }
-  }
-
   const reserveMessage = useMemo(() => {
     if (!reserve) {
       return ''
@@ -264,7 +183,7 @@ export function ReadinessPage() {
   return (
     <FeatureErrorBoundary>
       <StaffShell activeTab="readiness">
-        {actionError && !isStartOpen && <ErrorMessage message={actionError} />}
+        {actionError && <ErrorMessage message={actionError} />}
 
         <div className="f9-readiness">
           <div className="f9-card f9-readiness__card">
@@ -329,29 +248,6 @@ export function ReadinessPage() {
             <p className="f9-note f9-note--small" style={{ marginTop: 14 }}>
               Ready = in the fleet, in service all day, operating that weekday, not in maintenance.
             </p>
-
-            <form className="f9-readiness__ratio" onSubmit={(event) => void handleSaveRatio(event)}>
-              <label className="f9-field">
-                <span className="f9-field__label">Reserve ratio setting (1.00 to 9.99)</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min={1}
-                  max={9.99}
-                  className="f9-input"
-                  value={ratioDraft ?? (reserve ? reserve.reserve_ratio.toFixed(2) : '')}
-                  onChange={(event) => setRatioDraft(event.target.value)}
-                />
-              </label>
-              <button type="submit" className="f9-btn f9-btn--outline" disabled={isSavingRatio || ratioDraft === null}>
-                {isSavingRatio ? 'Saving...' : 'Save'}
-              </button>
-            </form>
-            {ratioError && (
-              <div style={{ marginTop: 10 }}>
-                <ErrorMessage message={ratioError} />
-              </div>
-            )}
           </div>
 
           <div>
@@ -363,9 +259,6 @@ export function ReadinessPage() {
                   when every task is completed or skipped.
                 </p>
               </div>
-              <button type="button" className="f9-btn f9-btn--outline" onClick={openStart}>
-                + Start by hand
-              </button>
             </div>
 
             {turnaroundsState === 'loading' ? (
@@ -413,100 +306,6 @@ export function ReadinessPage() {
             )}
           </div>
         </div>
-
-        {isStartOpen && (
-          <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Start a turnaround">
-            <div className="f9-modal__card">
-              <h3 className="f9-modal__title">Start a turnaround by hand</h3>
-              {actionError && <ErrorMessage message={actionError} />}
-              <form onSubmit={(event) => void handleStart(event)}>
-                <div className="f9-modal__field">
-                  <label className="f9-field" htmlFor="start-aircraft">
-                    <span className="f9-field__label">Aircraft</span>
-                    <select
-                      id="start-aircraft"
-                      className="f9-select"
-                      value={startAircraftId}
-                      onChange={(event) => setStartAircraftId(event.target.value)}
-                      required
-                    >
-                      <option value="" disabled>
-                        Select an aircraft
-                      </option>
-                      {fleet.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.tail_number} · {item.base_airport_code}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="f9-modal__field">
-                  <label className="f9-field" htmlFor="start-flight">
-                    <span className="f9-field__label">Flight id</span>
-                    <input
-                      id="start-flight"
-                      type="text"
-                      className="f9-input"
-                      placeholder="The id of the flight that landed"
-                      value={startFlightId}
-                      onChange={(event) => setStartFlightId(event.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-
-                <div className="f9-modal__row">
-                  <label className="f9-field" htmlFor="start-airport">
-                    <span className="f9-field__label">Airport code</span>
-                    <input
-                      id="start-airport"
-                      type="text"
-                      className="f9-input"
-                      maxLength={3}
-                      placeholder="BKK"
-                      value={startAirport}
-                      onChange={(event) => setStartAirport(event.target.value)}
-                      required
-                    />
-                  </label>
-                  <label className="f9-field" htmlFor="start-arrived">
-                    <span className="f9-field__label">Landed at</span>
-                    <input
-                      id="start-arrived"
-                      type="datetime-local"
-                      className="f9-input"
-                      value={startArrivedAt}
-                      onChange={(event) => setStartArrivedAt(event.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-
-                <p className="f9-modal__hint">
-                  The flight id has to be a flight that exists; the turnaround opens with the standard task set.
-                </p>
-
-                <div className="f9-modal__actions">
-                  <button
-                    type="button"
-                    className="f9-btn f9-btn--outline"
-                    onClick={() => {
-                      setIsStartOpen(false)
-                      setActionError(null)
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="f9-btn" disabled={isSaving}>
-                    {isSaving ? 'Starting...' : 'Start turnaround'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </StaffShell>
     </FeatureErrorBoundary>
   )

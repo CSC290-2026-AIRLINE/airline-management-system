@@ -20,21 +20,3 @@ export const updateTurnaroundTask = (
     method: 'PUT',
     body: JSON.stringify({ status }),
   })
-
-export interface StartTurnaroundPayload {
-  flight_id: string
-  airport_code: string
-  arrived_at: string
-  tasks?: { task_type: string }[]
-}
-
-/** Starts a turnaround by hand, for a flight that the simulation clock did not open one for. */
-export const startTurnaround = (fetcher: Fetcher, aircraftId: string, payload: StartTurnaroundPayload): Promise<Turnaround> =>
-  requestJson<Turnaround>(fetcher, `/api/aircraft/${aircraftId}/turnarounds`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-
-/** Sets the reserve ratio, a number from 1.00 to 9.99; the backend validates the range again. */
-export const setReserveRatio = (fetcher: Fetcher, value: number): Promise<unknown> =>
-  requestJson<unknown>(fetcher, '/api/fleet/settings/reserve_ratio', { method: 'PUT', body: JSON.stringify({ value }) })

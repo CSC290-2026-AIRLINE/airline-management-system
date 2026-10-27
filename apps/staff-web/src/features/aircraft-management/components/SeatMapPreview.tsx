@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { cabinMapSummary, middleAisleAfter, rowTypeOf } from '../cabin'
+import { cabinMapSummary, rowNumberAisles, rowTypeOf } from '../cabin'
 import type { CabinLayout } from '../types'
 
 interface SeatMapPreviewProps {
@@ -62,7 +62,7 @@ export function SeatMapPreview({ cabins, onToggleSeat, onCycleRow }: SeatMapPrev
             const aisleAfter = cabin.aisle_after ?? []
             const blocked = new Set(cabin.blocked_seats ?? [])
             const skipped = new Set(cabin.skip_rows ?? [])
-            const numberAfter = middleAisleAfter(cabin.columns, aisleAfter)
+            const numberAisles = rowNumberAisles(cabin.columns, aisleAfter)
             const rows: number[] = []
             for (let row = cabin.first_row; row <= cabin.last_row; row += 1) {
               if (!skipped.has(row)) {
@@ -116,7 +116,7 @@ export function SeatMapPreview({ cabins, onToggleSeat, onCycleRow }: SeatMapPrev
                               {column}
                             </button>
                             {aisleAfter.includes(column) &&
-                              (column === numberAfter ? (
+                              (numberAisles.includes(column) ? (
                                 <button
                                   type="button"
                                   className={rowClasses.join(' ')}

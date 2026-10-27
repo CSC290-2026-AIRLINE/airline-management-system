@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { createAircraftType } from '../api/aircraftType'
 import { errorMessage } from '../api/http'
-import { CABIN_CLASS_NAMES, SEAT_LAYOUT_OPTIONS, capacityOf, layoutSummary, parseCabinClass } from '../cabin'
+import { CABIN_CLASS_NAMES, CABIN_CLASS_OPTIONS, SEAT_LAYOUT_OPTIONS, capacityOf, layoutSummary } from '../cabin'
 import { useApiFetcher } from '../hooks/useApiFetcher'
 import { type CabinClass, type CabinLayout } from '../types'
 import { SeatMapPreview } from './SeatMapPreview'
@@ -41,7 +41,7 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
   const [costCurrency, setCostCurrency] = useState('USD')
 
   const [cabins, setCabins] = useState<DraftCabin[]>([])
-  const [draftClassName, setDraftClassName] = useState('')
+  const [draftClass, setDraftClass] = useState<CabinClass>('economy')
   const [draftFirstRow, setDraftFirstRow] = useState('')
   const [draftLastRow, setDraftLastRow] = useState('')
   const [draftLayoutId, setDraftLayoutId] = useState(SEAT_LAYOUT_OPTIONS[0].id)
@@ -70,11 +70,6 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
     const lastRow = Math.trunc(toNumber(draftLastRow))
     const layout = SEAT_LAYOUT_OPTIONS.find((option) => option.id === draftLayoutId) ?? SEAT_LAYOUT_OPTIONS[0]
 
-    const draftClass = parseCabinClass(draftClassName)
-    if (!draftClass) {
-      setError('Enter a class name: First, Business, Premium Economy or Economy.')
-      return
-    }
     if (firstRow < 1 || lastRow < firstRow) {
       setError('Enter a first row and a last row; the last row has to be the same row or a later one.')
       return
@@ -94,7 +89,6 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
         row_types: {},
       },
     ])
-    setDraftClassName('')
     setDraftFirstRow('')
     setDraftLastRow('')
   }
@@ -327,13 +321,13 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
 
               <label className="f9-field">
                 <span className="f9-field__label">Class name</span>
-                <input
-                  className="f9-input"
-                  type="text"
-                  placeholder="Economy"
-                  value={draftClassName}
-                  onChange={(event) => setDraftClassName(event.target.value)}
-                />
+                <select className="f9-select" value={draftClass} onChange={(event) => setDraftClass(event.target.value as CabinClass)}>
+                  {CABIN_CLASS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <div className="f9-formgrid" style={{ marginTop: 8 }}>
@@ -375,7 +369,7 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
               </button>
 
               <p className="f9-note f9-note--small" style={{ marginTop: 12 }}>
-                Enter a class name and both row numbers to add this cabin.
+                Choose a class name and enter both row numbers to add this cabin.
               </p>
             </div>
           </div>
