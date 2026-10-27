@@ -355,7 +355,8 @@
 }
 .audit-pagination label {
   font-size: 12px;
-  color: #6b7280;
+  font-weight: 600;
+  color: #374151;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   display: inline-flex;
@@ -363,30 +364,123 @@
   gap: 8px;
 }
 .audit-pagination select {
-  padding: 8px 12px;
+  height: 44px;
+  min-width: 92px;
+  padding: 0 36px 0 16px;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-  background: #ffffff;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  /* Without an explicit colour a dark-mode browser paints the value white on this white box, so "25" vanished. */
+  color: #111827;
+  background: #ffffff
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23374151' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right 14px center;
+  appearance: none;
+  cursor: pointer;
 }
 /* Standalone page counter between the two nav buttons — not a button, so it carries no chrome. */
 .page-of {
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 500;
   color: #111827;
   padding: 0 4px;
   white-space: nowrap;
 }
+/* `.btn-ghost` and `.role-select` were only ever styled in RoleAccessPage.css. Routes are code-split, so that file is
+   loaded only after the Role access tab has been opened — open the Audit log first (or reload on it) and every button
+   and select here fell back to the browser's grey defaults. The page now carries its own copies. */
+.audit-filters .btn-ghost,
+.audit-filters-bar .btn-ghost,
+.audit-linked .btn-ghost,
+.audit-pagination .btn-ghost {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+}
+.audit-filters .btn-ghost:hover,
+.audit-filters-bar .btn-ghost:hover,
+.audit-linked .btn-ghost:hover,
+.audit-pagination .btn-ghost:hover {
+  background: #f3f4f6;
+}
+.audit-filter .role-select {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #111827;
+}
+.audit-filter .role-select:focus {
+  outline: none;
+  border-color: #0a1424;
+  box-shadow: 0 0 0 2px rgba(10, 20, 36, 0.12);
+}
+
+/* Previous / Next, sized like the design's footer. */
+.audit-pagination .btn-ghost {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #6b7280;
+}
 /* `.btn-ghost` has no disabled styling of its own, so Previous/Next need one to read as unavailable. */
 .audit-pagination .btn-ghost:disabled {
+  background: #f8f9fb;
   color: #9ca3af;
   border-color: #e5e7eb;
   cursor: not-allowed;
 }
 .audit-pagination .btn-ghost:disabled:hover {
-  background: transparent;
+  background: #f8f9fb;
 }
 /* The read-only note sits under the footer rather than in the header, so it reads as a caption for the whole
    table instead of as a subtitle. */
 .audit-footnote {
   margin: 12px 0 0;
+}
+
+/* Deep link `/admin/audit-log/$auditId` --------------------------------------------------------------------------- */
+
+/* Shown when a link points at an entry that does not exist (old link or wrong id). */
+.audit-notice {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.audit-notice.is-error {
+  background: #fdecec;
+  color: #b8171f;
+}
+.audit-notice strong {
+  font-weight: 600;
+}
+
+/* A linked entry that is not on the page in view (the list is paginated) opens here, above the table. */
+.audit-linked {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #e6e8ef;
+  border-left: 3px solid #f2a800;
+  border-radius: 8px;
+  background: #fafbfd;
+}
+.audit-linked-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #111827;
 }
