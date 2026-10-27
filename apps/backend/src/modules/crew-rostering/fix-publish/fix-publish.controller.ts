@@ -1,7 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { FixPublishService, type FixOutcome, type FixPublishState, type WindowParams } from './fix-publish.service'
 import { asObjectOrEmpty, requireDate, requireText, requireUuid } from '../request-parsing'
+import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
  * Feature 8 · Step 4 — fix and publish.
@@ -11,6 +12,7 @@ import { asObjectOrEmpty, requireDate, requireText, requireUuid } from '../reque
  * a publish each write an `audit_log` row keyed on the caller's id.
  */
 @Controller('crew-rostering/fix-publish')
+@UseGuards(StaffOnlyGuard)
 export class FixPublishController {
   constructor(private readonly fixPublishService: FixPublishService) {}
 

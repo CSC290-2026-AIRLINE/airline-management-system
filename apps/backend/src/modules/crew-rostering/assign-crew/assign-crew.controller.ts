@@ -1,6 +1,7 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common'
 import { AssignCrewService, type AssignCrewParams, type CommittedPairingResult, type RunResult } from './assign-crew.service'
 import { asObjectOrEmpty, requireDate, requireText, requireUuid } from '../request-parsing'
+import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
  * Feature 8 · Step 3 — assign crew.
@@ -10,6 +11,7 @@ import { asObjectOrEmpty, requireDate, requireText, requireUuid } from '../reque
  * auto-assign on a selection, and can re-check a run without changing who is crewed.
  */
 @Controller('crew-rostering/assign-crew')
+@UseGuards(StaffOnlyGuard)
 export class AssignCrewController {
   constructor(private readonly assignCrewService: AssignCrewService) {}
 

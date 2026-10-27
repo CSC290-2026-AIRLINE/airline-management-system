@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
 import {
   BuildPairingService,
   type BuildParams,
@@ -11,6 +11,7 @@ import {
   type SaveLegsResult,
 } from './build-pairing.service'
 import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
+import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
  * Feature 8 · Step 2 — build pairings.
@@ -20,6 +21,7 @@ import { asObject, requireDate, requireText, requireUuid } from '../request-pars
  * helper and every handler gets the same `YYYY-MM-DD` and IATA validation.
  */
 @Controller('crew-rostering/build-pairing')
+@UseGuards(StaffOnlyGuard)
 export class BuildPairingController {
   constructor(private readonly buildPairingService: BuildPairingService) {}
 

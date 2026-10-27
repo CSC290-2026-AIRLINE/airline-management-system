@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 import {
   CREW_ROLES,
   SetupCrewService,
@@ -14,6 +14,7 @@ import {
   type LanguageOptionRow,
 } from './setup-crew.service'
 import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
+import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
  * Feature 8 · Step 1 — crew directory.
@@ -23,6 +24,7 @@ import { asObject, requireDate, requireText, requireUuid } from '../request-pars
  * whole validation layer and they must stay as strict as a DTO would be.
  */
 @Controller('crew-rostering/setup-crew')
+@UseGuards(StaffOnlyGuard)
 export class SetupCrewController {
   constructor(private readonly setupCrewService: SetupCrewService) {}
 

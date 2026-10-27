@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import {
   SetupRuleService,
@@ -13,6 +13,7 @@ import {
   type RuleSetRow,
 } from './setup-rule.service'
 import { asObject, requireText } from '../request-parsing'
+import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
  * Feature 8 · Step 2 — legality rules.
@@ -22,6 +23,7 @@ import { asObject, requireText } from '../request-parsing'
  * layer and they stay as strict as a DTO would be.
  */
 @Controller('crew-rostering/setup-rule')
+@UseGuards(StaffOnlyGuard)
 export class SetupRuleController {
   constructor(private readonly setupRuleService: SetupRuleService) {}
 
