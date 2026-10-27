@@ -11,7 +11,7 @@ export const Route = createFileRoute('/login')({
   }),
   beforeLoad: ({ context, search }) => {
     if (context.auth.isSignedIn) {
-      throw redirect({ to: search.redirect ?? '/dashboard' })
+      throw redirect({ to: search.redirect ?? '/customer-search' })
     }
   },
   component: LoginPage,
@@ -22,7 +22,7 @@ function LoginPage() {
 
   return (
     <section id="center">
-      <SignIn fallbackRedirectUrl={redirectTo ?? '/dashboard'} />
+      <SignIn fallbackRedirectUrl={redirectTo ?? '/customer-search'} />
     </section>
   )
 }

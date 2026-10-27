@@ -2358,6 +2358,7 @@ body:has(.cs-app),
     display: flex;
     flex-direction: column;
     height: 100dvh;
+    padding-bottom: 43px;
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: contain;
