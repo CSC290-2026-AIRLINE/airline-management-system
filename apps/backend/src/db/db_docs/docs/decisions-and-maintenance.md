@@ -1,6 +1,6 @@
 # Database Conventions, Decisions & Maintenance
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA — inventory checked 27 Oct 2026 against `dev` commit `46a7f55be46a2237545869cbec356cd61e5a31d6`.** The SQL and Prisma table/column inventories match: **84 tables / 772 columns**, including F2 approvals, F8 crew/rostering and F7 screening Iteration-03. Committed migrations do not prove deployment or completed application behavior.
 
 ## Conventions and enforcement boundaries
 
@@ -15,7 +15,7 @@
 
 | Topic                  | Current evidence / remaining decision                                                                                                                                                   | Owner                       |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| Current schema         | 84 tables / 758 columns; F2 Iteration-03 and F8 are committed at the inspected dev SHA                                                                                                  | DB Leads                    |
+| Current schema         | 84 tables / 772 columns; F2 approvals, F8 and F7 screening Iteration-03 are committed at the inspected dev SHA                                                                                                  | DB Leads                    |
 | F1 baseline            | SQL still requests owner confirmation; last-admin protection is a backend requirement, not implemented here                                                                             | F1 / Auth                   |
 | Cross-feature FKs      | Current consolidated Part 9 includes F8 links and schedule approval aircraft FK; original Level 1 used Part 8                                                                           | DB Leads + feature owners   |
 | F2 approvals           | Four tables and defaults committed; approver worker/state transitions remain application work                                                                                           | F2                          |
@@ -31,13 +31,13 @@
 | Reference seeds        | Settings and F2 demo network exist; full bootstrap, screen catalogue, base currency, airline code and F8 fixtures remain missing                                                        | DB/Infra + owners           |
 | Auth status            | Sign-in/refresh check disabled/deleted; JWT guard does not recheck DB; new staff still default to admin                                                                                 | Auth / Dev Leads            |
 | CODEOWNERS             | Later /apps/backend/ rule overrides earlier DB path rule; coordinate ownership correction outside this docs folder                                                                      | Infrastructure Leads        |
-| Central database guide | docs/database-structure.md still describes four scaffold models; outside this update's authorized folder                                                                                | Docs / Infrastructure Leads |
+| Central database guide | docs/database-structure.md now matches the current inventory and links to feature dictionaries                                                                                | Docs / Infrastructure Leads |
 
 ## Follow-up review requirements
 
 - **Prior section 5 fixes:** [F8 section 5](./f8-crew-management-and-rostering.md#5-review-fixes-and-integration-status) now records each earlier review issue as resolved in SQL, superseded by the committed design, or still requiring application/integration work.
 - **DBML follow-up unresolved:** No DBML file is in this checkout, and the quoted “these 4” are unnamed. Missing external-diagram items cannot be confirmed without that source.
-- **Repository-wide alignment:** README.md, setup.md, docs/backend-structure.md and docs/infra-guide.md agree on the centralized Prisma/PostgreSQL/NestJS layer. The central database-structure guide's four-model count remains outdated; preserve this discrepancy as an open item rather than copying that count into the current dictionaries.
+- **Repository-wide alignment:** README.md, setup.md, docs/backend-structure.md and docs/infra-guide.md agree on the centralized Prisma/PostgreSQL/NestJS layer. The central database-structure guide now matches the 84-table / 772-column inventory and links to these dictionaries.
 
 ## Maintenance workflow
 
@@ -46,7 +46,7 @@
 3. Describe backend-only rules as requirements until matching implementation is verified.
 4. Preserve applied migration history and generated code; fix documentation independently from schema changes.
 5. Record the source commit, review date and verification limits. Running-database approval requires separate evidence.
-6. Use a dedicated branch and the team's PR process. This update changes only Markdown under apps/backend/src/db/db_docs/.
+6. Use a dedicated branch and the team's PR process. Keep the central guide at docs/database-structure.md aligned with these dictionaries.
 
 ## Change log
 
@@ -54,7 +54,8 @@
 | ---------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-10-12 | PR #14 Level 1 baseline                                               | Historical 69-table schema; destructive scaffold replacement                                                                             |
 | 2026-10-21 | dev 752428e732 + supplied F8 Iteration-02 specification               | Historical review; F8 was a proposal at that snapshot                                                                                    |
-| 2026-10-24 | dev a97740c646b2a6e82448243db4817a7a5822e14b, pulled into docs branch | Current 84-table / 758-column dictionary; F2 approval additions, committed F8 design, defaults, seeds and enforcement boundaries updated |
+| 2026-10-24 | dev a97740c646b2a6e82448243db4817a7a5822e14b, pulled into docs branch | Historical 84-table / 758-column dictionary; F2 approval additions, committed F8 design, defaults, seeds and enforcement boundaries updated |
+| 2026-10-27 | dev 46a7f55be46a2237545869cbec356cd61e5a31d6 | Current 84-table / 772-column inventory checked; F7 migration references, shared status banners and central guide aligned |
 
 ## Approval checklist
 
@@ -64,7 +65,8 @@
 - [ ] Running-database migration state and runtime constraints independently verified.
 - [ ] Feature owners confirm outstanding business assumptions and integration contracts.
 - [ ] Complete reference bootstrap approved and verified.
-- [ ] Central database guide and CODEOWNERS corrected by the responsible team.
+- [x] Central database guide aligned with the current schema inventory and migration workflow.
+- [ ] CODEOWNERS rule precedence corrected by Infrastructure Leads.
 
 **Maintenance responsibility:** Keep the Markdown consistent with committed sources; documentation is not executable migration SQL.
 

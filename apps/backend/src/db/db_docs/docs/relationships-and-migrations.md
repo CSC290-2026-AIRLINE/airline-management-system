@@ -1,6 +1,6 @@
 # Cross-feature Relationships, Constraints & Migrations
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA — inventory checked 27 Oct 2026 against `dev` commit `46a7f55be46a2237545869cbec356cd61e5a31d6`.** The SQL and Prisma table/column inventories match: **84 tables / 772 columns**, including F2 approvals, F8 crew/rostering and F7 screening Iteration-03. Committed migrations do not prove deployment or completed application behavior.
 
 ## Cross-feature relationships
 
@@ -35,7 +35,7 @@ F8 run ownership is enforced through roster_run_pairing: pairing_id is unique ac
 
 **Data preservation:** Level 1 drops existing scaffold records. F2's country CHECK can reject existing free-text or uppercase country values. The F7 screening migration fills the snapshot of existing screening_check rows from today's passenger and watchlist values (the compared values were never stored) and makes existing reviews revision 1. The new migrations use CREATE TABLE and INSERT statements without general rerun protection; let Prisma track migration application. Assess existing data before deployment; no migration/reset was run for this docs update.
 
-The original Level 1 migration has not been rewritten. Current schema.sql consolidates that baseline with F2/F8 additions; it is no longer identical to the historical migration. Run migration deployment through the Database Team rather than executing consolidated SQL over an existing database.
+The original Level 1 migration has not been rewritten. Current schema.sql consolidates that baseline with F2/F8 additions and F7 screening changes; it is no longer identical to the historical migration. Run migration deployment through the Database Team rather than executing consolidated SQL over an existing database.
 
 ## SQL behavior Prisma does not fully express
 

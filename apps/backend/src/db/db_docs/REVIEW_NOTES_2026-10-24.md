@@ -1,5 +1,7 @@
 # Database documentation verification — 24 Oct 2026
 
+> **Historical snapshot.** The 758-column inventory below predates the F7 screening migration. See the [27 Oct verification](./REVIEW_NOTES_2026-10-27.md) for the current 84-table / 772-column inventory.
+
 > **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
 ## Source and scope
