@@ -1,5 +1,6 @@
 import { StaffService } from './staff.service'
 import { SimulationClock } from './simulation-clock'
+import { AuditService } from './audit/audit.service'
 import type { AdminPrincipal } from './guards/admin-console.guard'
 
 // Same approach as admin-console.service.spec.ts: the service only uses Prisma types, so DbService is the only mock.
@@ -54,7 +55,7 @@ function makeSvc() {
       findUniqueOrThrow: jest.fn(),
       count: jest.fn().mockResolvedValue(1),
     },
-    audit_log: { create: jest.fn() },
+    audit_log: { create: jest.fn().mockResolvedValue({ id: 'audit-1', seq: 1n }) },
     $executeRaw: jest.fn().mockResolvedValue(1),
   }
   const db = {
@@ -64,7 +65,9 @@ function makeSvc() {
     $queryRaw: jest.fn().mockResolvedValue([{ last_value: 41n, is_called: true }]),
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   }
-  const svc = new StaffService(db as never, new SimulationClock())
+  const clock = new SimulationClock()
+  // The real writer, so these tests also check what actually reaches audit_log.
+  const svc = new StaffService(db as never, clock, new AuditService(db as never, clock))
   return { svc, db, tx }
 }
 

@@ -5,7 +5,7 @@ import { AdminConsoleService } from './admin-console.service'
 import { StaffController } from './staff.controller'
 import { StaffService } from './staff.service'
 import { AdminConsoleGuard } from './guards/admin-console.guard'
-import { SimulationClock } from './simulation-clock'
+import { AuditModule } from './audit/audit.module'
 import { SELF_REGISTER_SCREENS } from './self-register'
 
 /**
@@ -16,9 +16,11 @@ import { SELF_REGISTER_SCREENS } from './self-register'
  * `DbModule` is `@Global()`, so we don't need to import it here — `DbService` is already available everywhere.
  */
 @Module({
+  // AuditModule provides the audit writer and the one shared SimulationClock (see audit.module.ts).
+  imports: [AuditModule],
   controllers: [AdminConsoleController, MeController, StaffController],
-  providers: [AdminConsoleService, StaffService, AdminConsoleGuard, SimulationClock],
-  exports: [AdminConsoleService],
+  providers: [AdminConsoleService, StaffService, AdminConsoleGuard],
+  exports: [AdminConsoleService, AuditModule],
 })
 export class AdminConsoleModule implements OnModuleInit {
   constructor(private readonly svc: AdminConsoleService) {}

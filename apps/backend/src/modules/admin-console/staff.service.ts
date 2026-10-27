@@ -7,6 +7,7 @@ import type { CreateStaffDto } from './dto/create-staff.dto'
 import type { UpdateStaffDto } from './dto/update-staff.dto'
 import type { StaffErrorCode, StaffListDto, StaffRoleRef, StaffRowDto } from './dto/staff.types'
 import { SimulationClock } from './simulation-clock'
+import { AuditService, type AuditWriteInput } from './audit/audit.service'
 
 /** Feature number written on every audit row this service creates. */
 const SOURCE_FEATURE = '15'
@@ -134,6 +135,7 @@ export class StaffService {
   constructor(
     private readonly db: DbService,
     private readonly clock: SimulationClock,
+    private readonly audit: AuditService,
   ) {}
 
   async list(admin: AdminPrincipal): Promise<StaffListDto> {
@@ -163,15 +165,16 @@ export class StaffService {
           data: { user_id: user.id, first_name: name.first_name, last_name: name.last_name, role_id: role.id },
           select: STAFF_SELECT,
         })
-        await tx.audit_log.create({
-          data: {
+        await this.audit.write(
+          {
             ...this.auditBase(admin, occurredAt, staff.id),
             action: 'create',
             summary: `Created staff account ${staff.staff_code} (${fullName(staff)}) as ${role.name}`,
             reason,
             after: { staff_code: staff.staff_code, ...name, email, role_code: role.code, active: true },
           },
-        })
+          tx,
+        )
         return toRow(staff)
       })
     } catch (e) {
@@ -236,8 +239,8 @@ export class StaffService {
             before.email = target.user.email
             after.email = email
           }
-          await tx.audit_log.create({
-            data: {
+          await this.audit.write(
+            {
               ...this.auditBase(admin, occurredAt, target.id),
               action: 'update',
               summary: `Updated ${Object.keys(after).join(', ')} of staff account ${target.staff_code}`,
@@ -245,11 +248,12 @@ export class StaffService {
               before,
               after,
             },
-          })
+            tx,
+          )
         }
         if (roleChanged) {
-          await tx.audit_log.create({
-            data: {
+          await this.audit.write(
+            {
               ...this.auditBase(admin, occurredAt, target.id),
               action: 'role_change',
               summary: `Changed role of ${target.staff_code} (${fullName(updated)}) from ${target.role.name} to ${newRole.name}`,
@@ -257,7 +261,8 @@ export class StaffService {
               before: { role_code: target.role.code },
               after: { role_code: newRole.code },
             },
-          })
+            tx,
+          )
         }
         return toRow(updated)
       })
@@ -297,8 +302,8 @@ export class StaffService {
         data: { disabled_at: dto.active ? null : occurredAt, updated_at: new Date() },
       })
       const updated = await tx.staff.findUniqueOrThrow({ where: { id: target.id }, select: STAFF_SELECT })
-      await tx.audit_log.create({
-        data: {
+      await this.audit.write(
+        {
           ...this.auditBase(admin, occurredAt, target.id),
           action: 'status_change',
           summary: `${dto.active ? 'Activated' : 'Deactivated'} staff account ${target.staff_code} (${fullName(target)})`,
@@ -306,7 +311,8 @@ export class StaffService {
           before: { active: wasActive },
           after: { active: dto.active },
         },
-      })
+        tx,
+      )
       return toRow(updated)
     })
   }
@@ -315,16 +321,15 @@ export class StaffService {
   /*  Helpers */
   /* ──────────────────────────────────────────────────────────────────────────── */
 
-  private auditBase(admin: AdminPrincipal, occurredAt: Date, staffId: string) {
+  /** The parts every staff-account audit row shares; `AuditService.write` fills in the rest. */
+  private auditBase(admin: AdminPrincipal, occurredAt: Date, staffId: string): Omit<AuditWriteInput, 'action'> {
     return {
-      occurred_at: occurredAt,
-      actor_type: 'staff',
-      actor_id: admin.id,
-      actor_role: admin.roleCode,
-      source_feature: SOURCE_FEATURE,
-      entity_type: 'staff',
-      entity_id: staffId,
-      is_sensitive: false,
+      actor: AuditService.staffActor(admin),
+      sourceFeature: SOURCE_FEATURE,
+      entityType: 'staff',
+      entityId: staffId,
+      occurredAt,
+      sensitive: false,
     }
   }
 
