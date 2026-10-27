@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common'
+import { ConflictException, Logger } from '@nestjs/common'
 import { Prisma } from '../db/generated/prisma/client'
 import { AuthService } from './auth.service'
 
@@ -68,5 +68,38 @@ describe('AuthService.findOrCreateUser', () => {
     db.user.findUnique.mockResolvedValue(null)
     db.$transaction.mockRejectedValue(p2002())
     await expect(call()).rejects.toBeInstanceOf(ConflictException)
+  })
+})
+
+describe('AuthService.recordStaffSignIn', () => {
+  let db: { staff: { updateMany: jest.Mock } }
+  let service: AuthService
+
+  const call = (user: { id: string; type: string }) => (service as any).recordStaffSignIn(user)
+
+  beforeEach(() => {
+    db = { staff: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } }
+    service = new AuthService(db as any, {} as any, {} as any)
+  })
+
+  it('stamps last_sign_in_at on the staff row of a staff user', async () => {
+    await call({ id: 'u1', type: 'staff' })
+    expect(db.staff.updateMany).toHaveBeenCalledWith({
+      where: { user_id: 'u1', deleted_at: null },
+      data: { last_sign_in_at: expect.any(Date) },
+    })
+  })
+
+  it('leaves customers alone', async () => {
+    await call({ id: 'u2', type: 'customer' })
+    expect(db.staff.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('does not fail the sign-in when the write fails', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+    db.staff.updateMany.mockRejectedValue(new Error('db down'))
+    await expect(call({ id: 'u1', type: 'staff' })).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

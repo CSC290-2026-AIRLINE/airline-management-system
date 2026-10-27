@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from 'node:crypto'
-import { ConflictException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common'
+import { ConflictException, Injectable, InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { createClerkClient, verifyToken } from '@clerk/backend'
@@ -21,6 +21,7 @@ interface IssuedTokenPair extends TokenPair {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name)
   private readonly clerkClients = new Map<string, ClerkClient>()
 
   constructor(
@@ -44,6 +45,7 @@ export class AuthService {
     const clerkUserId = payload.sub
 
     const user = await this.findOrCreateUser(clerkClient, clerkUserId, config.userType)
+    await this.recordStaffSignIn(user)
     const tokens = await this.issueTokenPair(user)
     return { user, tokens }
   }
@@ -163,6 +165,18 @@ export class AuthService {
       if (!winner) throw new ConflictException('An account with this email already exists')
       this.assertUserActive(winner)
       return winner
+    }
+  }
+
+  // Feature 15's Staff & roles page shows when each staff member last signed in. Only a real sign-in (this Clerk session
+  // exchange) counts; `refresh()` deliberately leaves the time alone. A failed write is logged and the sign-in still goes
+  // through — a missing timestamp must never lock anyone out.
+  private async recordStaffSignIn(user: user): Promise<void> {
+    if (user.type !== 'staff') return
+    try {
+      await this.db.staff.updateMany({ where: { user_id: user.id, deleted_at: null }, data: { last_sign_in_at: new Date() } })
+    } catch (error) {
+      this.logger.warn(`Could not record last_sign_in_at for user ${user.id}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
