@@ -112,6 +112,11 @@
   min-width: 0;
 }
 
+/* Steps without the summary beside them (the boarding pass) take the whole row. */
+.panelWide {
+  grid-column: 1 / -1;
+}
+
 .summary {
   background: var(--f6-paper);
   border: 1px solid var(--f6-line);

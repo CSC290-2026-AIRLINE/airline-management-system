@@ -108,7 +108,7 @@ export function CheckInFlow({ api }: { api: CheckInApi }) {
       <div className={styles.layout}>
         {checkIn && step < 5 ? <Summary checkIn={checkIn} /> : null}
 
-        <div className={styles.panel}>
+        <div className={step === 5 ? `${styles.panel} ${styles.panelWide}` : styles.panel}>
           {step === 1 ? <FindBookingStep busy={busy} onSubmit={start} /> : null}
 
           {step === 2 && checkIn ? (
