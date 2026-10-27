@@ -16,7 +16,7 @@ interface SegmentedControlProps {
 
 export function SegmentedControl({ value, onChange }: SegmentedControlProps) {
   return (
-    <div className="cs-segmented" role="radiogroup" aria-label="Filter people by type">
+    <div className="cs-segmented" data-filter={value} role="radiogroup" aria-label="Filter people by type">
       {FILTERS.map((filter) => (
         <button
           key={filter.value}

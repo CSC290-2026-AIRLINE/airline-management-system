@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { CloseIcon, MenuIcon } from './Icons'
 import '@staff-web/features/security-screening/fonts.css'
@@ -82,6 +82,39 @@ export function AppShell({ children }: AppShellProps) {
   const { logout } = useAppAuth()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const drawer = useRef<HTMLDivElement>(null)
+  const drawerClosing = useRef<Animation | null>(null)
+  function closeDrawer() {
+    const panel = drawer.current
+    if (!panel || drawerClosing.current) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDrawerOpen(false)
+      return
+    }
+    const animation = panel.animate([{ transform: getComputedStyle(panel).transform }, { transform: 'translateX(-100%)' }], {
+      duration: 180,
+      easing: 'cubic-bezier(0.4, 0, 1, 1)',
+      fill: 'forwards',
+    })
+    drawerClosing.current = animation
+    void animation.finished.then(
+      () => setDrawerOpen(false),
+      () => {},
+    )
+  }
+  useEffect(() => {
+    if (!drawerOpen) return
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    drawer.current?.querySelector<HTMLButtonElement>('.cs-drawer__close')?.focus()
+    return () => {
+      drawerClosing.current?.cancel()
+      drawerClosing.current = null
+      document.body.style.overflow = overflow
+      previousFocus?.focus({ preventScroll: true })
+    }
+  }, [drawerOpen])
 
   // The design shows the staff role, not an account name. `AppUser` only carries
   // an email and a type, so naming a person here would mean inventing one.
@@ -161,13 +194,36 @@ export function AppShell({ children }: AppShellProps) {
       </div>
 
       {drawerOpen ? (
-        <div className="cs-drawer" role="dialog" aria-modal="true" aria-label="Workspace navigation">
+        <div
+          ref={drawer}
+          className="cs-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Workspace navigation"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              closeDrawer()
+            }
+            if (event.key !== 'Tab') return
+            const controls = event.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)')
+            const first = controls[0]
+            const last = controls[controls.length - 1]
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault()
+              last?.focus()
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault()
+              first?.focus()
+            }
+          }}
+        >
           <div className="cs-drawer__top">
             <h2 className="cs-drawer__brand">
               Airlines
               <span className="cs-drawer__underline" aria-hidden="true" />
             </h2>
-            <button type="button" className="cs-drawer__close" onClick={() => setDrawerOpen(false)} aria-label="Close navigation">
+            <button type="button" className="cs-drawer__close" onClick={closeDrawer} aria-label="Close navigation">
               <CloseIcon />
             </button>
           </div>

@@ -2415,3 +2415,237 @@ body:has(.cs-app),
     transition: none;
   }
 }
+
+/* Mobile Customer Search follows the reference spacing without widening the viewport. */
+@media (max-width: 767px) {
+  .cs-app,
+  .cs-shell,
+  .cs-main,
+  .cs-page,
+  .cs-layout,
+  .cs-panel,
+  .cs-cards,
+  .cs-cards > li {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .cs-app > .cs-shell {
+    width: 100%;
+  }
+  .cs-app .cs-mobile-header {
+    height: 64px;
+    margin: 14px 24px 0;
+    padding: 0 10px 0 16px;
+    border-radius: 12px;
+  }
+  .cs-app .cs-mobile-header__brand .cs-brand__word {
+    font-size: 28px;
+    line-height: 1.2;
+  }
+  .cs-app .cs-mobile-header__badge {
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+  .cs-app .cs-mobile-header__menu {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    font-size: 20px;
+  }
+  .cs-app .cs-main {
+    padding: 14px 24px 28px;
+  }
+  .cs-app .cs-page__title {
+    font-size: 24px;
+    line-height: 1.25;
+    color: #102544;
+  }
+  .cs-app .cs-page__subtitle {
+    margin-top: 6px;
+    font-size: 14px;
+    line-height: 1.25;
+  }
+  .cs-searchbar {
+    margin-top: 18px;
+  }
+  .cs-searchbar__field {
+    height: 43px;
+    padding: 0 12px;
+  }
+  .cs-searchbar__input {
+    min-width: 0;
+    font-size: 14px;
+  }
+  .cs-panel__head {
+    gap: 14px;
+    padding: 12px 0 10px;
+  }
+  .cs-panel__title,
+  .cs-panel__subtitle {
+    font-size: 14px;
+  }
+  .cs-segmented {
+    margin-bottom: 0;
+  }
+  .cs-segmented__option {
+    min-width: 0;
+    padding: 8px 6px;
+    font-size: 14px;
+  }
+  .cs-cards.is-mobile {
+    gap: 14px;
+  }
+  .cs-cards.is-mobile .cs-cards__item {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 64px;
+    padding: 12px 14px;
+    border-radius: 14px;
+  }
+  .cs-cards.is-mobile .cs-cards__name-row {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+  .cs-cards.is-mobile .cs-cards__fullname {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .cs-cards.is-mobile .cs-badge {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .cs-cards.is-mobile .cs-cards__meta {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .cs-cards.is-mobile .cs-avatar,
+  .cs-cards.is-mobile .cs-cards__chevron {
+    flex-shrink: 0;
+  }
+  .cs-pagination__controls {
+    max-width: 100%;
+    gap: 8px;
+  }
+  .cs-app .cs-drawer {
+    inset: 0;
+    width: 100%;
+    max-width: 100vw;
+    height: 100dvh;
+    min-width: 0;
+    padding: 24px 24px max(72px, env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+  }
+  .cs-drawer__top,
+  .cs-drawer__nav,
+  .cs-drawer__nav .cs-nav-item {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .cs-app .cs-drawer__brand {
+    font-size: 30px;
+    line-height: 44px;
+  }
+  .cs-drawer__close {
+    flex-shrink: 0;
+  }
+  .cs-drawer__nav {
+    margin-top: 0;
+  }
+  .cs-drawer__nav .cs-nav-item__label {
+    font-size: 15px;
+  }
+  .cs-drawer__nav .cs-nav-item__caption {
+    font-size: 11px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Match the Security Screening mobile menu's quick directional motion. */
+.cs-drawer {
+  animation: cs-mobile-menu-enter 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes cs-mobile-menu-enter {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-drawer {
+    animation: none;
+  }
+}
+
+/* Keep all three mobile filter tabs equal, including the selected white pill. */
+@media (max-width: 767px) {
+  .cs-segmented {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 2px;
+    padding: 3px;
+  }
+  .cs-segmented__option {
+    width: 100%;
+    min-width: 0;
+    min-height: 30px;
+    padding: 6px 0;
+    white-space: normal;
+    line-height: 1.2;
+    text-align: center;
+  }
+}
+
+/* Slide one selected pill between the three equal mobile filter tabs. */
+.cs-segmented__option {
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+@media (max-width: 767px) {
+  .cs-segmented {
+    position: relative;
+    isolation: isolate;
+  }
+  .cs-segmented::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 3px;
+    width: calc((100% - 10px) / 3);
+    border-radius: 7px;
+    background: white;
+    box-shadow: 0 1px 2px #0f17291f;
+    transform: translateX(0);
+    transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    pointer-events: none;
+  }
+  .cs-segmented[data-filter='account-holder']::before {
+    transform: translateX(calc(100% + 2px));
+  }
+  .cs-segmented[data-filter='traveller']::before {
+    transform: translateX(calc(200% + 4px));
+  }
+  .cs-segmented__option {
+    position: relative;
+    z-index: 1;
+  }
+  .cs-segmented__option.is-active {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-segmented::before,
+  .cs-segmented__option {
+    transition: none;
+  }
+}
