@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { StaffApiError, type StaffCreateBody } from '../api/staff'
 import { MIN_REASON_LENGTH, useStaff } from '../hooks/useStaff'
 import { usePreviewMode } from '../hooks/usePreviewMode'
@@ -155,6 +156,10 @@ function Dropdown({
       >
         <span className="sr-dropdown-value">{selected?.label ?? placeholder}</span>
         <Chevron />
+        {/* The phone frames draw a small solid caret instead of the desktop chevron; CSS shows one or the other. */}
+        <span className="sr-caret" aria-hidden="true">
+          ▾
+        </span>
       </button>
       {open && (
         <ul className="sr-dropdown-menu" role="listbox" aria-label={ariaLabel}>
@@ -637,11 +642,8 @@ function BlockedDialog({ info, onClose }: { info: BlockedInfo; onClose: () => vo
 
 /* Page ------------------------------------------------------------------ */
 
-type Dialog =
-  | { kind: 'create' }
-  | { kind: 'edit'; id: string; roleId?: string }
-  | { kind: 'status'; id: string }
-  | { kind: 'blocked'; info: BlockedInfo }
+/** Edit is not in here: it is driven by the URL (`/admin/staff/$staffId`) so it can be linked to and closed with Back. */
+type Dialog = { kind: 'create' } | { kind: 'status'; id: string } | { kind: 'blocked'; info: BlockedInfo }
 
 /**
  * Green (or red) banner above the filters after a save. `desktop` replaces title + body on wide screens where the
@@ -660,10 +662,17 @@ interface Notice {
  *
  * Access gates live one level up in `routes/_authenticated/admin/route.tsx`, like the other two tabs. With
  * `?preview=1` the page runs on `preview-data.ts` and the dialogs apply the backend's rules locally (see `useStaff`).
+ *
+ * `/admin/staff/$staffId` (the spec's deep link) opens Edit for that account on top of this page; an id that does not
+ * exist falls back to the list with a STAFF_NOT_FOUND banner.
  */
 export function StaffRolesPage() {
   const isPreview = usePreviewMode()
   const staff = useStaff(isPreview)
+  const navigate = useNavigate()
+  const { staffId } = useParams({ strict: false })
+  /** Role picked in a phone card's dropdown; pre-selected when Edit opens for that account. */
+  const [editRoleHint, setEditRoleHint] = useState<{ id: string; roleId: string } | null>(null)
 
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState<string | null>(null)
@@ -700,6 +709,33 @@ export function StaffRolesPage() {
   }, [staff.staff, query, roleFilter, statusFilter])
 
   const roleOptions = useMemo(() => staff.roles.map((r) => ({ value: r.id, label: r.name })), [staff.roles])
+
+  /* A link to an account that is not in the list (old link, mistyped id, or removed). The banner is set while
+     rendering — React's pattern for state that follows a changed value — and the URL goes back to the list. */
+  const missingId = staffId && !staff.loading && !staff.error && !staff.staff.some((s) => s.id === staffId) ? staffId : null
+  const [reportedMissingId, setReportedMissingId] = useState<string | null>(null)
+  if (missingId && missingId !== reportedMissingId) {
+    setReportedMissingId(missingId)
+    setNotice({
+      tone: 'error',
+      title: 'Staff member not found (STAFF_NOT_FOUND)',
+      body: 'The link may be old, or the account ID is wrong. Showing all staff instead.',
+    })
+  }
+  useEffect(() => {
+    if (missingId) void navigate({ to: '/admin/staff', search: true, replace: true })
+  }, [missingId, navigate])
+
+  function openEdit(id: string, roleId?: string) {
+    setNotice(null)
+    setEditRoleHint(roleId ? { id, roleId } : null)
+    void navigate({ to: '/admin/staff/$staffId', params: { staffId: id }, search: true })
+  }
+
+  function closeEdit() {
+    setEditRoleHint(null)
+    void navigate({ to: '/admin/staff', search: true })
+  }
 
   function clearFilters() {
     setQuery('')
@@ -743,7 +779,8 @@ export function StaffRolesPage() {
     )
   }
 
-  const editRow = dialog?.kind === 'edit' ? (staff.staff.find((s) => s.id === dialog.id) ?? null) : null
+  const editRow = staffId ? (staff.staff.find((s) => s.id === staffId) ?? null) : null
+  const editRoleId = editRow && editRoleHint?.id === editRow.id ? editRoleHint.roleId : undefined
   const statusRow = dialog?.kind === 'status' ? (staff.staff.find((s) => s.id === dialog.id) ?? null) : null
 
   return (
@@ -897,7 +934,7 @@ export function StaffRolesPage() {
                         className="sr-edit"
                         aria-label={`Edit ${fullName(s)}`}
                         title="Edit"
-                        onClick={() => openDialog({ kind: 'edit', id: s.id })}
+                        onClick={() => openEdit(s.id)}
                       >
                         <EditIcon />
                       </button>
@@ -946,7 +983,7 @@ export function StaffRolesPage() {
                     placeholder={s.role.name}
                     ariaLabel={`Role for ${fullName(s)}`}
                     onChange={(v) => {
-                      if (v && v !== s.role.id) openDialog({ kind: 'edit', id: s.id, roleId: v })
+                      if (v && v !== s.role.id) openEdit(s.id, v)
                     }}
                   />
                   <div className="sr-card-signin">
@@ -954,7 +991,7 @@ export function StaffRolesPage() {
                     <span>{formatSignIn(s.last_sign_in_at)}</span>
                   </div>
                 </div>
-                <button type="button" className="sr-card-edit" onClick={() => openDialog({ kind: 'edit', id: s.id })}>
+                <button type="button" className="sr-card-edit" onClick={() => openEdit(s.id)}>
                   <EditIcon />
                   Edit
                 </button>
@@ -989,16 +1026,16 @@ export function StaffRolesPage() {
 
       {editRow && (
         <StaffFormDialog
-          key={`${editRow.id}:${dialog?.kind === 'edit' ? (dialog.roleId ?? '') : ''}`}
+          key={`${editRow.id}:${editRoleId ?? ''}`}
           row={editRow}
-          initialRoleId={dialog?.kind === 'edit' ? dialog.roleId : undefined}
+          initialRoleId={editRoleId}
           roles={staff.roles}
           nextStaffCode={staff.nextStaffCode}
           isSelf={editRow.id === staff.viewerStaffId}
-          onCancel={() => setDialog(null)}
+          onCancel={closeEdit}
           onSubmit={async (body) => {
             await staff.update(editRow.id, body)
-            setDialog(null)
+            closeEdit()
             setNotice(
               body.role_id !== editRow.role.id
                 ? { tone: 'success', title: 'Role updated', body: 'New screen access applies on the next page load.' }

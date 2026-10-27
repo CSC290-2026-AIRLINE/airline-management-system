@@ -224,6 +224,9 @@
   flex: 0 0 auto;
   color: #6f7c91;
 }
+.sr-caret {
+  display: none;
+}
 
 /* In a dialog the field is full width, the value is bold and the chevron sits at the far end. */
 .sr-dropdown--field .sr-dropdown-trigger {
@@ -1011,6 +1014,19 @@
     letter-spacing: 0.3px;
     text-transform: uppercase;
     color: #6f7c91;
+  }
+  .sr-chevron {
+    display: none;
+  }
+  .sr-caret {
+    display: inline;
+    font-size: 9px;
+    color: #0a1424;
+  }
+  .sr-dropdown-trigger,
+  .sr-dropdown--field .sr-dropdown-trigger {
+    justify-content: flex-start;
+    gap: 6px;
   }
   .sr-search,
   .sr-dropdown--filter .sr-dropdown-trigger {
