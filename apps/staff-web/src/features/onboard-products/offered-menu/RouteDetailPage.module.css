@@ -96,6 +96,8 @@
 }
 
 .flightSelect {
+  /* Shared dropdown arrow, see select.module.css. */
+  composes: dropdown from '../catalog/select.module.css';
   font: inherit;
   font-size: 13px;
   padding: 6px 10px;
@@ -402,6 +404,8 @@
 }
 
 .defaultMealSelect {
+  /* Shared dropdown arrow, see select.module.css. */
+  composes: dropdown from '../catalog/select.module.css';
   font: inherit;
   font-size: 13px;
   padding: 10px 12px;

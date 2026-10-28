@@ -126,6 +126,8 @@
 }
 
 .select {
+  /* Shared dropdown arrow, see select.module.css. */
+  composes: dropdown from '../catalog/select.module.css';
   font: inherit;
   font-size: 14px;
   padding: 9px 12px;

@@ -132,6 +132,9 @@
 }
 
 .input {
+  /* Shared dropdown arrow, see select.module.css. Safe on <input> elements
+   * too: the shared rule only matches <select> elements. */
+  composes: dropdown from './select.module.css';
   font: inherit;
   font-size: 14px;
   padding: 9px 12px;

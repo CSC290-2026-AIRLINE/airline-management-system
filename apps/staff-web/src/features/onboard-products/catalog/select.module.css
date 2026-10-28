@@ -1,0 +1,32 @@
+/* Shared look for the <select> controls of the F12 feature.
+ *
+ * The native dropdown arrow is removed and replaced with a chevron that sits
+ * 12px from the right border, so it no longer crowds the edge, and the
+ * control gets enough room for the text next to it.
+ *
+ * The class is composed into the per-page select classes (`composes: dropdown
+ * from ...`), so this rule has to win against the page rules that set
+ * `padding` and `background` on the same control. The element selector and
+ * the doubled class give it the specificity to do that regardless of the
+ * order the stylesheets happen to be injected in.
+ *
+ * The element selector is also what makes it safe to compose this class into
+ * a class that is shared with <input> elements: only real <select> elements
+ * match.
+ */
+select.dropdown {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 12px;
+  padding-right: 34px;
+  cursor: pointer;
+}
+
+/* The disabled rules of the pages set the `background` shorthand, which drops
+ * the chevron. Put a muted one back. */
+select.dropdown:disabled {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aab2c0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}

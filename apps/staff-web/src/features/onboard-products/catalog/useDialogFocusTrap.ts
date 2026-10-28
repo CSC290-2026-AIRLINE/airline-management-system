@@ -1,6 +1,7 @@
 // Focus trap + Escape handler for a dialog. Saves focus on open, restores it on close.
 
 import { useEffect, type RefObject } from 'react'
+import { getOpenMenuFocusables } from './openMenus'
 
 const FOCUSABLE = [
   'a[href]',
@@ -19,7 +20,12 @@ export function useDialogFocusTrap(open: boolean, containerRef: RefObject<HTMLEl
 
     const previouslyFocused = document.activeElement as HTMLElement | null
 
-    const focusables = () => Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE))
+    const focusables = () => [
+      ...Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)),
+      // The kebab menu is portalled out of the dialog, so its items are not
+      // found by the query above but still belong to the Tab cycle.
+      ...getOpenMenuFocusables(container, FOCUSABLE),
+    ]
     const first = focusables()[0]
     first?.focus()
 

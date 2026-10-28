@@ -99,6 +99,11 @@
   color: #0b1a3a;
 }
 
+/* Shared dropdown arrow, see select.module.css. */
+.select {
+  composes: dropdown from '../catalog/select.module.css';
+}
+
 .input:focus-visible,
 .select:focus-visible {
   outline: none;

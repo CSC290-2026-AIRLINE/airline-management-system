@@ -247,6 +247,9 @@
 }
 
 .filterInput {
+  /* Shared dropdown arrow, see select.module.css. Safe on <input> elements
+   * too: the shared rule only matches <select> elements. */
+  composes: dropdown from '../catalog/select.module.css';
   font: inherit;
   font-size: 13px;
   padding: 8px 10px;

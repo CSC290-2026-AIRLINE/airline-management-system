@@ -25,10 +25,11 @@
   outline: none;
 }
 
+/* The menu is portalled into document.body (see KebabMenu.tsx), so it is
+ * positioned against the button in viewport coordinates instead of against
+ * the table cell it is rendered in. */
 .menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
+  position: fixed;
   min-width: 140px;
   margin: 0;
   padding: 4px;
@@ -37,7 +38,9 @@
   border: 1px solid #e3e7ef;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(11, 26, 58, 0.12);
-  z-index: 20;
+  /* Above every dialog (100) and the flight report dialog (900), below the
+   * toast (1000), so the menu is never cut off by the page it belongs to. */
+  z-index: 950;
 }
 
 .item {
