@@ -252,6 +252,7 @@ export function RouteDetailPage() {
           scheduledDeparture: f.scheduledDeparture,
           cabin: cabin,
           changedSettings: [],
+          route: '',
         }))
 
   async function handleSave() {

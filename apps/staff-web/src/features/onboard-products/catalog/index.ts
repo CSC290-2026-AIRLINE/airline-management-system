@@ -2,6 +2,7 @@
 
 export { ProductDialog } from './ProductDialog'
 export { ConfirmDeleteDialog } from './ConfirmDeleteDialog'
+export { ConfirmDialog } from './ConfirmDialog'
 export { Toast } from './Toast'
 export type { ToastData, ToastKind } from './Toast'
 export { KebabMenu } from './KebabMenu'
