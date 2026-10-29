@@ -22,6 +22,20 @@ export const FARE_RULE_FIELDS = [
   'change_fee_flat',
   'change_fee_pct',
 ] as const
+
+// Pricing rule groups, in the order applyRules multiplies them onto the base fare.
+export const RULE_GROUPS = ['urgency', 'load', 'month', 'period'] as const
+export type RuleGroup = (typeof RULE_GROUPS)[number]
+
+// The condition columns each group may fill; a rule must leave every other group's columns empty.
+export const RULE_GROUP_FIELDS = {
+  urgency: ['min_days_out', 'max_days_out'],
+  load: ['min_seats_left_pct', 'max_seats_left_pct'],
+  month: ['month'],
+  period: ['start_date', 'end_date'],
+} as const satisfies Record<RuleGroup, readonly string[]>
+export type RuleConditionField = (typeof RULE_GROUP_FIELDS)[RuleGroup][number]
+
 export const TAX_FEE_KINDS = ['tax', 'surcharge', 'fee'] as const
 export type TaxFeeKind = (typeof TAX_FEE_KINDS)[number]
 
