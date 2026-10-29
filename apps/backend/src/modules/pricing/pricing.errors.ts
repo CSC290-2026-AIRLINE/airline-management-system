@@ -10,6 +10,11 @@ export const PricingErrorCode = {
   SETTING_READ_ONLY: 'SETTING_READ_ONLY',
   SETTING_INVALID: 'SETTING_INVALID',
   STAFF_NOT_FOUND: 'STAFF_NOT_FOUND',
+  SEAT_FEE_NOT_FOUND: 'SEAT_FEE_NOT_FOUND',
+  SEAT_FEE_EXISTS: 'SEAT_FEE_EXISTS',
+  TAX_FEE_NOT_FOUND: 'TAX_FEE_NOT_FOUND',
+  TAX_FEE_CODE_TAKEN: 'TAX_FEE_CODE_TAKEN',
+  TAX_FEE_PCT_TOO_HIGH: 'TAX_FEE_PCT_TOO_HIGH',
 } as const
 export type PricingErrorCode = (typeof PricingErrorCode)[keyof typeof PricingErrorCode]
 

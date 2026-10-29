@@ -22,3 +22,8 @@ export const FARE_RULE_FIELDS = [
   'change_fee_flat',
   'change_fee_pct',
 ] as const
+export const TAX_FEE_KINDS = ['tax', 'surcharge', 'fee'] as const
+export type TaxFeeKind = (typeof TAX_FEE_KINDS)[number]
+
+export const TAX_FEE_CALC_TYPES = ['flat', 'pct'] as const
+export type TaxFeeCalcType = (typeof TAX_FEE_CALC_TYPES)[number]
