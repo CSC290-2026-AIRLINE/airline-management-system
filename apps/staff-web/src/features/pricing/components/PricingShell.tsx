@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { Link } from '@tanstack/react-router'
+import { useUser } from '@clerk/clerk-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import '../pricing.css'
 
 // Pages not built yet stay in the menu (so the layout matches the design) but are not links.
@@ -23,6 +25,22 @@ interface PricingShellProps {
 export function PricingShell({ title, description, children }: PricingShellProps) {
   // Phone only: the sidebar becomes a menu that drops down from the top bar.
   const [menuOpen, setMenuOpen] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+  const { user, logout } = useAppAuth()
+  const { user: clerkUser } = useUser()
+  const navigate = useNavigate()
+  // Staff roles are not enforced yet (everyone is created as admin), so the account block shows who is signed in, not a role.
+  const displayName = clerkUser?.fullName || user?.email || 'Staff'
+
+  // logout() ends our session and Clerk's; the route guard only re-checks on navigation, so go to /login explicitly.
+  async function handleSignOut() {
+    setSigningOut(true)
+    try {
+      await logout()
+    } finally {
+      void navigate({ to: '/login' })
+    }
+  }
 
   return (
     <div className={`pr-shell${menuOpen ? ' is-menu-open' : ''}`}>
@@ -40,32 +58,43 @@ export function PricingShell({ title, description, children }: PricingShellProps
         >
           Menu <span aria-hidden="true">{menuOpen ? '×' : '≡'}</span>
         </button>
-        <nav id="pr-nav" aria-label="Pricing and finance" onClick={() => setMenuOpen(false)}>
-          {NAV.map(({ group, items }) => (
-            <div key={group} className="pr-nav-group">
-              <p className="pr-nav-heading">{group}</p>
-              <ul>
-                {items.map((item) => (
-                  <li key={item.label}>
-                    {'to' in item ? (
-                      <Link
-                        to={item.to}
-                        className="pr-nav-item"
-                        activeProps={{ className: 'pr-nav-item is-active', 'aria-current': 'page' }}
-                      >
-                        {item.label}
-                      </Link>
-                    ) : (
-                      <span className="pr-nav-item is-disabled" aria-disabled="true" title="Not built yet">
-                        {item.label}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </nav>
+        {/* Desktop: fills the sidebar with the account block pinned to the bottom. Phone: the drop-down menu. */}
+        <div id="pr-nav" className="pr-sidebar-menu">
+          <nav aria-label="Pricing and finance" onClick={() => setMenuOpen(false)}>
+            {NAV.map(({ group, items }) => (
+              <div key={group} className="pr-nav-group">
+                <p className="pr-nav-heading">{group}</p>
+                <ul>
+                  {items.map((item) => (
+                    <li key={item.label}>
+                      {'to' in item ? (
+                        <Link
+                          to={item.to}
+                          className="pr-nav-item"
+                          activeProps={{ className: 'pr-nav-item is-active', 'aria-current': 'page' }}
+                        >
+                          {item.label}
+                        </Link>
+                      ) : (
+                        <span className="pr-nav-item is-disabled" aria-disabled="true" title="Not built yet">
+                          {item.label}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
+
+          <div className="pr-account">
+            <strong>{displayName}</strong>
+            {user?.email && displayName !== user.email && <span>{user.email}</span>}
+            <button type="button" className="pr-sign-out" disabled={signingOut} onClick={() => void handleSignOut()}>
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </button>
+          </div>
+        </div>
       </aside>
 
       <main className="pr-main">
