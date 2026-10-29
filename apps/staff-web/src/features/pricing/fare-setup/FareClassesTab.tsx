@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePricingApi, type FareClass } from '../api'
 import { Dialog } from '../components/Dialog'
 import { ErrorBoundary } from '../components/ErrorBoundary'
@@ -9,6 +9,14 @@ import { FareClassEditor } from './FareClassEditor'
 
 type Selection = { mode: 'edit'; id: string } | { mode: 'new' } | null
 
+// A new object each time, so saving the same class twice restarts the timer.
+interface Notice {
+  text: string
+  highlightId?: string
+}
+
+const NOTICE_MS = 2000
+
 function advanceBuy(fc: FareClass): string {
   return fc.min_advance_purchase_days > 0 ? `${fc.min_advance_purchase_days} days` : 'None'
 }
@@ -18,11 +26,18 @@ export function FareClassesTab() {
   const isPhone = useMediaQuery(PHONE_QUERY)
   const [includeInactive, setIncludeInactive] = useState(false)
   const [selection, setSelection] = useState<Selection>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
   const list = useLoad(() => api.listFareClasses(includeInactive), `fare-classes:${includeInactive}`)
 
   const fareClasses = list.data ?? []
   const selected = selection?.mode === 'edit' ? (fareClasses.find((fc) => fc.id === selection.id) ?? null) : null
+
+  // The success banner (and the row highlight that goes with it) clears itself after NOTICE_MS.
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS)
+    return () => window.clearTimeout(timer)
+  }, [notice])
 
   function open(next: Selection) {
     setSelection(next)
@@ -30,14 +45,15 @@ export function FareClassesTab() {
   }
 
   function handleSaved(fareClass: FareClass) {
-    setNotice(`Saved ${fareClass.code} · ${fareClass.name}`)
+    const verb = selection?.mode === 'new' ? 'added' : 'saved'
+    setNotice({ text: `Fare class ${fareClass.code} ${verb}`, highlightId: fareClass.id })
     // Saving closes the editor (panel, phone page or dialog) so the list goes back to full width.
     setSelection(null)
     list.reload()
   }
 
   function handleRemoved() {
-    setNotice('Fare class removed')
+    setNotice({ text: selected ? `Fare class ${selected.code} removed` : 'Fare class removed' })
     setSelection(null)
     list.reload()
   }
@@ -79,7 +95,7 @@ export function FareClassesTab() {
         <li key={fc.id}>
           <button
             type="button"
-            className={`pr-class-card${fc.is_active ? '' : ' is-inactive'}`}
+            className={`pr-class-card${notice?.highlightId === fc.id ? ' is-highlighted' : ''}${fc.is_active ? '' : ' is-inactive'}`}
             onClick={() => open({ mode: 'edit', id: fc.id })}
           >
             <span className="pr-code-badge">{fc.code}</span>
@@ -121,7 +137,7 @@ export function FareClassesTab() {
               key={fc.id}
               tabIndex={0}
               aria-selected={selected?.id === fc.id}
-              className={`is-clickable${selected?.id === fc.id ? ' is-selected' : ''}${fc.is_active ? '' : ' is-inactive'}`}
+              className={`is-clickable${selected?.id === fc.id ? ' is-selected' : ''}${notice?.highlightId === fc.id ? ' is-highlighted' : ''}${fc.is_active ? '' : ' is-inactive'}`}
               onClick={() => open({ mode: 'edit', id: fc.id })}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -147,51 +163,57 @@ export function FareClassesTab() {
   )
 
   return (
-    // Split only while the side panel is actually shown, not while a selected class is missing from the loaded list.
-    <div className={`pr-split${!isPhone && (selection?.mode === 'new' || selected) ? ' has-editor' : ''}`}>
-      <section className="pr-card" aria-labelledby="fc-list-title">
-        <div className="pr-card-intro">
-          <h2 id="fc-list-title" className="pr-card-title">
-            Fare classes
-          </h2>
-          <p className="pr-muted">Select a class to edit it. Quotes keep a frozen copy of these rules.</p>
-        </div>
-        <div className="pr-card-toolbar">
-          <label className="pr-toggle">
-            <input
-              type="checkbox"
-              checked={includeInactive}
-              onChange={(e) => {
-                // Filtering the list closes any open editor instead of reopening it once the new list loads.
-                setIncludeInactive(e.target.checked)
-                setSelection(null)
-              }}
-            />
-            Include inactive
-          </label>
-          {notice && (
-            <span className="pr-notice" role="status">
-              {notice}
-            </span>
-          )}
-        </div>
+    <>
+      {/* Above the table card, not inside it. The live region stays mounted so screen readers announce each message. */}
+      <div role="status" aria-live="polite" className="pr-banner-slot">
+        {notice && (
+          <p key={notice.text + (notice.highlightId ?? '')} className="pr-banner is-success">
+            {notice.text}
+          </p>
+        )}
+      </div>
 
-        {body}
+      {/* Split only while the side panel is actually shown, not while a selected class is missing from the loaded list. */}
+      <div className={`pr-split${!isPhone && (selection?.mode === 'new' || selected) ? ' has-editor' : ''}`}>
+        <section className="pr-card" aria-labelledby="fc-list-title">
+          <div className="pr-card-intro">
+            <h2 id="fc-list-title" className="pr-card-title">
+              Fare classes
+            </h2>
+            <p className="pr-muted">Select a class to edit it. Quotes keep a frozen copy of these rules.</p>
+          </div>
+          <div className="pr-card-toolbar">
+            <label className="pr-toggle">
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={(e) => {
+                  // Filtering the list closes any open editor instead of reopening it once the new list loads.
+                  setIncludeInactive(e.target.checked)
+                  setSelection(null)
+                }}
+              />
+              Include inactive
+            </label>
+          </div>
 
-        <div className="pr-card-footer">
-          <button type="button" className="pr-button is-outline pr-add-button" onClick={() => open({ mode: 'new' })}>
-            + Add fare class
-          </button>
-        </div>
-      </section>
+          {body}
 
-      {selection?.mode === 'new' && isPhone ? (
-        <Dialog labelledBy="fc-editor-title" onClose={() => setSelection(null)}>
-          {editor('sheet')}
-        </Dialog>
-      ) : (
-        selection && (selection.mode === 'new' || selected) && editor('panel')
-      )}
-    </div>
+          <div className="pr-card-footer">
+            <button type="button" className="pr-button is-outline pr-add-button" onClick={() => open({ mode: 'new' })}>
+              + Add fare class
+            </button>
+          </div>
+        </section>
+
+        {selection?.mode === 'new' && isPhone ? (
+          <Dialog labelledBy="fc-editor-title" onClose={() => setSelection(null)}>
+            {editor('sheet')}
+          </Dialog>
+        ) : (
+          selection && (selection.mode === 'new' || selected) && editor('panel')
+        )}
+      </div>
+    </>
   )
 }
