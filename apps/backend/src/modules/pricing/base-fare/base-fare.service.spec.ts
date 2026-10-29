@@ -19,7 +19,7 @@ describe('BaseFareService', () => {
   let service: BaseFareService
   const db = {
     base_fare: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
-    route: { findUnique: jest.fn() },
+    route: { findUnique: jest.fn(), findMany: jest.fn() },
     fare_class: { findFirst: jest.fn() },
   }
 
@@ -34,6 +34,16 @@ describe('BaseFareService', () => {
     db.fare_class.findFirst.mockResolvedValue({ id: FARE_CLASS_ID })
     db.base_fare.findFirst.mockResolvedValue(null)
   }
+
+  it('lists active routes as picker options with only id, origin and destination', async () => {
+    db.route.findMany.mockResolvedValue([])
+
+    await service.findRouteOptions()
+
+    expect(db.route.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { is_active: true }, select: { id: true, origin: true, destination: true } }),
+    )
+  })
 
   it('lists only live base fares and passes the filters through', async () => {
     db.base_fare.findMany.mockResolvedValue([baseFare])

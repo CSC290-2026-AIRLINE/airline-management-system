@@ -13,6 +13,12 @@ export class BaseFareController {
     return this.baseFareService.findAll(filter)
   }
 
+  // Declared before ':id' so the path is not read as an ID.
+  @Get('route-options')
+  findRouteOptions() {
+    return this.baseFareService.findRouteOptions()
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.baseFareService.findOne(id)

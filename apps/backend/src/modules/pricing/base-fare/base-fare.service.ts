@@ -54,6 +54,16 @@ export class BaseFareService {
     await this.db.base_fare.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
   }
 
+  // Route picker for the Base fares page. `route` belongs to Feature 2 and is only read here, like assertRouteExists.
+  // Switch both to their exported service once it exists.
+  findRouteOptions() {
+    return this.db.route.findMany({
+      where: { is_active: true },
+      select: { id: true, origin: true, destination: true },
+      orderBy: [{ origin: 'asc' }, { destination: 'asc' }],
+    })
+  }
+
   // `route` belongs to Feature 2 and is only read here. Switch to their exported service once it exists.
   private async assertRouteExists(routeId: string) {
     const route = await this.db.route.findUnique({ where: { id: routeId }, select: { id: true } })
