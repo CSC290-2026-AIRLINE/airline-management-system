@@ -5,6 +5,8 @@ import { CurrencyRateController } from './currency-rate/currency-rate.controller
 import { CurrencyRateService } from './currency-rate/currency-rate.service'
 import { FareClassController } from './fare-class/fare-class.controller'
 import { FareClassService } from './fare-class/fare-class.service'
+import { ExpenseController } from './finance/expense/expense.controller'
+import { ExpenseService } from './finance/expense/expense.service'
 import { PaymentScheduleController } from './finance/payment-schedule/payment-schedule.controller'
 import { PaymentScheduleService } from './finance/payment-schedule/payment-schedule.service'
 import { PublicSeatFeeController, SeatFeeController } from './seat-fee/seat-fee.controller'
@@ -24,6 +26,7 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     TaxFeeController,
     CurrencyRateController,
     PaymentScheduleController,
+    ExpenseController,
   ],
   providers: [
     FareClassService,
@@ -33,6 +36,7 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     TaxFeeService,
     CurrencyRateService,
     PaymentScheduleService,
+    ExpenseService,
   ],
   exports: [FareClassService, BaseFareService, SettingService, SeatFeeService, TaxFeeService, CurrencyRateService],
 })
