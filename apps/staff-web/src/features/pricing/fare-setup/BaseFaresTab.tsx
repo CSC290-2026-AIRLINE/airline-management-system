@@ -65,7 +65,8 @@ export function BaseFaresTab() {
         <p className="pr-state">No fare classes yet. Add them on the Fare classes tab first.</p>
       ) : (
         <div className="pr-table-wrap">
-          <table className="pr-table">
+          {/* is-stacked: on a phone each row becomes a card (pricing.css). */}
+          <table className="pr-table is-stacked">
             <thead>
               <tr>
                 <th>Code</th>
@@ -144,13 +145,13 @@ function BaseFareRow({ routeId, fareClass, baseFare, currency, onChanged }: Base
 
   return (
     <tr className={fareClass.is_active ? undefined : 'is-inactive'}>
-      <td className="pr-mono">{fareClass.code}</td>
-      <td>
+      <td className="pr-mono pr-cell-code">{fareClass.code}</td>
+      <td className="pr-cell-name">
         {fareClass.name}
         {!fareClass.is_active && <span className="pr-pill">Inactive</span>}
       </td>
-      <td>{cabinLabel(fareClass.cabin)}</td>
-      <td>
+      <td className="pr-cell-cabin">{cabinLabel(fareClass.cabin)}</td>
+      <td className="pr-cell-amount">
         <form id={`bf-form-${fareClass.id}`} onSubmit={handleSubmit} className="pr-inline-form" noValidate>
           <label htmlFor={inputId} className="pr-visually-hidden">
             Base fare for {fareClass.code} in {currency}
