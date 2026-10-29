@@ -11,7 +11,11 @@ const FONTS_URL = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;6
 const NAV = [
   {
     group: 'Pricing',
-    items: [{ label: 'Fare Setup', to: '/pricing/fare-setup' }, { label: 'Pricing Rules' }, { label: 'Taxes, Currency & Promos' }],
+    items: [
+      { label: 'Fare Setup', to: '/pricing/fare-setup' },
+      { label: 'Pricing Rules', to: '/pricing/pricing-rules' },
+      { label: 'Taxes, Currency & Promos' },
+    ],
   },
   {
     group: 'Finance',
@@ -22,10 +26,12 @@ const NAV = [
 interface PricingShellProps {
   title: string
   description: string
+  // Buttons for the right of the page header (e.g. "Open price simulator"); replaces the simulated-date chip.
+  actions?: ReactNode
   children: ReactNode
 }
 
-export function PricingShell({ title, description, children }: PricingShellProps) {
+export function PricingShell({ title, description, actions, children }: PricingShellProps) {
   // Phone only: the sidebar becomes a menu that drops down from the top bar.
   const [menuOpen, setMenuOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
@@ -112,10 +118,12 @@ export function PricingShell({ title, description, children }: PricingShellProps
             <h1 className="pr-title">{title}</h1>
             <p className="pr-subtitle">{description}</p>
           </div>
-          {/* The simulation clock (Platform) has no API yet, so no date is shown rather than a made-up one. */}
-          <span className="pr-sim-chip" title="Waiting for the simulation clock API">
-            Simulated today · not connected
-          </span>
+          {actions ?? (
+            // The simulation clock (Platform) has no API yet, so no date is shown rather than a made-up one.
+            <span className="pr-sim-chip" title="Waiting for the simulation clock API">
+              Simulated today · not connected
+            </span>
+          )}
         </header>
         {children}
       </main>

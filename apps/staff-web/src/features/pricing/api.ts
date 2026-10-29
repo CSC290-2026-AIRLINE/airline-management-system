@@ -44,6 +44,39 @@ export interface BaseFare {
   amount: Decimal
 }
 
+// Mirrors RULE_GROUPS in the backend's pricing.constants.ts, in the order the engine applies them.
+export const RULE_GROUPS = ['urgency', 'load', 'month', 'period'] as const
+export type RuleGroup = (typeof RULE_GROUPS)[number]
+
+export interface PricingRule {
+  id: string
+  rule_group: RuleGroup
+  name: string
+  priority: number
+  min_days_out: number | null
+  max_days_out: number | null
+  min_seats_left_pct: Decimal | null
+  max_seats_left_pct: Decimal | null
+  month: number | null
+  start_date: string | null // ISO timestamp at UTC midnight
+  end_date: string | null
+  fare_class_id: string | null
+  fare_class: { code: string; name: string } | null
+  adjustment_pct: Decimal
+  is_active: boolean
+}
+
+// Mirrors SEAT_TYPES in the backend's pricing.constants.ts.
+export const SEAT_TYPES = ['normal', 'exit_row', 'extra_legroom'] as const
+export type SeatType = (typeof SEAT_TYPES)[number]
+
+export interface SeatFee {
+  id: string
+  cabin: Cabin
+  seat_type: SeatType
+  amount: Decimal
+}
+
 interface PricingSetting {
   key: string
   value: string
@@ -100,6 +133,18 @@ export function usePricingApi() {
       request<BaseFare>('/base-fares', 'POST', { route_id: routeId, fare_class_id: fareClassId, amount }),
     updateBaseFare: (id: string, amount: number) => request<BaseFare>(`/base-fares/${id}`, 'PATCH', { amount }),
     deleteBaseFare: (id: string) => request<void>(`/base-fares/${id}`, 'DELETE'),
+
+    listPricingRules: () => request<PricingRule[]>('/pricing-rules'),
+    setPricingRuleActive: (id: string, isActive: boolean) => request<PricingRule>(`/pricing-rules/${id}`, 'PATCH', { is_active: isActive }),
+    reorderPricingRules: (group: RuleGroup, ids: string[]) =>
+      request<PricingRule[]>('/pricing-rules/reorder', 'POST', { rule_group: group, ids }),
+    deletePricingRule: (id: string) => request<void>(`/pricing-rules/${id}`, 'DELETE'),
+
+    // Seat fees belong to Member C's backend (staff/seat-fees); this page only edits the amounts.
+    listSeatFees: () => request<SeatFee[]>('/seat-fees'),
+    createSeatFee: (cabin: Cabin, seatType: SeatType, amount: number) =>
+      request<SeatFee>('/seat-fees', 'POST', { cabin, seat_type: seatType, amount }),
+    updateSeatFee: (id: string, amount: number) => request<SeatFee>(`/seat-fees/${id}`, 'PATCH', { amount }),
 
     getBaseCurrency: async () => {
       const settings = await request<PricingSetting[]>('/settings')

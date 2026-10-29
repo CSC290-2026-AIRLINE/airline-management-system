@@ -764,6 +764,174 @@ a.pr-nav-item:hover {
   color: var(--pr-primary);
 }
 
+/* Labelled amount field with the currency inside (phone base fares, seat fees) */
+.pr-fare-label {
+  display: block;
+  margin-bottom: 4px;
+  overflow: hidden;
+  color: var(--pr-text);
+  font-size: var(--pr-text-caption);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pr-amount-field {
+  position: relative;
+  display: block;
+}
+
+.pr-shell .pr-fare-input {
+  width: 100%;
+  min-height: 44px;
+  padding-right: 48px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-amount-suffix {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+/* Pricing rules page ----------------------------------------------------------------------------- */
+
+.pr-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.pr-card-tabs {
+  margin: 4px 16px 12px;
+}
+
+.pr-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pr-priority strong {
+  min-width: 14px;
+  color: var(--pr-ink);
+}
+
+.pr-step-button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--pr-border);
+  border-radius: var(--pr-radius-sm);
+  background: var(--pr-surface);
+  color: var(--pr-ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pr-step-button:not(:disabled):hover {
+  background: var(--pr-tint);
+}
+
+.pr-step-button:disabled {
+  color: var(--pr-border);
+  cursor: not-allowed;
+}
+
+.pr-step-button:focus-visible,
+.pr-switch:focus-visible {
+  outline: none;
+  box-shadow: var(--pr-focus);
+}
+
+.pr-adjust {
+  color: var(--pr-ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* On/off switch (a button with role="switch") */
+.pr-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--pr-border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pr-switch[aria-checked='true'] {
+  background: var(--pr-good);
+}
+
+.pr-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.pr-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  transition: transform 0.15s;
+}
+
+.pr-switch[aria-checked='true'] .pr-switch-thumb {
+  transform: translateX(16px);
+}
+
+.pr-link-button.is-danger {
+  color: var(--pr-danger);
+  font-size: var(--pr-text-small);
+}
+
+.pr-link-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.pr-rules-footer {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  border-top: 0;
+}
+
+.pr-rules-footer .pr-muted {
+  margin: 0;
+  font-size: var(--pr-text-small);
+}
+
+.pr-seat-fee-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 16px;
+  padding: 0 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pr-switch,
+  .pr-switch-thumb {
+    transition: none;
+  }
+}
+
 .pr-visually-hidden {
   position: absolute;
   width: 1px;
@@ -1179,39 +1347,13 @@ a.pr-nav-item:hover {
     gap: 10px 12px;
   }
 
-  .pr-fare-label {
-    display: block;
-    margin-bottom: 4px;
-    overflow: hidden;
-    color: var(--pr-text);
-    font-size: var(--pr-text-caption);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-overflow: ellipsis;
-    text-transform: uppercase;
-    white-space: nowrap;
+  .pr-seat-fee-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 14px;
   }
 
-  .pr-amount-field {
-    position: relative;
-    display: block;
-  }
-
-  .pr-shell .pr-fare-input {
-    width: 100%;
-    min-height: 44px;
-    padding-right: 48px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .pr-amount-suffix {
-    position: absolute;
-    top: 50%;
-    right: 12px;
-    color: var(--pr-muted);
-    font-size: var(--pr-text-small);
-    pointer-events: none;
-    transform: translateY(-50%);
+  .pr-card-tabs {
+    margin: 4px 14px 12px;
   }
 
   .pr-pager {
