@@ -7,6 +7,8 @@ import { FareClassController } from './fare-class/fare-class.controller'
 import { FareClassService } from './fare-class/fare-class.service'
 import { PaymentScheduleController } from './finance/payment-schedule/payment-schedule.controller'
 import { PaymentScheduleService } from './finance/payment-schedule/payment-schedule.service'
+import { PricingRuleController } from './pricing-rule/pricing-rule.controller'
+import { PricingRuleService } from './pricing-rule/pricing-rule.service'
 import { PublicSeatFeeController, SeatFeeController } from './seat-fee/seat-fee.controller'
 import { SeatFeeService } from './seat-fee/seat-fee.service'
 import { SettingController } from './setting/setting.controller'
@@ -19,6 +21,7 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     FareClassController,
     BaseFareController,
     SettingController,
+    PricingRuleController,
     SeatFeeController,
     PublicSeatFeeController,
     TaxFeeController,
@@ -29,11 +32,12 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     FareClassService,
     BaseFareService,
     SettingService,
+    PricingRuleService,
     SeatFeeService,
     TaxFeeService,
     CurrencyRateService,
     PaymentScheduleService,
   ],
-  exports: [FareClassService, BaseFareService, SettingService, SeatFeeService, TaxFeeService, CurrencyRateService],
+  exports: [FareClassService, BaseFareService, SettingService, PricingRuleService, SeatFeeService, TaxFeeService, CurrencyRateService],
 })
 export class PricingModule {}
