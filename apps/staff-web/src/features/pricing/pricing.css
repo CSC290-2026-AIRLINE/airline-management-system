@@ -1,0 +1,605 @@
+/* Pricing & Finance (G12) staff pages. Values read from the Fare Setup design; every colour, radius and size is a
+   --pr-* token, so change the token, not a rule. Class names are prefixed pr- to stay out of other features' way. */
+
+.pr-shell {
+  --pr-sidebar: #14213d;
+  --pr-sidebar-text: #b7c1d1;
+  --pr-sidebar-active: #22365a;
+  --pr-page: #f5f7fa;
+  --pr-surface: #ffffff;
+  --pr-ink: #0a1424;
+  --pr-text: #1e293b;
+  --pr-muted: #677287;
+  --pr-border: #cbd5e1;
+  --pr-divider: #e2e8f0;
+  --pr-head: #eef2f6;
+  --pr-primary: #146c82;
+  --pr-primary-hover: #0f5869;
+  --pr-selected: #e6f2f5;
+  --pr-tint: #eef6f8;
+  --pr-danger: #b42318;
+  --pr-danger-bg: #fdecec;
+  --pr-good: #1f7a4d;
+  --pr-good-bg: #e3f2ea;
+  --pr-focus: 0 0 0 3px rgb(20 108 130 / 20%);
+
+  --pr-radius-sm: 4px;
+  --pr-radius: 6px;
+  --pr-radius-lg: 8px;
+
+  --pr-font: 'IBM Plex Sans', 'Inter', system-ui, 'Segoe UI', sans-serif;
+  --pr-font-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+  --pr-text-caption: 11px;
+  --pr-text-small: 12px;
+  --pr-text-body: 13px;
+  --pr-text-label: 14px;
+  --pr-text-title: 22px;
+  --pr-text-brand: 16px;
+
+  /* The app's global #root is a centred 1126px column; the staff shell takes the whole viewport instead. */
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 192px minmax(0, 1fr);
+  overflow: hidden;
+  color-scheme: light;
+  background: var(--pr-page);
+  color: var(--pr-text);
+  font: 400 var(--pr-text-body) / 1.45 var(--pr-font);
+  letter-spacing: normal;
+  text-align: left;
+}
+
+.pr-shell *,
+.pr-shell *::before,
+.pr-shell *::after {
+  box-sizing: border-box;
+}
+
+/* Sidebar ---------------------------------------------------------------------------------------- */
+
+.pr-sidebar {
+  overflow-y: auto;
+  padding: 24px 12px;
+  background: var(--pr-sidebar);
+  color: var(--pr-sidebar-text);
+}
+
+.pr-brand {
+  display: grid;
+  gap: 2px;
+  padding: 0 10px 24px;
+}
+
+.pr-brand strong {
+  color: #fff;
+  font-size: var(--pr-text-brand);
+  font-weight: 700;
+}
+
+.pr-brand span {
+  font-size: var(--pr-text-caption);
+}
+
+.pr-nav-group + .pr-nav-group {
+  margin-top: 20px;
+}
+
+.pr-nav-heading {
+  margin: 0 0 8px;
+  padding: 0 10px;
+  font-size: var(--pr-text-caption);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pr-nav-group ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pr-nav-item {
+  display: block;
+  padding: 9px 10px;
+  border-radius: var(--pr-radius);
+  color: #fff;
+  font-size: var(--pr-text-body);
+  text-decoration: none;
+}
+
+a.pr-nav-item:hover {
+  background: var(--pr-sidebar-active);
+}
+
+.pr-nav-item.is-active {
+  background: var(--pr-sidebar-active);
+  font-weight: 600;
+}
+
+.pr-nav-item.is-disabled {
+  color: var(--pr-sidebar-text);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.pr-nav-item:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+/* Main area -------------------------------------------------------------------------------------- */
+
+.pr-main {
+  overflow-y: auto;
+  padding: 28px 24px 40px;
+}
+
+.pr-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.pr-title {
+  margin: 0 0 4px;
+  color: var(--pr-ink);
+  font-family: var(--pr-font);
+  font-size: var(--pr-text-title);
+  font-weight: 600;
+  letter-spacing: normal;
+}
+
+.pr-subtitle,
+.pr-muted {
+  color: var(--pr-muted);
+}
+
+.pr-sim-chip {
+  padding: 6px 10px;
+  border: 1px solid var(--pr-border);
+  border-radius: var(--pr-radius-sm);
+  background: var(--pr-surface);
+  color: var(--pr-muted);
+  font: var(--pr-text-small) var(--pr-font-mono);
+  white-space: nowrap;
+}
+
+.pr-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.pr-split {
+  display: grid;
+  align-items: start;
+  gap: 20px;
+}
+
+.pr-split.has-editor {
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+}
+
+/* Cards and tables ------------------------------------------------------------------------------- */
+
+.pr-card {
+  border: 1px solid var(--pr-divider);
+  border-radius: var(--pr-radius-lg);
+  background: var(--pr-surface);
+}
+
+.pr-card-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--pr-divider);
+}
+
+.pr-card-footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--pr-divider);
+}
+
+.pr-table-wrap {
+  overflow-x: auto;
+}
+
+.pr-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pr-table th {
+  padding: 12px 14px;
+  background: var(--pr-head);
+  color: var(--pr-text);
+  font-size: var(--pr-text-caption);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pr-table td {
+  padding: 11px 14px;
+  border-top: 1px solid var(--pr-divider);
+  vertical-align: middle;
+}
+
+.pr-table tr.is-clickable {
+  cursor: pointer;
+}
+
+.pr-table tr.is-clickable:hover,
+.pr-table tr.is-selected {
+  background: var(--pr-selected);
+}
+
+.pr-table tr.is-selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--pr-primary-hover);
+}
+
+.pr-table tr.is-clickable:focus-visible {
+  outline: 2px solid var(--pr-primary);
+  outline-offset: -2px;
+}
+
+.pr-table tr.is-inactive td {
+  color: var(--pr-muted);
+}
+
+.pr-mono {
+  font-family: var(--pr-font-mono);
+  font-weight: 600;
+}
+
+.pr-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--pr-head);
+  color: var(--pr-muted);
+  font-size: var(--pr-text-caption);
+}
+
+.pr-state {
+  margin: 0;
+  padding: 28px 14px;
+  color: var(--pr-muted);
+  text-align: center;
+}
+
+.pr-callout {
+  margin: 12px 14px;
+  padding: 10px 12px;
+  border-radius: var(--pr-radius);
+}
+
+.pr-callout.is-error {
+  border: 1px solid var(--pr-danger);
+  background: var(--pr-danger-bg);
+  color: var(--pr-danger);
+}
+
+.pr-editor .pr-callout {
+  margin: 0 0 12px;
+}
+
+.pr-notice {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--pr-good-bg);
+  color: var(--pr-good);
+  font-size: var(--pr-text-small);
+}
+
+/* Buttons ---------------------------------------------------------------------------------------- */
+
+.pr-button {
+  min-height: 34px;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--pr-radius);
+  font: 600 var(--pr-text-body) var(--pr-font);
+  cursor: pointer;
+}
+
+.pr-button:focus-visible,
+.pr-icon-button:focus-visible,
+.pr-link-button:focus-visible {
+  outline: none;
+  box-shadow: var(--pr-focus);
+}
+
+.pr-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.pr-button.is-primary {
+  background: var(--pr-primary);
+  color: #fff;
+}
+
+.pr-button.is-primary:not(:disabled):hover {
+  background: var(--pr-primary-hover);
+}
+
+.pr-button.is-outline {
+  border-color: var(--pr-border);
+  background: var(--pr-surface);
+  color: var(--pr-ink);
+}
+
+.pr-button.is-outline:not(:disabled):hover {
+  background: var(--pr-tint);
+}
+
+.pr-card-footer .pr-button.is-outline {
+  border-color: var(--pr-primary);
+  color: var(--pr-primary-hover);
+}
+
+.pr-button.is-danger {
+  border-color: var(--pr-danger);
+  background: var(--pr-surface);
+  color: var(--pr-danger);
+}
+
+.pr-button.is-danger:not(:disabled):hover {
+  background: var(--pr-danger-bg);
+}
+
+.pr-button.is-small {
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: var(--pr-text-small);
+}
+
+.pr-icon-button {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--pr-border);
+  border-radius: var(--pr-radius-sm);
+  background: var(--pr-surface);
+  color: var(--pr-ink);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pr-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Forms ------------------------------------------------------------------------------------------ */
+
+.pr-editor {
+  padding: 16px 18px 18px;
+}
+
+.pr-editor-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pr-eyebrow {
+  margin: 0 0 2px;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-caption);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pr-editor-title {
+  margin: 0;
+  color: var(--pr-ink);
+  font-family: var(--pr-font);
+  font-size: var(--pr-text-label);
+  font-weight: 600;
+  letter-spacing: normal;
+}
+
+.pr-field {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.pr-field.is-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.pr-field label {
+  color: var(--pr-text);
+  font-size: var(--pr-text-small);
+}
+
+.pr-shell input:not([type='checkbox']),
+.pr-shell select {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--pr-border);
+  border-radius: var(--pr-radius);
+  background: var(--pr-surface);
+  color: var(--pr-ink);
+  font: var(--pr-text-body) var(--pr-font);
+}
+
+.pr-field.is-inline select {
+  width: auto;
+  min-width: 220px;
+}
+
+.pr-shell input:disabled,
+.pr-shell select:disabled {
+  background: var(--pr-page);
+  color: var(--pr-muted);
+}
+
+.pr-shell input:focus-visible,
+.pr-shell select:focus-visible {
+  border-color: var(--pr-primary);
+  outline: none;
+  box-shadow: var(--pr-focus);
+}
+
+.pr-shell input[aria-invalid='true'] {
+  border-color: var(--pr-danger);
+}
+
+.pr-shell input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--pr-primary);
+}
+
+.pr-field-error {
+  color: var(--pr-danger);
+  font-size: var(--pr-text-small);
+}
+
+.pr-checks,
+.pr-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.pr-checks label,
+.pr-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--pr-text-body);
+  font-weight: 500;
+}
+
+.pr-toggle {
+  margin: 0;
+}
+
+.pr-fee-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 10px;
+}
+
+.pr-help {
+  margin: 0 0 14px;
+  color: var(--pr-primary-hover);
+  font-size: var(--pr-text-caption);
+}
+
+.pr-actions,
+.pr-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pr-row-actions {
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.pr-inline-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pr-shell .pr-amount-input {
+  max-width: 140px;
+}
+
+.pr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Responsive ------------------------------------------------------------------------------------- */
+
+@media (max-width: 1100px) {
+  .pr-split.has-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  .pr-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .pr-sidebar {
+    padding: 12px 16px;
+  }
+
+  .pr-brand {
+    padding: 0 0 8px;
+  }
+
+  .pr-sidebar nav {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+  }
+
+  .pr-nav-group + .pr-nav-group {
+    margin-top: 0;
+  }
+
+  .pr-nav-group ul {
+    display: flex;
+  }
+
+  .pr-nav-item {
+    white-space: nowrap;
+  }
+
+  .pr-main {
+    padding: 20px 16px 32px;
+  }
+
+  .pr-field.is-inline {
+    flex-wrap: wrap;
+  }
+
+  .pr-field.is-inline select {
+    min-width: 0;
+    width: 100%;
+  }
+}
