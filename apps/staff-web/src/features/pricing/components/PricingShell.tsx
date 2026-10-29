@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import '../pricing.css'
 
@@ -21,14 +21,26 @@ interface PricingShellProps {
 }
 
 export function PricingShell({ title, description, children }: PricingShellProps) {
+  // Phone only: the sidebar becomes a menu that drops down from the top bar.
+  const [menuOpen, setMenuOpen] = useState(false)
+
   return (
-    <div className="pr-shell">
+    <div className={`pr-shell${menuOpen ? ' is-menu-open' : ''}`}>
       <aside className="pr-sidebar">
         <div className="pr-brand">
           <strong>Flython</strong>
           <span>Staff · Pricing &amp; Finance</span>
         </div>
-        <nav aria-label="Pricing and finance">
+        <button
+          type="button"
+          className="pr-menu-button"
+          aria-expanded={menuOpen}
+          aria-controls="pr-nav"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          Menu <span aria-hidden="true">{menuOpen ? '×' : '≡'}</span>
+        </button>
+        <nav id="pr-nav" aria-label="Pricing and finance" onClick={() => setMenuOpen(false)}>
           {NAV.map(({ group, items }) => (
             <div key={group} className="pr-nav-group">
               <p className="pr-nav-heading">{group}</p>
@@ -59,6 +71,10 @@ export function PricingShell({ title, description, children }: PricingShellProps
       <main className="pr-main">
         <header className="pr-header">
           <div>
+            <p className="pr-tags">
+              <span className="pr-tag is-dark">Feature 4</span>
+              <span className="pr-tag is-yellow">Pricing core</span>
+            </p>
             <h1 className="pr-title">{title}</h1>
             <p className="pr-subtitle">{description}</p>
           </div>

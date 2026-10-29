@@ -84,14 +84,18 @@ function validate(form: FormState): { input?: FareClassInput; errors: FieldError
   }
 }
 
+// panel: desktop side panel. page: phone, the editor replaces the list. sheet: phone, inside the add dialog.
+export type EditorVariant = 'panel' | 'page' | 'sheet'
+
 interface FareClassEditorProps {
   fareClass: FareClass | null // null = adding a new class
+  variant: EditorVariant
   onSaved: (fareClass: FareClass) => void
   onRemoved: () => void
   onClose: () => void
 }
 
-export function FareClassEditor({ fareClass, onSaved, onRemoved, onClose }: FareClassEditorProps) {
+export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClose }: FareClassEditorProps) {
   const api = usePricingApi()
   const [form, setForm] = useState<FormState>(fareClass ? toForm(fareClass) : EMPTY)
   const [errors, setErrors] = useState<FieldErrors>({})
@@ -155,116 +159,162 @@ export function FareClassEditor({ fareClass, onSaved, onRemoved, onClose }: Fare
     ) : null
   }
 
-  return (
-    <section className="pr-card pr-editor" aria-labelledby="fc-editor-title">
-      <div className="pr-editor-head">
-        <div>
-          <p className="pr-eyebrow">{fareClass ? 'Editing' : 'New fare class'}</p>
-          <h2 id="fc-editor-title" className="pr-editor-title">
-            {fareClass ? `${fareClass.code} · ${fareClass.name}` : 'Add fare class'}
-          </h2>
-        </div>
-        <button type="button" className="pr-icon-button" onClick={onClose} aria-label="Close editor">
-          ×
-        </button>
+  const title = fareClass ? `${fareClass.code} · ${fareClass.name}` : 'Add fare class'
+  const closeButton = (
+    <button type="button" className="pr-icon-button" onClick={onClose} aria-label={variant === 'sheet' ? 'Close dialog' : 'Close editor'}>
+      ×
+    </button>
+  )
+
+  const formBody = (
+    <form onSubmit={(event) => void handleSubmit(event)} noValidate>
+      <div className="pr-field">
+        <label htmlFor="fc-code">Code (unique, e.g. Y, M, J)</label>
+        <input {...fieldProps('code')} value={form.code} maxLength={3} onChange={(e) => set('code', e.target.value.toUpperCase())} />
+        {fieldError('code')}
       </div>
 
-      <form onSubmit={(event) => void handleSubmit(event)} noValidate>
-        <div className="pr-field">
-          <label htmlFor="fc-code">Code (unique, e.g. Y, M, J)</label>
-          <input {...fieldProps('code')} value={form.code} maxLength={3} onChange={(e) => set('code', e.target.value.toUpperCase())} />
-          {fieldError('code')}
-        </div>
+      <div className="pr-field">
+        <label htmlFor="fc-name">Name</label>
+        <input {...fieldProps('name')} value={form.name} maxLength={100} onChange={(e) => set('name', e.target.value)} />
+        {fieldError('name')}
+      </div>
 
-        <div className="pr-field">
-          <label htmlFor="fc-name">Name</label>
-          <input {...fieldProps('name')} value={form.name} maxLength={100} onChange={(e) => set('name', e.target.value)} />
-          {fieldError('name')}
-        </div>
-
-        <div className="pr-field">
-          <label htmlFor="fc-cabin">Cabin</label>
-          <select id="fc-cabin" value={form.cabin} onChange={(e) => set('cabin', e.target.value as FormState['cabin'])}>
-            {CABINS.map((cabin) => (
-              <option key={cabin} value={cabin}>
-                {cabinLabel(cabin)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="pr-field">
-          <label htmlFor="fc-min_advance_purchase_days">Minimum advance purchase (days)</label>
-          <input
-            {...fieldProps('min_advance_purchase_days')}
-            inputMode="numeric"
-            value={form.min_advance_purchase_days}
-            onChange={(e) => set('min_advance_purchase_days', e.target.value)}
-          />
-          {fieldError('min_advance_purchase_days')}
-        </div>
-
-        <div className="pr-checks">
-          <label>
-            <input type="checkbox" checked={form.refundable} onChange={(e) => setAllowed('refundable', e.target.checked)} />
-            Refundable
-          </label>
-          <label>
-            <input type="checkbox" checked={form.changeable} onChange={(e) => setAllowed('changeable', e.target.checked)} />
-            Changeable
-          </label>
-          <label>
-            <input type="checkbox" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
-            Active
-          </label>
-        </div>
-
-        <div className="pr-fee-grid">
-          {(
-            [
-              ['cancel_fee_flat', 'Cancel fee (flat)', form.refundable],
-              ['cancel_fee_pct', 'Cancel fee (%)', form.refundable],
-              ['change_fee_flat', 'Change fee (flat)', form.changeable],
-              ['change_fee_pct', 'Change fee (%)', form.changeable],
-            ] as const
-          ).map(([field, label, enabled]) => (
-            <div key={field} className="pr-field">
-              <label htmlFor={`fc-${field}`}>{label}</label>
-              <input
-                {...fieldProps(field)}
-                inputMode="decimal"
-                value={form[field]}
-                disabled={!enabled}
-                title={enabled ? undefined : `Tick ${field.startsWith('cancel') ? 'Refundable' : 'Changeable'} to set this fee`}
-                onChange={(e) => set(field, e.target.value)}
-              />
-              {fieldError(field)}
-            </div>
+      <div className="pr-field">
+        <label htmlFor="fc-cabin">Cabin</label>
+        <select id="fc-cabin" value={form.cabin} onChange={(e) => set('cabin', e.target.value as FormState['cabin'])}>
+          {CABINS.map((cabin) => (
+            <option key={cabin} value={cabin}>
+              {cabinLabel(cabin)}
+            </option>
           ))}
-        </div>
+        </select>
+      </div>
 
-        <p className="pr-help">
-          Fee = flat amount + percentage of the quote total, capped at the total. Quotes keep a frozen copy of these rules, so edits never
-          change a booking already made.
-        </p>
+      <div className="pr-field">
+        <label htmlFor="fc-min_advance_purchase_days">Minimum advance purchase (days)</label>
+        <input
+          {...fieldProps('min_advance_purchase_days')}
+          inputMode="numeric"
+          value={form.min_advance_purchase_days}
+          onChange={(e) => set('min_advance_purchase_days', e.target.value)}
+        />
+        {fieldError('min_advance_purchase_days')}
+      </div>
 
-        {serverError && (
-          <div className="pr-callout is-error" role="alert">
-            {serverError}
+      <div className="pr-checks">
+        <label>
+          <input type="checkbox" checked={form.refundable} onChange={(e) => setAllowed('refundable', e.target.checked)} />
+          Refundable
+        </label>
+        <label>
+          <input type="checkbox" checked={form.changeable} onChange={(e) => setAllowed('changeable', e.target.checked)} />
+          Changeable
+        </label>
+        <label>
+          <input type="checkbox" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
+          Active
+        </label>
+      </div>
+
+      <div className="pr-fee-grid">
+        {(
+          [
+            ['cancel_fee_flat', 'Cancel fee (flat)', form.refundable],
+            ['cancel_fee_pct', 'Cancel fee (%)', form.refundable],
+            ['change_fee_flat', 'Change fee (flat)', form.changeable],
+            ['change_fee_pct', 'Change fee (%)', form.changeable],
+          ] as const
+        ).map(([field, label, enabled]) => (
+          <div key={field} className="pr-field">
+            <label htmlFor={`fc-${field}`}>{label}</label>
+            <input
+              {...fieldProps(field)}
+              inputMode="decimal"
+              value={form[field]}
+              disabled={!enabled}
+              title={enabled ? undefined : `Tick ${field.startsWith('cancel') ? 'Refundable' : 'Changeable'} to set this fee`}
+              onChange={(e) => set(field, e.target.value)}
+            />
+            {fieldError(field)}
           </div>
-        )}
+        ))}
+      </div>
 
-        <div className="pr-actions">
-          <button type="submit" className="pr-button is-primary" disabled={busy}>
-            {busy ? 'Saving…' : 'Save fare class'}
-          </button>
-          {fareClass && (
-            <button type="button" className="pr-button is-danger" disabled={busy} onClick={() => void handleRemove()}>
-              Remove fare class
-            </button>
-          )}
+      <p className="pr-help">
+        Fee = flat amount + percentage of the quote total, capped at the total. Quotes keep a frozen copy of these rules, so edits never
+        change a booking already made.
+      </p>
+
+      {serverError && (
+        <div className="pr-callout is-error" role="alert">
+          {serverError}
         </div>
-      </form>
-    </section>
+      )}
+
+      <div className="pr-actions">
+        <button type="submit" className="pr-button is-primary" disabled={busy}>
+          {busy ? 'Saving…' : fareClass ? 'Save fare class' : 'Add fare class'}
+        </button>
+        {fareClass && (
+          <button type="button" className="pr-button is-danger" disabled={busy} onClick={() => void handleRemove()}>
+            Remove fare class
+          </button>
+        )}
+        {variant === 'sheet' && (
+          <button type="button" className="pr-button is-outline" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
   )
+
+  switch (variant) {
+    case 'panel':
+      return (
+        <section className="pr-card pr-editor" aria-labelledby="fc-editor-title">
+          <div className="pr-editor-head">
+            <div>
+              <p className="pr-eyebrow">{fareClass ? 'Editing' : 'New fare class'}</p>
+              <h2 id="fc-editor-title" className="pr-editor-title">
+                {title}
+              </h2>
+            </div>
+            {closeButton}
+          </div>
+          {formBody}
+        </section>
+      )
+    case 'page':
+      return (
+        <section className="pr-editor-page" aria-labelledby="fc-editor-title">
+          <button type="button" className="pr-back-link" onClick={onClose}>
+            ‹ Fare classes
+          </button>
+          <p className="pr-eyebrow">{fareClass ? 'Editing' : 'New fare class'}</p>
+          <h2 id="fc-editor-title" className="pr-editor-page-title">
+            {title}
+          </h2>
+          <div className="pr-card pr-editor">{formBody}</div>
+        </section>
+      )
+    case 'sheet':
+      return (
+        <div className="pr-editor">
+          <div className="pr-sheet-handle" aria-hidden="true" />
+          <div className="pr-editor-head">
+            <h2 id="fc-editor-title" className="pr-editor-title is-sheet">
+              {title}
+            </h2>
+            {closeButton}
+          </div>
+          {formBody}
+        </div>
+      )
+    default: {
+      const unknown: never = variant
+      return unknown
+    }
+  }
 }

@@ -22,7 +22,15 @@
   --pr-good: #1f7a4d;
   --pr-good-bg: #e3f2ea;
   --pr-focus: 0 0 0 3px rgb(20 108 130 / 20%);
+  --pr-shadow: 0 4px 9px rgb(0 0 0 / 25%);
+  /* Phone frames: navy actions and top bar, yellow brand bar and tags */
+  --pr-navy: #102544;
+  --pr-navy-hover: #293d61;
+  --pr-accent: #f2a800;
+  --pr-tag-dark: #455473;
+  --pr-tag-yellow: #fff1c7;
 
+  --pr-radius-xs: 2px;
   --pr-radius-sm: 4px;
   --pr-radius: 6px;
   --pr-radius-lg: 8px;
@@ -35,6 +43,8 @@
   --pr-text-label: 14px;
   --pr-text-title: 22px;
   --pr-text-brand: 16px;
+  --pr-text-sheet-title: 18px;
+  --pr-text-page-title: 26px;
 
   /* The app's global #root is a centred 1126px column; the staff shell takes the whole viewport instead. */
   position: fixed;
@@ -550,6 +560,161 @@ a.pr-nav-item:hover {
   white-space: nowrap;
 }
 
+/* Phone-only pieces (hidden on desktop) ---------------------------------------------------------- */
+
+.pr-menu-button,
+.pr-tags,
+.pr-card-intro {
+  display: none;
+}
+
+.pr-tag {
+  padding: 2px 8px;
+  border-radius: var(--pr-radius-xs);
+  font-size: var(--pr-text-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pr-tag.is-dark {
+  background: var(--pr-tag-dark);
+  color: #fff;
+}
+
+.pr-tag.is-yellow {
+  background: var(--pr-tag-yellow);
+  color: var(--pr-ink);
+}
+
+.pr-back-link {
+  margin-bottom: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pr-ink);
+  font: var(--pr-text-body) var(--pr-font);
+  cursor: pointer;
+}
+
+.pr-back-link:focus-visible {
+  outline: none;
+  box-shadow: var(--pr-focus);
+}
+
+.pr-editor-page-title {
+  margin: 0 0 14px;
+  color: var(--pr-ink);
+  font-family: var(--pr-font);
+  font-size: var(--pr-text-page-title);
+  font-weight: 700;
+  letter-spacing: normal;
+}
+
+.pr-editor-title.is-sheet {
+  font-size: var(--pr-text-sheet-title);
+}
+
+/* Fare class cards (phone list) */
+
+.pr-class-cards {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0 14px;
+  list-style: none;
+}
+
+.pr-class-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 12px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--pr-divider);
+  border-radius: var(--pr-radius-lg);
+  background: var(--pr-surface);
+  color: var(--pr-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pr-class-card:focus-visible {
+  border-color: var(--pr-primary);
+  outline: none;
+  box-shadow: var(--pr-focus);
+}
+
+.pr-class-card.is-inactive {
+  color: var(--pr-muted);
+}
+
+.pr-code-badge {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--pr-radius);
+  background: var(--pr-head);
+  color: var(--pr-ink);
+  font-family: var(--pr-font-mono);
+  font-weight: 700;
+}
+
+.pr-class-card-name {
+  display: grid;
+}
+
+.pr-class-card-name strong {
+  color: var(--pr-ink);
+  font-weight: 600;
+}
+
+.pr-class-card-name span,
+.pr-class-card-meta {
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+}
+
+.pr-chevron {
+  color: var(--pr-muted);
+  font-size: 20px;
+}
+
+.pr-class-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 4px 14px;
+}
+
+/* Add dialog: a centred modal, and a bottom sheet on phones */
+
+.pr-sheet {
+  width: min(440px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--pr-radius-lg);
+  background: var(--pr-surface);
+  color: var(--pr-text);
+  box-shadow: var(--pr-shadow);
+}
+
+.pr-sheet::backdrop {
+  background: rgb(10 20 36 / 45%);
+}
+
+.pr-sheet .pr-editor {
+  padding: 16px;
+}
+
+.pr-sheet-handle {
+  display: none;
+}
+
 /* Responsive ------------------------------------------------------------------------------------- */
 
 @media (max-width: 1100px) {
@@ -558,40 +723,177 @@ a.pr-nav-item:hover {
   }
 }
 
+/* Phone: from the mobile frames of the Fare Setup design (393px wide) */
 @media (max-width: 800px) {
   .pr-shell {
+    /* The phone frames use navy actions where the desktop frame uses teal. */
+    --pr-primary: var(--pr-navy);
+    --pr-primary-hover: var(--pr-navy-hover);
+    --pr-focus: 0 0 0 3px rgb(16 37 68 / 15%);
+
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
 
+  /* Sidebar becomes the top bar; its menu drops down below it */
   .pr-sidebar {
-    padding: 12px 16px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    overflow: visible;
+    padding: 14px 16px;
+    background: var(--pr-navy);
   }
 
   .pr-brand {
-    padding: 0 0 8px;
+    padding: 0;
+  }
+
+  .pr-brand strong {
+    padding-bottom: 4px;
+    border-bottom: 3px solid var(--pr-accent);
+    font-size: var(--pr-text-sheet-title);
+    justify-self: start;
+  }
+
+  .pr-brand span {
+    display: none;
+  }
+
+  .pr-menu-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 4px;
+    border: 0;
+    background: none;
+    color: #fff;
+    font: 600 var(--pr-text-caption) var(--pr-font);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .pr-menu-button span {
+    font-size: 16px;
+  }
+
+  .pr-menu-button:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
   }
 
   .pr-sidebar nav {
-    display: flex;
-    gap: 16px;
-    overflow-x: auto;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    z-index: 10;
+    display: none;
+    padding: 8px 12px 16px;
+    background: var(--pr-navy);
+    box-shadow: var(--pr-shadow);
   }
 
-  .pr-nav-group + .pr-nav-group {
-    margin-top: 0;
-  }
-
-  .pr-nav-group ul {
-    display: flex;
-  }
-
-  .pr-nav-item {
-    white-space: nowrap;
+  .pr-shell.is-menu-open .pr-sidebar nav {
+    display: block;
   }
 
   .pr-main {
-    padding: 20px 16px 32px;
+    padding: 18px 16px 32px;
+  }
+
+  .pr-header {
+    margin-bottom: 14px;
+  }
+
+  .pr-tags {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 12px;
+  }
+
+  .pr-title {
+    font-size: var(--pr-text-page-title);
+    font-weight: 700;
+  }
+
+  .pr-sim-chip {
+    display: none;
+  }
+
+  /* The edit page shows only its own back link and title */
+  .pr-main:has(.pr-editor-page) > .pr-header,
+  .pr-main:has(.pr-editor-page) .pr-tabs {
+    display: none;
+  }
+
+  .pr-tabs {
+    margin-bottom: 14px;
+  }
+
+  .pr-card-intro {
+    display: block;
+    padding: 14px 14px 4px;
+  }
+
+  .pr-card-title {
+    margin: 0 0 4px;
+    color: var(--pr-ink);
+    font-family: var(--pr-font);
+    font-size: var(--pr-text-label);
+    font-weight: 700;
+    letter-spacing: normal;
+  }
+
+  .pr-card-intro .pr-muted {
+    font-size: var(--pr-text-small);
+  }
+
+  .pr-card-toolbar {
+    border-bottom: 0;
+  }
+
+  .pr-card-footer {
+    border-top: 0;
+  }
+
+  .pr-add-button {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  /* Forms: small uppercase labels, taller fields, full-width stacked actions */
+  .pr-field label {
+    color: var(--pr-muted);
+    font-size: var(--pr-text-caption);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .pr-shell input:not([type='checkbox']),
+  .pr-shell select {
+    min-height: 40px;
+    border-radius: var(--pr-radius-lg);
+  }
+
+  .pr-editor {
+    padding: 14px;
+  }
+
+  .pr-help {
+    color: var(--pr-muted);
+  }
+
+  .pr-actions {
+    flex-direction: column;
+  }
+
+  .pr-actions .pr-button {
+    width: 100%;
+    min-height: 42px;
   }
 
   .pr-field.is-inline {
@@ -601,5 +903,70 @@ a.pr-nav-item:hover {
   .pr-field.is-inline select {
     min-width: 0;
     width: 100%;
+  }
+
+  /* Bottom sheet */
+  .pr-sheet {
+    width: 100%;
+    max-width: none;
+    max-height: 92%;
+    margin: auto 0 0;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .pr-sheet-handle {
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: -4px auto 12px;
+    border-radius: 999px;
+    background: var(--pr-border);
+  }
+
+  /* Base fares: each row becomes a card */
+  .pr-table.is-stacked thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .pr-table.is-stacked tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 12px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--pr-divider);
+  }
+
+  .pr-table.is-stacked td {
+    padding: 0;
+    border: 0;
+  }
+
+  .pr-table.is-stacked .pr-cell-code {
+    grid-row: span 2;
+    align-self: center;
+  }
+
+  .pr-table.is-stacked .pr-cell-name {
+    color: var(--pr-ink);
+    font-weight: 600;
+  }
+
+  .pr-table.is-stacked .pr-cell-cabin {
+    color: var(--pr-muted);
+    font-size: var(--pr-text-small);
+  }
+
+  .pr-table.is-stacked .pr-cell-amount,
+  .pr-table.is-stacked .pr-row-actions {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+  }
+
+  .pr-table.is-stacked .pr-row-actions {
+    justify-content: flex-start;
   }
 }

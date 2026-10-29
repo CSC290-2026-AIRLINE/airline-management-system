@@ -1,14 +1,21 @@
 import { useState } from 'react'
 import { usePricingApi, type FareClass } from '../api'
+import { Dialog } from '../components/Dialog'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { cabinLabel, yesNo } from '../format'
 import { useLoad } from '../hooks/useLoad'
+import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
 import { FareClassEditor } from './FareClassEditor'
 
 type Selection = { mode: 'edit'; id: string } | { mode: 'new' } | null
 
+function advanceBuy(fc: FareClass): string {
+  return fc.min_advance_purchase_days > 0 ? `${fc.min_advance_purchase_days} days` : 'None'
+}
+
 export function FareClassesTab() {
   const api = usePricingApi()
+  const isPhone = useMediaQuery(PHONE_QUERY)
   const [includeInactive, setIncludeInactive] = useState(false)
   const [selection, setSelection] = useState<Selection>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -24,7 +31,8 @@ export function FareClassesTab() {
 
   function handleSaved(fareClass: FareClass) {
     setNotice(`Saved ${fareClass.code} · ${fareClass.name}`)
-    setSelection({ mode: 'edit', id: fareClass.id })
+    // On a phone, adding closes the dialog and shows the list; on desktop the new class stays open in the panel.
+    setSelection(isPhone && selection?.mode === 'new' ? null : { mode: 'edit', id: fareClass.id })
     list.reload()
   }
 
@@ -34,9 +42,119 @@ export function FareClassesTab() {
     list.reload()
   }
 
+  function editor(variant: 'panel' | 'page' | 'sheet') {
+    return (
+      <ErrorBoundary>
+        <FareClassEditor
+          key={selection?.mode === 'edit' ? selection.id : 'new'}
+          fareClass={selected}
+          variant={variant}
+          onSaved={handleSaved}
+          onRemoved={handleRemoved}
+          onClose={() => setSelection(null)}
+        />
+      </ErrorBoundary>
+    )
+  }
+
+  // Phone: editing replaces the list with a full page (the "‹ Fare classes" link goes back).
+  if (isPhone && selected) {
+    return editor('page')
+  }
+
+  const body = list.error ? (
+    <div className="pr-callout is-error" role="alert">
+      Could not load fare classes: {list.error}{' '}
+      <button type="button" className="pr-link-button" onClick={list.reload}>
+        Retry
+      </button>
+    </div>
+  ) : list.loading && !list.data ? (
+    <p className="pr-state">Loading fare classes…</p>
+  ) : fareClasses.length === 0 ? (
+    <p className="pr-state">No fare classes yet. Add one to start pricing routes.</p>
+  ) : isPhone ? (
+    <ul className="pr-class-cards">
+      {fareClasses.map((fc) => (
+        <li key={fc.id}>
+          <button
+            type="button"
+            className={`pr-class-card${fc.is_active ? '' : ' is-inactive'}`}
+            onClick={() => open({ mode: 'edit', id: fc.id })}
+          >
+            <span className="pr-code-badge">{fc.code}</span>
+            <span className="pr-class-card-name">
+              <strong>{fc.name}</strong>
+              <span>
+                {cabinLabel(fc.cabin)}
+                {!fc.is_active && ' · Inactive'}
+              </span>
+            </span>
+            <span className="pr-chevron" aria-hidden="true">
+              ›
+            </span>
+            <span className="pr-class-card-meta">
+              <span>Advance buy {advanceBuy(fc)}</span>
+              <span>Refund {yesNo(fc.refundable)}</span>
+              <span>Change {yesNo(fc.changeable)}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <div className="pr-table-wrap">
+      <table className="pr-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Name</th>
+            <th>Cabin</th>
+            <th>Advance buy</th>
+            <th>Refund</th>
+            <th>Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          {fareClasses.map((fc) => (
+            <tr
+              key={fc.id}
+              tabIndex={0}
+              aria-selected={selected?.id === fc.id}
+              className={`is-clickable${selected?.id === fc.id ? ' is-selected' : ''}${fc.is_active ? '' : ' is-inactive'}`}
+              onClick={() => open({ mode: 'edit', id: fc.id })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  open({ mode: 'edit', id: fc.id })
+                }
+              }}
+            >
+              <td className="pr-mono">{fc.code}</td>
+              <td>
+                {fc.name}
+                {!fc.is_active && <span className="pr-pill">Inactive</span>}
+              </td>
+              <td>{cabinLabel(fc.cabin)}</td>
+              <td>{advanceBuy(fc)}</td>
+              <td>{yesNo(fc.refundable)}</td>
+              <td>{yesNo(fc.changeable)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+
   return (
-    <div className={`pr-split${selection ? ' has-editor' : ''}`}>
-      <section className="pr-card" aria-label="Fare classes">
+    <div className={`pr-split${selection && !isPhone ? ' has-editor' : ''}`}>
+      <section className="pr-card" aria-labelledby="fc-list-title">
+        <div className="pr-card-intro">
+          <h2 id="fc-list-title" className="pr-card-title">
+            Fare classes
+          </h2>
+          <p className="pr-muted">Select a class to edit it. Quotes keep a frozen copy of these rules.</p>
+        </div>
         <div className="pr-card-toolbar">
           <label className="pr-toggle">
             <input type="checkbox" checked={includeInactive} onChange={(e) => setIncludeInactive(e.target.checked)} />
@@ -49,78 +167,21 @@ export function FareClassesTab() {
           )}
         </div>
 
-        {list.error ? (
-          <div className="pr-callout is-error" role="alert">
-            Could not load fare classes: {list.error}{' '}
-            <button type="button" className="pr-link-button" onClick={list.reload}>
-              Retry
-            </button>
-          </div>
-        ) : list.loading && !list.data ? (
-          <p className="pr-state">Loading fare classes…</p>
-        ) : fareClasses.length === 0 ? (
-          <p className="pr-state">No fare classes yet. Add one to start pricing routes.</p>
-        ) : (
-          <div className="pr-table-wrap">
-            <table className="pr-table">
-              <thead>
-                <tr>
-                  <th>Code</th>
-                  <th>Name</th>
-                  <th>Cabin</th>
-                  <th>Advance buy</th>
-                  <th>Refund</th>
-                  <th>Change</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fareClasses.map((fc) => (
-                  <tr
-                    key={fc.id}
-                    tabIndex={0}
-                    aria-selected={selected?.id === fc.id}
-                    className={`is-clickable${selected?.id === fc.id ? ' is-selected' : ''}${fc.is_active ? '' : ' is-inactive'}`}
-                    onClick={() => open({ mode: 'edit', id: fc.id })}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        open({ mode: 'edit', id: fc.id })
-                      }
-                    }}
-                  >
-                    <td className="pr-mono">{fc.code}</td>
-                    <td>
-                      {fc.name}
-                      {!fc.is_active && <span className="pr-pill">Inactive</span>}
-                    </td>
-                    <td>{cabinLabel(fc.cabin)}</td>
-                    <td>{fc.min_advance_purchase_days > 0 ? `${fc.min_advance_purchase_days} days` : 'None'}</td>
-                    <td>{yesNo(fc.refundable)}</td>
-                    <td>{yesNo(fc.changeable)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {body}
 
         <div className="pr-card-footer">
-          <button type="button" className="pr-button is-outline" onClick={() => open({ mode: 'new' })}>
-            Add fare class
+          <button type="button" className="pr-button is-outline pr-add-button" onClick={() => open({ mode: 'new' })}>
+            + Add fare class
           </button>
         </div>
       </section>
 
-      {selection && (selection.mode === 'new' || selected) && (
-        <ErrorBoundary>
-          <FareClassEditor
-            key={selection.mode === 'new' ? 'new' : selection.id}
-            fareClass={selected}
-            onSaved={handleSaved}
-            onRemoved={handleRemoved}
-            onClose={() => setSelection(null)}
-          />
-        </ErrorBoundary>
+      {selection?.mode === 'new' && isPhone ? (
+        <Dialog labelledBy="fc-editor-title" onClose={() => setSelection(null)}>
+          {editor('sheet')}
+        </Dialog>
+      ) : (
+        selection && (selection.mode === 'new' || selected) && editor('panel')
       )}
     </div>
   )
