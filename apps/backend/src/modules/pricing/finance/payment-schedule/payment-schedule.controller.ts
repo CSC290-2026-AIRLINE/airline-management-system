@@ -30,6 +30,13 @@ export class PaymentScheduleController {
     return this.paymentScheduleService.update(id, dto)
   }
 
+  // 200, not 201: the bill already exists; this changes it (and records its expense).
+  @Post(':id/pay')
+  @HttpCode(200)
+  pay(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.paymentScheduleService.pay(id, user.id)
+  }
+
   @Delete(':id')
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string) {

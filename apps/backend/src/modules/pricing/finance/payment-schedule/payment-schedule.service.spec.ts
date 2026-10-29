@@ -51,13 +51,24 @@ describe('CreatePaymentScheduleDto', () => {
 describe('PaymentScheduleService', () => {
   let service: PaymentScheduleService
   const db = {
-    payment_schedule: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+    payment_schedule: {
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    expense: { create: jest.fn() },
     staff: { findFirst: jest.fn() },
+    $transaction: jest.fn(),
   }
 
   beforeEach(() => {
     jest.resetAllMocks()
     db.staff.findFirst.mockResolvedValue({ id: STAFF_ID })
+    // Runs the callback with the same mocks as the transaction client.
+    db.$transaction.mockImplementation((work: (tx: typeof db) => unknown) => work(db))
     service = new PaymentScheduleService(db as unknown as DbService)
   })
 
@@ -166,6 +177,76 @@ describe('PaymentScheduleService', () => {
 
       await expect(service.remove(SCHEDULE_ID)).rejects.toBeInstanceOf(ConflictException)
       expect(db.payment_schedule.update).not.toHaveBeenCalled()
+    })
+  })
+  describe('pay', () => {
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date(2026, 10, 29, 14, 0))
+      db.payment_schedule.findFirst.mockResolvedValue({ ...scheduled, description: 'Engine check' })
+      db.payment_schedule.updateMany.mockResolvedValue({ count: 1 })
+    })
+
+    afterEach(() => jest.useRealTimers())
+
+    it('marks the bill paid today and creates one matching expense, in one transaction', async () => {
+      await service.pay(SCHEDULE_ID, USER_ID)
+
+      const paidOn = new Date('2026-11-29')
+      expect(db.$transaction).toHaveBeenCalledTimes(1)
+      expect(db.payment_schedule.updateMany).toHaveBeenCalledWith({
+        where: { id: SCHEDULE_ID, status: 'scheduled', deleted_at: null },
+        data: { status: 'paid', paid_on: paidOn, updated_at: expect.any(Date) },
+      })
+      expect(db.expense.create).toHaveBeenCalledTimes(1)
+      expect(db.expense.create).toHaveBeenCalledWith({
+        data: {
+          category: 'maintenance',
+          description: 'Thai Aero Maintenance: Engine check',
+          amount: 250000,
+          incurred_on: paidOn,
+          payment_schedule_id: SCHEDULE_ID,
+          created_by: STAFF_ID,
+        },
+      })
+    })
+
+    it('refuses an already paid bill with 409 and creates no expense', async () => {
+      db.payment_schedule.findFirst.mockResolvedValue(paid)
+
+      const error = await service.pay(SCHEDULE_ID, USER_ID).catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ConflictException)
+      expect((error as ConflictException).getResponse()).toMatchObject({ code: 'PAYMENT_SCHEDULE_PAID' })
+      expect(db.expense.create).not.toHaveBeenCalled()
+    })
+
+    it("the second pay doesn't create a second expense, even when both clicks pass the first check", async () => {
+      // The first click already flipped the row, so the guarded update matches nothing.
+      db.payment_schedule.updateMany.mockResolvedValue({ count: 0 })
+
+      await expect(service.pay(SCHEDULE_ID, USER_ID)).rejects.toBeInstanceOf(ConflictException)
+      expect(db.expense.create).not.toHaveBeenCalled()
+    })
+
+    it('maps the unique index on expense.payment_schedule_id to 409, not 500', async () => {
+      db.expense.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
+
+      await expect(service.pay(SCHEDULE_ID, USER_ID)).rejects.toBeInstanceOf(ConflictException)
+    })
+
+    it('throws not found for a missing or deleted bill', async () => {
+      db.payment_schedule.findFirst.mockResolvedValue(null)
+
+      await expect(service.pay(SCHEDULE_ID, USER_ID)).rejects.toBeInstanceOf(NotFoundException)
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('uses the payee alone as the expense description when the bill has none', async () => {
+      db.payment_schedule.findFirst.mockResolvedValue(scheduled)
+
+      await service.pay(SCHEDULE_ID, USER_ID)
+
+      expect(db.expense.create).toHaveBeenCalledWith({ data: expect.objectContaining({ description: 'Thai Aero Maintenance' }) })
     })
   })
 })

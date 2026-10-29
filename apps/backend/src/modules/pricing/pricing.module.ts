@@ -10,6 +10,8 @@ import { FareClassService } from './fare-class/fare-class.service'
 import { FareQuoteController } from './fare-quote/fare-quote.controller'
 import { FareQuoteService } from './fare-quote/fare-quote.service'
 import { NoBookingsSeatAvailability, SeatAvailability } from './fare-quote/seat-availability'
+import { ExpenseController } from './finance/expense/expense.controller'
+import { ExpenseService } from './finance/expense/expense.service'
 import { PaymentScheduleController } from './finance/payment-schedule/payment-schedule.controller'
 import { PaymentScheduleService } from './finance/payment-schedule/payment-schedule.service'
 import { PricingRuleController } from './pricing-rule/pricing-rule.controller'
@@ -39,6 +41,7 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     PaymentScheduleController,
     BaggageRateController,
     BaggageChargeController,
+    ExpenseController,
   ],
   providers: [
     FareClassService,
@@ -67,6 +70,7 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     SeatFeeService,
     TaxFeeService,
     CurrencyRateService,
+    ExpenseService,
   ],
 })
 export class PricingModule {}

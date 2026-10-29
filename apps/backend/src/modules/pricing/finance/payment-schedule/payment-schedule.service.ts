@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import { PricingErrorCode, pricingError } from '../../pricing.errors'
+import { PricingErrorCode, isUniqueViolation, pricingError } from '../../pricing.errors'
 import { staffIdFor } from '../../pricing.staff'
 import { simulatedToday } from '../finance.constants'
 import { CreatePaymentScheduleDto } from './dto/create-payment-schedule.dto'
@@ -54,14 +54,51 @@ export class PaymentScheduleService {
     await this.db.payment_schedule.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
   }
 
+  // Marks the bill paid and records the matching expense in one transaction, so the books never show only one of them.
+  async pay(id: string, userId: string) {
+    const staffId = await staffIdFor(this.db, userId)
+    const schedule = await this.findUnpaid(id)
+    const paidOn = simulatedToday()
+    try {
+      return await this.db.$transaction(async (tx) => {
+        // Only flips a bill that is still scheduled, so a second click that got past findUnpaid changes nothing.
+        const { count } = await tx.payment_schedule.updateMany({
+          where: { id, status: 'scheduled', deleted_at: null },
+          data: { status: 'paid', paid_on: paidOn, updated_at: new Date() },
+        })
+        if (count === 0) {
+          throw alreadyPaid()
+        }
+        await tx.expense.create({
+          data: {
+            category: schedule.category,
+            description: schedule.description ? `${schedule.payee}: ${schedule.description}` : schedule.payee,
+            amount: schedule.amount,
+            incurred_on: paidOn,
+            payment_schedule_id: id,
+            created_by: staffId,
+          },
+        })
+        return tx.payment_schedule.findUniqueOrThrow({ where: { id }, include: { expense: true } })
+      })
+    } catch (error) {
+      // The unique index on expense.payment_schedule_id is the last guard against a second expense (P2002).
+      throw isUniqueViolation(error) ? alreadyPaid() : error
+    }
+  }
+
   // A paid schedule is history: its expense already exists, so it can't change.
   private async findUnpaid(id: string) {
     const schedule = await this.findOne(id)
     if (schedule.status === 'paid') {
-      throw new ConflictException(
-        pricingError(PricingErrorCode.PAYMENT_SCHEDULE_PAID, 'Payment schedule is already paid and can no longer be changed'),
-      )
+      throw alreadyPaid()
     }
     return schedule
   }
+}
+
+function alreadyPaid() {
+  return new ConflictException(
+    pricingError(PricingErrorCode.PAYMENT_SCHEDULE_PAID, 'Payment schedule is already paid and can no longer be changed'),
+  )
 }
