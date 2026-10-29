@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common'
+import { BaggageChargeController, BaggageRateController } from './baggage-rate/baggage-rate.controller'
+import { BaggageRateService } from './baggage-rate/baggage-rate.service'
 import { CurrencyRateController } from './currency-rate/currency-rate.controller'
 import { CurrencyRateService } from './currency-rate/currency-rate.service'
 import { BaseFareController } from './base-fare/base-fare.controller'
@@ -27,6 +29,8 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     TaxFeeController,
     CurrencyRateController,
     PaymentScheduleController,
+    BaggageRateController,
+    BaggageChargeController,
   ],
   providers: [
     FareClassService,
@@ -37,7 +41,8 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     TaxFeeService,
     CurrencyRateService,
     PaymentScheduleService,
+    BaggageRateService,
   ],
-  exports: [FareClassService, BaseFareService, SettingService, PricingRuleService, SeatFeeService, TaxFeeService, CurrencyRateService],
+  exports: [FareClassService, BaseFareService, SettingService, SeatFeeService, TaxFeeService, CurrencyRateService, BaggageRateService],
 })
 export class PricingModule {}
