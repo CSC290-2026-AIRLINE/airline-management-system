@@ -33,6 +33,8 @@ export interface RouteOption {
   id: string
   origin: string
   destination: string
+  origin_city: string
+  destination_city: string
 }
 
 export interface BaseFare {
@@ -93,7 +95,7 @@ export function usePricingApi() {
     deleteFareClass: (id: string) => request<void>(`/fare-classes/${id}`, 'DELETE'),
 
     listRouteOptions: () => request<RouteOption[]>('/base-fares/route-options'),
-    listBaseFares: (routeId: string) => request<BaseFare[]>(`/base-fares?route_id=${encodeURIComponent(routeId)}`),
+    listBaseFares: () => request<BaseFare[]>('/base-fares'),
     createBaseFare: (routeId: string, fareClassId: string, amount: number) =>
       request<BaseFare>('/base-fares', 'POST', { route_id: routeId, fare_class_id: fareClassId, amount }),
     updateBaseFare: (id: string, amount: number) => request<BaseFare>(`/base-fares/${id}`, 'PATCH', { amount }),

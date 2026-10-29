@@ -56,12 +56,24 @@ export class BaseFareService {
 
   // Route picker for the Base fares page. `route` belongs to Feature 2 and is only read here, like assertRouteExists.
   // Switch both to their exported service once it exists.
-  findRouteOptions() {
-    return this.db.route.findMany({
+  // The airport cities let the page show "Bangkok → Chiang Mai" under "BKK–CNX".
+  async findRouteOptions() {
+    const routes = await this.db.route.findMany({
       where: { is_active: true },
-      select: { id: true, origin: true, destination: true },
+      select: {
+        id: true,
+        origin: true,
+        destination: true,
+        airport_route_originToairport: { select: { city: true } },
+        airport_route_destinationToairport: { select: { city: true } },
+      },
       orderBy: [{ origin: 'asc' }, { destination: 'asc' }],
     })
+    return routes.map(({ airport_route_originToairport: from, airport_route_destinationToairport: to, ...route }) => ({
+      ...route,
+      origin_city: from.city,
+      destination_city: to.city,
+    }))
   }
 
   // `route` belongs to Feature 2 and is only read here. Switch to their exported service once it exists.
