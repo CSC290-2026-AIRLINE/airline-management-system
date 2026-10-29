@@ -5,6 +5,8 @@ export const PricingErrorCode = {
   CURRENCY_CODE_TAKEN: 'CURRENCY_CODE_TAKEN',
   CURRENCY_IS_BASE: 'CURRENCY_IS_BASE',
   STAFF_NOT_FOUND: 'STAFF_NOT_FOUND',
+  PAYMENT_SCHEDULE_NOT_FOUND: 'PAYMENT_SCHEDULE_NOT_FOUND',
+  PAYMENT_SCHEDULE_PAID: 'PAYMENT_SCHEDULE_PAID',
 } as const
 export type PricingErrorCode = (typeof PricingErrorCode)[keyof typeof PricingErrorCode]
 

@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
+import { staffIdFor } from '../pricing.staff'
 import { CreateCurrencyRateDto } from './dto/create-currency-rate.dto'
 import { UpdateCurrencyRateDto } from './dto/update-currency-rate.dto'
 
@@ -35,7 +36,7 @@ export class CurrencyRateService {
         pricingError(PricingErrorCode.CURRENCY_IS_BASE, `${BASE_CURRENCY} is the base currency; its rate is always 1`),
       )
     }
-    const staffId = await this.staffIdFor(userId)
+    const staffId = await staffIdFor(this.db, userId)
     const existing = await this.db.currency_rate.findUnique({ where: { currency_code: dto.currency_code } })
     if (existing) {
       throw this.codeTaken(dto.currency_code)
@@ -50,7 +51,7 @@ export class CurrencyRateService {
 
   async update(code: string, dto: UpdateCurrencyRateDto, userId: string) {
     await this.findOne(code)
-    const staffId = await this.staffIdFor(userId)
+    const staffId = await staffIdFor(this.db, userId)
     return this.db.currency_rate.update({
       where: { currency_code: code },
       data: { ...dto, updated_by: staffId, updated_at: new Date() },
@@ -65,15 +66,6 @@ export class CurrencyRateService {
     }
     const { rate_per_base } = await this.findOne(toCurrency)
     return roundHalfUp(toScaled(amount, 6) * toScaled(rate_per_base, 6), 12)
-  }
-
-  // updated_by holds a staff.id, but the token only carries the user.id.
-  private async staffIdFor(userId: string) {
-    const staff = await this.db.staff.findFirst({ where: { user_id: userId, deleted_at: null }, select: { id: true } })
-    if (!staff) {
-      throw new ForbiddenException(pricingError(PricingErrorCode.STAFF_NOT_FOUND, 'Only staff members can change currency rates'))
-    }
-    return staff.id
   }
 
   private codeTaken(code: string) {
