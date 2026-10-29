@@ -240,17 +240,18 @@ badge, which is what your admin will actually see on the Audit log tab.
 Both screens use a plain `<a href>` for their button, not TanStack's `<Link>`, so they
 work from any route without needing that route in the generated route tree.
 
-Two URLs cover both cards during a design review, with no admin session needed:
+Both cards show up on their own in the running app — there is no review flag to
+remember:
 
-| Card              | URL                                      |
-| ----------------- | ---------------------------------------- |
-| No staff account  | `/admin/roles?preview=1&unprovisioned=1` |
-| Lacks this screen | `/admin/audit-log?preview=1&denied=1`    |
+| Card              | When it appears                                                           |
+| ----------------- | ------------------------------------------------------------------------- |
+| No staff account  | Signed in, but `GET /api/me/screens` answers `provisioned: false`.        |
+| Lacks this screen | Your endpoint answers 403 — the admin console renders the card from that. |
 
-`?denied=1` reads the tab off the path for the card's wording, so
-`/admin/roles?preview=1&denied=1` names "Role access". `?unprovisioned=1` answers on
-`/admin/roles` only — the card replaces the whole workspace, so there is one URL for
-it; on any other admin path the flag is ignored and the live page renders.
+The no-account card replaces the whole workspace, so it is shown by the shared
+`RequireStaff` gate above the admin shell rather than by any one page. The
+lacks-this-screen card is rendered by the page that was refused, so each feature
+shows it in its own place.
 
 ---
 

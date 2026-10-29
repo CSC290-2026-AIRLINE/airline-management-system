@@ -17,19 +17,15 @@ interface UseRoleAccessState {
  *
  * No `setState` is called inside an effect body. The role-id-driven re-fetch runs from the input id via the fetch
  * effect below; here we lean on the dependency list.
- *
- * Pass `enabled=false` to skip all API calls — `?preview=1` mode on the page uses this to keep the live API out of
- * the picture entirely while the page renders from `preview-data.ts`.
  */
 export function useRoleAccess(
   roleId: string | null,
   listScreens: () => Promise<{ groups: ScreenGroup[] }>,
   listRoles: () => Promise<{ roles: RoleSummary[] }>,
   getRoleScreens: (id: string) => Promise<RoleScreensResponse>,
-  enabled: boolean = true,
 ) {
   const [state, setState] = useState<UseRoleAccessState>({
-    loading: enabled,
+    loading: true,
     error: null,
     screens: [],
     roles: [],
@@ -39,10 +35,6 @@ export function useRoleAccess(
 
   // Static-ish parts — screens + roles registry.
   useEffect(() => {
-    if (!enabled) {
-      setState({ loading: false, error: null, screens: [], roles: [], granted: new Set() })
-      return
-    }
     let cancelled = false
     ;(async () => {
       try {
@@ -61,7 +53,7 @@ export function useRoleAccess(
     // identity between renders in practice (they only close over the stable `fetchWithAuth`). Ignoring them on
     // purpose keeps this effect self-contained.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled])
+  }, [])
 
   // Per-role grants reload whenever `roleId` changes. `loadedRoleId` tracks which role's grants are in
   // `state.granted` so we can detect a desync on the next render and trigger a fetch.
@@ -76,7 +68,6 @@ export function useRoleAccess(
   }
 
   useEffect(() => {
-    if (!enabled) return
     if (!roleId || loadedRoleId !== roleId) return
     let cancelled = false
     ;(async () => {
@@ -93,7 +84,7 @@ export function useRoleAccess(
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, roleId, loadedRoleId])
+  }, [roleId, loadedRoleId])
 
   /**
    * Adopt the server's answer as the new saved set, right after a successful `PUT /admin/roles/:id/screens`. The

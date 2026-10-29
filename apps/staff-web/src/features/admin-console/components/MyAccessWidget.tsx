@@ -5,7 +5,7 @@ import './MyAccessWidget.css'
 /**
  * Tiny chip in the sidebar footer that says how many screens the signed-in user can open, and on click reveals the
  * full list of codes. Lives below "Sign out" so it never crowds the chrome — its job is to confirm the `/me/screens`
- * endpoint works in both live and preview mode, not to be a primary nav surface.
+ * endpoint works, not to be a primary nav surface.
  */
 export function MyAccessWidget() {
   const { codes, loading, error, source } = useMyScreens()

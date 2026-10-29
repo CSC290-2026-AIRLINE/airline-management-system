@@ -18,14 +18,13 @@ export function useAuditLog(
   filters: Pick<AuditQuery, 'source_feature' | 'actor_type' | 'action' | 'from' | 'to'>,
   limit: number,
   fetchAudit: (q: AuditQuery) => Promise<AuditPage>,
-  enabled: boolean = true,
 ) {
   const filtersKey = stableKeyOf(filters)
   /* `pageIndex` and `rowsBefore` are navigation bookkeeping, not fetch inputs — they are deliberately left out of
      the effect's dependency list below. `rowsBefore` is how many rows sit on the pages ahead of this one, so the
      page can render "Showing 26–50 of N entries" without a total-count endpoint. */
   const [request, setRequest] = useState({ filtersKey, cursor: null as string | null, limit, pageIndex: 0, rowsBefore: 0 })
-  const [state, setState] = useState<UseAuditLogState>({ loading: enabled, error: null, page: null })
+  const [state, setState] = useState<UseAuditLogState>({ loading: true, error: null, page: null })
 
   // Render-time comparison — see hook header. If inputs drifted, schedule a fresh request and let React re-render
   // with the new request before the effect below fetches.
@@ -33,12 +32,7 @@ export function useAuditLog(
     setRequest({ filtersKey, cursor: null, limit, pageIndex: 0, rowsBefore: 0 })
   }
 
-  // `enabled=false` simply parks the hook: the effect returns early and state keeps its last value. The consumer
-  // (AuditLogPage) masks `loading`/`error` while it is dormant, so there is nothing to reset here — and resetting
-  // would need a setState inside the effect body, which `react-hooks/set-state-in-effect` rejects.
-
   useEffect(() => {
-    if (!enabled) return
     let cancelled = false
     ;(async () => {
       try {
@@ -54,7 +48,7 @@ export function useAuditLog(
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, request.filtersKey, request.cursor, request.limit])
+  }, [request.filtersKey, request.cursor, request.limit])
 
   const nextPage = useCallback(() => {
     const next = state.page?.next_cursor

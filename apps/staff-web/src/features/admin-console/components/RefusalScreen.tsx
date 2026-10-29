@@ -11,7 +11,7 @@ import './RefusalScreen.css'
  * on the page for them to click except the card's one action.
  *
  * Wrapping it here rather than in each card keeps the two cards free of page furniture, so the same component works
- * unchanged on the design-preview route.
+ * unchanged wherever a feature gates a single page.
  */
 export function RefusalScreen({ children }: { children: ReactNode }) {
   return (
