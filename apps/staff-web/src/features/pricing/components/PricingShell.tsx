@@ -4,6 +4,9 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import '../pricing.css'
 
+// Merriweather for the Flython logo, Inter for everything else.
+const FONTS_URL = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@700;900&display=swap'
+
 // Pages not built yet stay in the menu (so the layout matches the design) but are not links.
 const NAV = [
   {
@@ -44,10 +47,12 @@ export function PricingShell({ title, description, children }: PricingShellProps
 
   return (
     <div className={`pr-shell${menuOpen ? ' is-menu-open' : ''}`}>
+      {/* React 19 hoists this into <head> once, so the fonts load only on pricing pages and index.html stays shared. */}
+      <link rel="stylesheet" href={FONTS_URL} precedence="default" />
       <aside className="pr-sidebar">
         <div className="pr-brand">
           <strong>Flython</strong>
-          <span>Staff · Pricing &amp; Finance</span>
+          <span className="text-sm">Staff · Pricing &amp; Finance</span>
         </div>
         <button
           type="button"

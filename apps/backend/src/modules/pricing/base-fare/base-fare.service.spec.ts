@@ -35,14 +35,21 @@ describe('BaseFareService', () => {
     db.base_fare.findFirst.mockResolvedValue(null)
   }
 
-  it('lists active routes as picker options with only id, origin and destination', async () => {
-    db.route.findMany.mockResolvedValue([])
+  it('lists active routes as picker options with their airport cities', async () => {
+    db.route.findMany.mockResolvedValue([
+      {
+        id: ROUTE_ID,
+        origin: 'BKK',
+        destination: 'CNX',
+        airport_route_originToairport: { city: 'Bangkok' },
+        airport_route_destinationToairport: { city: 'Chiang Mai' },
+      },
+    ])
 
-    await service.findRouteOptions()
+    const options = await service.findRouteOptions()
 
-    expect(db.route.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { is_active: true }, select: { id: true, origin: true, destination: true } }),
-    )
+    expect(db.route.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { is_active: true } }))
+    expect(options).toEqual([{ id: ROUTE_ID, origin: 'BKK', destination: 'CNX', origin_city: 'Bangkok', destination_city: 'Chiang Mai' }])
   })
 
   it('lists only live base fares and passes the filters through', async () => {

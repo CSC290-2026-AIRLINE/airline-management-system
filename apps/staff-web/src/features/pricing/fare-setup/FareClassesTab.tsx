@@ -103,7 +103,7 @@ export function FareClassesTab() {
               <strong>{fc.name}</strong>
               <span>
                 {cabinLabel(fc.cabin)}
-                {!fc.is_active && ' · Inactive'}
+                {!fc.is_active && <span className="pr-pill is-inactive">Inactive</span>}
               </span>
             </span>
             <span className="pr-chevron" aria-hidden="true">
@@ -149,7 +149,7 @@ export function FareClassesTab() {
               <td className="pr-mono">{fc.code}</td>
               <td>
                 {fc.name}
-                {!fc.is_active && <span className="pr-pill">Inactive</span>}
+                {!fc.is_active && <span className="pr-pill is-inactive">Inactive</span>}
               </td>
               <td>{cabinLabel(fc.cabin)}</td>
               <td>{advanceBuy(fc)}</td>
