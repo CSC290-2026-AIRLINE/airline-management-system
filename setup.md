@@ -36,10 +36,11 @@ npm install
 
 Run `npm install` again after every `git pull`. It no longer generates the Prisma client; run `npm run db:generate` (see step 5).
 
-Before starting the apps for the first time, apply database migrations (see step 7):
+Before starting the apps for the first time, start Docker Desktop and apply the committed database migrations (see step 7):
 
 ```bash
-npm run db:migrate
+npm run db:up
+npm run db:prepare
 ```
 
 ## 5. Start Everything (peak command)
@@ -112,3 +113,7 @@ cp .claude/settings.example.json .claude/settings.json
 - The copied `.claude/settings.json` is gitignored, so personal `env` entries (custom API endpoint, keys, model overrides) stay local and out of git history.
 - Adjust the `permissions.allow` and `permissions.deny` lists to match your workflow.
 - Replace or remove the example `env` block if you don't use a custom model endpoint.
+
+## G10 Staff Feature Testing
+
+See [G10 local testing](docs/g10-local-testing.md) for the fresh-checkout sequence, local Security role assignment and persisted Watchlist verification. Backend development startup, tests and builds now generate Prisma Client automatically. This does not apply database migrations automatically; run `npm run db:prepare` after pulling database changes.
