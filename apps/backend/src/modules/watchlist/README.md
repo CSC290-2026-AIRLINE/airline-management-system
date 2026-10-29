@@ -44,7 +44,7 @@ List responses expose `passportLast4` and `passportMasked`, never the full passp
 
 `WatchlistClock` is the injection point for business time. `SystemWatchlistClock` currently returns real UTC time for listed, cleared, and audit occurrence timestamps. Replace its module binding when the shared simulation clock becomes available. Database record timestamps continue using real time.
 
-Upcoming-flight re-screening is **not connected**: no shared screening service is currently available. Create and update responses explicitly return `screeningStatus: "not_connected"`; they must not be presented as confirmation that flights were re-screened. The existing public frontend preview still uses mock data and has not been connected to these authenticated APIs.
+Upcoming-flight re-screening is **not connected**: no shared screening service is currently available. Create and update responses explicitly return `screeningStatus: "not_connected"`; they must not be presented as confirmation that flights were re-screened. The authenticated staff page at `/security-screening/watchlist` calls these APIs through the shared authentication provider.
 
 No Prisma schema changes, migrations, or database resets are included.
 
@@ -59,7 +59,7 @@ Run module tests with `npm run test -w apps/backend -- --runInBand modules/watch
 Infra approved a module-local seed for the security test role. From the repository root, create the reference role without changing any staff account:
 
 ```powershell
-npm exec -w apps/backend -- tsx -r tsconfig-paths/register src/modules/watchlist/seed.ts
+npm run db:seed:security
 ```
 
 To assign an existing test account, supply its actual staff sign-in email:
@@ -70,4 +70,4 @@ npm exec -w apps/backend -- tsx -r tsconfig-paths/register src/modules/watchlist
 
 The helper uses the existing DbService and local database configuration. It upserts `{ code: 'security', name: 'Security', is_admin: false }` without duplicating or overwriting an existing role. Assignment requires exactly one enabled, non-deleted staff account linked to Clerk. Only that account's role reference and update timestamp change. Role creation and assignment share a transaction. This helper refuses production and non-loopback database hosts. It does not create Clerk accounts, tokens, fixture passengers, or watchlist entries, and it never runs the shared database seed.
 
-After assignment, verify the staff row's `role_id` points to the `security` role. Existing backend tokens identify the user; Watchlist reads the current role from the database on each request. Use the authenticated API testing steps in TESTING.md to verify real writes. The frontend preview still uses fixture data.
+After assignment, verify the staff row's `role_id` points to the `security` role. Existing backend tokens identify the user; Watchlist reads the current role from the database on each request. Use the authenticated API testing steps in TESTING.md to verify real writes. The authenticated frontend reads persisted API data.

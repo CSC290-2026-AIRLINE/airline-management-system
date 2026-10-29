@@ -1,6 +1,6 @@
 # Test the Watchlist API with Prisma Studio
 
-The Watchlist API is ready for testing. The current `/watchlist` page is a UI preview that does not call the API, so test the endpoints directly using this guide.
+The authenticated staff page at `/security-screening/watchlist` calls the Watchlist API. Follow [the local setup guide](../../../../../../docs/g10-local-testing.md) before testing on a newly cloned checkout. The steps below also cover direct API testing.
 
 ## 1. Start the database and backend
 
@@ -8,7 +8,7 @@ Start Docker Desktop and use Node.js 24 or newer. Open a terminal at the reposit
 
 ```powershell
 npm run db:up
-npm run db:generate
+npm run db:prepare
 npm run start:dev -w apps/backend
 ```
 
@@ -24,9 +24,9 @@ Keep Studio running, open the URL it prints, and select `watchlist_entry`.
 
 ## 2. Prepare a security account and access token
 
-The API uses the existing project authentication system. You need an enabled staff account with role code `security`. An `admin` account alone receives 403. Ask the account administrator to assign the role through the team's account management process. Do not modify the guard or forge a token to bypass authorization.
+The API uses the existing project authentication system. You need an enabled staff account with role code `security`. An `admin` account alone receives 403. For a local test account, sign in to staff-web first, then run `npm run db:seed:security -- --email YOUR_STAFF_EMAIL` from the repository root. This uses the existing local-only module seed. Do not modify the guard or forge a token to bypass authorization.
 
-Use a backend `accessToken` issued by the existing authentication system. If an existing client calls `POST /api/auth/session` or `POST /api/auth/refresh`, copy the `accessToken` from its response in Developer Tools > Network for local testing. Do not share tokens in chat or commit them to Git. A Clerk publishable key or Clerk session token cannot be used directly as the backend access token. The current Watchlist preview does not perform this authentication exchange.
+Use a backend `accessToken` issued by the existing authentication system. If an existing client calls `POST /api/auth/session` or `POST /api/auth/refresh`, copy the `accessToken` from its response in Developer Tools > Network for local testing. Do not share tokens in chat or commit them to Git. A Clerk publishable key or Clerk session token cannot be used directly as the backend access token. The signed-in staff-web client performs this exchange through the shared authentication provider.
 
 If you already have a staff Clerk session token from the existing system, exchange it in Postman:
 
