@@ -31,8 +31,8 @@ export function FareClassesTab() {
 
   function handleSaved(fareClass: FareClass) {
     setNotice(`Saved ${fareClass.code} · ${fareClass.name}`)
-    // On a phone, adding closes the dialog and shows the list; on desktop the new class stays open in the panel.
-    setSelection(isPhone && selection?.mode === 'new' ? null : { mode: 'edit', id: fareClass.id })
+    // Saving closes the editor (panel, phone page or dialog) so the list goes back to full width.
+    setSelection(null)
     list.reload()
   }
 
@@ -147,7 +147,8 @@ export function FareClassesTab() {
   )
 
   return (
-    <div className={`pr-split${selection && !isPhone ? ' has-editor' : ''}`}>
+    // Split only while the side panel is actually shown, not while a selected class is missing from the loaded list.
+    <div className={`pr-split${!isPhone && (selection?.mode === 'new' || selected) ? ' has-editor' : ''}`}>
       <section className="pr-card" aria-labelledby="fc-list-title">
         <div className="pr-card-intro">
           <h2 id="fc-list-title" className="pr-card-title">
@@ -157,7 +158,15 @@ export function FareClassesTab() {
         </div>
         <div className="pr-card-toolbar">
           <label className="pr-toggle">
-            <input type="checkbox" checked={includeInactive} onChange={(e) => setIncludeInactive(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={includeInactive}
+              onChange={(e) => {
+                // Filtering the list closes any open editor instead of reopening it once the new list loads.
+                setIncludeInactive(e.target.checked)
+                setSelection(null)
+              }}
+            />
             Include inactive
           </label>
           {notice && (
