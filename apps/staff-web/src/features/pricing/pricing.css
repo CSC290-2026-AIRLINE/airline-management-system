@@ -20,7 +20,8 @@
   --pr-danger: #b42318;
   --pr-danger-bg: #fdecec;
   --pr-good: #1f7a4d;
-  --pr-good-bg: #e3f2ea;
+  --pr-good-bg: #dcf5e6;
+  --pr-highlight: #eef3ff; /* row just added or saved */
   --pr-focus: 0 0 0 3px rgb(20 108 130 / 20%);
   --pr-shadow: 0 4px 9px rgb(0 0 0 / 25%);
   /* Phone frames: navy actions and top bar, yellow brand bar and tags */
@@ -366,12 +367,57 @@ a.pr-nav-item:hover {
   margin: 0 0 12px;
 }
 
-.pr-notice {
-  padding: 3px 10px;
-  border-radius: 999px;
+/* Success banner above a list: fades in, then out just before FareClassesTab removes it (NOTICE_MS = 2s). */
+.pr-banner-slot:empty {
+  display: none;
+}
+
+.pr-banner {
+  margin: 0 0 12px;
+  padding: 12px 16px;
+  border-radius: var(--pr-radius-lg);
+  font-weight: 600;
+}
+
+.pr-banner.is-success {
   background: var(--pr-good-bg);
   color: var(--pr-good);
-  font-size: var(--pr-text-small);
+  animation: pr-banner-life 2s ease forwards;
+}
+
+@keyframes pr-banner-life {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  10%,
+  80% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The row just added or saved, while its banner shows */
+.pr-table tr.is-highlighted {
+  background: var(--pr-highlight);
+}
+
+.pr-table tr.is-highlighted td:first-child {
+  box-shadow: inset 3px 0 0 var(--pr-ink);
+}
+
+.pr-class-card.is-highlighted {
+  border-color: var(--pr-ink);
+  background: var(--pr-highlight);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pr-banner.is-success {
+    animation: none;
+  }
 }
 
 /* Buttons ---------------------------------------------------------------------------------------- */
