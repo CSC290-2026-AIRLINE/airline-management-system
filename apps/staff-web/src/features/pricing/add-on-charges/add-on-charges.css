@@ -50,27 +50,3 @@
 .pr-cell-form .pr-row-actions {
   justify-content: flex-start;
 }
-
-.pr-table .pr-group-row th {
-  border-top: 1px solid var(--pr-divider);
-  background: var(--pr-page);
-  color: var(--pr-ink);
-  font-size: var(--pr-text-body);
-  letter-spacing: normal;
-  text-transform: none;
-}
-
-.pr-try-charge {
-  margin-top: 20px;
-}
-
-.pr-charge-result {
-  display: grid;
-  gap: 2px;
-  margin: 12px 0 0;
-}
-
-.pr-charge-result strong {
-  color: var(--pr-ink);
-  font-size: var(--pr-text-title);
-}

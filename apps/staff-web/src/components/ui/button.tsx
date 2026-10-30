@@ -46,4 +46,6 @@ function Button({
   return <ButtonPrimitive data-slot="button" className={cn(buttonVariants({ variant, size, className }))} {...props} />
 }
 
+// shadcn's other components (e.g. alert-dialog) import buttonVariants from here.
+// eslint-disable-next-line react-refresh/only-export-components
 export { Button, buttonVariants }
