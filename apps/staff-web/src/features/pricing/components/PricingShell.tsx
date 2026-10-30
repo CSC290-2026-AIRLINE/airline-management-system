@@ -111,10 +111,6 @@ export function PricingShell({ title, description, actions, children }: PricingS
       <main className="pr-main">
         <header className="pr-header">
           <div>
-            <p className="pr-tags">
-              <span className="pr-tag is-dark">Feature 4</span>
-              <span className="pr-tag is-yellow">Pricing core</span>
-            </p>
             <h1 className="pr-title">{title}</h1>
             <p className="pr-subtitle">{description}</p>
           </div>
