@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { PricingShell } from '../components/PricingShell'
+import { CurrencyRatesCard } from '../currency-rates/CurrencyRatesCard'
 import { BaggageRatesCard } from './BaggageRatesCard'
 import { PromoCodesCard } from './PromoCodesCard'
 import { RedeemQuoteCard } from './RedeemQuoteCard'
 import { TaxFeesCard } from './TaxFeesCard'
 
-// One page in the design. The currency and settings cards join here.
+// One page in the design. The settings card joins here.
 export function TaxesPromosPage() {
   // Wait for the session exchange so the first API calls carry a token instead of racing the refresh.
   const { isLoading, accessToken } = useAppAuth()
@@ -28,6 +29,9 @@ export function TaxesPromosPage() {
         <div className="pr-stack">
           <ErrorBoundary>
             <TaxFeesCard />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <CurrencyRatesCard />
           </ErrorBoundary>
           <ErrorBoundary>
             <BaggageRatesCard />

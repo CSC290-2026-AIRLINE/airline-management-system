@@ -47,5 +47,6 @@ function Button({
 }
 
 // shadcn's other components (e.g. alert-dialog) import buttonVariants from here.
+// shadcn exports the variants too (for links styled as buttons), which Fast Refresh warns about.
 // eslint-disable-next-line react-refresh/only-export-components
 export { Button, buttonVariants }

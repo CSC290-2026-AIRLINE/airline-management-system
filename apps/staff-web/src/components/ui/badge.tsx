@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- shadcn exports the variants beside the component */
 import { mergeProps } from '@base-ui/react/merge-props'
 import { useRender } from '@base-ui/react/use-render'
 import { cva, type VariantProps } from 'class-variance-authority'
@@ -46,4 +45,6 @@ function Badge({
   })
 }
 
+// shadcn exports the variants too (for links styled as badges), which Fast Refresh warns about.
+// eslint-disable-next-line react-refresh/only-export-components
 export { Badge, badgeVariants }
