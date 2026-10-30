@@ -36,6 +36,12 @@ export const RULE_GROUP_FIELDS = {
 } as const satisfies Record<RuleGroup, readonly string[]>
 export type RuleConditionField = (typeof RULE_GROUP_FIELDS)[RuleGroup][number]
 
+export const PROMO_KINDS = ['promo', 'corporate'] as const
+export type PromoKind = (typeof PROMO_KINDS)[number]
+
+// details.reason of a PROMO_INVALID error.
+export type PromoInvalidReason = 'unknown' | 'inactive' | 'not_yet_valid' | 'expired' | 'exhausted'
+
 export const TAX_FEE_KINDS = ['tax', 'surcharge', 'fee'] as const
 export type TaxFeeKind = (typeof TAX_FEE_KINDS)[number]
 

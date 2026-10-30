@@ -80,6 +80,31 @@ export interface NewPricingRule {
   end_date?: string
 }
 
+export type PromoKind = 'promo' | 'corporate'
+
+export interface PromoCode {
+  id: string
+  code: string
+  kind: PromoKind
+  discount_pct: Decimal | null
+  discount_amount: Decimal | null
+  valid_from: string // ISO timestamp
+  valid_to: string // ISO timestamp, exclusive
+  max_uses: number | null // null = unlimited
+  used_count: number
+  is_active: boolean
+}
+
+export interface NewPromoCode {
+  code: string
+  kind: PromoKind
+  discount_pct?: number
+  discount_amount?: number
+  valid_from: string
+  valid_to: string
+  max_uses?: number
+}
+
 export interface PriceSimulationInput {
   base_fare: number
   departure_date: string // YYYY-MM-DD
@@ -173,6 +198,10 @@ export function usePricingApi() {
     reorderPricingRules: (group: RuleGroup, ids: string[]) =>
       request<PricingRule[]>('/pricing-rules/reorder', 'POST', { rule_group: group, ids }),
     deletePricingRule: (id: string) => request<void>(`/pricing-rules/${id}`, 'DELETE'),
+
+    listPromoCodes: () => request<PromoCode[]>('/promo-codes?include_inactive=true'),
+    createPromoCode: (input: NewPromoCode) => request<PromoCode>('/promo-codes', 'POST', input),
+    setPromoCodeActive: (id: string, isActive: boolean) => request<PromoCode>(`/promo-codes/${id}`, 'PATCH', { is_active: isActive }),
 
     // Seat fees belong to Member C's backend (staff/seat-fees); this page only edits the amounts.
     listSeatFees: () => request<SeatFee[]>('/seat-fees'),

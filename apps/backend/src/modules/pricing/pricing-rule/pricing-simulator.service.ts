@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
+import { buildQuoteLines, toCents, type QuoteLine } from '../fare-quote/quote-calculator'
 import { simulatedToday } from '../finance/finance.constants'
 import { RULE_GROUPS, type SeatType } from '../pricing.constants'
 import { PricingErrorCode, pricingError } from '../pricing.errors'
@@ -6,7 +7,7 @@ import { SeatFeeService } from '../seat-fee/seat-fee.service'
 import { SettingService } from '../setting/setting.service'
 import { TaxFeeService } from '../tax-fee/tax-fee.service'
 import { SimulatePriceDto } from './dto/simulate-price.dto'
-import { dateOnly, percentOfCents } from './pricing-rule.engine'
+import { dateOnly } from './pricing-rule.engine'
 import { PricingRuleService } from './pricing-rule.service'
 
 const DAY_MS = 86_400_000
@@ -21,10 +22,9 @@ function signedPercent(pct: number): string {
   return `${pct < 0 ? '−' : '+'}${PERCENT.format(Math.abs(pct))}%`
 }
 
-export interface SimulatedLine {
-  label: string
-  detail?: string
-  amount: number
+function lineDetail(line: QuoteLine): string {
+  if (line.ratePct === null) return 'flat'
+  return line.kind === 'rule' ? signedPercent(line.ratePct) : `${PERCENT.format(line.ratePct)}%`
 }
 
 @Injectable()
@@ -59,37 +59,25 @@ export class PricingSimulatorService {
       this.settings.getQuoteHoldMinutes(),
     ])
 
-    const lines: SimulatedLine[] = [{ label: 'Base fare', amount: dto.base_fare }]
-    for (const rule of ruled.applied) {
-      lines.push({
-        label: `${rule.name} (${rule.rule_group})`,
-        detail: signedPercent(rule.adjustment_pct),
-        amount: (Math.round(rule.amount_after * 100) - Math.round(rule.amount_before * 100)) / 100,
-      })
-    }
-
     const seatFee = seatFees.find((fee) => fee.cabin === CABIN && fee.seat_type === dto.seat_type)
-    const seatCents = seatFee ? Math.round(Number(seatFee.amount) * 100) : 0
-    if (seatCents > 0) {
-      lines.push({ label: SEAT_LABELS[dto.seat_type], detail: 'flat', amount: seatCents / 100 })
-    }
-
-    const subtotalCents = Math.round(ruled.amount * 100) + seatCents
-    let totalCents = subtotalCents
-    for (const tax of taxFees) {
-      const value = Number(tax.value)
-      const isPercent = tax.calc_type === 'pct'
-      const cents = isPercent ? percentOfCents(subtotalCents, value) : Math.round(value * 100)
-      totalCents += cents
-      lines.push({ label: tax.name, detail: isPercent ? `${PERCENT.format(value)}%` : 'flat', amount: cents / 100 })
-    }
+    const seatCents = seatFee ? toCents(Number(seatFee.amount)) : 0
+    const { lines, totalCents } = buildQuoteLines({
+      baseCents: toCents(dto.base_fare),
+      rules: ruled.applied,
+      seatFee: seatCents > 0 ? { label: SEAT_LABELS[dto.seat_type], cents: seatCents } : undefined,
+      taxes: taxFees.map((tax) => ({ id: tax.id, name: tax.name, kind: tax.kind, calc_type: tax.calc_type, value: Number(tax.value) })),
+    })
 
     const matched = new Set(ruled.applied.map((rule) => rule.rule_group))
     return {
       today: dateOnly(today),
       days_to_departure: daysToDeparture,
       currency,
-      lines,
+      lines: lines.map((line) => ({
+        label: line.label,
+        ...(line.kind !== 'base' && { detail: lineDetail(line) }),
+        amount: line.amountCents / 100,
+      })),
       total: totalCents / 100,
       unmatched_groups: RULE_GROUPS.filter((group) => !matched.has(group)),
       quote_hold_minutes: holdMinutes,

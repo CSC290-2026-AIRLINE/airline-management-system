@@ -7,11 +7,16 @@ import { CurrencyRateController } from './currency-rate/currency-rate.controller
 import { CurrencyRateService } from './currency-rate/currency-rate.service'
 import { FareClassController } from './fare-class/fare-class.controller'
 import { FareClassService } from './fare-class/fare-class.service'
+import { FareQuoteController } from './fare-quote/fare-quote.controller'
+import { FareQuoteService } from './fare-quote/fare-quote.service'
+import { NoBookingsSeatAvailability, SeatAvailability } from './fare-quote/seat-availability'
 import { PaymentScheduleController } from './finance/payment-schedule/payment-schedule.controller'
 import { PaymentScheduleService } from './finance/payment-schedule/payment-schedule.service'
 import { PricingRuleController } from './pricing-rule/pricing-rule.controller'
 import { PricingRuleService } from './pricing-rule/pricing-rule.service'
 import { PricingSimulatorService } from './pricing-rule/pricing-simulator.service'
+import { PromoCodeController } from './promo-code/promo-code.controller'
+import { PromoCodeService } from './promo-code/promo-code.service'
 import { PublicSeatFeeController, SeatFeeController } from './seat-fee/seat-fee.controller'
 import { SeatFeeService } from './seat-fee/seat-fee.service'
 import { SettingController } from './setting/setting.controller'
@@ -25,6 +30,8 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     BaseFareController,
     SettingController,
     PricingRuleController,
+    PromoCodeController,
+    FareQuoteController,
     SeatFeeController,
     PublicSeatFeeController,
     TaxFeeController,
@@ -39,6 +46,10 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     SettingService,
     PricingRuleService,
     PricingSimulatorService,
+    PromoCodeService,
+    FareQuoteService,
+    // Swap this one line for Feature 3b's provider when it exists.
+    { provide: SeatAvailability, useClass: NoBookingsSeatAvailability },
     SeatFeeService,
     TaxFeeService,
     CurrencyRateService,
@@ -50,6 +61,8 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     BaseFareService,
     SettingService,
     PricingRuleService,
+    PromoCodeService,
+    FareQuoteService,
     BaggageRateService,
     SeatFeeService,
     TaxFeeService,
