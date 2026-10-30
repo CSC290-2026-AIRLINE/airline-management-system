@@ -129,6 +129,7 @@ export interface PriceSimulationInput {
   departure_date: string // YYYY-MM-DD
   seats_left_pct: number
   seat_type: SeatType
+  promo_code?: string
 }
 
 // Response of POST /staff/pricing-rules/simulate. Dry run: the backend saves nothing.
@@ -153,7 +154,7 @@ export interface SeatFee {
   amount: Decimal
 }
 
-interface PricingSetting {
+export interface PricingSetting {
   key: string
   value: string
 }
@@ -174,7 +175,7 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong'
 }
 
-export type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE'
+export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 export function jsonInit(method: Method, body?: unknown): RequestInit {
   return { method, ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) }
@@ -237,6 +238,8 @@ export function usePricingApi() {
       request<SeatFee>('/seat-fees', 'POST', { cabin, seat_type: seatType, amount }),
     updateSeatFee: (id: string, amount: number) => request<SeatFee>(`/seat-fees/${id}`, 'PATCH', { amount }),
 
+    listSettings: () => request<PricingSetting[]>('/settings'),
+    updateSetting: (key: string, value: string) => request<PricingSetting>(`/settings/${key}`, 'PUT', { value }),
     getBaseCurrency: async () => {
       const settings = await request<PricingSetting[]>('/settings')
       return settings.find((setting) => setting.key === 'base_currency')?.value ?? 'THB'

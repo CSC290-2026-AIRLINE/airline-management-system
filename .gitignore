@@ -42,6 +42,7 @@ Thumbs.db
 
 # docs 
 docs/feature-04-step-6-testing.md
+docs/money_mock.md
 feature-04-schema-review.md
 feature-04-fare-class-crud-guide.md
 feature-04-member-b-guide.md

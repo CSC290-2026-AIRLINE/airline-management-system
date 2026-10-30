@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { errorMessage, SEAT_TYPES, usePricingApi, type PriceSimulation, type SeatType } from '../api'
+import { useLoad } from '../hooks/useLoad'
+import { promoStatus } from '../taxes-promos/promo-format'
 import { seatTypeLabel } from './describe'
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/
@@ -19,6 +21,7 @@ interface Form {
   departure: string
   seatsLeft: string
   seatType: SeatType
+  promoCode: string // empty for no promo
 }
 
 type Field = 'baseFare' | 'departure' | 'seatsLeft'
@@ -39,9 +42,12 @@ interface SimulatorCardProps {
 
 export function SimulatorCard({ variant, refreshKey, onClose }: SimulatorCardProps) {
   const api = usePricingApi()
-  const [form, setForm] = useState<Form>({ baseFare: '100', departure: inOneWeek(), seatsLeft: '15', seatType: 'normal' })
+  const [form, setForm] = useState<Form>({ baseFare: '100', departure: inOneWeek(), seatsLeft: '15', seatType: 'normal', promoCode: '' })
   const [result, setResult] = useState<PriceSimulation | null>(null)
   const [requestError, setRequestError] = useState<string | null>(null)
+  const promos = useLoad(() => api.listPromoCodes(), 'promo-codes')
+  // Only codes that would work on a real quote right now.
+  const livePromos = (promos.data ?? []).filter((promo) => promoStatus(promo, new Date()) === 'active')
 
   const errors = validate(form)
   const valid = Object.keys(errors).length === 0
@@ -58,6 +64,7 @@ export function SimulatorCard({ variant, refreshKey, onClose }: SimulatorCardPro
           departure_date: form.departure,
           seats_left_pct: Number(form.seatsLeft),
           seat_type: form.seatType,
+          ...(form.promoCode && { promo_code: form.promoCode }),
         })
         .then(
           (next) => {
@@ -142,10 +149,15 @@ export function SimulatorCard({ variant, refreshKey, onClose }: SimulatorCardPro
 
       <div className="pr-field">
         <label htmlFor="sim-promo">Promo code</label>
-        {/* Promo codes have no backend yet, so there is nothing to pick. */}
-        <select id="sim-promo" disabled title="Promo codes are not built yet">
-          <option>None</option>
+        <select id="sim-promo" value={form.promoCode} onChange={(e) => set('promoCode', e.target.value)}>
+          <option value="">None</option>
+          {livePromos.map((promo) => (
+            <option key={promo.id} value={promo.code}>
+              {promo.code}
+            </option>
+          ))}
         </select>
+        {promos.error && <span className="pr-field-error">Could not load promo codes</span>}
       </div>
 
       {requestError ? (
