@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@staff-web/components/ui/button'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { cn } from '@staff-web/lib/utils'
 import { errorMessage, SEAT_TYPES, usePricingApi, type SeatType } from '../api'
 import { useLoad } from '../hooks/useLoad'
 import { seatTypeLabel } from './describe'
@@ -34,6 +38,10 @@ export function SeatFeesCard({ onChanged }: { onChanged: () => void }) {
 
   async function save() {
     setSaveError(null)
+    if (!changed.length) {
+      setNotice({ text: 'No changes to save' })
+      return
+    }
     const invalid: Partial<Record<SeatType, string>> = {}
     for (const type of changed) {
       const value = edits[type]?.trim() ?? ''
@@ -74,12 +82,16 @@ export function SeatFeesCard({ onChanged }: { onChanged: () => void }) {
         {notice && <p className="pr-banner is-success">{notice.text}</p>}
       </div>
 
-      <section className="pr-card" aria-labelledby="seat-fees-title">
+      <section
+        className="flex flex-col gap-3.5 rounded-(--pr-radius-card) border border-(--pr-border) bg-(--pr-surface) p-5"
+        aria-labelledby="seat-fees-title"
+      >
+        {/* The h2 keeps its pr- class: the bare h2 rule in index.css is unlayered and beats Tailwind utilities. */}
         <div className="pr-card-head">
           <h2 id="seat-fees-title" className="pr-card-title">
             Seat-position fees
           </h2>
-          <p className="pr-muted">
+          <p className="pr-muted leading-[normal]">
             A flat fee added after the rules when the passenger picks a seat. Economy cabin shown; seat types come from the aircraft seat
             map.
           </p>
@@ -102,19 +114,21 @@ export function SeatFeesCard({ onChanged }: { onChanged: () => void }) {
         ) : loading ? (
           <p className="pr-state">Loading seat fees…</p>
         ) : (
-          <div className="pr-seat-fee-grid">
+          // Phone: Normal seat takes the full row, the other two share the next one.
+          <div className="grid grid-cols-3 gap-x-4 gap-y-3 max-[800px]:grid-cols-2">
             {SEAT_TYPES.map((type) => {
               const inputId = `seat-fee-${type}`
               const error = errors[type]
               return (
-                <div key={type}>
-                  <label htmlFor={inputId} className="pr-fare-label">
+                <div key={type} className={cn('flex min-w-0 flex-col gap-1.5', type === 'normal' && 'max-[800px]:col-span-2')}>
+                  <Label htmlFor={inputId} className="text-[11px] leading-[normal] font-semibold text-(--pr-muted) uppercase">
                     {seatTypeLabel(type)}
-                  </label>
-                  <span className="pr-amount-field">
-                    <input
+                  </Label>
+                  <span className="relative block">
+                    {/* pr-12! because .pr-shell input is unlayered and sets the padding; is-changed is its highlight. */}
+                    <Input
                       id={inputId}
-                      className={`pr-fare-input${changed.includes(type) ? ' is-changed' : ''}`}
+                      className={cn('h-[42px] pr-12! tabular-nums', changed.includes(type) && 'is-changed')}
                       inputMode="decimal"
                       placeholder="0"
                       value={edits[type] ?? savedText(type)}
@@ -126,12 +140,15 @@ export function SeatFeesCard({ onChanged }: { onChanged: () => void }) {
                         setErrors((current) => ({ ...current, [type]: undefined }))
                       }}
                     />
-                    <span className="pr-amount-suffix" aria-hidden="true">
+                    <span
+                      className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-xs text-(--pr-muted)"
+                      aria-hidden="true"
+                    >
                       {currency.data}
                     </span>
                   </span>
                   {error && (
-                    <span id={`${inputId}-error`} className="pr-field-error pr-matrix-error">
+                    <span id={`${inputId}-error`} className="text-xs text-(--pr-danger)">
                       {error}
                     </span>
                   )}
@@ -141,16 +158,21 @@ export function SeatFeesCard({ onChanged }: { onChanged: () => void }) {
           </div>
         )}
 
-        <div className="pr-card-footer pr-matrix-footer">
-          <p className="pr-muted">Changes apply to new quotes and seat changes straight away.</p>
+        <div className="flex items-center justify-between gap-4 max-[800px]:flex-col max-[800px]:items-stretch max-[800px]:gap-3">
+          <p className="text-xs text-(--pr-muted)">Changes apply to the price simulator straight away.</p>
           {saveError && (
-            <p className="pr-field-error" role="alert">
+            <p className="text-xs text-(--pr-danger)" role="alert">
               {saveError}
             </p>
           )}
-          <button type="button" className="pr-button is-primary" disabled={saving || !changed.length} onClick={() => void save()}>
+          <Button
+            type="button"
+            className="h-10 bg-(--pr-primary) px-6 text-[13px] font-semibold hover:bg-(--pr-primary-hover) max-[800px]:h-11 max-[800px]:w-full"
+            disabled={saving}
+            onClick={() => void save()}
+          >
             {saving ? 'Saving…' : 'Save seat fees'}
-          </button>
+          </Button>
         </div>
       </section>
     </>
