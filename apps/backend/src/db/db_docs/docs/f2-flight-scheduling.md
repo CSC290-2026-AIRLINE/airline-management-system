@@ -1,6 +1,6 @@
 # F2 — Flight scheduling and network operations
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA.** See the [current schema snapshot](../docs.md#current-schema-snapshot) for the verified source commit and schema totals. Committed definitions do not prove deployment or completed application behavior.
 
 **Tables (16):** [`disruption_reason`](#table-disruption_reason) · [`partner_airline`](#table-partner_airline) · [`airport`](#table-airport) · [`airport_fee`](#table-airport_fee) · [`route`](#table-route) · [`flight_pattern`](#table-flight_pattern) · [`flight`](#table-flight) · [`flight_event`](#table-flight_event) · [`flight_event_outbox`](#table-flight_event_outbox) · [`airport_congestion`](#table-airport_congestion) · [`schedule_conflict`](#table-schedule_conflict) · [`flight_setting`](#table-flight_setting) · [`partner_airline_route`](#table-partner_airline_route) · [`airport_approval_policy`](#table-airport_approval_policy) · [`schedule_approval`](#table-schedule_approval) · [`schedule_approval_offer`](#table-schedule_approval_offer)
 
