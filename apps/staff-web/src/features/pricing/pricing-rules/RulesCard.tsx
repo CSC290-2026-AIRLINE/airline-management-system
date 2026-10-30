@@ -12,9 +12,10 @@ const RULES_PER_PAGE = 4 // phone only; the desktop table shows the whole group
 interface RulesCardProps {
   group: RuleGroup
   onGroupChange: (group: RuleGroup) => void
+  onChanged: () => void
 }
 
-export function RulesCard({ group, onGroupChange }: RulesCardProps) {
+export function RulesCard({ group, onGroupChange, onChanged }: RulesCardProps) {
   const api = usePricingApi()
   const isPhone = useMediaQuery(PHONE_QUERY)
   // All groups in one call: the tabs need every group's count anyway.
@@ -57,6 +58,7 @@ export function RulesCard({ group, onGroupChange }: RulesCardProps) {
     } finally {
       setBusy(null)
       rules.reload()
+      onChanged()
     }
   }
 
@@ -80,6 +82,7 @@ export function RulesCard({ group, onGroupChange }: RulesCardProps) {
       setRemoving(null)
       setNotice({ text: `Rule ${rule.name} removed` })
       rules.reload()
+      onChanged()
     } catch (e) {
       setRemoveError(errorMessage(e))
     } finally {
@@ -312,6 +315,7 @@ export function RulesCard({ group, onGroupChange }: RulesCardProps) {
             setAdding(false)
             setNotice({ text: `Rule ${rule.name} added` })
             rules.reload()
+            onChanged()
           }}
         />
       )}

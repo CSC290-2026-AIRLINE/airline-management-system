@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { CABINS, errorMessage, usePricingApi, type FareClass, type FareClassInput } from '../api'
 import { cabinLabel } from '../format'
+import { RemoveFareClassDialog } from './RemoveFareClassDialog'
 
 // Form state keeps raw input text so a half-typed number is not lost; it is parsed on submit.
 interface FormState {
@@ -84,8 +85,8 @@ function validate(form: FormState): { input?: FareClassInput; errors: FieldError
   }
 }
 
-// panel: desktop side panel. page: phone, the editor replaces the list. sheet: phone, inside the add dialog.
-export type EditorVariant = 'panel' | 'page' | 'sheet'
+// panel: desktop side panel. page: phone, the editor replaces the list. dialog / sheet: the add pop-up on desktop / phone.
+export type EditorVariant = 'panel' | 'page' | 'dialog' | 'sheet'
 
 interface FareClassEditorProps {
   fareClass: FareClass | null // null = adding a new class
@@ -101,6 +102,7 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
   const [errors, setErrors] = useState<FieldErrors>({})
   const [serverError, setServerError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [removing, setRemoving] = useState(false)
 
   function set<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [field]: value }))
@@ -129,20 +131,6 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
     }
   }
 
-  async function handleRemove() {
-    if (!fareClass || !window.confirm(`Remove fare class ${fareClass.code} · ${fareClass.name}?`)) return
-    setBusy(true)
-    setServerError(null)
-    try {
-      await api.deleteFareClass(fareClass.id)
-      onRemoved()
-    } catch (error) {
-      // FARE_CLASS_IN_USE explains which base fares to delete first.
-      setServerError(errorMessage(error))
-      setBusy(false)
-    }
-  }
-
   function fieldProps(field: keyof FormState) {
     return {
       id: `fc-${field}`,
@@ -159,25 +147,28 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
     ) : null
   }
 
-  const title = fareClass ? `${fareClass.code} · ${fareClass.name}` : 'Add fare class'
+  const title = fareClass ? `${fareClass.code} · ${fareClass.name}` : 'New fare class'
   const closeButton = (
-    <button type="button" className="pr-icon-button" onClick={onClose} aria-label={variant === 'sheet' ? 'Close dialog' : 'Close editor'}>
+    <button type="button" className="pr-icon-button" onClick={onClose} aria-label={fareClass ? 'Close editor' : 'Close dialog'}>
       ×
     </button>
   )
 
   const formBody = (
     <form onSubmit={(event) => void handleSubmit(event)} noValidate>
-      <div className="pr-field">
-        <label htmlFor="fc-code">Code (unique, e.g. Y, M, J)</label>
-        <input {...fieldProps('code')} value={form.code} maxLength={3} onChange={(e) => set('code', e.target.value.toUpperCase())} />
-        {fieldError('code')}
-      </div>
+      {/* The add pop-up puts code and name on one row; the editor stacks them. */}
+      <div className={fareClass ? undefined : 'pr-code-name-row'}>
+        <div className="pr-field">
+          <label htmlFor="fc-code">{fareClass ? 'Code (unique, e.g. Y, M, J)' : 'Code'}</label>
+          <input {...fieldProps('code')} value={form.code} maxLength={3} onChange={(e) => set('code', e.target.value.toUpperCase())} />
+          {fieldError('code')}
+        </div>
 
-      <div className="pr-field">
-        <label htmlFor="fc-name">Name</label>
-        <input {...fieldProps('name')} value={form.name} maxLength={100} onChange={(e) => set('name', e.target.value)} />
-        {fieldError('name')}
+        <div className="pr-field">
+          <label htmlFor="fc-name">Name</label>
+          <input {...fieldProps('name')} value={form.name} maxLength={100} onChange={(e) => set('name', e.target.value)} />
+          {fieldError('name')}
+        </div>
       </div>
 
       <div className="pr-field">
@@ -241,10 +232,12 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
         ))}
       </div>
 
-      <p className="pr-help">
-        Fee = flat amount + percentage of the quote total, capped at the total. Quotes keep a frozen copy of these rules, so edits never
-        change a booking already made.
-      </p>
+      {fareClass && (
+        <p className="pr-help">
+          Fee = flat amount + percentage of the quote total, capped at the total. Quotes keep a frozen copy of these rules, so edits never
+          change a booking already made.
+        </p>
+      )}
 
       {serverError && (
         <div className="pr-callout is-error" role="alert">
@@ -252,21 +245,27 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
         </div>
       )}
 
-      <div className="pr-actions">
-        <button type="submit" className="pr-button is-primary" disabled={busy}>
-          {busy ? 'Saving…' : fareClass ? 'Save fare class' : 'Add fare class'}
-        </button>
-        {fareClass && (
-          <button type="button" className="pr-button is-danger" disabled={busy} onClick={() => void handleRemove()}>
+      {fareClass ? (
+        <div className="pr-actions">
+          <button type="submit" className="pr-button is-primary" disabled={busy}>
+            {busy ? 'Saving…' : 'Save fare class'}
+          </button>
+          <button type="button" className="pr-button is-danger" disabled={busy} onClick={() => setRemoving(true)}>
             Remove fare class
           </button>
-        )}
-        {variant === 'sheet' && (
+        </div>
+      ) : (
+        <div className="pr-confirm-actions">
           <button type="button" className="pr-button is-outline" disabled={busy} onClick={onClose}>
             Cancel
           </button>
-        )}
-      </div>
+          <button type="submit" className="pr-button is-primary" disabled={busy}>
+            {busy ? 'Saving…' : 'Add fare class'}
+          </button>
+        </div>
+      )}
+
+      {removing && fareClass && <RemoveFareClassDialog fareClass={fareClass} onClose={() => setRemoving(false)} onRemoved={onRemoved} />}
     </form>
   )
 
@@ -299,15 +298,16 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
           <div className="pr-card pr-editor">{formBody}</div>
         </section>
       )
+    case 'dialog':
     case 'sheet':
       return (
         <div className="pr-editor">
           <div className="pr-sheet-handle" aria-hidden="true" />
           <div className="pr-editor-head">
-            <h2 id="fc-editor-title" className="pr-editor-title is-sheet">
+            <h2 id="fc-editor-title" className="pr-editor-title">
               {title}
             </h2>
-            {closeButton}
+            {variant === 'sheet' && closeButton}
           </div>
           {formBody}
         </div>

@@ -26,7 +26,7 @@ const NAV = [
 interface PricingShellProps {
   title: string
   description: string
-  // Buttons for the right of the page header (e.g. "Open price simulator"); replaces the simulated-date chip.
+  // Buttons for the right of the page header (e.g. "Open price simulator").
   actions?: ReactNode
   children: ReactNode
 }
@@ -58,16 +58,17 @@ export function PricingShell({ title, description, actions, children }: PricingS
       <aside className="pr-sidebar">
         <div className="pr-brand">
           <strong>Flython</strong>
-          <span className="text-sm">Staff · Pricing &amp; Finance</span>
+          <span>Staff · Pricing &amp; Finance</span>
         </div>
         <button
           type="button"
           className="pr-menu-button"
           aria-expanded={menuOpen}
           aria-controls="pr-nav"
+          aria-label="Menu"
           onClick={() => setMenuOpen((open) => !open)}
         >
-          Menu <span aria-hidden="true">{menuOpen ? '×' : '≡'}</span>
+          Admin <span aria-hidden="true">{menuOpen ? '×' : '≡'}</span>
         </button>
         {/* Desktop: fills the sidebar with the account block pinned to the bottom. Phone: the drop-down menu. */}
         <div id="pr-nav" className="pr-sidebar-menu">
@@ -114,12 +115,7 @@ export function PricingShell({ title, description, actions, children }: PricingS
             <h1 className="pr-title">{title}</h1>
             <p className="pr-subtitle">{description}</p>
           </div>
-          {actions ?? (
-            // The simulation clock (Platform) has no API yet, so no date is shown rather than a made-up one.
-            <span className="pr-sim-chip" title="Waiting for the simulation clock API">
-              Simulated today · not connected
-            </span>
-          )}
+          {actions}
         </header>
         {children}
       </main>
