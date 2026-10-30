@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { buildQuoteLines, toCents, type QuoteLine } from '../fare-quote/quote-calculator'
+import { simNow } from '../fare-quote/sim-clock'
 import { simulatedToday } from '../finance/finance.constants'
 import { RULE_GROUPS, type SeatType } from '../pricing.constants'
 import { PricingErrorCode, pricingError } from '../pricing.errors'
+import { PromoCodeService } from '../promo-code/promo-code.service'
 import { SeatFeeService } from '../seat-fee/seat-fee.service'
 import { SettingService } from '../setting/setting.service'
 import { TaxFeeService } from '../tax-fee/tax-fee.service'
@@ -34,17 +36,20 @@ export class PricingSimulatorService {
     private readonly seatFees: SeatFeeService,
     private readonly taxFees: TaxFeeService,
     private readonly settings: SettingService,
+    private readonly promoCodes: PromoCodeService,
   ) {}
 
   // Dry run of the quote calculation for one passenger: reads only, and writes no quote, line or redemption.
-  // Order follows the schema review: rules, then seat fee, then taxes on that subtotal (percentages do not compound).
-  // Without a fare class, class-specific rules are skipped. Promo codes join once the promo module exists.
+  // Order follows the schema review: rules, seat fee, promo, then taxes on that subtotal (percentages do not compound).
+  // Without a fare class, class-specific rules are skipped. A promo is checked as on a real quote but no use is counted.
   async simulate(dto: SimulatePriceDto) {
     const today = simulatedToday()
     const daysToDeparture = Math.round((new Date(`${dto.departure_date}T00:00:00.000Z`).getTime() - today.getTime()) / DAY_MS)
     if (Number.isNaN(daysToDeparture) || daysToDeparture < 0) {
       throw new BadRequestException(pricingError(PricingErrorCode.SIMULATION_INVALID, 'Departure must be today or later'))
     }
+
+    const promo = dto.promo_code ? await this.promoCodes.checkPromo(dto.promo_code, simNow()) : null
 
     const [ruled, seatFees, taxFees, currency, holdMinutes] = await Promise.all([
       this.pricingRules.applyRules(dto.base_fare, {
@@ -65,6 +70,14 @@ export class PricingSimulatorService {
       baseCents: toCents(dto.base_fare),
       rules: ruled.applied,
       seatFee: seatCents > 0 ? { label: SEAT_LABELS[dto.seat_type], cents: seatCents } : undefined,
+      promo: promo
+        ? {
+            id: promo.id,
+            code: promo.code,
+            discount_pct: promo.discount_pct === null ? null : Number(promo.discount_pct),
+            discount_amount: promo.discount_amount === null ? null : Number(promo.discount_amount),
+          }
+        : undefined,
       taxes: taxFees.map((tax) => ({ id: tax.id, name: tax.name, kind: tax.kind, calc_type: tax.calc_type, value: Number(tax.value) })),
     })
 

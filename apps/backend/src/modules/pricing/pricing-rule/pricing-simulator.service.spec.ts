@@ -1,5 +1,6 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, UnprocessableEntityException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PromoCodeService } from '../promo-code/promo-code.service'
 import type { SeatFeeService } from '../seat-fee/seat-fee.service'
 import type { SettingService } from '../setting/setting.service'
 import type { TaxFeeService } from '../tax-fee/tax-fee.service'
@@ -43,6 +44,7 @@ describe('PricingSimulatorService', () => {
   const seatFees = { findAll: jest.fn() }
   const taxFees = { findAll: jest.fn() }
   const settings = { getBaseCurrency: jest.fn(), getQuoteHoldMinutes: jest.fn() }
+  const promoCodes = { checkPromo: jest.fn() }
   let service: PricingSimulatorService
 
   beforeEach(() => {
@@ -57,6 +59,7 @@ describe('PricingSimulatorService', () => {
       seatFees as unknown as SeatFeeService,
       taxFees as unknown as TaxFeeService,
       settings as unknown as SettingService,
+      promoCodes as unknown as PromoCodeService,
     )
   })
 
@@ -109,6 +112,38 @@ describe('PricingSimulatorService', () => {
     expect(db.pricing_rule.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ OR: [{ fare_class_id: null }, { fare_class_id: null }] }) }),
     )
+  })
+
+  it('takes a percentage promo off before tax', async () => {
+    promoCodes.checkPromo.mockResolvedValue({ id: 'p1', code: 'SPRING15', discount_pct: '15.00', discount_amount: null })
+
+    const result = await service.simulate({ ...dto, promo_code: 'SPRING15' })
+
+    expect(promoCodes.checkPromo).toHaveBeenCalledWith('SPRING15', expect.any(Date))
+    expect(result.lines).toContainEqual({ label: 'Promo SPRING15', detail: '15%', amount: -18.98 })
+    expect(result.total).toBe(120.05)
+  })
+
+  it('takes a fixed promo off before tax', async () => {
+    promoCodes.checkPromo.mockResolvedValue({ id: 'p2', code: 'MINUS20', discount_pct: null, discount_amount: '20.00' })
+
+    const result = await service.simulate({ ...dto, promo_code: 'MINUS20' })
+
+    expect(result.lines).toContainEqual({ label: 'Promo MINUS20', detail: 'flat', amount: -20 })
+  })
+
+  it('passes on the refusal for a promo that cannot be used', async () => {
+    promoCodes.checkPromo.mockRejectedValue(new UnprocessableEntityException())
+
+    await expect(service.simulate({ ...dto, promo_code: 'OLD' })).rejects.toBeInstanceOf(UnprocessableEntityException)
+  })
+
+  it('leaves the promo check out when no code is sent', async () => {
+    promoCodes.checkPromo.mockClear()
+
+    await service.simulate(dto)
+
+    expect(promoCodes.checkPromo).not.toHaveBeenCalled()
   })
 
   it('refuses a departure in the past', async () => {
