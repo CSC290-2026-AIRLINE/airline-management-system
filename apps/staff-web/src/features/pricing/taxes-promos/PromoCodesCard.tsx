@@ -8,11 +8,15 @@ import { discountText, kindLabel, promoStatus, statusLabel, usesText, validText,
 const NOTICE_MS = 2000
 const PROMOS_PER_PAGE = 4 // phone only; the desktop table shows every code
 
-export function PromoCodesCard() {
+interface PromoCodesCardProps {
+  refreshKey: number // goes up when a redeem changes a Uses count
+}
+
+export function PromoCodesCard({ refreshKey }: PromoCodesCardProps) {
   const api = usePricingApi()
   const isPhone = useMediaQuery(PHONE_QUERY)
   // Inactive codes are included so staff can switch them back on.
-  const promos = useLoad(() => api.listPromoCodes(), 'promo-codes')
+  const promos = useLoad(() => api.listPromoCodes(), `promo-codes:${refreshKey}`)
   const currency = useLoad(() => api.getBaseCurrency(), 'currency')
   const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)

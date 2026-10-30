@@ -105,6 +105,25 @@ export interface NewPromoCode {
   max_uses?: number
 }
 
+export interface PromoQuote {
+  id: string
+  flight_number: string
+  origin: string
+  destination: string
+  departs_at: string
+  fare_class_code: string
+  seat_type: SeatType | null
+  total_amount: Decimal
+  currency: string
+  quoted_at: string
+  redeemed_at: string | null
+}
+
+export interface PromoQuotes {
+  code: string
+  quotes: PromoQuote[]
+}
+
 export interface PriceSimulationInput {
   base_fare: number
   departure_date: string // YYYY-MM-DD
@@ -207,6 +226,10 @@ export function usePricingApi() {
     listPromoCodes: () => request<PromoCode[]>('/promo-codes?include_inactive=true'),
     createPromoCode: (input: NewPromoCode) => request<PromoCode>('/promo-codes', 'POST', input),
     setPromoCodeActive: (id: string, isActive: boolean) => request<PromoCode>(`/promo-codes/${id}`, 'PATCH', { is_active: isActive }),
+
+    listPromoQuotes: (code: string) => request<PromoQuotes>(`/promo-codes/quotes?code=${encodeURIComponent(code.trim())}`),
+    // Not under /api/staff: Feature 3b calls this route too.
+    redeemFareQuote: async (id: string) => readResponse<unknown>(await fetchWithAuth(`/api/fare-quotes/${id}/redeem`, jsonInit('POST'))),
 
     // Seat fees belong to Member C's backend (staff/seat-fees); this page only edits the amounts.
     listSeatFees: () => request<SeatFee[]>('/seat-fees'),

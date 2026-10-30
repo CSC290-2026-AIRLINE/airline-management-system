@@ -2,6 +2,9 @@
    --pr-* token, so change the token, not a rule. Class names are prefixed pr- to stay out of other features' way. */
 
 .pr-shell {
+  /* shadcn components read these, so they take the pricing colours on these pages only */
+  --primary: #14213d;
+  --ring: #14213d;
   --pr-sidebar: #14213d;
   --pr-sidebar-text: #b7c1d1;
   --pr-sidebar-active: #293d61;

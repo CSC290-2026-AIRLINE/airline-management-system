@@ -51,6 +51,7 @@ describe('PromoCodeService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
+    fare_quote: { findMany: jest.fn() },
   }
 
   beforeEach(() => {
@@ -215,6 +216,64 @@ describe('PromoCodeService', () => {
     expect(db.promo_code.update).toHaveBeenCalledWith({
       where: { id: PROMO_ID },
       data: expect.objectContaining({ deleted_at: expect.any(Date) }),
+    })
+  })
+
+  describe('findQuotes', () => {
+    const quote = {
+      id: 'q1',
+      seat_type: null,
+      total_amount: '121.82',
+      currency: 'THB',
+      quoted_at: new Date('2026-10-30T00:00:00.000Z'),
+      fare_class: { code: 'Y' },
+      flight: { flight_number: 'TG999', dep_at: new Date('2026-11-06T00:00:00.000Z'), route: { origin: 'BKK', destination: 'CNX' } },
+      promo_redemption: [] as { redeemed_at: Date }[],
+    }
+
+    it('finds the code whatever case staff typed, newest quotes first', async () => {
+      db.promo_code.findFirst.mockResolvedValue({ id: PROMO_ID, code: 'SAVE10' })
+      db.fare_quote.findMany.mockResolvedValue([])
+
+      const result = await service.findQuotes(' save10 ')
+
+      expect(db.promo_code.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { code: 'SAVE10', deleted_at: null } }))
+      expect(db.fare_quote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { promo_code_id: PROMO_ID }, orderBy: { quoted_at: 'desc' }, take: 50 }),
+      )
+      expect(result).toEqual({ code: 'SAVE10', quotes: [] })
+    })
+
+    it('flattens each quote and shows when it was redeemed', async () => {
+      const redeemedAt = new Date('2026-10-30T01:00:00.000Z')
+      db.promo_code.findFirst.mockResolvedValue({ id: PROMO_ID, code: 'SAVE10' })
+      db.fare_quote.findMany.mockResolvedValue([quote, { ...quote, id: 'q2', promo_redemption: [{ redeemed_at: redeemedAt }] }])
+
+      const { quotes } = await service.findQuotes('SAVE10')
+
+      expect(quotes[0]).toEqual({
+        id: 'q1',
+        seat_type: null,
+        total_amount: '121.82',
+        currency: 'THB',
+        quoted_at: quote.quoted_at,
+        fare_class_code: 'Y',
+        flight_number: 'TG999',
+        departs_at: quote.flight.dep_at,
+        origin: 'BKK',
+        destination: 'CNX',
+        redeemed_at: null,
+      })
+      expect(quotes[1].redeemed_at).toBe(redeemedAt)
+    })
+
+    it('throws PROMO_CODE_NOT_FOUND for an unknown or deleted code', async () => {
+      db.promo_code.findFirst.mockResolvedValue(null)
+
+      const error = await errorOf(service.findQuotes('NOPE'))
+
+      expect(error).toBeInstanceOf(NotFoundException)
+      expect(error.getResponse()).toMatchObject({ code: 'PROMO_CODE_NOT_FOUND' })
     })
   })
 
