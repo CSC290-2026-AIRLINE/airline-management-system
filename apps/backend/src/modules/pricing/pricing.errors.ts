@@ -39,6 +39,8 @@ export const PricingErrorCode = {
   BAGGAGE_RATE_EXISTS: 'BAGGAGE_RATE_EXISTS',
   BAGGAGE_RATE_INVALID: 'BAGGAGE_RATE_INVALID',
   BAGGAGE_TOO_HEAVY: 'BAGGAGE_TOO_HEAVY',
+  EXPENSE_NOT_FOUND: 'EXPENSE_NOT_FOUND',
+  EXPENSE_FROM_SCHEDULE: 'EXPENSE_FROM_SCHEDULE',
 } as const
 export type PricingErrorCode = (typeof PricingErrorCode)[keyof typeof PricingErrorCode]
 
