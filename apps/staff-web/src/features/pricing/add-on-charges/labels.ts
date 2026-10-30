@@ -62,6 +62,7 @@ export function taxValueLabel(calcType: TaxFeeCalcType, value: string | number, 
   return calcType === 'pct' ? `${Number(value)}%` : `${Number(value)} ${currency}`
 }
 
-export function formatKg(kg: string | number | null): string {
-  return kg === null ? 'No limit' : `${Number(kg)} kg`
+// "BKK–SIN", or "All routes" for a fare class's default rate.
+export function routeLabel(route: { origin: string; destination: string } | null): string {
+  return route ? `${route.origin}–${route.destination}` : 'All routes'
 }

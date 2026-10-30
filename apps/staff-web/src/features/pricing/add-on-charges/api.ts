@@ -51,6 +51,7 @@ export interface BaggageRateInput {
   free_allowance_kg: number
   rate_per_kg: number
   max_bag_kg: number | null
+  is_active?: boolean
 }
 
 export interface BaggageCharge {
@@ -86,7 +87,7 @@ export function useAddOnChargesApi() {
 
     listBaggageRates: () => request<BaggageRate[]>('/staff/baggage-rates'),
     createBaggageRate: (input: BaggageRateInput) => request<BaggageRate>('/staff/baggage-rates', 'POST', input),
-    updateBaggageRate: (id: string, input: BaggageRateInput) => request<BaggageRate>(`/staff/baggage-rates/${id}`, 'PATCH', input),
+    updateBaggageRate: (id: string, input: Partial<BaggageRateInput>) => request<BaggageRate>(`/staff/baggage-rates/${id}`, 'PATCH', input),
     deleteBaggageRate: (id: string) => request<void>(`/staff/baggage-rates/${id}`, 'DELETE'),
     baggageCharge: (fareClassId: string, weightKg: number, routeId?: string) => {
       const params = new URLSearchParams({ fare_class_id: fareClassId, weight_kg: String(weightKg), ...(routeId && { route_id: routeId }) })

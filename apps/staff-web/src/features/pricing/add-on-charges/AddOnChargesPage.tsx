@@ -1,19 +1,16 @@
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { PricingShell } from '../components/PricingShell'
-import { BaggageRatesTab } from './BaggageRatesTab'
 import { SeatFeesTab } from './SeatFeesTab'
 import { ADD_ON_TABS, type AddOnTab } from './tabs'
 import './add-on-charges.css'
 
-const TAB_LABELS: Record<AddOnTab, string> = { 'seat-fees': 'Seat fees', 'baggage-rates': 'Baggage rates' }
+const TAB_LABELS: Record<AddOnTab, string> = { 'seat-fees': 'Seat fees' }
 
 function tabPanel(tab: AddOnTab) {
   switch (tab) {
     case 'seat-fees':
       return <SeatFeesTab />
-    case 'baggage-rates':
-      return <BaggageRatesTab />
     default: {
       const unknown: never = tab
       return unknown
@@ -31,7 +28,7 @@ export function AddOnChargesPage({ tab, onTabChange }: AddOnChargesPageProps) {
   const { isLoading, accessToken } = useAppAuth()
 
   return (
-    <PricingShell title="Add-on Charges" description="Seat fees and overweight baggage rates.">
+    <PricingShell title="Add-on Charges" description="Seat fees for every cabin.">
       <div className="pr-tabs" role="tablist" aria-label="Add-on charge sections">
         {ADD_ON_TABS.map((id) => (
           <button

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type FormEvent } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Checkbox } from '@staff-web/components/ui/checkbox'
@@ -9,10 +9,8 @@ import { ApiError, errorMessage } from '../api'
 import { TAX_FEE_CALC_TYPES, TAX_FEE_KINDS, useAddOnChargesApi, type TaxFee, type TaxFeeInput } from '../add-on-charges/api'
 import { calcTypeLabel, taxKindLabel } from '../add-on-charges/labels'
 import { Dialog } from '../components/Dialog'
-
-const ACTION_BUTTON = 'h-[42px] px-6 text-[13px] font-semibold max-[800px]:h-11'
-const PRIMARY_BUTTON = `bg-(--pr-primary) hover:bg-(--pr-primary-hover) ${ACTION_BUTTON}`
-export const OUTLINE_BUTTON = `border-(--pr-primary) bg-(--pr-surface) text-(--pr-primary) hover:bg-(--pr-tint) ${ACTION_BUTTON}`
+import { DANGER_BUTTON, OUTLINE_BUTTON, PRIMARY_BUTTON } from './charge-styles'
+import { FormField } from './FormField'
 
 interface FormState {
   code: string
@@ -142,7 +140,7 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
         </div>
 
         <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 max-[800px]:grid-cols-2">
-          <Field htmlFor="tax-fee-code" label="Code" error={errors.code}>
+          <FormField htmlFor="tax-fee-code" label="Code" error={errors.code}>
             <Input
               {...fieldProps('code')}
               className="h-[42px]"
@@ -150,8 +148,8 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
               maxLength={20}
               onChange={(e) => set('code', e.target.value.toUpperCase())}
             />
-          </Field>
-          <Field htmlFor="tax-fee-name" label="Name" error={errors.name}>
+          </FormField>
+          <FormField htmlFor="tax-fee-name" label="Name" error={errors.name}>
             <Input
               {...fieldProps('name')}
               className="h-[42px]"
@@ -159,11 +157,11 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
               maxLength={100}
               onChange={(e) => set('name', e.target.value)}
             />
-          </Field>
+          </FormField>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field htmlFor="tax-fee-kind" label="Kind">
+          <FormField htmlFor="tax-fee-kind" label="Kind">
             <NativeSelect
               id="tax-fee-kind"
               className="w-full [&_select]:h-[42px]"
@@ -177,8 +175,8 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </Field>
-          <Field htmlFor="tax-fee-calc_type" label="Calculation">
+          </FormField>
+          <FormField htmlFor="tax-fee-calc_type" label="Calculation">
             <NativeSelect
               id="tax-fee-calc_type"
               className="w-full [&_select]:h-[42px]"
@@ -192,11 +190,11 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </Field>
+          </FormField>
         </div>
 
         {/* Desktop shows the unit in the label, phone inside the field, as in the design. */}
-        <Field
+        <FormField
           htmlFor="tax-fee-value"
           label={
             <>
@@ -220,7 +218,7 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
               {unit}
             </span>
           </span>
-        </Field>
+        </FormField>
 
         <Label className="w-fit text-[13px] leading-[normal] font-normal text-(--pr-primary)">
           <Checkbox
@@ -241,13 +239,7 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
         {/* pr-confirm-actions stacks these on phones, primary on top. */}
         <div className="pr-confirm-actions">
           {taxFee && (
-            <Button
-              type="button"
-              variant="ghost"
-              className={`mr-auto text-(--pr-danger) hover:bg-(--pr-danger-bg) hover:text-(--pr-danger) ${ACTION_BUTTON}`}
-              disabled={busy}
-              onClick={() => void handleRemove()}
-            >
+            <Button type="button" variant="ghost" className={DANGER_BUTTON} disabled={busy} onClick={() => void handleRemove()}>
               Remove
             </Button>
           )}
@@ -260,28 +252,5 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
         </div>
       </form>
     </Dialog>
-  )
-}
-
-interface FieldProps {
-  htmlFor: string
-  label: ReactNode
-  error?: string
-  children: ReactNode
-}
-
-function Field({ htmlFor, label, error, children }: FieldProps) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <Label htmlFor={htmlFor} className="block text-[11px] leading-[normal] font-semibold text-(--pr-muted) uppercase">
-        {label}
-      </Label>
-      {children}
-      {error && (
-        <span id={`${htmlFor}-error`} className="text-xs text-(--pr-danger)">
-          {error}
-        </span>
-      )}
-    </div>
   )
 }

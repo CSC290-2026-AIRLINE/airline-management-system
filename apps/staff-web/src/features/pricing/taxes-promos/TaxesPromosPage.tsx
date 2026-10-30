@@ -1,10 +1,11 @@
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { PricingShell } from '../components/PricingShell'
+import { BaggageRatesCard } from './BaggageRatesCard'
 import { PromoCodesCard } from './PromoCodesCard'
 import { TaxFeesCard } from './TaxFeesCard'
 
-// One page in the design. The currency, baggage and settings cards join here.
+// One page in the design. The currency and settings cards join here.
 export function TaxesPromosPage() {
   // Wait for the session exchange so the first API calls carry a token instead of racing the refresh.
   const { isLoading, accessToken } = useAppAuth()
@@ -24,6 +25,9 @@ export function TaxesPromosPage() {
         <div className="pr-stack">
           <ErrorBoundary>
             <TaxFeesCard />
+          </ErrorBoundary>
+          <ErrorBoundary>
+            <BaggageRatesCard />
           </ErrorBoundary>
           <ErrorBoundary>
             <PromoCodesCard />
