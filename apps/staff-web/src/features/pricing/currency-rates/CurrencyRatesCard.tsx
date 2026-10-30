@@ -104,7 +104,7 @@ export function CurrencyRatesCard() {
       </div>
 
       {/* Phone: one card per currency */}
-      <ul className="grid gap-2.5 min-[801px]:hidden">
+      <ul className="grid gap-2.5 min-[800px]:hidden">
         {list.map((rate) => (
           <li key={rate.currency_code} className="grid gap-1.5 rounded-(--pr-radius-card) border border-(--pr-divider) p-3.5">
             <div className="flex items-baseline justify-between gap-2">
