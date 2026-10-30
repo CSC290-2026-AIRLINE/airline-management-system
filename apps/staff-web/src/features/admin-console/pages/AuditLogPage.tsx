@@ -2,12 +2,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useGetAuditEntry, useListAudit } from '../api/audit'
 import { useAuditLog } from '../hooks/useAuditLog'
-import { usePreviewMode } from '../hooks/usePreviewMode'
-import { previewAudit } from '../preview-data'
 import { FEATURE_NUMBERS, featureLabel } from '../feature-labels'
 import { AdminErrorCard } from '../components/AdminErrorCard'
 import { NoAccessScreen } from '../components/NoAccessScreen'
-import { AdminPreviewBanner } from '../components/AdminPreviewBanner'
 import type { AuditEntry, AuditFilters, AuditPage } from '../types'
 import './AuditLogPage.css'
 
@@ -100,8 +97,7 @@ interface LinkedEntryState {
 
 /**
  * Audit log page. Both access gates live in `routes/_authenticated/admin/route.tsx`, one level up: it owns
- * `RequireStaff` (one `GET /api/me/screens` for all three tabs) and the `?preview=1&denied=1` /
- * `?preview=1&unprovisioned=1` design-review flags. Do not add either back in here.
+ * `RequireStaff` (one `GET /api/me/screens` for all three tabs). Do not add another gate in here.
  *
  * The open row lives in the URL — `/admin/audit-log/$auditId`, the spec's deep link — so an entry can be linked to and
  * closed with Back. The list is paginated, so a linked entry is often not on the page in view; it is then fetched on
@@ -109,7 +105,6 @@ interface LinkedEntryState {
  * to the list with a "not found" banner.
  */
 export function AuditLogPage() {
-  const isPreview = usePreviewMode()
   const listAudit = useListAudit()
   const getAuditEntry = useGetAuditEntry()
   const navigate = useNavigate()
@@ -130,21 +125,13 @@ export function AuditLogPage() {
      them, so this staying false there costs nothing. */
   const [filtersOpen, setFiltersOpen] = useState(false)
 
-  const liveHook = useAuditLog(
-    filters,
-    limit,
-    async (q) => {
-      const res = await listAudit(q)
-      return res
-    },
-    !isPreview,
-  )
-  const livePage: AuditPage | null = liveHook.page
-  const previewPage: AuditPage = previewAudit
-
-  const page: AuditPage | null = isPreview ? previewPage : livePage
-  const loading = !isPreview && liveHook.loading
-  const error = !isPreview ? liveHook.error : null
+  const liveHook = useAuditLog(filters, limit, async (q) => {
+    const res = await listAudit(q)
+    return res
+  })
+  const page: AuditPage | null = liveHook.page
+  const loading = liveHook.loading
+  const error = liveHook.error
 
   /* Linked entry that is not on the page in view. Wait for the page first, so an entry that is on it simply opens in
      place. `linked.id` tracks which id the state belongs to; a new id resets it while rendering (no setState in an
@@ -160,7 +147,7 @@ export function AuditLogPage() {
     let cancelled = false
     ;(async () => {
       try {
-        const entry = isPreview ? (previewAudit.items.find((e) => e.id === expanded) ?? null) : await getAuditEntry(expanded)
+        const entry = await getAuditEntry(expanded)
         if (cancelled) return
         setLinked({ id: expanded, loading: false, entry, notFound: entry === null })
       } catch (e: unknown) {
@@ -176,7 +163,7 @@ export function AuditLogPage() {
     }
     // `getAuditEntry` closes over `fetchWithAuth`, recreated every render; see `useFetchJson`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsFetch, expanded, isPreview])
+  }, [needsFetch, expanded])
 
   /* A wrong link: remember it for the banner and send the URL back to the list. */
   const linkIsBad = !!expanded && linked.id === expanded && !linked.loading && linked.notFound
@@ -264,251 +251,248 @@ export function AuditLogPage() {
     return <AdminErrorCard page="Audit log" error={error} status={statusFromError(error)} onRetry={() => window.location.reload()} />
   }
 
-  const hasPrev = !isPreview && liveHook.hasPrev
+  const hasPrev = liveHook.hasPrev
   const nextPage = () => {
-    if (!isPreview) liveHook.nextPage()
+    liveHook.nextPage()
   }
   const prevPage = () => {
-    if (!isPreview) liveHook.prevPage()
+    liveHook.prevPage()
   }
 
   /* Cursor pagination has no total-count endpoint, so the footer reports the range it can actually prove and marks
      an open end with "+" rather than inventing a number. */
   const pageSize = page?.items.length ?? 0
   const hasMore = page?.has_more ?? false
-  const rowsBefore = isPreview ? 0 : liveHook.rowsBefore
-  const pageIndex = isPreview ? 0 : liveHook.pageIndex
+  const rowsBefore = liveHook.rowsBefore
+  const pageIndex = liveHook.pageIndex
 
   return (
-    <>
-      {isPreview && <AdminPreviewBanner />}
-      <section className="page-body">
-        <header className="audit-header">
-          <h2>Audit log</h2>
-        </header>
+    <section className="page-body">
+      <header className="audit-header">
+        <h2>Audit log</h2>
+      </header>
 
-        {/* Filter row ----------------------------------------------- */}
-        {/* Below 768px the five fields collapse behind this toggle — a phone has no width to lay them out in — and
+      {/* Filter row ----------------------------------------------- */}
+      {/* Below 768px the five fields collapse behind this toggle — a phone has no width to lay them out in — and
             the chip beside it says what is currently narrowing the log. */}
-        <div className="audit-filters-bar">
-          <button
-            type="button"
-            className="btn-ghost audit-filters-toggle"
-            onClick={() => setFiltersOpen((o) => !o)}
-            aria-expanded={filtersOpen}
-          >
-            Filters
-          </button>
-          <span className="audit-filters-chip muted small">{filterSummary}</span>
-        </div>
-        {/* Each control is a labelled stack so the five fields share one baseline, and the unlabelled "Clear
+      <div className="audit-filters-bar">
+        <button
+          type="button"
+          className="btn-ghost audit-filters-toggle"
+          onClick={() => setFiltersOpen((o) => !o)}
+          aria-expanded={filtersOpen}
+        >
+          Filters
+        </button>
+        <span className="audit-filters-chip muted small">{filterSummary}</span>
+      </div>
+      {/* Each control is a labelled stack so the five fields share one baseline, and the unlabelled "Clear
             filters" button lines up with the inputs rather than floating at the top of the row. */}
-        <div className={`audit-filters${filtersOpen ? ' is-open' : ''}`}>
-          <label className="audit-filter">
-            <span className="audit-filter-label">Feature</span>
-            <select
-              className="role-select"
-              value={filters.source_feature ?? ''}
-              onChange={(e) =>
-                setFilters((f) => ({
-                  ...f,
-                  source_feature: e.target.value || undefined,
-                }))
-              }
-            >
-              <option value="">All features</option>
-              {FEATURE_NUMBERS.map((n) => (
-                <option key={n} value={n}>
-                  F{n} · {featureLabel(n)}
-                </option>
-              ))}
+      <div className={`audit-filters${filtersOpen ? ' is-open' : ''}`}>
+        <label className="audit-filter">
+          <span className="audit-filter-label">Feature</span>
+          <select
+            className="role-select"
+            value={filters.source_feature ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                source_feature: e.target.value || undefined,
+              }))
+            }
+          >
+            <option value="">All features</option>
+            {FEATURE_NUMBERS.map((n) => (
+              <option key={n} value={n}>
+                F{n} · {featureLabel(n)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="audit-filter">
+          <span className="audit-filter-label">Actor</span>
+          <select
+            className="role-select"
+            value={filters.actor_type ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                actor_type: (e.target.value || undefined) as AuditFilters['actor_type'],
+              }))
+            }
+          >
+            <option value="">All actors</option>
+            {ACTOR_TYPES.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="audit-filter">
+          <span className="audit-filter-label">Action type</span>
+          <select
+            className="role-select"
+            value={filters.action ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                action: (e.target.value || undefined) as ActionType | undefined,
+              }))
+            }
+          >
+            <option value="">All actions</option>
+            {ACTION_TYPES.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="audit-filter">
+          <span className="audit-filter-label">From</span>
+          <input
+            type="date"
+            value={filters.from ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                from: e.target.value || undefined,
+              }))
+            }
+          />
+        </label>
+        <label className="audit-filter">
+          <span className="audit-filter-label">To</span>
+          <input
+            type="date"
+            value={filters.to ?? ''}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                to: e.target.value || undefined,
+              }))
+            }
+          />
+        </label>
+        <button type="button" className="btn-ghost" onClick={clear}>
+          Clear filters
+        </button>
+      </div>
+
+      {/* Summary line --------------------------------------------- */}
+      <div className="audit-summary">
+        <span className="muted">
+          {summary.entries} entries · {summary.actionTypes} action types
+          {loading ? ' · loading…' : ''}
+        </span>
+        <span className="muted">
+          {summary.actionTypes >= ACTION_TYPES.length
+            ? `All ${ACTION_TYPES.length} audit action types are represented.`
+            : `${summary.actionTypes} of ${ACTION_TYPES.length} audit action types are represented.`}
+        </span>
+      </div>
+      <p className="audit-hint muted small">Tap a row to see before and after values.</p>
+
+      {notFoundId && !expanded && (
+        <div className="audit-notice is-error" role="alert">
+          <strong>Audit entry not found</strong>
+          <span>The link may be old, or the entry ID is wrong. Showing the latest entries instead.</span>
+        </div>
+      )}
+
+      {/* Linked entry that is not on the page in view -------------- */}
+      {expanded && !onPage && linked.id === expanded && (linked.loading || linked.entry) && (
+        <div className="audit-linked" aria-live="polite">
+          <div className="audit-linked-head">
+            <span>
+              {linked.entry ? (
+                <>
+                  Linked entry <span className="mono">#{linked.entry.seq}</span> ·{' '}
+                  <span className={`action-pill ${actionClass(linked.entry.action)}`}>{linked.entry.action.replace(/_/g, ' ')}</span>{' '}
+                  {linked.entry.summary}
+                </>
+              ) : (
+                'Loading linked entry…'
+              )}
+            </span>
+            <button type="button" className="btn-ghost" onClick={() => openEntry(null)}>
+              Close
+            </button>
+          </div>
+          {linked.entry && <EntryDetail e={linked.entry} />}
+        </div>
+      )}
+
+      {/* Table --------------------------------------------------- */}
+      <div className="audit-table-wrap">
+        <table className="audit-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Actor / Role</th>
+              <th>Feature</th>
+              <th>Action</th>
+              <th>Target</th>
+              <th>Summary</th>
+              <th>Time (sim)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {page && page.items.length > 0 ? (
+              page.items.flatMap((e) => {
+                const rows = [renderRow(e)]
+                if (expanded === e.id) {
+                  rows.push(
+                    <tr key={`${e.seq}-detail`} className="detail-row">
+                      <td colSpan={7}>
+                        <EntryDetail e={e} />
+                      </td>
+                    </tr>,
+                  )
+                }
+                return rows
+              })
+            ) : (
+              <tr>
+                <td colSpan={7} className="empty">
+                  {loading ? 'Loading…' : 'No audit entries match these filters.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination ---------------------------------------------- */}
+      <div className="audit-footer">
+        <span className="muted small">
+          {pageSize === 0
+            ? 'No entries'
+            : `Showing ${rowsBefore + 1}–${rowsBefore + pageSize} of ${hasMore ? `${rowsBefore + pageSize}+` : rowsBefore + pageSize} entries`}
+        </span>
+        <div className="audit-pagination">
+          <label>
+            Rows
+            <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
             </select>
           </label>
-          <label className="audit-filter">
-            <span className="audit-filter-label">Actor</span>
-            <select
-              className="role-select"
-              value={filters.actor_type ?? ''}
-              onChange={(e) =>
-                setFilters((f) => ({
-                  ...f,
-                  actor_type: (e.target.value || undefined) as AuditFilters['actor_type'],
-                }))
-              }
-            >
-              <option value="">All actors</option>
-              {ACTOR_TYPES.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="audit-filter">
-            <span className="audit-filter-label">Action type</span>
-            <select
-              className="role-select"
-              value={filters.action ?? ''}
-              onChange={(e) =>
-                setFilters((f) => ({
-                  ...f,
-                  action: (e.target.value || undefined) as ActionType | undefined,
-                }))
-              }
-            >
-              <option value="">All actions</option>
-              {ACTION_TYPES.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="audit-filter">
-            <span className="audit-filter-label">From</span>
-            <input
-              type="date"
-              value={filters.from ?? ''}
-              onChange={(e) =>
-                setFilters((f) => ({
-                  ...f,
-                  from: e.target.value || undefined,
-                }))
-              }
-            />
-          </label>
-          <label className="audit-filter">
-            <span className="audit-filter-label">To</span>
-            <input
-              type="date"
-              value={filters.to ?? ''}
-              onChange={(e) =>
-                setFilters((f) => ({
-                  ...f,
-                  to: e.target.value || undefined,
-                }))
-              }
-            />
-          </label>
-          <button type="button" className="btn-ghost" onClick={clear}>
-            Clear filters
+          <button type="button" className="btn-ghost" disabled={!hasPrev} onClick={() => prevPage()}>
+            Previous
+          </button>
+          <span className="page-of">
+            Page {pageIndex + 1} of {hasMore ? `${pageIndex + 1}+` : pageIndex + 1}
+          </span>
+          <button type="button" className="btn-ghost" disabled={!hasMore} onClick={() => nextPage()}>
+            Next
           </button>
         </div>
+      </div>
 
-        {/* Summary line --------------------------------------------- */}
-        <div className="audit-summary">
-          <span className="muted">
-            {summary.entries} entries · {summary.actionTypes} action types
-            {loading ? ' · loading…' : ''}
-          </span>
-          <span className="muted">
-            {summary.actionTypes >= ACTION_TYPES.length
-              ? `All ${ACTION_TYPES.length} audit action types are represented.`
-              : `${summary.actionTypes} of ${ACTION_TYPES.length} audit action types are represented.`}
-          </span>
-        </div>
-        <p className="audit-hint muted small">Tap a row to see before and after values.</p>
-
-        {notFoundId && !expanded && (
-          <div className="audit-notice is-error" role="alert">
-            <strong>Audit entry not found</strong>
-            <span>The link may be old, or the entry ID is wrong. Showing the latest entries instead.</span>
-          </div>
-        )}
-
-        {/* Linked entry that is not on the page in view -------------- */}
-        {expanded && !onPage && linked.id === expanded && (linked.loading || linked.entry) && (
-          <div className="audit-linked" aria-live="polite">
-            <div className="audit-linked-head">
-              <span>
-                {linked.entry ? (
-                  <>
-                    Linked entry <span className="mono">#{linked.entry.seq}</span> ·{' '}
-                    <span className={`action-pill ${actionClass(linked.entry.action)}`}>{linked.entry.action.replace(/_/g, ' ')}</span>{' '}
-                    {linked.entry.summary}
-                  </>
-                ) : (
-                  'Loading linked entry…'
-                )}
-              </span>
-              <button type="button" className="btn-ghost" onClick={() => openEntry(null)}>
-                Close
-              </button>
-            </div>
-            {linked.entry && <EntryDetail e={linked.entry} />}
-          </div>
-        )}
-
-        {/* Table --------------------------------------------------- */}
-        <div className="audit-table-wrap">
-          <table className="audit-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Actor / Role</th>
-                <th>Feature</th>
-                <th>Action</th>
-                <th>Target</th>
-                <th>Summary</th>
-                <th>Time (sim)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {page && page.items.length > 0 ? (
-                page.items.flatMap((e) => {
-                  const rows = [renderRow(e)]
-                  if (expanded === e.id) {
-                    rows.push(
-                      <tr key={`${e.seq}-detail`} className="detail-row">
-                        <td colSpan={7}>
-                          <EntryDetail e={e} />
-                        </td>
-                      </tr>,
-                    )
-                  }
-                  return rows
-                })
-              ) : (
-                <tr>
-                  <td colSpan={7} className="empty">
-                    {loading ? 'Loading…' : 'No audit entries match these filters.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination ---------------------------------------------- */}
-        <div className="audit-footer">
-          <span className="muted small">
-            {pageSize === 0
-              ? 'No entries'
-              : `Showing ${rowsBefore + 1}–${rowsBefore + pageSize} of ${hasMore ? `${rowsBefore + pageSize}+` : rowsBefore + pageSize} entries`}
-          </span>
-          <div className="audit-pagination">
-            <label>
-              Rows
-              <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-            </label>
-            <button type="button" className="btn-ghost" disabled={!hasPrev} onClick={() => prevPage()}>
-              Previous
-            </button>
-            <span className="page-of">
-              Page {pageIndex + 1} of {hasMore ? `${pageIndex + 1}+` : pageIndex + 1}
-            </span>
-            <button type="button" className="btn-ghost" disabled={!hasMore} onClick={() => nextPage()}>
-              Next
-            </button>
-          </div>
-        </div>
-
-        <p className="audit-footnote muted small">Read only. Entries can’t be edited or deleted. Times use the simulation clock.</p>
-      </section>
-    </>
+      <p className="audit-footnote muted small">Read only. Entries can’t be edited or deleted. Times use the simulation clock.</p>
+    </section>
   )
 }

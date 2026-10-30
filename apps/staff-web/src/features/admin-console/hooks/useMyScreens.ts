@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useFetchJson } from '../api/fetch'
-import { usePreviewMode } from './usePreviewMode'
-import { previewMyScreens } from '../preview-data'
 import type { MyScreensResponse } from '../api/me'
 
 export interface UseMyScreensState {
@@ -14,27 +12,26 @@ export interface UseMyScreensState {
    */
   provisioned: boolean | null
   /** Where the current value came from. `pending` is the brief window before the first fetch resolves. */
-  source: 'live' | 'preview' | 'pending'
+  source: 'live' | 'pending'
 }
 
 /**
  * Loads the codes of every screen the signed-in user can open. Mirrors the established `useRoleAccess` /
- * `useAuditLog` pattern: preview mode never flips mid-session (the `AdminPreviewBanner` reloads the page to toggle
- * it), so the right `source` and initial value come from a lazy `useState` initializer instead of being set inside
- * the effect body — the `react-hooks/set-state-in-effect` rule rejects that.
+ * `useAuditLog` pattern: the right `source` and initial value come from a lazy `useState` initializer rather than
+ * being set inside the effect body — the `react-hooks/set-state-in-effect` rule rejects that.
  */
 export function useMyScreens(): UseMyScreensState {
-  const isPreview = usePreviewMode()
   const fetchJson = useFetchJson()
 
-  const [state, setState] = useState<UseMyScreensState>(() =>
-    isPreview
-      ? { loading: false, error: null, codes: previewMyScreens.screen_codes, provisioned: true, source: 'preview' }
-      : { loading: true, error: null, codes: [], provisioned: null, source: 'pending' },
-  )
+  const [state, setState] = useState<UseMyScreensState>(() => ({
+    loading: true,
+    error: null,
+    codes: [],
+    provisioned: null,
+    source: 'pending',
+  }))
 
   useEffect(() => {
-    if (isPreview) return
     let cancelled = false
     fetchJson<MyScreensResponse>('/api/me/screens')
       .then((d) => {
@@ -58,7 +55,7 @@ export function useMyScreens(): UseMyScreensState {
     }
     // fetchJson closes over the stable AuthProvider.fetchWithAuth; identity changes don't matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPreview])
+  }, [])
 
   return state
 }

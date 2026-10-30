@@ -57,7 +57,7 @@ export function AdminErrorCard({ page, error, status, onRetry }: AdminErrorCardP
             </li>
           </ol>
           <p className="muted small">
-            Tip — append <code>?preview=1</code> to the URL to render the page with sample data while you sort the setup.
+            The admin console reads live data — with the API up and a staff account in place, both tabs fill in.
           </p>
         </div>
 

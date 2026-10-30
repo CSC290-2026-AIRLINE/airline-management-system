@@ -1,6 +1,6 @@
 import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { MyAccessWidget } from './components/MyAccessWidget'
 import './AdminShell.css'
 
@@ -13,14 +13,9 @@ const TABS = [
 ] as const
 
 /**
- * Sidebar + main area + tab bar.
- *
- * `chrome: 'sidebar'` drops the "ADMINISTRATION" heading and the tab bar, leaving the sidebar and the page body. It is
- * what the access-denied card renders inside: the user is staff and landed on a tab their role does not hold, so the
- * workspace's own furniture would be a lie — they are not administrating anything here. The sidebar stays because it
- * still carries the wordmark, the "Administration" link and sign-out.
+ * Sidebar + main area + tab bar. The three tabs are separate routes, so the body comes from `<Outlet/>`.
  */
-export function AdminShell({ chrome = 'full', children }: { chrome?: 'full' | 'sidebar'; children?: ReactNode }) {
+export function AdminShell() {
   const { logout } = useAppAuth()
   const { location } = useRouterState()
   const [collapsed, setCollapsed] = useState(false)
@@ -106,30 +101,24 @@ export function AdminShell({ chrome = 'full', children }: { chrome?: 'full' | 's
       </aside>
 
       <main className="admin-main">
-        {chrome === 'full' && (
-          <>
-            <header className="shell-header">
-              <h1>ADMINISTRATION</h1>
-              <p>Manage staff accounts and roles, choose which screens each role can open, and review the audit log of every feature.</p>
-            </header>
+        <header className="shell-header">
+          <h1>ADMINISTRATION</h1>
+          <p>Manage staff accounts and roles, choose which screens each role can open, and review the audit log of every feature.</p>
+        </header>
 
-            <nav className="tab-bar" aria-label="Admin tabs">
-              {TABS.map((t) => {
-                const active = location.pathname === t.to || location.pathname.startsWith(t.to + '/')
-                return (
-                  <Link key={t.to} to={t.to} className={`tab ${active ? 'is-active' : ''}`}>
-                    {t.label}
-                  </Link>
-                )
-              })}
-            </nav>
-          </>
-        )}
+        <nav className="tab-bar" aria-label="Admin tabs">
+          {TABS.map((t) => {
+            const active = location.pathname === t.to || location.pathname.startsWith(t.to + '/')
+            return (
+              <Link key={t.to} to={t.to} className={`tab ${active ? 'is-active' : ''}`}>
+                {t.label}
+              </Link>
+            )
+          })}
+        </nav>
 
         <div className="page-body-host">
-          {/* Normally the child route renders here. `children` is for the layout route's denial screens, which
-              replace the page but still want the sidebar around them. */}
-          {children ?? <Outlet />}
+          <Outlet />
         </div>
       </main>
     </div>

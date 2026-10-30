@@ -42,9 +42,8 @@ export function RequireStaff({ children, loadingFallback }: RequireStaffProps) {
   const { loading, provisioned } = useScreenAccess()
 
   if (loading) return <>{loadingFallback ?? <p className="muted">Checking your access…</p>}</>
-  /* `RefusalScreen` supplies the chrome above the card, not the card itself — the same card is also rendered by the
-     preview flags in `routes/_authenticated/admin/route.tsx`, and by any feature that gates a single page. Whatever
-     replaces the shell owns the frame. */
+  /* `RefusalScreen` supplies the chrome above the card, not the card itself — whatever replaces the shell owns the
+     frame. */
   if (provisioned === false) {
     return (
       <RefusalScreen>

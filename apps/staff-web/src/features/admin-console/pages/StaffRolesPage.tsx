@@ -2,8 +2,6 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type React
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { StaffApiError, type StaffCreateBody } from '../api/staff'
 import { MIN_REASON_LENGTH, useStaff } from '../hooks/useStaff'
-import { usePreviewMode } from '../hooks/usePreviewMode'
-import { AdminPreviewBanner } from '../components/AdminPreviewBanner'
 import { NoAccessScreen } from '../components/NoAccessScreen'
 import type { RoleSummary, StaffRow } from '../types'
 import './StaffRolesPage.css'
@@ -660,15 +658,13 @@ interface Notice {
  * Staff & roles tab: summary cards, search + role/status filters, the staff table, and the Create / Edit / Activate /
  * Deactivate dialogs. Layout, copy and states follow the F15 design and its detail notes.
  *
- * Access gates live one level up in `routes/_authenticated/admin/route.tsx`, like the other two tabs. With
- * `?preview=1` the page runs on `preview-data.ts` and the dialogs apply the backend's rules locally (see `useStaff`).
+ * Access gates live one level up in `routes/_authenticated/admin/route.tsx`, like the other two tabs.
  *
  * `/admin/staff/$staffId` (the spec's deep link) opens Edit for that account on top of this page; an id that does not
  * exist falls back to the list with a STAFF_NOT_FOUND banner.
  */
 export function StaffRolesPage() {
-  const isPreview = usePreviewMode()
-  const staff = useStaff(isPreview)
+  const staff = useStaff()
   const navigate = useNavigate()
   const { staffId } = useParams({ strict: false })
   /** Role picked in a phone card's dropdown; pre-selected when Edit opens for that account. */
@@ -785,7 +781,6 @@ export function StaffRolesPage() {
 
   return (
     <>
-      {isPreview && <AdminPreviewBanner />}
       <div className="sr-page">
         <div className="sr-stats">
           {[
