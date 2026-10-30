@@ -34,6 +34,8 @@ export function TaxesPromosPage() {
           </ErrorBoundary>
           <ErrorBoundary>
             <RedeemQuoteCard onRedeemed={() => setRedeems((count) => count + 1)} />
+          </ErrorBoundary>
+          <ErrorBoundary>
             <BaggageRatesCard />
           </ErrorBoundary>
         </div>
