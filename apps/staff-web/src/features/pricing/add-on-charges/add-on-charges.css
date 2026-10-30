@@ -1,0 +1,76 @@
+/* Add-on charges pages. Uses the --pr-* tokens from pricing.css; only adds what the seat grid, grouped table and
+   charge preview need. */
+
+.pr-seat-grid tbody th {
+  padding: 11px 14px;
+  border-top: 1px solid var(--pr-divider);
+  color: var(--pr-ink);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pr-seat-grid td {
+  min-width: 150px;
+}
+
+.pr-cell-button {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px dashed transparent;
+  border-radius: var(--pr-radius);
+  background: none;
+  color: var(--pr-ink);
+  font: 600 var(--pr-text-body) var(--pr-font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pr-cell-button:hover {
+  border-color: var(--pr-border);
+  background: var(--pr-tint);
+}
+
+.pr-cell-button:focus-visible {
+  outline: none;
+  box-shadow: var(--pr-focus);
+}
+
+.pr-cell-button.is-empty {
+  color: var(--pr-muted);
+  font-weight: 400;
+}
+
+.pr-cell-form {
+  display: grid;
+  gap: 6px;
+}
+
+.pr-cell-form .pr-row-actions {
+  justify-content: flex-start;
+}
+
+.pr-table .pr-group-row th {
+  border-top: 1px solid var(--pr-divider);
+  background: var(--pr-page);
+  color: var(--pr-ink);
+  font-size: var(--pr-text-body);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.pr-try-charge {
+  margin-top: 20px;
+}
+
+.pr-charge-result {
+  display: grid;
+  gap: 2px;
+  margin: 12px 0 0;
+}
+
+.pr-charge-result strong {
+  color: var(--pr-ink);
+  font-size: var(--pr-text-title);
+}
