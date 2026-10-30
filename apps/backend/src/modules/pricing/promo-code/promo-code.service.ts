@@ -19,6 +19,9 @@ function toDate(value: string | undefined): Date | undefined {
   return value === undefined ? undefined : new Date(value)
 }
 
+// The newest quotes are the ones staff are looking for; a busy code can have thousands.
+const QUOTE_LIST_LIMIT = 50
+
 function numberOrNull(value: { toString(): string } | null): number | null {
   return value === null ? null : Number(value)
 }
@@ -92,6 +95,43 @@ export class PromoCodeService {
     await this.findOne(id)
     const now = new Date()
     await this.db.promo_code.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+  }
+
+  // The quotes carrying a code, for the Redeem card: staff know the code, never the quote id. `flight` and `route` belong
+  // to Feature 2 and are only read here.
+  async findQuotes(code: string) {
+    const typed = code.trim().toUpperCase()
+    const promo = await this.db.promo_code.findFirst({ where: { code: typed, deleted_at: null }, select: { id: true, code: true } })
+    if (!promo) {
+      throw new NotFoundException(pricingError(PricingErrorCode.PROMO_CODE_NOT_FOUND, `Promo code ${typed} not found`))
+    }
+    const quotes = await this.db.fare_quote.findMany({
+      where: { promo_code_id: promo.id },
+      orderBy: { quoted_at: 'desc' },
+      take: QUOTE_LIST_LIMIT,
+      select: {
+        id: true,
+        seat_type: true,
+        total_amount: true,
+        currency: true,
+        quoted_at: true,
+        fare_class: { select: { code: true } },
+        flight: { select: { flight_number: true, dep_at: true, route: { select: { origin: true, destination: true } } } },
+        promo_redemption: { select: { redeemed_at: true } },
+      },
+    })
+    return {
+      code: promo.code,
+      quotes: quotes.map(({ fare_class, flight, promo_redemption, ...quote }) => ({
+        ...quote,
+        fare_class_code: fare_class.code,
+        flight_number: flight.flight_number,
+        departs_at: flight.dep_at,
+        origin: flight.route.origin,
+        destination: flight.route.destination,
+        redeemed_at: promo_redemption[0]?.redeemed_at ?? null,
+      })),
+    }
   }
 
   // Used by fare quotes. Returns the live promo for a code typed at checkout, or throws PROMO_INVALID with the reason.

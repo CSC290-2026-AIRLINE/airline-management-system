@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
 import { CreateFareQuoteDto } from './dto/create-fare-quote.dto'
 import { QuoteFeeDto } from './dto/quote-fee.dto'
 import { FareQuoteService } from './fare-quote.service'
@@ -16,6 +16,13 @@ export class FareQuoteController {
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.fareQuoteService.findOne(id)
+  }
+
+  // Feature 3b, on booking confirmed. Retrying is safe.
+  @Post(':id/redeem')
+  @HttpCode(200)
+  redeem(@Param('id', ParseUUIDPipe) id: string) {
+    return this.fareQuoteService.redeem(id)
   }
 
   @Get(':id/fee')

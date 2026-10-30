@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
 import { CreatePromoCodeDto } from './dto/create-promo-code.dto'
+import { PromoQuotesDto } from './dto/promo-quotes.dto'
 import { UpdatePromoCodeDto } from './dto/update-promo-code.dto'
 import { PromoCodeService } from './promo-code.service'
 
@@ -10,6 +11,12 @@ export class PromoCodeController {
   @Get()
   findAll(@Query('include_inactive') includeInactive?: string) {
     return this.promoCodeService.findAll(includeInactive === 'true')
+  }
+
+  // Declared before :id, or Nest would read "quotes" as an id.
+  @Get('quotes')
+  findQuotes(@Query() query: PromoQuotesDto) {
+    return this.promoCodeService.findQuotes(query.code)
   }
 
   @Get(':id')
