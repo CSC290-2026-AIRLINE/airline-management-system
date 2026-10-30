@@ -4,40 +4,40 @@
 .pr-shell {
   --pr-sidebar: #14213d;
   --pr-sidebar-text: #b7c1d1;
-  --pr-sidebar-active: #22365a;
-  --pr-page: #f5f7fa;
+  --pr-sidebar-active: #293d61;
+  --pr-page: #f7f9fc;
   --pr-surface: #ffffff;
   --pr-ink: #0a1424;
   --pr-text: #1e293b;
   --pr-muted: #677287;
   --pr-border: #cbd5e1;
   --pr-divider: #e2e8f0;
-  --pr-head: #eef2f6;
+  --pr-head: #e8edf5;
   --pr-primary: #14213d; /* main brand colour: buttons, active tab, focus, phone top bar */
   --pr-primary-hover: #22365a;
-  --pr-selected: #e8ebf2;
+  --pr-selected: #eef3ff;
   --pr-tint: #f0f2f7;
   --pr-danger: #b42318;
   --pr-danger-bg: #fdecec;
+  --pr-danger-strong: #db1f29; /* Remove fare class / Remove rule buttons */
   --pr-inactive: #9b3b34; /* muted red for the Inactive badge */
   --pr-inactive-bg: #f9e6e4;
-  --pr-warn: #8a5300; /* amber warning box in confirmations */
-  --pr-warn-bg: #fff4d6;
-  --pr-warn-border: #f5dc9a;
+  --pr-warn: #b86e08; /* amber warning box in confirmations */
+  --pr-warn-bg: #fff0c7;
   --pr-good: #1f7a4d;
   --pr-good-bg: #dcf5e6;
   --pr-highlight: #eef3ff; /* row just added or saved */
   --pr-focus: 0 0 0 3px rgb(20 33 61 / 20%);
-  --pr-shadow: 0 4px 9px rgb(0 0 0 / 25%);
-  /* Phone frames: yellow brand bar and tags */
-  --pr-accent: #f2a800;
-  --pr-tag-dark: #455473;
-  --pr-tag-yellow: #fff1c7;
+  --pr-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+  --pr-accent: #f2a800; /* yellow brand bar */
 
   --pr-radius-xs: 2px;
   --pr-radius-sm: 4px;
   --pr-radius: 6px;
   --pr-radius-lg: 8px;
+  --pr-radius-field: 10px;
+  --pr-radius-card: 12px;
+  --pr-radius-dialog: 14px;
 
   --pr-font: 'Inter', system-ui, 'Segoe UI', sans-serif;
   --pr-font-mono: var(--pr-font); /* codes like Y or BKK also use Inter */
@@ -46,11 +46,13 @@
   --pr-text-small: 12px;
   --pr-text-body: 13px;
   --pr-text-label: 14px;
-  --pr-text-title: 22px;
+  --pr-text-title: 36px;
+  --pr-text-subtitle: 16px;
+  --pr-text-card-title: 20px;
   --pr-text-brand: 40px; /* Flython logo on desktop; phones use --pr-text-sheet-title */
-  --pr-text-sheet-title: 18px;
-  --pr-text-page-title: 26px;
-  --pr-topbar: 60px; /* phone top bar height; the full-screen menu starts below it */
+  --pr-text-sheet-title: 22px; /* Flython logo on phones */
+  --pr-text-page-title: 27px;
+  --pr-topbar: 72px; /* phone top bar height; the full-screen menu starts below it */
 
   /* The app's global #root is a centred 1126px column; the staff shell takes the whole viewport instead. */
   position: fixed;
@@ -78,7 +80,7 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 24px 12px;
+  padding: 29px 22px 24px;
   background: var(--pr-sidebar);
   color: var(--pr-sidebar-text);
 }
@@ -94,14 +96,13 @@
   display: grid;
   gap: 4px;
   margin-top: auto;
-  padding: 16px 10px 0;
-  border-top: 1px solid rgb(255 255 255 / 12%);
+  padding: 16px 12px 0;
 }
 
 .pr-account strong {
   overflow: hidden;
   color: #fff;
-  font-size: var(--pr-text-label);
+  font-size: 22px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -109,7 +110,7 @@
 
 .pr-account span {
   overflow: hidden;
-  font-size: var(--pr-text-caption);
+  font-size: var(--pr-text-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -117,11 +118,11 @@
 .pr-sign-out {
   justify-self: start;
   margin-top: 8px;
-  padding: 4px 0;
+  padding: 8px 0;
   border: 0;
   background: none;
   color: #fff;
-  font: 500 var(--pr-text-body) var(--pr-font);
+  font: 500 var(--pr-text-label) var(--pr-font);
   cursor: pointer;
 }
 
@@ -141,31 +142,33 @@
 
 .pr-brand {
   display: grid;
-  gap: 2px;
-  padding: 0 10px 24px;
+  padding: 0 6px 24px;
 }
 
 .pr-brand strong {
   color: #fff;
   font-family: var(--pr-font-brand);
   font-size: var(--pr-text-brand);
-  font-weight: 700;
+  font-weight: 900;
   line-height: 1.1;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 /* Short yellow bar under the logo */
 .pr-brand strong::after {
   content: '';
   display: block;
-  width: 40px;
-  height: 3px;
-  margin: 8px 0 6px;
+  width: 52px;
+  height: 4px;
+  margin: 6px 0 10px;
   border-radius: 2px;
   background: var(--pr-accent);
 }
 
 .pr-brand span {
-  font-size: var(--pr-text-label); /* 14px; hidden on phones */
+  font-size: var(--pr-text-small);
+  text-transform: uppercase;
 }
 
 .pr-nav-group + .pr-nav-group {
@@ -174,8 +177,9 @@
 
 .pr-nav-heading {
   margin: 0 0 8px;
-  padding: 0 10px;
+  padding: 0 12px;
   font-size: var(--pr-text-caption);
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -190,10 +194,12 @@
 
 .pr-nav-item {
   display: block;
-  padding: 9px 10px;
-  border-radius: var(--pr-radius);
+  padding: 8px 12px;
+  border-radius: var(--pr-radius-lg);
   color: #fff;
-  font-size: var(--pr-text-body);
+  font-size: var(--pr-text-label);
+  font-weight: 500;
+  line-height: 20px;
   text-decoration: none;
 }
 
@@ -203,7 +209,6 @@ a.pr-nav-item:hover {
 
 .pr-nav-item.is-active {
   background: var(--pr-sidebar-active);
-  font-weight: 600;
 }
 
 .pr-nav-item.is-disabled {
@@ -219,18 +224,22 @@ a.pr-nav-item:hover {
 
 /* Main area -------------------------------------------------------------------------------------- */
 
+.pr-main > * {
+  max-width: 997px;
+}
+
 .pr-main {
   overflow-y: auto;
-  padding: 28px 24px 40px;
+  padding: 24px 63px 40px;
 }
 
 .pr-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .pr-title {
@@ -238,8 +247,9 @@ a.pr-nav-item:hover {
   color: var(--pr-ink);
   font-family: var(--pr-font);
   font-size: var(--pr-text-title);
-  font-weight: 600;
+  font-weight: 800;
   letter-spacing: normal;
+  line-height: 1.2;
 }
 
 .pr-subtitle,
@@ -247,14 +257,22 @@ a.pr-nav-item:hover {
   color: var(--pr-muted);
 }
 
-.pr-sim-chip {
-  padding: 6px 10px;
-  border: 1px solid var(--pr-border);
-  border-radius: var(--pr-radius-sm);
-  background: var(--pr-surface);
-  color: var(--pr-muted);
-  font: var(--pr-text-small) var(--pr-font-mono);
-  white-space: nowrap;
+.pr-subtitle {
+  max-width: 700px;
+  margin: 0;
+  font-size: var(--pr-text-subtitle);
+}
+
+.pr-muted {
+  margin: 0;
+}
+
+.pr-tabs .pr-button {
+  padding: 9px 18px;
+}
+
+.pr-tabs .pr-button.is-outline {
+  border-color: var(--pr-border);
 }
 
 .pr-tabs {
@@ -271,34 +289,28 @@ a.pr-nav-item:hover {
 }
 
 .pr-split.has-editor {
-  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(0, 1fr) 380px;
 }
 
 /* Cards and tables ------------------------------------------------------------------------------- */
 
 .pr-card {
-  border: 1px solid var(--pr-divider);
-  border-radius: var(--pr-radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--pr-border);
+  border-radius: var(--pr-radius-card);
   background: var(--pr-surface);
 }
 
-.pr-card-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--pr-divider);
-}
-
 .pr-card-footer {
-  padding: 12px 14px;
-  border-top: 1px solid var(--pr-divider);
+  margin: 0;
 }
 
 .pr-table-wrap {
   overflow-x: auto;
+  border: 1px solid var(--pr-border);
 }
 
 .pr-table {
@@ -307,21 +319,28 @@ a.pr-nav-item:hover {
 }
 
 .pr-table th {
-  padding: 12px 14px;
+  height: 40px;
+  padding: 0 12px;
   background: var(--pr-head);
-  color: var(--pr-text);
+  color: var(--pr-primary);
   font-size: var(--pr-text-caption);
-  font-weight: 500;
-  letter-spacing: 0.06em;
+  font-weight: 600;
   text-align: left;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .pr-table td {
-  padding: 11px 14px;
-  border-top: 1px solid var(--pr-divider);
+  height: 56px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--pr-divider);
+  color: var(--pr-primary);
   vertical-align: middle;
+}
+
+.pr-table th:first-child,
+.pr-table td:first-child {
+  padding-left: 16px;
 }
 
 .pr-table tr.is-clickable {
@@ -334,7 +353,7 @@ a.pr-nav-item:hover {
 }
 
 .pr-table tr.is-selected td:first-child {
-  box-shadow: inset 3px 0 0 var(--pr-primary-hover);
+  box-shadow: inset 3px 0 0 var(--pr-primary);
 }
 
 .pr-table tr.is-clickable:focus-visible {
@@ -348,7 +367,7 @@ a.pr-nav-item:hover {
 
 .pr-mono {
   font-family: var(--pr-font-mono);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .pr-pill {
@@ -376,7 +395,6 @@ a.pr-nav-item:hover {
 }
 
 .pr-callout {
-  margin: 12px 14px;
   padding: 10px 12px;
   border-radius: var(--pr-radius);
 }
@@ -385,10 +403,6 @@ a.pr-nav-item:hover {
   border: 1px solid var(--pr-danger);
   background: var(--pr-danger-bg);
   color: var(--pr-danger);
-}
-
-.pr-editor .pr-callout {
-  margin: 0 0 12px;
 }
 
 /* Success banner above a list: fades in, then out just before FareClassesTab removes it (NOTICE_MS = 2s). */
@@ -447,10 +461,9 @@ a.pr-nav-item:hover {
 /* Buttons ---------------------------------------------------------------------------------------- */
 
 .pr-button {
-  min-height: 34px;
-  padding: 7px 14px;
+  padding: 12px 24px;
   border: 1px solid transparent;
-  border-radius: var(--pr-radius);
+  border-radius: var(--pr-radius-lg);
   font: 600 var(--pr-text-body) var(--pr-font);
   cursor: pointer;
 }
@@ -477,24 +490,19 @@ a.pr-nav-item:hover {
 }
 
 .pr-button.is-outline {
-  border-color: var(--pr-border);
+  border-color: var(--pr-primary);
   background: var(--pr-surface);
-  color: var(--pr-ink);
+  color: var(--pr-primary);
 }
 
 .pr-button.is-outline:not(:disabled):hover {
   background: var(--pr-tint);
 }
 
-.pr-card-footer .pr-button.is-outline {
-  border-color: var(--pr-primary);
-  color: var(--pr-primary-hover);
-}
-
 .pr-button.is-danger {
-  border-color: var(--pr-danger);
+  border-color: var(--pr-danger-strong);
   background: var(--pr-surface);
-  color: var(--pr-danger);
+  color: var(--pr-danger-strong);
 }
 
 .pr-button.is-danger:not(:disabled):hover {
@@ -508,15 +516,29 @@ a.pr-nav-item:hover {
 }
 
 .pr-icon-button {
-  width: 26px;
-  height: 26px;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   border: 1px solid var(--pr-border);
-  border-radius: var(--pr-radius-sm);
+  border-radius: var(--pr-radius);
   background: var(--pr-surface);
   color: var(--pr-ink);
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
+}
+
+.pr-icon-button.is-plain {
+  border: 0;
+  background: none;
+  color: var(--pr-muted);
+}
+
+.pr-add-button {
+  align-self: flex-start;
 }
 
 .pr-link-button {
@@ -533,37 +555,35 @@ a.pr-nav-item:hover {
 /* Forms ------------------------------------------------------------------------------------------ */
 
 .pr-editor {
-  padding: 16px 18px 18px;
+  padding: 20px;
 }
 
 .pr-editor-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .pr-eyebrow {
   margin: 0 0 2px;
   color: var(--pr-muted);
   font-size: var(--pr-text-caption);
-  letter-spacing: 0.06em;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
 .pr-editor-title {
   margin: 0;
-  color: var(--pr-ink);
-  font-family: var(--pr-font);
-  font-size: var(--pr-text-label);
-  font-weight: 600;
+  color: var(--pr-primary);
+  font: 700 var(--pr-text-card-title) / 1.25 var(--pr-font);
   letter-spacing: normal;
 }
 
 .pr-field {
   display: grid;
-  gap: 4px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 14px;
 }
 
 .pr-field.is-inline {
@@ -574,19 +594,20 @@ a.pr-nav-item:hover {
 }
 
 .pr-field label {
-  color: var(--pr-text);
-  font-size: var(--pr-text-small);
+  color: var(--pr-muted);
+  font-size: var(--pr-text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .pr-shell input:not([type='checkbox']),
 .pr-shell select {
   width: 100%;
-  min-height: 32px;
-  padding: 6px 10px;
+  padding: 12px 14px;
   border: 1px solid var(--pr-border);
-  border-radius: var(--pr-radius);
+  border-radius: var(--pr-radius-field);
   background: var(--pr-surface);
-  color: var(--pr-ink);
+  color: var(--pr-primary);
   font: var(--pr-text-body) var(--pr-font);
 }
 
@@ -613,8 +634,8 @@ a.pr-nav-item:hover {
 }
 
 .pr-shell input[type='checkbox'] {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   margin: 0;
   accent-color: var(--pr-primary);
 }
@@ -629,7 +650,7 @@ a.pr-nav-item:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 18px;
+  gap: 24px;
   margin-bottom: 14px;
 }
 
@@ -638,12 +659,24 @@ a.pr-nav-item:hover {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  color: var(--pr-primary);
   font-size: var(--pr-text-body);
-  font-weight: 500;
 }
 
 .pr-toggle {
+  flex: none;
   margin: 0;
+}
+
+/* Add pop-up: a short code box beside the name */
+.pr-sheet .pr-fee-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pr-code-name-row {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 12px;
 }
 
 .pr-fee-grid {
@@ -654,44 +687,47 @@ a.pr-nav-item:hover {
 
 .pr-help {
   margin: 0 0 14px;
-  color: var(--pr-primary-hover);
-  font-size: var(--pr-text-caption);
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
 }
 
-.pr-actions,
-.pr-row-actions {
+/* Side panel: Save takes the spare width, Remove keeps its text width */
+.pr-actions .pr-button.is-primary {
+  flex: 1;
+}
+
+.pr-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.pr-row-actions {
-  gap: 6px;
-  justify-content: flex-end;
+.pr-table .pr-row-actions {
+  text-align: right;
 }
 
-/* Base fares grid ------------------------------------------------------------------------------- */
+/* Card heading and base fares grid ---------------------------------------------------------------- */
 
 .pr-card-head {
-  padding: 16px 16px 12px;
+  padding: 0;
+}
+
+.pr-card-head.has-action {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .pr-card-head .pr-card-title {
-  margin: 0 0 4px;
-  color: var(--pr-ink);
-  font: 700 18px / 1.2 var(--pr-font);
+  margin: 0 0 2px;
+  color: var(--pr-primary);
+  font: 700 var(--pr-text-card-title) / 1.25 var(--pr-font);
 }
 
 .pr-card-head .pr-muted {
   margin: 0;
-  font-size: var(--pr-text-small);
-}
-
-.pr-matrix-body {
-  margin: 0 16px;
-  border: 1px solid var(--pr-divider);
-  border-radius: var(--pr-radius);
-  overflow: hidden;
+  font-size: var(--pr-text-body);
 }
 
 .pr-matrix th,
@@ -700,11 +736,13 @@ a.pr-nav-item:hover {
 }
 
 .pr-matrix tbody th {
-  padding: 11px 14px;
-  border-top: 1px solid var(--pr-divider);
+  height: 60px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--pr-divider);
   background: var(--pr-surface);
   font-weight: 400;
   text-align: left;
+  text-transform: none;
 }
 
 /* The route column stays put while the fare class columns scroll */
@@ -715,14 +753,19 @@ a.pr-nav-item:hover {
   z-index: 1;
 }
 
+.pr-matrix td {
+  height: 60px;
+}
+
 .pr-matrix-route strong,
 .pr-matrix-route span {
   display: block;
 }
 
 .pr-matrix-route strong {
-  color: var(--pr-ink);
+  color: var(--pr-primary);
   font-size: var(--pr-text-body);
+  font-weight: 600;
 }
 
 .pr-matrix-route span {
@@ -730,10 +773,13 @@ a.pr-nav-item:hover {
   font-size: var(--pr-text-caption);
 }
 
-.pr-shell .pr-matrix-input {
-  width: 84px;
-  text-align: right;
+.pr-shell input.pr-matrix-input {
+  width: 88px;
+  padding: 7px 10px;
+  border-radius: var(--pr-radius-lg);
   font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  text-align: right;
 }
 
 .pr-shell input.is-changed:not([aria-invalid='true']) {
@@ -752,30 +798,20 @@ a.pr-nav-item:hover {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 4px;
-  padding: 14px 16px 16px;
-  border-top: 0;
 }
 
 .pr-matrix-footer .pr-muted {
-  margin: 0;
   font-size: var(--pr-text-small);
-}
-
-.pr-matrix-footer .pr-button.is-outline {
-  border-color: var(--pr-primary);
-  color: var(--pr-primary);
 }
 
 /* Labelled amount field with the currency inside (phone base fares, seat fees) */
 .pr-fare-label {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   overflow: hidden;
-  color: var(--pr-text);
+  color: var(--pr-muted);
   font-size: var(--pr-text-caption);
   font-weight: 600;
-  letter-spacing: 0.04em;
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
@@ -786,7 +822,7 @@ a.pr-nav-item:hover {
   display: block;
 }
 
-.pr-shell .pr-fare-input {
+.pr-shell input.pr-fare-input {
   width: 100%;
   min-height: 44px;
   padding-right: 48px;
@@ -811,7 +847,11 @@ a.pr-nav-item:hover {
 }
 
 .pr-card-tabs {
-  margin: 4px 16px 12px;
+  margin: 0;
+}
+
+.pr-rules-table td {
+  height: 52px;
 }
 
 .pr-priority {
@@ -828,14 +868,15 @@ a.pr-nav-item:hover {
 .pr-step-button {
   display: inline-grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: 1px solid var(--pr-border);
   border-radius: var(--pr-radius-sm);
   background: var(--pr-surface);
-  color: var(--pr-ink);
-  font-size: 12px;
+  color: var(--pr-primary);
+  font-size: 11px;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -844,7 +885,7 @@ a.pr-nav-item:hover {
 }
 
 .pr-step-button:disabled {
-  color: var(--pr-border);
+  color: var(--pr-sidebar-text);
   cursor: not-allowed;
 }
 
@@ -855,7 +896,7 @@ a.pr-nav-item:hover {
 }
 
 .pr-adjust {
-  color: var(--pr-ink);
+  color: var(--pr-primary);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -869,6 +910,7 @@ a.pr-nav-item:hover {
   border: 0;
   border-radius: 999px;
   background: var(--pr-border);
+  vertical-align: middle;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -901,6 +943,7 @@ a.pr-nav-item:hover {
 .pr-link-button.is-danger {
   color: var(--pr-danger);
   font-size: var(--pr-text-small);
+  text-decoration: none;
 }
 
 .pr-link-button:disabled {
@@ -911,13 +954,10 @@ a.pr-nav-item:hover {
 .pr-rules-footer {
   display: grid;
   justify-items: start;
-  gap: 12px;
-  padding: 14px 16px 16px;
-  border-top: 0;
+  gap: 14px;
 }
 
 .pr-rules-footer .pr-muted {
-  margin: 0;
   font-size: var(--pr-text-small);
 }
 
@@ -925,7 +965,87 @@ a.pr-nav-item:hover {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px 16px;
-  padding: 0 16px;
+}
+
+/* Price simulator: beside the rules on desktop, its own page on a phone */
+.pr-rules-layout.has-simulator {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 377px;
+  align-items: start;
+  gap: 20px;
+}
+
+.pr-sim-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pr-card > .pr-sim-row .pr-field,
+.pr-card > .pr-field {
+  margin: 0;
+}
+
+.pr-shell input.pr-fare-input[aria-invalid='true'] {
+  border-color: var(--pr-danger);
+}
+
+.pr-sim-note {
+  margin: 0;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+}
+
+.pr-sim-lead {
+  margin: 0 0 14px;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-label);
+}
+
+.pr-sim-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pr-sim-lines li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--pr-divider);
+  color: var(--pr-primary);
+}
+
+.pr-sim-lines small {
+  margin-left: 6px;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-caption);
+}
+
+.pr-sim-lines strong {
+  flex: none;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-sim-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: var(--pr-radius-lg);
+  background: var(--pr-head);
+  color: var(--pr-primary);
+  font-weight: 600;
+}
+
+.pr-sim-total strong {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -946,29 +1066,8 @@ a.pr-nav-item:hover {
 
 /* Phone-only pieces (hidden on desktop) ---------------------------------------------------------- */
 
-.pr-menu-button,
-.pr-tags,
-.pr-card-intro {
+.pr-menu-button {
   display: none;
-}
-
-.pr-tag {
-  padding: 2px 8px;
-  border-radius: var(--pr-radius-xs);
-  font-size: var(--pr-text-caption);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.pr-tag.is-dark {
-  background: var(--pr-tag-dark);
-  color: #fff;
-}
-
-.pr-tag.is-yellow {
-  background: var(--pr-tag-yellow);
-  color: var(--pr-ink);
 }
 
 .pr-back-link {
@@ -976,8 +1075,8 @@ a.pr-nav-item:hover {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--pr-ink);
-  font: var(--pr-text-body) var(--pr-font);
+  color: var(--pr-muted);
+  font: 600 var(--pr-text-label) var(--pr-font);
   cursor: pointer;
 }
 
@@ -995,17 +1094,13 @@ a.pr-nav-item:hover {
   letter-spacing: normal;
 }
 
-.pr-editor-title.is-sheet {
-  font-size: var(--pr-text-sheet-title);
-}
-
 /* Fare class cards (phone list) */
 
 .pr-class-cards {
   display: grid;
   gap: 10px;
   margin: 0;
-  padding: 0 14px;
+  padding: 0;
   list-style: none;
 }
 
@@ -1013,11 +1108,11 @@ a.pr-nav-item:hover {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px 12px;
+  gap: 8px 10px;
   width: 100%;
   padding: 12px;
   border: 1px solid var(--pr-divider);
-  border-radius: var(--pr-radius-lg);
+  border-radius: var(--pr-radius-field);
   background: var(--pr-surface);
   color: var(--pr-text);
   font: inherit;
@@ -1038,12 +1133,12 @@ a.pr-nav-item:hover {
 .pr-code-badge {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--pr-radius);
-  background: var(--pr-head);
-  color: var(--pr-ink);
-  font-family: var(--pr-font-mono);
+  width: 34px;
+  height: 34px;
+  border-radius: var(--pr-radius-lg);
+  background: #eef2f7;
+  color: var(--pr-primary);
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -1052,7 +1147,8 @@ a.pr-nav-item:hover {
 }
 
 .pr-class-card-name strong {
-  color: var(--pr-ink);
+  color: var(--pr-primary);
+  font-size: var(--pr-text-label);
   font-weight: 600;
 }
 
@@ -1067,11 +1163,16 @@ a.pr-nav-item:hover {
   font-size: 20px;
 }
 
+.pr-class-card-meta span + span::before {
+  content: '·';
+  margin-right: 8px;
+}
+
 .pr-class-card-meta {
   display: flex;
   flex-wrap: wrap;
   grid-column: 1 / -1;
-  gap: 4px 14px;
+  gap: 4px 8px;
 }
 
 /* Add dialog: a centred modal, and a bottom sheet on phones */
@@ -1079,20 +1180,22 @@ a.pr-nav-item:hover {
 .pr-sheet {
   width: min(440px, calc(100% - 32px));
   max-height: calc(100% - 32px);
+  /* Tailwind's reset zeroes margins, which would pin a native <dialog> to the top-left corner */
+  margin: auto;
   padding: 0;
   border: 0;
-  border-radius: var(--pr-radius-lg);
+  border-radius: var(--pr-radius-dialog);
   background: var(--pr-surface);
   color: var(--pr-text);
   box-shadow: var(--pr-shadow);
 }
 
 .pr-sheet::backdrop {
-  background: rgb(10 20 36 / 45%);
+  background: rgb(16 37 68 / 55%);
 }
 
 .pr-sheet .pr-editor {
-  padding: 16px;
+  padding: 24px;
 }
 
 .pr-sheet-handle {
@@ -1102,7 +1205,11 @@ a.pr-nav-item:hover {
 /* Small centred confirmation, e.g. "Remove rule H-7?" */
 .pr-sheet.pr-confirm {
   width: min(480px, calc(100% - 32px));
-  padding: 20px;
+  padding: 24px;
+}
+
+.pr-sheet.pr-form-sheet {
+  width: min(520px, calc(100% - 32px));
 }
 
 .pr-confirm-head {
@@ -1115,17 +1222,16 @@ a.pr-nav-item:hover {
 
 .pr-confirm-head h2 {
   margin: 0;
-  color: var(--pr-ink);
-  font: 700 20px / 1.25 var(--pr-font);
+  color: var(--pr-primary);
+  font: 700 var(--pr-text-card-title) / 1.25 var(--pr-font);
 }
 
 .pr-warning {
   display: grid;
   gap: 4px;
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border: 1px solid var(--pr-warn-border);
-  border-radius: var(--pr-radius);
+  margin-bottom: 16px;
+  padding: 14px;
+  border-radius: var(--pr-radius-field);
   background: var(--pr-warn-bg);
   color: var(--pr-warn);
   font-size: var(--pr-text-small);
@@ -1137,16 +1243,17 @@ a.pr-nav-item:hover {
 
 .pr-confirm-summary {
   display: grid;
-  gap: 4px;
-  margin-bottom: 20px;
-  padding: 14px 16px;
-  border: 1px solid var(--pr-divider);
-  border-radius: var(--pr-radius);
-  background: var(--pr-page);
+  gap: 2px;
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid var(--pr-border);
+  border-radius: var(--pr-radius-field);
+  background: #f5f7fa;
 }
 
 .pr-confirm-summary strong {
-  color: var(--pr-ink);
+  color: var(--pr-primary);
+  font-weight: 600;
 }
 
 .pr-confirm-summary span {
@@ -1166,7 +1273,6 @@ a.pr-nav-item:hover {
 
 .pr-confirm-actions .pr-button {
   min-width: 100px;
-  min-height: 40px;
 }
 
 /* Form in a confirmation-sized dialog, e.g. "New period rule" */
@@ -1179,7 +1285,7 @@ a.pr-nav-item:hover {
 }
 
 .pr-form-hint {
-  margin: 4px 0 16px;
+  margin: 0 0 14px;
   padding: 10px 12px;
   border-radius: var(--pr-radius);
   background: var(--pr-page);
@@ -1191,20 +1297,31 @@ a.pr-nav-item:hover {
   display: none;
 }
 
+.pr-confirm .pr-button.is-outline {
+  border-color: var(--pr-border);
+}
+
 .pr-button.is-danger-solid {
-  min-width: 116px;
-  background: var(--pr-danger);
+  background: var(--pr-danger-strong);
   color: #fff;
 }
 
 .pr-button.is-danger-solid:not(:disabled):hover {
-  background: #912018;
+  background: #b81821;
 }
 
 /* Responsive ------------------------------------------------------------------------------------- */
 
+@media (max-width: 1280px) {
+  .pr-main {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+}
+
 @media (max-width: 1100px) {
-  .pr-split.has-editor {
+  .pr-split.has-editor,
+  .pr-rules-layout.has-simulator {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -1225,7 +1342,7 @@ a.pr-nav-item:hover {
     justify-content: space-between;
     height: var(--pr-topbar);
     overflow: visible;
-    padding: 0 16px;
+    padding: 0 20px;
     background: var(--pr-primary);
   }
 
@@ -1234,15 +1351,16 @@ a.pr-nav-item:hover {
   }
 
   .pr-brand strong {
-    padding-bottom: 4px;
-    border-bottom: 3px solid var(--pr-accent);
     font-size: var(--pr-text-sheet-title);
+    text-transform: none;
     justify-self: start;
   }
 
-  /* The phone top bar already underlines the whole logo */
   .pr-brand strong::after {
-    display: none;
+    width: 40px;
+    height: 3px;
+    margin: 3px 0 0;
+    border-radius: 0;
   }
 
   .pr-brand span {
@@ -1258,8 +1376,7 @@ a.pr-nav-item:hover {
     border: 0;
     background: none;
     color: #fff;
-    font: 600 var(--pr-text-caption) var(--pr-font);
-    letter-spacing: 0.06em;
+    font: 600 var(--pr-text-small) var(--pr-font);
     text-transform: uppercase;
     cursor: pointer;
   }
@@ -1290,7 +1407,7 @@ a.pr-nav-item:hover {
 
   .pr-sidebar-menu .pr-nav-item {
     padding: 12px;
-    font-size: var(--pr-text-label);
+    font-size: 16px;
   }
 
   .pr-account {
@@ -1299,26 +1416,18 @@ a.pr-nav-item:hover {
   }
 
   .pr-main {
-    padding: 18px 16px 32px;
+    padding: 16px 20px 32px;
   }
 
   .pr-header {
+    gap: 14px;
     margin-bottom: 14px;
   }
 
-  .pr-tags {
-    display: flex;
-    gap: 8px;
-    margin: 0 0 12px;
-  }
-
   .pr-title {
+    margin-bottom: 14px;
+    color: var(--pr-primary);
     font-size: var(--pr-text-page-title);
-    font-weight: 700;
-  }
-
-  .pr-sim-chip {
-    display: none;
   }
 
   /* The edit page shows only its own back link and title */
@@ -1331,58 +1440,29 @@ a.pr-nav-item:hover {
     margin-bottom: 14px;
   }
 
-  .pr-card-intro {
-    display: block;
-    padding: 14px 14px 4px;
-  }
-
-  .pr-card-title {
-    margin: 0 0 4px;
-    color: var(--pr-ink);
-    font-family: var(--pr-font);
-    font-size: var(--pr-text-label);
-    font-weight: 700;
-    letter-spacing: normal;
-  }
-
-  .pr-card-intro .pr-muted {
-    font-size: var(--pr-text-small);
-  }
-
-  .pr-card-toolbar {
-    border-bottom: 0;
-  }
-
-  .pr-card-footer {
-    border-top: 0;
-  }
-
   .pr-add-button {
+    align-self: stretch;
     width: 100%;
-    min-height: 40px;
+    min-height: 44px;
+    font-size: var(--pr-text-label);
   }
 
   /* Forms: small uppercase labels, taller fields, full-width stacked actions */
   .pr-field label {
-    color: var(--pr-muted);
-    font-size: var(--pr-text-caption);
-    font-weight: 500;
+    font-size: 10px;
     letter-spacing: 0.04em;
-    text-transform: uppercase;
   }
 
   .pr-shell input:not([type='checkbox']),
   .pr-shell select {
-    min-height: 40px;
+    min-height: 42px;
+    padding: 0 12px;
     border-radius: var(--pr-radius-lg);
+    font-size: var(--pr-text-label);
   }
 
   .pr-editor {
     padding: 14px;
-  }
-
-  .pr-help {
-    color: var(--pr-muted);
   }
 
   .pr-actions {
@@ -1391,7 +1471,8 @@ a.pr-nav-item:hover {
 
   .pr-actions .pr-button {
     width: 100%;
-    min-height: 42px;
+    min-height: 44px;
+    font-size: var(--pr-text-label);
   }
 
   .pr-field.is-inline {
@@ -1421,16 +1502,40 @@ a.pr-nav-item:hover {
     background: var(--pr-border);
   }
 
-  /* Base fares: one block per route with a 2-column grid of amounts, paged (Previous / Next page) */
-  .pr-card-head {
-    padding: 14px 14px 10px;
+  .pr-sheet .pr-fee-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .pr-matrix-body {
-    margin: 0 14px;
-    border: 0;
-    border-radius: 0;
+  /* Cards are tighter on a phone */
+  .pr-card {
+    gap: 10px;
+    padding: 14px;
+    border-color: var(--pr-divider);
   }
+
+  .pr-card-head.has-action {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pr-card-head .pr-card-title {
+    margin-bottom: 10px;
+    font-size: 17px;
+  }
+
+  .pr-card-head .pr-muted {
+    font-size: var(--pr-text-small);
+  }
+
+  .pr-sheet .pr-editor {
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .pr-sheet.pr-form-sheet {
+    width: 100%;
+  }
+
+  /* Base fares: one block per route with a 2-column grid of amounts, paged (Previous / Next page) */
 
   .pr-fare-route {
     padding: 4px 0 14px;
@@ -1454,11 +1559,6 @@ a.pr-nav-item:hover {
 
   .pr-seat-fee-grid {
     grid-template-columns: minmax(0, 1fr);
-    padding: 0 14px;
-  }
-
-  .pr-card-tabs {
-    margin: 4px 14px 12px;
   }
 
   /* Phone: the confirmation is a full-width bottom sheet like the other dialogs */

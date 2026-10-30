@@ -9,7 +9,7 @@ const NOTICE_MS = 2000
 // The design edits economy only; other cabins can be added as a cabin picker later.
 const CABIN = 'economy'
 
-export function SeatFeesCard() {
+export function SeatFeesCard({ onChanged }: { onChanged: () => void }) {
   const api = usePricingApi()
   const seatFees = useLoad(() => api.listSeatFees(), 'seat-fees')
   const currency = useLoad(() => api.getBaseCurrency(), 'currency')
@@ -60,6 +60,7 @@ export function SeatFeesCard() {
     setErrors(failed)
     setSaving(false)
     seatFees.reload()
+    onChanged()
     if (Object.keys(failed).length) setSaveError('Some seat fees could not be saved. Fix the marked fields and save again.')
     else setNotice({ text: 'Seat fees saved' })
   }

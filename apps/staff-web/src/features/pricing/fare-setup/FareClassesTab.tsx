@@ -5,7 +5,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary'
 import { cabinLabel, yesNo } from '../format'
 import { useLoad } from '../hooks/useLoad'
 import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
-import { FareClassEditor } from './FareClassEditor'
+import { FareClassEditor, type EditorVariant } from './FareClassEditor'
 
 type Selection = { mode: 'edit'; id: string } | { mode: 'new' } | null
 
@@ -58,7 +58,7 @@ export function FareClassesTab() {
     list.reload()
   }
 
-  function editor(variant: 'panel' | 'page' | 'sheet') {
+  function editor(variant: EditorVariant) {
     return (
       <ErrorBoundary>
         <FareClassEditor
@@ -174,15 +174,15 @@ export function FareClassesTab() {
       </div>
 
       {/* Split only while the side panel is actually shown, not while a selected class is missing from the loaded list. */}
-      <div className={`pr-split${!isPhone && (selection?.mode === 'new' || selected) ? ' has-editor' : ''}`}>
+      <div className={`pr-split${!isPhone && selected ? ' has-editor' : ''}`}>
         <section className="pr-card" aria-labelledby="fc-list-title">
-          <div className="pr-card-intro">
-            <h2 id="fc-list-title" className="pr-card-title">
-              Fare classes
-            </h2>
-            <p className="pr-muted">Select a class to edit it. Quotes keep a frozen copy of these rules.</p>
-          </div>
-          <div className="pr-card-toolbar">
+          <div className="pr-card-head has-action">
+            <div>
+              <h2 id="fc-list-title" className="pr-card-title">
+                Fare classes
+              </h2>
+              <p className="pr-muted">Select a class to edit it. Quotes keep a frozen copy of these rules.</p>
+            </div>
             <label className="pr-toggle">
               <input
                 type="checkbox"
@@ -199,19 +199,17 @@ export function FareClassesTab() {
 
           {body}
 
-          <div className="pr-card-footer">
-            <button type="button" className="pr-button is-outline pr-add-button" onClick={() => open({ mode: 'new' })}>
-              + Add fare class
-            </button>
-          </div>
+          <button type="button" className="pr-button is-outline pr-add-button" onClick={() => open({ mode: 'new' })}>
+            + Add fare class
+          </button>
         </section>
 
-        {selection?.mode === 'new' && isPhone ? (
-          <Dialog labelledBy="fc-editor-title" onClose={() => setSelection(null)}>
-            {editor('sheet')}
+        {selection?.mode === 'new' ? (
+          <Dialog labelledBy="fc-editor-title" className="pr-form-sheet" onClose={() => setSelection(null)}>
+            {editor(isPhone ? 'sheet' : 'dialog')}
           </Dialog>
         ) : (
-          selection && (selection.mode === 'new' || selected) && editor('panel')
+          selected && editor('panel')
         )}
       </div>
     </>

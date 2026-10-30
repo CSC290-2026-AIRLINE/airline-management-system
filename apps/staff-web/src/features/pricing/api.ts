@@ -80,6 +80,24 @@ export interface NewPricingRule {
   end_date?: string
 }
 
+export interface PriceSimulationInput {
+  base_fare: number
+  departure_date: string // YYYY-MM-DD
+  seats_left_pct: number
+  seat_type: SeatType
+}
+
+// Response of POST /staff/pricing-rules/simulate. Dry run: the backend saves nothing.
+export interface PriceSimulation {
+  today: string // YYYY-MM-DD
+  days_to_departure: number
+  currency: string
+  lines: { label: string; detail?: string; amount: number }[]
+  total: number
+  unmatched_groups: RuleGroup[]
+  quote_hold_minutes: number
+}
+
 // Mirrors SEAT_TYPES in the backend's pricing.constants.ts.
 export const SEAT_TYPES = ['normal', 'exit_row', 'extra_legroom'] as const
 export type SeatType = (typeof SEAT_TYPES)[number]
@@ -150,6 +168,7 @@ export function usePricingApi() {
 
     listPricingRules: () => request<PricingRule[]>('/pricing-rules'),
     createPricingRule: (input: NewPricingRule) => request<PricingRule>('/pricing-rules', 'POST', input),
+    simulatePrice: (input: PriceSimulationInput) => request<PriceSimulation>('/pricing-rules/simulate', 'POST', input),
     setPricingRuleActive: (id: string, isActive: boolean) => request<PricingRule>(`/pricing-rules/${id}`, 'PATCH', { is_active: isActive }),
     reorderPricingRules: (group: RuleGroup, ids: string[]) =>
       request<PricingRule[]>('/pricing-rules/reorder', 'POST', { rule_group: group, ids }),

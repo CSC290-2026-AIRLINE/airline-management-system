@@ -17,7 +17,7 @@ export function FareSetupPage({ tab, onTabChange }: FareSetupPageProps) {
   const { isLoading, accessToken } = useAppAuth()
 
   return (
-    <PricingShell title="Fare Setup" description="Fare classes, their restrictions and fee rules, and the base fare for each route.">
+    <PricingShell title="Fare setup" description="Define fare classes, their cabin, advance-purchase rule and refund / change fees.">
       <div className="pr-tabs" role="tablist" aria-label="Fare setup sections">
         {FARE_SETUP_TABS.map((id) => (
           <button

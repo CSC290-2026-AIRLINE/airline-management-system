@@ -23,7 +23,7 @@ export interface EngineRule {
 
 // What a quote knows about the flight. Dates are calendar dates in the origin airport's timezone, worked out by the caller.
 export interface RuleContext {
-  fareClassId: string
+  fareClassId: string | null // null = no class chosen (price simulator): only rules for every class can match
   daysToDeparture: number
   seatsLeftPct: number
   departureDate: string // YYYY-MM-DD
@@ -84,6 +84,12 @@ export function ruleMatches(rule: EngineRule, ctx: RuleContext): boolean {
 export function adjustCents(cents: number, adjustmentPct: number): number {
   const basisPoints = BigInt(Math.round(adjustmentPct * 100))
   const scaled = BigInt(cents) * (10000n + basisPoints)
+  return Number((scaled * 2n + 10000n) / 20000n)
+}
+
+// pct% of an amount in cents, rounded half up. Used for percentage taxes, which are always >= 0.
+export function percentOfCents(cents: number, pct: number): number {
+  const scaled = BigInt(cents) * BigInt(Math.round(pct * 100))
   return Number((scaled * 2n + 10000n) / 20000n)
 }
 
