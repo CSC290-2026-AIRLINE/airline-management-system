@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import './StatusCard.css'
+import { Button } from '@staff-web/components/ui/button'
 
 interface StatusCardProps {
   /** Decorative — the screen reader already gets the heading, so this is hidden from it. */
@@ -31,36 +31,40 @@ interface StatusCardProps {
  * `StaffNotProvisionedScreen` (signed in, but nobody created a staff account). They look identical on purpose: a user
  * who hits either one should get the same shape, so the only thing that changes is the words.
  *
- * Self-contained like `NoAccessScreen` was: it imports its own CSS and never reaches for a page's styles or the app's
- * colour tokens, so a feature team can drop either screen into their route without dragging our shell along. That
- * costs one extra click on "Go to Home" — a plain `<a href>` rather than TanStack's `<Link>`, whose `to` prop is typed
- * against the generated route tree and would fail a type-check for routes that do not exist yet.
+ * Self-contained: styled with Tailwind utilities only, never with a page's styles, so a feature team can drop either
+ * screen into their route without dragging our shell along. That costs one extra click on "Go to Home" — a plain
+ * `<a href>` rather than TanStack's `<Link>`, whose `to` prop is typed against the generated route tree and would fail
+ * a type-check for routes that do not exist yet.
  */
 export function StatusCard({ icon, title, body, note, badgeKey, badgeDetail, action, children }: StatusCardProps) {
   return (
-    <div className="status-wrap">
+    <div data-slot="status-wrap" className="flex min-h-full items-center justify-center px-6 py-12">
       {children}
-      <section className="status-card" role="alert" aria-live="polite">
-        <span className="status-icon" aria-hidden="true">
+      <section
+        className="w-full max-w-[716px] rounded-2xl border border-line bg-white px-12 pt-14 pb-11 text-center shadow-[0_4px_16px_rgba(15,23,42,0.06)] max-phone:px-6 max-phone:pt-10 max-phone:pb-8"
+        role="alert"
+        aria-live="polite"
+      >
+        <span className="inline-flex size-[72px] items-center justify-center rounded-full bg-[#fdeaea] text-[#dc2626]" aria-hidden="true">
           {icon}
         </span>
 
-        <h2>{title}</h2>
-        <p className="status-body">{body}</p>
+        <h2 className="mx-0 mt-6 mb-2 font-sans text-[26px] leading-tight font-bold text-[#111827]">{title}</h2>
+        <p className="mb-[18px] text-sm leading-relaxed text-[#6b7280] max-[880px]:text-[13px]">{body}</p>
 
-        {note && <p className="status-note">{note}</p>}
+        {note && <p className="-mt-2.5 mb-[18px] text-sm leading-relaxed text-[#9ca3af] max-[880px]:text-[13px]">{note}</p>}
 
-        <p className="status-badge">
-          <span className="status-badge-key">{badgeKey}</span>
+        <p className="mb-7 inline-block rounded-md bg-[#f1f3f6] px-2.5 py-1 font-mono text-xs text-[#6b7280]">
+          <span className="font-semibold text-[#0e7490]">{badgeKey}</span>
           {badgeDetail && <span>{badgeDetail}</span>}
         </p>
 
         {/* Its own flex row so the button always starts a new line below the badge — as inline-level siblings the two
             would share one line and collide once the badge gets long. */}
-        <div className="status-actions">
-          <a className="status-action" href={action.href}>
-            {action.label}
-          </a>
+        <div className="flex justify-center">
+          <Button asChild className="h-auto rounded-lg bg-[#0e1b3d] px-7 py-3 text-sm font-semibold hover:bg-[#16295a]">
+            <a href={action.href}>{action.label}</a>
+          </Button>
         </div>
       </section>
     </div>

@@ -1,10 +1,19 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
+import { ArrowLeft, Check, ChevronDown, SquarePen, X } from 'lucide-react'
+import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@staff-web/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@staff-web/components/ui/dropdown-menu'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { Switch } from '@staff-web/components/ui/switch'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { cn } from '@staff-web/lib/utils'
 import { StaffApiError, type StaffCreateBody } from '../api/staff'
 import { MIN_REASON_LENGTH, useStaff } from '../hooks/useStaff'
 import { NoAccessScreen } from '../components/NoAccessScreen'
 import type { RoleSummary, StaffRow } from '../types'
-import './StaffRolesPage.css'
 
 /* Helpers --------------------------------------------------------------- */
 
@@ -66,24 +75,36 @@ function boxFromError(e: unknown): BoxError {
   return { title: "Couldn't save", message: e instanceof Error ? e.message : String(e), code: 'ERROR' }
 }
 
+/** The phone breakpoint (≤600px): cards instead of the table, and Create / Edit as a page instead of a pop-up. */
+const PHONE_QUERY = '(max-width: 600px)'
+
+function subscribePhone(onChange: () => void) {
+  const mq = window.matchMedia(PHONE_QUERY)
+  mq.addEventListener('change', onChange)
+  return () => mq.removeEventListener('change', onChange)
+}
+
+function useIsPhone(): boolean {
+  return useSyncExternalStore(
+    subscribePhone,
+    () => window.matchMedia(PHONE_QUERY).matches,
+    () => false,
+  )
+}
+
+/* Shared class lists ------------------------------------------------------ */
+
+/** Inputs and dropdown triggers: 48px on desktop, 40px on a phone. */
+const FIELD =
+  'h-12 rounded-[9px] border-[#d9dfe9] bg-white px-3.5 text-[15px] text-ink shadow-none placeholder:text-[#8792a6] focus-visible:ring-2 focus-visible:ring-primary/20 aria-invalid:border-danger-line aria-invalid:ring-0 max-phone:h-10 max-phone:rounded-md max-phone:text-[13px] md:text-[15px]'
+const BTN = 'h-[46px] rounded-[9px] px-4 text-sm font-semibold shadow-none'
+const BTN_GHOST = cn(BTN, 'min-w-[100px] border-input bg-white text-[#131a2b] hover:bg-[#f6f7fa]')
+const BTN_PRIMARY = cn(BTN, 'min-w-[130px] bg-[#0e182e] text-white hover:bg-[#1c2a48]')
+/** Phone: dialog buttons sit side by side, full width, text on the left. */
+const BTN_PHONE =
+  'max-phone:h-[38px] max-phone:min-w-0 max-phone:flex-1 max-phone:justify-start max-phone:rounded-md max-phone:px-3 max-phone:text-[13px]'
+
 /* Small pieces used only on this page ------------------------------------ */
-
-function Chevron() {
-  return (
-    <svg className="sr-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-      <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function EditIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect x="1.5" y="2.5" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M6 10.5V9l5.5-5.5 1.5 1.5L7.5 10.5H6Z" fill="currentColor" />
-    </svg>
-  )
-}
 
 interface DropdownOption {
   value: string
@@ -91,9 +112,9 @@ interface DropdownOption {
 }
 
 /**
- * The page's one dropdown — the role and status filters, and the Role field in the dialogs. A native `<select>` cannot
- * draw the design's open list (check mark, highlighted row), so this is a button plus a listbox. Kept in this file on
- * purpose: it is not a shared component.
+ * The page's one dropdown — the role and status filters, the Role field in the dialogs, and the role picker on the
+ * phone cards. A shadcn dropdown menu rather than a `<select>`, so the open list matches the design (check mark,
+ * highlighted row).
  */
 function Dropdown({
   id,
@@ -103,7 +124,7 @@ function Dropdown({
   onChange,
   deselectable = false,
   invalid = false,
-  className = '',
+  variant,
   ariaLabel,
 }: {
   id?: string
@@ -114,127 +135,162 @@ function Dropdown({
   /** Clicking the selected row again clears the choice (filters only). */
   deselectable?: boolean
   invalid?: boolean
-  className?: string
+  variant: 'filter' | 'field' | 'card'
   ariaLabel?: string
 }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
   const selected = options.find((o) => o.value === value)
 
-  useEffect(() => {
-    if (!open) return
-    function onPointer(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        // Close only the list, not the dialog around it.
-        e.stopPropagation()
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onPointer)
-    document.addEventListener('keydown', onKey, true)
-    return () => {
-      document.removeEventListener('mousedown', onPointer)
-      document.removeEventListener('keydown', onKey, true)
-    }
-  }, [open])
-
   return (
-    <div className={`sr-dropdown ${className}`} ref={ref}>
-      <button
-        type="button"
-        id={id}
-        className={`sr-dropdown-trigger${selected ? ' has-value' : ''}${invalid ? ' is-invalid' : ''}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={ariaLabel}
-        onClick={() => setOpen((o) => !o)}
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          id={id}
+          aria-label={ariaLabel}
+          aria-invalid={invalid || undefined}
+          className={cn(
+            'flex h-12 w-full items-center gap-1.5 rounded-[9px] border border-input bg-white px-3.5 text-left text-sm font-medium text-[#131a2b] outline-none focus-visible:ring-2 focus-visible:ring-primary/30 max-phone:justify-start',
+            variant === 'field' && 'justify-between border-[#d9dfe9] text-[15px] font-semibold text-ink',
+            variant === 'field' && !selected && 'font-normal text-muted-foreground',
+            variant === 'filter' && 'max-phone:h-10 max-phone:rounded-md max-phone:text-[13px]',
+            variant === 'field' && 'max-phone:h-10 max-phone:rounded-md max-phone:text-[13px]',
+            variant === 'card' && 'h-[41px] rounded-lg border-[#d3dae6] bg-[#f6f8fc] px-3 text-sm font-semibold text-ink',
+            invalid && 'border-danger-line',
+          )}
+        >
+          <span className="truncate">{selected?.label ?? placeholder}</span>
+          <ChevronDown className="size-3 shrink-0 text-muted-foreground max-phone:hidden" strokeWidth={2.5} aria-hidden="true" />
+          {/* The phone frames draw a small solid caret instead of the desktop chevron. */}
+          <span className="hidden text-[13px] leading-none text-ink max-phone:inline" aria-hidden="true">
+            ▾
+          </span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        sideOffset={6}
+        className={cn(
+          'flex max-h-[394px] max-w-[540px] min-w-(--radix-dropdown-menu-trigger-width) flex-col gap-0.5 rounded-xl border-[#d9dfe9] p-2 font-sans leading-[normal] shadow-[0_8px_18px_rgba(15,26,46,0.16)]',
+          variant === 'filter' && 'phone:min-w-[240px]',
+          variant === 'field' && 'max-h-[260px] w-(--radix-dropdown-menu-trigger-width) max-w-none',
+          variant === 'card' && 'max-w-[calc(100vw-72px)] min-w-[200px]',
+        )}
       >
-        <span className="sr-dropdown-value">{selected?.label ?? placeholder}</span>
-        <Chevron />
-        {/* The phone frames draw a small solid caret instead of the desktop chevron; CSS shows one or the other. */}
-        <span className="sr-caret" aria-hidden="true">
-          ▾
-        </span>
-      </button>
-      {open && (
-        <ul className="sr-dropdown-menu" role="listbox" aria-label={ariaLabel}>
-          {options.map((o) => {
-            const isSelected = o.value === value
-            return (
-              <li key={o.value} role="option" aria-selected={isSelected}>
-                <button
-                  type="button"
-                  className={`sr-dropdown-item${isSelected ? ' is-selected' : ''}`}
-                  onClick={() => {
-                    onChange(isSelected && deselectable ? null : o.value)
-                    setOpen(false)
-                  }}
-                >
-                  <span className="sr-check" aria-hidden="true">
-                    {isSelected ? '✓' : ''}
-                  </span>
-                  {o.label}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
+        {options.map((o) => {
+          const isSelected = o.value === value
+          return (
+            <DropdownMenuItem
+              key={o.value}
+              role="menuitemradio"
+              aria-checked={isSelected}
+              className={cn(
+                'h-10 gap-2 rounded-lg px-2.5 text-[15px] whitespace-nowrap text-ink focus:bg-[#f4f6fa]',
+                isSelected && 'bg-[#eaeff7] focus:bg-[#eaeff7]',
+                variant === 'card' && 'h-9 text-[13px]',
+              )}
+              onSelect={() => onChange(isSelected && deselectable ? null : o.value)}
+            >
+              <span className="flex w-3.5 shrink-0 justify-center text-primary" aria-hidden="true">
+                {isSelected && <Check className="size-3.5 text-primary" strokeWidth={3} />}
+              </span>
+              {o.label}
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function Field({ label, htmlFor, error, children }: { label: ReactNode; htmlFor: string; error?: boolean; children: ReactNode }) {
+  return (
+    <div className="mb-4 flex flex-col gap-1 max-phone:mb-3 max-phone:gap-1.5">
+      <Label
+        htmlFor={htmlFor}
+        className={cn(
+          'mb-0.5 text-[13px] leading-none font-semibold text-muted-foreground max-phone:mb-0 max-phone:text-[10px] max-phone:tracking-[0.3px] max-phone:uppercase',
+          error && 'max-phone:text-[#c81e28]',
+        )}
+      >
+        {label}
+      </Label>
+      {children}
     </div>
   )
 }
 
-/** Matches the phone breakpoint in `StaffRolesPage.css`. */
-const PHONE_QUERY = '(max-width: 600px)'
+function Hint({ error, children }: { error?: boolean; children: ReactNode }) {
+  return (
+    <p className={cn('mt-0.5 text-xs leading-[1.3] text-muted-foreground max-phone:mt-0 max-phone:text-[11px]', error && 'text-[#c81e28]')}>
+      {children}
+    </p>
+  )
+}
 
-function isPhone(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches
+function ErrorBox({ error }: { error: BoxError }) {
+  return (
+    <div className="mb-2 flex flex-col gap-1 rounded-lg border border-[#f5c4c4] bg-danger-soft px-3.5 py-3 text-danger" role="alert">
+      <strong className="text-[13px] font-bold">{error.title}</strong>
+      <span className="text-xs leading-[1.35]">
+        {error.message} ({error.code})
+      </span>
+    </div>
+  )
 }
 
 /**
- * Backdrop + panel. Escape and a click on the backdrop both cancel, unless `busy` (a request is in flight).
- *
- * `sheet` is for Create / Edit: on a phone the design shows them as a page in the content area ("← Back", the form in
- * a card) rather than a pop-up, so the CSS turns the backdrop into normal page flow there and the page behind it is
- * hidden. There is no backdrop to tap in that layout, so a tap on blank space must not cancel.
+ * Centred pop-up (shadcn `Dialog`). Escape and a click outside both cancel, unless `busy` (a request is in flight).
+ * Fonts are set again here because the dialog is portalled outside the admin shell.
  */
 function Modal({
-  labelledBy,
+  title,
   onClose,
   busy = false,
-  sheet = false,
+  focusContent = false,
   className,
   children,
 }: {
-  labelledBy: string
+  /** The dialog's accessible name; the visible heading is part of `children`. */
+  title: string
   onClose: () => void
   busy?: boolean
-  sheet?: boolean
-  className: string
+  /** Focus the dialog itself on open rather than its first control (the × button on Create / Edit). */
+  focusContent?: boolean
+  className?: string
   children: ReactNode
 }) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !busy) onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [busy, onClose])
-
+  const contentRef = useRef<HTMLDivElement>(null)
   return (
-    <div
-      className={`sr-backdrop${sheet ? ' sr-backdrop--sheet' : ''}`}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !busy && !(sheet && isPhone())) onClose()
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose()
       }}
     >
-      <div className={`sr-modal ${className}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+      <DialogContent
+        ref={contentRef}
+        showCloseButton={false}
+        onOpenAutoFocus={(e) => {
+          if (!focusContent) return
+          e.preventDefault()
+          contentRef.current?.focus()
+        }}
+        aria-describedby={undefined}
+        className={cn(
+          'max-h-[calc(100vh-32px)] gap-0 overflow-y-auto rounded-2xl border-0 bg-white p-0 font-sans leading-[normal] text-ink shadow-[0_16px_40px_rgba(10,20,36,0.2)] sm:max-w-[calc(100%-32px)]',
+          className,
+        )}
+        onInteractOutside={(e) => {
+          if (busy) e.preventDefault()
+        }}
+        onEscapeKeyDown={(e) => {
+          if (busy) e.preventDefault()
+        }}
+      >
+        <DialogTitle className="sr-only">{title}</DialogTitle>
         {children}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -260,6 +316,7 @@ function StaffFormDialog({
   onSubmit: (body: StaffCreateBody) => Promise<void>
 }) {
   const isEdit = row !== null
+  const isPhone = useIsPhone()
   const uid = useId()
   const [firstName, setFirstName] = useState(row?.first_name ?? '')
   const [lastName, setLastName] = useState(row?.last_name ?? '')
@@ -275,6 +332,7 @@ function StaffFormDialog({
 
   const emailLocked = isEdit && row.claimed
   const reasonMessage = isEdit ? 'A reason is required before saving.' : 'A reason is required before creating this account.'
+  const title = isEdit ? 'Edit staff account' : 'Create staff account'
 
   function clearErrors() {
     setNameError(null)
@@ -353,163 +411,225 @@ function StaffFormDialog({
     }
   }
 
-  const titleId = `${uid}-title`
-  const subtitle = isEdit ? (
+  /* Desktop shows the two subtitle lines stacked; the phone page runs them together with " · ". */
+  const subtitleParts: string[] = isEdit
+    ? [
+        `${row.staff_code} · Created ${formatDate(row.created_at)}${!row.claimed ? ' · Not signed in yet' : ''}${!row.claimed && isSelf ? ' · You' : ''}`,
+        ...(row.claimed && (row.last_sign_in_at || isSelf)
+          ? [
+              [row.last_sign_in_at ? `Last sign-in ${formatSignIn(row.last_sign_in_at)}` : '', isSelf ? 'You' : '']
+                .filter(Boolean)
+                .join(' · '),
+            ]
+          : []),
+      ]
+    : ['The account is provisioned first. At the first Clerk sign-in using this email, the staff member claims it.']
+
+  const nameMissing = (v: string) => !!nameError && !v.trim()
+
+  const fields = (
     <>
-      <span>
-        {row.staff_code} · Created {formatDate(row.created_at)}
-        {!row.claimed && ' · Not signed in yet'}
-        {!row.claimed && isSelf && ' · You'}
-      </span>
-      {row.claimed && (row.last_sign_in_at || isSelf) && (
-        <span>
-          {row.last_sign_in_at ? `Last sign-in ${formatSignIn(row.last_sign_in_at)}` : ''}
-          {row.last_sign_in_at && isSelf ? ' · ' : ''}
-          {isSelf ? 'You' : ''}
-        </span>
+      <div className="grid grid-cols-2 gap-4 max-phone:grid-cols-1 max-phone:gap-0">
+        <Field label="First name" htmlFor={`${uid}-first`} error={nameMissing(firstName)}>
+          <Input
+            id={`${uid}-first`}
+            className={FIELD}
+            aria-invalid={nameMissing(firstName) || undefined}
+            value={firstName}
+            placeholder="e.g. Kamon"
+            maxLength={100}
+            autoComplete="off"
+            onChange={(e) => setFirstName(e.target.value)}
+          />
+        </Field>
+        <Field label="Last name" htmlFor={`${uid}-last`} error={nameMissing(lastName)}>
+          <Input
+            id={`${uid}-last`}
+            className={FIELD}
+            aria-invalid={nameMissing(lastName) || undefined}
+            value={lastName}
+            placeholder="e.g. Wattana"
+            maxLength={100}
+            autoComplete="off"
+            onChange={(e) => setLastName(e.target.value)}
+          />
+        </Field>
+      </div>
+      {nameError && (
+        <div className="-mt-2.5 mb-4 max-phone:-mt-1.5 max-phone:mb-3">
+          <Hint error>{nameError}</Hint>
+        </div>
       )}
+
+      <Field label="Work email" htmlFor={`${uid}-email`} error={!!emailError}>
+        <Input
+          id={`${uid}-email`}
+          type="email"
+          className={cn(FIELD, 'disabled:opacity-100 disabled:[-webkit-text-fill-color:#6f7c91]')}
+          aria-invalid={!!emailError || undefined}
+          value={email}
+          placeholder="name@flython.example"
+          maxLength={254}
+          autoComplete="off"
+          disabled={emailLocked}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <Hint error={!!emailError}>
+          {emailError ??
+            (!isEdit
+              ? 'Must not be used by another staff account.'
+              : emailLocked
+                ? 'Claimed after first Clerk sign-in — work email can no longer be changed.'
+                : `Not claimed yet — you can still fix the email until ${row.first_name} signs in for the first time.`)}
+        </Hint>
+      </Field>
+
+      {isEdit && (
+        <Field label="Staff ID" htmlFor={`${uid}-code`}>
+          <Input
+            id={`${uid}-code`}
+            className={cn(FIELD, 'bg-[#f2f4f8] text-muted-foreground disabled:opacity-100')}
+            value={row.staff_code}
+            disabled
+          />
+          <Hint>Made by the system. Can&apos;t be edited.</Hint>
+        </Field>
+      )}
+
+      <Field label="Role" htmlFor={`${uid}-role`} error={!!roleError}>
+        <Dropdown
+          id={`${uid}-role`}
+          variant="field"
+          value={roleId}
+          options={roles.map((r) => ({ value: r.id, label: r.name }))}
+          placeholder="Choose a role"
+          invalid={roleError !== null}
+          onChange={(v) => setRoleId(v)}
+        />
+        <Hint error={!!roleError}>
+          {roleError ??
+            (isEdit
+              ? 'Changes the screens this person sees on their next page load.'
+              : 'The role decides which screens this person can open.')}
+        </Hint>
+      </Field>
+
+      {!isEdit && (
+        <p className="mb-4 flex min-h-[46px] items-center gap-1 rounded-[9px] bg-[#fff4de] px-4 text-sm text-warning max-phone:mb-3 max-phone:min-h-9 max-phone:rounded-md max-phone:px-3 max-phone:text-xs">
+          Staff ID will be <strong className="font-extrabold">{nextStaffCode || 'assigned on create'}.</strong>
+        </p>
+      )}
+
+      <Field label="Reason (saved in the audit log)" htmlFor={`${uid}-reason`} error={!!reasonError}>
+        <Input
+          id={`${uid}-reason`}
+          className={FIELD}
+          aria-invalid={!!reasonError || undefined}
+          value={reason}
+          placeholder={isEdit ? 'Why is this changing?' : 'Why is this account being created?'}
+          maxLength={500}
+          autoComplete="off"
+          onChange={(e) => setReason(e.target.value)}
+        />
+        {reasonError && <Hint error>{reasonError}</Hint>}
+      </Field>
+
+      {boxError && <ErrorBox error={boxError} />}
     </>
-  ) : (
-    <span>The account is provisioned first. At the first Clerk sign-in using this email, the staff member claims it.</span>
   )
 
-  return (
-    <Modal labelledBy={titleId} onClose={onCancel} busy={saving} sheet className="sr-modal--form">
-      <form onSubmit={submit} noValidate>
-        {/* Phone only: the form is a page there, and the design leads with a back link. */}
-        <button type="button" className="sr-back" onClick={onCancel} disabled={saving}>
-          ← Back
+  const actions = (
+    <footer className="flex justify-end gap-2.5 px-[30px] pt-4 pb-[30px] max-phone:gap-2 max-phone:px-0 max-phone:pt-1 max-phone:pb-0">
+      <Button type="button" variant="outline" className={cn(BTN_GHOST, BTN_PHONE)} onClick={onCancel} disabled={saving}>
+        Cancel
+      </Button>
+      <Button type="submit" className={cn(BTN_PRIMARY, BTN_PHONE)} disabled={saving}>
+        {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save changes' : 'Create account'}
+      </Button>
+    </footer>
+  )
+
+  /* Phone: the design shows Create / Edit as a page in the content area ("← Back", then the form in a card) rather
+     than a pop-up, so it renders in the page flow and the list behind it is hidden (see `data-staff-sheet`). */
+  if (isPhone) {
+    return (
+      <form
+        onSubmit={submit}
+        noValidate
+        data-staff-sheet=""
+        aria-labelledby={`${uid}-title`}
+        className="font-sans leading-[normal] text-ink"
+      >
+        <button
+          type="button"
+          className="mb-3 inline-flex items-center gap-1 text-xs font-semibold text-[#2563eb] disabled:opacity-60"
+          onClick={onCancel}
+          disabled={saving}
+        >
+          <ArrowLeft className="size-3" strokeWidth={2.5} aria-hidden="true" />
+          Back
         </button>
-        <header className="sr-modal-head">
-          <div>
-            <h2 id={titleId}>{isEdit ? 'Edit staff account' : 'Create staff account'}</h2>
-            <p className="sr-modal-sub">{subtitle}</p>
-          </div>
-          <button type="button" className="sr-close" onClick={onCancel} disabled={saving} aria-label="Close">
-            ×
-          </button>
+        <header className="flex flex-wrap items-center gap-x-4 pb-1">
+          <h2 id={`${uid}-title`} className="m-0 flex-auto font-sans text-lg leading-none font-bold tracking-[-0.01em] text-ink">
+            {title}
+          </h2>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-7 w-9 rounded-md border-[#d9dfe9] p-0 shadow-none"
+            onClick={onCancel}
+            disabled={saving}
+            aria-label="Close"
+          >
+            <X className="size-3.5" />
+          </Button>
+          <p className="mt-1.5 basis-full text-xs leading-[1.35] text-muted-foreground">{subtitleParts.join(' · ')}</p>
         </header>
+        <Card className="mt-2.5 gap-0 rounded-[10px] border-[#d9dfe9] p-3 shadow-none">
+          {fields}
+          {actions}
+        </Card>
+      </form>
+    )
+  }
 
-        {/* No box of its own on desktop (`display: contents`); on a phone it is the white card holding the fields. */}
-        <div className="sr-form-card">
-          <div className="sr-modal-body">
-            <div className="sr-name-row">
-              <div className={`sr-field${nameError && !firstName.trim() ? ' has-error' : ''}`}>
-                <label htmlFor={`${uid}-first`}>First name</label>
-                <input
-                  id={`${uid}-first`}
-                  className={`sr-input${nameError && !firstName.trim() ? ' is-invalid' : ''}`}
-                  value={firstName}
-                  placeholder="e.g. Kamon"
-                  maxLength={100}
-                  autoComplete="off"
-                  onChange={(e) => setFirstName(e.target.value)}
-                />
+  return (
+    <Modal
+      title={title}
+      onClose={onCancel}
+      busy={saving}
+      focusContent
+      className="w-[600px] border border-[#d6dbe6] shadow-[0_12px_32px_rgba(10,20,36,0.18)]"
+    >
+      <form onSubmit={submit} noValidate>
+        <header className="flex items-start justify-between gap-4 border-b border-[#e6e9f0] px-[30px] pt-[30px] pb-[22px]">
+          <div>
+            <h2 aria-hidden="true" className="m-0 font-sans text-[28px] leading-none font-bold tracking-[-0.05em] text-ink">
+              {title}
+            </h2>
+            <DialogDescription asChild>
+              <div className="mt-2 text-sm leading-[1.35] text-muted-foreground">
+                {subtitleParts.map((p) => (
+                  <span key={p} className="block">
+                    {p}
+                  </span>
+                ))}
               </div>
-              <div className={`sr-field${nameError && !lastName.trim() ? ' has-error' : ''}`}>
-                <label htmlFor={`${uid}-last`}>Last name</label>
-                <input
-                  id={`${uid}-last`}
-                  className={`sr-input${nameError && !lastName.trim() ? ' is-invalid' : ''}`}
-                  value={lastName}
-                  placeholder="e.g. Wattana"
-                  maxLength={100}
-                  autoComplete="off"
-                  onChange={(e) => setLastName(e.target.value)}
-                />
-              </div>
-            </div>
-            {nameError && <p className="sr-hint is-error">{nameError}</p>}
-
-            <div className={`sr-field${emailError ? ' has-error' : ''}`}>
-              <label htmlFor={`${uid}-email`}>Work email</label>
-              <input
-                id={`${uid}-email`}
-                type="email"
-                className={`sr-input${emailError ? ' is-invalid' : ''}`}
-                value={email}
-                placeholder="name@flython.example"
-                maxLength={254}
-                autoComplete="off"
-                disabled={emailLocked}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <p className={`sr-hint${emailError ? ' is-error' : ''}`}>
-                {emailError ??
-                  (!isEdit
-                    ? 'Must not be used by another staff account.'
-                    : emailLocked
-                      ? 'Claimed after first Clerk sign-in — work email can no longer be changed.'
-                      : `Not claimed yet — you can still fix the email until ${row.first_name} signs in for the first time.`)}
-              </p>
-            </div>
-
-            {isEdit && (
-              <div className="sr-field">
-                <label htmlFor={`${uid}-code`}>Staff ID</label>
-                <input id={`${uid}-code`} className="sr-input sr-input--readonly" value={row.staff_code} disabled />
-                <p className="sr-hint">Made by the system. Can&apos;t be edited.</p>
-              </div>
-            )}
-
-            <div className={`sr-field${roleError ? ' has-error' : ''}`}>
-              <label htmlFor={`${uid}-role`}>Role</label>
-              <Dropdown
-                id={`${uid}-role`}
-                className="sr-dropdown--field"
-                value={roleId}
-                options={roles.map((r) => ({ value: r.id, label: r.name }))}
-                placeholder="Choose a role"
-                invalid={roleError !== null}
-                onChange={(v) => setRoleId(v)}
-              />
-              <p className={`sr-hint${roleError ? ' is-error' : ''}`}>
-                {roleError ??
-                  (isEdit
-                    ? 'Changes the screens this person sees on their next page load.'
-                    : 'The role decides which screens this person can open.')}
-              </p>
-            </div>
-
-            {!isEdit && (
-              <p className="sr-code-note">
-                Staff ID will be <strong>{nextStaffCode || 'assigned on create'}.</strong>
-              </p>
-            )}
-
-            <div className={`sr-field${reasonError ? ' has-error' : ''}`}>
-              <label htmlFor={`${uid}-reason`}>Reason (saved in the audit log)</label>
-              <input
-                id={`${uid}-reason`}
-                className={`sr-input${reasonError ? ' is-invalid' : ''}`}
-                value={reason}
-                placeholder={isEdit ? 'Why is this changing?' : 'Why is this account being created?'}
-                maxLength={500}
-                autoComplete="off"
-                onChange={(e) => setReason(e.target.value)}
-              />
-              {reasonError && <p className="sr-hint is-error">{reasonError}</p>}
-            </div>
-
-            {boxError && (
-              <div className="sr-error-box" role="alert">
-                <strong>{boxError.title}</strong>
-                <span>
-                  {boxError.message} ({boxError.code})
-                </span>
-              </div>
-            )}
+            </DialogDescription>
           </div>
-
-          <footer className="sr-modal-actions">
-            <button type="button" className="sr-btn sr-btn--ghost" onClick={onCancel} disabled={saving}>
-              Cancel
-            </button>
-            <button type="submit" className="sr-btn sr-btn--primary" disabled={saving}>
-              {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save changes' : 'Create account'}
-            </button>
-          </footer>
-        </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="size-9 shrink-0 rounded-lg border-[#d9dfe9] p-0 text-ink shadow-none"
+            onClick={onCancel}
+            disabled={saving}
+            aria-label="Close"
+          >
+            <X className="size-4" />
+          </Button>
+        </header>
+        <div className="px-[30px] pt-6">{fields}</div>
+        {actions}
       </form>
     </Modal>
   )
@@ -555,25 +675,41 @@ function StatusDialog({
   }
 
   return (
-    <Modal labelledBy={`${uid}-title`} onClose={onCancel} busy={saving} className="sr-modal--confirm">
+    <Modal
+      title={`${verb} ${fullName(row)}?`}
+      onClose={onCancel}
+      busy={saving}
+      className="w-[480px] p-8 max-phone:max-w-[360px] max-phone:rounded-[10px] max-phone:p-4"
+    >
       <form onSubmit={submit} noValidate>
-        <h2 id={`${uid}-title`} className="sr-confirm-title">
+        <h2
+          aria-hidden="true"
+          className="m-0 font-sans text-2xl leading-[1.2] font-semibold text-[#131a2b] max-phone:text-[17px] max-phone:font-bold"
+        >
           {verb} {fullName(row)}?
         </h2>
-        <p className="sr-confirm-text">
+        <p className="mt-2.5 mb-4 text-sm leading-[1.35] text-[#6e7a94] max-phone:mt-2 max-phone:mb-2.5 max-phone:text-xs">
           {deactivating
             ? `${row.first_name} won’t be able to sign in and will be signed out within 15 minutes. An Admin can turn the account back on.`
             : `${row.first_name} will be able to sign in again.`}
         </p>
-        <p className="sr-audit-note">This action is saved in the audit log.</p>
-        <div className="sr-field">
-          <label htmlFor={`${uid}-reason`}>
-            Reason<span className="sr-required">*</span>
-            <span className="sr-desktop-only"> (saved in the audit log)</span>
-          </label>
-          <input
+        <p className="mb-[22px] flex min-h-12 items-center rounded-[10px] bg-warning-soft px-4 text-sm font-medium text-[#b27314] max-phone:mb-3 max-phone:min-h-[34px] max-phone:rounded-md max-phone:px-2.5 max-phone:text-[11px]">
+          This action is saved in the audit log.
+        </p>
+        <Field
+          htmlFor={`${uid}-reason`}
+          error={!!reasonError}
+          label={
+            <span className="text-[#6e7a94]">
+              Reason<span className="text-danger-line">*</span>
+              <span className="max-phone:hidden"> (saved in the audit log)</span>
+            </span>
+          }
+        >
+          <Input
             id={`${uid}-reason`}
-            className={`sr-input sr-input--short${reasonError ? ' is-invalid' : ''}`}
+            className={cn(FIELD, 'h-11 border-input')}
+            aria-invalid={!!reasonError || undefined}
             value={reason}
             placeholder={`Why is this account being ${deactivating ? 'deactivated' : 'activated'}?`}
             maxLength={500}
@@ -581,27 +717,26 @@ function StatusDialog({
             autoFocus
             onChange={(e) => setReason(e.target.value)}
           />
-          {reasonError && <p className="sr-hint is-error">{reasonError}</p>}
-        </div>
-        {boxError && (
-          <div className="sr-error-box" role="alert">
-            <strong>{boxError.title}</strong>
-            <span>
-              {boxError.message} ({boxError.code})
-            </span>
-          </div>
-        )}
-        <footer className="sr-modal-actions sr-modal-actions--confirm">
-          <button type="button" className="sr-btn sr-btn--ghost" onClick={onCancel} disabled={saving}>
+          {reasonError && <Hint error>{reasonError}</Hint>}
+        </Field>
+        {boxError && <ErrorBox error={boxError} />}
+        <footer className="flex justify-end gap-2.5 pt-1 max-phone:gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(BTN_GHOST, 'min-w-[104px]', BTN_PHONE)}
+            onClick={onCancel}
+            disabled={saving}
+          >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
-            className={`sr-btn sr-btn--primary sr-btn--wide${deactivating ? ' sr-btn--danger-phone' : ''}`}
+            className={cn(BTN_PRIMARY, 'min-w-[120px]', BTN_PHONE, deactivating && 'max-phone:bg-[#c8202d] max-phone:hover:bg-[#a81a25]')}
             disabled={saving}
           >
             {saving ? `${verb === 'Deactivate' ? 'Deactivating' : 'Activating'}…` : verb}
-          </button>
+          </Button>
         </footer>
       </form>
     </Modal>
@@ -617,22 +752,30 @@ interface BlockedInfo {
 }
 
 function BlockedDialog({ info, onClose }: { info: BlockedInfo; onClose: () => void }) {
-  const uid = useId()
   return (
-    <Modal labelledBy={`${uid}-title`} onClose={onClose} className="sr-modal--blocked">
-      <h2 id={`${uid}-title`} className="sr-blocked-title">
+    <Modal
+      title={info.title}
+      onClose={onClose}
+      className="flex w-[480px] flex-col gap-3.5 p-7 max-phone:max-w-[360px] max-phone:gap-2.5 max-phone:rounded-[10px] max-phone:p-4"
+    >
+      <h2 aria-hidden="true" className="m-0 font-sans text-2xl leading-[1.2] font-bold text-ink max-phone:text-[17px]">
         {info.title}
       </h2>
-      <p className="sr-blocked-text">{info.message}</p>
-      <p className="sr-blocked-chip">
-        <span className="sr-desktop-only">Error </span>
+      <p className="text-sm leading-[1.35] text-[#677287] max-phone:text-xs">{info.message}</p>
+      <p className="rounded-lg bg-danger-soft px-3.5 py-2.5 text-xs leading-none font-semibold text-danger max-phone:bg-warning-soft max-phone:text-[11px] max-phone:text-warning">
+        <span className="max-phone:hidden">Error </span>
         {info.code} · nothing was changed
       </p>
-      <div className="sr-modal-actions sr-modal-actions--blocked">
-        <button type="button" className="sr-btn sr-btn--primary sr-btn--okay" onClick={onClose} autoFocus>
-          <span className="sr-desktop-only">Okay</span>
-          <span className="sr-phone-only">Got it</span>
-        </button>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          className={cn(BTN_PRIMARY, 'h-10 min-w-0 px-[18px] max-phone:h-[38px] max-phone:flex-1 max-phone:justify-start')}
+          onClick={onClose}
+          autoFocus
+        >
+          <span className="max-phone:hidden">Okay</span>
+          <span className="hidden max-phone:inline">Got it</span>
+        </Button>
       </div>
     </Modal>
   )
@@ -654,6 +797,8 @@ interface Notice {
   desktop?: string
 }
 
+const FILTER_LABEL = 'hidden text-[10px] leading-none font-semibold tracking-[0.3px] text-muted-foreground uppercase max-phone:block'
+
 /**
  * Staff & roles tab: summary cards, search + role/status filters, the staff table, and the Create / Edit / Activate /
  * Deactivate dialogs. Layout, copy and states follow the F15 design and its detail notes.
@@ -666,6 +811,7 @@ interface Notice {
 export function StaffRolesPage() {
   const staff = useStaff()
   const navigate = useNavigate()
+  const isPhone = useIsPhone()
   const { staffId } = useParams({ strict: false })
   /** Role picked in a phone card's dropdown; pre-selected when Edit opens for that account. */
   const [editRoleHint, setEditRoleHint] = useState<{ id: string; roleId: string } | null>(null)
@@ -761,243 +907,310 @@ export function StaffRolesPage() {
 
   /* Render ------------------------------------------------------------ */
 
-  if (staff.loading) return <p className="muted">Loading staff accounts…</p>
+  if (staff.loading) return <p className="text-sm text-muted-foreground">Loading staff accounts…</p>
   if (staff.error) {
     if (staff.error.status === 403) return <NoAccessScreen screenName="Staff & roles" homeTo="/" />
     return (
-      <section className="sr-load-error" role="alert">
-        <h2>Staff &amp; roles failed to load{staff.error.status ? ` — HTTP ${staff.error.status}` : ''}</h2>
-        <p>{staff.error.message}</p>
-        <button type="button" className="sr-btn sr-btn--primary" onClick={() => window.location.reload()}>
-          Retry
-        </button>
-      </section>
+      <Card className="gap-0 rounded-[14px] border-[#d9dfe9] px-7 py-6 font-sans leading-[normal] shadow-none" role="alert">
+        <h2 className="m-0 mb-2 font-sans text-lg font-bold text-ink">
+          Staff &amp; roles failed to load{staff.error.status ? ` — HTTP ${staff.error.status}` : ''}
+        </h2>
+        <p className="mb-4 text-sm break-words text-muted-foreground">{staff.error.message}</p>
+        <div>
+          <Button type="button" className={BTN_PRIMARY} onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
+      </Card>
     )
   }
 
   const editRow = staffId ? (staff.staff.find((s) => s.id === staffId) ?? null) : null
   const editRoleId = editRow && editRoleHint?.id === editRow.id ? editRoleHint.roleId : undefined
   const statusRow = dialog?.kind === 'status' ? (staff.staff.find((s) => s.id === dialog.id) ?? null) : null
+  /* On a phone Create / Edit replaces the list instead of floating over it. */
+  const sheetOpen = isPhone && (dialog?.kind === 'create' || editRow !== null)
+
+  const emptyText = filtering ? 'No staff accounts match these filters.' : 'No staff accounts yet.'
 
   return (
     <>
-      <div className="sr-page">
-        <div className="sr-stats">
-          {[
-            { label: 'Total staff', value: stats.total },
-            { label: 'Active accounts', value: stats.active },
-            { label: 'Inactive accounts', value: stats.inactive },
-            { label: 'Assigned roles', value: stats.assignedRoles },
-          ].map((c) => (
-            <div key={c.label} className="sr-stat">
-              <span className="sr-stat-label">{c.label}</span>
-              <span className="sr-stat-value">{c.value}</span>
-            </div>
-          ))}
-        </div>
-
-        {notice && (
-          <div
-            ref={noticeRef}
-            className={`sr-notice${notice.tone === 'error' ? ' is-error' : ''}`}
-            role={notice.tone === 'error' ? 'alert' : 'status'}
-          >
-            {notice.desktop && <span className="sr-desktop-only">{notice.desktop}</span>}
-            <span className={`sr-notice-parts${notice.desktop ? ' sr-phone-only' : ''}`}>
-              {notice.title && <strong>{notice.title}</strong>}
-              <span>{notice.body}</span>
-            </span>
+      {!sheetOpen && (
+        <div className="flex flex-col gap-4 font-sans leading-[normal] text-ink max-phone:gap-3">
+          <div className="grid grid-cols-4 gap-[18px] max-wide:grid-cols-2 max-phone:hidden">
+            {[
+              { label: 'Total staff', value: stats.total },
+              { label: 'Active accounts', value: stats.active },
+              { label: 'Inactive accounts', value: stats.inactive },
+              { label: 'Assigned roles', value: stats.assignedRoles },
+            ].map((c) => (
+              <Card key={c.label} className="h-20 justify-between gap-1 rounded-xl border-[#cbd5e1] p-4 shadow-none">
+                <span className="text-[11px] leading-none font-semibold tracking-[0.6px] text-[#677287] uppercase">{c.label}</span>
+                <span className="text-2xl leading-none font-extrabold text-primary">{c.value}</span>
+              </Card>
+            ))}
           </div>
-        )}
 
-        {/* One row on desktop; on a phone the same controls stack into a card with small labels, as in the design. */}
-        <div className="sr-filters">
-          <label className="sr-filter sr-filter--search">
-            <span className="sr-filter-label">Search staff</span>
-            <input
-              className="sr-search"
-              type="search"
-              value={query}
-              placeholder="Search staff…"
-              aria-label="Search staff by name, email or staff ID"
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <div className="sr-filter">
-            <span className="sr-filter-label" aria-hidden="true">
-              Role
-            </span>
-            <Dropdown
-              className="sr-dropdown--filter"
-              value={roleFilter}
-              options={roleOptions}
-              placeholder="All roles"
-              ariaLabel="Filter by role"
-              deselectable
-              onChange={setRoleFilter}
-            />
-          </div>
-          <div className="sr-filter">
-            <span className="sr-filter-label" aria-hidden="true">
-              Status
-            </span>
-            <Dropdown
-              className="sr-dropdown--filter"
-              value={statusFilter}
-              options={STATUS_OPTIONS}
-              placeholder="Any status"
-              ariaLabel="Filter by status"
-              deselectable
-              onChange={(v) => setStatusFilter(v as StatusFilter | null)}
-            />
-          </div>
-          <button type="button" className="sr-btn sr-btn--ghost sr-btn--clear" onClick={clearFilters}>
-            Clear<span className="sr-phone-only"> filters</span>
-          </button>
-          <button type="button" className="sr-btn sr-btn--primary sr-btn--create" onClick={() => openDialog({ kind: 'create' })}>
-            Create staff account
-          </button>
-        </div>
-
-        <section className="sr-table-card" aria-labelledby="sr-table-title">
-          <header className="sr-table-head">
-            <h2 id="sr-table-title">Staff accounts</h2>
-            <span className="sr-table-count">
-              {filtering ? (
-                <>
-                  <span className="sr-desktop-only">{`${rows.length} matching staff account${rows.length === 1 ? '' : 's'}`}</span>
-                  <span className="sr-phone-only">{`${rows.length} result${rows.length === 1 ? '' : 's'}`}</span>
-                </>
-              ) : (
-                `${stats.active} active of ${stats.total}`
+          {notice && (
+            <div
+              ref={noticeRef}
+              className={cn(
+                'flex min-h-11 scroll-mt-20 items-center rounded-[9px] bg-success-soft px-[22px] py-3 text-sm leading-[1.3] text-success max-phone:min-h-0 max-phone:rounded-lg max-phone:px-3 max-phone:py-2.5',
+                notice.tone === 'error' && 'bg-danger-soft text-danger',
               )}
-            </span>
-          </header>
-          <div className="sr-table-scroll">
-            <table className="sr-table">
-              <colgroup>
-                <col className="sr-col-name" />
-                <col className="sr-col-email" />
-                <col className="sr-col-code" />
-                <col className="sr-col-role" />
-                <col className="sr-col-status" />
-                <col className="sr-col-signin" />
-                <col className="sr-col-edit" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Email</th>
-                  <th scope="col">Staff ID</th>
-                  <th scope="col">Role</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Last sign-in</th>
-                  <th scope="col">
-                    <span className="sr-visually-hidden">Edit</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+              role={notice.tone === 'error' ? 'alert' : 'status'}
+            >
+              {notice.desktop && <span className="max-phone:hidden">{notice.desktop}</span>}
+              <span
+                className={cn(
+                  'inline-flex flex-wrap gap-x-1.5 max-phone:flex-col max-phone:gap-y-1',
+                  notice.desktop && 'hidden max-phone:inline-flex',
+                )}
+              >
+                {notice.title && (
+                  <strong
+                    className={cn(
+                      'font-semibold max-phone:text-[13px]',
+                      notice.tone === 'error' ? 'text-danger' : 'max-phone:text-success-strong',
+                    )}
+                  >
+                    {notice.title}
+                  </strong>
+                )}
+                <span className="max-phone:text-xs max-phone:leading-[1.35]">{notice.body}</span>
+              </span>
+            </div>
+          )}
+
+          {/* One row on desktop; on a phone the same controls stack into a card with small labels, as in the design. */}
+          <div className="flex flex-wrap items-center gap-3 max-phone:grid max-phone:grid-cols-2 max-phone:gap-x-2 max-phone:gap-y-2.5 max-phone:rounded-[10px] max-phone:border max-phone:border-[#d9dfe9] max-phone:bg-white max-phone:p-3">
+            <label className="min-w-[200px] flex-[0_1_313px] max-phone:col-span-2 max-phone:flex max-phone:min-w-0 max-phone:flex-col max-phone:gap-1.5">
+              <span className={FILTER_LABEL}>Search staff</span>
+              <Input
+                className="h-12 rounded-[9px] border-input bg-white px-3.5 text-sm font-medium text-[#131a2b] shadow-none placeholder:text-[#131a2b]/80 max-phone:h-10 max-phone:rounded-md max-phone:text-[13px] md:text-sm"
+                type="search"
+                value={query}
+                placeholder="Search staff…"
+                aria-label="Search staff by name, email or staff ID"
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+            <div className="min-w-0 flex-[0_0_190px] max-phone:flex max-phone:flex-col max-phone:gap-1.5">
+              <span className={FILTER_LABEL} aria-hidden="true">
+                Role
+              </span>
+              <Dropdown
+                variant="filter"
+                value={roleFilter}
+                options={roleOptions}
+                placeholder="All roles"
+                ariaLabel="Filter by role"
+                deselectable
+                onChange={setRoleFilter}
+              />
+            </div>
+            <div className="min-w-0 flex-[0_0_190px] max-phone:flex max-phone:flex-col max-phone:gap-1.5">
+              <span className={FILTER_LABEL} aria-hidden="true">
+                Status
+              </span>
+              <Dropdown
+                variant="filter"
+                value={statusFilter}
+                options={STATUS_OPTIONS}
+                placeholder="Any status"
+                ariaLabel="Filter by status"
+                deselectable
+                onChange={(v) => setStatusFilter(v as StatusFilter | null)}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(
+                BTN_GHOST,
+                'w-[92px] min-w-[92px] max-phone:col-span-2 max-phone:h-[38px] max-phone:w-auto max-phone:rounded-md max-phone:text-[13px]',
+              )}
+              onClick={clearFilters}
+            >
+              <span>
+                Clear<span className="hidden max-phone:inline"> filters</span>
+              </span>
+            </Button>
+            <Button
+              type="button"
+              className={cn(
+                BTN_PRIMARY,
+                'ml-auto h-[42px] w-[172px] bg-primary max-wide:ml-0 max-phone:col-span-2 max-phone:h-[38px] max-phone:w-auto max-phone:rounded-md max-phone:text-[13px]',
+              )}
+              onClick={() => openDialog({ kind: 'create' })}
+            >
+              Create staff account
+            </Button>
+          </div>
+
+          <Card
+            className="gap-0 rounded-[14px] border-[#d9dfe9] px-3 pt-[22px] pb-1.5 shadow-none max-phone:rounded-xl max-phone:p-3.5"
+            aria-labelledby="sr-table-title"
+            role="region"
+          >
+            <header className="flex items-baseline justify-between gap-4 px-2 pb-[22px] max-phone:items-center max-phone:px-0 max-phone:pb-3">
+              <h2 id="sr-table-title" className="m-0 font-sans text-lg leading-none font-bold text-ink">
+                Staff accounts
+              </h2>
+              <span className="text-right text-[13px] leading-none text-muted-foreground max-phone:text-xs max-phone:font-semibold">
+                {filtering ? (
+                  <>
+                    <span className="max-phone:hidden">{`${rows.length} matching staff account${rows.length === 1 ? '' : 's'}`}</span>
+                    <span className="hidden max-phone:inline">{`${rows.length} result${rows.length === 1 ? '' : 's'}`}</span>
+                  </>
+                ) : (
+                  `${stats.active} active of ${stats.total}`
+                )}
+              </span>
+            </header>
+
+            {isPhone ? (
+              /* Phone layout: one card per account instead of the table. Tapping the status pill opens the same
+                 Activate / Deactivate dialog as the desktop switch; picking a role opens Edit with that role chosen,
+                 because a role change always needs a reason. */
+              <ul className="flex flex-col gap-[11px]">
                 {rows.map((s) => (
-                  <tr key={s.id}>
-                    <td className="sr-cell-name">
-                      {fullName(s)}
-                      {s.id === staff.viewerStaffId && <span className="sr-you">You</span>}
-                    </td>
-                    <td className="sr-cell-email">{s.email}</td>
-                    <td className="sr-cell-code">{s.staff_code}</td>
-                    <td className="sr-cell-role">{s.role.name}</td>
-                    <td>
-                      <span className="sr-status">
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={s.active}
-                          aria-label={`${s.active ? 'Deactivate' : 'Activate'} ${fullName(s)}`}
-                          className={`sr-toggle${s.active ? ' is-on' : ''}`}
-                          onClick={() => onToggle(s)}
-                        >
-                          <span className="sr-toggle-knob" />
-                        </button>
-                        <span className={`sr-status-text${s.active ? ' is-on' : ''}`}>{s.active ? 'Active' : 'Inactive'}</span>
-                      </span>
-                    </td>
-                    <td className="sr-cell-signin">{formatSignIn(s.last_sign_in_at)}</td>
-                    <td className="sr-cell-edit">
+                  <li key={s.id} className="flex flex-col rounded-xl border border-[#d9dfe9] bg-white p-3.5">
+                    <div className="flex min-h-[31px] items-start justify-between gap-2">
+                      <p className="mt-0.5 text-[15px] leading-tight font-bold text-ink">
+                        {fullName(s)}
+                        {s.id === staff.viewerStaffId && ' · You'}
+                      </p>
                       <button
                         type="button"
-                        className="sr-edit"
-                        aria-label={`Edit ${fullName(s)}`}
-                        title="Edit"
-                        onClick={() => openEdit(s.id)}
+                        className={cn(
+                          'h-[31px] min-w-[84px] shrink-0 rounded-[9px] bg-[#e3e8f1] px-3 text-[11px] leading-none font-semibold text-[#8792a6]',
+                          s.active && 'bg-[#dcf7e3] text-success-strong',
+                        )}
+                        aria-label={`${s.active ? 'Active' : 'Inactive'} — ${s.active ? 'deactivate' : 'activate'} ${fullName(s)}`}
+                        onClick={() => onToggle(s)}
                       >
-                        <EditIcon />
+                        {s.active ? 'Active' : 'Inactive'}
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                    <p className="mt-2.5 text-xs leading-[1.3] [overflow-wrap:anywhere] text-muted-foreground">
+                      {s.email} · {s.staff_code}
+                    </p>
+                    <div className="mt-[17px] grid grid-cols-[minmax(0,1fr)_86px] gap-2.5">
+                      <Dropdown
+                        variant="card"
+                        value={s.role.id}
+                        options={roleOptions}
+                        placeholder={s.role.name}
+                        ariaLabel={`Role for ${fullName(s)}`}
+                        onChange={(v) => {
+                          if (v && v !== s.role.id) openEdit(s.id, v)
+                        }}
+                      />
+                      <div className="flex h-[41px] flex-col justify-between py-0.5 text-[13px] whitespace-nowrap text-muted-foreground">
+                        <span className="text-[10px] font-semibold tracking-[0.3px] uppercase">Last sign-in</span>
+                        <span>{formatSignIn(s.last_sign_in_at)}</span>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-[13px] h-[39px] gap-2 rounded-lg border-[#d3dae6] text-[15px] font-semibold text-ink shadow-none"
+                      onClick={() => openEdit(s.id)}
+                    >
+                      <SquarePen className="size-4" aria-hidden="true" />
+                      Edit
+                    </Button>
+                  </li>
                 ))}
                 {rows.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="sr-empty">
-                      {filtering ? 'No staff accounts match these filters.' : 'No staff accounts yet.'}
-                    </td>
-                  </tr>
+                  <li className="rounded-xl border border-[#d9dfe9] bg-white p-3.5 text-center text-[13px] text-muted-foreground">
+                    {emptyText}
+                  </li>
                 )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Phone layout: one card per account instead of the table. Tapping the status pill opens the same
-              Activate / Deactivate dialog as the desktop switch; picking a role opens Edit with that role chosen,
-              because a role change always needs a reason. */}
-          <ul className="sr-cards">
-            {rows.map((s) => (
-              <li key={s.id} className="sr-card">
-                <div className="sr-card-top">
-                  <p className="sr-card-name">
-                    {fullName(s)}
-                    {s.id === staff.viewerStaffId && ' · You'}
-                  </p>
-                  <button
-                    type="button"
-                    className={`sr-pill${s.active ? ' is-on' : ''}`}
-                    aria-label={`${s.active ? 'Active' : 'Inactive'} — ${s.active ? 'deactivate' : 'activate'} ${fullName(s)}`}
-                    onClick={() => onToggle(s)}
-                  >
-                    {s.active ? 'Active' : 'Inactive'}
-                  </button>
-                </div>
-                <p className="sr-card-meta">
-                  {s.email} · {s.staff_code}
-                </p>
-                <div className="sr-card-row">
-                  <Dropdown
-                    className="sr-dropdown--card"
-                    value={s.role.id}
-                    options={roleOptions}
-                    placeholder={s.role.name}
-                    ariaLabel={`Role for ${fullName(s)}`}
-                    onChange={(v) => {
-                      if (v && v !== s.role.id) openEdit(s.id, v)
-                    }}
-                  />
-                  <div className="sr-card-signin">
-                    <span className="sr-card-signin-label">Last sign-in</span>
-                    <span>{formatSignIn(s.last_sign_in_at)}</span>
-                  </div>
-                </div>
-                <button type="button" className="sr-card-edit" onClick={() => openEdit(s.id)}>
-                  <EditIcon />
-                  Edit
-                </button>
-              </li>
-            ))}
-            {rows.length === 0 && (
-              <li className="sr-card sr-card--empty">{filtering ? 'No staff accounts match these filters.' : 'No staff accounts yet.'}</li>
+              </ul>
+            ) : (
+              <Table className="table-fixed">
+                <colgroup>
+                  <col />
+                  <col />
+                  <col className="w-[92px]" />
+                  <col />
+                  <col className="w-[124px]" />
+                  <col className="w-[112px]" />
+                  <col className="w-12" />
+                </colgroup>
+                <TableHeader>
+                  <TableRow className="border-[#d9dfe9] hover:bg-transparent">
+                    {['Name', 'Email', 'Staff ID', 'Role', 'Status', 'Last sign-in'].map((h) => (
+                      <TableHead
+                        key={h}
+                        className="h-auto px-2 pt-0 pb-2 text-[11px] leading-none font-semibold text-muted-foreground uppercase"
+                      >
+                        {h}
+                      </TableHead>
+                    ))}
+                    <TableHead className="h-auto px-2 pt-0 pb-2">
+                      <span className="sr-only">Edit</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="[&_td]:h-[50px] [&_td]:truncate [&_td]:px-2 [&_td]:py-0 [&_td]:text-[13px] [&_td]:leading-none [&_tr]:border-[#d9dfe9] [&_tr]:hover:bg-transparent">
+                  {rows.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="text-sm! font-semibold text-ink">
+                        {fullName(s)}
+                        {s.id === staff.viewerStaffId && (
+                          <span className="ml-2 inline-block rounded-full bg-primary px-2 py-[3px] align-[1px] text-[11px] leading-none font-semibold text-white">
+                            You
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{s.email}</TableCell>
+                      <TableCell className="text-ink">{s.staff_code}</TableCell>
+                      <TableCell className="font-semibold text-ink">{s.role.name}</TableCell>
+                      <TableCell>
+                        <span className="inline-flex items-center gap-2">
+                          <Switch
+                            checked={s.active}
+                            aria-label={`${s.active ? 'Deactivate' : 'Activate'} ${fullName(s)}`}
+                            onCheckedChange={() => onToggle(s)}
+                            className="border-0 px-0.5 data-[size=default]:h-[22px] data-[size=default]:w-[42px] shadow-none data-[state=checked]:bg-success data-[state=unchecked]:bg-[#c5cdd9] [&>span]:size-[18px]! [&>span]:shadow-[0_1px_2px_rgba(10,20,36,0.25)] [&>span[data-state=checked]]:translate-x-5"
+                          />
+                          <span className={cn('text-[13px] font-medium text-muted-foreground', s.active && 'text-success')}>
+                            {s.active ? 'Active' : 'Inactive'}
+                          </span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{formatSignIn(s.last_sign_in_at)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-8 rounded-lg border-[#cbd5e1] text-primary shadow-none hover:bg-[#f4f6fa]"
+                          aria-label={`Edit ${fullName(s)}`}
+                          title="Edit"
+                          onClick={() => openEdit(s.id)}
+                        >
+                          <SquarePen className="size-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {rows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-24! text-center text-muted-foreground">
+                        {emptyText}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             )}
-          </ul>
-        </section>
-      </div>
+          </Card>
+        </div>
+      )}
 
       {dialog?.kind === 'create' && (
         <StaffFormDialog

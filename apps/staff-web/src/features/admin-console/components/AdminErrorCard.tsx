@@ -1,4 +1,7 @@
-import './AdminErrorCard.css'
+import type { ReactNode } from 'react'
+import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
+import { PAGE_CARD } from '../page-card'
 
 interface AdminErrorCardProps {
   /** Page label so the user knows which page failed. */
@@ -11,6 +14,19 @@ interface AdminErrorCardProps {
   onRetry: () => void
 }
 
+function Code({ children }: { children: ReactNode }) {
+  return <code className="rounded-sm bg-[#f3f4f6] px-1.5 py-px font-mono text-xs">{children}</code>
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mb-[18px]">
+      <h3 className="mb-1.5 text-[13px] font-semibold tracking-[0.06em] text-[#6b7280] uppercase">{title}</h3>
+      {children}
+    </div>
+  )
+}
+
 /**
  * Friendly diagnostic shown when an admin API call fails. Surfaces the HTTP status (when known) and the setup steps
  * the user can take to recover — replaces the small "Failed to load: …" placeholder that page bodies used to render.
@@ -20,53 +36,56 @@ export function AdminErrorCard({ page, error, status, onRetry }: AdminErrorCardP
   const isAuth = status === 401 || status === 403
 
   return (
-    <section className="page-body">
-      <div className="admin-error-card" role="alert">
-        <header>
-          <span className="badge">!</span>
-          <h2>{headline}</h2>
+    <Card className={PAGE_CARD}>
+      <div
+        className="max-w-[720px] rounded-lg border border-[#fcd34d] border-l-4 border-l-[#f59e0b] px-7 py-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] max-phone:px-4"
+        role="alert"
+      >
+        <header className="mb-3 flex items-center gap-3">
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-[#fef3c7] text-base font-bold text-[#92400e]">
+            !
+          </span>
+          <h2 className="m-0 text-lg font-semibold text-[#111827]">{headline}</h2>
         </header>
-        <p className="muted small">{error ?? 'Unknown error'}</p>
+        <p className="mb-4 text-xs break-words text-[#6b7280]">{error ?? 'Unknown error'}</p>
 
         {isAuth && (
-          <div className="admin-error-section">
-            <h3>This usually means one of two things</h3>
-            <ol>
+          <Section title="This usually means one of two things">
+            <ol className="list-decimal pl-5 text-sm leading-relaxed text-[#374151]">
               <li>You are not signed in to the staff app.</li>
               <li>
-                Your signed-in account does not have <code>is_admin=true</code> on its <code>role</code>.
+                Your signed-in account does not have <Code>is_admin=true</Code> on its <Code>role</Code>.
               </li>
             </ol>
-          </div>
+          </Section>
         )}
 
-        <div className="admin-error-section">
-          <h3>Quick checklist</h3>
-          <ol>
+        <Section title="Quick checklist">
+          <ol className="list-decimal pl-5 text-sm leading-relaxed text-[#374151]">
             <li>
-              Run <code>npm run db:up</code> in the repo root (PostgreSQL + SeaweedFS).
+              Run <Code>npm run db:up</Code> in the repo root (PostgreSQL + SeaweedFS).
             </li>
             <li>
-              Run <code>npm run db:migrate</code> and <code>npm run db:seed</code>.
+              Run <Code>npm run db:migrate</Code> and <Code>npm run db:seed</Code>.
             </li>
             <li>
-              Run <code>npm run -w apps/backend dev</code> so port 8080 is serving the API.
+              Run <Code>npm run -w apps/backend dev</Code> so port 8080 is serving the API.
             </li>
             <li>
-              Sign in via Clerk with an account whose role row has <code>is_admin=true</code>.
+              Sign in via Clerk with an account whose role row has <Code>is_admin=true</Code>.
             </li>
           </ol>
-          <p className="muted small">
+          <p className="mt-1 text-xs text-[#6b7280]">
             The admin console reads live data — with the API up and a staff account in place, both tabs fill in.
           </p>
-        </div>
+        </Section>
 
-        <footer>
-          <button type="button" className="btn-primary" onClick={onRetry}>
+        <footer className="mt-4">
+          <Button size="sm" onClick={onRetry}>
             Retry
-          </button>
+          </Button>
         </footer>
       </div>
-    </section>
+    </Card>
   )
 }

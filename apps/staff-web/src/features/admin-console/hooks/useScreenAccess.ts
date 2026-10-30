@@ -30,7 +30,7 @@ export interface UseScreenAccess {
  *
  * ```tsx
  * const { loading, provisioned, canOpen } = useScreenAccess()
- * if (loading) return <p className="muted">Checking your access…</p>
+ * if (loading) return <p className="text-sm text-muted-foreground">Checking your access…</p>
  * if (!provisioned) return <StaffNotProvisionedScreen />
  * if (!canOpen('f07.refunds')) return <NoAccessScreen screenName="Refunds" />
  * ```

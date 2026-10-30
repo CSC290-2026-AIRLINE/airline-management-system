@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { UserRound } from 'lucide-react'
 import { StatusCard } from './StatusCard'
 
 interface StaffNotProvisionedScreenProps {
@@ -23,24 +24,19 @@ interface StaffNotProvisionedScreenProps {
  *
  * ```tsx
  * const { provisioned, loading } = useScreenAccess()
- * if (loading) return <p className="muted">Checking your access…</p>
+ * if (loading) return <p className="text-sm text-muted-foreground">Checking your access…</p>
  * if (!provisioned) return <StaffNotProvisionedScreen />
  * ```
  */
 export function StaffNotProvisionedScreen({ email, signInTo = '/login', children }: StaffNotProvisionedScreenProps) {
   return (
     <StatusCard
-      icon={
-        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <circle cx="12" cy="8" r="4" />
-          <path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" />
-        </svg>
-      }
+      icon={<UserRound className="size-[30px]" strokeWidth={1.8} />}
       title="No staff account for this email"
       body={
         <>
-          <span className="status-email">{email ?? 'This account'}</span> hasn&apos;t been set up as staff yet. Ask an Admin to create your
-          account, then sign in again.
+          <span className="font-semibold text-[#374151]">{email ?? 'This account'}</span> hasn&apos;t been set up as staff yet. Ask an Admin
+          to create your account, then sign in again.
         </>
       }
       badgeKey="STAFF_NOT_PROVISIONED"

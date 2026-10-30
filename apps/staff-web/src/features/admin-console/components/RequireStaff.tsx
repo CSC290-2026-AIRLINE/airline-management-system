@@ -41,7 +41,7 @@ interface RequireStaffProps {
 export function RequireStaff({ children, loadingFallback }: RequireStaffProps) {
   const { loading, provisioned } = useScreenAccess()
 
-  if (loading) return <>{loadingFallback ?? <p className="muted">Checking your access…</p>}</>
+  if (loading) return <>{loadingFallback ?? <p className="p-6 text-sm text-muted-foreground">Checking your access…</p>}</>
   /* `RefusalScreen` supplies the chrome above the card, not the card itself — whatever replaces the shell owns the
      frame. */
   if (provisioned === false) {

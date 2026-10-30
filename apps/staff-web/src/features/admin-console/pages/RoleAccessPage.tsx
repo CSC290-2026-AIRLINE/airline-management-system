@@ -1,15 +1,26 @@
 import { useMemo, useState } from 'react'
+import { Eye } from 'lucide-react'
+import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
+import { Checkbox } from '@staff-web/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
+import { cn } from '@staff-web/lib/utils'
 import { useListScreens } from '../api/screens'
 import { useListRoles, useGetRoleScreens, useReplaceRoleScreens } from '../api/roles'
 import { useStaffApi } from '../api/staff'
+import { PAGE_CARD } from '../page-card'
 import { useRoleAccess } from '../hooks/useRoleAccess'
 import { featureLabel } from '../feature-labels'
 import { AdminErrorCard } from '../components/AdminErrorCard'
 import { NoAccessScreen } from '../components/NoAccessScreen'
 import type { ScreenDto, StaffRow } from '../types'
-import './RoleAccessPage.css'
 
 /* Helpers --------------------------------------------------------------- */
+
+/** Radix `Select` items cannot have an empty value, so "nobody picked" gets its own sentinel. */
+const NO_STAFF = '__none__'
 
 /** Mirrors `MIN_REASON_LENGTH` in the backend's `ReplaceRoleScreensDto` — the same number, checked on both sides. */
 const MIN_REASON_LENGTH = 10
@@ -87,6 +98,14 @@ function splitColumns(groups: DisplayGroup[]): DisplayGroup[][] {
   const half = Math.ceil(groups.length / 2)
   return [groups.slice(0, half), groups.slice(half)]
 }
+
+/* Shared class lists ------------------------------------------------------ */
+
+const SELECT_TRIGGER =
+  'h-auto min-w-[220px] rounded-md border-[#d1d5db] bg-white px-3 py-2 text-sm text-[#111827] shadow-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-ink/10 data-[size=default]:h-[37px] max-phone:w-full max-phone:min-w-0'
+const BTN_GHOST =
+  'h-[33px] rounded-md border-[#d1d5db] bg-transparent px-3.5 text-[13px] font-normal text-[#374151] shadow-none hover:bg-[#f3f4f6]'
+const BTN_PRIMARY = 'h-[33px] rounded-md bg-ink px-4 text-[13px] font-medium text-white hover:bg-[#142757] disabled:opacity-55'
 
 /* Component ------------------------------------------------------------- */
 
@@ -239,7 +258,7 @@ export function RoleAccessPage() {
 
   /* A user with no staff row never reaches this point — the layout route answers that case first. */
 
-  if (registry.loading) return <p className="muted">Loading role access…</p>
+  if (registry.loading) return <p className="text-sm text-muted-foreground">Loading role access…</p>
   if (registry.error) {
     /* A signed-in non-admin gets 403 from AdminConsoleGuard. That is an authorization answer, not a broken setup,
        so it renders the shared access-denied card rather than the setup checklist. */
@@ -256,86 +275,121 @@ export function RoleAccessPage() {
     )
   }
 
+  const previewCandidates = previewStaff.filter((s) => s.role.id === currentRole?.id)
+
   return (
-    <section className="page-body">
+    <Card className={PAGE_CARD}>
       {/* Header row --------------------------------------------------- */}
-      <div className="role-access-header">
-        <div className="role-access-intro">
-          <h2>Screens for {currentRole?.name ?? '—'}</h2>
-          <p className="muted small">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-8 max-phone:flex-col max-phone:items-stretch max-phone:gap-3.5">
+        <div className="min-w-0 flex-auto">
+          <h2 className="m-0 mb-1 font-heading text-xl font-semibold text-[#111827]">Screens for {currentRole?.name ?? '—'}</h2>
+          <p className="max-w-[700px] text-xs leading-normal text-[#6b7280]">
             Pick which screens each role can see. Screen access only: what a screen allows is set by its own feature.
           </p>
         </div>
-        <div className="role-access-controls">
-          <div className="role-picker">
-            <div className="role-picker-row">
-              <button type="button" className="btn-ghost" onClick={() => void openPreview()}>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                  <path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8Z" />
-                  <circle cx="8" cy="8" r="1.8" />
-                </svg>
-                Preview as user
-              </button>
-              {/* The label keeps its stacked position directly above the select. It has to live inside the field
-                    group rather than the row, or it would caption the button that now comes first in the row. */}
-              <div className="role-picker-field">
-                <label className="role-picker-label" htmlFor="role-select">
-                  Role
-                </label>
-                <select id="role-select" className="role-select" value={roleId ?? ''} onChange={(e) => selectRole(e.target.value || null)}>
+        <div className="flex flex-none flex-col items-stretch">
+          <div className="flex flex-wrap items-end gap-2.5 max-phone:flex-col max-phone:items-stretch">
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(BTN_GHOST, 'gap-1.5 max-phone:h-auto max-phone:w-full max-phone:py-[11px]')}
+              onClick={() => void openPreview()}
+            >
+              <Eye className="size-3.5" aria-hidden="true" />
+              Preview as user
+            </Button>
+            {/* The label keeps its stacked position directly above the select, so it lives inside the field group
+                rather than the row, where it would caption the button that comes first. */}
+            <div className="flex min-w-0 flex-auto flex-col">
+              <label className="mb-1 text-xs text-[#6b7280]" htmlFor="role-select">
+                Role
+              </label>
+              <Select value={roleId ?? undefined} onValueChange={(v) => selectRole(v || null)}>
+                <SelectTrigger id="role-select" className={SELECT_TRIGGER}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper" className="font-sans leading-[normal]">
                   {registry.roles.map((r) => (
-                    <option key={r.id} value={r.id}>
+                    <SelectItem key={r.id} value={r.id}>
                       {r.name}
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
-              </div>
+                </SelectContent>
+              </Select>
             </div>
-            <p className="role-stats">
-              {currentRole?.staff_count ?? 0} staff with this role ·{' '}
-              {dirty ? `${diff.added.length + diff.removed.length} unsaved changes` : '0 unsaved changes'}
-            </p>
           </div>
+          <p className="mt-1.5 text-right text-xs font-semibold text-[#e07b00] max-phone:text-left">
+            {currentRole?.staff_count ?? 0} staff with this role ·{' '}
+            {dirty ? `${diff.added.length + diff.removed.length} unsaved changes` : '0 unsaved changes'}
+          </p>
         </div>
       </div>
 
       {/* Screen matrix ----------------------------------------------- */}
       {registry.screens.length === 0 ? (
-        <div className="empty-card">
-          <h3>No screens registered yet</h3>
-          <p className="muted">
-            Features self-register their screens via <code>POST /api/admin/screens</code>. As soon as feature teams register theirs, they
-            will appear here grouped by feature.
+        <div className="rounded-lg border border-dashed border-[#d1d5db] bg-white p-8 text-center">
+          <h3 className="mb-2 text-base font-semibold text-[#111827]">No screens registered yet</h3>
+          <p className="text-sm text-[#6b7280]">
+            Features self-register their screens via{' '}
+            <code className="rounded-sm bg-[#f3f4f6] px-1.5 py-px font-mono text-xs">POST /api/admin/screens</code>. As soon as feature
+            teams register theirs, they will appear here grouped by feature.
           </p>
         </div>
       ) : (
-        <div className="screen-columns">
+        <div className="grid grid-cols-2 items-start gap-6 max-wide:grid-cols-1">
           {columns.map((column, ci) => (
-            <div className="screen-column" key={ci}>
-              {/* Column headers sit once at the top of each column, not on every group. */}
-              <div className="group-cols" aria-hidden="true">
+            <div className="min-w-0" key={ci}>
+              {/* Column headers sit once at the top of each column, not on every group. In a single column (≤1100px)
+                  the second column's copy would repeat mid-list, so it is hidden there. */}
+              <div
+                className={cn(
+                  'grid grid-cols-[60px_minmax(0,1fr)_auto] items-center gap-3 px-[17px] pb-1.5 text-[10px] leading-[26px] font-semibold tracking-[0.06em] whitespace-nowrap text-[#94a3b8] uppercase',
+                  ci > 0 && 'max-wide:hidden',
+                )}
+                aria-hidden="true"
+              >
                 <span>Can see</span>
                 <span>Screen</span>
                 <span>Note</span>
               </div>
 
               {column.map((group) => (
-                <section className="screen-group" key={group.key}>
-                  <header className="group-header">
+                <section className="mb-4 overflow-hidden rounded-lg border border-line bg-white" key={group.key}>
+                  <header className="flex items-baseline gap-1.5 border-b border-line bg-[#eef1f8] px-4 py-[9px] text-[11px] leading-[26px] font-bold tracking-[0.08em] text-[#1e293b] uppercase">
                     <span>{group.title}</span>
-                    {group.locked && <span className="group-lock">· ADMIN ONLY — LOCKED</span>}
+                    {group.locked && <span className="font-medium tracking-[0.04em] text-[#64748b]">· Admin only — locked</span>}
                   </header>
 
-                  <ul className="screen-rows">
+                  <ul className="px-4 pb-1.5">
                     {group.screens.map((s) => {
                       const inPending = pending ?? registry.granted
                       const checked = inPending.has(s.id)
                       const locked = s.kind !== 'assignable'
                       return (
-                        <li className={locked ? 'row-locked' : ''} key={s.id}>
-                          <input type="checkbox" checked={checked} disabled={locked || !roleId} onChange={() => toggle(s.id, s.kind)} />
-                          <span className="screen-name">{s.name}</span>
-                          <span className="screen-note">{s.kind === 'core' ? <span className="note-pill">{s.kind}</span> : null}</span>
+                        <li
+                          className={cn(
+                            'grid grid-cols-[60px_minmax(0,1fr)_auto] items-center gap-3 border-t border-[#f1f2f6] py-1.5 text-sm leading-[26px] text-[#111827] first:border-t-0',
+                            locked && 'text-[#64748b]',
+                          )}
+                          key={s.id}
+                        >
+                          <span className="flex min-h-[26px] items-center pl-[23px]">
+                            <Checkbox
+                              checked={checked}
+                              disabled={locked || !roleId}
+                              aria-label={s.name}
+                              onCheckedChange={() => toggle(s.id, s.kind)}
+                              className="size-[13px] rounded-[2px] border-[#767676] bg-white shadow-none data-[state=checked]:border-ink data-[state=checked]:bg-ink disabled:opacity-30 [&_svg]:size-[11px]"
+                            />
+                          </span>
+                          <span className="truncate">{s.name}</span>
+                          <span>
+                            {s.kind === 'core' ? (
+                              <span className="inline-block rounded-full bg-[#eef1f8] px-2.5 py-0.5 text-[11px] font-medium text-[#475569]">
+                                {s.kind}
+                              </span>
+                            ) : null}
+                          </span>
                         </li>
                       )
                     })}
@@ -347,39 +401,49 @@ export function RoleAccessPage() {
         </div>
       )}
 
-      <p className="footnote muted">
+      <p className="mt-6 text-xs text-[#6b7280]">
         Core and Admin screens are locked; only <strong>assignable</strong> screens can change.
       </p>
 
       {/* Save feedback sits above the panel so it survives the panel unmounting when `dirty` flips back to false. */}
       {(saveError || saveNotice) && (
-        <p className={saveError ? 'save-feedback is-error' : 'save-feedback'} role="status">
+        <p
+          className={cn(
+            'mt-4 rounded-md border border-[#b7dcc1] bg-[#e5f3e8] px-3 py-2 text-[13px] text-[#14532d]',
+            saveError && 'border-[#f0b4b4] bg-[#fbe6e6] text-[#7f1d1d]',
+          )}
+          role="status"
+        >
           {saveError ?? saveNotice}
         </p>
       )}
 
       {/* Save panel (sticky) ---------------------------------------- */}
       {roleId && dirty && (
-        <div className="save-panel" role="region" aria-label="Unsaved changes">
-          <div className="save-panel-body">
-            <div>
-              <p className="save-summary">
+        <div
+          className="sticky bottom-0 -mx-8 mt-6 -mb-6 rounded-lg border border-[#e5b86a] bg-[#fff8e6] px-6 py-3.5 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] max-laptop:-mx-6 max-tablet:-mx-5 max-tablet:-mb-5 max-phone:-mx-4 max-phone:-mb-4 max-phone:rounded-none"
+          role="region"
+          aria-label="Unsaved changes"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="max-phone:w-full">
+              <p className="mb-1.5 text-[13px] font-semibold text-[#92400e]">
                 {diff.added.length} to grant, {diff.removed.length} to revoke
               </p>
-              <input
-                className="reason-input"
+              <Input
+                className="h-[37px] w-80 rounded-md border-[#d1d5db] bg-white px-3 text-sm text-[#111827] shadow-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-ink/10 max-phone:w-full md:text-sm"
                 placeholder="Reason (required, ≥ 10 chars)"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
               />
             </div>
-            <div className="save-actions">
-              <button type="button" className="btn-ghost" onClick={undo} disabled={saving}>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className={BTN_GHOST} onClick={undo} disabled={saving}>
                 Undo changes
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn-primary"
+                className={BTN_PRIMARY}
                 disabled={!reasonOk || saving}
                 title={saveTitle}
                 onClick={() => {
@@ -387,62 +451,66 @@ export function RoleAccessPage() {
                 }}
               >
                 {saving ? 'Saving…' : 'Save access'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       )}
 
       {/* Preview modal ---------------------------------------------- */}
-      {previewOpen && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Preview as user" onClick={() => setPreviewOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <header>
-              <h3>Preview as user</h3>
-              <button type="button" className="btn-ghost" onClick={() => setPreviewOpen(false)}>
-                Close
-              </button>
-            </header>
-            <p className="muted small">
-              Pick a staff member to see what they can open. The list is what the server would answer for them: the core screens everyone
-              has, the admin screens if their role is an admin, plus the screens granted to their role.
-            </p>
-            {previewError ? (
-              <p className="muted small">Could not load the staff list — {previewError}</p>
-            ) : previewLoading ? (
-              <p className="muted small">Loading staff…</p>
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent
+          showCloseButton={false}
+          className="w-[480px] max-w-[92vw] gap-0 rounded-lg border-0 px-6 py-5 font-sans leading-[normal] text-[#111827] shadow-[0_12px_28px_rgba(0,0,0,0.2)] sm:max-w-[92vw]"
+        >
+          <header className="mb-3 flex items-center justify-between">
+            <DialogTitle className="text-base font-semibold text-[#111827]">Preview as user</DialogTitle>
+            <Button type="button" variant="outline" className={BTN_GHOST} onClick={() => setPreviewOpen(false)}>
+              Close
+            </Button>
+          </header>
+          <DialogDescription className="mb-3 text-xs leading-normal text-[#6b7280]">
+            Pick a staff member to see what they can open. The list is what the server would answer for them: the core screens everyone has,
+            the admin screens if their role is an admin, plus the screens granted to their role.
+          </DialogDescription>
+          {previewError ? (
+            <p className="text-xs text-[#6b7280]">Could not load the staff list — {previewError}</p>
+          ) : previewLoading ? (
+            <p className="text-xs text-[#6b7280]">Loading staff…</p>
+          ) : (
+            <Select value={previewStaffId ?? NO_STAFF} onValueChange={(v) => setPreviewStaffId(v === NO_STAFF ? null : v)}>
+              <SelectTrigger className={cn(SELECT_TRIGGER, 'w-full')} aria-label="Staff member">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" className="font-sans leading-[normal]">
+                <SelectItem value={NO_STAFF}>No staff selected</SelectItem>
+                {previewCandidates.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.first_name} {s.last_name} — {s.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <h4 className="mt-4 mb-2 text-[11px] font-bold tracking-[0.12em] text-[#6b7280]">THEY SEE</h4>
+          <ul className="max-h-[220px] overflow-y-auto rounded-md border border-line">
+            {previewSees.length === 0 ? (
+              <li className="px-3 py-2 text-[13px] text-[#6b7280]">No screens currently granted.</li>
             ) : (
-              <select className="role-select" value={previewStaffId ?? ''} onChange={(e) => setPreviewStaffId(e.target.value || null)}>
-                <option value="">No staff selected</option>
-                {previewStaff
-                  .filter((s) => s.role.id === currentRole?.id)
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.first_name} {s.last_name} — {s.email}
-                    </option>
-                  ))}
-              </select>
+              previewSees.map((s) => (
+                <li key={s.id} className="border-b border-[#f1f2f6] px-3 py-2 text-[13px] last:border-b-0">
+                  <span className="font-mono text-xs text-[#4b5563]">{s.code}</span> · {s.name}
+                </li>
+              ))
             )}
-            <h4 className="preview-sees-label">THEY SEE</h4>
-            <ul className="preview-list">
-              {previewSees.length === 0 ? (
-                <li className="muted">No screens currently granted.</li>
-              ) : (
-                previewSees.map((s) => (
-                  <li key={s.id}>
-                    <span className="mono">{s.code}</span> · {s.name}
-                  </li>
-                ))
-              )}
-            </ul>
-            <footer>
-              <button type="button" className="btn-primary" onClick={() => setPreviewOpen(false)}>
-                Done
-              </button>
-            </footer>
-          </div>
-        </div>
-      )}
-    </section>
+          </ul>
+          <footer className="mt-4 flex justify-end">
+            <Button type="button" className={BTN_PRIMARY} onClick={() => setPreviewOpen(false)}>
+              Done
+            </Button>
+          </footer>
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }

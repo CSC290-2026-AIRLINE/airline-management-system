@@ -1,118 +1,210 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
-  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --heading: 'Merriweather', Georgia, 'Times New Roman', serif;
-  --mono: ui-monospace, Consolas, monospace;
+/*
+ * Tailwind + shadcn/ui theme.
+ *
+ * Sizes are in px, not rem: `:root` below sets an 18px base font for the starter pages, and rem-based Tailwind steps
+ * would all come out 12.5% larger than the design. Colours have their own names (`--color-*`) so they never clash
+ * with the starter variables (`--border`, `--accent`, …) further down.
+ */
+@theme {
+  --spacing: 4px;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Admin console breakpoints. `max-phone:` is ≤600px, `max-tablet:` ≤768px, `max-laptop:` ≤1024px, `max-wide:` ≤1100px
+     — the same edges the design (and the old CSS) used. */
+  --breakpoint-phone: 37.5625rem;
+  --breakpoint-tablet: 48.0625rem;
+  --breakpoint-laptop: 64.0625rem;
+  --breakpoint-wide: 68.8125rem;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-base: 16px;
+  --text-base--line-height: 24px;
+  --text-lg: 18px;
+  --text-lg--line-height: 28px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 32px;
+  --text-3xl: 30px;
+  --text-3xl--line-height: 36px;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Merriweather', Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* shadcn/ui tokens */
+  --color-background: #ffffff;
+  --color-foreground: #0a1424;
+  --color-card: #ffffff;
+  --color-card-foreground: #0a1424;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0a1424;
+  --color-primary: #102544;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #eef1f7;
+  --color-secondary-foreground: #0a1424;
+  --color-muted: #f2f4f8;
+  --color-muted-foreground: #6f7c91;
+  --color-accent: #f4f6fa;
+  --color-accent-foreground: #0a1424;
+  --color-destructive: #b8171f;
+  --color-border: #d9dfe9;
+  --color-input: #dbe0eb;
+  --color-ring: #102544;
+
+  /* Admin console palette (Figma) */
+  --color-navy: #14213d;
+  --color-navy-active: #2a4372;
+  --color-ink: #0a1424;
+  --color-page: #f7f9fc;
+  --color-line: #e6e8ef;
+  --color-gold: #f2a800;
+  --color-success: #2fa568;
+  --color-success-strong: #1f8a4c;
+  --color-success-soft: #e4f5e9;
+  --color-warning: #94651c;
+  --color-warning-soft: #fef4de;
+  --color-danger: #b8171f;
+  --color-danger-soft: #fdecec;
+  --color-danger-line: #e5484d;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
 }
 
-@media (prefers-color-scheme: dark) {
+/* Starter styles, kept for the non-admin pages. In the `base` layer so Tailwind utilities can override them. */
+@layer base {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    --text: #6b6375;
+    --text-h: #08060d;
+    --bg: #fff;
+    --border: #e5e4e7;
+    --code-bg: #f4f3ec;
+    --accent: #aa3bff;
+    --accent-bg: rgba(170, 59, 255, 0.1);
+    --accent-border: rgba(170, 59, 255, 0.5);
+    --social-bg: rgba(244, 243, 236, 0.5);
+    --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+    --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --heading: 'Merriweather', Georgia, 'Times New Roman', serif;
+    --mono: ui-monospace, Consolas, monospace;
+
+    font: 18px/145% var(--sans);
+    letter-spacing: 0.18px;
+    color-scheme: light dark;
+    color: var(--text);
+    background: var(--bg);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+
+    @media (max-width: 1024px) {
+      font-size: 16px;
+    }
   }
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --text: #9ca3af;
+      --text-h: #f3f4f6;
+      --bg: #16171d;
+      --border: #2e303a;
+      --code-bg: #1f2028;
+      --accent: #c084fc;
+      --accent-bg: rgba(192, 132, 252, 0.15);
+      --accent-border: rgba(192, 132, 252, 0.5);
+      --social-bg: rgba(47, 48, 58, 0.5);
+      --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    }
+
+    #social .button-icon {
+      filter: invert(1) brightness(2);
+    }
   }
-}
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+  #root {
+    width: 1126px;
+    max-width: 100%;
+    margin: 0 auto;
+    text-align: center;
+    border-inline: 1px solid var(--border);
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
   }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
+
+  body {
+    margin: 0;
   }
-}
-p {
-  margin: 0;
-}
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
+  h1,
+  h2 {
+    font-family: var(--heading);
+    font-weight: 500;
+    color: var(--text-h);
+  }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
-}
+  h1 {
+    font-size: 56px;
+    letter-spacing: -1.68px;
+    margin: 32px 0;
+    @media (max-width: 1024px) {
+      font-size: 36px;
+      margin: 20px 0;
+    }
+  }
+  h2 {
+    font-size: 24px;
+    line-height: 118%;
+    letter-spacing: -0.24px;
+    margin: 0 0 8px;
+    @media (max-width: 1024px) {
+      font-size: 20px;
+    }
+  }
+  p {
+    margin: 0;
+  }
 
-/* Admin console pages need to fill the viewport (sidebar + main, no centered card).
- * :has() makes the override no-op outside /admin, so other pages keep the centred layout. */
-#root:has(.admin-shell) {
-  width: 100%;
-  max-width: none;
-  border: 0;
-  text-align: left;
+  code,
+  .counter {
+    font-family: var(--mono);
+    display: inline-flex;
+    border-radius: 4px;
+    color: var(--text-h);
+  }
+
+  code {
+    font-size: 15px;
+    line-height: 135%;
+    padding: 4px 8px;
+    background: var(--code-bg);
+  }
+
+  /* Admin console pages need to fill the viewport (sidebar + main, no centered card).
+   * :has() makes the override no-op outside /admin, so other pages keep the centred layout. */
+  #root:has(.admin-shell) {
+    width: 100%;
+    max-width: none;
+    border: 0;
+    text-align: left;
+  }
 }

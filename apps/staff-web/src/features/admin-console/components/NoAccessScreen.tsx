@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { LockKeyhole } from 'lucide-react'
 import { StatusCard } from './StatusCard'
 
 interface NoAccessScreenProps {
@@ -34,7 +35,7 @@ interface NoAccessScreenProps {
  *
  * ```tsx
  * const { loading, canOpen } = useScreenAccess()
- * if (loading) return <p className="muted">Checking your access…</p>
+ * if (loading) return <p className="text-sm text-muted-foreground">Checking your access…</p>
  * if (!canOpen('f07.refunds')) return <NoAccessScreen screenName="Refunds" roleName="Gate agent" />
  * return <RefundsPage />
  * ```
@@ -42,13 +43,7 @@ interface NoAccessScreenProps {
 export function NoAccessScreen({ screenName, roleName, recorded = true, homeTo = '/', children }: NoAccessScreenProps) {
   return (
     <StatusCard
-      icon={
-        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <rect x="4" y="10.5" width="16" height="10.5" rx="2.5" />
-          <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
-          <circle cx="12" cy="15.5" r="1.4" fill="currentColor" stroke="none" />
-        </svg>
-      }
+      icon={<LockKeyhole className="size-[30px]" strokeWidth={1.8} />}
       title="You don't have access to this page"
       body={
         roleName

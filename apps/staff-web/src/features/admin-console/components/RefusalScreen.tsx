@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { TopBar } from './TopBar'
-import './RefusalScreen.css'
 
 /**
  * The page frame a refusal screen renders in: the "Airlines" bar, then the card on the workspace's grey.
@@ -15,7 +14,7 @@ import './RefusalScreen.css'
  */
 export function RefusalScreen({ children }: { children: ReactNode }) {
   return (
-    <div className="refusal-screen">
+    <div className="fixed inset-0 z-[1] flex flex-col overflow-y-auto bg-page font-sans leading-[normal] [color-scheme:light] [&_[data-slot=status-wrap]]:absolute [&_[data-slot=status-wrap]]:inset-0 [&_[data-slot=status-wrap]]:overflow-y-auto">
       <TopBar />
       {children}
     </div>

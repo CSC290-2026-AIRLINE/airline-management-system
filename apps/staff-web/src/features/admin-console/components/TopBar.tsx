@@ -1,5 +1,3 @@
-import './TopBar.css'
-
 /**
  * The "Airlines" bar that sits above every refusal screen.
  *
@@ -13,8 +11,8 @@ import './TopBar.css'
  */
 export function TopBar() {
   return (
-    <header className="top-bar">
-      <span className="top-bar-word">Airlines</span>
+    <header className="relative z-[2] flex min-h-[clamp(60px,6vh,80px)] w-full shrink-0 items-center bg-[#0e1b3d] px-5 font-sans text-white">
+      <span className="text-[26px] font-bold tracking-[0.01em]">Airlines</span>
     </header>
   )
 }
