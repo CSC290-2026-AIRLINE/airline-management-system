@@ -1,0 +1,76 @@
+.shell {
+  background: var(--f6-ground);
+  min-height: 100svh;
+}
+
+.bar {
+  background: var(--f6-navy);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  flex-wrap: wrap;
+}
+
+.logo {
+  font-family: var(--f6-brand);
+  font-weight: 900;
+  font-size: 20px;
+}
+
+.logo small {
+  font-family: var(--f6-ui);
+  font-weight: 600;
+  font-size: 11px;
+  background: var(--f6-amber);
+  color: var(--f6-navy);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  vertical-align: 3px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: #ffffff;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tab {
+  font: 600 14px var(--f6-ui);
+  border: 1px solid transparent;
+  background: transparent;
+  color: #ffffff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tab[aria-pressed='true'] {
+  background: var(--f6-amber);
+  color: var(--f6-navy);
+}
+
+.body {
+  padding: 24px 20px;
+  display: grid;
+  gap: 20px;
+}
+
+@media print {
+  .bar {
+    display: none;
+  }
+
+  .body {
+    padding: 0;
+  }
+}

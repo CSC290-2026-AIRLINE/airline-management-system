@@ -1,0 +1,20 @@
+/* Feature 6 design tokens: the CS26 Figma kit (navy + amber, light theme only). */
+:root {
+  --f6-navy: #14213d;
+  --f6-amber: #fca311;
+  --f6-amber-hover: #c27d0c;
+  --f6-ground: #eef0f4;
+  --f6-line: #d8dce6;
+  --f6-muted: #677287;
+  --f6-good: #1e8e4e;
+  --f6-bad: #d61313;
+
+  --f6-paper: #ffffff;
+  --f6-ink: #14213d;
+  --f6-good-bg: #e6f4ec;
+  --f6-bad-bg: #fdecec;
+  --f6-warn-bg: #fff4de;
+  --f6-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f6-brand: 'Merriweather', georgia, serif;
+  --f6-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}

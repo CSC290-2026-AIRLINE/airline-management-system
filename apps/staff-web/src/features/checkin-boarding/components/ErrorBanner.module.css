@@ -1,0 +1,21 @@
+.banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--f6-bad-bg);
+  color: var(--f6-bad);
+}
+
+.close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
