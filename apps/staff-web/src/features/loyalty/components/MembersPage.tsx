@@ -6,7 +6,7 @@ import { errorMessage, useLoad } from '../use-load'
 import { useToast } from '../use-toast'
 import { MilesCell, Modal, Segmented, TierPill, Toast, TypePill } from './parts'
 import { Loaded, StaffLoyaltyLayout } from './StaffLoyaltyLayout'
-import styles from './loyalty.module.css'
+import { ui } from './ui'
 
 // S1–S3 Member Lookup: find a member, read their ledger and adjust miles. A mistake is fixed with a new adjustment,
 // never by editing a row; every adjustment needs a reason and goes to the audit log.
@@ -25,43 +25,43 @@ export function MembersPage() {
       info="Loyalty role only. Every balance adjustment is logged in the audit log (Feature 15)."
     >
       <Toast message={toast} />
-      <div className={styles.grid2}>
-        <section className={styles.card} aria-labelledby="search">
-          <h2 id="search" className={styles.cardTitle} style={{ fontSize: 14 }}>
+      <div className={ui.grid}>
+        <section className={ui.card} aria-labelledby="search">
+          <h2 id="search" className={ui.cardTitle} style={{ fontSize: 14 }}>
             Search members
           </h2>
-          <div className={styles.searchRow} role="search">
+          <div className={ui.searchRow} role="search">
             <input
-              className={`${styles.input} ${styles.inputSmall}`}
+              className={`${ui.input} ${ui.inputSmall}`}
               placeholder="Member number, name or email"
               aria-label="Member number, name or email"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            <button type="button" className={styles.button} onClick={() => setQuery('')}>
+            <button type="button" className={ui.button} onClick={() => setQuery('')}>
               Clear
             </button>
           </div>
           <Loaded state={state} retry={retry}>
             {(members) =>
               members.length === 0 ? (
-                <div className={styles.empty}>
+                <div className={ui.empty}>
                   <strong>No member matches that search.</strong>
-                  <span className={styles.small}>Check the member number, name or email.</span>
+                  <span className={ui.small}>Check the member number, name or email.</span>
                 </div>
               ) : (
                 <>
-                  <span className={styles.small}>
+                  <span className={ui.small}>
                     {members.length} member{members.length === 1 ? '' : 's'}
                   </span>
-                  <ul className={styles.memberList} aria-label="Members found">
+                  <ul className={ui.memberList} aria-label="Members found">
                     {members.map((m) => (
                       <li key={m.id}>
                         <button type="button" aria-current={(picked ?? members[0].id) === m.id} onClick={() => setPicked(m.id)}>
                           <strong>
                             {m.name} <TierPill tier={m.tier} />
                           </strong>
-                          <span className={styles.small}>
+                          <span className={ui.small}>
                             {m.email} · {m.memberNumber}
                           </span>
                         </button>
@@ -82,8 +82,8 @@ export function MembersPage() {
             onAdjusted={showToast}
           />
         ) : (
-          <section className={styles.card}>
-            <p className={styles.muted} style={{ textAlign: 'center', padding: '40px 0' }}>
+          <section className={ui.card}>
+            <p className={ui.muted} style={{ textAlign: 'center', padding: '40px 0' }}>
               Pick a member to see their balance and ledger.
             </p>
           </section>
@@ -100,7 +100,7 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
   const [adjusting, setAdjusting] = useState(false)
 
   return (
-    <section className={styles.card} aria-labelledby="member-name">
+    <section className={ui.card} aria-labelledby="member-name">
       <Loaded state={state} retry={retry}>
         {(loaded) => {
           const member = override ?? loaded
@@ -111,24 +111,24 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
             .join('')
           return (
             <>
-              <div className={styles.cardHead}>
+              <div className={ui.cardHead}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <span className={styles.avatar} aria-hidden="true">
+                  <span className={ui.avatar} aria-hidden="true">
                     {initials}
                   </span>
                   <div>
                     <h2 id="member-name" style={{ fontSize: 17, fontWeight: 700 }}>
                       {member.name}
                     </h2>
-                    <span className={styles.small}>{member.memberNumber}</span>
+                    <span className={ui.small}>{member.memberNumber}</span>
                   </div>
                 </div>
-                <button type="button" className={styles.buttonPrimary} onClick={() => setAdjusting(true)}>
+                <button type="button" className={ui.buttonPrimary} onClick={() => setAdjusting(true)}>
                   Adjust balance
                 </button>
               </div>
 
-              <div className={styles.stats}>
+              <div className={ui.stats}>
                 <Stat label="Miles balance" value={formatMiles(member.milesBalance)} />
                 <Stat label="Tier" value={member.tier?.name ?? 'No tier'} />
                 <Stat label="Tier valid until" value={member.tierExpiresAt ? formatDate(member.tierExpiresAt) : '—'} />
@@ -138,17 +138,17 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
               </div>
 
               <h3 style={{ fontSize: 13, fontWeight: 700 }}>Ledger · newest first</h3>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
+              <div className={ui.tableWrap}>
+                <table className={ui.table}>
                   <thead>
                     <tr>
                       <th scope="col">Date</th>
                       <th scope="col">Description</th>
                       <th scope="col">Type</th>
-                      <th scope="col" className={styles.num}>
+                      <th scope="col" className={ui.num}>
                         Miles
                       </th>
-                      <th scope="col" className={styles.num}>
+                      <th scope="col" className={ui.num}>
                         Balance
                       </th>
                     </tr>
@@ -157,9 +157,9 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
                     {member.ledger.length === 0 ? (
                       <tr>
                         <td colSpan={5}>
-                          <div className={styles.empty}>
+                          <div className={ui.empty}>
                             <strong>No transactions yet</strong>
-                            <span className={styles.small}>Miles are added after the member’s first flight.</span>
+                            <span className={ui.small}>Miles are added after the member’s first flight.</span>
                           </div>
                         </td>
                       </tr>
@@ -169,20 +169,20 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
                           <td style={{ whiteSpace: 'nowrap' }}>{formatTableDate(row.occurredAt)}</td>
                           <td>
                             <div>{row.title}</div>
-                            <div className={styles.cellSub}>{row.detail}</div>
+                            <div className={ui.cellSub}>{row.detail}</div>
                           </td>
                           <td>
                             <TypePill type={row.type} />
                           </td>
                           <MilesCell miles={row.miles} />
-                          <td className={styles.num}>{formatMiles(row.balanceAfter)}</td>
+                          <td className={ui.num}>{formatMiles(row.balanceAfter)}</td>
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
               </div>
-              <p className={styles.small}>
+              <p className={ui.small}>
                 The ledger can only grow: a mistake is fixed by a new adjustment with a reason, never by editing a row.
               </p>
 
@@ -210,7 +210,7 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className={styles.stat}>
+    <div className={ui.stat}>
       <span>{label}</span>
       <strong style={{ overflowWrap: 'anywhere' }}>{value}</strong>
     </div>
@@ -262,11 +262,11 @@ function AdjustModal({
   return (
     <Modal title="Adjust miles" onClose={onClose}>
       <form onSubmit={(e) => void submit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }} noValidate>
-        <p className={styles.muted}>
+        <p className={ui.muted}>
           {member.name} · {member.memberNumber} · balance {formatMiles(member.milesBalance)} miles
         </p>
-        <div className={styles.field}>
-          <span className={styles.label}>Change</span>
+        <div className={ui.field}>
+          <span className={ui.label}>Change</span>
           <Segmented
             label="Change"
             value={direction}
@@ -277,10 +277,10 @@ function AdjustModal({
             ]}
           />
         </div>
-        <label className={styles.field}>
-          <span className={styles.label}>Miles</span>
+        <label className={ui.field}>
+          <span className={ui.label}>Miles</span>
           <input
-            className={`${styles.input} ${belowZero ? styles.inputError : ''}`}
+            className={`${ui.input} ${belowZero ? ui.inputError : ''}`}
             inputMode="numeric"
             value={milesText}
             onChange={(e) => setMilesText(e.target.value)}
@@ -288,15 +288,15 @@ function AdjustModal({
             aria-describedby="miles-help"
           />
           {belowZero && (
-            <span id="miles-help" className={styles.fieldError} role="alert">
+            <span id="miles-help" className={ui.fieldError} role="alert">
               Removing {formatMiles(amount)} would leave −{formatMiles(-after)} miles. The balance can’t go below 0.
             </span>
           )}
         </label>
-        <label className={styles.field}>
-          <span className={styles.label}>Reason (saved in the audit log)</span>
+        <label className={ui.field}>
+          <span className={ui.label}>Reason (saved in the audit log)</span>
           <input
-            className={`${styles.input} ${reasonMissing ? styles.inputError : ''}`}
+            className={`${ui.input} ${reasonMissing ? ui.inputError : ''}`}
             placeholder="Why are you changing this balance?"
             value={reason}
             onChange={(e) => {
@@ -306,7 +306,7 @@ function AdjustModal({
             aria-invalid={reasonMissing}
           />
           {reasonMissing && (
-            <span className={styles.fieldError} role="alert">
+            <span className={ui.fieldError} role="alert">
               Required. Adjustments are never applied without a reason.
             </span>
           )}
@@ -315,15 +315,15 @@ function AdjustModal({
           <p style={{ fontSize: 13 }}>New balance: {formatMiles(after)} miles. Adjusted miles don’t count toward tiers.</p>
         )}
         {error && (
-          <p className={styles.fieldError} role="alert">
+          <p className={ui.fieldError} role="alert">
             {error}
           </p>
         )}
-        <div className={styles.modalActions}>
-          <button type="button" className={styles.button} onClick={onClose}>
+        <div className={ui.modalActions}>
+          <button type="button" className={ui.button} onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className={styles.buttonPrimary} disabled={busy || !valid || belowZero}>
+          <button type="submit" className={ui.buttonPrimary} disabled={busy || !valid || belowZero}>
             {valid
               ? `${direction === 'add' ? 'Add' : 'Remove'} ${formatMiles(amount)} miles`
               : direction === 'add'

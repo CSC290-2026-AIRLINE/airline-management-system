@@ -1,43 +1,40 @@
 import { Link } from '@tanstack/react-router'
 import type { TierCode, TransactionType } from '../api/types'
 import { formatSignedMiles } from '../format'
-import { FLIGHT_SEARCH_PATH, TIER_ART, TYPE_LABEL } from './labels'
-import styles from './loyalty.module.css'
+import { cx, FLIGHT_SEARCH_PATH, NO_TIER_ART, TIER_ART, TIER_PILL, TYPE_LABEL, TYPE_PILL, ui } from './labels'
 
 // Small pieces shared by the Feature 11 customer pages.
 
-const TYPE_PILL: Record<TransactionType, string> = {
-  earn: styles.pillBlue,
-  redeem: styles.pillAmber,
-  redeem_reversal: styles.pillGreen,
-  expire: '',
-  adjust: '',
-}
-
 export function TypePill({ type }: { type: TransactionType }) {
-  return <span className={`${styles.pill} ${TYPE_PILL[type]}`}>{TYPE_LABEL[type]}</span>
+  return <span className={cx(ui.pill, TYPE_PILL[type])}>{TYPE_LABEL[type]}</span>
 }
-
-const TIER_PILL: Record<TierCode, string> = { silver: styles.pillSilver, gold: styles.pillGold, platinum: styles.pillPlatinum }
 
 export function TierPill({ code, name }: { code: TierCode; name: string }) {
-  return <span className={`${styles.pill} ${TIER_PILL[code]}`}>{name}</span>
+  return <span className={cx(ui.pill, TIER_PILL[code])}>{name}</span>
 }
 
 export function TierArt({ code, name }: { code: TierCode | null; name: string }) {
   return (
-    <div className={`${styles.tierArt} ${code ? TIER_ART[code] : styles.tierNone}`} aria-hidden="true">
-      <span className={styles.brand}>FLYTHON MILES</span>
-      <span className={styles.tierArtName}>{name}</span>
+    <div
+      className={cx(
+        'flex aspect-[1.6] w-full max-w-sm flex-col justify-between rounded-[10px] p-5 shadow-[0_12px_24px_rgba(16,37,68,0.15)] lg:max-w-none',
+        code ? TIER_ART[code] : NO_TIER_ART,
+      )}
+      aria-hidden="true"
+    >
+      <span className="text-xs font-black tracking-[0.14em] opacity-85">FLYTHON MILES</span>
+      <span className="text-[22px] font-extrabold uppercase tracking-[0.12em]">{name}</span>
     </div>
   )
 }
 
 export function MilesCell({ miles }: { miles: number }) {
-  return <td className={`${styles.num} ${styles.strong} ${miles > 0 ? styles.plus : styles.minus}`}>{formatSignedMiles(miles)}</td>
+  return (
+    <td className={cx(ui.td, ui.num, 'text-[15px] font-extrabold', miles > 0 ? 'text-ok' : 'text-warn')}>{formatSignedMiles(miles)}</td>
+  )
 }
 
-export function SearchFlightsLink({ label, className = styles.button }: { label: string; className?: string }) {
+export function SearchFlightsLink({ label, className = ui.button }: { label: string; className?: string }) {
   return (
     <Link to={FLIGHT_SEARCH_PATH} className={className}>
       {label}
@@ -70,6 +67,7 @@ export function Icon({ name, size = 20, color = 'currentColor' }: { name: keyof 
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
+      className="flex-none"
     >
       <path d={ICONS[name]} />
     </svg>

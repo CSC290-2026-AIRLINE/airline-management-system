@@ -4,10 +4,10 @@ import { useLoyaltyApi } from '../api/use-loyalty-api'
 import { BENEFIT_NAMES, benefitLines, type BenefitKey } from '../benefits'
 import { formatDate, formatMiles, formatTableDate } from '../format'
 import { useLoad } from '../use-load'
+import { cx, ui } from './labels'
 import { Loaded, LoyaltyLayout } from './LoyaltyLayout'
 import { TierArt, TierPill } from './parts'
 import { NotMember } from './StatementPage'
-import styles from './loyalty.module.css'
 
 const HINTS: Record<BenefitKey, string> = {
   lounge: 'Show your member number at the lounge desk. Needs a ticket for a flight leaving within 4 hours.',
@@ -42,86 +42,92 @@ function Benefits({ member, tiers, uses }: { member: MemberSummary; tiers: TierI
 
   return (
     <>
-      <div className={styles.columns}>
-        <div className={styles.stack}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 16, borderBottom: '1px solid var(--line)' }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span className={styles.caps}>Your tier</span>
-              {member.tier ? <TierPill code={member.tier.code} name={member.tier.name} /> : <span className={styles.pill}>No tier</span>}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+        {/* On a phone and tablet the card comes first, as in M1. */}
+        <aside className="flex flex-col gap-5 sm:flex-row sm:items-start lg:order-2 lg:flex-col">
+          <TierArt code={member.tier?.code ?? null} name={member.tier?.name ?? 'Member'} />
+          {next && member.nextTier && (
+            <div className="flex flex-col gap-2 sm:pt-0 lg:border-t lg:border-line lg:pt-5">
+              <h2 className="text-base font-bold">Reach {next.name}</h2>
+              <p className={ui.small}>{nextTierGains(next, tier)}</p>
+              <strong className="text-[13px]">
+                {formatMiles(member.nextTier.milesToGo)} more miles or {member.nextTier.flightsToGo} more flights
+              </strong>
             </div>
-            <h2 style={{ fontSize: 20, fontWeight: 800 }}>
+          )}
+        </aside>
+
+        <div className="flex min-w-0 flex-col gap-6 lg:order-1">
+          <div className="flex flex-col gap-2 border-b border-line pb-4">
+            <div className="flex items-center gap-2">
+              <span className={ui.caps}>Your tier</span>
+              {member.tier ? (
+                <TierPill code={member.tier.code} name={member.tier.name} />
+              ) : (
+                <span className={cx(ui.pill, 'bg-[#eef0f3] text-[#5c6678]')}>No tier</span>
+              )}
+            </div>
+            <h2 className="text-xl font-extrabold">
               {member.tier ? `${member.tier.name} until ${formatDate(member.tier.expiresAt)}.` : 'No tier yet.'}
             </h2>
           </div>
 
           <section aria-labelledby="your-benefits">
-            <h2 id="your-benefits" className={styles.sectionTitle} style={{ fontSize: 18, marginBottom: 4 }}>
+            <h2 id="your-benefits" className="mb-1 text-lg font-extrabold">
               Your benefits
             </h2>
-            <div className={styles.benefitList}>
+            <div className="flex flex-col">
               {(Object.keys(BENEFIT_NAMES) as BenefitKey[]).map((key) => {
                 const line = lines?.find((l) => l.key === key)
                 const value = !line || !line.included ? 'No' : (benefitValue(line.key, line.value, tier) ?? 'Yes')
                 return (
-                  <div key={key}>
-                    <div>
-                      <h3>{BENEFIT_NAMES[key]}</h3>
-                      <span className={styles.small}>{HINTS[key]}</span>
+                  <div key={key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-line py-3.5">
+                    <div className="min-w-0 flex-1 basis-56">
+                      <h3 className="text-[15px] font-semibold">{BENEFIT_NAMES[key]}</h3>
+                      <span className={ui.small}>{HINTS[key]}</span>
                     </div>
-                    <span className={`${styles.benefitValue} ${value === 'No' ? styles.benefitNo : ''}`}>{value}</span>
+                    <span className={cx('sm:whitespace-nowrap', value === 'No' ? 'font-normal text-muted' : 'font-bold')}>{value}</span>
                   </div>
                 )
               })}
             </div>
           </section>
         </div>
-
-        <aside className={styles.stack} style={{ gap: 20 }}>
-          <TierArt code={member.tier?.code ?? null} name={member.tier?.name ?? 'Member'} />
-          {next && member.nextTier && (
-            <div style={{ borderTop: '1px solid var(--line)', paddingTop: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700 }}>Reach {next.name}</h2>
-              <p className={styles.small}>{nextTierGains(next, tier)}</p>
-              <strong style={{ fontSize: 13 }}>
-                {formatMiles(member.nextTier.milesToGo)} more miles or {member.nextTier.flightsToGo} more flights
-              </strong>
-            </div>
-          )}
-        </aside>
       </div>
 
-      <section className={styles.section} aria-labelledby="used">
-        <h2 id="used" className={styles.sectionTitle} style={{ fontSize: 18 }}>
+      <section className={ui.section} aria-labelledby="used">
+        <h2 id="used" className="text-lg font-extrabold">
           Benefits used
         </h2>
         {uses.length === 0 ? (
-          <div className={styles.empty}>
+          <div className={ui.empty}>
             <strong>No benefits used yet</strong>
-            <span className={styles.small}>Lounge visits, upgrades and insurance show here once you use them.</span>
+            <span className={ui.small}>Lounge visits, upgrades and insurance show here once you use them.</span>
           </div>
         ) : (
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
+          <div className={ui.tableWrap}>
+            <table className={ui.table}>
               <thead>
                 <tr>
-                  <th scope="col">Benefit</th>
-                  <th scope="col">Flight</th>
-                  <th scope="col">Date</th>
-                  <th scope="col">Detail</th>
+                  {['Benefit', 'Flight', 'Date', 'Detail'].map((h) => (
+                    <th key={h} className={ui.th} scope="col">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {uses.map((u) => (
                   <tr key={u.id}>
-                    <td>
-                      <span className={styles.pill}>{USE_LABEL[u.kind]}</span>
+                    <td className={ui.td}>
+                      <span className={cx(ui.pill, 'bg-[#eef0f3] text-[#5c6678]')}>{USE_LABEL[u.kind]}</span>
                     </td>
-                    <td>
+                    <td className={ui.td}>
                       <div>{u.route}</div>
-                      <div className={styles.small}>{u.flightNumber}</div>
+                      <div className={ui.small}>{u.flightNumber}</div>
                     </td>
-                    <td>{formatTableDate(u.usedAt)}</td>
-                    <td>{u.detail}</td>
+                    <td className={cx(ui.td, 'whitespace-nowrap')}>{formatTableDate(u.usedAt)}</td>
+                    <td className={ui.td}>{u.detail}</td>
                   </tr>
                 ))}
               </tbody>
@@ -129,7 +135,7 @@ function Benefits({ member, tiers, uses }: { member: MemberSummary; tiers: TierI
           </div>
         )}
       </section>
-      <p className={styles.small}>
+      <p className={ui.small}>
         Upgrades are given automatically within 24 hours of departure when a higher cabin has unsold seats. Insurance is a record on your
         booking only. No real insurer is contacted.
       </p>

@@ -7,13 +7,13 @@ import { errorMessage, useLoad } from '../use-load'
 import { useToast } from '../use-toast'
 import { Modal, Segmented, Toast } from './parts'
 import { Loaded, StaffLoyaltyLayout } from './StaffLoyaltyLayout'
-import styles from './loyalty.module.css'
+import { ui } from './ui'
 
 const STATUS_PILL: Record<FlightStatus, string> = {
-  scheduled: styles.pillBlue,
-  delayed: styles.pillAmber,
-  cancelled: styles.pillRed,
-  departed: '',
+  scheduled: ui.pillBlue,
+  delayed: ui.pillAmber,
+  cancelled: ui.pillRed,
+  departed: ui.pillGrey,
 }
 
 // S7–S9 Award Release: choose how many seats on each flight members can buy with miles, and what they cost. The seats
@@ -47,34 +47,34 @@ function AwardFlights({ api, initial }: { api: StaffLoyaltyApi; initial: AwardFl
   }
 
   return (
-    <section className={styles.card} aria-labelledby="flights">
+    <section className={ui.card} aria-labelledby="flights">
       <Toast message={toast} />
-      <h2 id="flights" className={styles.cardTitle}>
+      <h2 id="flights" className={ui.cardTitle}>
         Flights from Feature 2
       </h2>
       {flights.length === 0 ? (
-        <div className={styles.empty}>
+        <div className={ui.empty}>
           <strong>No flights open for sale.</strong>
-          <span className={styles.small}>Flights appear here once Feature 2 schedules them.</span>
+          <span className={ui.small}>Flights appear here once Feature 2 schedules them.</span>
         </div>
       ) : (
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
+        <div className={ui.tableWrap}>
+          <table className={ui.table}>
             <thead>
               <tr>
                 <th scope="col">Flight</th>
                 <th scope="col">Status</th>
-                <th scope="col" className={styles.num}>
+                <th scope="col" className={ui.num}>
                   Economy
                 </th>
-                <th scope="col" className={styles.num}>
+                <th scope="col" className={ui.num}>
                   Business
                 </th>
-                <th scope="col" className={styles.num}>
+                <th scope="col" className={ui.num}>
                   Cost (economy)
                 </th>
                 <th scope="col">
-                  <span className={styles.srOnly}>Actions</span>
+                  <span className={ui.srOnly}>Actions</span>
                 </th>
               </tr>
             </thead>
@@ -86,28 +86,28 @@ function AwardFlights({ api, initial }: { api: StaffLoyaltyApi; initial: AwardFl
                 return (
                   <tr key={f.flightId}>
                     <td>
-                      <div className={styles.strong}>{f.route}</div>
-                      <div className={styles.cellSub}>
+                      <div className={ui.strong}>{f.route}</div>
+                      <div className={ui.cellSub}>
                         {f.flightNumber} · {formatDate(f.departsAt)}
                       </div>
                     </td>
                     <td>
                       {f.returnedToCash ? (
-                        <span className={`${styles.pill} ${styles.pillAmber}`}>Returned to cash</span>
+                        <span className={`${ui.pill} ${ui.pillAmber}`}>Returned to cash</span>
                       ) : (
-                        <span className={`${styles.pill} ${STATUS_PILL[f.status]}`}>{STATUS_LABEL[f.status]}</span>
+                        <span className={`${ui.pill} ${STATUS_PILL[f.status]}`}>{STATUS_LABEL[f.status]}</span>
                       )}
                     </td>
-                    <td className={styles.num}>{seats(f, 'economy')}</td>
-                    <td className={styles.num}>{seats(f, 'business')}</td>
-                    <td className={`${styles.num} ${styles.strong}`}>{cost ? formatMiles(cost) : '—'}</td>
-                    <td className={styles.num}>
+                    <td className={ui.num}>{seats(f, 'economy')}</td>
+                    <td className={ui.num}>{seats(f, 'business')}</td>
+                    <td className={`${ui.num} ${ui.strong}`}>{cost ? formatMiles(cost) : '—'}</td>
+                    <td className={ui.num}>
                       {closed ? (
-                        <span className={styles.muted}>Closed</span>
+                        <span className={ui.muted}>Closed</span>
                       ) : f.returnedToCash ? (
-                        <span className={styles.muted}>Locked</span>
+                        <span className={ui.muted}>Locked</span>
                       ) : (
-                        <button type="button" className={released ? styles.button : styles.buttonPrimary} onClick={() => setOpen(f)}>
+                        <button type="button" className={released ? ui.button : ui.buttonPrimary} onClick={() => setOpen(f)}>
                           {released ? 'Edit' : 'Release'}
                         </button>
                       )}
@@ -119,7 +119,7 @@ function AwardFlights({ api, initial }: { api: StaffLoyaltyApi; initial: AwardFl
           </table>
         </div>
       )}
-      <p className={styles.small}>
+      <p className={ui.small}>
         Seat columns show redeemed / released. Departed and cancelled flights are closed. Within 72 hours of departure the unredeemed seats
         go back to cash sale and the release is locked.
       </p>
@@ -193,11 +193,11 @@ function ReleaseModal({
 
   return (
     <Modal title={firstRelease ? 'Release seats' : 'Edit release'} onClose={onClose}>
-      <p className={styles.muted}>
+      <p className={ui.muted}>
         {flight.flightNumber} · {flight.route} · {formatDate(flight.departsAt)} · {STATUS_LABEL[flight.status]}
       </p>
-      <div className={styles.field}>
-        <span className={styles.label}>Cabin</span>
+      <div className={ui.field}>
+        <span className={ui.label}>Cabin</span>
         <Segmented
           label="Cabin"
           value={cabin}
@@ -205,60 +205,60 @@ function ReleaseModal({
           options={CABINS.map((c) => ({ value: c.code, label: c.name, disabled: !flight.aircraft.cabins.includes(c.code) }))}
         />
         {missing.length > 0 && (
-          <span className={styles.small}>
+          <span className={ui.small}>
             {missing.join(' and ')} {missing.length === 1 ? 'isn’t' : 'aren’t'} on this aircraft ({flight.aircraft.name},{' '}
             {flight.aircraft.cabins.length} cabins).
           </span>
         )}
       </div>
-      <div className={styles.gridEven} style={{ gap: 10 }}>
-        <div className={styles.stat}>
+      <div className={ui.gridEven} style={{ gap: 10 }}>
+        <div className={ui.stat}>
           <span>Released now</span>
           <strong style={{ fontSize: 16 }}>{current?.released ?? 0}</strong>
         </div>
-        <div className={styles.stat}>
+        <div className={ui.stat}>
           <span>Already redeemed</span>
           <strong style={{ fontSize: 16 }}>{redeemed}</strong>
         </div>
       </div>
-      <div className={styles.gridEven} style={{ gap: 10 }}>
-        <label className={styles.field}>
-          <span className={styles.label}>Seats released</span>
+      <div className={ui.gridEven} style={{ gap: 10 }}>
+        <label className={ui.field}>
+          <span className={ui.label}>Seats released</span>
           <input
-            className={`${styles.input} ${belowRedeemed ? styles.inputError : ''}`}
+            className={`${ui.input} ${belowRedeemed ? ui.inputError : ''}`}
             inputMode="numeric"
             value={seatsText}
             onChange={(e) => setSeatsText(e.target.value)}
             aria-invalid={belowRedeemed}
           />
           {belowRedeemed && (
-            <span className={styles.fieldError} role="alert">
+            <span className={ui.fieldError} role="alert">
               Can’t go below the {redeemed} seats already redeemed.
             </span>
           )}
         </label>
-        <label className={styles.field}>
-          <span className={styles.label}>Miles per seat</span>
-          <input className={styles.input} inputMode="numeric" value={milesText} onChange={(e) => setMilesText(e.target.value)} />
+        <label className={ui.field}>
+          <span className={ui.label}>Miles per seat</span>
+          <input className={ui.input} inputMode="numeric" value={milesText} onChange={(e) => setMilesText(e.target.value)} />
         </label>
       </div>
       {!belowRedeemed && (
-        <p className={styles.small} style={{ fontSize: 12 }}>
+        <p className={ui.small} style={{ fontSize: 12 }}>
           {firstRelease
             ? 'Seats come out of the flight’s normal inventory. Miles bookings close 72 hours before departure.'
             : 'Seats cannot go below the number already redeemed. A new cost applies to future redemptions only.'}
         </p>
       )}
       {error && (
-        <p className={styles.fieldError} role="alert">
+        <p className={ui.fieldError} role="alert">
           {error}
         </p>
       )}
-      <div className={styles.modalActions}>
-        <button type="button" className={styles.button} onClick={onClose}>
+      <div className={ui.modalActions}>
+        <button type="button" className={ui.button} onClick={onClose}>
           Cancel
         </button>
-        <button type="button" className={styles.buttonPrimary} onClick={() => void submit()} disabled={busy || belowRedeemed}>
+        <button type="button" className={ui.buttonPrimary} onClick={() => void submit()} disabled={busy || belowRedeemed}>
           {firstRelease ? 'Release seats' : 'Save release'}
         </button>
       </div>

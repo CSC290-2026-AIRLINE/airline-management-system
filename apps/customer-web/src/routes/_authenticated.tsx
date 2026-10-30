@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
 import { AppAuthProvider } from '../auth/AuthProvider'
+import { CustomerNav } from '../components/CustomerNav'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: ({ context, location }) => {
@@ -16,6 +17,7 @@ export const Route = createFileRoute('/_authenticated')({
 function AuthenticatedLayout() {
   return (
     <AppAuthProvider>
+      <CustomerNav />
       <Outlet />
     </AppAuthProvider>
   )

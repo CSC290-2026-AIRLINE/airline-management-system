@@ -7,7 +7,7 @@ import { errorMessage, useLoad } from '../use-load'
 import { useToast } from '../use-toast'
 import { Modal, Segmented, TierPill, Toast } from './parts'
 import { Loaded, StaffLoyaltyLayout } from './StaffLoyaltyLayout'
-import styles from './loyalty.module.css'
+import { ui } from './ui'
 
 const AUDIT = 'logged in Feature 15 audit log'
 
@@ -80,7 +80,7 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
   const isEditing = (e: NonNullable<Editing>) => JSON.stringify(e) === JSON.stringify(editing)
   const input = (i: number, label: string) => (
     <input
-      className={`${styles.input} ${styles.inputSmall}`}
+      className={`${ui.input} ${ui.inputSmall}`}
       inputMode="decimal"
       aria-label={label}
       value={draft[i] ?? ''}
@@ -90,15 +90,15 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
   const actions = (onSave: () => void, onEdit: () => void, editingRow: boolean) =>
     editingRow ? (
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button type="button" className={styles.button} onClick={cancel}>
+        <button type="button" className={ui.button} onClick={cancel}>
           Cancel
         </button>
-        <button type="button" className={styles.buttonPrimary} onClick={onSave} disabled={busy}>
+        <button type="button" className={ui.buttonPrimary} onClick={onSave} disabled={busy}>
           Save
         </button>
       </div>
     ) : (
-      <button type="button" className={styles.button} onClick={onEdit} disabled={editing !== null}>
+      <button type="button" className={ui.button} onClick={onEdit} disabled={editing !== null}>
         Edit
       </button>
     )
@@ -113,7 +113,7 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
         title="Tier rules"
         note="A member reaches a tier with either enough miles or enough flights in the rolling 12 months. Only flights the member flew personally count."
       >
-        <table className={`${styles.table} ${styles.tableTall}`}>
+        <table className={`${ui.table} ${ui.tableTall}`}>
           <thead>
             <tr>
               <th scope="col">Tier</th>
@@ -121,7 +121,7 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
               <th scope="col">Or flights</th>
               <th scope="col">Valid (months)</th>
               <th scope="col">
-                <span className={styles.srOnly}>Actions</span>
+                <span className={ui.srOnly}>Actions</span>
               </th>
             </tr>
           </thead>
@@ -133,10 +133,10 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
                   <td>
                     <TierPill tier={t} />
                   </td>
-                  <td className={styles.strong}>{row ? input(0, `${t.name} miles needed`) : formatMiles(t.minMiles)}</td>
+                  <td className={ui.strong}>{row ? input(0, `${t.name} miles needed`) : formatMiles(t.minMiles)}</td>
                   <td>{row ? input(1, `${t.name} flights`) : t.minFlights}</td>
                   <td>{row ? input(2, `${t.name} validity in months`) : t.validMonths}</td>
-                  <td className={styles.num}>
+                  <td className={ui.num}>
                     {actions(
                       () =>
                         void save(async () => {
@@ -157,7 +157,7 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
           </tbody>
         </table>
         {editingTier && (
-          <p className={error ? styles.fieldError : styles.warn} role={error ? 'alert' : undefined}>
+          <p className={error ? ui.fieldError : ui.warn} role={error ? 'alert' : undefined}>
             {error ?? `Saving changes ${editingTier.name} for every member at their next tier check. Members keep a tier until it expires.`}
           </p>
         )}
@@ -167,14 +167,14 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
         title="Earning multipliers"
         note="Miles earned = route distance in km × the multiplier for the fare class, rounded. A multiplier of 0 earns nothing."
       >
-        <table className={`${styles.table} ${styles.tableTall}`}>
+        <table className={`${ui.table} ${ui.tableTall}`}>
           <thead>
             <tr>
               <th scope="col">Fare class</th>
               <th scope="col">Code</th>
               <th scope="col">Multiplier</th>
               <th scope="col">
-                <span className={styles.srOnly}>Actions</span>
+                <span className={ui.srOnly}>Actions</span>
               </th>
             </tr>
           </thead>
@@ -185,8 +185,8 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
                 <tr key={r.fareClassId}>
                   <td>{r.fareClassName}</td>
                   <td>{r.fareClassCode}</td>
-                  <td className={styles.strong}>{row ? input(0, `${r.fareClassName} multiplier`) : `× ${r.multiplier}`}</td>
-                  <td className={styles.num}>
+                  <td className={ui.strong}>{row ? input(0, `${r.fareClassName} multiplier`) : `× ${r.multiplier}`}</td>
+                  <td className={ui.num}>
                     {actions(
                       () =>
                         void save(async () => {
@@ -203,22 +203,22 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
           </tbody>
         </table>
         {editing?.kind === 'earn' && error && (
-          <p className={styles.fieldError} role="alert">
+          <p className={ui.fieldError} role="alert">
             {error}
           </p>
         )}
-        <p className={styles.small}>{earnExample(rules)}</p>
+        <p className={ui.small}>{earnExample(rules)}</p>
       </Card>
 
       <Card
         title="Tier benefits"
         action={
-          <button type="button" className={styles.button} onClick={() => setBenefitsFor('gold')} disabled={editing !== null}>
+          <button type="button" className={ui.button} onClick={() => setBenefitsFor('gold')} disabled={editing !== null}>
             Edit benefits
           </button>
         }
       >
-        <table className={styles.table}>
+        <table className={ui.table}>
           <thead>
             <tr>
               <th scope="col">Benefit</th>
@@ -252,14 +252,14 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
       </Card>
 
       <Card title="Settings">
-        <table className={`${styles.table} ${styles.tableTall}`}>
+        <table className={`${ui.table} ${ui.tableTall}`}>
           <thead>
             <tr>
               <th scope="col">Setting</th>
               <th scope="col">Value</th>
               <th scope="col">Used by</th>
               <th scope="col">
-                <span className={styles.srOnly}>Actions</span>
+                <span className={ui.srOnly}>Actions</span>
               </th>
             </tr>
           </thead>
@@ -269,9 +269,9 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
               return (
                 <tr key={s.key}>
                   <td>{s.label}</td>
-                  <td className={styles.strong}>{row ? input(0, `${s.label} (${s.unit})`) : `${rules.settings[s.key]} ${s.unit}`}</td>
+                  <td className={ui.strong}>{row ? input(0, `${s.label} (${s.unit})`) : `${rules.settings[s.key]} ${s.unit}`}</td>
                   <td>{s.usedBy}</td>
-                  <td className={styles.num}>
+                  <td className={ui.num}>
                     {actions(
                       () =>
                         void save(async () => {
@@ -288,7 +288,7 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
           </tbody>
         </table>
         {editing?.kind === 'setting' && error && (
-          <p className={styles.fieldError} role="alert">
+          <p className={ui.fieldError} role="alert">
             {error}
           </p>
         )}
@@ -313,17 +313,17 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
 
 function Card({ title, note, action, children }: { title: string; note?: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className={styles.card} aria-label={title}>
-      <div className={styles.cardHead}>
-        <h2 className={styles.cardTitle}>{title}</h2>
+    <section className={ui.card} aria-label={title}>
+      <div className={ui.cardHead}>
+        <h2 className={ui.cardTitle}>{title}</h2>
         {action}
       </div>
       {note && (
-        <p className={styles.muted} style={{ fontSize: 12, marginTop: -6 }}>
+        <p className={ui.muted} style={{ fontSize: 12, marginTop: -6 }}>
           {note}
         </p>
       )}
-      <div className={styles.tableWrap}>{children}</div>
+      <div className={ui.tableWrap}>{children}</div>
     </section>
   )
 }
@@ -379,7 +379,7 @@ function BenefitsModal({
   }
 
   const toggle = (label: string, key: 'priorityCheckIn' | 'priorityBoarding' | 'complimentaryUpgrade') => (
-    <div className={styles.toggleRow}>
+    <div className={ui.toggleRow}>
       <span>{label}</span>
       <Segmented
         label={label}
@@ -395,17 +395,17 @@ function BenefitsModal({
 
   return (
     <Modal title="Edit tier benefits" onClose={onClose}>
-      <p className={styles.muted} style={{ fontSize: 12 }}>
+      <p className={ui.muted} style={{ fontSize: 12 }}>
         Changes are saved through Feature 15 and written to the audit log. Features 6 and 12 read them the next time a benefit is used.
       </p>
-      <div className={styles.field}>
-        <span className={styles.label}>Tier</span>
+      <div className={ui.field}>
+        <span className={ui.label}>Tier</span>
         <Segmented label="Tier" value={code} onChange={setCode} options={rules.tiers.map((t) => ({ value: t.code, label: t.name }))} />
       </div>
-      <label className={styles.field}>
-        <span className={styles.label}>Lounge access</span>
+      <label className={ui.field}>
+        <span className={ui.label}>Lounge access</span>
         <select
-          className={styles.input}
+          className={ui.input}
           value={b.loungeGuests ?? 'none'}
           onChange={(e) => set({ loungeGuests: e.target.value === 'none' ? null : Number(e.target.value) })}
         >
@@ -416,25 +416,25 @@ function BenefitsModal({
             </option>
           ))}
         </select>
-        <span className={styles.small}>Member only, or the member plus up to 2 guests.</span>
+        <span className={ui.small}>Member only, or the member plus up to 2 guests.</span>
       </label>
-      <label className={styles.field}>
-        <span className={styles.label}>Extra free baggage (kg)</span>
+      <label className={ui.field}>
+        <span className={ui.label}>Extra free baggage (kg)</span>
         <input
-          className={styles.input}
+          className={ui.input}
           inputMode="decimal"
           value={baggage[code]}
           onChange={(e) => setBaggage({ ...baggage, [code]: e.target.value })}
         />
-        <span className={styles.small}>Feature 6 adds this to the free allowance.</span>
+        <span className={ui.small}>Feature 6 adds this to the free allowance.</span>
       </label>
       {toggle('Priority check-in lane', 'priorityCheckIn')}
       {toggle('Priority boarding', 'priorityBoarding')}
       {toggle('Complimentary upgrade', 'complimentaryUpgrade')}
-      <label className={styles.field}>
-        <span className={styles.label}>Travel insurance</span>
+      <label className={ui.field}>
+        <span className={ui.label}>Travel insurance</span>
         <select
-          className={styles.input}
+          className={ui.input}
           value={b.insurance.kind}
           onChange={(e) => {
             const kind = e.target.value as InsuranceChoice
@@ -445,18 +445,18 @@ function BenefitsModal({
           <option value="included">Included</option>
           <option value="member_price">Member price · THB {priceThb}</option>
         </select>
-        <span className={styles.small}>Not offered, Included, or a member price paid by card.</span>
+        <span className={ui.small}>Not offered, Included, or a member price paid by card.</span>
       </label>
       {error && (
-        <p className={styles.fieldError} role="alert">
+        <p className={ui.fieldError} role="alert">
           {error}
         </p>
       )}
-      <div className={styles.modalActions}>
-        <button type="button" className={styles.button} onClick={onClose}>
+      <div className={ui.modalActions}>
+        <button type="button" className={ui.button} onClick={onClose}>
           Cancel
         </button>
-        <button type="button" className={styles.buttonPrimary} onClick={() => void submit()} disabled={busy}>
+        <button type="button" className={ui.buttonPrimary} onClick={() => void submit()} disabled={busy}>
           Save {tierName} benefits
         </button>
       </div>

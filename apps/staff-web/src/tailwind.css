@@ -1,0 +1,33 @@
+/* Tailwind v4 without Preflight, so pages that still use plain CSS keep their look. Utilities are unlayered on purpose:
+   index.css styles elements (h1, h2, p) without a layer, and layered utilities would lose to them. */
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css';
+
+@theme {
+  --font-sans: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  /* Feature 11 (loyalty) palette, from the F11 Figma file. */
+  --color-ink: #0a1424;
+  --color-muted: #677287;
+  --color-line: #e0e5ed;
+  --color-divider: #e8edf3;
+  --color-field: #dbe2ea;
+  --color-navy: #102544;
+  --color-link: #1f408c;
+  --color-teal: #0e7490;
+  --color-soft: #f7f9fc;
+  --color-band: #f6f7f9;
+  --color-ok: #087338;
+  --color-warn: #995c05;
+  --color-danger: #b42318;
+  --color-sidebar: #13213b;
+  --color-sidebar-active: #2a3b5c;
+  --color-canvas: #f7f8fb;
+}
+
+/* Pages marked data-full-bleed (the Feature 11 loyalty pages) fill the window. index.css boxes #root at 1126px for
+   every page; this lifts the box only while such a page is on screen, so other pages keep their layout. */
+#root:has([data-full-bleed]) {
+  width: auto;
+  border-inline: 0;
+}

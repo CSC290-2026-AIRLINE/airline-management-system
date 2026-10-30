@@ -4,7 +4,7 @@ import { useStaffLoyaltyApi } from '../api/use-staff-loyalty-api'
 import { loungeLabel } from '../labels'
 import { errorMessage, useLoad } from '../use-load'
 import { Loaded, StaffLoyaltyLayout } from './StaffLoyaltyLayout'
-import styles from './loyalty.module.css'
+import { ui } from './ui'
 
 // S10–S14 Lounge Desk: check a member in against their tier (Feature 11) and ticket (Feature 3b), and record guests.
 export function LoungeDeskPage() {
@@ -39,64 +39,64 @@ export function LoungeDeskPage() {
       purpose="Check a member in to the lounge and record their guests."
       info="A visit is checked against the tier (Feature 11) and the ticket (Feature 3b). One lounge visit per member per flight."
     >
-      <div className={styles.gridEven}>
-        <form className={styles.card} onSubmit={(e) => void submit(e)} aria-labelledby="check-in">
-          <h2 id="check-in" className={styles.cardTitle}>
+      <div className={ui.gridEven}>
+        <form className={ui.card} onSubmit={(e) => void submit(e)} aria-labelledby="check-in">
+          <h2 id="check-in" className={ui.cardTitle}>
             Check in a member
           </h2>
-          <label className={styles.field}>
-            <span className={styles.label}>Member number or booking reference</span>
+          <label className={ui.field}>
+            <span className={ui.label}>Member number or booking reference</span>
             <input
-              className={styles.input}
+              className={ui.input}
               placeholder="e.g. FL10000142 or FLY7K2"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               required
             />
           </label>
-          <label className={styles.field}>
-            <span className={styles.label}>Guests</span>
-            <input className={styles.input} type="number" min={0} max={9} value={guests} onChange={(e) => setGuests(e.target.value)} />
+          <label className={ui.field}>
+            <span className={ui.label}>Guests</span>
+            <input className={ui.input} type="number" min={0} max={9} value={guests} onChange={(e) => setGuests(e.target.value)} />
           </label>
-          <button type="submit" className={styles.buttonPrimary} disabled={busy}>
+          <button type="submit" className={ui.buttonPrimary} disabled={busy}>
             {busy ? 'Checking…' : 'Check in'}
           </button>
         </form>
 
-        <section className={styles.card} aria-labelledby="result" aria-live="polite">
-          <h2 id="result" className={styles.cardTitle}>
+        <section className={ui.card} aria-labelledby="result" aria-live="polite">
+          <h2 id="result" className={ui.cardTitle}>
             Result
           </h2>
           {error ? (
-            <div className={`${styles.result} ${styles.resultNo}`}>
+            <div className={`${ui.result} ${ui.resultNo}`}>
               <strong>Not found</strong>
               <span>{error}</span>
             </div>
           ) : result ? (
             <Result result={result} />
           ) : (
-            <div className={`${styles.result} ${styles.resultIdle}`}>Enter a member number and press Check in.</div>
+            <div className={`${ui.result} ${ui.resultIdle}`}>Enter a member number and press Check in.</div>
           )}
         </section>
       </div>
 
-      <section className={styles.card} aria-labelledby="today">
-        <h2 id="today" className={styles.cardTitle}>
+      <section className={ui.card} aria-labelledby="today">
+        <h2 id="today" className={ui.cardTitle}>
           Today at this desk
         </h2>
         <Loaded state={visits} retry={reloadVisits}>
           {(rows) =>
             rows.length === 0 ? (
-              <p className={styles.muted}>No visits yet today.</p>
+              <p className={ui.muted}>No visits yet today.</p>
             ) : (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
+              <div className={ui.tableWrap}>
+                <table className={ui.table}>
                   <thead>
                     <tr>
                       <th scope="col">Time</th>
                       <th scope="col">Member</th>
                       <th scope="col">Flight</th>
-                      <th scope="col" className={styles.num}>
+                      <th scope="col" className={ui.num}>
                         Guests
                       </th>
                     </tr>
@@ -109,7 +109,7 @@ export function LoungeDeskPage() {
                           {v.memberName} · {v.tierName}
                         </td>
                         <td>{v.flightNumber}</td>
-                        <td className={styles.num}>{v.guests}</td>
+                        <td className={ui.num}>{v.guests}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -118,7 +118,7 @@ export function LoungeDeskPage() {
             )
           }
         </Loaded>
-        <p className={styles.small}>The visit is saved in the member’s benefit history.</p>
+        <p className={ui.small}>The visit is saved in the member’s benefit history.</p>
       </section>
     </StaffLoyaltyLayout>
   )
@@ -160,26 +160,26 @@ function Result({ result }: { result: LoungeResult }) {
 
   return (
     <>
-      <div className={`${styles.result} ${result.outcome === 'admitted' ? styles.resultOk : styles.resultNo}`}>
+      <div className={`${ui.result} ${result.outcome === 'admitted' ? ui.resultOk : ui.resultNo}`}>
         <strong>{title}</strong>
         <span>{text}</span>
       </div>
-      <div className={styles.gridEven} style={{ gap: 8 }}>
-        <div className={styles.stat}>
+      <div className={ui.gridEven} style={{ gap: 8 }}>
+        <div className={ui.stat}>
           <span>Member</span>
           <strong>
             {m.name} · {m.memberNumber}
           </strong>
         </div>
-        <div className={styles.stat}>
+        <div className={ui.stat}>
           <span>Tier</span>
           <strong>{tierText}</strong>
         </div>
-        <div className={styles.stat}>
+        <div className={ui.stat}>
           <span>Guests allowed</span>
           <strong>{allowed}</strong>
         </div>
-        <div className={styles.stat}>
+        <div className={ui.stat}>
           <span>Ticket</span>
           <strong>{m.ticket ?? 'None in the next 4 hours'}</strong>
         </div>
