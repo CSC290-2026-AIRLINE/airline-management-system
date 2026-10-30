@@ -57,6 +57,7 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     TaxFeeService,
     CurrencyRateService,
     PaymentScheduleService,
+    ExpenseService,
     BaggageRateService,
   ],
   exports: [
