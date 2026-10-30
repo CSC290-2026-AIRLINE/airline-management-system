@@ -30,6 +30,19 @@ export function todayKey() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
+// '2026-10' moved by whole months: shiftMonth('2026-01', -1) is '2025-12'.
+export function shiftMonth(month: string, offset: number) {
+  const [year, monthNumber] = month.split('-').map(Number)
+  return new Date(Date.UTC(year, monthNumber - 1 + offset, 1)).toISOString().slice(0, 7)
+}
+
+const DATE_TIME = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+// "31 Oct 2026, 01:51" in local time (for timestamps, not DATE columns).
+export function dateTime(iso: string | Date) {
+  return DATE_TIME.format(new Date(iso))
+}
+
 export function categoryLabel(category: ExpenseCategory): string {
   switch (category) {
     case 'maintenance':
