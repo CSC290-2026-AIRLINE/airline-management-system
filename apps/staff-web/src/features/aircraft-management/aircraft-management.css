@@ -1,0 +1,1756 @@
+/*
+ * Feature 9 — Aircraft Management.
+ * Tokens and components taken from the Figma file "CS26 UIUX Integrated Project"
+ * (F9 frames: fleet list, aircraft type list, readiness, and their modals).
+ * Every class is prefixed with `f9-` so the styles stay inside this feature.
+ */
+
+/*
+ * The starter stylesheet limits #root to 1126px and centres its text. The feature pages use the
+ * whole window, so those limits are lifted only while this feature is on screen.
+ */
+#root:has(.f9-root) {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  text-align: left;
+  border-inline: none;
+}
+
+.f9-root {
+  --f9-page: #f7f9fc;
+  --f9-sidebar: #14213d;
+  --f9-sidebar-deep: #071426;
+  --f9-ink: #0a1424;
+  --f9-navy: #102544;
+  --f9-muted: #677287;
+  --f9-faint: #b7c1d1;
+  --f9-border: #cbd5e1;
+  --f9-border-strong: #8ca1bf;
+  --f9-table-head: #e8edf5;
+  --f9-selected: #eaf2ff;
+  --f9-primary: #2563eb;
+  --f9-primary-dark: #1d4ed8;
+  --f9-primary-soft: #d6e4ff;
+  --f9-cream: #fff1c7;
+  --f9-accent: #f2a800;
+  --f9-green-bg: #d9f5e3;
+  --f9-green: #128c4c;
+  --f9-green-hover: #c3edd3;
+  --f9-amber-bg: #fff0c7;
+  --f9-amber: #b86e08;
+  --f9-red-bg: #ffe3e5;
+  --f9-red-bg-hover: #ffcdd1;
+  --f9-red: #db1f29;
+  --f9-disabled-bg: #eef1f7;
+  --f9-tab-line: #455266;
+
+  min-height: 100vh;
+  display: flex;
+  background: var(--f9-page);
+  color: var(--f9-ink);
+  color-scheme: light;
+  font-family:
+    Inter,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.f9-root *,
+.f9-root *::before,
+.f9-root *::after {
+  box-sizing: border-box;
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+.f9-sidebar {
+  width: 260px;
+  flex: 0 0 260px;
+  background: var(--f9-sidebar);
+  color: #fff;
+  padding: 38px 22px 30px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The logo and the user name are set in a serif face in the design; everything else is Inter. */
+.f9-sidebar__logo {
+  padding-left: 6px;
+  font-family: 'Source Serif 4', 'Source Serif Pro', 'Noto Serif', Georgia, serif;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -1.2px;
+  text-transform: uppercase;
+}
+
+.f9-sidebar__accent {
+  width: 52px;
+  height: 4px;
+  margin: 13px 0 0 6px;
+  border-radius: 2px;
+  background: var(--f9-accent);
+}
+
+.f9-sidebar__eyebrow {
+  margin-top: 13px;
+  padding-left: 6px;
+  font-size: 12px;
+  letter-spacing: 1.4px;
+  color: var(--f9-faint);
+}
+
+.f9-sidebar__nav {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.f9-navitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+
+.f9-navitem--deep {
+  background: var(--f9-sidebar-deep);
+}
+
+.f9-navitem--child {
+  padding-left: 28px;
+}
+
+.f9-navitem__marker {
+  color: var(--f9-faint);
+}
+
+.f9-sidebar__foot {
+  margin-top: auto;
+  padding-left: 12px;
+}
+
+.f9-sidebar__user {
+  padding-left: 24px;
+  font-family: 'Source Serif 4', 'Source Serif Pro', 'Noto Serif', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.f9-sidebar__note {
+  margin: 10px 0 0;
+  color: var(--f9-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.f9-sidebar__signout {
+  margin-top: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.f9-sidebar__signout:hover {
+  text-decoration: underline;
+}
+
+/* The blue ring of the other controls is too close to the navy sidebar. */
+.f9-sidebar .f9-sidebar__signout:focus-visible {
+  outline-color: #fff;
+}
+
+/* -------------------------------------------------------------- main area */
+
+.f9-main {
+  flex: 1;
+  min-width: 0;
+  padding: 40px 40px 64px 63px;
+}
+
+.f9-content {
+  max-width: 997px;
+}
+
+.f9-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.f9-pills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.f9-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 25px;
+  padding: 0 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+/* The feature pill is a wide, rounded badge in the design. */
+.f9-pill--primary {
+  padding: 0 18px;
+  border-radius: 10px;
+  background: var(--f9-primary);
+  color: #fff;
+}
+
+.f9-pill--staff {
+  background: var(--f9-cream);
+  border: 1px solid var(--f9-navy);
+  color: var(--f9-navy);
+  font-size: 12px;
+}
+
+.f9-topbar__user {
+  color: var(--f9-muted);
+  font-size: 13px;
+}
+
+.f9-title {
+  margin: 9px 0 0;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.6px;
+  color: var(--f9-ink);
+}
+
+.f9-subtitle {
+  margin: 6px 0 0;
+  max-width: 840px;
+  color: var(--f9-muted);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.f9-tabs {
+  display: flex;
+  gap: 24px;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--f9-border);
+}
+
+.f9-tab {
+  padding: 4px 0 6px;
+  border-bottom: 3px solid transparent;
+  color: var(--f9-muted);
+  font-size: 18px;
+  text-decoration: none;
+}
+
+.f9-tab:hover {
+  border-bottom-color: var(--f9-border);
+  color: var(--f9-navy);
+}
+
+.f9-tab--active {
+  border-bottom-color: var(--f9-tab-line);
+  color: var(--f9-navy);
+  font-weight: 600;
+}
+
+.f9-backlink {
+  display: block;
+  margin: 0;
+  padding: 0;
+  line-height: 1.2;
+  border: 0;
+  background: none;
+  color: var(--f9-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.f9-backlink:hover {
+  color: var(--f9-primary);
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------ page blocks */
+
+.f9-sectionhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.f9-heading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--f9-ink);
+}
+
+.f9-lead {
+  margin: 0;
+  max-width: 700px;
+  color: var(--f9-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.f9-card {
+  background: #fff;
+  border: 1px solid var(--f9-border);
+  border-radius: 10px;
+}
+
+.f9-card--pad {
+  padding: 20px;
+}
+
+/** The title of one card on the new aircraft type screen. */
+.f9-card__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--f9-ink);
+}
+
+.f9-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 11px;
+  margin-bottom: 11px;
+}
+
+.f9-label {
+  margin: 0;
+  color: var(--f9-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.f9-note {
+  margin: 0;
+  color: var(--f9-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.f9-note--small {
+  font-size: 11px;
+}
+
+.f9-note--warn {
+  margin-top: 0;
+  padding: 10px 14px;
+  line-height: 15px;
+  border-radius: 8px;
+  background: var(--f9-amber-bg);
+  color: var(--f9-amber);
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.f9-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--f9-navy);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.f9-btn:hover {
+  background: #1f3d6b;
+  filter: none;
+}
+
+.f9-btn:disabled {
+  background: var(--f9-disabled-bg);
+  color: var(--f9-muted);
+  cursor: not-allowed;
+  filter: none;
+}
+
+.f9-btn--outline {
+  height: 39px;
+  border-color: var(--f9-border);
+  background: #fff;
+  color: var(--f9-ink);
+}
+
+.f9-btn--outline:hover {
+  border-color: var(--f9-border-strong);
+  background: #eef1f7;
+  filter: none;
+}
+
+.f9-btn--ghost {
+  height: auto;
+  padding: 4px 0;
+  background: none;
+  color: var(--f9-muted);
+  font-weight: 600;
+}
+
+.f9-btn--ghost:hover {
+  background: none;
+  color: var(--f9-navy);
+  filter: none;
+}
+
+.f9-btn--sm {
+  height: 27px;
+  padding: 0 10.5px;
+  font-size: 12px;
+}
+
+.f9-btn--danger {
+  background: var(--f9-red);
+}
+
+.f9-btn:focus-visible,
+.f9-tab:focus-visible,
+.f9-input:focus-visible,
+.f9-select:focus-visible,
+.f9-table__pick:focus-visible,
+.f9-chip:focus-visible,
+.f9-pillbtn:focus-visible,
+.f9-seat:focus-visible,
+.f9-search:focus-visible,
+.f9-detail__link:focus-visible,
+.f9-detail__cancel:focus-visible,
+.f9-detail__keep:focus-visible,
+.f9-modal__close:focus-visible,
+.f9-backlink:focus-visible,
+.f9-cabinrow__remove:focus-visible,
+.f9-seatmap__rownum:focus-visible,
+.f9-sidebar__signout:focus-visible,
+.f9-error button:focus-visible {
+  outline: 2px solid var(--f9-primary);
+  outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------------- inputs */
+
+.f9-field {
+  display: block;
+  min-width: 0;
+}
+
+.f9-field__label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--f9-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.f9-input,
+.f9-select {
+  width: 100%;
+  height: 40px;
+  padding: 0 13px;
+  border: 1px solid var(--f9-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--f9-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.f9-input::placeholder {
+  color: var(--f9-muted);
+}
+
+.f9-input:hover,
+.f9-select:hover {
+  border-color: var(--f9-border-strong);
+}
+
+.f9-input:focus,
+.f9-select:focus {
+  border-color: var(--f9-border-strong);
+  outline: none;
+}
+
+.f9-select {
+  appearance: none;
+  padding-right: 30px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--f9-muted) 50%), linear-gradient(135deg, var(--f9-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 17px) 17px,
+    calc(100% - 12px) 17px;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+
+.f9-search {
+  width: 390px;
+  max-width: 100%;
+  height: 40px;
+  padding: 0 13px;
+  border: 1px solid var(--f9-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--f9-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.f9-search::placeholder {
+  color: var(--f9-muted);
+}
+
+.f9-search:focus {
+  border-color: var(--f9-primary);
+  outline: none;
+}
+
+/* ----------------------------------------------------------------- tables */
+
+.f9-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.f9-table th {
+  height: 38px;
+  border-bottom: 1px solid var(--f9-border);
+  padding: 0 17px;
+  background: var(--f9-table-head);
+  color: var(--f9-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.f9-table td {
+  height: 50px;
+  padding: 0 17px;
+  border-bottom: 1px solid var(--f9-border);
+  color: var(--f9-muted);
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+.f9-table tbody tr {
+  cursor: pointer;
+}
+
+.f9-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.f9-table tbody tr:hover {
+  background: #f3f4f6;
+}
+
+.f9-table tbody tr.f9-table__row--selected {
+  background: var(--f9-selected);
+}
+
+.f9-table__strong {
+  color: var(--f9-ink);
+  font-weight: 700;
+}
+
+.f9-table__pick {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--f9-ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.f9-table__pick:hover {
+  color: var(--f9-primary);
+}
+
+/* The fleet table: the columns start where they do in the design, so the status badges line up under STATUS. */
+.f9-table--fleet {
+  table-layout: fixed;
+}
+
+.f9-table--fleet th:nth-child(1) {
+  width: 109px;
+}
+
+.f9-table--fleet th:nth-child(2),
+.f9-table--fleet th:nth-child(3) {
+  width: 70px;
+}
+
+.f9-table--fleet th:nth-child(4) {
+  width: 110px;
+}
+
+/* The types table: the columns start where they do in the design. A code that is too long for its column is cut. */
+.f9-table--types {
+  table-layout: fixed;
+}
+
+.f9-table--types td {
+  height: 46px;
+}
+
+.f9-table--types th {
+  height: 36px;
+}
+
+.f9-table--types td:nth-child(1) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.f9-table--types th:nth-child(1) {
+  width: 89px;
+}
+
+.f9-table--types th:nth-child(2) {
+  width: 250px;
+}
+
+.f9-table--types th:nth-child(3),
+.f9-table--types th:nth-child(5),
+.f9-table--types th:nth-child(6) {
+  width: 110px;
+}
+
+.f9-table--types th:nth-child(4) {
+  width: 70px;
+}
+
+/* ----------------------------------------------------------------- badges */
+
+.f9-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 13px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.f9-badge--green {
+  background: var(--f9-green-bg);
+  color: var(--f9-green);
+}
+
+.f9-badge--amber {
+  background: var(--f9-amber-bg);
+  color: var(--f9-amber);
+}
+
+.f9-badge--red {
+  background: var(--f9-red-bg);
+  color: var(--f9-red);
+}
+
+.f9-badge--plain {
+  background: #fff;
+  border: 1px solid var(--f9-border);
+  color: var(--f9-muted);
+}
+
+/* -------------------------------------------------------------- task pills */
+
+.f9-pillbtn {
+  height: 29px;
+  padding: 0 13.5px;
+  border: 1px solid var(--f9-border);
+  border-radius: 15px;
+  background: #fff;
+  color: var(--f9-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.f9-pillbtn--pending:hover {
+  border-color: var(--f9-border-strong);
+  background: #eef1f7;
+}
+
+.f9-pillbtn--progress {
+  border-color: var(--f9-primary);
+  background: var(--f9-selected);
+  color: var(--f9-primary);
+}
+
+.f9-pillbtn--progress:hover {
+  border-color: var(--f9-primary-dark);
+  background: var(--f9-primary-soft);
+}
+
+.f9-pillbtn--completed {
+  border-color: var(--f9-green);
+  background: var(--f9-green-bg);
+  color: var(--f9-green);
+}
+
+.f9-pillbtn--completed:hover {
+  background: var(--f9-green-hover);
+}
+
+.f9-pillbtn--skipped {
+  border-color: var(--f9-border);
+  background: var(--f9-green-bg);
+  color: var(--f9-muted);
+}
+
+.f9-pillbtn--skipped:hover {
+  border-color: var(--f9-border-strong);
+  background: var(--f9-green-hover);
+}
+
+/* ---------------------------------------------------------- weekday chips */
+
+.f9-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.f9-chip {
+  flex: 1 1 44px;
+  min-width: 44px;
+  height: 29px;
+  padding: 0 8px;
+  border: 1px solid var(--f9-border);
+  border-radius: 15px;
+  background: #fff;
+  color: var(--f9-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.f9-chip:hover {
+  border-color: var(--f9-border-strong);
+  background: #eef1f7;
+  color: var(--f9-ink);
+}
+
+.f9-chip--on {
+  border-color: var(--f9-primary);
+  background: var(--f9-selected);
+  color: var(--f9-primary);
+}
+
+.f9-chip--on:hover {
+  border-color: var(--f9-primary-dark);
+  background: var(--f9-primary-soft);
+  color: var(--f9-primary-dark);
+}
+
+/* -------------------------------------------------------------- fleet page */
+
+.f9-fleet {
+  display: grid;
+  grid-template-columns: minmax(0, 560px) minmax(0, 417px);
+  gap: 20px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+.f9-fleet__table {
+  overflow: hidden;
+}
+
+.f9-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 11px;
+}
+
+.f9-filters .f9-select {
+  height: 34px;
+  min-width: 0;
+  font-size: 13px;
+  background-position:
+    calc(100% - 17px) 14px,
+    calc(100% - 12px) 14px;
+}
+
+.f9-detail {
+  padding: 20px 21px 24px;
+}
+
+.f9-detail__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.f9-detail__tail {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--f9-ink);
+}
+
+.f9-detail__sub {
+  margin: 2px 0 0;
+  color: var(--f9-muted);
+  font-size: 13px;
+}
+
+.f9-detail__badge {
+  margin-top: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--f9-border);
+}
+
+.f9-detail__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+/* Row spacing measured on the design: the rows after the button sit 26px apart. */
+.f9-detail__actions + .f9-detail__row {
+  margin-top: 9px;
+}
+
+.f9-detail__row + .f9-detail__row {
+  margin-top: 7px;
+}
+
+.f9-detail__row span:first-child {
+  color: var(--f9-muted);
+}
+
+.f9-detail__row span:last-child {
+  color: var(--f9-ink);
+  font-weight: 600;
+}
+
+.f9-detail__actions {
+  margin-top: 9px;
+}
+
+.f9-detail__section {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--f9-border);
+}
+
+.f9-detail__sectionhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+
+.f9-detail__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.f9-detail__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--f9-muted);
+}
+
+.f9-detail__list li strong {
+  color: var(--f9-ink);
+  font-weight: 600;
+}
+
+.f9-detail__cancel,
+.f9-detail__keep {
+  margin-left: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.f9-detail__cancel {
+  color: var(--f9-red);
+}
+
+.f9-detail__keep {
+  color: var(--f9-muted);
+}
+
+.f9-detail__cancel:hover,
+.f9-detail__keep:hover {
+  text-decoration: underline;
+}
+
+.f9-detail__cancel:disabled {
+  color: var(--f9-muted);
+  cursor: not-allowed;
+}
+
+.f9-detail__rowactions {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.f9-detail__rowactions .f9-detail__cancel,
+.f9-detail__rowactions .f9-detail__keep {
+  margin-left: 0;
+}
+
+.f9-detail__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--f9-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.f9-detail__link:hover {
+  text-decoration: underline;
+}
+
+.f9-detail__hint {
+  margin: 6px 0 0;
+  color: var(--f9-muted);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------- types page */
+
+.f9-types {
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.f9-types__cabins {
+  display: inline-flex;
+  align-items: center;
+  height: 23px;
+  padding: 0 7px;
+  border: 1px solid var(--f9-border);
+  border-radius: 6px;
+  color: var(--f9-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.f9-typegrid {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 400px) minmax(0, 577px);
+  gap: 20px;
+  align-items: start;
+}
+
+.f9-formgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.f9-cabinrow__rows {
+  color: var(--f9-muted);
+}
+
+.f9-cabinrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 43px;
+  padding: 0 13px;
+  border: 1px solid var(--f9-border);
+  border-radius: 6px;
+  background: var(--f9-page);
+  font-size: 13px;
+}
+
+.f9-cabinrow + .f9-cabinrow {
+  margin-top: 14px;
+}
+
+.f9-cabinrow__remove {
+  margin-right: -10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 0;
+  background: none;
+  color: var(--f9-red);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.f9-cabinrow__remove:hover {
+  background: var(--f9-red-bg);
+}
+
+.f9-addcabin {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--f9-border);
+}
+
+.f9-addcabin__title {
+  margin: 0 0 8px;
+  color: var(--f9-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.f9-addcabin__add {
+  display: flex;
+  width: 100%;
+  margin: 10px 0 0;
+  color: var(--f9-muted);
+}
+
+.f9-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.f9-metric {
+  padding: 9px 12px;
+  border-radius: 6px;
+  background: var(--f9-page);
+}
+
+.f9-metric__label {
+  color: var(--f9-muted);
+  font-size: 11px;
+  line-height: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.f9-metric__value {
+  margin-top: 0;
+  color: var(--f9-ink);
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 700;
+}
+
+.f9-metric__value--red {
+  color: var(--f9-red);
+}
+
+.f9-metric__value--green {
+  color: var(--f9-green);
+}
+
+.f9-seatmap {
+  margin-top: 0;
+  padding: 18px 20px 19px;
+}
+
+.f9-seatmap .f9-card__title {
+  line-height: 1.2;
+}
+
+/* The two lines under the legend sit 12px below it and 16px apart, as in the design. */
+.f9-seatmap > .f9-note {
+  margin-top: 12px;
+  line-height: 16px;
+}
+
+/** The fuselage the seats are drawn in: a capsule with a double outline, as in the design. */
+.f9-seatmap__body {
+  position: relative;
+  width: 290px;
+  max-width: 100%;
+  margin: 22px auto 0;
+  padding: 48px 0 48px;
+  border: 1px solid var(--f9-border);
+  border-radius: 145px 145px 48px 48px;
+  background: #f5f7fa;
+  box-shadow:
+    inset 0 0 0 5px #fff,
+    inset 0 0 0 6px #e0e6ed;
+}
+
+.f9-seatmap__rows {
+  display: flex;
+  flex-direction: column;
+}
+
+/** The legend of the seat map, as the design draws it: two rows inside a bordered box. */
+.f9-seatmap__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 14px;
+  border: 1px solid var(--f9-border);
+  border-radius: 8px;
+}
+
+.f9-seatmap__legendrow {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  color: var(--f9-muted);
+  font-size: 12px;
+}
+
+.f9-seatmap__legendlabel {
+  flex: 0 0 66px;
+  color: var(--f9-ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.f9-seatmap__legendentry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.f9-seatmini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--f9-selected);
+  color: var(--f9-primary);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.f9-seatmini--blocked {
+  border-color: var(--f9-red);
+  background: var(--f9-red-bg);
+  color: var(--f9-red);
+}
+
+.f9-seatmini--exit {
+  background: var(--f9-amber-bg);
+  color: var(--f9-amber);
+  font-weight: 700;
+}
+
+.f9-seatmini--legroom {
+  background: var(--f9-green-bg);
+  color: var(--f9-green);
+  font-weight: 700;
+}
+
+/** The FRONT and REAR labels at the two ends of the fuselage. */
+.f9-seatmap__end {
+  margin: 0 0 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--f9-border);
+  color: var(--f9-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-align: center;
+}
+
+.f9-seatmap__end--rear {
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Cabins are separated by a dashed line; the seats of a 2-2 cabin are wider than those of a 3-3 cabin. */
+.f9-seatmap__cabinblock {
+  --f9-seat-w: 26px;
+  --f9-seat-h: 22px;
+}
+
+.f9-seatmap__cabinblock--wide {
+  --f9-seat-w: 34px;
+  --f9-seat-h: 28px;
+}
+
+.f9-seatmap__cabinblock + .f9-seatmap__cabinblock {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--f9-border);
+}
+
+.f9-seatmap__cabin {
+  margin: 0 0 6px;
+  color: var(--f9-ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-align: center;
+}
+
+.f9-seatmap__row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: calc(var(--f9-seat-h, 22px) + 8px);
+}
+
+/** The row of column letters above the seats of one cabin. */
+.f9-seatmap__row--head {
+  height: 20px;
+}
+
+.f9-seatmap__colhead {
+  width: var(--f9-seat-w, 26px);
+  color: var(--f9-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.f9-seatmap__rownum {
+  width: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--f9-muted);
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.f9-seatmap__rownum:hover {
+  background: #eef1f7;
+  box-shadow: inset 0 0 0 1px var(--f9-border-strong);
+}
+
+.f9-seatmap__rownum--exit:hover {
+  background: var(--f9-amber-bg);
+  box-shadow: inset 0 0 0 1px var(--f9-amber);
+}
+
+.f9-seatmap__rownum--legroom:hover {
+  background: var(--f9-green-bg);
+  box-shadow: inset 0 0 0 1px var(--f9-green);
+}
+
+.f9-seatmap__rownum--exit {
+  background: var(--f9-amber-bg);
+  color: var(--f9-amber);
+  font-weight: 700;
+}
+
+.f9-seatmap__rownum--legroom {
+  background: var(--f9-green-bg);
+  color: var(--f9-green);
+  font-weight: 700;
+}
+
+/** A seat of the map: available by default, blocked when it is not sellable. */
+.f9-seat {
+  width: var(--f9-seat-w, 26px);
+  height: var(--f9-seat-h, 22px);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--f9-selected);
+  color: var(--f9-primary);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+/** Hovering a seat deepens its colour and gives it a border. */
+.f9-seat:hover {
+  border-color: var(--f9-primary);
+  background: var(--f9-primary-soft);
+}
+
+.f9-seat--blocked {
+  border-color: var(--f9-red);
+  background: var(--f9-red-bg);
+  color: var(--f9-red);
+  font-weight: 700;
+}
+
+.f9-seat--blocked:hover {
+  border-color: var(--f9-red);
+  background: var(--f9-red-bg-hover);
+}
+
+.f9-seatmap__aisle {
+  width: 30px;
+  flex: 0 0 30px;
+}
+
+/* The back link and the title above the first card of the new aircraft type screen, as in the design. */
+.f9-typehead .f9-heading {
+  margin-top: 15px;
+  line-height: 1.2;
+}
+
+.f9-typehead {
+  margin-top: -1px;
+}
+
+.f9-stack > .f9-typehead + * {
+  margin-top: 17px;
+}
+
+/* Card paddings and spacing measured on the design of the new aircraft type screen. */
+.f9-card--form {
+  padding-top: 15px;
+}
+
+.f9-card--form .f9-formgrid {
+  row-gap: 10px;
+}
+
+.f9-card--cabins {
+  padding-top: 12px;
+  padding-bottom: 16px;
+}
+
+.f9-card--cabins .f9-card__title,
+.f9-card--capacity .f9-card__title {
+  line-height: 1.2;
+}
+
+.f9-card--cabins .f9-card__title {
+  margin-bottom: 14px;
+}
+
+.f9-stack > .f9-card--cabins + * {
+  margin-top: 17px;
+}
+
+.f9-card--capacity {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.f9-card--capacity .f9-card__title {
+  margin-bottom: 12px;
+}
+
+.f9-stack.f9-stack--tight > * + * {
+  margin-top: 16px;
+}
+
+/* Stacks the cards of one column of the new aircraft type screen. */
+.f9-stack > * + * {
+  margin-top: 20px;
+}
+
+/* ----------------------------------------------------------- readiness page */
+
+.f9-readiness {
+  display: grid;
+  grid-template-columns: minmax(0, 380px) minmax(0, 597px);
+  gap: 20px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+.f9-readiness__card {
+  padding: 20px 21px 22px;
+}
+
+.f9-readiness__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--f9-ink);
+}
+
+.f9-readiness__lead {
+  margin: 0;
+  color: var(--f9-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.f9-readiness__fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.f9-readiness__metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.f9-readiness__tile {
+  padding: 9px 12px;
+  border-radius: 6px;
+  background: var(--f9-page);
+}
+
+.f9-readiness__tile--short {
+  background: var(--f9-red-bg);
+}
+
+.f9-readiness__tile--short .f9-metric__value {
+  color: var(--f9-red);
+}
+
+.f9-readiness__card > .f9-note {
+  line-height: 15px;
+}
+
+.f9-readiness__card > .f9-note--small {
+  line-height: 13px;
+}
+
+.f9-readiness__bar {
+  height: 10px;
+  margin-top: 14px;
+  border-radius: 5px;
+  background: var(--f9-page);
+  overflow: hidden;
+}
+
+.f9-readiness__fill {
+  height: 100%;
+  background: var(--f9-green);
+}
+
+.f9-readiness__fill--short {
+  background: var(--f9-red);
+}
+
+.f9-turnaround {
+  margin-top: 13px;
+  padding: 15px 16px 16px;
+  border: 1px solid var(--f9-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+/* The first card sits 12px below the heading of the list, the others 13px apart, as in the design. */
+.f9-stack > .f9-turnaround:first-child {
+  margin-top: 12px;
+}
+
+.f9-turnaround__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.f9-turnaround__tail {
+  color: var(--f9-ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.f9-turnaround__meta {
+  color: var(--f9-muted);
+  font-size: 13px;
+}
+
+.f9-turnaround__tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+/* ------------------------------------------------------------------ modal */
+
+.f9-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 25%);
+}
+
+/* The type details dialog has a navy overlay in the design. */
+.f9-modal--details {
+  background: rgb(11 20 35 / 45%);
+}
+
+.f9-modal__card {
+  position: relative;
+  width: 420px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 24px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgb(10 20 36 / 25%);
+}
+
+.f9-modal__card--wide {
+  width: 460px;
+}
+
+.f9-modal__title {
+  margin: 0 0 12px;
+  color: var(--f9-ink);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.f9-modal__field {
+  margin-bottom: 12px;
+}
+
+.f9-modal__card .f9-error {
+  margin-bottom: 14px;
+}
+
+.f9-modal__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.f9-modal__hint {
+  margin: 0;
+  padding-top: 2px;
+  color: var(--f9-muted);
+  font-size: 11px;
+  line-height: 13px;
+}
+
+.f9-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.f9-modal__close {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  height: 27px;
+  padding: 0 12px;
+  border: 1px solid var(--f9-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--f9-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.f9-modal__close:hover {
+  border-color: var(--f9-border-strong);
+}
+
+.f9-modal__head {
+  position: relative;
+  padding-right: 48px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--f9-table-head);
+}
+
+.f9-modal__section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--f9-table-head);
+}
+
+.f9-modal__actions--start {
+  justify-content: flex-start;
+}
+
+.f9-typerow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.f9-typerow span:first-child {
+  color: var(--f9-muted);
+}
+
+.f9-typerow span:last-child {
+  color: var(--f9-ink);
+}
+
+.f9-typecabin {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--f9-table-head);
+  font-size: 13px;
+}
+
+.f9-typecabin span:first-child {
+  color: var(--f9-ink);
+}
+
+.f9-typecabin span:last-child {
+  color: var(--f9-muted);
+}
+
+/* ------------------------------------------------------------ state blocks */
+
+.f9-state {
+  padding: 32px 20px;
+  color: var(--f9-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.f9-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--f9-red-bg);
+  border-radius: 8px;
+  background: var(--f9-red-bg);
+  color: var(--f9-red);
+  font-size: 13px;
+}
+
+.f9-error button {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--f9-red);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.f9-crash {
+  margin: 24px;
+  padding: 24px;
+  border: 1px solid var(--f9-red-bg);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.f9-crash h3 {
+  margin: 0 0 8px;
+  color: var(--f9-red);
+  font-size: 15px;
+}
+
+.f9-crash p {
+  margin: 0 0 16px;
+  color: var(--f9-muted);
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------- breakpoints */
+
+@media (max-width: 1180px) {
+  .f9-fleet,
+  .f9-readiness,
+  .f9-typegrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .f9-main {
+    padding: 32px 24px 48px;
+  }
+}
+
+@media (max-width: 860px) {
+  .f9-sidebar {
+    width: 200px;
+    flex-basis: 200px;
+  }
+
+  .f9-sidebar__logo {
+    font-size: 30px;
+  }
+
+  .f9-title {
+    font-size: 28px;
+  }
+}
