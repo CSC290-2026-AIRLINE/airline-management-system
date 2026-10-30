@@ -1,4 +1,5 @@
-import { ConflictException, Logger } from '@nestjs/common'
+import { ConflictException, Logger, UnauthorizedException } from '@nestjs/common'
+import { verifyToken } from '@clerk/backend'
 import { Prisma } from '../db/generated/prisma/client'
 import { AuthService } from './auth.service'
 
@@ -7,6 +8,7 @@ jest.mock('@nestjs/jwt', () => ({ JwtService: class {} }))
 jest.mock('@nestjs/config', () => ({ ConfigService: class {} }))
 jest.mock('@clerk/backend', () => ({ createClerkClient: jest.fn(), verifyToken: jest.fn() }))
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
+jest.mock('@backend/modules/admin-console/audit/audit.service', () => ({ AuditService: class {} }))
 
 // The generated client uses ESM `.js` specifiers that Jest cannot resolve; unit tests only need the error class.
 jest.mock('../db/generated/prisma/client', () => {
@@ -49,7 +51,7 @@ describe('AuthService.findOrCreateUser', () => {
       role: { findUnique: jest.fn().mockResolvedValue({ id: 'r1', code: 'admin' }) },
       $transaction: jest.fn(),
     }
-    service = new AuthService(db as any, {} as any, {} as any)
+    service = new AuthService(db as any, {} as any, {} as any, {} as any)
   })
 
   it('returns the existing user without creating', async () => {
@@ -79,7 +81,7 @@ describe('AuthService.recordStaffSignIn', () => {
 
   beforeEach(() => {
     db = { staff: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } }
-    service = new AuthService(db as any, {} as any, {} as any)
+    service = new AuthService(db as any, {} as any, {} as any, {} as any)
   })
 
   it('stamps last_sign_in_at on the staff row of a staff user', async () => {
@@ -101,5 +103,87 @@ describe('AuthService.recordStaffSignIn', () => {
     await expect(call({ id: 'u1', type: 'staff' })).resolves.toBeUndefined()
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()
+  })
+})
+
+describe('AuthService audit rows (sign_in / sign_out / sign_in_blocked)', () => {
+  const STAFF_ORIGIN = process.env.STAFF_WEB_ORIGIN ?? 'http://localhost:6161'
+  const activeUser = { id: 'u1', type: 'staff', email: 'a@example.com', clerk_user_id: 'clerk_1', disabled_at: null, deleted_at: null }
+  let db: {
+    user: { findUnique: jest.Mock }
+    staff: { updateMany: jest.Mock }
+    refresh_token: { create: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock }
+  }
+  let audit: { resolveActor: jest.Mock; tryWrite: jest.Mock }
+  let service: AuthService
+
+  const actions = () => audit.tryWrite.mock.calls.map(([input]: [{ action: string }]) => input.action)
+
+  beforeEach(() => {
+    ;(verifyToken as jest.Mock).mockResolvedValue({ sub: 'clerk_1' })
+    db = {
+      user: { findUnique: jest.fn().mockResolvedValue(activeUser) },
+      staff: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      refresh_token: {
+        create: jest.fn().mockResolvedValue({ id: 'rt1' }),
+        findUnique: jest.fn().mockResolvedValue({ user_id: 'u1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    }
+    audit = {
+      resolveActor: jest.fn().mockResolvedValue({ type: 'staff', id: 'u1', role: 'admin' }),
+      tryWrite: jest.fn().mockResolvedValue(true),
+    }
+    const jwt = { sign: jest.fn().mockReturnValue('access') }
+    const config = { get: jest.fn((key: string) => (key === 'REFRESH_TOKEN_TTL_DAYS' ? 7 : 'test-clerk-key')) }
+    service = new AuthService(db as any, jwt as any, config as any, audit as any)
+  })
+
+  it('writes sign_in after a successful sign-in', async () => {
+    await service.exchangeClerkSession('session', STAFF_ORIGIN)
+    expect(audit.tryWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'sign_in',
+        sourceFeature: '15',
+        entityType: 'user',
+        entityId: 'u1',
+        actor: { type: 'staff', id: 'u1', role: 'admin' },
+      }),
+    )
+  })
+
+  it('writes sign_in_blocked for a disabled account and still refuses it with the same 401', async () => {
+    db.user.findUnique.mockResolvedValue({ ...activeUser, disabled_at: new Date() })
+    const result = service.exchangeClerkSession('session', STAFF_ORIGIN)
+    await expect(result).rejects.toBeInstanceOf(UnauthorizedException)
+    await expect(result).rejects.toThrow('Account is disabled')
+    expect(actions()).toEqual(['sign_in_blocked'])
+    expect(db.refresh_token.create).not.toHaveBeenCalled()
+  })
+
+  it('writes nothing for a sign-in refused for another reason', async () => {
+    await expect(service.exchangeClerkSession('session', 'http://unknown.example')).rejects.toThrow('Unrecognized origin')
+    expect(audit.tryWrite).not.toHaveBeenCalled()
+  })
+
+  it('still signs in when the audit write fails', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+    audit.resolveActor.mockRejectedValue(new Error('db down'))
+    await expect(service.exchangeClerkSession('session', STAFF_ORIGIN)).resolves.toMatchObject({ user: activeUser })
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('writes sign_out when an open session is logged out', async () => {
+    await service.logout('raw-token')
+    expect(audit.tryWrite).toHaveBeenCalledWith(expect.objectContaining({ action: 'sign_out', entityId: 'u1' }))
+  })
+
+  it('writes nothing when the refresh token was already revoked or is unknown', async () => {
+    db.refresh_token.updateMany.mockResolvedValue({ count: 0 })
+    await service.logout('raw-token')
+    db.refresh_token.findUnique.mockResolvedValue(null)
+    await service.logout('other-token')
+    expect(audit.tryWrite).not.toHaveBeenCalled()
   })
 })

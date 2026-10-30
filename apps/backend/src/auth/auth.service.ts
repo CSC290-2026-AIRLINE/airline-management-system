@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config'
 import { createClerkClient, verifyToken } from '@clerk/backend'
 import { DbService } from '@backend/db/db.service'
 import type { EnvConfig } from '@backend/config/env.validation'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { Prisma, type user } from '../db/generated/prisma/client'
 import { getAppOriginConfig, type AppOriginConfig } from './auth.constants'
 
@@ -19,6 +20,14 @@ interface IssuedTokenPair extends TokenPair {
   refreshTokenId: string
 }
 
+/** Thrown for a switched-off or removed account. Same 401 and message as before; it only carries the user so a refused
+ *  sign-in can be audited. */
+class AccountDisabledException extends UnauthorizedException {
+  constructor(readonly user: user) {
+    super('Account is disabled')
+  }
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name)
@@ -28,6 +37,7 @@ export class AuthService {
     private readonly db: DbService,
     private readonly jwt: JwtService,
     private readonly configService: ConfigService<EnvConfig, true>,
+    private readonly audit: AuditService,
   ) {}
 
   async exchangeClerkSession(sessionToken: string, origin: string | undefined): Promise<{ user: user; tokens: TokenPair }> {
@@ -44,9 +54,18 @@ export class AuthService {
     const payload = await verifyToken(sessionToken, { secretKey: clerkSecretKey })
     const clerkUserId = payload.sub
 
-    const user = await this.findOrCreateUser(clerkClient, clerkUserId, config.userType)
+    let user: user
+    try {
+      user = await this.findOrCreateUser(clerkClient, clerkUserId, config.userType)
+    } catch (error) {
+      if (error instanceof AccountDisabledException) {
+        await this.recordAuthEvent(error.user.id, 'sign_in_blocked', 'Sign-in refused: account is disabled')
+      }
+      throw error
+    }
     await this.recordStaffSignIn(user)
     const tokens = await this.issueTokenPair(user)
+    await this.recordAuthEvent(user.id, 'sign_in', 'Signed in')
     return { user, tokens }
   }
 
@@ -82,10 +101,13 @@ export class AuthService {
 
   async logout(rawRefreshToken: string): Promise<void> {
     const tokenHash = hashToken(rawRefreshToken)
-    await this.db.refresh_token.updateMany({
+    const token = await this.db.refresh_token.findUnique({ where: { token_hash: tokenHash }, select: { user_id: true } })
+    const { count } = await this.db.refresh_token.updateMany({
       where: { token_hash: tokenHash, revoked_at: null },
       data: { revoked_at: new Date() },
     })
+    // Only a session that was actually open counts; logging out with an old or unknown cookie writes nothing.
+    if (count > 0 && token) await this.recordAuthEvent(token.user_id, 'sign_out', 'Signed out')
   }
 
   private async revokeAllForUser(userId: string): Promise<void> {
@@ -180,11 +202,22 @@ export class AuthService {
     }
   }
 
+  // sign_in / sign_out / sign_in_blocked rows for Feature 15's audit log. `tryWrite` never throws, so a failed audit
+  // write is logged and the sign-in or sign-out still goes through. Refreshing a token is not a sign-in and writes nothing.
+  private async recordAuthEvent(userId: string, action: 'sign_in' | 'sign_out' | 'sign_in_blocked', summary: string): Promise<void> {
+    try {
+      const actor = await this.audit.resolveActor(userId)
+      await this.audit.tryWrite({ actor, sourceFeature: '15', action, entityType: 'user', entityId: userId, summary })
+    } catch (error) {
+      this.logger.warn(`Could not audit ${action} for user ${userId}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   // user.disabled_at / deleted_at: an account that is switched off or removed must not sign in or refresh.
   // Requests that already carry an access token are not re-checked here; the JWT guard does not read the database.
   private assertUserActive(user: user): void {
     if (user.deleted_at || user.disabled_at) {
-      throw new UnauthorizedException('Account is disabled')
+      throw new AccountDisabledException(user)
     }
   }
 
