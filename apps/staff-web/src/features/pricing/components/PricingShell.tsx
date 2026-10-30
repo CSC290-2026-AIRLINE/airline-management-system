@@ -7,7 +7,7 @@ import '../pricing.css'
 // Merriweather for the Flython logo, Inter for everything else.
 const FONTS_URL = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@700;900&display=swap'
 
-// Pages not built yet stay in the menu (so the layout matches the design) but are not links.
+// Every page in the design's menu, in its order.
 const NAV = [
   {
     group: 'Pricing',
@@ -19,7 +19,10 @@ const NAV = [
   },
   {
     group: 'Finance',
-    items: [{ label: 'Expenses & Payments', to: '/pricing/expenses-payments' }, { label: 'Monthly Report' }],
+    items: [
+      { label: 'Expenses & Payments', to: '/pricing/expenses-payments' },
+      { label: 'Monthly Report', to: '/pricing/monthly-report' },
+    ],
   },
 ] as const
 
@@ -79,19 +82,13 @@ export function PricingShell({ title, description, actions, children }: PricingS
                 <ul>
                   {items.map((item) => (
                     <li key={item.label}>
-                      {'to' in item ? (
-                        <Link
-                          to={item.to}
-                          className="pr-nav-item"
-                          activeProps={{ className: 'pr-nav-item is-active', 'aria-current': 'page' }}
-                        >
-                          {item.label}
-                        </Link>
-                      ) : (
-                        <span className="pr-nav-item is-disabled" aria-disabled="true" title="Not built yet">
-                          {item.label}
-                        </span>
-                      )}
+                      <Link
+                        to={item.to}
+                        className="pr-nav-item"
+                        activeProps={{ className: 'pr-nav-item is-active', 'aria-current': 'page' }}
+                      >
+                        {item.label}
+                      </Link>
                     </li>
                   ))}
                 </ul>

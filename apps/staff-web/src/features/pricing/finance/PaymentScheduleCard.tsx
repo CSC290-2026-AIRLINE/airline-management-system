@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { errorMessage } from '../api'
@@ -16,8 +15,8 @@ import {
   rowClass,
   tableWrapClass,
 } from './finance-styles'
-
-type BillStatus = { kind: 'overdue' } | { kind: 'scheduled' } | { kind: 'paid'; on: string }
+import { statusOf } from './bill-status'
+import { StatusBadge } from './StatusBadge'
 
 interface PaymentScheduleCardProps {
   unit: string // base currency code
@@ -160,28 +159,4 @@ export function PaymentScheduleCard({ unit, onPaid }: PaymentScheduleCardProps) 
       )}
     </section>
   )
-}
-
-function StatusBadge({ status }: { status: BillStatus }) {
-  const base = 'h-auto rounded-full px-2.5 py-1 text-(length:--pr-text-caption) font-semibold'
-  switch (status.kind) {
-    case 'overdue':
-      return <Badge className={`${base} bg-(--pr-danger-bg) text-(--pr-danger)`}>Overdue</Badge>
-    case 'scheduled':
-      return <Badge className={`${base} bg-[#e3ebff] text-[#2b55c5]`}>Scheduled</Badge>
-    case 'paid':
-      return <Badge className={`${base} bg-(--pr-good-bg) text-(--pr-good)`}>Paid {shortDate(status.on)}</Badge>
-    default: {
-      const unknown: never = status
-      return unknown
-    }
-  }
-}
-
-// Overdue = still scheduled and due before today, the same rule as the backend's ?overdue=true.
-function statusOf(bill: PaymentSchedule, today: string): BillStatus {
-  if (bill.status === 'paid' && bill.paid_on) {
-    return { kind: 'paid', on: bill.paid_on }
-  }
-  return bill.due_date.slice(0, 10) < today ? { kind: 'overdue' } : { kind: 'scheduled' }
 }
