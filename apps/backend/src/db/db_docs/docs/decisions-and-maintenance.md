@@ -1,6 +1,6 @@
 # Database Conventions, Decisions & Maintenance
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA.** See the [current schema snapshot](../docs.md#current-schema-snapshot) for the verified source commit and schema totals. Committed definitions do not prove deployment or completed application behavior.
 
 ## Conventions and enforcement boundaries
 
@@ -15,11 +15,12 @@
 
 | Topic                  | Current evidence / remaining decision                                                                                                                                                   | Owner                       |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| Current schema         | 84 tables / 758 columns; F2 Iteration-03 and F8 are committed at the inspected dev SHA                                                                                                  | DB Leads                    |
+| Current schema         | 84 tables / 772 columns; F2/F7 Iteration-03 and F8 are committed at the inspected dev SHA                                                                                               | DB Leads                    |
 | F1 baseline            | SQL still requests owner confirmation; last-admin protection is a backend requirement, not implemented here                                                                             | F1 / Auth                   |
 | Cross-feature FKs      | Current consolidated Part 9 includes F8 links and schedule approval aircraft FK; original Level 1 used Part 8                                                                           | DB Leads + feature owners   |
 | F2 approvals           | Four tables and defaults committed; approver worker/state transitions remain application work                                                                                           | F2                          |
 | Country codes          | airport.country now requires lowercase two-letter codes; existing data may need normalization before migration                                                                          | F2 / F8 / DB Leads          |
+| F7 screening           | Identity snapshots, repeatable entry_change checks and review revisions committed; append-only services, queue/latest-review queries and F13 integration remain application work        | F7 / F2 / F13               |
 | F4 finance             | Refund/pass-through semantics remain an assumption for F4/F5 confirmation                                                                                                               | F4 / F5                     |
 | F9 layouts             | SQL forbids in-place layout changes; use a new type code. F8 matches shared aircraft_type.model strings                                                                                 | F9 / F8                     |
 | F12 defaults           | Four cabin defaults remain provisional; product-sale cost snapshot timing remains open                                                                                                  | F12 / F4                    |
@@ -43,23 +44,25 @@
 
 1. Compare the changed SQL, ordered migrations, Prisma models and seed.ts at a recorded commit.
 2. Update affected dictionaries, shared counts, indexes, FK/deletion behavior and seeded/planned distinctions together.
-3. Describe backend-only rules as requirements until matching implementation is verified.
-4. Preserve applied migration history and generated code; fix documentation independently from schema changes.
-5. Record the source commit, review date and verification limits. Running-database approval requires separate evidence.
-6. Use a dedicated branch and the team's PR process. This update changes only Markdown under apps/backend/src/db/db_docs/.
+3. Keep global counts and source provenance in docs.md under Current schema snapshot; feature guide headers link there. Update historical review notes only to mark them superseded.
+4. Describe backend-only rules as requirements until matching implementation is verified.
+5. Preserve applied migration history and generated code; fix documentation independently from schema changes.
+6. Record the source commit, review date and verification limits. Running-database approval requires separate evidence.
+7. Use a dedicated branch and the team's PR process. This update changes only Markdown under apps/backend/src/db/db_docs/.
 
 ## Change log
 
-| Date       | Source                                                                | Documentation status                                                                                                                     |
-| ---------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-10-12 | PR #14 Level 1 baseline                                               | Historical 69-table schema; destructive scaffold replacement                                                                             |
-| 2026-10-21 | dev 752428e732 + supplied F8 Iteration-02 specification               | Historical review; F8 was a proposal at that snapshot                                                                                    |
-| 2026-10-24 | dev a97740c646b2a6e82448243db4817a7a5822e14b, pulled into docs branch | Current 84-table / 758-column dictionary; F2 approval additions, committed F8 design, defaults, seeds and enforcement boundaries updated |
+| Date       | Source                                                                | Documentation status                                                                                                                        |
+| ---------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-12 | PR #14 Level 1 baseline                                               | Historical 69-table schema; destructive scaffold replacement                                                                                |
+| 2026-10-21 | dev 752428e732 + supplied F8 Iteration-02 specification               | Historical review; F8 was a proposal at that snapshot                                                                                       |
+| 2026-10-24 | dev a97740c646b2a6e82448243db4817a7a5822e14b, pulled into docs branch | Historical 84-table / 758-column dictionary; F2 approval additions, committed F8 design, defaults, seeds and enforcement boundaries updated |
+| 2026-10-28 | dev 46a7f55be46a2237545869cbec356cd61e5a31d6                          | F7 Iteration-03 dictionary and migration notes; 84 tables / 772 columns; resolved three docs conflicts and centralized snapshot metadata    |
 
 ## Approval checklist
 
 - [x] Current SQL table/column coverage and types compared with dictionaries and Prisma model inventory.
-- [x] F2 and F8 migration changes and seed source reviewed.
+- [x] F2, F7 and F8 migration changes and seed source reviewed.
 - [x] Earlier F8 proposal fixes tracked against the committed design in F8 section 5; external DBML follow-up remains unverified.
 - [ ] Running-database migration state and runtime constraints independently verified.
 - [ ] Feature owners confirm outstanding business assumptions and integration contracts.
