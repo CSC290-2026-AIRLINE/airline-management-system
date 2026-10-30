@@ -15,6 +15,9 @@ const NAV = [
       { label: 'Fare Setup', to: '/pricing/fare-setup' },
       { label: 'Pricing Rules', to: '/pricing/pricing-rules' },
       { label: 'Taxes, Currency & Promos', to: '/pricing/taxes-promos' },
+      { label: 'Add-on Charges', to: '/pricing/add-on-charges' },
+      { label: 'Pricing Rules' },
+      { label: 'Taxes, Currency & Promos' },
     ],
   },
   {

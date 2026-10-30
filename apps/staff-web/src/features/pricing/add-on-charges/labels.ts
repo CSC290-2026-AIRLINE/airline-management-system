@@ -1,0 +1,54 @@
+import { formatMoney } from '../format'
+import type { SeatType, TaxFeeCalcType, TaxFeeKind } from './api'
+
+export function seatTypeLabel(seatType: SeatType): string {
+  switch (seatType) {
+    case 'normal':
+      return 'Normal'
+    case 'exit_row':
+      return 'Exit row'
+    case 'extra_legroom':
+      return 'Extra legroom'
+    default: {
+      const unknown: never = seatType
+      return unknown
+    }
+  }
+}
+
+export function taxKindLabel(kind: TaxFeeKind): string {
+  switch (kind) {
+    case 'tax':
+      return 'Tax'
+    case 'surcharge':
+      return 'Surcharge'
+    case 'fee':
+      return 'Fee'
+    default: {
+      const unknown: never = kind
+      return unknown
+    }
+  }
+}
+
+export function calcTypeLabel(calcType: TaxFeeCalcType): string {
+  switch (calcType) {
+    case 'flat':
+      return 'Flat amount'
+    case 'pct':
+      return 'Percentage'
+    default: {
+      const unknown: never = calcType
+      return unknown
+    }
+  }
+}
+
+// "7%" for a percentage, "฿700.00" for a flat amount.
+export function taxValueLabel(calcType: TaxFeeCalcType, value: string | number, currency: string): string {
+  return calcType === 'pct' ? `${Number(value)}%` : formatMoney(value, currency)
+}
+
+export function formatKg(kg: string | number | null): string {
+  return kg === null ? 'No limit' : `${Number(kg)} kg`
+}

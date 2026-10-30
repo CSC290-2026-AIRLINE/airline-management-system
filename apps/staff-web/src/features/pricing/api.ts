@@ -155,7 +155,24 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong'
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE'
+export type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE'
+
+export function jsonInit(method: Method, body?: unknown): RequestInit {
+  return { method, ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) }
+}
+
+// Turns a response into its JSON body, or throws ApiError with the backend's message and code.
+export async function readResponse<T>(res: Response): Promise<T> {
+  if (res.status === 204) {
+    return undefined as T
+  }
+  const data = (await res.json().catch(() => null)) as { message?: string | string[]; code?: string } | null
+  if (!res.ok) {
+    const message = Array.isArray(data?.message) ? data.message.join('; ') : (data?.message ?? `Request failed (${res.status})`)
+    throw new ApiError(message, res.status, data?.code)
+  }
+  return data as T
+}
 
 // Calls go through AuthProvider's fetchWithAuth (token + refresh). No caching here: TanStack Query replaces this once
 // the Dev Leads add the shared setup.
@@ -163,19 +180,7 @@ export function usePricingApi() {
   const { fetchWithAuth } = useAppAuth()
 
   async function request<T>(path: string, method: Method = 'GET', body?: unknown): Promise<T> {
-    const res = await fetchWithAuth(`/api/staff${path}`, {
-      method,
-      ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
-    })
-    if (res.status === 204) {
-      return undefined as T
-    }
-    const data = (await res.json().catch(() => null)) as { message?: string | string[]; code?: string } | null
-    if (!res.ok) {
-      const message = Array.isArray(data?.message) ? data.message.join('; ') : (data?.message ?? `Request failed (${res.status})`)
-      throw new ApiError(message, res.status, data?.code)
-    }
-    return data as T
+    return readResponse<T>(await fetchWithAuth(`/api/staff${path}`, jsonInit(method, body)))
   }
 
   return {
