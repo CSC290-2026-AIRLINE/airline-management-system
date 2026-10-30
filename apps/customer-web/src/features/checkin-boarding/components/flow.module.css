@@ -117,6 +117,15 @@
   grid-column: 1 / -1;
 }
 
+/* The find-booking form has no summary either: a narrow card centred in the row. */
+.panelSolo {
+  grid-column: 1 / -1;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 480px;
+  justify-self: center;
+}
+
 .summary {
   background: var(--f6-paper);
   border: 1px solid var(--f6-line);
@@ -213,6 +222,7 @@
   border-radius: 8px;
   background: var(--f6-paper);
   width: 100%;
+  box-sizing: border-box;
 }
 
 .input:focus-visible {

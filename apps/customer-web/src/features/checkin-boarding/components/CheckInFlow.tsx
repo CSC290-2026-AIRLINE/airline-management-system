@@ -94,6 +94,9 @@ export function CheckInFlow({ api }: { api: CheckInApi }) {
     setError(null)
   }
 
+  // Steps 1 and 5 have no summary beside them: a narrow centred card, then the full row.
+  const panelClass = step === 1 ? `${styles.panel} ${styles.panelSolo}` : step === 5 ? `${styles.panel} ${styles.panelWide}` : styles.panel
+
   return (
     <div className={styles.flow}>
       <header className={styles.head}>
@@ -108,7 +111,7 @@ export function CheckInFlow({ api }: { api: CheckInApi }) {
       <div className={styles.layout}>
         {checkIn && step < 5 ? <Summary checkIn={checkIn} /> : null}
 
-        <div className={step === 5 ? `${styles.panel} ${styles.panelWide}` : styles.panel}>
+        <div className={panelClass}>
           {step === 1 ? <FindBookingStep busy={busy} onSubmit={start} /> : null}
 
           {step === 2 && checkIn ? (
