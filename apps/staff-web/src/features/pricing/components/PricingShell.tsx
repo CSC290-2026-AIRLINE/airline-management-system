@@ -8,7 +8,12 @@ import '../pricing.css'
 const NAV = [
   {
     group: 'Pricing',
-    items: [{ label: 'Fare Setup', to: '/pricing/fare-setup' }, { label: 'Pricing Rules' }, { label: 'Taxes, Currency & Promos' }],
+    items: [
+      { label: 'Fare Setup', to: '/pricing/fare-setup' },
+      { label: 'Add-on Charges', to: '/pricing/add-on-charges' },
+      { label: 'Pricing Rules' },
+      { label: 'Taxes, Currency & Promos' },
+    ],
   },
   {
     group: 'Finance',
