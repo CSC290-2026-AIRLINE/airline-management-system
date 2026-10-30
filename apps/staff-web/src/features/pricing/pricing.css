@@ -967,6 +967,114 @@ a.pr-nav-item:hover {
   gap: 12px 16px;
 }
 
+/* Promo codes */
+.pr-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: var(--pr-text-caption);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pr-status.is-active {
+  background: var(--pr-good-bg);
+  color: var(--pr-good);
+}
+
+.pr-status.is-not_started {
+  background: #fff1c7;
+  color: #8a5a00;
+}
+
+.pr-status.is-expired {
+  background: var(--pr-head);
+  color: var(--pr-muted);
+}
+
+.pr-status.is-used_up,
+.pr-status.is-inactive {
+  background: var(--pr-inactive-bg);
+  color: var(--pr-inactive);
+}
+
+.pr-promo-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pr-promo-cards {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pr-promo-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 12px;
+  border: 1px solid var(--pr-divider);
+  border-radius: var(--pr-radius-field);
+}
+
+.pr-promo-code {
+  padding: 6px 8px;
+  border-radius: var(--pr-radius-lg);
+  background: #eef2f7;
+  color: var(--pr-primary);
+  font-size: var(--pr-text-small);
+  font-weight: 700;
+}
+
+.pr-promo-name {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pr-promo-name strong {
+  color: var(--pr-primary);
+  font-size: var(--pr-text-label);
+  font-weight: 600;
+}
+
+.pr-promo-name span {
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+}
+
+.pr-promo-discount {
+  color: var(--pr-primary);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pr-promo-bottom {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pr-promo-bottom .pr-switch {
+  width: 42px;
+  height: 24px;
+}
+
+.pr-promo-bottom .pr-switch-thumb {
+  width: 20px;
+  height: 20px;
+}
+
+.pr-promo-bottom .pr-switch[aria-checked='true'] .pr-switch-thumb {
+  transform: translateX(18px);
+}
+
 /* Price simulator: beside the rules on desktop, its own page on a phone */
 .pr-rules-layout.has-simulator {
   display: grid;
@@ -1504,6 +1612,16 @@ a.pr-nav-item:hover {
 
   .pr-sheet .pr-fee-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Kind and type share a row; the discount takes its own */
+  .pr-promo-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 0; /* each field already has its own bottom margin */
+  }
+
+  .pr-promo-row > :last-child {
+    grid-column: 1 / -1;
   }
 
   /* Cards are tighter on a phone */
