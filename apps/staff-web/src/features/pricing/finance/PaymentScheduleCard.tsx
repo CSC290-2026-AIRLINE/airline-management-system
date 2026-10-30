@@ -1,30 +1,76 @@
+import { useState } from 'react'
 import { Badge } from '@staff-web/components/ui/badge'
+import { Button } from '@staff-web/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { usePricingApi } from '../api'
+import { errorMessage } from '../api'
 import { useLoad } from '../hooks/useLoad'
-import { useFinanceApi, type ExpenseCategory, type PaymentSchedule } from './finance-api'
-
-const AMOUNT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
-// DATE columns arrive as midnight UTC, so read them in UTC or a negative offset shows the day before.
-const DAY_MONTH = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
-const DAY_MONTH_YEAR = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+import { useFinanceApi, type PaymentSchedule } from './finance-api'
+import { AMOUNT, categoryLabel, shortDate, todayKey } from './finance-format'
+import {
+  cellClass,
+  headClass,
+  headRowClass,
+  outlineButtonClass,
+  phoneItemClass,
+  phoneListClass,
+  rowClass,
+  tableWrapClass,
+} from './finance-styles'
 
 type BillStatus = { kind: 'overdue' } | { kind: 'scheduled' } | { kind: 'paid'; on: string }
 
-const headClass = 'h-10 px-4 text-(length:--pr-text-caption) font-semibold tracking-wide text-(--pr-text) uppercase'
-const cellClass = 'px-4 py-3'
+interface PaymentScheduleCardProps {
+  unit: string // base currency code
+  onPaid: () => void // a new expense exists, so the expenses above must reload
+}
 
-// Bills still to pay (design: Expenses & payments → Payment schedule). "Mark paid" joins in Step 3.
-export function PaymentScheduleCard() {
+// Bills still to pay (design: Expenses & payments → Payment schedule).
+export function PaymentScheduleCard({ unit, onPaid }: PaymentScheduleCardProps) {
   const api = useFinanceApi()
-  const pricingApi = usePricingApi()
   const schedules = useLoad(() => api.listPaymentSchedules(), 'payment-schedules')
-  const base = useLoad(() => pricingApi.getBaseCurrency(), 'currency')
+  // The bill being paid. Every "Mark paid" is disabled meanwhile, so a double click can't send a second request.
+  const [paying, setPaying] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const unit = base.data ?? ''
   const today = todayKey()
   // Unpaid first, soonest due first (the API already sorts by due date); paid bills sink to the bottom.
   const list = [...(schedules.data ?? [])].sort((a, b) => Number(a.status === 'paid') - Number(b.status === 'paid'))
+
+  async function markPaid(bill: PaymentSchedule) {
+    setPaying(bill.id)
+    setError(null)
+    try {
+      await api.payPaymentSchedule(bill.id)
+      onPaid()
+    } catch (e) {
+      // e.g. 409 "Payment schedule is already paid" if someone else paid it first
+      setError(errorMessage(e))
+    } finally {
+      setPaying(null)
+      schedules.reload()
+    }
+  }
+
+  function action(bill: PaymentSchedule) {
+    if (bill.status === 'paid') {
+      return (
+        <Button variant="outline" className={outlineButtonClass} disabled>
+          Paid
+        </Button>
+      )
+    }
+    return (
+      <Button
+        variant="outline"
+        className={outlineButtonClass}
+        disabled={paying !== null}
+        aria-label={`Mark ${bill.payee} paid`}
+        onClick={() => void markPaid(bill)}
+      >
+        {paying === bill.id ? 'Paying…' : 'Mark paid'}
+      </Button>
+    )
+  }
 
   const body = schedules.error ? (
     <div className="pr-callout is-error" role="alert">
@@ -33,28 +79,31 @@ export function PaymentScheduleCard() {
         Retry
       </button>
     </div>
-  ) : !schedules.data || !base.data ? (
+  ) : !schedules.data ? (
     <p className="pr-state">Loading the payment schedule…</p>
   ) : list.length === 0 ? (
     <p className="pr-state">Nothing scheduled to pay.</p>
   ) : (
     <>
       {/* Desktop: one table */}
-      <div className="overflow-hidden rounded-(--pr-radius-lg) border border-(--pr-border) max-[800px]:hidden">
+      <div className={tableWrapClass}>
         <Table className="text-(length:--pr-text-body)">
           <TableHeader className="bg-(--pr-head)">
-            <TableRow className="border-(--pr-border) hover:bg-transparent">
+            <TableRow className={headRowClass}>
               <TableHead className={headClass}>Payee</TableHead>
               <TableHead className={headClass}>Category</TableHead>
               <TableHead className={headClass}>Description</TableHead>
               <TableHead className={headClass}>Due</TableHead>
               <TableHead className={headClass}>Amount ({unit})</TableHead>
               <TableHead className={headClass}>Status</TableHead>
+              <TableHead className={headClass}>
+                <span className="sr-only">Action</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {list.map((bill) => (
-              <TableRow key={bill.id} className="border-(--pr-divider) hover:bg-transparent">
+              <TableRow key={bill.id} className={rowClass}>
                 <TableCell className={`${cellClass} font-semibold text-(--pr-ink)`}>{bill.payee}</TableCell>
                 <TableCell className={cellClass}>{categoryLabel(bill.category)}</TableCell>
                 <TableCell className={`${cellClass} whitespace-normal`}>{bill.description ?? '—'}</TableCell>
@@ -63,6 +112,7 @@ export function PaymentScheduleCard() {
                 <TableCell className={cellClass}>
                   <StatusBadge status={statusOf(bill, today)} />
                 </TableCell>
+                <TableCell className={cellClass}>{action(bill)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -70,9 +120,9 @@ export function PaymentScheduleCard() {
       </div>
 
       {/* Phone: one card per bill */}
-      <ul className="grid gap-2.5 min-[801px]:hidden">
+      <ul className={phoneListClass}>
         {list.map((bill) => (
-          <li key={bill.id} className="grid gap-1.5 rounded-(--pr-radius-card) border border-(--pr-divider) p-3.5">
+          <li key={bill.id} className={phoneItemClass}>
             <div className="flex items-baseline justify-between gap-2">
               <strong className="text-(length:--pr-text-label) text-(--pr-ink)">{bill.payee}</strong>
               <strong className="text-(length:--pr-text-label) whitespace-nowrap text-(--pr-ink)">
@@ -82,8 +132,9 @@ export function PaymentScheduleCard() {
             <span className="text-(length:--pr-text-small) text-(--pr-muted)">
               {[bill.description, categoryLabel(bill.category), `Due ${shortDate(bill.due_date)}`].filter(Boolean).join(' · ')}
             </span>
-            <div>
+            <div className="flex items-center justify-between gap-2">
               <StatusBadge status={statusOf(bill, today)} />
+              {action(bill)}
             </div>
           </li>
         ))}
@@ -101,6 +152,12 @@ export function PaymentScheduleCard() {
       </div>
 
       {body}
+
+      {error && (
+        <div className="pr-callout is-error" role="alert">
+          {error}
+        </div>
+      )}
     </section>
   )
 }
@@ -122,39 +179,9 @@ function StatusBadge({ status }: { status: BillStatus }) {
 }
 
 // Overdue = still scheduled and due before today, the same rule as the backend's ?overdue=true.
-// TODO: use the simulated date once Core exposes it; until then this is the real date, like the backend.
 function statusOf(bill: PaymentSchedule, today: string): BillStatus {
   if (bill.status === 'paid' && bill.paid_on) {
     return { kind: 'paid', on: bill.paid_on }
   }
   return bill.due_date.slice(0, 10) < today ? { kind: 'overdue' } : { kind: 'scheduled' }
-}
-
-// Today as YYYY-MM-DD in local time, comparable with a DATE column.
-function todayKey() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
-// "1 Oct" this year, "1 Oct 2027" otherwise.
-function shortDate(isoDate: string) {
-  const date = new Date(isoDate)
-  return date.getUTCFullYear() === new Date().getFullYear() ? DAY_MONTH.format(date) : DAY_MONTH_YEAR.format(date)
-}
-
-function categoryLabel(category: ExpenseCategory): string {
-  switch (category) {
-    case 'maintenance':
-      return 'Maintenance'
-    case 'staff':
-      return 'Staff'
-    case 'catering':
-      return 'Catering'
-    case 'other':
-      return 'Other'
-    default: {
-      const unknown: never = category
-      return unknown
-    }
-  }
 }
