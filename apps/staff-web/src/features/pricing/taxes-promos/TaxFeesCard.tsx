@@ -6,7 +6,8 @@ import { useAddOnChargesApi, type TaxFee } from '../add-on-charges/api'
 import { calcTypeShortLabel, taxKindLabel, taxValueLabel } from '../add-on-charges/labels'
 import { useLoad } from '../hooks/useLoad'
 import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
-import { OUTLINE_BUTTON, TaxFeeDialog } from './TaxFeeDialog'
+import { OUTLINE_BUTTON } from './charge-styles'
+import { TaxFeeDialog } from './TaxFeeDialog'
 
 const NOTICE_MS = 2000
 
