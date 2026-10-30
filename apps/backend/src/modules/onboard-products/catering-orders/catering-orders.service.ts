@@ -28,6 +28,7 @@ export interface CateringOrderDto {
   id: string
   flightId: string
   flightNumber: string
+  routeId: string
   route: string
   departureAirport: string
   arrivalAirport: string
@@ -75,6 +76,7 @@ export class CateringOrdersService {
           id: `open-${flight.id}`,
           flightId: flight.id,
           flightNumber: flight.flight_number,
+          routeId: flight.route_id,
           route: `${flight.route.origin} → ${flight.route.destination}`,
           departureAirport: flight.route.origin,
           arrivalAirport: flight.route.destination,
@@ -94,6 +96,7 @@ export class CateringOrdersService {
           id: order.id,
           flightId: flight.id,
           flightNumber: flight.flight_number,
+          routeId: flight.route_id,
           route: `${flight.route.origin} → ${flight.route.destination}`,
           departureAirport: flight.route.origin,
           arrivalAirport: flight.route.destination,
@@ -134,6 +137,7 @@ export class CateringOrdersService {
       id: order.id,
       flightId: order.flight_id,
       flightNumber: order.flight.flight_number,
+      routeId: order.flight.route_id,
       route: `${order.flight.route.origin} → ${order.flight.route.destination}`,
       departureAirport: order.flight.route.origin,
       arrivalAirport: order.flight.route.destination,

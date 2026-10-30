@@ -181,11 +181,12 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
           const f = mapReportableFlight(row as never)
           return {
             id: f.id,
-            routeId: '', // backend list omits routeId; route-detail page resolves it.
+            routeId: f.routeId,
             flightNumber: f.flightNumber,
             scheduledDeparture: f.scheduledDeparture,
             cabin: 'economy' as Cabin,
             changedSettings: [],
+            route: `${f.departureAirport} → ${f.arrivalAirport}`,
           }
         })
         return {
@@ -249,11 +250,12 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
           const f = mapReportableFlight(row as never)
           return {
             id: f.id,
-            routeId: '', // resolved by route-detail page if user opens one.
+            routeId: f.routeId,
             flightNumber: f.flightNumber,
             scheduledDeparture: f.scheduledDeparture,
             cabin: 'economy' as Cabin,
             changedSettings: [],
+            route: `${f.departureAirport} → ${f.arrivalAirport}`,
           }
         })
         const search = filter.search.trim().toLowerCase()

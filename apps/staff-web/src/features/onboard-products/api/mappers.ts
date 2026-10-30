@@ -594,6 +594,7 @@ export function mapFlightException(wire: {
   scheduledDeparture: string
   cabin: string
   changedSettings: string[]
+  route?: string
 }): FlightException {
   return {
     id: required('GET /api/staff/flight-exceptions', 'id', wire.id),
@@ -602,6 +603,7 @@ export function mapFlightException(wire: {
     scheduledDeparture: toIsoString(wire.scheduledDeparture),
     cabin: required('GET /api/staff/flight-exceptions', 'cabin', wire.cabin) as FlightException['cabin'],
     changedSettings: Array.isArray(wire.changedSettings) ? wire.changedSettings : [],
+    route: wire.route ?? '',
   }
 }
 
@@ -671,6 +673,7 @@ export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
 
 interface WireFlight {
   id: string
+  flightId: string
   flightNumber: string
   routeId: string
   scheduledDeparture: string
@@ -687,7 +690,10 @@ interface WireFlight {
 
 export function mapFlight(wire: WireFlight): Flight {
   return {
-    id: required('GET /api/staff/catering-orders', 'id', wire.id),
+    // The list endpoint returns one catering order per flight, so `id` is the
+    // order id and `flightId` is the flight. The page keys the flight list by
+    // flight id (it loads the order for it), so that is what `id` has to be.
+    id: required('GET /api/staff/catering-orders', 'flightId', wire.flightId),
     flightNumber: required('GET /api/staff/catering-orders', 'flightNumber', wire.flightNumber),
     routeId: required('GET /api/staff/catering-orders', 'routeId', wire.routeId),
     scheduledDeparture: toIsoString(wire.scheduledDeparture),
@@ -698,7 +704,8 @@ export function mapFlight(wire: WireFlight): Flight {
     status: (required('GET /api/staff/catering-orders', 'status', wire.status) as FlightCateringStatus) ?? 'open',
     cabin: (required('GET /api/staff/catering-orders', 'cabin', wire.cabin ?? 'economy') as Flight['cabin']) ?? 'economy',
     cutoffAt: toIsoString(wire.cutoffAt ?? wire.scheduledDeparture),
-    warehouseId: required('GET /api/staff/catering-orders', 'warehouseId', wire.warehouseId ?? ''),
+    // Empty until a catering order exists for the flight, so it is not required.
+    warehouseId: wire.warehouseId ?? '',
     isCancelled: Boolean(wire.isCancelled),
   }
 }
@@ -874,6 +881,7 @@ export function mapWriteOffBatch(wire: WireWriteOffBatch): WriteOffBatch {
 export interface ReportableFlight {
   id: string
   flightNumber: string
+  routeId: string
   departureAirport: string
   arrivalAirport: string
   scheduledDeparture: string
@@ -884,6 +892,7 @@ export interface ReportableFlight {
 export function mapReportableFlight(wire: {
   id: string
   flightNumber: string
+  routeId: string
   departureAirport: string
   arrivalAirport: string
   scheduledDeparture: string
@@ -893,6 +902,7 @@ export function mapReportableFlight(wire: {
   return {
     id: required('GET /api/staff/flight-reports/reportable-flights', 'id', wire.id),
     flightNumber: required('GET /api/staff/flight-reports/reportable-flights', 'flightNumber', wire.flightNumber),
+    routeId: required('GET /api/staff/flight-reports/reportable-flights', 'routeId', wire.routeId),
     departureAirport: required('GET /api/staff/flight-reports/reportable-flights', 'departureAirport', wire.departureAirport),
     arrivalAirport: required('GET /api/staff/flight-reports/reportable-flights', 'arrivalAirport', wire.arrivalAirport),
     scheduledDeparture: toIsoString(wire.scheduledDeparture),

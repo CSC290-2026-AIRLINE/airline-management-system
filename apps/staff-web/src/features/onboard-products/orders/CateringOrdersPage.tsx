@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { CateringApiError, useOnboardApi } from '@staff-web/features/onboard-products/api'
-import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
+import { ConfirmDialog, Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
 import type {
   Cabin,
   CateringOrder,
@@ -60,12 +60,37 @@ function cabinLabel(c: Cabin | 'all'): string {
 // "Ordering open" / "Order ready" / "Loaded" / "Closed out" / "Void".
 type UiStatus = 'ordering_open' | 'order_ready' | 'loaded' | 'closed' | 'void'
 
+// The list endpoint already carries each flight's catering-order status
+// on Flight.status, so the chips can be right for every row.
+function flightStatusToUi(status: FlightCateringStatus): UiStatus {
+  switch (status) {
+    case 'void':
+      return 'void'
+    case 'closed':
+      return 'closed'
+    case 'loaded':
+      return 'loaded'
+    case 'generated':
+      return 'order_ready'
+    default:
+      return 'ordering_open'
+  }
+}
+
 function uiStatus(flight: Flight, order: CateringOrder | null): UiStatus {
-  if (flight.status === 'void') return 'void'
-  if (order?.status === 'closed') return 'closed'
-  if (order?.status === 'loaded') return 'loaded'
-  if (order != null) return 'order_ready'
-  return 'ordering_open'
+  // The catering order is only fetched for the selected flight, so it is
+  // missing for every other row -- reading the status from it alone made
+  // the whole list read "ordering open" until you picked a flight. Use
+  // the flight's own status, which the list endpoint returns for all of
+  // them, and prefer the fetched order when there is one: right after an
+  // action it is the fresher of the two.
+  if (order) {
+    if (order.status === 'closed') return 'closed'
+    if (order.status === 'loaded') return 'loaded'
+    if (order.status === 'void') return 'void'
+    return 'order_ready'
+  }
+  return flightStatusToUi(flight.status)
 }
 
 function uiStatusLabel(s: UiStatus): string {
@@ -113,6 +138,10 @@ function groupByCabin(lines: CateringOrderLine[]): { cabin: Cabin | 'all'; lines
   return groups
 }
 
+// The stage changes that need an "are you sure" first. `null` means no
+// dialog is open.
+type PendingAction = 'transfer' | 'close'
+
 // -- component -------------------------------------------------------------
 
 export function CateringOrdersPage() {
@@ -129,6 +158,7 @@ export function CateringOrdersPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastData | null>(null)
   const [busy, setBusy] = useState(false)
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [pageSize, setPageSize] = useState(8)
   const [searchText, setSearchText] = useState('')
   const [airportFilter, setAirportFilter] = useState<string>('all')
@@ -210,6 +240,10 @@ export function CateringOrdersPage() {
   void refreshSelectedOrder
 
   // -- action handlers -----------------------------------------------------
+  //
+  // The stage changes (transfer, close out) run only after the
+  // "are you sure" dialog is confirmed. Each handler closes the dialog
+  // when it finishes, whichever way it went; failures show a toast.
 
   async function handleRefresh() {
     if (selectedId == null) return
@@ -248,6 +282,7 @@ export function CateringOrdersPage() {
       }
     } finally {
       setBusy(false)
+      setPendingAction(null)
     }
   }
 
@@ -268,7 +303,14 @@ export function CateringOrdersPage() {
       }
     } finally {
       setBusy(false)
+      setPendingAction(null)
     }
+  }
+
+  // Run the action the open dialog is waiting for.
+  function confirmPendingAction() {
+    if (pendingAction === 'transfer') void handleTransfer()
+    else if (pendingAction === 'close') void handleCloseOut()
   }
 
   // -- derived state ------------------------------------------------------
@@ -304,6 +346,32 @@ export function CateringOrdersPage() {
   const totalUnits = selectedOrder ? selectedOrder.lines.reduce((acc, l) => acc + l.quantityRequired, 0) : 0
   const totalShort = selectedOrder ? selectedOrder.lines.reduce((acc, l) => acc + l.quantityShort, 0) : 0
 
+  // Copy for the "are you sure" dialog. Each stage change says what it
+  // is about to do and what it does to the stock.
+  function pendingDialog(): { title: string; body: string; confirmLabel: string } | null {
+    const flightNumber = selectedFlight?.flightNumber ?? 'this flight'
+    const itemCount = selectedOrder?.lines.length ?? 0
+    if (pendingAction === 'transfer') {
+      return {
+        title: 'Transfer the stock to the aircraft?',
+        body:
+          `This loads ${itemCount} item${itemCount === 1 ? '' : 's'} (${formatQuantity(totalUnits)} units) for ${flightNumber} onto the aircraft and takes them out of ` +
+          `${selectedWarehouse?.name ?? 'the warehouse'}. The stock leaves the warehouse and cannot be put back from this page.`,
+        confirmLabel: 'Transfer to aircraft',
+      }
+    }
+    if (pendingAction === 'close') {
+      return {
+        title: 'Close out this catering order?',
+        body: `The catering order for ${flightNumber} is marked as closed out. It cannot be reopened.`,
+        confirmLabel: 'Close out',
+      }
+    }
+    return null
+  }
+
+  const dialog = pendingDialog()
+
   function onSelectFlight(id: string) {
     setSelectedId(id)
     void navigate({ to: '/catering/orders', search: { flightId: id }, replace: true })
@@ -332,6 +400,17 @@ export function CateringOrdersPage() {
       </header>
 
       {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
+
+      {dialog && (
+        <ConfirmDialog
+          title={dialog.title}
+          body={dialog.body}
+          confirmLabel={dialog.confirmLabel}
+          busy={busy}
+          onClose={() => setPendingAction(null)}
+          onConfirm={confirmPendingAction}
+        />
+      )}
 
       <div className={styles.layout}>
         {/* Left list --------------------------------------------------------- */}
@@ -454,10 +533,10 @@ export function CateringOrdersPage() {
                     status={selectedStatus}
                     shortCount={shortLineCount}
                     busy={busy}
-                    onClick={handleTransfer}
+                    onClick={() => setPendingAction('transfer')}
                     styles={styles}
                   />
-                  <CloseOutButton status={selectedStatus} busy={busy} onClick={handleCloseOut} styles={styles} />
+                  <CloseOutButton status={selectedStatus} busy={busy} onClick={() => setPendingAction('close')} styles={styles} />
                 </div>
               </div>
 
@@ -632,7 +711,10 @@ function RefreshButton({
   onClick: () => void
   styles: typeof import('./CateringOrdersPage.module.css').default
 }) {
-  if (status === 'ordering_open' || status === 'void') return null
+  // Regenerating the lines only makes sense before the transfer. The
+  // backend rejects a refresh once the order is loaded or closed, so
+  // the button is only offered at the order-ready stage.
+  if (status !== 'order_ready') return null
   return (
     <button type="button" className={styles.actionButton} onClick={onClick} disabled={busy}>
       Refresh order

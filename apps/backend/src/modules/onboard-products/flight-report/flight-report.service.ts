@@ -95,6 +95,7 @@ export class FlightReportService {
     Array<{
       id: string
       flightNumber: string
+      routeId: string
       departureAirport: string
       arrivalAirport: string
       scheduledDeparture: string
@@ -110,6 +111,7 @@ export class FlightReportService {
     return flights.map((f) => ({
       id: f.id,
       flightNumber: f.flight_number,
+      routeId: f.route_id,
       departureAirport: f.route.origin,
       arrivalAirport: f.route.destination,
       scheduledDeparture: f.scheduled_dep_at.toISOString(),

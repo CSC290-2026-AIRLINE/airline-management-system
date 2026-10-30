@@ -107,6 +107,8 @@
 }
 
 .filterSelect {
+  /* Shared dropdown arrow, see select.module.css. */
+  composes: dropdown from '../catalog/select.module.css';
   font: inherit;
   font-size: 13px;
   padding: 7px 10px;

@@ -138,6 +138,8 @@ export interface FlightException {
   scheduledDeparture: string
   cabin: Cabin
   changedSettings: string[]
+  // "BKK → NRT", the route the flight belongs to. Empty when unknown.
+  route: string
 }
 
 export interface CateringOrderLine {

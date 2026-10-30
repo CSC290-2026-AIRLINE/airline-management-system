@@ -1,8 +1,9 @@
-// Confirm dialog used by the offered menu bulk actions and the
-// "clear exception" flow. Modal, ESC-closes, focus-trapped.
+// Confirm dialog used by the offered menu bulk actions, the
+// "clear exception" flow and the catering order stage changes. Modal,
+// ESC-closes, focus-trapped.
 
 import { useEffect, useRef, useState } from 'react'
-import { useDialogFocusTrap } from '@staff-web/features/onboard-products/catalog'
+import { useDialogFocusTrap } from './useDialogFocusTrap'
 import styles from './ConfirmDialog.module.css'
 
 interface ConfirmDialogProps {

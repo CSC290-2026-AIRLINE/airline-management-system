@@ -16,8 +16,7 @@ import type {
   RouteSummary,
 } from '@staff-web/features/onboard-products/api/types'
 import { resolveCabinSettings } from '@staff-web/features/onboard-products/offered-menu/resolve'
-import { ConfirmDialog } from '@staff-web/features/onboard-products/offered-menu/ConfirmDialog'
-import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
+import { ConfirmDialog, Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
 import styles from './OfferedMenuPage.module.css'
 
 const PAGE_SIZE = 15
@@ -538,7 +537,7 @@ export function OfferedMenuPage() {
                   <td>
                     <span className={styles.flightCode}>{e.flightNumber}</span>
                     <span className={styles.routeSub}>
-                      {e.routeId ? e.routeId.replace('r-', '').toUpperCase() : '—'} · {formatDate(e.scheduledDeparture)}
+                      {e.route || '—'} · {formatDate(e.scheduledDeparture)}
                     </span>
                   </td>
                   <td className={styles.cabinName}>{cabinLabel(e.cabin)}</td>
