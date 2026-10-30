@@ -19,7 +19,7 @@ const NAV = [
   },
   {
     group: 'Finance',
-    items: [{ label: 'Expenses & Payments' }, { label: 'Monthly Report' }],
+    items: [{ label: 'Expenses & Payments', to: '/pricing/expenses-payments' }, { label: 'Monthly Report' }],
   },
 ] as const
 
