@@ -66,6 +66,20 @@ export interface PricingRule {
   is_active: boolean
 }
 
+// Body of POST /staff/pricing-rules: only the condition fields of the rule's own group are sent.
+export interface NewPricingRule {
+  rule_group: RuleGroup
+  name: string
+  adjustment_pct: number
+  min_days_out?: number
+  max_days_out?: number
+  min_seats_left_pct?: number
+  max_seats_left_pct?: number
+  month?: number
+  start_date?: string // YYYY-MM-DD
+  end_date?: string
+}
+
 // Mirrors SEAT_TYPES in the backend's pricing.constants.ts.
 export const SEAT_TYPES = ['normal', 'exit_row', 'extra_legroom'] as const
 export type SeatType = (typeof SEAT_TYPES)[number]
@@ -135,6 +149,7 @@ export function usePricingApi() {
     deleteBaseFare: (id: string) => request<void>(`/base-fares/${id}`, 'DELETE'),
 
     listPricingRules: () => request<PricingRule[]>('/pricing-rules'),
+    createPricingRule: (input: NewPricingRule) => request<PricingRule>('/pricing-rules', 'POST', input),
     setPricingRuleActive: (id: string, isActive: boolean) => request<PricingRule>(`/pricing-rules/${id}`, 'PATCH', { is_active: isActive }),
     reorderPricingRules: (group: RuleGroup, ids: string[]) =>
       request<PricingRule[]>('/pricing-rules/reorder', 'POST', { rule_group: group, ids }),

@@ -21,6 +21,9 @@
   --pr-danger-bg: #fdecec;
   --pr-inactive: #9b3b34; /* muted red for the Inactive badge */
   --pr-inactive-bg: #f9e6e4;
+  --pr-warn: #8a5300; /* amber warning box in confirmations */
+  --pr-warn-bg: #fff4d6;
+  --pr-warn-border: #f5dc9a;
   --pr-good: #1f7a4d;
   --pr-good-bg: #dcf5e6;
   --pr-highlight: #eef3ff; /* row just added or saved */
@@ -1096,6 +1099,108 @@ a.pr-nav-item:hover {
   display: none;
 }
 
+/* Small centred confirmation, e.g. "Remove rule H-7?" */
+.pr-sheet.pr-confirm {
+  width: min(480px, calc(100% - 32px));
+  padding: 20px;
+}
+
+.pr-confirm-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pr-confirm-head h2 {
+  margin: 0;
+  color: var(--pr-ink);
+  font: 700 20px / 1.25 var(--pr-font);
+}
+
+.pr-warning {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--pr-warn-border);
+  border-radius: var(--pr-radius);
+  background: var(--pr-warn-bg);
+  color: var(--pr-warn);
+  font-size: var(--pr-text-small);
+}
+
+.pr-warning strong {
+  font-size: var(--pr-text-body);
+}
+
+.pr-confirm-summary {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--pr-divider);
+  border-radius: var(--pr-radius);
+  background: var(--pr-page);
+}
+
+.pr-confirm-summary strong {
+  color: var(--pr-ink);
+}
+
+.pr-confirm-summary span {
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+}
+
+.pr-confirm .pr-confirm-error {
+  margin: 0 0 16px;
+}
+
+.pr-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.pr-confirm-actions .pr-button {
+  min-width: 100px;
+  min-height: 40px;
+}
+
+/* Form in a confirmation-sized dialog, e.g. "New period rule" */
+.pr-form-dialog .pr-confirm-head {
+  margin-bottom: 12px;
+}
+
+.pr-form-dialog .pr-field {
+  margin-bottom: 12px;
+}
+
+.pr-form-hint {
+  margin: 4px 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--pr-radius);
+  background: var(--pr-page);
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+}
+
+.pr-phone-only {
+  display: none;
+}
+
+.pr-button.is-danger-solid {
+  min-width: 116px;
+  background: var(--pr-danger);
+  color: #fff;
+}
+
+.pr-button.is-danger-solid:not(:disabled):hover {
+  background: #912018;
+}
+
 /* Responsive ------------------------------------------------------------------------------------- */
 
 @media (max-width: 1100px) {
@@ -1354,6 +1459,144 @@ a.pr-nav-item:hover {
 
   .pr-card-tabs {
     margin: 4px 14px 12px;
+  }
+
+  /* Phone: the confirmation is a full-width bottom sheet like the other dialogs */
+  .pr-sheet.pr-confirm {
+    width: 100%;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .pr-confirm-actions .pr-button {
+    flex: 1;
+  }
+
+  .pr-phone-only {
+    display: inline-grid;
+    place-items: center;
+  }
+
+  /* Phone form dialogs: Save on top, Cancel under it, both full width */
+  .pr-form-dialog .pr-confirm-actions {
+    flex-direction: column-reverse;
+  }
+
+  .pr-form-dialog .pr-confirm-actions .pr-button {
+    min-height: 44px;
+  }
+
+  /* Header buttons (e.g. Open price simulator) go full width under the title */
+  .pr-header > .pr-button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* Pricing rules: one card per rule, paged like Base fares */
+  .pr-rule-cards {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .pr-rule-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 4px 12px;
+    padding: 12px;
+    border: 1px solid var(--pr-divider);
+    border-radius: var(--pr-radius-lg);
+    background: var(--pr-surface);
+  }
+
+  .pr-rule-number {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--pr-head);
+    color: var(--pr-ink);
+    font-size: var(--pr-text-small);
+    font-weight: 700;
+  }
+
+  .pr-rule-card-name {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .pr-rule-card-name strong {
+    color: var(--pr-ink);
+    font-size: var(--pr-text-label);
+    font-weight: 600;
+  }
+
+  .pr-rule-card-name > span {
+    color: var(--pr-muted);
+    font-size: var(--pr-text-small);
+  }
+
+  .pr-rule-card-adjust {
+    font-size: 17px;
+  }
+
+  .pr-rule-card.is-inactive .pr-rule-card-name strong,
+  .pr-rule-card.is-inactive .pr-rule-card-adjust {
+    color: var(--pr-muted);
+  }
+
+  .pr-rule-card-actions {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .pr-switch-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--pr-muted);
+    font-size: var(--pr-text-small);
+  }
+
+  .pr-rule-card-buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Bigger tap targets than the desktop table */
+  .pr-rule-card .pr-step-button {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .pr-rule-card .pr-switch {
+    width: 44px;
+    height: 24px;
+  }
+
+  .pr-rule-card .pr-switch-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
+  .pr-rule-card .pr-switch[aria-checked='true'] .pr-switch-thumb {
+    transform: translateX(20px);
+  }
+
+  .pr-rule-card .pr-link-button.is-danger {
+    padding: 6px 0 6px 4px;
+    font-size: var(--pr-text-body);
+    font-weight: 600;
   }
 
   .pr-pager {
