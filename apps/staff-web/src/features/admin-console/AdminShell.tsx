@@ -126,7 +126,7 @@ export function AdminShell() {
           className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-[0.02em]"
           onClick={() => setNavOpen((o) => !o)}
           aria-expanded={navOpen}
-          aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
+          aria-label={navOpen ? 'Close admin navigation' : 'Open admin navigation'}
         >
           ADMIN
           {navOpen ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}

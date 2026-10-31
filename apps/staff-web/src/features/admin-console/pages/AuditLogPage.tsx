@@ -432,13 +432,13 @@ export function AuditLogPage() {
         </div>
         <div
           className={cn(
-            'mt-[23px] flex items-end gap-2.5',
+            'mt-[23px] flex flex-wrap items-end gap-2.5',
             'max-tablet:mt-3 max-tablet:flex-col max-tablet:items-stretch max-tablet:rounded-xl max-tablet:border max-tablet:border-[#d9dfe9] max-tablet:p-3',
             !filtersOpen && 'max-tablet:hidden',
           )}
         >
           <FilterSelect
-            className="w-[162px] max-tablet:w-full"
+            className="min-w-[130px] flex-[162_1_0] max-tablet:w-full"
             label="Feature"
             value={filters.source_feature}
             allLabel="All features"
@@ -446,7 +446,7 @@ export function AuditLogPage() {
             onChange={(v) => setFilters((f) => ({ ...f, source_feature: v }))}
           />
           <FilterSelect
-            className="w-[190px] max-tablet:w-full"
+            className="min-w-[130px] flex-[190_1_0] max-tablet:w-full"
             label="Actor"
             value={filters.actor_type}
             allLabel="All actors"
@@ -454,14 +454,14 @@ export function AuditLogPage() {
             onChange={(v) => setFilters((f) => ({ ...f, actor_type: v as AuditFilters['actor_type'] }))}
           />
           <FilterSelect
-            className="w-[190px] max-tablet:w-full"
+            className="min-w-[130px] flex-[190_1_0] max-tablet:w-full"
             label="Action type"
             value={filters.action}
             allLabel="All actions"
             options={ACTION_TYPES.map((a) => ({ value: a, label: ACTION_BADGE[a]?.label ?? a }))}
             onChange={(v) => setFilters((f) => ({ ...f, action: v as ActionType | undefined }))}
           />
-          <label className="flex w-[160px] flex-col gap-[3px] max-tablet:w-full">
+          <label className="flex min-w-[140px] flex-[160_1_0] flex-col gap-[3px] max-tablet:w-full">
             <span className="text-xs font-semibold text-muted-foreground">From</span>
             <Input
               type="date"
@@ -470,7 +470,7 @@ export function AuditLogPage() {
               onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value || undefined }))}
             />
           </label>
-          <label className="flex w-[130px] min-w-[130px] flex-col gap-[3px] max-tablet:w-full">
+          <label className="flex min-w-[130px] flex-[130_1_0] flex-col gap-[3px] max-tablet:w-full">
             <span className="text-xs font-semibold text-muted-foreground">To</span>
             <Input
               type="date"
@@ -482,7 +482,7 @@ export function AuditLogPage() {
           <Button
             type="button"
             variant="outline"
-            className={cn(BTN_OUTLINE, 'mb-[3px] h-[42px] px-2.5 text-[13px] max-tablet:mb-0')}
+            className={cn(BTN_OUTLINE, 'mb-[3px] h-[42px] shrink-0 px-2.5 text-[13px] max-tablet:mb-0')}
             onClick={clear}
           >
             Clear filters
@@ -536,28 +536,32 @@ export function AuditLogPage() {
         )}
 
         {/* Table --------------------------------------------------- */}
-        <div className="mt-[18px] max-tablet:mt-3">
-          <div
-            className={cn(
-              GRID,
-              'border-b border-[#d9dfe9] pb-3 text-[11px] font-semibold text-muted-foreground uppercase max-tablet:hidden',
+        {/* The six columns need ~860px; on a narrow desktop window the table scrolls sideways inside the card instead of
+            pushing the whole page wider. Phones get the card layout instead. */}
+        <div className="mt-[18px] overflow-x-auto max-tablet:mt-3 max-tablet:overflow-visible">
+          <div className="min-w-[860px] max-tablet:min-w-0">
+            <div
+              className={cn(
+                GRID,
+                'border-b border-[#d9dfe9] pb-3 text-[11px] font-semibold text-muted-foreground uppercase max-tablet:hidden',
+              )}
+              aria-hidden="true"
+            >
+              <span>Time</span>
+              <span>Actor / Role</span>
+              <span>Feature</span>
+              <span>Action</span>
+              <span>Target</span>
+              <span>Details</span>
+            </div>
+            {page && page.items.length > 0 ? (
+              <ul>{page.items.map(renderRow)}</ul>
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                {loading ? 'Loading…' : 'No audit entries match these filters.'}
+              </p>
             )}
-            aria-hidden="true"
-          >
-            <span>Time</span>
-            <span>Actor / Role</span>
-            <span>Feature</span>
-            <span>Action</span>
-            <span>Target</span>
-            <span>Details</span>
           </div>
-          {page && page.items.length > 0 ? (
-            <ul>{page.items.map(renderRow)}</ul>
-          ) : (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {loading ? 'Loading…' : 'No audit entries match these filters.'}
-            </p>
-          )}
         </div>
 
         {/* Pagination ---------------------------------------------- */}

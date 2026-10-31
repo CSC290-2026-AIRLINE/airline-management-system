@@ -152,7 +152,8 @@ function Dropdown({
         <button
           type="button"
           id={id}
-          aria-label={ariaLabel}
+          // The visible value is part of the name (WCAG 2.5.3 "label in name"), e.g. "Filter by role: All roles".
+          aria-label={ariaLabel ? `${ariaLabel}: ${selected?.label ?? placeholder}` : undefined}
           aria-invalid={invalid || undefined}
           className={cn(
             'flex h-12 w-full items-center gap-1.5 rounded-[9px] border border-input bg-white px-3.5 text-left text-sm font-medium text-[#131a2b] outline-none focus-visible:ring-2 focus-visible:ring-primary/30 max-phone:justify-start',
