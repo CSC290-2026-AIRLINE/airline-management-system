@@ -23,11 +23,17 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
-/** `12 Oct 10:24` in the viewer's local time, as in the design. */
+/** `10:24 AM` / `2:05 PM` — 12-hour clock. */
+function clock12(d: Date): string {
+  const h = d.getHours()
+  return `${h % 12 || 12}:${pad2(d.getMinutes())} ${h < 12 ? 'AM' : 'PM'}`
+}
+
+/** `12 Oct 10:24 AM` in the viewer's local time. */
 function formatSignIn(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
-  return `${pad2(d.getDate())} ${MONTHS[d.getMonth()]} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  return `${pad2(d.getDate())} ${MONTHS[d.getMonth()]} ${clock12(d)}`
 }
 
 /** `04 Aug 2026`. */
@@ -1096,7 +1102,7 @@ export function StaffRolesPage() {
                     <p className="mt-2.5 text-xs leading-[1.3] [overflow-wrap:anywhere] text-muted-foreground">
                       {s.email} · {s.staff_code}
                     </p>
-                    <div className="mt-[17px] grid grid-cols-[minmax(0,1fr)_86px] gap-2.5">
+                    <div className="mt-[17px] grid grid-cols-[minmax(0,1fr)_108px] gap-2.5">
                       <Dropdown
                         variant="card"
                         value={s.role.id}
@@ -1137,7 +1143,7 @@ export function StaffRolesPage() {
                   <col className="w-[92px]" />
                   <col />
                   <col className="w-[124px]" />
-                  <col className="w-[112px]" />
+                  <col className="w-[132px]" />
                   <col className="w-12" />
                 </colgroup>
                 <TableHeader>

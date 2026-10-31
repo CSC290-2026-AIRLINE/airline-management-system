@@ -38,12 +38,13 @@ const ACTOR_TYPES = ['staff', 'customer', 'system'] as const
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-/** `12 Oct 10:30` in the viewer's local time, as in the design. */
+/** `12 Oct 10:30 AM` in the viewer's local time (12-hour clock). */
 function formatTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  const h = d.getHours()
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${h % 12 || 12}:${pad2(d.getMinutes())} ${h < 12 ? 'AM' : 'PM'}`
 }
 
 /** `2026-10-10` → `10 Oct`. Date-only, so a plain string split avoids the timezone shift `new Date()` introduces. */
