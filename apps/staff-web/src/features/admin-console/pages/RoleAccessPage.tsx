@@ -44,7 +44,7 @@ function statusFromError(msg: string): number | undefined {
   return n >= 100 && n < 600 ? n : undefined
 }
 
-/** `05` → `F5 PAYMENTS`, as the group headers in the design read. A feature with no label shows its number only. */
+/** `5` or `05` → `F5 PAYMENTS`, as the group headers in the design read. A feature with no label shows its number only. */
 function featureTitle(featureNo: string): string {
   const no = featureNo.replace(/^0+(?=\d)/, '')
   const label = featureLabel(featureNo)

@@ -55,7 +55,7 @@ function shortDate(iso: string | undefined): string {
   return `${Number(d)} ${MONTHS[Number(m) - 1]}`
 }
 
-/** `PAYMENTS` → `Payments`, `CHECK-IN` → `Check-in`, `BI` stays `BI`. */
+/** `PAYMENTS` → `Payments`, `CHECK-IN` → `Check-in`, `&` stays `&`. */
 function titleCase(label: string): string {
   return label
     .split(' ')
@@ -66,7 +66,7 @@ function titleCase(label: string): string {
 /** `15` → `F15 Admin Console`; a feature with no label shows its number only. */
 function featureName(featureNo: string): string {
   const no = featureNo.replace(/^0+(?=\d)/, '')
-  const label = featureLabel(featureNo.padStart(2, '0'))
+  const label = featureLabel(featureNo)
   return label.startsWith('FEATURE ') ? `F${no}` : `F${no} ${titleCase(label)}`
 }
 
