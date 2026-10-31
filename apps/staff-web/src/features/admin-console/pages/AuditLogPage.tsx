@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { SlidersHorizontal } from 'lucide-react'
-import { Badge } from '@staff-web/components/ui/badge'
+import { ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { cn } from '@staff-web/lib/utils'
 import { useGetAuditEntry, useListAudit } from '../api/audit'
 import { useAuditLog } from '../hooks/useAuditLog'
 import { FEATURE_NUMBERS, featureLabel } from '../feature-labels'
 import { AdminErrorCard } from '../components/AdminErrorCard'
 import { NoAccessScreen } from '../components/NoAccessScreen'
-import { PAGE_CARD } from '../page-card'
 import type { AuditEntry, AuditFilters, AuditPage } from '../types'
 
 /* Filter dropdowns mirror the AUDIT_ACTIONS check in the DB. Keep these in lockstep with
@@ -36,13 +33,17 @@ type ActionType = (typeof ACTION_TYPES)[number]
 
 const ACTOR_TYPES = ['staff', 'customer', 'system'] as const
 
-function formatDate(iso: string | null | undefined): string {
+/* Display helpers ---------------------------------------------------------- */
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+/** `12 Oct 10:30` in the viewer's local time, as in the design. */
+function formatTime(iso: string | null | undefined): string {
   if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return iso
-  }
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
 
 /** `2026-10-10` → `10 Oct`. Date-only, so a plain string split avoids the timezone shift `new Date()` introduces. */
@@ -50,54 +51,98 @@ function shortDate(iso: string | undefined): string {
   if (!iso) return '…'
   const [y, m, d] = iso.split('-')
   if (!y || !m || !d) return iso
-  return `${Number(d)} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m) - 1]}`
+  return `${Number(d)} ${MONTHS[Number(m) - 1]}`
 }
 
-function actionClass(action: string): string {
-  if (action === 'create') return 'bg-[#e5f3e8] text-[#166534]'
-  if (action === 'delete') return 'bg-[#fbe6e6] text-[#991b1b]'
-  if (action === 'update') return 'bg-[#fff1d6] text-[#92400e]'
-  return 'bg-[#e6eefb] text-[#1e3a8a]'
+/** `PAYMENTS` → `Payments`, `CHECK-IN` → `Check-in`, `BI` stays `BI`. */
+function titleCase(label: string): string {
+  return label
+    .split(' ')
+    .map((w) => (w.length <= 2 ? w : w[0] + w.slice(1).toLowerCase()))
+    .join(' ')
 }
 
-function ActionPill({ action }: { action: string }) {
+/** `15` → `F15 Admin Console`; a feature with no label shows its number only. */
+function featureName(featureNo: string): string {
+  const no = featureNo.replace(/^0+(?=\d)/, '')
+  const label = featureLabel(featureNo.padStart(2, '0'))
+  return label.startsWith('FEATURE ') ? `F${no}` : `F${no} ${titleCase(label)}`
+}
+
+/** Badge wording and colours per action, from the audit log frames. */
+const ACTION_BADGE: Record<string, { label: string; className: string }> = {
+  sign_in: { label: 'Sign-in', className: 'bg-secondary text-muted-foreground' },
+  sign_out: { label: 'Sign-out', className: 'bg-[#fbf1e4] text-[#8a5a14]' },
+  sign_in_blocked: { label: 'Sign-in blocked', className: 'bg-danger-soft text-[#d1343b]' },
+  access_denied: { label: 'Access denied', className: 'bg-danger-soft text-danger' },
+  create: { label: 'Create', className: 'bg-success-soft text-success-strong' },
+  update: { label: 'Update', className: 'bg-warning-soft text-warning' },
+  delete: { label: 'Delete', className: 'bg-danger-soft text-[#d1343b]' },
+  view_sensitive: { label: 'View sensitive', className: 'bg-secondary text-muted-foreground' },
+  role_change: { label: 'Role change', className: 'bg-primary text-white' },
+  status_change: { label: 'Status change', className: 'bg-secondary text-[#455473]' },
+  screen_access_change: { label: 'Screen access', className: 'bg-[#e6eefb] text-[#1e3a8a]' },
+}
+
+function ActionBadge({ action }: { action: string }) {
+  const badge = ACTION_BADGE[action] ?? { label: action.replace(/_/g, ' '), className: 'bg-secondary text-muted-foreground' }
   return (
-    <Badge className={cn('rounded-full border-0 px-2.5 py-0.5 text-[11px] font-semibold tracking-[0.04em] uppercase', actionClass(action))}>
-      {action.replace(/_/g, ' ')}
-    </Badge>
+    <span
+      className={cn('inline-flex h-[26px] items-center rounded-full px-2.5 text-[11px] font-semibold whitespace-nowrap', badge.className)}
+    >
+      {badge.label}
+    </span>
+  )
+}
+
+/** Who did it: the person's name when the API knows it, then the role line under it. */
+function actorLines(e: AuditEntry): { name: string; role: string } {
+  if (e.actor_type === 'system') return { name: 'System', role: e.actor_role_name ?? 'Scheduled job' }
+  const name = e.actor_name ?? e.actor_id ?? 'Unknown user'
+  const role = e.actor_role_name ?? (e.actor_type === 'customer' ? 'Customer' : (e.actor_role ?? 'Staff'))
+  return { name, role }
+}
+
+/** A before/after payload as `key: value` lines; `null` for a sensitive row. */
+function valueLines(v: unknown): string[] | null {
+  if (v === null || v === undefined) return null
+  if (typeof v !== 'object') return [String(v)]
+  return Object.entries(v as Record<string, unknown>).map(
+    ([k, val]) => `${k}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`,
   )
 }
 
 /** Radix `Select` items cannot have an empty value, so "no filter" gets its own sentinel. */
 const ALL = '__all__'
 
-const CONTROL =
-  'h-[37px] w-full min-w-[150px] rounded-md border-[#d1d5db] bg-white px-3 text-sm text-[#111827] shadow-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-ink/10 data-[size=default]:h-[37px] md:text-sm'
-const BTN_GHOST =
-  'h-[33px] rounded-lg border-[#d1d5db] bg-white px-3.5 text-[13px] font-normal text-[#374151] shadow-none hover:bg-[#f3f4f6]'
+const FIELD =
+  'h-12 w-full rounded-[9px] border-[#d9dfe9] bg-white px-3.5 text-[15px] text-ink shadow-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 data-[size=default]:h-12 md:text-[15px] [&_svg:not([class*=text-])]:text-muted-foreground'
+const BTN_OUTLINE = 'rounded-[9px] border-[#d9dfe9] bg-white font-semibold text-ink shadow-none hover:bg-accent'
 
-/** A labelled filter control. `select` is a shadcn Select with an "all" row; anything else is passed through. */
+/** A labelled filter: a shadcn Select with an "all" row. */
 function FilterSelect({
   label,
   value,
   allLabel,
   options,
   onChange,
+  className,
 }: {
   label: string
   value: string | undefined
   allLabel: string
   options: { value: string; label: string }[]
   onChange: (value: string | undefined) => void
+  className?: string
 }) {
   return (
-    <div className="flex flex-none flex-col gap-1 max-tablet:w-full">
-      <span className="text-[11px] text-[#6b7280]">{label}</span>
+    <div className={cn('flex flex-col gap-[3px]', className)}>
+      <span className="text-xs font-semibold text-muted-foreground">{label}</span>
       <Select value={value ?? ALL} onValueChange={(v) => onChange(v === ALL ? undefined : v)}>
-        <SelectTrigger className={CONTROL} aria-label={label}>
+        <SelectTrigger className={FIELD} aria-label={label}>
           <SelectValue />
         </SelectTrigger>
-        <SelectContent position="popper" className="max-h-80 font-sans leading-[normal]">
+        <SelectContent position="popper" className="max-h-80 rounded-xl border-[#d9dfe9] font-sans leading-[normal]">
           <SelectItem value={ALL}>{allLabel}</SelectItem>
           {options.map((o) => (
             <SelectItem key={o.value} value={o.value}>
@@ -120,32 +165,43 @@ function statusFromError(msg: string): number | undefined {
   return n >= 100 && n < 600 ? n : undefined
 }
 
-/** The 4 detail blocks shown under an open row, and in the linked-entry panel. */
+/** Before / after boxes plus the entry's meta line, shown under an open row and in the linked-entry panel. */
 function EntryDetail({ e }: { e: AuditEntry }): ReactNode {
+  const before = valueLines(e.before)
+  const after = valueLines(e.after)
+  const box = (label: string, lines: string[] | null) => (
+    <div className="min-w-0 rounded-[10px] border border-[#d9dfe9] bg-white px-4 py-[15px]">
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase">{label}</p>
+      <div className="mt-[5px] text-sm text-ink">
+        {lines === null ? (
+          <span className="text-muted-foreground">{e.is_sensitive ? 'Hidden — sensitive data' : '—'}</span>
+        ) : lines.length === 0 ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          lines.map((l) => (
+            <p key={l} className="break-words">
+              {l}
+            </p>
+          ))
+        )}
+      </div>
+    </div>
+  )
   return (
-    <div className="grid grid-cols-2 gap-4 text-xs text-[#6b7280] max-tablet:grid-cols-1 [&_h5]:mb-1 [&_h5]:text-[11px] [&_h5]:font-semibold [&_h5]:tracking-[0.06em] [&_h5]:uppercase">
-      <div>
-        <h5>Before</h5>
-        <pre className="max-h-40 overflow-auto rounded-sm border border-line bg-white px-3 py-2 font-mono text-xs">
-          {e.before ? JSON.stringify(e.before, null, 2) : '(sensitive — hidden)'}
-        </pre>
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-2 gap-[13px] max-tablet:grid-cols-1">
+        {box('Before', before)}
+        {box('After', after)}
       </div>
-      <div>
-        <h5>After</h5>
-        <pre className="max-h-40 overflow-auto rounded-sm border border-line bg-white px-3 py-2 font-mono text-xs">
-          {e.after ? JSON.stringify(e.after, null, 2) : '(sensitive — hidden)'}
-        </pre>
-      </div>
-      <div>
-        <h5>Reason</h5>
-        <p className="rounded-sm border border-line bg-[#fff8e8] px-3 py-2">{e.reason ?? '—'}</p>
-      </div>
-      <div>
-        <h5>Meta</h5>
-        <p className="leading-[26px]">
-          #{e.seq} · Sim {formatDate(e.occurred_at)} · Saved {formatDate(e.recorded_at)} · staff-web · Read only
+      {e.reason && (
+        <p className="text-sm text-ink">
+          <span className="font-semibold">Reason:</span> {e.reason}
         </p>
-      </div>
+      )}
+      <p className="text-xs text-muted-foreground">
+        Entry #{e.seq} · Sim time {formatTime(e.occurred_at)} · Saved {formatTime(e.recorded_at)} · {e.entity_type ?? 'entity'}
+        {e.entity_id ? ` ${e.entity_id}` : ''} · Read only
+      </p>
     </div>
   )
 }
@@ -270,43 +326,57 @@ export function AuditLogPage() {
     return parts.length ? parts.join(' · ') : 'All features'
   }, [filters])
 
+  /** The columns: time 134, actor 204, feature 169, action 130, target 103, details rest — from the 950px table. */
+  const GRID = 'grid grid-cols-[134px_204px_169px_130px_103px_minmax(0,1fr)] items-center'
+
   function renderRow(e: AuditEntry) {
     const isOpen = expanded === e.id
+    const actor = actorLines(e)
+    const target = e.entity_id ?? e.entity_type ?? '—'
     return (
-      // Each cell names its role so the ≤768px card layout can reorder and restyle it; nth-child would break the moment
-      // a column is added or moved.
-      <TableRow
-        key={e.seq}
-        data-state={isOpen ? 'selected' : undefined}
-        className={cn(
-          'cursor-pointer border-[#f1f2f6] hover:bg-[#f9fafb] data-[state=selected]:bg-[#f3f4f6]',
-          'max-tablet:mb-2.5 max-tablet:flex max-tablet:flex-wrap max-tablet:items-center max-tablet:justify-between max-tablet:gap-x-3 max-tablet:gap-y-1 max-tablet:rounded-lg max-tablet:border max-tablet:border-line max-tablet:bg-white max-tablet:px-3.5 max-tablet:py-3 max-tablet:hover:bg-white max-tablet:data-[state=selected]:border-ink max-tablet:data-[state=selected]:bg-white',
-        )}
-        onClick={() => openEntry(isOpen ? null : e.id)}
-      >
-        <TableCell className="font-mono text-xs text-[#4b5563] max-tablet:hidden!">#{e.seq}</TableCell>
-        <TableCell className="max-tablet:order-3 max-tablet:mt-1 max-tablet:w-full max-tablet:text-sm max-tablet:font-semibold">
-          <span className="font-medium text-[#111827]">{e.actor_id ?? '—'}</span>
-          <span className="text-xs text-[#6b7280]">
-            {' '}
-            · {e.actor_type}
-            {e.actor_role ? ` (${e.actor_role})` : ''}
+      <li key={e.seq} className="border-b border-[#d9dfe9] max-tablet:mb-2.5 max-tablet:rounded-xl max-tablet:border max-tablet:bg-white">
+        <button
+          type="button"
+          aria-expanded={isOpen}
+          className={cn(
+            'w-full text-left text-[13px] text-ink outline-none hover:bg-[#f7f9fc] focus-visible:bg-[#f7f9fc]',
+            GRID,
+            'min-h-[58px] py-2 max-tablet:flex max-tablet:min-h-0 max-tablet:flex-col max-tablet:items-stretch max-tablet:gap-1.5 max-tablet:rounded-xl max-tablet:p-[13px]',
+            isOpen && 'bg-[#f7f9fc]',
+          )}
+          onClick={() => openEntry(isOpen ? null : e.id)}
+        >
+          {/* Desktop: one grid row. Phone: time + badge, then who, where and what — the card in the mobile frames. */}
+          <span className="flex items-center gap-1.5 max-tablet:justify-between">
+            <span className="flex items-center gap-1.5">
+              {isOpen ? (
+                <ChevronDown className="size-3 text-ink max-tablet:hidden" strokeWidth={3} aria-hidden="true" />
+              ) : (
+                <ChevronRight className="size-3 text-ink max-tablet:hidden" strokeWidth={3} aria-hidden="true" />
+              )}
+              <span className="text-[13px] max-tablet:text-sm">{formatTime(e.occurred_at ?? e.recorded_at)}</span>
+            </span>
+            <span className="hidden max-tablet:inline">
+              <ActionBadge action={e.action} />
+            </span>
           </span>
-        </TableCell>
-        <TableCell className="max-tablet:order-4 max-tablet:w-full max-tablet:text-xs max-tablet:text-[#6b7280]">
-          F{String(e.source_feature).padStart(2, '0')}
-        </TableCell>
-        <TableCell className="max-tablet:order-2">
-          <ActionPill action={e.action} />
-        </TableCell>
-        <TableCell className="font-mono text-xs text-[#4b5563] max-tablet:hidden!">
-          {e.entity_type}#{e.entity_id}
-        </TableCell>
-        <TableCell className="w-full max-w-0 truncate whitespace-nowrap! max-tablet:order-5 max-tablet:max-w-none max-tablet:text-[13px] max-tablet:whitespace-normal!">
-          {e.summary}
-        </TableCell>
-        <TableCell className="text-xs text-[#6b7280] max-tablet:order-1">{formatDate(e.occurred_at ?? e.recorded_at)}</TableCell>
-      </TableRow>
+          <span className="min-w-0 pr-3">
+            <span className="block truncate text-sm font-semibold max-tablet:text-[15px]">{actor.name}</span>
+            <span className="block truncate text-xs text-muted-foreground max-tablet:hidden">{actor.role}</span>
+          </span>
+          <span className="truncate pr-3 max-tablet:text-xs max-tablet:text-muted-foreground">{featureName(e.source_feature)}</span>
+          <span className="max-tablet:hidden">
+            <ActionBadge action={e.action} />
+          </span>
+          <span className="truncate pr-3 max-tablet:hidden">{target}</span>
+          <span className="line-clamp-2 break-words max-tablet:text-sm">{e.summary ?? '—'}</span>
+        </button>
+        {isOpen && (
+          <div className="px-3.5 pt-1 pb-4 max-tablet:px-[13px]">
+            <EntryDetail e={e} />
+          </div>
+        )}
+      </li>
     )
   }
 
@@ -337,215 +407,209 @@ export function AuditLogPage() {
   const pageIndex = liveHook.pageIndex
 
   return (
-    <Card className={PAGE_CARD}>
-      <header className="mb-4">
-        <h2 className="m-0 mb-1 font-heading text-xl font-semibold text-[#111827]">Audit log</h2>
-      </header>
+    <>
+      <Card className="gap-0 rounded-[14px] border-[#d9dfe9] bg-white px-[27px] pt-[27px] pb-6 font-sans leading-[normal] text-ink shadow-none max-tablet:px-[15px] max-tablet:pt-[15px]">
+        <h2 className="m-0 font-sans text-xl leading-[normal] font-bold tracking-[-1px] text-ink max-tablet:text-[20px]">Audit log</h2>
+        <p className="mt-2 text-sm text-muted-foreground max-tablet:text-xs">
+          Every sign-in, sign-out, change and sensitive-data view across all actors and features. Newest first (by entry #).
+        </p>
 
-      {/* Filter row ----------------------------------------------- */}
-      {/* At ≤768px the five fields collapse behind this toggle — a phone has no width to lay them out in — and the chip
-          beside it says what is currently narrowing the log. */}
-      <div className="mb-2.5 hidden items-center gap-2.5 max-tablet:flex">
-        <Button
-          type="button"
-          variant="outline"
-          className={cn(BTN_GHOST, 'gap-1.5 px-4 font-semibold')}
-          onClick={() => setFiltersOpen((o) => !o)}
-          aria-expanded={filtersOpen}
+        {/* Filters ------------------------------------------------------ */}
+        {/* At ≤768px the five fields collapse behind this button — a phone has no width for them — and the chip says
+            what is currently narrowing the log. */}
+        <div className="mt-3 hidden items-center gap-2.5 max-tablet:flex">
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(BTN_OUTLINE, 'h-[43px] flex-1 gap-2 text-sm')}
+            onClick={() => setFiltersOpen((o) => !o)}
+            aria-expanded={filtersOpen}
+          >
+            <SlidersHorizontal className="size-4" aria-hidden="true" />
+            Filters · {filterSummary}
+          </Button>
+        </div>
+        <div
+          className={cn(
+            'mt-[23px] flex items-end gap-2.5',
+            'max-tablet:mt-3 max-tablet:flex-col max-tablet:items-stretch max-tablet:rounded-xl max-tablet:border max-tablet:border-[#d9dfe9] max-tablet:p-3',
+            !filtersOpen && 'max-tablet:hidden',
+          )}
         >
-          <SlidersHorizontal className="size-3.5" aria-hidden="true" />
-          Filters
-        </Button>
-        <span className="truncate rounded-full bg-[#eef1f8] px-3 py-[7px] text-xs text-[#6b7280]">{filterSummary}</span>
-      </div>
-      {/* Each control is a labelled stack so the five fields share one baseline, and the unlabelled "Clear filters"
-          button lines up with the inputs rather than floating at the top of the row. */}
-      <div
-        className={cn(
-          'mb-1 flex flex-wrap items-end gap-3',
-          'max-tablet:flex-col max-tablet:items-stretch',
-          !filtersOpen && 'max-tablet:hidden',
-        )}
-      >
-        <FilterSelect
-          label="Feature"
-          value={filters.source_feature}
-          allLabel="All features"
-          options={FEATURE_NUMBERS.map((n) => ({ value: n, label: `F${n} · ${featureLabel(n)}` }))}
-          onChange={(v) => setFilters((f) => ({ ...f, source_feature: v }))}
-        />
-        <FilterSelect
-          label="Actor"
-          value={filters.actor_type}
-          allLabel="All actors"
-          options={ACTOR_TYPES.map((a) => ({ value: a, label: a }))}
-          onChange={(v) => setFilters((f) => ({ ...f, actor_type: v as AuditFilters['actor_type'] }))}
-        />
-        <FilterSelect
-          label="Action type"
-          value={filters.action}
-          allLabel="All actions"
-          options={ACTION_TYPES.map((a) => ({ value: a, label: a }))}
-          onChange={(v) => setFilters((f) => ({ ...f, action: v as ActionType | undefined }))}
-        />
-        <label className="flex flex-none flex-col gap-1 max-tablet:w-full">
-          <span className="text-[11px] text-[#6b7280]">From</span>
-          <Input
-            type="date"
-            className={CONTROL}
-            value={filters.from ?? ''}
-            onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value || undefined }))}
+          <FilterSelect
+            className="w-[162px] max-tablet:w-full"
+            label="Feature"
+            value={filters.source_feature}
+            allLabel="All features"
+            options={FEATURE_NUMBERS.map((n) => ({ value: n, label: featureName(n) }))}
+            onChange={(v) => setFilters((f) => ({ ...f, source_feature: v }))}
           />
-        </label>
-        <label className="flex flex-none flex-col gap-1 max-tablet:w-full">
-          <span className="text-[11px] text-[#6b7280]">To</span>
-          <Input
-            type="date"
-            className={CONTROL}
-            value={filters.to ?? ''}
-            onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value || undefined }))}
+          <FilterSelect
+            className="w-[190px] max-tablet:w-full"
+            label="Actor"
+            value={filters.actor_type}
+            allLabel="All actors"
+            options={ACTOR_TYPES.map((a) => ({ value: a, label: a[0].toUpperCase() + a.slice(1) }))}
+            onChange={(v) => setFilters((f) => ({ ...f, actor_type: v as AuditFilters['actor_type'] }))}
           />
-        </label>
-        <Button type="button" variant="outline" className={cn(BTN_GHOST, 'h-[37px]')} onClick={clear}>
-          Clear filters
-        </Button>
-      </div>
-
-      {/* Summary line --------------------------------------------- */}
-      <div className="mt-4 mb-3 flex flex-wrap items-baseline justify-between gap-4 text-[13px] text-[#6b7280]">
-        <span>
-          {summary.entries} entries · {summary.actionTypes} action types
-          {loading ? ' · loading…' : ''}
-        </span>
-        <span>
-          {summary.actionTypes >= ACTION_TYPES.length
-            ? `All ${ACTION_TYPES.length} audit action types are represented.`
-            : `${summary.actionTypes} of ${ACTION_TYPES.length} audit action types are represented.`}
-        </span>
-      </div>
-      <p className="-mt-1 mb-2.5 hidden text-xs text-[#6b7280] max-tablet:block">Tap a row to see before and after values.</p>
-
-      {notFoundId && !expanded && (
-        <div className="mb-3 flex flex-wrap gap-x-1.5 rounded-lg bg-danger-soft px-3.5 py-2.5 text-[13px] text-danger" role="alert">
-          <strong className="font-semibold">Audit entry not found</strong>
-          <span>The link may be old, or the entry ID is wrong. Showing the latest entries instead.</span>
-        </div>
-      )}
-
-      {/* Linked entry that is not on the page in view -------------- */}
-      {expanded && !onPage && linked.id === expanded && (linked.loading || linked.entry) && (
-        <div className="mb-3 rounded-lg border border-line border-l-[3px] border-l-gold bg-[#fafbfd] px-3.5 py-3" aria-live="polite">
-          <div className="mb-2.5 flex items-center justify-between gap-3 text-[13px] text-[#111827]">
-            <span>
-              {linked.entry ? (
-                <>
-                  Linked entry <span className="font-mono text-xs text-[#4b5563]">#{linked.entry.seq}</span> ·{' '}
-                  <ActionPill action={linked.entry.action} /> {linked.entry.summary}
-                </>
-              ) : (
-                'Loading linked entry…'
-              )}
-            </span>
-            <Button type="button" variant="outline" className={BTN_GHOST} onClick={() => openEntry(null)}>
-              Close
-            </Button>
-          </div>
-          {linked.entry && <EntryDetail e={linked.entry} />}
-        </div>
-      )}
-
-      {/* Table --------------------------------------------------- */}
-      <div className="overflow-hidden rounded-lg border border-line bg-white max-tablet:overflow-visible max-tablet:border-0 max-tablet:bg-transparent">
-        <Table className="min-w-[720px] text-[13px] max-tablet:block max-tablet:min-w-0 [&_td]:px-3.5 [&_td]:py-2.5 [&_td]:leading-[26px] [&_td]:whitespace-normal max-tablet:[&_td]:block max-tablet:[&_td]:p-0">
-          <TableHeader className="max-tablet:hidden">
-            <TableRow className="border-[#f1f2f6] bg-[#f9fafb] hover:bg-[#f9fafb]">
-              {['#', 'Actor / Role', 'Feature', 'Action', 'Target', 'Summary', 'Time (sim)'].map((h) => (
-                <TableHead
-                  key={h}
-                  className="h-auto px-3.5 py-2.5 text-[11px] leading-[26px] font-medium tracking-[0.05em] text-[#6b7280] uppercase"
-                >
-                  {h}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody className="max-tablet:block">
-            {page && page.items.length > 0 ? (
-              page.items.flatMap((e) => {
-                const rows = [renderRow(e)]
-                if (expanded === e.id) {
-                  rows.push(
-                    <TableRow
-                      key={`${e.seq}-detail`}
-                      className="border-[#f1f2f6] bg-[#f9fafb] hover:bg-[#f9fafb] max-tablet:-mt-2.5 max-tablet:mb-2.5 max-tablet:block max-tablet:rounded-b-lg max-tablet:border max-tablet:border-t-0 max-tablet:border-ink"
-                    >
-                      <TableCell colSpan={7} className="whitespace-normal max-tablet:px-3.5! max-tablet:py-3!">
-                        <EntryDetail e={e} />
-                      </TableCell>
-                    </TableRow>,
-                  )
-                }
-                return rows
-              })
-            ) : (
-              <TableRow className="hover:bg-transparent max-tablet:block">
-                <TableCell colSpan={7} className="p-8! text-center text-[#6b7280]">
-                  {loading ? 'Loading…' : 'No audit entries match these filters.'}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Pagination ---------------------------------------------- */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 max-tablet:flex-col max-tablet:items-start max-tablet:gap-2.5">
-        <span className="text-xs text-[#6b7280]">
-          {pageSize === 0
-            ? 'No entries'
-            : `Showing ${rowsBefore + 1}–${rowsBefore + pageSize} of ${hasMore ? `${rowsBefore + pageSize}+` : rowsBefore + pageSize} entries`}
-        </span>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-xs font-semibold tracking-[0.05em] text-[#374151] uppercase">
-            Rows
-            <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-              <SelectTrigger className="h-11 min-w-[92px] rounded-lg border-[#d1d5db] bg-white px-4 text-[15px] font-medium text-[#111827] shadow-none data-[size=default]:h-11 [&_svg:not([class*='text-'])]:text-[#374151]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" className="font-sans leading-[normal]">
-                {[25, 50, 100].map((n) => (
-                  <SelectItem key={n} value={String(n)}>
-                    {n}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <FilterSelect
+            className="w-[190px] max-tablet:w-full"
+            label="Action type"
+            value={filters.action}
+            allLabel="All actions"
+            options={ACTION_TYPES.map((a) => ({ value: a, label: ACTION_BADGE[a]?.label ?? a }))}
+            onChange={(v) => setFilters((f) => ({ ...f, action: v as ActionType | undefined }))}
+          />
+          <label className="flex w-[160px] flex-col gap-[3px] max-tablet:w-full">
+            <span className="text-xs font-semibold text-muted-foreground">From</span>
+            <Input
+              type="date"
+              className={FIELD}
+              value={filters.from ?? ''}
+              onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value || undefined }))}
+            />
+          </label>
+          <label className="flex w-[130px] min-w-[130px] flex-col gap-[3px] max-tablet:w-full">
+            <span className="text-xs font-semibold text-muted-foreground">To</span>
+            <Input
+              type="date"
+              className={cn(FIELD, 'px-2.5')}
+              value={filters.to ?? ''}
+              onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value || undefined }))}
+            />
           </label>
           <Button
             type="button"
             variant="outline"
-            className="h-11 rounded-lg border-[#d1d5db] bg-white px-5 text-[15px] font-medium text-[#6b7280] shadow-none disabled:border-[#e5e7eb] disabled:bg-[#f8f9fb] disabled:text-[#9ca3af] disabled:opacity-100"
-            disabled={!hasPrev}
-            onClick={() => prevPage()}
+            className={cn(BTN_OUTLINE, 'mb-[3px] h-[42px] px-2.5 text-[13px] max-tablet:mb-0')}
+            onClick={clear}
           >
-            Previous
-          </Button>
-          <span className="px-1 text-[15px] font-medium whitespace-nowrap text-[#111827]">
-            Page {pageIndex + 1} of {hasMore ? `${pageIndex + 1}+` : pageIndex + 1}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 rounded-lg border-[#d1d5db] bg-white px-5 text-[15px] font-medium text-[#6b7280] shadow-none disabled:border-[#e5e7eb] disabled:bg-[#f8f9fb] disabled:text-[#9ca3af] disabled:opacity-100"
-            disabled={!hasMore}
-            onClick={() => nextPage()}
-          >
-            Next
+            Clear filters
           </Button>
         </div>
-      </div>
 
-      <p className="mt-3 text-xs text-[#6b7280]">Read only. Entries can’t be edited or deleted. Times use the simulation clock.</p>
-    </Card>
+        {/* Summary line --------------------------------------------- */}
+        <div className="mt-[26px] flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm text-muted-foreground max-tablet:mt-3 max-tablet:text-xs">
+          <span>
+            {summary.entries} entries · {summary.actionTypes} action types
+            {loading ? ' · loading…' : ''}
+          </span>
+          <span className="max-tablet:hidden">
+            {summary.actionTypes >= ACTION_TYPES.length
+              ? `All ${ACTION_TYPES.length} audit action types are represented.`
+              : `${summary.actionTypes} of ${ACTION_TYPES.length} audit action types are represented.`}
+          </span>
+        </div>
+        <p className="mt-2 hidden text-xs text-muted-foreground max-tablet:block">Tap a row to see before and after values.</p>
+
+        {notFoundId && !expanded && (
+          <div className="mt-4 rounded-[9px] bg-danger-soft px-[22px] py-3 text-sm text-danger" role="alert">
+            Audit entry not found. The link may be old, or the entry ID is wrong. Showing the latest entries instead.
+          </div>
+        )}
+
+        {/* Linked entry that is not on the page in view -------------- */}
+        {expanded && !onPage && linked.id === expanded && (linked.loading || linked.entry) && (
+          <div
+            className="mt-4 rounded-[10px] border border-[#d9dfe9] border-l-[3px] border-l-gold bg-[#fafbfd] px-4 py-3"
+            aria-live="polite"
+          >
+            <div className="mb-3 flex items-center justify-between gap-3 text-sm text-ink">
+              <span className="flex flex-wrap items-center gap-2">
+                {linked.entry ? (
+                  <>
+                    <span className="font-semibold">Linked entry #{linked.entry.seq}</span>
+                    <ActionBadge action={linked.entry.action} />
+                    <span>{linked.entry.summary}</span>
+                  </>
+                ) : (
+                  'Loading linked entry…'
+                )}
+              </span>
+              <Button type="button" variant="outline" className={cn(BTN_OUTLINE, 'h-9 text-[13px]')} onClick={() => openEntry(null)}>
+                Close
+              </Button>
+            </div>
+            {linked.entry && <EntryDetail e={linked.entry} />}
+          </div>
+        )}
+
+        {/* Table --------------------------------------------------- */}
+        <div className="mt-[18px] max-tablet:mt-3">
+          <div
+            className={cn(
+              GRID,
+              'border-b border-[#d9dfe9] pb-3 text-[11px] font-semibold text-muted-foreground uppercase max-tablet:hidden',
+            )}
+            aria-hidden="true"
+          >
+            <span>Time</span>
+            <span>Actor / Role</span>
+            <span>Feature</span>
+            <span>Action</span>
+            <span>Target</span>
+            <span>Details</span>
+          </div>
+          {page && page.items.length > 0 ? (
+            <ul>{page.items.map(renderRow)}</ul>
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {loading ? 'Loading…' : 'No audit entries match these filters.'}
+            </p>
+          )}
+        </div>
+
+        {/* Pagination ---------------------------------------------- */}
+        <div className="mt-[18px] flex flex-wrap items-center justify-between gap-3 text-[13px] text-ink max-tablet:flex-col max-tablet:items-start">
+          <span>
+            {pageSize === 0
+              ? 'No entries'
+              : `Showing ${rowsBefore + 1}–${rowsBefore + pageSize} of ${hasMore ? `${rowsBefore + pageSize}+` : rowsBefore + pageSize} entries`}
+          </span>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <label className="inline-flex items-center gap-2.5">
+              Rows
+              <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
+                <SelectTrigger className="h-[38px] w-[74px] rounded-lg border-[#d9dfe9] bg-white px-3 text-[13px] text-ink shadow-none data-[size=default]:h-[38px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper" className="font-sans leading-[normal]">
+                  {[25, 50, 100].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(BTN_OUTLINE, 'h-[35px] rounded-lg px-4 text-[13px] font-medium')}
+              disabled={!hasPrev}
+              onClick={() => prevPage()}
+            >
+              Previous
+            </Button>
+            <span className="whitespace-nowrap">
+              Page {pageIndex + 1} of {hasMore ? `${pageIndex + 1}+` : pageIndex + 1}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(BTN_OUTLINE, 'h-[35px] rounded-lg px-4 text-[13px] font-medium')}
+              disabled={!hasMore}
+              onClick={() => nextPage()}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+
+        <p className="mt-3 text-[13px] text-muted-foreground">
+          Read only. Entries can’t be edited or deleted. Times use the simulation clock.
+        </p>
+      </Card>
+    </>
   )
 }

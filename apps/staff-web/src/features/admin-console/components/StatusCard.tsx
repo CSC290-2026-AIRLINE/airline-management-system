@@ -38,7 +38,7 @@ interface StatusCardProps {
  */
 export function StatusCard({ icon, title, body, note, badgeKey, badgeDetail, action, children }: StatusCardProps) {
   return (
-    <div data-slot="status-wrap" className="flex min-h-full items-center justify-center px-6 py-12">
+    <div data-slot="status-wrap" data-access-denied="" className="flex min-h-full flex-auto items-center justify-center px-6 py-12">
       {children}
       <section
         className="w-full max-w-[716px] rounded-2xl border border-line bg-white px-12 pt-14 pb-11 text-center shadow-[0_4px_16px_rgba(15,23,42,0.06)] max-phone:px-6 max-phone:pt-10 max-phone:pb-8"

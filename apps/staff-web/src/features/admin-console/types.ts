@@ -39,6 +39,10 @@ export interface AuditEntry {
   actor_type: 'staff' | 'customer' | 'system'
   actor_id: string | null
   actor_role: string | null
+  /** The person's name (staff or customer), when the API resolves it. Older responses leave it out. */
+  actor_name?: string | null
+  /** The role's display name ("Finance Staff"), or "Customer"; when the API resolves it. */
+  actor_role_name?: string | null
   source_feature: string
   action: string
   entity_type: string | null
