@@ -1,10 +1,20 @@
 # Airline Management System — Database Documentation
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA.** Repository source reviewed; running-database deployment and completed feature behavior require separate verification.
 
 **Maintained by:** Database Team — Docs + Maintain.
 
 **Scope:** F1, F2, F4, F7, F8, F9, F12 and F15. The original Level 1 baseline had 69 tables / 640 columns; F2 Iteration-03 adds four tables / 42 columns, F8 adds eleven tables / 76 columns and the F7 screening update adds 14 columns net. Current total: **84 tables / 772 columns**.
+
+## Current schema snapshot
+
+**Verified:** 28 Oct 2026 against `dev` commit `46a7f55be46a2237545869cbec356cd61e5a31d6`.
+
+**Inventory:** 84 SQL tables / 772 columns, 84 Prisma models and 98 explicitly named indexes.
+
+**Latest migration:** `20261025120000_feature7_screening_iteration_03`.
+
+F7 Iteration-03 adds watchlist gender, screening identity snapshots and name similarity, repeatable `entry_change` checks, and revisioned screening reviews. Screening queues now read departure time from F2 `flight`; the copied `flight_dep_at` column and its old queue index were removed. [Current verification notes](./REVIEW_NOTES_2026-10-28.md).
 
 ## Data dictionaries
 
@@ -26,7 +36,8 @@
 - [Relationships & migrations](./docs/relationships-and-migrations.md): cross-feature FKs, SQL-only constraints and migration history.
 - [Seed data](./docs/seed-data.md): migration defaults, development network and missing reference data.
 - [Decisions & maintenance](./docs/decisions-and-maintenance.md): conventions, remaining decisions and update workflow.
-- [Verification notes, 24 Oct](./REVIEW_NOTES_2026-10-24.md): scope and checks for the current update.
+- [Verification notes, 28 Oct](./REVIEW_NOTES_2026-10-28.md): current schema comparison and merge resolution.
+- [Historical verification, 24 Oct](./REVIEW_NOTES_2026-10-24.md): F2/F8 snapshot before the F7 update.
 - [Historical verification, 21 Oct](./REVIEW_NOTES_2026-10-21.md): previous baseline snapshot, superseded for current counts and F8 status.
 
 ## Repository sources
@@ -37,7 +48,7 @@ All paths below are relative to `apps/backend/src/db/`.
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | [`schema.sql`](../schema.sql)                                          | Consolidated current DDL, indexes, CHECKs, triggers and embedded inserts |
 | [`prisma/schema.prisma`](../prisma/schema.prisma)                      | ORM models; SQL remains necessary for rules Prisma cannot represent      |
-| [`prisma/migrations/`](../prisma/migrations/)                          | Ordered history: original scaffold, Level 1, F2 approvals and F8         |
+| [`prisma/migrations/`](../prisma/migrations/)                          | Ordered history: scaffold, Level 1, F2 approvals, F8 and F7 screening    |
 | [`seed.ts`](../seed.ts)                                                | Roles, F2 demo network and generated identity/session test records       |
 | [`db.module.ts`](../db.module.ts), [`db.service.ts`](../db.service.ts) | NestJS database injection and connection lifecycle                       |
 | [Central database guide](../../../../../docs/database-structure.md)    | Ownership/workflow; its four-model scaffold section remains outdated     |
@@ -50,10 +61,10 @@ All paths below are relative to `apps/backend/src/db/`.
 - Required means SQL NOT NULL, primary key or generated identity; nullable means SQL permits NULL, possibly subject to conditional CHECKs.
 - Uniqueness can be compound, partial, expression-based or `NULLS NOT DISTINCT`; read each index definition.
 - `created_at` / `updated_at` use real time; business timestamps generally require the application simulation clock. Defaults do not automatically refresh updated_at.
-- Committed tables do not establish implemented feature services. The backend currently registers auth and app infrastructure; F2/F8 workers, legality calculations, publication gates and audit writers still require implementation.
+- Committed tables do not establish implemented feature services. The backend currently registers auth and app infrastructure; F2/F7/F8 services and workers, legality calculations, publication gates and audit writers still require implementation.
 - The original Level 1 migration drops scaffold data. Existing migrations are append-only; do not reset a populated/shared database to make docs match.
-- `schema.sql` is now a consolidated schema, not a byte-for-byte copy of the original Level 1 migration. Apply subsequent F2/F8 migrations in order to upgrade the baseline.
+- `schema.sql` is now a consolidated schema, not a byte-for-byte copy of the original Level 1 migration. Apply subsequent F2/F8/F7 migrations in order to upgrade the baseline.
 - Screen definitions, base currency, airline code and a complete approved bootstrap seed remain missing. F8 settings exist, but crew/country-language demo data does not.
 - Repository source was inspected; no running database deployment or runtime constraints were verified.
 
-Update only these Markdown docs for this task. Database schema, migrations, seeds, generated clients and central repository docs remain unchanged.
+Documentation maintenance is limited to this folder. Schema and migration files brought in from dev are upstream changes, not documentation edits.

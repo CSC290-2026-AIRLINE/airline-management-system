@@ -1,6 +1,6 @@
 # F12 — Product catalogue, menus, and customer orders
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA.** See the [current schema snapshot](../docs.md#current-schema-snapshot) for the verified source commit and schema totals. Committed definitions do not prove deployment or completed application behavior.
 
 **Tables (7):** [`product`](#table-product) · [`product_dietary`](#table-product_dietary) · [`product_offering`](#table-product_offering) · [`cabin_setting`](#table-cabin_setting) · [`catering_setting`](#table-catering_setting) · [`product_order`](#table-product_order) · [`product_order_line`](#table-product_order_line)
 
