@@ -41,6 +41,14 @@ export interface FinanceSummary {
   computed_at: string
 }
 
+export interface NewPaymentSchedule {
+  category: ExpenseCategory
+  payee: string
+  description?: string
+  amount: number
+  due_date: string // YYYY-MM-DD
+}
+
 export interface NewExpense {
   category: ExpenseCategory
   description: string
@@ -57,6 +65,7 @@ export function useFinanceApi() {
 
   return {
     listPaymentSchedules: () => request<PaymentSchedule[]>('/payment-schedules'),
+    createPaymentSchedule: (input: NewPaymentSchedule) => request<PaymentSchedule>('/payment-schedules', 'POST', input),
     // Marks the bill paid and creates its expense in one go; 409 if it is already paid.
     payPaymentSchedule: (id: string) => request<PaymentSchedule>(`/payment-schedules/${id}/pay`, 'POST'),
 

@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator'
+import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator'
 import { CABINS, type Cabin } from '../../pricing.constants'
 
 export class CreateFareClassDto {
@@ -9,6 +9,7 @@ export class CreateFareClassDto {
   cabin!: Cabin
 
   @IsString()
+  @IsNotEmpty()
   @MaxLength(100)
   name!: string
 

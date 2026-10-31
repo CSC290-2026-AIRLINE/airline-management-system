@@ -42,6 +42,10 @@ const APPROVAL_POLICIES = [
   { airport: 'BKK', curfew_start_local: '00:00', curfew_end_local: '05:00', max_departure_per_hour: 20, offer_style: 'slots' },
   { airport: 'CNX', curfew_start_local: '23:00', curfew_end_local: '06:00', max_departure_per_hour: 8, offer_style: 'window' },
 ]
+const PRICING_SETTINGS = [
+  { key: 'quote_hold_minutes', value: '15' },
+  { key: 'base_currency', value: 'THB' },
+]
 
 // Feature 6: the final demo needs two gates at one airport. The visa rows are examples, not real visa policy
 // (no row means no visa is needed), and the bag tag airline number is the doc's placeholder.
@@ -169,6 +173,13 @@ async function seedCrewPay() {
   }
 }
 
+// Same defaults as Feature 4's PRICING_SETTING_DEFAULTS. Upserted with no update, so a changed quote hold window survives a re-seed.
+async function seedPricingSettings() {
+  for (const setting of PRICING_SETTINGS) {
+    await prisma.pricing_setting.upsert({ where: { key: setting.key }, update: {}, create: setting })
+  }
+}
+
 async function seedCustomer() {
   const user = await prisma.user.create({
     data: {
@@ -243,6 +254,7 @@ async function main() {
   await seedLostAndFound()
   await seedLoyalty()
   await seedCrewPay()
+  await seedPricingSettings()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()
