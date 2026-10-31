@@ -322,6 +322,7 @@ export class AdminConsoleService {
       },
     })
     if (!row) return null
+    const actor = (await this.actorNames([row])).get(row.actor_id ?? '')
     return {
       seq: row.seq.toString(),
       id: row.id,
@@ -330,6 +331,8 @@ export class AdminConsoleService {
       actor_type: row.actor_type as AuditEntryDto['actor_type'],
       actor_id: row.actor_id,
       actor_role: row.actor_role,
+      actor_name: actor?.name ?? null,
+      actor_role_name: actor?.role ?? null,
       source_feature: row.source_feature,
       action: row.action,
       entity_type: row.entity_type,
@@ -390,6 +393,7 @@ export class AdminConsoleService {
 
     const hasMore = rows.length > limit
     const page = hasMore ? rows.slice(0, limit) : rows
+    const actors = await this.actorNames(page)
 
     const items: AuditEntryDto[] = page.map((row) => ({
       seq: row.seq.toString(),
@@ -399,6 +403,8 @@ export class AdminConsoleService {
       actor_type: row.actor_type as AuditEntryDto['actor_type'],
       actor_id: row.actor_id,
       actor_role: row.actor_role,
+      actor_name: actors.get(row.actor_id ?? '')?.name ?? null,
+      actor_role_name: actors.get(row.actor_id ?? '')?.role ?? null,
       source_feature: row.source_feature,
       action: row.action,
       entity_type: row.entity_type,
@@ -468,5 +474,34 @@ export class AdminConsoleService {
     for (const s of allowedAuto) codes.add(s.code)
     for (const s of allowedGranted) codes.add(s.code)
     return { screen_codes: [...codes], provisioned: true }
+  }
+
+  /**
+   * Who the actors on one page of audit rows are, for the "Actor / Role" column: the staff member's name and current
+   * role name, or the customer's passenger name. One query for the whole page rather than one per row. An actor whose
+   * user row is gone (or a system row) is simply missing from the map; the page then falls back to the id.
+   */
+  private async actorNames(rows: { actor_id: string | null }[]): Promise<Map<string, { name: string; role: string | null }>> {
+    const ids = [...new Set(rows.map((r) => r.actor_id).filter((id): id is string => !!id))]
+    if (ids.length === 0) return new Map()
+    const users = await this.db.user.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        type: true,
+        email: true,
+        staff: { select: { first_name: true, last_name: true, role: { select: { name: true } } }, take: 1 },
+        customer: { select: { passenger: { select: { first_name: true, last_name: true } } }, take: 1 },
+      },
+    })
+    const out = new Map<string, { name: string; role: string | null }>()
+    for (const u of users) {
+      const staff = u.staff[0]
+      const passenger = u.customer[0]?.passenger
+      if (staff) out.set(u.id, { name: `${staff.first_name} ${staff.last_name}`.trim(), role: staff.role.name })
+      else if (passenger) out.set(u.id, { name: `${passenger.first_name} ${passenger.last_name}`.trim(), role: 'Customer' })
+      else out.set(u.id, { name: u.email, role: u.type === 'customer' ? 'Customer' : 'Unknown user' })
+    }
+    return out
   }
 }

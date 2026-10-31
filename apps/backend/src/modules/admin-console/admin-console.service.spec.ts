@@ -18,6 +18,7 @@ interface DbMock {
   role_screen: { findMany: jest.Mock }
   staff: { groupBy: jest.Mock; count: jest.Mock; findFirst: jest.Mock }
   audit_log: { findMany: jest.Mock; findUnique: jest.Mock }
+  user: { findMany: jest.Mock }
   $transaction: jest.Mock
 }
 
@@ -32,6 +33,7 @@ function makeDb(): { db: DbMock; svc: AdminConsoleService; tx: TxMock; clock: Si
     role_screen: { findMany: jest.fn() },
     staff: { groupBy: jest.fn(), count: jest.fn(), findFirst: jest.fn() },
     audit_log: { findMany: jest.fn(), findUnique: jest.fn() },
+    user: { findMany: jest.fn().mockResolvedValue([]) },
     // Runs the callback synchronously against the tx mock and returns its value — enough for every assertion below,
     // and it keeps the test free of a real Prisma transaction.
     $transaction: jest.fn((cb: (t: TxMock) => unknown) => cb(tx)),
@@ -653,5 +655,65 @@ describe('AdminConsoleService.replaceRoleScreens (PUT /admin/roles/:id/screens)'
     expect(tx.audit_log.create).toHaveBeenCalledTimes(1)
 
     await expect(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-new'], REASON)).rejects.toThrow('audit_log insert failed')
+  })
+})
+
+describe('AdminConsoleService audit actor names', () => {
+  const row = (actor_id: string | null, actor_type = 'staff') => ({
+    id: `a-${actor_id}`,
+    seq: 1n,
+    occurred_at: new Date('2026-10-01T00:00:00Z'),
+    recorded_at: new Date('2026-10-01T00:00:01Z'),
+    actor_type,
+    actor_id,
+    actor_role: actor_type === 'staff' ? 'admin' : null,
+    source_feature: '15',
+    action: 'update',
+    entity_type: 'staff',
+    entity_id: 's1',
+    summary: 's',
+    reason: 'r',
+    before: null,
+    after: null,
+    is_sensitive: false,
+  })
+
+  it('adds the staff name and role name, the customer name, and leaves system rows empty — in one query', async () => {
+    const { db, svc } = makeDb()
+    db.audit_log.findMany.mockResolvedValue([row('u1'), row('u1'), row('c1', 'customer'), row(null, 'system')])
+    db.user.findMany.mockResolvedValue([
+      {
+        id: 'u1',
+        type: 'staff',
+        email: 'kaow@x',
+        staff: [{ first_name: 'Kaow', last_name: 'Srisuk', role: { name: 'Administrator' } }],
+        customer: [],
+      },
+      { id: 'c1', type: 'customer', email: 'som@x', staff: [], customer: [{ passenger: { first_name: 'Somchai', last_name: 'Prasert' } }] },
+    ])
+    const page = await svc.listAudit({ limit: 50 })
+    expect(db.user.findMany).toHaveBeenCalledTimes(1)
+    expect(db.user.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['u1', 'c1'] } })
+    expect(page.items.map((i) => [i.actor_name, i.actor_role_name])).toEqual([
+      ['Kaow Srisuk', 'Administrator'],
+      ['Kaow Srisuk', 'Administrator'],
+      ['Somchai Prasert', 'Customer'],
+      [null, null],
+    ])
+  })
+
+  it('falls back to the email when the user has no staff or passenger row', async () => {
+    const { db, svc } = makeDb()
+    db.audit_log.findUnique.mockResolvedValue(row('u9'))
+    db.user.findMany.mockResolvedValue([{ id: 'u9', type: 'staff', email: 'pat.n@flython.example', staff: [], customer: [] }])
+    const entry = await svc.getAuditEntry('a-u9')
+    expect(entry).toMatchObject({ actor_name: 'pat.n@flython.example', actor_role_name: 'Unknown user' })
+  })
+
+  it('skips the lookup when no row has an actor', async () => {
+    const { db, svc } = makeDb()
+    db.audit_log.findMany.mockResolvedValue([row(null, 'system')])
+    await svc.listAudit({ limit: 50 })
+    expect(db.user.findMany).not.toHaveBeenCalled()
   })
 })

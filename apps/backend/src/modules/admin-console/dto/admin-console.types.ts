@@ -58,6 +58,10 @@ export interface AuditEntryDto {
   actor_type: 'staff' | 'customer' | 'system'
   actor_id: string | null
   actor_role: string | null
+  /** The actor's name: staff first + last name, the customer's passenger name, or the email. `null` for system rows. */
+  actor_name: string | null
+  /** The staff member's current role name ("Finance Staff"), or "Customer". `null` when unknown. */
+  actor_role_name: string | null
   source_feature: string
   action: string
   entity_type: string | null
