@@ -20,11 +20,25 @@ Fill in **Pass/Fail** as you run each case by hand. A blank means the case has n
 
 | Needed for | What | How |
 |------------|------|-----|
-| All pricing | Fare classes, at least one in economy | FC cases, or Fare Setup page |
+| All pricing | Fare classes, seat fees, taxes, baggage rates, promo codes, settings | `npm run db:seed` (each run also adds 3 fake customers and 2 fake staff) |
 | Quotes | A future flight with status `scheduled` or `delayed` | `SELECT id, flight_number, dep_at, status, route_id FROM flight WHERE dep_at > now();` |
 | Quotes | A base fare of 100.00 on that flight's route | BF cases |
 | Worked example | Only VAT 7% active, only the rules listed in FQ-01 active | Turn others off in the pages |
 | Finance | Mock bills, expenses and report rows, if wanted | `docs/money_mock.md` |
+
+**The seed already has some of the rows these cases create.** After seeding, TF-01, TF-02, SF-01, BG-01 and PC-01 return their duplicate error (409) instead of 201. Delete the seeded row first, or use a different code or fare class.
+
+| Seeded promo | State | Use for |
+|--------------|-------|---------|
+| `SAVE10` | Active, 10% off | FQ-01 |
+| `MINUS20` | Active, 20 off | SI-07 |
+| `CORP15` | Active, corporate, 15% off | SI-06 |
+| `SOON20` | Not started | FQ-19 |
+| `OLD5` | Expired | FQ-18, SI-08 |
+| `SOLDOUT` | Used up | FQ-21 |
+| `PAUSED` | Inactive | FQ-20 |
+
+Base fares are not seeded, so add the one the quotes need.
 
 **The quote worked example needs care.** Seats left is always 100% until Feature 3b exists (see [Known limits](#known-limits)), so a rule like "under 20% left" can never match a real flight. FQ-01 uses a load rule that covers 100% instead. The simulator lets you type the seats left, so SI-01 can use the normal rule.
 
@@ -392,5 +406,4 @@ Don't record these as failures. They depend on work outside Feature 4, or are op
 | Redeem card is by hand | Staff redeem from the page until 3b does it on booking | Feature 3b |
 | Customers on staff routes | The Member A guide flags that the auth guard doesn't check user type. No case here until it's decided. | Dev Leads |
 | Finance base currency | `currency-rate.service.ts` has `THB` hardcoded instead of reading settings | Member B |
-| Base currency seed | `seed.ts` now adds both settings, pending the DB team's agreement | DB team |
-| Feature 4 seed data | Fare classes, seat fees, taxes, baggage rates and promos aren't seeded, so test data is added by hand | Member C |
+| Feature 4 seed data | `seed.ts` now adds settings and pricing data, pending the DB team's agreement | DB team |
