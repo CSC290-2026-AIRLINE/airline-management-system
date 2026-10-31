@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@staff-web/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { errorMessage } from '../api'
 import { useLoad } from '../hooks/useLoad'
+import { AddBillDialog } from './AddBillDialog'
 import { useFinanceApi, type PaymentSchedule } from './finance-api'
 import { AMOUNT, categoryLabel, shortDate, todayKey } from './finance-format'
 import {
@@ -12,11 +13,14 @@ import {
   outlineButtonClass,
   phoneItemClass,
   phoneListClass,
+  primaryButtonClass,
   rowClass,
   tableWrapClass,
 } from './finance-styles'
 import { statusOf } from './bill-status'
 import { StatusBadge } from './StatusBadge'
+
+const NOTICE_MS = 3000
 
 interface PaymentScheduleCardProps {
   unit: string // base currency code
@@ -30,6 +34,14 @@ export function PaymentScheduleCard({ unit, onPaid }: PaymentScheduleCardProps) 
   // The bill being paid. Every "Mark paid" is disabled meanwhile, so a double click can't send a second request.
   const [paying, setPaying] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS)
+    return () => window.clearTimeout(timer)
+  }, [notice])
 
   const today = todayKey()
   // Unpaid first, soonest due first (the API already sorts by due date); paid bills sink to the bottom.
@@ -143,12 +155,25 @@ export function PaymentScheduleCard({ unit, onPaid }: PaymentScheduleCardProps) 
 
   return (
     <section className="pr-card" aria-labelledby="payment-schedule-title">
-      <div className="pr-card-head">
-        <h2 id="payment-schedule-title" className="pr-card-title">
-          Payment schedule
-        </h2>
-        <p className="pr-muted">What is still to pay. Marking a payment as paid records it as an expense.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3 max-[800px]:grid">
+        <div className="pr-card-head">
+          <h2 id="payment-schedule-title" className="pr-card-title">
+            Payment schedule
+          </h2>
+          <p className="pr-muted">What is still to pay. Marking a payment as paid records it as an expense.</p>
+        </div>
+        <Button className={primaryButtonClass} onClick={() => setAdding(true)}>
+          + Add bill
+        </Button>
       </div>
+
+      <p
+        role="status"
+        aria-live="polite"
+        className="m-0 rounded-(--pr-radius-lg) bg-(--pr-good-bg) px-4 py-2.5 text-(length:--pr-text-body) font-semibold text-(--pr-good) empty:hidden"
+      >
+        {notice}
+      </p>
 
       {body}
 
@@ -157,6 +182,17 @@ export function PaymentScheduleCard({ unit, onPaid }: PaymentScheduleCardProps) 
           {error}
         </div>
       )}
+
+      <AddBillDialog
+        open={adding}
+        unit={unit}
+        onOpenChange={setAdding}
+        onAdded={(bill) => {
+          setAdding(false)
+          setNotice(`Bill added: ${bill.payee}`)
+          schedules.reload()
+        }}
+      />
     </section>
   )
 }

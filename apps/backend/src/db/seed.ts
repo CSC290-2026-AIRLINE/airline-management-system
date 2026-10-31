@@ -40,6 +40,10 @@ const APPROVAL_POLICIES = [
   { airport: 'BKK', curfew_start_local: '00:00', curfew_end_local: '05:00', max_departure_per_hour: 20, offer_style: 'slots' },
   { airport: 'CNX', curfew_start_local: '23:00', curfew_end_local: '06:00', max_departure_per_hour: 8, offer_style: 'window' },
 ]
+const PRICING_SETTINGS = [
+  { key: 'quote_hold_minutes', value: '15' },
+  { key: 'base_currency', value: 'THB' },
+]
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -87,6 +91,13 @@ async function seedFlightNetwork() {
       update: {},
       create: { ...policy, curfew_start_local: timeOfDay(curfew_start_local), curfew_end_local: timeOfDay(curfew_end_local) },
     })
+  }
+}
+
+// Same defaults as Feature 4's PRICING_SETTING_DEFAULTS. Upserted with no update, so a changed quote hold window survives a re-seed.
+async function seedPricingSettings() {
+  for (const setting of PRICING_SETTINGS) {
+    await prisma.pricing_setting.upsert({ where: { key: setting.key }, update: {}, create: setting })
   }
 }
 
@@ -154,10 +165,13 @@ async function seedRefreshTokens(userId: string) {
 }
 
 async function main() {
-  console.log(`Seeding ${STAFF_ROLES.length} roles, the Feature 2 demo network, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`)
+  console.log(
+    `Seeding ${STAFF_ROLES.length} roles, the Feature 2 demo network, pricing settings, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
+  )
 
   const roleIds = await seedRoles()
   await seedFlightNetwork()
+  await seedPricingSettings()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()
