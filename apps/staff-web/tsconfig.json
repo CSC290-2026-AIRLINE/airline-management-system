@@ -10,6 +10,13 @@
     "types": ["vite/client", "node"],
     "allowArbitraryExtensions": true,
 
+    /* This monorepo resolves two TypeScript majors: the backend hoists 5.9 to the
+       root, while this app installs its own 6.0. TanStack Router's `createRouter`
+       refuses to typecheck unless strictNullChecks is on, and the editor may pick
+       either binary depending on which folder is open. Turning it on satisfies both
+       5.9 and 6.0 and is verified against each. */
+    "strictNullChecks": true,
+
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
