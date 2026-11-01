@@ -64,11 +64,11 @@ The synthetic row and audit history are preserved. Existing entries are not modi
 
 Set Authorization to Bearer Token using the backend access token, and set Content-Type to `application/json`.
 
-1. `POST http://localhost:8080/api/watchlist` with the body below. Expect 201 and save the returned `id`.
-2. `GET http://localhost:8080/api/watchlist?status=active&search=TESTWATCHLIST9037`. Expect the new entry with `passportLast4: "9037"` and no `passportNumber` field.
-3. `GET http://localhost:8080/api/watchlist/ID`. Expect 200 and the full passport number for editing.
-4. `PATCH http://localhost:8080/api/watchlist/ID` with `{ "reason": "Updated test" }`. Expect 200 and refresh Studio to verify the updated value.
-5. `POST http://localhost:8080/api/watchlist/ID/clear` with `{ "reason": "Test completed" }`. Expect 200 and status `cleared`, then refresh Studio.
+1. `POST http://localhost:8080/api/security/watchlist` with the body below. Expect 201 and save the returned `id`.
+2. `GET http://localhost:8080/api/security/watchlist?status=active&search=TESTWATCHLIST9037`. Expect the new entry with `passportLast4: "9037"` and no `passportNumber` field.
+3. `GET http://localhost:8080/api/security/watchlist/ID`. Expect 200 and the full passport number for editing.
+4. `PUT http://localhost:8080/api/security/watchlist/ID` with `{ "reason": "Updated test" }`. Expect 200 and refresh Studio to verify the updated value.
+5. `PUT http://localhost:8080/api/security/watchlist/ID` with `{ "status": "cleared", "clearReason": "Test completed" }`. Expect 200 and status `cleared`, then refresh Studio. Reactivate the same test entry with `PUT /api/security/watchlist/ID` and `{ "status": "active" }`; expect `clearedAt` and `clearReason` to be null. Clear it again after verification.
 6. Change the list query to `status=cleared` to find the cleared entry.
 
 Replace `ID` with the UUID returned by POST; do not send the literal text `ID`.
@@ -98,7 +98,7 @@ Prisma Studio displays the full passport stored in the database. Masking happens
 | Invalid nationality, such as `xx`                            | 400             |
 | Future or invalid date of birth                              | 400             |
 | Supplying status or createdByStaffId in the body             | 400             |
-| Empty PATCH body `{}`                                        | 400             |
+| Empty PUT body `{}`                                          | 400             |
 | Clearing without a reason                                    | 400             |
 | Clearing the same entry twice                                | 409             |
 | Valid UUID with no matching entry                            | 404             |

@@ -125,7 +125,25 @@ export class WatchlistService {
       if (!Object.values(input).some((value) => value !== undefined)) throw new BadRequestException('Provide at least one field to update')
       validateBirthDate(input.dateOfBirth, now)
       const before = await this.find(tx, id)
-      const data: Prisma.watchlist_entryUpdateInput = { updated_at: new Date() }
+      if (input.clearReason !== undefined && input.status !== 'cleared') {
+        throw new BadRequestException('clearReason is only accepted when clearing an entry')
+      }
+      const clearing = input.status === 'cleared'
+      const reactivating = input.status === 'active' && before.status === 'cleared'
+      if (clearing && !input.clearReason?.trim()) throw new BadRequestException('A reason for clearing is required')
+      if (clearing && before.status === 'cleared') throw new ConflictException('The entry is already cleared')
+      const data: Prisma.watchlist_entryUncheckedUpdateInput = { updated_at: new Date() }
+      if (clearing) {
+        data.status = 'cleared'
+        data.cleared_at = now
+        data.cleared_by_staff_id = actor.staffId
+        data.clear_reason = input.clearReason!.trim()
+      } else if (reactivating) {
+        data.status = 'active'
+        data.cleared_at = null
+        data.cleared_by_staff_id = null
+        data.clear_reason = null
+      }
       if (input.gender !== undefined) data.gender = input.gender
       if (input.firstName !== undefined) data.first_name = input.firstName
       if (input.lastName !== undefined) data.last_name = input.lastName
@@ -136,28 +154,16 @@ export class WatchlistService {
       if (input.issuingAuthority !== undefined) data.issuing_authority = input.issuingAuthority
       if (input.reason !== undefined) data.reason = input.reason
       const entry = await tx.watchlist_entry.update({ where: { id }, data })
-      await this.audit.record(tx, actor, now, 'update', entry, before)
+      await this.audit.record(
+        tx,
+        actor,
+        now,
+        clearing || reactivating ? 'status_change' : 'update',
+        entry,
+        before,
+        clearing ? input.clearReason!.trim() : undefined,
+      )
       return { ...watchlistDetail(entry), screeningStatus: 'not_connected' as const }
-    })
-  }
-
-  async clear(userId: string, id: string, reason: string) {
-    return this.run(userId, async (tx, actor, now) => {
-      if (!reason.trim()) throw new BadRequestException('A reason for clearing is required')
-      const before = await this.find(tx, id)
-      if (before.status !== 'active') throw new ConflictException('The entry is already cleared')
-      const entry = await tx.watchlist_entry.update({
-        where: { id },
-        data: {
-          status: 'cleared',
-          cleared_at: now,
-          cleared_by_staff_id: actor.staffId,
-          clear_reason: reason.trim(),
-          updated_at: new Date(),
-        },
-      })
-      await this.audit.record(tx, actor, now, 'status_change', entry, before, reason.trim())
-      return watchlistDetail(entry)
     })
   }
 

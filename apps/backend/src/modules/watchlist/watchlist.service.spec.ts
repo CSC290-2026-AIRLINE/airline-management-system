@@ -185,14 +185,14 @@ describe('WatchlistService', () => {
     expect(data).not.toHaveProperty('cleared_at')
   })
 
-  it('rejects an empty patch', async () => {
+  it('rejects an empty update', async () => {
     await expect(service.update(userId, entryId, {})).rejects.toBeInstanceOf(BadRequestException)
     expect(tx.watchlist_entry.update).not.toHaveBeenCalled()
   })
 
   it('clears instead of deleting, records who/when/why and writes the audit in the transaction', async () => {
     tx.watchlist_entry.update.mockResolvedValue({ ...row, status: 'cleared', cleared_at: now })
-    await service.clear(userId, entryId, '  Case withdrawn  ')
+    await service.update(userId, entryId, { status: 'cleared', clearReason: '  Case withdrawn  ' })
     expect(tx.watchlist_entry.update).toHaveBeenCalledWith({
       where: { id: entryId },
       data: expect.objectContaining({
@@ -208,13 +208,13 @@ describe('WatchlistService', () => {
   })
 
   it('requires a non-blank clearing reason', async () => {
-    await expect(service.clear(userId, entryId, '  ')).rejects.toBeInstanceOf(BadRequestException)
+    await expect(service.update(userId, entryId, { status: 'cleared', clearReason: '  ' })).rejects.toBeInstanceOf(BadRequestException)
     expect(tx.watchlist_entry.update).not.toHaveBeenCalled()
   })
 
   it('does not overwrite an earlier clearing decision', async () => {
     tx.watchlist_entry.findUnique.mockResolvedValue({ ...row, status: 'cleared' })
-    await expect(service.clear(userId, entryId, 'Again')).rejects.toBeInstanceOf(ConflictException)
+    await expect(service.update(userId, entryId, { status: 'cleared', clearReason: 'Again' })).rejects.toBeInstanceOf(ConflictException)
     expect(tx.watchlist_entry.update).not.toHaveBeenCalled()
   })
 

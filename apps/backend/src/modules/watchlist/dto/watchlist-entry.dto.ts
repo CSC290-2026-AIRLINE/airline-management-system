@@ -76,6 +76,17 @@ export class CreateWatchlistEntryDto extends WatchlistOptionalFieldsDto {
 
 export class UpdateWatchlistEntryDto extends WatchlistOptionalFieldsDto {
   @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsIn(['active', 'cleared'])
+  status?: 'active' | 'cleared'
+
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  clearReason?: string
+
+  @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsIn(WATCHLIST_TYPES)
   listType?: (typeof WATCHLIST_TYPES)[number]
 
@@ -101,12 +112,4 @@ export class UpdateWatchlistEntryDto extends WatchlistOptionalFieldsDto {
   @IsNotEmpty()
   @MaxLength(200)
   issuingAuthority?: string
-}
-
-export class ClearWatchlistEntryDto {
-  @Transform(trim)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(2000)
-  reason!: string
 }
