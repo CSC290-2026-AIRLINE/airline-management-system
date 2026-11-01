@@ -1,6 +1,6 @@
 # F12 — Inventory, catering, transfers, and sales
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA.** See the [current schema snapshot](../docs.md#current-schema-snapshot) for the verified source commit and schema totals. Committed definitions do not prove deployment or completed application behavior.
 
 **Tables (14):** [`warehouse`](#table-warehouse) · [`supplier`](#table-supplier) · [`purchase_receipt`](#table-purchase_receipt) · [`warehouse_stock`](#table-warehouse_stock) · [`stock_batch`](#table-stock_batch) · [`catering_order`](#table-catering_order) · [`catering_order_line`](#table-catering_order_line) · [`stock_transfer`](#table-stock_transfer) · [`stock_transfer_line`](#table-stock_transfer_line) · [`aircraft_stock`](#table-aircraft_stock) · [`flight_report`](#table-flight_report) · [`flight_report_line`](#table-flight_report_line) · [`product_sale`](#table-product_sale) · [`stock_movement`](#table-stock_movement)
 
