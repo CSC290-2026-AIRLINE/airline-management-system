@@ -103,6 +103,7 @@ export class WatchlistService {
         data: {
           first_name: input.firstName,
           last_name: input.lastName,
+          gender: input.gender ?? null,
           date_of_birth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00Z`) : null,
           nationality: input.nationality ?? null,
           passport_number: input.passportNumber ?? null,
@@ -125,6 +126,7 @@ export class WatchlistService {
       validateBirthDate(input.dateOfBirth, now)
       const before = await this.find(tx, id)
       const data: Prisma.watchlist_entryUpdateInput = { updated_at: new Date() }
+      if (input.gender !== undefined) data.gender = input.gender
       if (input.firstName !== undefined) data.first_name = input.firstName
       if (input.lastName !== undefined) data.last_name = input.lastName
       if (input.dateOfBirth !== undefined) data.date_of_birth = input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00Z`) : null

@@ -32,6 +32,7 @@ export function WatchlistEntryForm({
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [listType, setListType] = useState(entry?.listType ?? '')
+  const [gender, setGender] = useState<EntryFields['gender']>(entry?.gender ?? '')
   const [nationality, setNationality] = useState(entry?.nationality ?? '')
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -44,6 +45,10 @@ export function WatchlistEntryForm({
     }
     if (listType !== 'wanted' && listType !== 'travel_ban' && listType !== 'no_fly') {
       setError('Select a list type.')
+      return
+    }
+    if (!gender) {
+      setError('Select a gender. Choose X · Unspecified if unknown.')
       return
     }
     const dateOfBirth = value('dateOfBirth') ? parseDate(value('dateOfBirth')) : ''
@@ -67,6 +72,7 @@ export function WatchlistEntryForm({
         firstName: value('firstName').toUpperCase(),
         lastName: value('lastName').toUpperCase(),
         dateOfBirth,
+        gender,
         nationality,
         passportNumber: passportNumber.toUpperCase(),
         listType,
@@ -148,6 +154,24 @@ export function WatchlistEntryForm({
               maxLength={200}
             />
           </label>
+        </div>
+        <div className="wl-form-row">
+          <div className="wl-field">
+            <span>Gender</span>
+            <WatchlistSelect
+              label="Gender"
+              name="gender"
+              value={gender}
+              onChange={(value) => setGender(value as EntryFields['gender'])}
+              field
+              options={[
+                { value: '', label: 'Select gender' },
+                { value: 'M', label: 'M · Male' },
+                { value: 'F', label: 'F · Female' },
+                { value: 'X', label: 'X · Unspecified' },
+              ]}
+            />
+          </div>
         </div>
         <label>
           Reason

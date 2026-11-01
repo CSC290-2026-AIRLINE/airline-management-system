@@ -136,6 +136,11 @@ describe('WatchlistService', () => {
     expect(audit).not.toContain('1985-07-02')
   })
 
+  it('returns recorded gender in detail responses', async () => {
+    tx.watchlist_entry.findUnique.mockResolvedValue({ ...row, gender: 'X' })
+    expect(await service.get(userId, entryId)).toMatchObject({ gender: 'X' })
+  })
+
   it('returns 404 for an unknown entry', async () => {
     tx.watchlist_entry.findUnique.mockResolvedValue(null)
     await expect(service.get(userId, entryId)).rejects.toBeInstanceOf(NotFoundException)
@@ -156,6 +161,13 @@ describe('WatchlistService', () => {
     expect(tx.audit_log.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: 'create', actor_id: userId, source_feature: '7' }),
     })
+  })
+
+  it('persists optional gender on create and allows explicit clearing on update', async () => {
+    await service.create(userId, { ...input, gender: 'F' })
+    expect(tx.watchlist_entry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ gender: 'F' }) })
+    await service.update(userId, entryId, { gender: null })
+    expect(tx.watchlist_entry.update).toHaveBeenCalledWith({ where: { id: entryId }, data: expect.objectContaining({ gender: null }) })
   })
 
   it('rejects future birth dates before writing', async () => {

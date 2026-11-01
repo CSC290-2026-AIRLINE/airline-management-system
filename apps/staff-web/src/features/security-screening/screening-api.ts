@@ -1,3 +1,4 @@
+import { nationalityLabel } from '../watchlist/nationalities.ts'
 import type {
   Comparison,
   Decision,
@@ -153,14 +154,17 @@ export function mapCounts(queue: ApiQueue): Record<Filter, number> {
 }
 function comparison(passenger: ApiIdentity, entry: ApiIdentity | null): Comparison[] {
   const text = (value: string | null | undefined) => value || 'Not recorded'
+  const gender = (value: string | null | undefined) =>
+    value ? ({ M: 'M · Male', F: 'F · Female', X: 'X · Unspecified' }[value] ?? value) : '—'
+  const nationality = (value: string | null | undefined) => (value ? nationalityLabel(value) : 'Not recorded')
   const fullName = (identity: ApiIdentity | null) => (identity ? `${identity.firstName} ${identity.lastName}` : null)
   const passport = (identity: ApiIdentity | null) => (identity?.passportLast4 ? `•••• ${identity.passportLast4}` : 'Not recorded')
   return [
     ['Name', text(fullName(passenger)), text(fullName(entry))],
     ['Date of birth', text(passenger.dateOfBirth), text(entry?.dateOfBirth)],
-    ['Nationality', text(passenger.nationality), text(entry?.nationality)],
+    ['Nationality', nationality(passenger.nationality), nationality(entry?.nationality)],
     ['Passport', passport(passenger), passport(entry)],
-    ['Gender', text(passenger.gender), text(entry?.gender)],
+    ['Gender', gender(passenger.gender), gender(entry?.gender)],
   ]
 }
 export function mapDetail(detail: ApiDetail): ScreeningRecord {

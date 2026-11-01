@@ -55,6 +55,14 @@ describe('Watchlist HTTP contract', () => {
     passportNumber: 'ab-123 9037',
   }
 
+  it('rejects unsupported gender codes', async () => {
+    await request(app.getHttpServer())
+      .post('/api/watchlist')
+      .set('Authorization', 'Bearer valid')
+      .send({ ...payload, gender: 'invalid' })
+      .expect(400)
+  })
+
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [DbModule, WatchlistModule] })
       .overrideProvider(DbService)
