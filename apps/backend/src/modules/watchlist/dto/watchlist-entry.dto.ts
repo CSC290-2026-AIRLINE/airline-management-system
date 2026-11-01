@@ -21,6 +21,11 @@ const passport = ({ value }: TransformFnParams): unknown =>
 class WatchlistOptionalFieldsDto {
   @Transform(optionalText)
   @IsOptional()
+  @IsIn(['M', 'F', 'X'])
+  gender?: 'M' | 'F' | 'X' | null
+
+  @Transform(optionalText)
+  @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateOfBirth must use YYYY-MM-DD' })
   @IsDateString({ strict: true })
   dateOfBirth?: string | null

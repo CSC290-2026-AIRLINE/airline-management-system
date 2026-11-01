@@ -3,6 +3,7 @@ export type ListType = keyof typeof listTypes
 export type EntryStatus = 'active' | 'cleared'
 
 export interface EntryFields {
+  gender: '' | 'M' | 'F' | 'X'
   firstName: string
   lastName: string
   dateOfBirth: string

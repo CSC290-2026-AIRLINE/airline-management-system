@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { entryName, type EntryFields, type EntryStatus, type ListType, type WatchlistEntry } from '../watchlist.types'
 
-type ApiEntry = Omit<WatchlistEntry, 'dateOfBirth' | 'nationality' | 'passportNumber' | 'reason' | 'clearedAt' | 'clearReason'> & {
+type ApiEntry = Omit<
+  WatchlistEntry,
+  'gender' | 'dateOfBirth' | 'nationality' | 'passportNumber' | 'reason' | 'clearedAt' | 'clearReason'
+> & {
+  gender: 'M' | 'F' | 'X' | null
   dateOfBirth: string | null
   nationality: string | null
   passportNumber?: string | null
@@ -14,6 +18,7 @@ type ApiEntry = Omit<WatchlistEntry, 'dateOfBirth' | 'nationality' | 'passportNu
 type ApiPage = { items: ApiEntry[]; nextCursor: string | null }
 const toEntry = (row: ApiEntry): WatchlistEntry => ({
   ...row,
+  gender: row.gender ?? '',
   dateOfBirth: row.dateOfBirth ?? '',
   nationality: row.nationality ?? '',
   passportNumber: row.passportNumber ?? '',

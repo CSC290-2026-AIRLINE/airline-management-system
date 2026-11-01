@@ -9,6 +9,7 @@ export function watchlistSummary(entry: watchlist_entry) {
     lastName: entry.last_name,
     dateOfBirth: entry.date_of_birth?.toISOString().slice(0, 10) ?? null,
     nationality: entry.nationality,
+    gender: entry.gender,
     passportLast4,
     passportMasked: passportLast4 ? `•••• ${passportLast4}` : null,
     listType: entry.list_type,

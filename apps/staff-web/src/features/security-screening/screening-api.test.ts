@@ -153,3 +153,20 @@ test('earlier checks retain their original review notes without duplicating sele
   assert.equal(mapped.historyReviews?.[1]?.note, review.note)
   assert.equal(mapped.reviews.length, 1)
 })
+
+test('comparison labels include gender and nationality codes without changing match values', () => {
+  const mapped = mapDetail(detail)
+  assert.equal(mapped.comparison[2][1], 'Myanmar (mm)')
+  assert.equal(mapped.comparison[4][1], 'F · Female')
+  const missing = mapDetail({
+    ...detail,
+    snapshot: { ...detail.snapshot, passenger: { ...detail.snapshot.passenger, gender: null, nationality: null } },
+  })
+  assert.equal(missing.comparison[4][1], '—')
+  assert.equal(missing.comparison[2][1], 'Not recorded')
+})
+
+test('X is displayed as Unspecified and remains distinct from missing gender', () => {
+  const mapped = mapDetail({ ...detail, snapshot: { ...detail.snapshot, passenger: { ...detail.snapshot.passenger, gender: 'X' } } })
+  assert.equal(mapped.comparison[4][1], 'X · Unspecified')
+})
