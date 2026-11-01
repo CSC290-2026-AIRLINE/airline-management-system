@@ -68,7 +68,7 @@ export function useWatchlist() {
   const request = useCallback(async <T>(path: string, init?: RequestInit): Promise<T> => {
     let response: Response
     try {
-      response = await fetchRef.current(`/api/watchlist${path}`, init)
+      response = await fetchRef.current(`/api/security/watchlist${path}`, init)
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === 'AbortError') throw cause
       throw new Error('Cannot reach the server. Check your connection and try again.', { cause })
@@ -130,7 +130,7 @@ export function useWatchlist() {
     const timer = window.setTimeout(() => setMessage(''), 5000)
     return () => window.clearTimeout(timer)
   }, [message])
-  async function mutate(path: string, method: string, body: EntryFields | { reason: string }) {
+  async function mutate(path: string, method: string, body: EntryFields | { status: 'cleared'; clearReason: string }) {
     if (operation.current) throw new Error('A request is already in progress.')
     operation.current = true
     setSaving(true)
@@ -143,7 +143,7 @@ export function useWatchlist() {
     }
   }
   async function save(fields: EntryFields, existing?: WatchlistEntry) {
-    await mutate(existing ? `/${existing.id}` : '', existing ? 'PATCH' : 'POST', fields)
+    await mutate(existing ? `/${existing.id}` : '', existing ? 'PUT' : 'POST', fields)
     if (!existing) {
       setQuery('')
       setStatus('active')
@@ -153,7 +153,7 @@ export function useWatchlist() {
     setRevision((value) => value + 1)
   }
   async function clear(entry: WatchlistEntry, reason: string) {
-    await mutate(`/${entry.id}/clear`, 'POST', { reason })
+    await mutate(`/${entry.id}`, 'PUT', { status: 'cleared', clearReason: reason })
     setMessage(`${entryName(entry)}'s entry cleared. It remains available under Status: Cleared.`)
     setRevision((value) => value + 1)
   }

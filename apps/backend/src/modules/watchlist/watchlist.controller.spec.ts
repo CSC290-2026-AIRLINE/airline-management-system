@@ -57,7 +57,7 @@ describe('Watchlist HTTP contract', () => {
 
   it('rejects unsupported gender codes', async () => {
     await request(app.getHttpServer())
-      .post('/api/watchlist')
+      .post('/api/security/watchlist')
       .set('Authorization', 'Bearer valid')
       .send({ ...payload, gender: 'invalid' })
       .expect(400)
@@ -97,22 +97,22 @@ describe('Watchlist HTTP contract', () => {
   })
 
   it('requires the existing Bearer authentication even for read routes', async () => {
-    await request(app.getHttpServer()).get('/api/watchlist').expect(401)
-    await request(app.getHttpServer()).get('/api/watchlist').set('Authorization', 'Bearer invalid').expect(401)
+    await request(app.getHttpServer()).get('/api/security/watchlist').expect(401)
+    await request(app.getHttpServer()).get('/api/security/watchlist').set('Authorization', 'Bearer invalid').expect(401)
     expect(db.staff.findFirst).not.toHaveBeenCalled()
   })
 
   it('denies admin and customer accounts', async () => {
     db.staff.findFirst.mockResolvedValue({ id: staffId, role: { code: 'admin' } })
-    await request(app.getHttpServer()).get('/api/watchlist').set('Authorization', 'Bearer valid').expect(403)
+    await request(app.getHttpServer()).get('/api/security/watchlist').set('Authorization', 'Bearer valid').expect(403)
     db.staff.findFirst.mockResolvedValue(null)
-    await request(app.getHttpServer()).post('/api/watchlist').set('Authorization', 'Bearer valid').send(payload).expect(403)
+    await request(app.getHttpServer()).post('/api/security/watchlist').set('Authorization', 'Bearer valid').send(payload).expect(403)
     expect(tx.watchlist_entry.create).not.toHaveBeenCalled()
   })
 
   it('returns masked list data and parses pagination query parameters', async () => {
     const response = await request(app.getHttpServer())
-      .get('/api/watchlist?limit=1&status=active&listType=wanted')
+      .get('/api/security/watchlist?limit=1&status=active&listType=wanted')
       .set('Authorization', 'Bearer valid')
       .expect(200)
     expect(response.body.items[0].passportMasked).toBe('•••• 9037')
@@ -123,14 +123,17 @@ describe('Watchlist HTTP contract', () => {
   })
 
   it('serves all 249 nationality codes before matching the :id route', async () => {
-    const response = await request(app.getHttpServer()).get('/api/watchlist/nationalities').set('Authorization', 'Bearer valid').expect(200)
+    const response = await request(app.getHttpServer())
+      .get('/api/security/watchlist/nationalities')
+      .set('Authorization', 'Bearer valid')
+      .expect(200)
     expect(response.body.codes).toHaveLength(249)
     expect(response.body.codes).toEqual(expect.arrayContaining(['th', 'hk', 'jp', 'mm']))
   })
 
   it('normalizes identity data on create and derives the staff id server-side', async () => {
     const response = await request(app.getHttpServer())
-      .post('/api/watchlist')
+      .post('/api/security/watchlist')
       .set('Authorization', 'Bearer valid')
       .send(payload)
       .expect(201)
@@ -160,7 +163,7 @@ describe('Watchlist HTTP contract', () => {
     { listType: 'other' },
   ])('rejects invalid or mass-assigned fields: %j', async (invalid) => {
     await request(app.getHttpServer())
-      .post('/api/watchlist')
+      .post('/api/security/watchlist')
       .set('Authorization', 'Bearer valid')
       .send({ ...payload, ...invalid })
       .expect(400)
@@ -168,26 +171,30 @@ describe('Watchlist HTTP contract', () => {
   })
 
   it('requires list type, first/last name and authority on create', async () => {
-    await request(app.getHttpServer()).post('/api/watchlist').set('Authorization', 'Bearer valid').send({}).expect(400)
+    await request(app.getHttpServer()).post('/api/security/watchlist').set('Authorization', 'Bearer valid').send({}).expect(400)
     const missingListType = { ...payload, listType: undefined }
-    await request(app.getHttpServer()).post('/api/watchlist').set('Authorization', 'Bearer valid').send(missingListType).expect(400)
+    await request(app.getHttpServer())
+      .post('/api/security/watchlist')
+      .set('Authorization', 'Bearer valid')
+      .send(missingListType)
+      .expect(400)
   })
 
   it.each(['limit=0', 'limit=101', 'limit=oops', 'status=deleted', 'listType=other', 'cursor=bad', 'unknown=value'])(
     'rejects invalid queries: %s',
     async (query) => {
-      await request(app.getHttpServer()).get(`/api/watchlist?${query}`).set('Authorization', 'Bearer valid').expect(400)
+      await request(app.getHttpServer()).get(`/api/security/watchlist?${query}`).set('Authorization', 'Bearer valid').expect(400)
     },
   )
 
-  it('rejects malformed identifiers and empty patches', async () => {
-    await request(app.getHttpServer()).get('/api/watchlist/not-a-uuid').set('Authorization', 'Bearer valid').expect(400)
-    await request(app.getHttpServer()).patch(`/api/watchlist/${entryId}`).set('Authorization', 'Bearer valid').send({}).expect(400)
+  it('rejects malformed identifiers and empty updates', async () => {
+    await request(app.getHttpServer()).get('/api/security/watchlist/not-a-uuid').set('Authorization', 'Bearer valid').expect(400)
+    await request(app.getHttpServer()).put(`/api/security/watchlist/${entryId}`).set('Authorization', 'Bearer valid').send({}).expect(400)
   })
 
   it('allows optional values to be cleared without accepting null required names', async () => {
     await request(app.getHttpServer())
-      .patch(`/api/watchlist/${entryId}`)
+      .put(`/api/security/watchlist/${entryId}`)
       .set('Authorization', 'Bearer valid')
       .send({ nationality: '', passportNumber: null })
       .expect(200)
@@ -196,7 +203,7 @@ describe('Watchlist HTTP contract', () => {
       data: expect.objectContaining({ nationality: null, passport_number: null }),
     })
     await request(app.getHttpServer())
-      .patch(`/api/watchlist/${entryId}`)
+      .put(`/api/security/watchlist/${entryId}`)
       .set('Authorization', 'Bearer valid')
       .send({ firstName: null })
       .expect(400)
@@ -204,15 +211,90 @@ describe('Watchlist HTTP contract', () => {
 
   it('requires a clearing reason and keeps the record with its clearing metadata', async () => {
     await request(app.getHttpServer())
-      .post(`/api/watchlist/${entryId}/clear`)
+      .put(`/api/security/watchlist/${entryId}`)
       .set('Authorization', 'Bearer valid')
-      .send({ reason: '   ' })
+      .send({ status: 'cleared', clearReason: '   ' })
       .expect(400)
     const response = await request(app.getHttpServer())
-      .post(`/api/watchlist/${entryId}/clear`)
+      .put(`/api/security/watchlist/${entryId}`)
       .set('Authorization', 'Bearer valid')
-      .send({ reason: ' Case withdrawn ' })
+      .send({ status: 'cleared', clearReason: ' Case withdrawn ' })
       .expect(200)
     expect(response.body).toMatchObject({ status: 'cleared', clearReason: 'Case withdrawn', clearedAt: now.toISOString() })
+  })
+  it('reactivates a cleared entry through PUT and removes current clearing metadata', async () => {
+    tx.watchlist_entry.findUnique.mockResolvedValue({ ...row, status: 'cleared', cleared_at: now, clear_reason: 'Closed' })
+    const response = await request(app.getHttpServer())
+      .put(`/api/security/watchlist/${entryId}`)
+      .set('Authorization', 'Bearer valid')
+      .send({ status: 'active' })
+      .expect(200)
+    expect(response.body).toMatchObject({ status: 'active', clearedAt: null, clearReason: null })
+    expect(tx.watchlist_entry.update).toHaveBeenCalledWith({
+      where: { id: entryId },
+      data: expect.objectContaining({ status: 'active', cleared_at: null, cleared_by_staff_id: null, clear_reason: null }),
+    })
+    expect(tx.audit_log.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'status_change' }) })
+  })
+
+  it.each([
+    { status: 'cleared' },
+    { status: null },
+    { status: 'deleted' },
+    { status: 'active', clearReason: 'Invalid combination' },
+    { clearReason: 'Missing status' },
+    { status: 'cleared', clearReason: null },
+    { status: 'cleared', clearReason: 123 },
+    { status: 'cleared', clearReason: 'x'.repeat(2001) },
+    { clearedAt: now.toISOString() },
+    { clearedByStaffId: staffId },
+  ])('rejects invalid status updates without writing: %j', async (body) => {
+    await request(app.getHttpServer()).put(`/api/security/watchlist/${entryId}`).set('Authorization', 'Bearer valid').send(body).expect(400)
+    expect(tx.watchlist_entry.update).not.toHaveBeenCalled()
+  })
+
+  it('keeps edits and clearing reasons separate in the same PUT', async () => {
+    const response = await request(app.getHttpServer())
+      .put(`/api/security/watchlist/${entryId}`)
+      .set('Authorization', 'Bearer valid')
+      .send({ reason: 'Updated case notes', status: 'cleared', clearReason: 'Case withdrawn' })
+      .expect(200)
+    expect(response.body).toMatchObject({ reason: 'Updated case notes', clearReason: 'Case withdrawn' })
+  })
+
+  it('rejects already cleared entries without overwriting the earlier clearing decision', async () => {
+    tx.watchlist_entry.findUnique.mockResolvedValue({ ...row, status: 'cleared' })
+    await request(app.getHttpServer())
+      .put(`/api/security/watchlist/${entryId}`)
+      .set('Authorization', 'Bearer valid')
+      .send({ status: 'cleared', clearReason: 'Again' })
+      .expect(409)
+    expect(tx.watchlist_entry.update).not.toHaveBeenCalled()
+  })
+
+  it('requires security authorization for editing, clearing and reactivating', async () => {
+    db.staff.findFirst.mockResolvedValue({ id: staffId, role: { code: 'admin' } })
+    for (const body of [{ reason: 'Edit' }, { status: 'cleared', clearReason: 'Clear' }, { status: 'active' }]) {
+      await request(app.getHttpServer())
+        .put(`/api/security/watchlist/${entryId}`)
+        .set('Authorization', 'Bearer valid')
+        .send(body)
+        .expect(403)
+    }
+    expect(tx.watchlist_entry.update).not.toHaveBeenCalled()
+  })
+
+  it('does not expose the former routes or PATCH method', async () => {
+    await request(app.getHttpServer()).get('/api/watchlist').set('Authorization', 'Bearer valid').expect(404)
+    await request(app.getHttpServer())
+      .patch(`/api/security/watchlist/${entryId}`)
+      .set('Authorization', 'Bearer valid')
+      .send({ reason: 'Edit' })
+      .expect(404)
+    await request(app.getHttpServer())
+      .post(`/api/security/watchlist/${entryId}/clear`)
+      .set('Authorization', 'Bearer valid')
+      .send({ reason: 'Clear' })
+      .expect(404)
   })
 })

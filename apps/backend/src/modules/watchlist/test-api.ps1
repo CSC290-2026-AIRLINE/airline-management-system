@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$apiRoot = $BaseUrl.TrimEnd('/') + '/api/watchlist'
+$apiRoot = $BaseUrl.TrimEnd('/') + '/api/security/watchlist'
 $secureToken = Read-Host 'Paste the BACKEND accessToken (input is hidden)' -AsSecureString
 $token = [System.Net.NetworkCredential]::new('', $secureToken).Password
 if ([string]::IsNullOrWhiteSpace($token)) { throw 'An authenticated backend access token is required.' }
@@ -79,10 +79,10 @@ try {
     Assert-Result ($matched[0].PSObject.Properties.Name -notcontains 'passportNumber') 'List does not expose the full passport'
     Assert-Result ($matched[0].passportLast4 -eq $passport.Substring($passport.Length - 4)) 'List shows the correct last four characters'
 
-    $edited = Invoke-WatchlistApi -Method Patch -Path "/$createdId" -Body @{ reason = 'Updated by local API test' }
+    $edited = Invoke-WatchlistApi -Method Put -Path "/$createdId" -Body @{ reason = 'Updated by local API test' }
     Assert-Result ($edited.reason -eq 'Updated by local API test' -and $edited.passportNumber -eq $passport) 'Partial edit saves changes and preserves omitted fields'
 
-    $cleared = Invoke-WatchlistApi -Method Post -Path "/$createdId/clear" -Body @{ reason = 'Manual API test completed' }
+    $cleared = Invoke-WatchlistApi -Method Put -Path "/$createdId" -Body @{ status = 'cleared'; clearReason = 'Manual API test completed' }
     Assert-Result ($cleared.status -eq 'cleared' -and $null -ne $cleared.clearedAt) 'Clear preserves the entry with its timestamp'
 
     $active = Invoke-WatchlistApi -Method Get -Path "?status=active&search=$passport"
