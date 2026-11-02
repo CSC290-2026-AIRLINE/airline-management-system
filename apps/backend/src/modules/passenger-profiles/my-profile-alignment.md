@@ -1,58 +1,119 @@
 # Feature 7: My Profile alignment
 
-หลัง merge ฝั่ง staff: module เดียวลงทะเบียน customer account APIs และ staff search/create/correct APIs ร่วมกัน โดยย้าย service/controller ของ customer ไปใช้ชื่อ CustomerAccountProfilesService/Controller เพื่อไม่ให้ getProfile คนละ contract ชนกัน การทำงาน First sign-in, My Profile และ email/photo sync เดิมยังอยู่ครบ กฎ DOB และค่า M/F/X ใช้ร่วมกัน ส่วนขอบเขตเดิมด้านล่างบันทึกงาน customer ก่อน merge ดู staff-profiles.md สำหรับ contract และข้อจำกัดของ staff
+This document records the customer profile scope after merging the customer,
+staff search, Watchlist and Screening work. It supersedes the earlier customer-only
+status notes. Implementation status is distinguished from pending integrations;
+this document does not replace the shared Feature 7 specification.
 
-เทียบกับเอกสาร “Feature 7 (customer and passenger profiles, security screening): fixes and suggestions” ที่ผู้ใช้ส่งให้ โดยจำกัดงานที่หน้า My Profile, Edit Profile, Saved Passengers และ API ฝั่ง customer ที่หน้านี้ใช้ ไม่เพิ่มหน้า staff, watchlist หรือ screening queue และไม่รัน proposed SQL แทน migration กลาง
+PassengerProfilesModule registers separate customer and staff controllers/services.
+CustomerAccountProfilesService owns account-owner profile and saved-passenger APIs.
+PassengerProfilesService owns staff lookup, creation and identity correction.
+See [Staff profiles API](staff-profiles.md), [Passenger profiles API](README.md),
+[Screening API](../screening/README.md) and [Watchlist API](../watchlist/README.md)
+for their detailed contracts and remaining limitations.
 
-## ส่วนที่ตรงแล้วและสิ่งที่ปรับ
+## Implemented customer behavior
 
-| ข้อในเอกสาร                      | การทำงานใน My Profile                                                                                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 2: identity lock                 | วันเกิด เพศ และสัญชาติตั้งค่าครบครั้งเดียวผ่าน PUT /customers/me/identity หลังจากนั้นเรียกซ้ำได้ 409 และ PUT โปรไฟล์ไม่รับสามช่องนี้ (400) ส่วนผู้โดยสารที่บันทึกไว้ต้องระบุทั้งสามอย่างตอนสร้าง และ PUT ไม่รับการเปลี่ยนฟิลด์ที่ล็อก ไม่มี customer endpoint สำหรับแก้ไขแทน staff                                                                                                                     |
-| 3: duplicates and name key       | ยอมรับคนเดียวกันหลายแถวเมื่อคนละ customer สร้าง ไม่ deduplicate ข้ามบัญชี เพิ่มตัวช่วย `nameKey` ให้ตรง SQL expression: first + last แล้วเหลือเพียง A–Z/0–9 ตัวพิมพ์ใหญ่ ตัวช่วยนี้ยังไม่ใช่ระบบจดจำ false-positive                                                                                                                                                                                    |
-| 6: normalized identity           | เพศเป็น M/F/X, ประเทศตรวจ ISO alpha-2 แล้วเก็บตัวพิมพ์เล็ก, พาสปอร์ตลบช่องว่าง/ขีดแล้วเก็บ A–Z/0–9 backend แปลง Latin accents และ punctuation ที่รองรับให้เป็น ASCII ก่อนตรวจชื่อ โดยเก็บชื่อท้องถิ่นแยกต่างหาก                                                                                                                                                                                        |
-| 7: customer identity and sign-in | ชื่อ/วันเกิด/เพศ/สัญชาติ/พาสปอร์ตอยู่ใน passenger ของเจ้าของบัญชี เพิ่มช่องชื่อท้องถิ่นและพาสปอร์ตใน Edit Profile และการแมป API ให้ครบ การสร้าง user/passenger/customer เดิมอยู่ใน transaction และใช้ unique Clerk ID + P2002 recovery ป้องกัน concurrent sign-in เพิ่มการอ่าน verified primary email จาก Clerk ทุก customer sign-in ไม่เปลี่ยนเส้นทาง staff และไม่เขียนทับชื่อพาสปอร์ตจากชื่อใน Clerk |
-| 8: saved passengers              | ไม่มี self link; เจ้าของบัญชีใช้ customer.passenger_id นำผู้โดยสารออกด้วย is_saved=false โดยคงแถวและประวัติ อธิบาย relationship ว่าเป็นความสัมพันธ์ของผู้โดยสารต่อเจ้าของบัญชี เช่น Parent หมายถึงผู้โดยสารเป็นพ่อ/แม่ของเจ้าของบัญชี                                                                                                                                                                  |
-| 11: privacy and audit            | เปิดข้อมูลโปรไฟล์/ผู้โดยสารและส่งข้อมูลส่วนตัวกลับจากการบันทึก จะเพิ่ม audit_log แบบ append-only ด้วย action=view_sensitive ก่อนส่ง response ให้เจ้าของบัญชี รายการหลายคนใช้ bulk insert เฉพาะหน้าที่ส่งกลับ หาก audit ไม่สำเร็จจะไม่ส่งข้อมูลส่วนตัวกลับ ไม่เก็บ passport/DOB/ชื่อหรือ before/after values ใน audit หน้า overview ซ่อนพาสปอร์ตบางส่วน; เจ้าของข้อมูลเปิดเลขเต็มได้ใน Edit Profile     |
-| 13: validation                   | ชื่อต้องไม่ว่างและใช้ Latin passport spelling, ประเทศและพาสปอร์ตตรวจใน backend, วันเกิดต้องเป็นวันที่จริง ตั้งแต่ 1900-01-01 และไม่เกินวันปัจจุบัน ล็อก identity ที่ backend; client validation ไม่ใช้แทน server validation                                                                                                                                                                            |
+| Area                             | Current behavior                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| First sign-in and identity locks | PUT /api/customers/me/identity requires passport first/last name, DOB, gender and nationality together. Completed setup cannot be repeated (409). Profile edits cannot change DOB/gender/nationality (400). Staff corrections use the separate identity route with a reason.                                                        |
+| Duplicate identities             | Different customers may have separate passenger records for the same person. No cross-account deduplication or automatic account-to-saved-passenger linking is performed. The nameKey helper normalizes first + last name to uppercase A-Z/0-9. Screening owns decision memory.                                                     |
+| Normalization                    | Gender uses M/F/X. Nationality is validated as ISO alpha-2 and stored lowercase. Passport numbers are normalized to uppercase A-Z/0-9 without spaces or hyphens. Supported Latin accents/punctuation are normalized; local names are stored separately.                                                                             |
+| Account identity                 | Names, DOB, gender, nationality and passport belong to the account owner's passenger record. Edit Profile includes local names and passport. Clerk provisioning checks usable passport names and defers incomplete identities to First Sign-in instead of using an email as a name.                                                 |
+| Saved passengers                 | The owner uses customer.passenger_id rather than a self link. Removing a saved passenger sets is_saved=false and preserves the passenger/link/history. Identity and relationship edits share a transaction. Relationship is optional and describes the passenger's relationship to the owner.                                       |
+| Privacy and audit                | Owner APIs resolve ownership from the authenticated user. Sensitive reads and returned identity data are audited before the response; list auditing covers the returned page. The overview masks passports and the owner's edit form can show the complete number. Customer read audit metadata does not copy full identity values. |
+| Validation                       | Backend validation requires usable Latin passport names, valid nationality/passport values, and calendar DOBs from 1900-01-01 through the current permitted date. Client validation supplements server validation.                                                                                                                  |
+| Saved-passenger prefix search    | GET /api/customers/me/passengers accepts optional q, matching prefixes of passport and local name parts case-insensitively. Blank q returns the unfiltered saved list. Filtering, ownership and cursor behavior have tests. Most-recently-booked ordering remains pending; current ordering uses link creation time.                |
 
-การเพิ่มข้อมูลเจ้าของบัญชีใช้คอลัมน์ passenger ที่มีอยู่ ไม่เปลี่ยน schema หรือ migration และไม่เพิ่ม seat/meal preferences กลับเข้ามา
+Customer endpoints use PUT for updates. PUT /api/customers/me/photo reads the
+owner's image metadata from Clerk after the frontend uploads/removes an image
+through Clerk's SDK. POST /api/customers/me/sync-identity synchronizes the verified
+primary email/photo through the existing identity integration. These routes do not
+create a new login or storage system.
 
-## จุดที่ยังไม่ใช่การทำงานที่เสร็จแล้ว
+## Automatic re-screening
 
-1. **Re-screen เมื่อ identity เปลี่ยน (ข้อ 2):** ใน checkout นี้มี schema screening_check/screening_review แต่ยังไม่มีโมดูล booking 3b, ความสัมพันธ์ผู้โดยสารกับ upcoming flights หรือบริการ screening ที่ export ให้เรียก จึงยังไม่มีการตรวจซ้ำหลังแก้ชื่อ/พาสปอร์ต และไม่มี no-op ที่อ้างว่าตรวจแล้ว จุดเชื่อมต้องส่ง passenger ID หลังการแก้ Latin/local names, passport หรือการตั้ง identity ครั้งแรก โดยใช้ trigger_point=identity_change ไปยัง screening ของเที่ยวบินที่ยังไม่ออกตาม simulation clock การแก้ค่าที่ไม่เปลี่ยนจริงหรือแก้ phone/photo ไม่ควรสร้างการตรวจซ้ำ ต้องออกแบบการส่งต่อให้คงทนกับ transaction/retry ร่วมกับทีม screening/3b; ไม่ใช้ screening_check เก่าแทนรายชื่อเที่ยวบินที่จองจริง
-2. **Simulation date (ข้อ 13):** ตามคำตอบ Database Team ล่าสุด กฎ simulation date ครอบคลุมทุก DOB input แต่ให้ใช้วันจริงก่อนจนกว่า shared clock จะพร้อม ไม่สร้างสำเนา SimulationClock ของ F15 ใน F7 ฝั่ง backend ใช้ isValidBirthDate(value, today) ตรวจวันจริงของปฏิทิน UTC ตั้งแต่ 1900-01-01 ถึง today (รวมวันนี้) และ BirthDateValidator เป็นจุดเดียวที่ส่ง new Date() เข้าไป เมื่อมี clock กลางจึงเปลี่ยนแหล่ง today ที่จุดนี้ ส่วน frontend ใช้ BirthDateInput และ helper ร่วมกันทั้งตอนพิมพ์และ submit; รับ today เป็น parameter/prop ได้ การส่ง today จาก backend ให้ frontend จะทำเมื่อ shared clock มี interface ที่ตกลงกันแล้ว ไม่รับ today จาก request ของลูกค้ามาใช้ตรวจใน backend
-3. **ชื่อไทย (ข้อ 6):** ยังไม่มีบริการถอดชื่อไทยที่ทีมตกลงให้ใช้ ระบบไม่เดาการสะกดชื่อพาสปอร์ตจากภาษาไทย เพราะอาจต่างจากเอกสารจริง ให้กรอก Latin spelling ที่พิมพ์ในพาสปอร์ตและเก็บชื่อไทยใน local-name fields ส่วนการถอด Latin accents รองรับแล้ว การถอดไทยอัตโนมัติยังต้องตกลงบริการ/มาตรฐานก่อน และไม่อ้างว่ามีอยู่แล้ว
-4. **Auth provisioning (ข้อ 7):** transaction และ unique-ID race recovery มีอยู่แล้ว แต่ไม่ได้เปลี่ยนเป็น raw INSERT ... ON CONFLICT หรือทำ data-moving migration; นี่เป็นงานประสาน Feature 1/Database Team ไม่เปลี่ยน seed หรือข้อมูลเดิม เพิ่มการตรวจชื่อ Latin จาก Clerk ก่อนสร้าง passenger/customer แล้ว หากชื่อไม่พร้อมให้สร้างเฉพาะ user รอกรอกชื่อพาสปอร์ตจริงใน First sign-in โดยไม่ใช้ email เป็นชื่อ; profile write endpoints ตรวจชื่อทุกครั้ง
+Customer profile and saved-passenger name/passport edits call the exported
+ScreeningRescreenService with identity_change inside the write transaction.
+Supplied, normalized identity fields are compared with stored values. Unchanged
+names/passports, phone/photo-only changes and relationship-only changes do not
+trigger re-screening. An actual local-name or passport removal also counts as a
+change. Staff correction is limited to DOB, gender and nationality with a reason
+and calls the same re-screening service.
 
-## นอกขอบเขต My Profile ตามที่ผู้ใช้กำหนด
+Screening runs are audited as system with a null actor ID. Staff corrections retain
+the staff actor in their correction audit. The transaction rolls back if screening
+or its audit fails; no background job or durable outbox is implemented here.
 
-- ข้อ 1, 4, 5: เกณฑ์ matching, append-only screening runs/reviews, denied/held/flagged, false-positive memory และ fail-open/fail-closed
-- ข้อ 8 ฝั่ง staff/3b: สร้างผู้โดยสารแทนลูกค้า, booking autocomplete ที่รวมเจ้าของบัญชี, เขียน last_booked_at และบังคับ DOB ก่อน booking
-- ข้อ 9–10: screening queue, booking/flight dependencies, watchlist และการ clear/reactivate
-- ข้อ 11 ฝั่ง staff: role security, staff search masking, watchlist/review access
-- ข้อ 12–13 ส่วนเอกสาร/diagram และ screening outcome/review rules
+BookingsPort.listUpcomingPassengerFlights is the F3b integration seam. Its adapter
+must supply all active upcoming passenger-flight pairs, including checked-in
+passengers and people without prior screening history. The installed stub returns
+an empty list, so real booking coverage is not connected yet. Existing screening
+history is not used as a substitute for booking data. Change-triggered matches are
+flagged for Security staff; the system does not submit reviews or make denial
+decisions on its own. Clean checks are persisted with match_level=none.
 
-ไฟล์นี้บันทึกข้อที่ต้องประสานต่ออย่างชัดเจน ไม่ได้หมายความว่าส่วน screening หรือ staff ถูกนำมาทำเสร็จพร้อมหน้า My Profile
+First-sign-in setup does not currently trigger re-screening. No new setup trigger
+was added: whether an existing booking can precede setup requires confirmation of
+the booking flow. Being saved in another account does not establish that the two
+passenger rows are linked.
 
-## ขอบเขตที่ยึดในการแก้ครั้งนี้
+F3b/F6 should call ScreeningCheckService through ScreeningModule internally.
+POST /api/screening/check remains Security-staff only until shared system
+authentication exists, as agreed with the Dev Lead. No separate Sys token mechanism
+is introduced. See the Screening README for this exception to the specification.
 
-ยึด text ไฟล์แรก “fixes and suggestions” และ docs กลางเป็นหลัก ไม่รวมข้อเปลี่ยนของ Iteration-03: ค่า Weak 0.7, copied flight_dep_at และหนึ่ง review ต่อ check เป็นข้อเสนออ้างอิงของไฟล์แรกเท่านั้น ยังไม่มี screening service ที่นำเกณฑ์เหล่านี้ไปรันจริง
+## Pending dependencies and scope boundaries
 
-- API ฝั่ง customer ใช้ /api/customers/me และ /api/customers/me/passengers; อัปเดตด้วย PUT พร้อมปรับ frontend และ HTTP tests ให้ตรงกัน
-- relationship ไม่บังคับและเก็บ null เมื่อไม่ระบุ; ลูกค้าล้างค่าความสัมพันธ์ได้
-- เพิ่ม PUT /api/customers/me/photo สำหรับอ่านรูปเจ้าของบัญชีจาก Clerk; frontend ยังคงอัปโหลด/ลบ asset ผ่าน Clerk SDK แล้ว sync โดยไม่สร้างระบบจัดเก็บรูปใหม่
-- ปรับ docs กลางให้สะท้อน feature folders และ centralized schema ที่มีจริง
-- Booking autocomplete ที่ UNION เจ้าของบัญชี, การเรียง last_booked_at และผู้เขียนค่าจาก 3b จะทำพร้อม integration กับ booking; ข้อความ UI ปัจจุบันไม่อ้างว่า autocomplete ใช้งานแล้ว
-- ไม่แก้ shared auth, schema, migrations, seed หรือ staff; data-moving migration/ON CONFLICT ต้องประสาน Platform และ Database Team
+- **Simulation date:** keep real time until a shared clock exists. Backend DOB
+  helpers accept today explicitly; frontend DOB fields use BirthDateInput and a
+  shared helper. Connecting the shared clock and obtaining frontend today from the
+  backend remain pending. Customer-supplied today is not a backend authority.
+- **Thai-name transliteration:** no agreed automatic transliteration service is
+  integrated. Passport spelling must be entered explicitly; local names are stored
+  separately. Latin accent normalization does not imply Thai transliteration.
+- **Booking integration:** F3b must provide the upcoming-booking adapter and update
+  last_booked_at. Saved-passenger search currently orders by created_at, not booking
+  recency. Booking-form autocomplete UI and any inclusion of the account owner are
+  separate integration work; the existence of q does not complete that UI.
+- **Check-in integration:** F6 must consume the internal screening service and
+  implement its check-in flow/messages. This profile scope does not claim that
+  check-in is connected.
+- **Staff authorization and masking:** staff search/correction UI and APIs exist,
+  but staff-only authorization and role-dependent passport visibility remain review
+  items. Security APIs enforce their own security-role restriction. Do not infer
+  that a staff-web route alone provides access control.
+- **Screening dependencies:** queue/review and matching services now exist in this
+  branch. Booking summaries and authority notifications still use mock adapters;
+  real booking coverage and external notification delivery are not complete.
+- **Database ownership:** this alignment update changes no schema, migration or
+  shared seed. Data-moving migrations and provisioning changes require coordination
+  with the relevant owners. Historical shared auth provisioning changes are
+  documented separately; this document does not claim separate approval for them.
 
-## ผลตรวจการแก้ครั้งนี้ (22 ตุลาคม 2026)
+## Error contract
 
-- Backend tests: 7 suites / 138 tests ผ่านทั้งหมด (HTTP tests รันซ้ำหลังอนุญาต localhost)
-- Lint และ build ของ backend/customer-web ผ่าน
-- Format check ทั้งแอปยังรายงานไฟล์เดิมนอกขอบเขต: customer routes 6 ไฟล์ และ backend shared/config 27 ไฟล์; ไฟล์ที่แก้ใน feature จัดรูปแบบด้วย config ของแต่ละแอป
-- ไม่ได้ทดสอบ upload/remove รูปหรือส่ง OTP กับบัญชีจริงในการแก้ครั้งนี้
+F7 controllers use a controller-scoped exception filter and return
+`{ error: { code, message, details? } }`. Validation details use
+`details.fields: [{ field, message }]`. No global filter is registered and auth
+responses outside F7 keep their existing shape. Both web clients accept F7 and
+legacy error messages. See the Passenger profiles README for the agreed code list.
 
-## ลดเวลารอหน้า Profile
+## Profile loading and verification
 
-หน้าเปิดด้วย GET /api/customers/me ซึ่งอ่านฐานข้อมูลและทำ sensitive-view audit ตามเดิม แทนการเรียก POST sync-identity ที่รอ Clerk และเขียนข้อมูลทุกครั้ง Saved Passengers โหลดต่อจากข้อมูลโปรไฟล์ การเปลี่ยนอีเมล/รูปและปุ่ม retry ของรายการที่ sync ไม่สำเร็จยังใช้ Clerk และ backend ตรวจข้อมูลเหมือนเดิม การ reload อ่านค่าที่ persist สำเร็จล่าสุด ไม่ใช้เป็นการ retry sync อัตโนมัติ ส่วน auth ตอน sign-in ยัง sync verified email ตามเดิม ไม่แก้ flow ของ auth และไม่เปลี่ยนงาน screening/autocomplete ที่พักไว้
+The profile opens with GET /api/customers/me, reading persisted data and recording
+sensitive-view audit without synchronizing Clerk on every load. Saved passengers
+load after the profile. Explicit email/photo changes and sync retries retain their
+Clerk-backed flows; reload does not automatically retry a failed provider sync.
+
+Tests cover customer ownership, identity locks, normalization, saved-passenger
+operations, prefix search, changed/unchanged identity re-screening, HTTP validation
+and the F7 error contract. Unit/controller tests mock external services and do not
+prove real booking or notification integration.
+
+Run the current backend/customer-web/staff-web lint, format, tests and build checks
+when preparing a PR; earlier counts in the pre-merge notes are not current results.
+Whole-app formatting can still report unchanged files outside this scope. Historical
+PostgreSQL/browser checks in the Passenger profiles README are explicitly marked as
+historical and should not be presented as a new live verification. Updated 393 px
+screenshots and cross-feature integration evidence remain separate review tasks.
