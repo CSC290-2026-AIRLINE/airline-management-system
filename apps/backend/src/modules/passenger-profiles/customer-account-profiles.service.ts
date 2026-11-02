@@ -97,6 +97,14 @@ function namesData(body: { firstName?: string; lastName?: string; localFirstName
     ...(body.localLastName !== undefined ? { local_last_name: body.localLastName } : {}),
   }
 }
+// Compare only supplied, already-normalized identity fields with the stored values.
+function identityChanged(before: Identity, body: ProfileUpdateDto | UpdateSavedPassengerDto): boolean {
+  const changes = {
+    ...namesData(body),
+    ...(body.passportNumber !== undefined ? { passport_number: body.passportNumber } : {}),
+  }
+  return Object.entries(changes).some(([key, value]) => before[key as keyof Identity] !== value)
+}
 /** Name prefix match, so typing the beginning of a name finds the passenger regardless of letter case. */
 function startsWithInsensitive(term: string) {
   return { startsWith: term, mode: 'insensitive' as const }
@@ -256,11 +264,7 @@ export class CustomerAccountProfilesService {
           if (accountWrite.count !== 1) throw new ConflictException('Profile changed; reload and try again')
           const updated = await this.customerFor(tx, userId)
           await this.auditSensitiveRead(tx, userId, 'customer', [customer.id])
-          if (
-            ['firstName', 'lastName', 'localFirstName', 'localLastName', 'passportNumber'].some(
-              (key) => body[key as keyof ProfileUpdateDto] !== undefined,
-            )
-          )
+          if (identityChanged(customer.passenger, body))
             await this.rescreen.run(tx, new Date(), 'customer_profile', 'identity_change', customer.passenger.id)
           return profileView(updated)
         },
@@ -415,7 +419,7 @@ export class CustomerAccountProfilesService {
       this.db.$transaction(
         async (tx) => {
           const customer = await this.customerFor(tx, userId)
-          await this.savedFor(tx, customer.id, passengerId)
+          const before = await this.savedFor(tx, customer.id, passengerId)
           // Do not allow a customer to edit an account holder or an identity shared with another customer.
           const identityWrite = await tx.passenger.updateMany({
             where: {
@@ -442,11 +446,7 @@ export class CustomerAccountProfilesService {
           if (linkWrite.count !== 1) throw new ConflictException('Saved passenger changed; reload and try again')
           const updated = await this.savedFor(tx, customer.id, passengerId)
           await this.auditSensitiveRead(tx, userId, 'passenger', [passengerId])
-          if (
-            ['firstName', 'lastName', 'localFirstName', 'localLastName', 'passportNumber'].some(
-              (key) => body[key as keyof UpdateSavedPassengerDto] !== undefined,
-            )
-          )
+          if (identityChanged(before.passenger, body))
             await this.rescreen.run(tx, new Date(), 'saved_passenger', 'identity_change', passengerId)
           return savedView(updated)
         },

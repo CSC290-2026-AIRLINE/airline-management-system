@@ -93,6 +93,51 @@ describe('CustomerAccountProfilesService', () => {
     await service.updatePassenger('user-1', 'saved-1', { relationship: null })
     expect(rescreen.run).not.toHaveBeenCalled()
   })
+  it('does not re-screen a full profile save with unchanged identity fields', async () => {
+    await service.updateProfile('user-1', {
+      firstName: identity.first_name,
+      lastName: identity.last_name,
+      localFirstName: null,
+      localLastName: null,
+      passportNumber: null,
+      phone: null,
+    })
+    expect(rescreen.run).not.toHaveBeenCalled()
+    expect(db.customer.updateMany).toHaveBeenCalled()
+  })
+  it('does not re-screen unchanged saved identity fields when the relationship changes', async () => {
+    await service.updatePassenger('user-1', 'saved-1', {
+      firstName: saved.passenger.first_name,
+      lastName: saved.passenger.last_name,
+      localFirstName: null,
+      localLastName: null,
+      passportNumber: null,
+      relationship: 'other',
+    })
+    expect(rescreen.run).not.toHaveBeenCalled()
+    expect(db.customer_passenger.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ relationship_type: 'other' }) }),
+    )
+  })
+  it.each(['profile', 'saved'] as const)('does not re-screen the same non-empty passport on %s', async (scope) => {
+    db.customer.findFirst.mockResolvedValue({ ...customer, passenger: { ...identity, passport_number: 'AB12345' } })
+    db.customer_passenger.findFirst.mockResolvedValue({ ...saved, passenger: { ...saved.passenger, passport_number: 'AB12345' } })
+    if (scope === 'profile') await service.updateProfile('user-1', { passportNumber: 'AB12345' })
+    else await service.updatePassenger('user-1', 'saved-1', { passportNumber: 'AB12345' })
+    expect(rescreen.run).not.toHaveBeenCalled()
+  })
+  it.each(['profile', 'saved'] as const)('re-screens clearing an existing passport on %s', async (scope) => {
+    db.customer.findFirst.mockResolvedValue({ ...customer, passenger: { ...identity, passport_number: 'AB12345' } })
+    db.customer_passenger.findFirst.mockResolvedValue({ ...saved, passenger: { ...saved.passenger, passport_number: 'AB12345' } })
+    if (scope === 'profile') await service.updateProfile('user-1', { passportNumber: null })
+    else await service.updatePassenger('user-1', 'saved-1', { passportNumber: null })
+    expect(rescreen.run).toHaveBeenCalledTimes(1)
+  })
+  it.each(['profile', 'saved'] as const)('re-screens an actual local-name change on %s', async (scope) => {
+    if (scope === 'profile') await service.updateProfile('user-1', { localFirstName: 'Changed local name' })
+    else await service.updatePassenger('user-1', 'saved-1', { localFirstName: 'Changed local name' })
+    expect(rescreen.run).toHaveBeenCalledTimes(1)
+  })
   it('loads only the active customer associated with the authenticated user', async () => {
     const result = await service.getProfile('user-1')
     expect(db.customer.findFirst).toHaveBeenCalledWith(

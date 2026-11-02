@@ -120,13 +120,13 @@ npm run build -w apps/backend
 
 Tests exercise the actual global JWT guard with a mocked token verifier, role checks, boundary validation, outcomes, identity memory, immutable snapshots, per-entry clearance and revision conflicts. They require no Clerk account or live database. JWT test tokens are synthetic and not usable against the running application.
 
-For an optional real PostgreSQL verification against the **default local Docker database only**, after applying the team's migrations:
+For an optional real PostgreSQL verification against a **configured local PostgreSQL database only**, after applying the team's migrations:
 
 ```powershell
 node apps/backend/src/modules/screening/verify-postgres.cjs --local-database
 ```
 
-This creates synthetic passengers, watchlist entries, staff and flight dependencies inside one serializable transaction, exercises the actual services/SQL, and rolls back all rows. It uses the existing DbService, not an additional application client. PostgreSQL sequences can advance despite rollback. It does not reset, seed or migrate the database. It expects synthetic airport codes ZQA/ZQB to be unused and the standard local Compose connection; a collision fails and rolls back. It tests real matching, snapshots, queue sorts/search/pagination, revision handling, audit inserts and identity-copy memory. It does not prove real Clerk login, notification delivery or simultaneous requests from separate database connections. Manual authenticated API testing still requires a legitimate security account issued by the existing auth flow.
+This creates synthetic passengers, watchlist entries, staff and flight dependencies inside one serializable transaction, exercises the actual services/SQL, and rolls back all rows. It uses the existing DbService, not an additional application client. PostgreSQL sequences can advance despite rollback. It does not reset, seed or migrate the database. Set the existing `DATABASE_URL` in the process environment before running; no URL or credentials are embedded and the script does not load environment files. It refuses production, non-loopback hosts and query overrides of the connection target. Driver errors are reported without raw connection details. It expects synthetic airport codes ZQA/ZQB to be unused; a collision fails and rolls back. It tests real matching, snapshots, queue sorts/search/pagination, revision handling, audit inserts and identity-copy memory. It does not prove real Clerk login, notification delivery or simultaneous requests from separate database connections. Manual authenticated API testing still requires a legitimate security account issued by the existing auth flow.
 
 ## Commit organization
 

@@ -155,8 +155,9 @@ Customer profile and saved-passenger name/passport edits call the exported F7
 re-screening service within the write transaction. Staff identity correction stays
 limited to DOB, gender and nationality with a reason; it calls the same service
 with `identity_change`. Correction auditing retains the staff actor, while screening
-runs use a system actor with a null actor ID. Contact-only and relationship-only
-updates do not trigger screening. The upcoming-booking source is currently the
+runs use a system actor with a null actor ID. Contact-only, relationship-only and unchanged name/passport
+updates do not trigger screening. Supplied normalized identity values are compared
+with their stored values within the write transaction. The upcoming-booking source is currently the
 empty F3b stub documented in the Screening module README, so live booking coverage
 is pending that adapter. Screening history is not used as a booking substitute.
 
