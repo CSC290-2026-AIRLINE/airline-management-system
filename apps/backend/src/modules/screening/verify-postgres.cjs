@@ -1,10 +1,11 @@
 const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
 const path = require('node:path')
-if (!process.argv.includes('--local-database')) throw new Error('Pass --local-database to test the default local Docker database')
 const root = path.resolve(__dirname, '../../../../..')
 process.env.TSX_TSCONFIG_PATH = path.join(root, 'apps/backend/tsconfig.json')
 require('tsx/cjs')
+const { verificationDatabaseUrl } = require('./verification-database.ts')
+const databaseUrl = verificationDatabaseUrl(process.env, process.argv.slice(2))
 const { DbService } = require(root + '/apps/backend/src/db/db.service.ts')
 const { ScreeningContext, ScreeningAudit } = require(root + '/apps/backend/src/modules/screening/screening.context.ts')
 const { ScreeningMatcher } = require(root + '/apps/backend/src/modules/screening/screening.matcher.ts')
@@ -12,7 +13,7 @@ const { ScreeningCheckService } = require(root + '/apps/backend/src/modules/scre
 const { ScreeningService } = require(root + '/apps/backend/src/modules/screening/screening.service.ts')
 const { MockScreeningBooking, MockScreeningNotification } = require(root + '/apps/backend/src/modules/screening/screening.ports.ts')
 const { QueueDto } = require(root + '/apps/backend/src/modules/screening/dto/screening.dto.ts')
-const db = new DbService({ get: () => 'postgresql://postgres:postgrespassword@localhost:5432/airline_db' })
+const db = new DbService({ get: () => databaseUrl })
 const now = new Date('2026-11-05T01:30:00Z')
 const marker = randomUUID()
 const rollback = new Error('ROLLBACK_SCREENING_TEST')
@@ -158,7 +159,8 @@ async function main() {
 }
 main()
   .catch((e) => {
-    console.error(e)
+    // Driver errors can include connection details. Never print the raw error.
+    console.error('PostgreSQL verification failed. Check the local configuration, migrations and verification assertions.')
     process.exitCode = 1
   })
   .finally(() => db.$disconnect())
