@@ -1,3 +1,4 @@
+import { ScreeningRescreenService } from '@backend/modules/screening/screening-rescreen.service'
 import {
   BadRequestException,
   ConflictException,
@@ -11,6 +12,8 @@ import type { Prisma, watchlist_entry } from '@backend/db/generated/prisma/clien
 import { WatchlistService } from './watchlist.service'
 import { WatchlistAuditService } from './watchlist.audit'
 import { ListWatchlistDto } from './dto/list-watchlist.dto'
+
+const rescreen = { run: jest.fn().mockResolvedValue({ runs: 0, bookingSource: 'stub' }) }
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
@@ -56,6 +59,7 @@ describe('WatchlistService', () => {
   let service: WatchlistService
   beforeEach(() => {
     jest.resetAllMocks()
+    rescreen.run.mockResolvedValue({ runs: 0, bookingSource: 'stub' })
     db.staff.findFirst.mockResolvedValue({ id: staffId, role: { code: 'security' } })
     db.$transaction.mockImplementation((work: (client: Prisma.TransactionClient) => Promise<unknown>) =>
       work(tx as unknown as Prisma.TransactionClient),
@@ -65,9 +69,31 @@ describe('WatchlistService', () => {
     tx.watchlist_entry.create.mockResolvedValue(row)
     tx.watchlist_entry.update.mockResolvedValue(row)
     tx.audit_log.create.mockResolvedValue({ id: 'audit' })
-    service = new WatchlistService(db as unknown as DbService, new WatchlistAuditService(), { now: () => now })
+    service = new WatchlistService(
+      db as unknown as DbService,
+      new WatchlistAuditService(),
+      { now: () => now },
+      rescreen as unknown as ScreeningRescreenService,
+    )
   })
 
+  it('re-screens upcoming bookings on creation with the new entry only', async () => {
+    await service.create(userId, input)
+    expect(rescreen.run).toHaveBeenCalledWith(tx, now, 'watchlist', 'new_entry', undefined, entryId)
+  })
+  it('re-screens edits against the latest entry', async () => {
+    await service.update(userId, entryId, { reason: 'Updated case' })
+    expect(rescreen.run).toHaveBeenCalledWith(tx, now, 'watchlist', 'entry_change', undefined, entryId)
+  })
+  it('re-screens reactivated entries', async () => {
+    tx.watchlist_entry.findUnique.mockResolvedValue({ ...row, status: 'cleared' })
+    await service.update(userId, entryId, { status: 'active' })
+    expect(rescreen.run).toHaveBeenCalledWith(tx, now, 'watchlist', 'entry_change', undefined, entryId)
+  })
+  it('propagates screening failures inside the write transaction', async () => {
+    rescreen.run.mockRejectedValueOnce(new Error('Screening failed'))
+    await expect(service.create(userId, input)).rejects.toBeInstanceOf(InternalServerErrorException)
+  })
   it.each([null, { id: staffId, role: { code: 'admin' } }, { id: staffId, role: { code: 'check_in' } }])(
     'denies customers, missing staff and non-security roles',
     async (actor) => {

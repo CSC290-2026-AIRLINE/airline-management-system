@@ -1,3 +1,4 @@
+import { ScreeningRescreenService } from '@backend/modules/screening/screening-rescreen.service'
 import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { DbService } from '@backend/db/db.service'
@@ -683,7 +684,10 @@ function planToken(token: string): TokenPlan {
 export class PassengerProfilesService {
   private readonly logger = new Logger(PassengerProfilesService.name)
 
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly rescreen: ScreeningRescreenService,
+  ) {}
 
   async search(dto: SearchPassengersDto): Promise<PassengerSearchResult> {
     return this.runSearch(await this.buildSearchWhere(dto.q, dto.type), dto.page, dto.size)
@@ -945,36 +949,41 @@ export class PassengerProfilesService {
     const before = auditSnapshot(existing)
     const after = correctedSnapshot(existing, dto)
 
-    const [updated] = await this.db.$transaction([
-      this.db.passenger.update({
-        where: { id },
-        data: {
-          date_of_birth: dto.dateOfBirth,
-          gender: dto.gender,
-          nationality: dto.nationality,
-          updated_at: new Date(),
-        },
-        select: SUMMARY_SELECT,
-      }),
-      this.db.audit_log.create({
-        data: {
-          occurred_at: new Date(),
-          actor_type: actorUser.type,
-          actor_id: actor.id,
-          source_feature: SOURCE_FEATURE,
-          // An existing enum value, not a bespoke one: see {@link AUDIT_UPDATE}.
-          action: AUDIT_UPDATE,
-          entity_type: 'passenger',
-          entity_id: id,
-          summary: `Corrected identity for ${existing.first_name} ${existing.last_name}`,
-          reason: dto.reason,
-          before,
-          after,
-          // The before/after snapshots describe a person's identity.
-          is_sensitive: true,
-        },
-      }),
-    ])
+    const updated = await this.db.$transaction(
+      async (tx) => {
+        const updated = await tx.passenger.update({
+          where: { id },
+          data: {
+            date_of_birth: dto.dateOfBirth,
+            gender: dto.gender,
+            nationality: dto.nationality,
+            updated_at: new Date(),
+          },
+          select: SUMMARY_SELECT,
+        })
+        await tx.audit_log.create({
+          data: {
+            occurred_at: new Date(),
+            actor_type: actorUser.type,
+            actor_id: actor.id,
+            source_feature: SOURCE_FEATURE,
+            // An existing enum value, not a bespoke one: see {@link AUDIT_UPDATE}.
+            action: AUDIT_UPDATE,
+            entity_type: 'passenger',
+            entity_id: id,
+            summary: `Corrected identity for ${existing.first_name} ${existing.last_name}`,
+            reason: dto.reason,
+            before,
+            after,
+            // The before/after snapshots describe a person's identity.
+            is_sensitive: true,
+          },
+        })
+        await this.rescreen.run(tx, new Date(), 'staff_identity', 'identity_change', id)
+        return updated
+      },
+      { isolationLevel: 'Serializable' },
+    )
 
     // Ids only; identity fields are already in the audit row.
     this.logger.log(`Passenger ${id} identity corrected by user ${actor.id}`)

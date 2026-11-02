@@ -16,6 +16,9 @@ export interface ScreeningActor {
   staffId: string
   role: string
 }
+export interface SystemScreeningActor {
+  source: string
+}
 export abstract class ScreeningClock {
   abstract now(): Date
 }
@@ -32,6 +35,9 @@ export class ScreeningContext {
     private readonly db: DbService,
     private readonly clock: ScreeningClock,
   ) {}
+  async runSystem<T>(work: (tx: Prisma.TransactionClient, now: Date) => Promise<T>): Promise<T> {
+    return this.db.$transaction((tx) => work(tx, this.clock.now()), { isolationLevel: 'Serializable' })
+  }
   async run<T>(userId: string, work: (tx: Prisma.TransactionClient, actor: ScreeningActor, now: Date) => Promise<T>): Promise<T> {
     try {
       return await this.db.$transaction(
@@ -62,7 +68,7 @@ export class ScreeningContext {
 export class ScreeningAudit {
   async record(
     tx: Prisma.TransactionClient,
-    actor: ScreeningActor,
+    actor: ScreeningActor | SystemScreeningActor,
     now: Date,
     action: 'create' | 'view_sensitive',
     entityType: string,
@@ -72,16 +78,16 @@ export class ScreeningAudit {
     await tx.audit_log.create({
       data: {
         occurred_at: now,
-        actor_type: 'staff',
-        actor_id: actor.userId,
-        actor_role: actor.role,
+        actor_type: 'source' in actor ? 'system' : 'staff',
+        actor_id: 'source' in actor ? null : actor.userId,
+        actor_role: 'source' in actor ? null : actor.role,
         source_feature: '7',
         action,
         entity_type: entityType,
         entity_id: entityId,
         summary: `Screening ${action}`,
         is_sensitive: true,
-        ...(metadata ? { after: metadata } : {}),
+        ...('source' in actor ? { after: { ...metadata, source: actor.source } } : metadata ? { after: metadata } : {}),
       },
     })
   }

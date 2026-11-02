@@ -98,12 +98,12 @@ Passport acknowledgement is stored as a boolean in the review's transactional au
 ## Boundaries and mocks
 
 - `ScreeningClock` currently uses real UTC time and can be rebound when a shared simulation clock exists. It does not use the frontend's fixed fixture date.
-- `ScreeningCheckService` is exported through `ScreeningModule`. Its current methods require a security actor. Booking/check-in owners must agree a caller authorization contract before integration; no other role is implicitly authorized.
+- `ScreeningCheckService` is exported through `ScreeningModule`. F3b/F6 call `checkSystem(source, request)` internally through this module, with a non-empty caller source (for example `booking_pnr` or `checkin_boarding`). It accepts `booking`, `check_in`, `identity_change`, `entry_change` and the existing `new_entry` trigger. System runs audit `actor_type: system`, `actor_id: null` and source metadata. This method cannot submit reviews or decisions. HTTP methods still require Security staff.
 - HTTP errors are never clearance. Check-in callers must stop if matching fails and must not treat `not_screened` as clear. A status lookup alone is not a fresh check against the current watchlist; the check-in flow must call `check` with `check_in` before proceeding. Booking fail-open behavior and recording a skipped check belong to the future booking integration.
 - Feature 3b uses `ScreeningBookingPort`. Three explicit demo PNR UUIDs ending in 1/2/3 (prefix `70000000-0000-4000-8000-`) return the frontend's Somsak/Arthit/Maya booking examples with `source: mock`. Unknown IDs return null fields with `source: not_connected`; no fake booking is written to the database.
 - F13 uses `MockScreeningNotification`, records a simulated notification time and returns `notificationMode: mock`. No real authority is contacted. Replace it with transactional outbox delivery when that contract is available.
 - F15 auditing writes to the existing `audit_log`; no F15 service or separate notification delivery is assumed.
-- The Watchlist branch is not merged or modified. Automatic re-screen jobs and effects of clearing/editing entries on existing checks are not connected. Existing checks are preserved.
+- Automatic re-screening is wired transactionally from Watchlist add/edit/reactivate, customer/saved-passenger name or passport writes, and staff DOB/gender/nationality corrections. Write and screening/audit failures roll back together. Existing checks and reviews are preserved. Clearing an entry does not create a new screening run.
 - The staff Screening Queue uses these APIs and selects the latest review by revision. Its isolated fixture/model tests remain separate from live data.
 - No schema, migration, seed, auth configuration, package or lockfile changes are included.
 
@@ -137,3 +137,31 @@ This creates synthetic passengers, watchlist entries, staff and flight dependenc
 5. `feat(g10): expose screening APIs and add verification guide`
 
 Each commit was checked with backend tests and a build before committing. The final commit registers the APIs in AppModule. No schema, migration or dependency changes are included.
+
+## Re-screening integration contract
+
+The Dev Lead agreed to internal provider calls in this monolith. The spec labels
+`POST /screening/check` as Sys, but this HTTP route remains Security-staff only
+until Core/Infra provides system authentication. No new auth mechanism or public
+route is introduced; this documented exception does not block this PR.
+
+`BookingsPort.listUpcomingPassengerFlights(tx, now)` is the F3b integration seam.
+Return every active booking's upcoming passenger-flight pair, including checked-in
+passengers and passengers without a screening record. Each item contains
+`passengerId`, `flightId` and optional `pnrId`. Screening history is never a
+booking source. The installed `StubBookingsPort` returns an empty list until F3b
+supplies its real adapter; local queue fixtures do not replace that integration.
+
+Watchlist creation uses `new_entry`; active edits/reactivation use `entry_change`.
+These runs target the changed entry and read its latest persisted identity.
+Profile name/passport edits and staff identity corrections use `identity_change`
+for the changed passenger against all active entries. The staff correction's reason
+and staff actor remain in its separate audit row. Re-screening never writes a
+review, sends notifications, or changes a booking/check-in status. Change triggers
+write flagged matches rather than held/denied outcomes; clean runs write a
+`match_level: none` / `outcome: clear` row. Existing human decisions remain effective.
+
+The port and checks run inside the originating database transaction; adapters must
+not perform external delivery there. The current sequential batch is intended for
+the stub integration; large F3b batches will need an agreed transactional job/outbox
+contract before production rollout.

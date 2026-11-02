@@ -1,3 +1,4 @@
+import { ScreeningRescreenService } from '@backend/modules/screening/screening-rescreen.service'
 import { validateBirthDate } from '@backend/common/validation/birth-date'
 import {
   BadRequestException,
@@ -24,6 +25,7 @@ export class WatchlistService {
     private readonly db: DbService,
     private readonly audit: WatchlistAuditService,
     private readonly clock: WatchlistClock,
+    private readonly rescreen: ScreeningRescreenService,
   ) {}
 
   private async actor(userId: string): Promise<WatchlistActor> {
@@ -116,7 +118,11 @@ export class WatchlistService {
         },
       })
       await this.audit.record(tx, actor, now, 'create', entry)
-      return { ...watchlistDetail(entry), screeningStatus: 'not_connected' as const }
+      const screening = await this.rescreen.run(tx, now, 'watchlist', 'new_entry', undefined, entry.id)
+      return {
+        ...watchlistDetail(entry),
+        screeningStatus: screening.bookingSource === 'stub' ? ('not_connected' as const) : ('completed' as const),
+      }
     })
   }
 
@@ -163,7 +169,12 @@ export class WatchlistService {
         before,
         clearing ? input.clearReason!.trim() : undefined,
       )
-      return { ...watchlistDetail(entry), screeningStatus: 'not_connected' as const }
+      const screening =
+        entry.status === 'active' ? await this.rescreen.run(tx, now, 'watchlist', 'entry_change', undefined, entry.id) : null
+      return {
+        ...watchlistDetail(entry),
+        screeningStatus: screening?.bookingSource === 'connected' ? ('completed' as const) : ('not_connected' as const),
+      }
     })
   }
 
