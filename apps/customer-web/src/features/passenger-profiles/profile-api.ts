@@ -1,3 +1,4 @@
+import { f7ErrorMessage } from './f7-api-error.ts'
 import type { Passenger, Profile } from './profile-context'
 
 export interface IdentityResponse {
@@ -164,14 +165,7 @@ export async function profileRequest<T>(
   const response = await fetchWithAuth(`/api/customers${path}`, init)
   if (!response.ok) {
     const data: unknown = await response.json().catch(() => null)
-    const message = data && typeof data === 'object' && 'message' in data ? data.message : null
-    throw new Error(
-      typeof message === 'string'
-        ? message
-        : Array.isArray(message)
-          ? message.join('. ')
-          : `Unable to save or load your profile (${response.status}).`,
-    )
+    throw new Error(f7ErrorMessage(data, `Unable to save or load your profile (${response.status}).`))
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>

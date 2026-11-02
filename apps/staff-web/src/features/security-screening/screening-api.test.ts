@@ -170,3 +170,21 @@ test('X is displayed as Unspecified and remains distinct from missing gender', (
   const mapped = mapDetail({ ...detail, snapshot: { ...detail.snapshot, passenger: { ...detail.snapshot.passenger, gender: 'X' } } })
   assert.equal(mapped.comparison[4][1], 'X · Unspecified')
 })
+
+test('reads F7 validation details from screening responses', async () => {
+  const fetch: AuthFetch = async () =>
+    Response.json(
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid request data',
+          details: { fields: [{ field: 'note', message: 'A note is required' }] },
+        },
+      },
+      { status: 400 },
+    )
+  await assert.rejects(
+    screeningRequest(fetch, '/api/security/screenings'),
+    (error) => error instanceof ScreeningApiError && error.message === 'note: A note is required',
+  )
+})

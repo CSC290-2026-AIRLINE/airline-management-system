@@ -1,11 +1,13 @@
-import { Body, Controller, Put, UsePipes, ValidationPipe } from '@nestjs/common'
+import { F7ExceptionFilter, F7ValidationPipe } from '@backend/modules/passenger-profiles/f7-exception.filter'
+import { UseFilters, Body, Controller, Put, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { IdentitySetupDto } from './dto/identity-setup.dto'
 import { CustomerAccountProfilesService } from './customer-account-profiles.service'
 
+@UseFilters(F7ExceptionFilter)
 @Controller('customers')
-@UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true, forbidUnknownValues: true }))
+@UsePipes(new F7ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true, forbidUnknownValues: true }))
 export class CustomerIdentityController {
   constructor(private readonly profiles: CustomerAccountProfilesService) {}
   @Put('me/identity')

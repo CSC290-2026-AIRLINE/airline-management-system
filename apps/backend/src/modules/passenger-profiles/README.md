@@ -159,3 +159,36 @@ runs use a system actor with a null actor ID. Contact-only and relationship-only
 updates do not trigger screening. The upcoming-booking source is currently the
 empty F3b stub documented in the Screening module README, so live booking coverage
 is pending that adapter. Screening history is not used as a booking substitute.
+
+## F7 error contract (Dev Lead agreed scope)
+
+F7 controllers use `@UseFilters(F7ExceptionFilter)`. This is controller-scoped,
+not an APP_FILTER or a global filter. Auth and other features retain their existing
+error contracts; unmatched URLs are also handled by Nest's default routing layer.
+The shared auth implementation and token exchange are unchanged. Guard failures
+on matched F7 controller routes are wrapped by the F7 filter.
+
+Errors retain the HTTP status and return:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request data",
+    "details": { "fields": [{ "field": "dateOfBirth", "message": "Must not be in the future" }] }
+  }
+}
+```
+
+Agreed codes: `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404),
+`VALIDATION_ERROR` (400/422), `CONFLICT` (409), and `INTERNAL_ERROR` (unexpected
+or server errors). Server errors preserve statuses such as 503 but use a generic
+message and omit exception bodies, stack traces and database details. Validation
+details are optional and contain only field/message pairs, never submitted values
+or DTO targets. The F7 validation pipe retains each controller's existing input
+policy and adds structured field paths.
+
+Customer-web and staff-web F7 clients read the envelope and show validation fields
+in their existing error areas. Legacy Nest/auth messages and non-JSON fallback
+messages remain supported. These conventions can be adopted by a future global
+filter in a separate PR; this PR does not register one.

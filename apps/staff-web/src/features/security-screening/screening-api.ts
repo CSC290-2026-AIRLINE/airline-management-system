@@ -1,3 +1,4 @@
+import { f7ErrorMessage } from '../customer-search/lib/f7-api-error.ts'
 import { nationalityLabel } from '../watchlist/nationalities.ts'
 import type {
   Comparison,
@@ -94,10 +95,8 @@ export async function screeningRequest<T>(fetchWithAuth: AuthFetch, path: string
       409: 'Decision changed, please reload the latest decision before submitting again.',
     }
     let message = messages[response.status] ?? 'The screening service is unavailable. Please try again.'
-    if (response.status === 400) {
-      const body: unknown = await response.json().catch(() => null)
-      if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') message = body.message
-    }
+    const body: unknown = await response.json().catch(() => null)
+    if (response.status !== 401) message = f7ErrorMessage(body, message)
     throw new ScreeningApiError(response.status, message)
   }
   return (await response.json()) as T

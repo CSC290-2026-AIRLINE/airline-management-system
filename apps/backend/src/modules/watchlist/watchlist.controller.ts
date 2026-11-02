@@ -1,13 +1,15 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Put, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import { F7ExceptionFilter, F7ValidationPipe } from '@backend/modules/passenger-profiles/f7-exception.filter'
+import { UseFilters, Body, Controller, Get, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreateWatchlistEntryDto, UpdateWatchlistEntryDto } from './dto/watchlist-entry.dto'
 import { ListWatchlistDto } from './dto/list-watchlist.dto'
 import { WatchlistService } from './watchlist.service'
 
+@UseFilters(F7ExceptionFilter)
 @Controller('security/watchlist')
 @UsePipes(
-  new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true, validationError: { target: false, value: false } }),
+  new F7ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true, validationError: { target: false, value: false } }),
 )
 export class WatchlistController {
   constructor(private readonly service: WatchlistService) {}
