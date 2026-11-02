@@ -301,6 +301,18 @@ export class StaffService {
         where: { id: target.user_id },
         data: { disabled_at: dto.active ? null : occurredAt, updated_at: new Date() },
       })
+      // Deactivating has to kill the sessions too, not just the account. A refresh cookie outlives the password by
+      // 30 days, so without this a deactivated account — or whoever stole the cookie — could still mint access tokens
+      // until it expired, and reactivating the account would hand the old cookie straight back. Same rule as
+      // `AuthService.revokeAllForUser`, which is private to the auth module, so it is repeated here on the same
+      // transaction as the account change: either both land or neither does. `revoked_at` is a real-world time, not
+      // the simulated business time, so it uses the wall clock like the auth module does.
+      if (!dto.active) {
+        await tx.refresh_token.updateMany({
+          where: { user_id: target.user_id, revoked_at: null },
+          data: { revoked_at: new Date() },
+        })
+      }
       const updated = await tx.staff.findUniqueOrThrow({ where: { id: target.id }, select: STAFF_SELECT })
       await this.audit.write(
         {

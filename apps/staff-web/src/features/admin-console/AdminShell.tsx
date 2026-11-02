@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Menu, X } from 'lucide-react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { cn } from '@staff-web/lib/utils'
+import { useMyAccess } from './components/MyAccessProvider'
 
 /** Three tabs in display order. `current` is read from the URL so a deep link lands on the right tab. */
 const TABS = [
@@ -36,7 +37,7 @@ function Wordmark({ compact = false, size }: { compact?: boolean; size: 'sidebar
 }
 
 /** Workspace link + the signed-in footer. Shared by the desktop sidebar and the phone menu. */
-function SidebarBody({ onSignOut }: { onSignOut: () => void }) {
+function SidebarBody({ onSignOut, roleName }: { onSignOut: () => void; roleName: string }) {
   return (
     <>
       <nav className="mt-[17px] flex w-[216px] flex-col max-tablet:w-auto" aria-label="Workspace">
@@ -49,7 +50,7 @@ function SidebarBody({ onSignOut }: { onSignOut: () => void }) {
         </Link>
       </nav>
       <footer className="mt-auto px-3.5 pb-[47px] max-tablet:mt-8 max-tablet:px-3 max-tablet:pb-0">
-        <p className="text-[22px] font-semibold text-white">Administrator</p>
+        <p className="text-[22px] font-semibold text-white">{roleName}</p>
         <p className="mt-[19px] w-[204px] text-xs leading-[1.2] text-[#b7c1d1]">Menu shows the screens your role can open.</p>
         <button type="button" className="mt-[19px] text-sm font-medium text-white hover:underline" onClick={onSignOut}>
           Sign out
@@ -78,6 +79,10 @@ export function AdminShell() {
      opening reveals chrome that is hidden by default on mobile. */
   const [navOpen, setNavOpen] = useState(false)
   const description = pageDescription(location.pathname)
+  /* The caller's own role, from the one `GET /api/me/screens` that `RequireStaff` already made. The sidebar used to
+     say "Administrator" to everybody; it now names the role they actually hold. */
+  const { role } = useMyAccess()
+  const roleName = role?.name ?? 'Staff member'
 
   return (
     <div className="admin-shell flex min-h-screen bg-page font-sans leading-[normal] text-ink [color-scheme:light] max-tablet:flex-col">
@@ -104,7 +109,7 @@ export function AdminShell() {
         ) : (
           <>
             <p className="mt-2.5 pl-1.5 text-xs text-[#b7c1d1]">ADMIN WORKSPACE</p>
-            <SidebarBody onSignOut={() => void logout()} />
+            <SidebarBody onSignOut={() => void logout()} roleName={roleName} />
             <button
               type="button"
               className="absolute top-[22px] right-[14px] flex size-7 items-center justify-center rounded-md border border-[#6e87b2cc] bg-white/10 text-white hover:bg-white/15"
@@ -134,7 +139,7 @@ export function AdminShell() {
         {navOpen && (
           <div className="absolute inset-x-0 top-full flex flex-col bg-navy px-5 pt-1 pb-6 shadow-[0_12px_24px_rgba(10,20,36,0.25)]">
             <p className="text-xs text-[#b7c1d1]">ADMIN WORKSPACE</p>
-            <SidebarBody onSignOut={() => void logout()} />
+            <SidebarBody onSignOut={() => void logout()} roleName={roleName} />
           </div>
         )}
       </header>

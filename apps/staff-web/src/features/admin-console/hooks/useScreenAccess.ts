@@ -13,6 +13,11 @@ export interface UseScreenAccess {
    */
   provisioned: boolean | null
   /**
+   * The caller's own role, or `null` when they have no staff account (or the request failed). The console labels the
+   * person with the role they actually hold instead of a fixed "Administrator".
+   */
+  role: { code: string; name: string } | null
+  /**
    * Whether the user may open `code`. Always false while `loading` — checking too early would flash the
    * access-denied screen at somebody who does in fact have the screen.
    */
@@ -38,12 +43,13 @@ export interface UseScreenAccess {
  * Granting is done by an admin on the Role access tab (`PUT /admin/roles/:id/screens`) — see `contracts/README.md`.
  */
 export function useScreenAccess(): UseScreenAccess {
-  const { loading, error, codes, provisioned } = useMyScreens()
+  const { loading, error, codes, provisioned, role } = useMyScreens()
   return {
     loading,
     error,
     codes,
     provisioned,
+    role,
     // `codes.includes` rather than a Set: the list is tens of entries and this runs during render.
     canOpen: (code: string) => !loading && codes.includes(code),
   }

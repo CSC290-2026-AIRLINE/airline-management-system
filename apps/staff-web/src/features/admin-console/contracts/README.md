@@ -22,82 +22,60 @@ The frontend wraps this for you via `useAppAuth().fetchWithAuth`.
 
 ---
 
-## 2. `POST /api/admin/screens` — register your screens on boot
+## 2. Register your screens — `registerSelfScreens` in your module's `onModuleInit`
 
-**Every feature should call this once on startup**, from inside its Nest module's
-`OnModuleInit`. It is idempotent on `code` — you can call it every boot, repeated
-calls are a no-op except that an existing row's `kind` is never mutated.
+**Every feature registers its own screens at backend boot.** Import
+`AdminConsoleModule` and call `AdminConsoleService.registerSelfScreens` from your
+module's `OnModuleInit` — the same way F15 registers its own screens.
 
-### Request body
+```ts
+import { Module, type OnModuleInit } from '@nestjs/common'
+import { AdminConsoleModule } from '@backend/modules/admin-console/admin-console.module'
+import { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
 
-```json
-{
-  "code": "f03.seat_hold",
-  "name": "Seat hold",
-  "kind": "assignable" // ← optional; default is "assignable"
+@Module({
+  imports: [AdminConsoleModule],
+})
+export class SeatHoldModule implements OnModuleInit {
+  constructor(private readonly admin: AdminConsoleService) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.admin.registerSelfScreens([{ code: 'f03.seat_hold', name: 'Seat hold', kind: 'assignable', feature_no: '03' }])
+  }
 }
 ```
 
-| Field  | Type   | Required | Notes                                                                                                       |
-| ------ | ------ | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `code` | string | yes      | Format `f<feature_no>.<snake_name>` per `schema.sql`. Lowercase letters, digits, `_`, `-` only. ≤ 64 chars. |
-| `name` | string | yes      | Human-readable, ≤ 120 chars.                                                                                |
-| `kind` | enum   | no       | One of `core`, `admin`, `assignable`. Defaults to `assignable`.                                             |
+`AdminConsoleModule` exports `AdminConsoleService`, so importing the module is all
+the wiring there is. The call is idempotent on `code` — you can run it on every
+boot; repeated calls are a no-op except that an existing row's `kind` is never
+mutated.
+
+### Why not `POST /api/admin/screens`?
+
+That route exists, but it is **admin-only** and it is not how a feature registers
+its screens:
+
+- At boot nobody is signed in, so the call answers `401`.
+- From the frontend, a signed-in staff member who is not an admin gets `403` — and
+  every attempt writes an `access_denied` row into the audit log.
+
+`registerSelfScreens` writes to the same `screen` table, needs no user and no
+token, and runs once per boot.
+
+### What to register
+
+| Field        | Type   | Required | Notes                                                                                                       |
+| ------------ | ------ | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `code`       | string | yes      | Format `f<feature_no>.<snake_name>` per `schema.sql`. Lowercase letters, digits, `_`, `-` only. ≤ 64 chars. |
+| `name`       | string | yes      | Human-readable, ≤ 120 chars.                                                                                |
+| `kind`       | enum   | yes      | One of `core`, `admin`, `assignable`.                                                                       |
+| `feature_no` | string | yes      | The feature number, zero-padded to two digits (`"03"`). It groups the screen in the Role access matrix.     |
 
 `kind` semantics:
 
 - `core` — always visible (e.g. Home, My profile). **Cannot be granted** to a role.
 - `admin` — only reachable from inside an admin workspace, like this console. **Cannot be granted** to a role.
 - `assignable` — any role's grants can include this screen. **This is what you want for your real screens.**
-
-### Response (200)
-
-```json
-{
-  "ok": true,
-  "screen": {
-    "id": "5fd1…",
-    "code": "f03.seat_hold",
-    "name": "Seat hold",
-    "kind": "assignable",
-    "feature_no": "3"
-  }
-}
-```
-
-### Example (frontend, inside your React feature)
-
-```ts
-useEffect(() => {
-  fetchWithAuth('/api/admin/screens', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ code: 'f03.seat_hold', name: 'Seat hold' }),
-  }).catch(console.error)
-}, [])
-```
-
-### Example (backend, inside your Nest module)
-
-```ts
-@Injectable()
-export class SeatHoldModule implements OnModuleInit {
-  constructor(private readonly http: HttpService) {}
-  async onModuleInit() {
-    await firstValueFrom(
-      this.http.post(
-        `${process.env.ADMIN_API_URL}/api/admin/screens`,
-        { code: 'f03.seat_hold', name: 'Seat hold' },
-        // Reuse the admin's Bearer token from the request context — never hardcode
-      ),
-    )
-  }
-}
-```
-
-We recommend you do this from the **frontend** instead — the `AuthProvider` is
-already wired, and your screens will appear in the admin console as soon as the
-admin reloads the Role access tab (no backend restart required).
 
 ---
 
@@ -193,8 +171,9 @@ Inside the admin workspace the gate is mounted once in
 `src/routes/_authenticated/admin/route.tsx`, **above** `AdminShell` — one
 `/api/me/screens` for all three tabs, and a refused user never sees the sidebar at all.
 `RequireStaff` reads `useScreenAccess()` itself, so do not call that hook in the route as
-well; you would fetch twice. `MyAccessWidget` in the same folder is our sidebar's demo
-of the raw hook — it is not a gate, don't import it.
+well; you would fetch twice. If your page needs the caller's own role, read it from
+`useMyAccess()` (`components/MyAccessProvider.tsx`) — `RequireStaff` puts it there from
+the same response, so it costs no extra request.
 
 `RequireStaff` takes an optional `loadingFallback` — pass your own skeleton there so the
 swap does not flash a different layout:
@@ -395,18 +374,18 @@ await this.db.$transaction(async (tx) => {
 
 ### What to write
 
-Once you have a `source_feature` (your 2-digit feature number) and start
+Once you have a `source_feature` (your feature number — see below) and start
 producing user actions, write to `audit_log` with these fields (the `AuditService.write`
 input names them in camelCase):
 
 | Field                                  | Type         | Notes                                                                                                                                    |
 | -------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `source_feature`                       | text         | Your feature number (e.g. `'3'`).                                                                                                        |
+| `source_feature`                       | text         | Your feature number, e.g. `'3'`. See "Feature numbers" below.                                                                            |
 | `action`                               | text         | Must be one of the 11 strings below.                                                                                                     |
 | `entity_type`                          | text         | e.g. `seat_hold`, `booking`, `staff`.                                                                                                    |
 | `entity_id`                            | text         | The row's ID (uuid / serial as text).                                                                                                    |
 | `summary`                              | text?        | One-line human description.                                                                                                              |
-| `reason`                               | text?        | **Required on every row** — say why the action happened, not what it was. 10–500 chars.                                                  |
+| `reason`                               | text?        | Optional in the schema — the writer does **not** require it. Say why the action happened, not what it was. Clipped to 500 chars.         |
 | `before`                               | jsonb?       | Optional. Previous state. **Set `is_sensitive=true` to mask in the UI.**                                                                 |
 | `after`                                | jsonb?       | Optional. New state.                                                                                                                     |
 | `is_sensitive`                         | boolean      | When true, `before` and `after` come back as `null` in the audit endpoints.                                                              |
@@ -414,10 +393,18 @@ input names them in camelCase):
 | `recorded_at`                          | timestamptz  | Defaults to real DB `now()`. **Do not set manually.**                                                                                    |
 | `actor_id`, `actor_role`, `actor_type` | text / enum  | The authenticated user. Resolve it server-side from the request — never take an actor from a body, query, or header the caller supplied. |
 
-**Every row needs a `reason`.** The column is nullable in the schema, so nothing stops
-you writing one — but the Audit log tab exists to answer "why did this happen", and a
-row without a reason answers nothing. Write the _why_ (ticket, request, policy), not a
-restatement of `summary`: "Card payment received — card ending 4417", not "paid".
+**Feature numbers are not always two digits.** They are stored as the text you pass,
+unpadded and unabbreviated: `'2'`, `'15'`, `'3b'`. The Audit log tab groups by this
+string and the Role access tab derives the `F…` header from it, so `'3'` and `'03'` are
+two different features there. Use the number your feature owns and keep it consistent
+across every row you write — the console does not normalise it for you.
+
+**A `reason` is strongly recommended, but not enforced.** The column is nullable and
+`AuditService.write` accepts a row without one — it trims what you pass and clips it at
+500 characters, nothing more. Write the _why_ (ticket, request, policy), not a
+restatement of `summary`: "Card payment received — card ending 4417", not "paid". A
+row without a reason still shows up in the log; it just cannot answer "why did this
+happen" on its own.
 
 ### Allowed `action` values — keep in sync with `AUDIT_ACTIONS`
 
@@ -456,7 +443,7 @@ entry with a clear `summary` such as "correcting booking#1234 status (was X)".
 
 | Caller                           | Endpoint                           | Auth      | Purpose                                              |
 | -------------------------------- | ---------------------------------- | --------- | ---------------------------------------------------- |
-| Your feature (frontend, on boot) | `POST /api/admin/screens`          | admin     | Register the screens your feature exposes.           |
+| Your feature (backend module)    | `registerSelfScreens([...])`       | n/a       | Register the screens your feature exposes, on boot.  |
 | Admin console (frontend)         | `GET /api/admin/screens`           | admin     | Render the matrix.                                   |
 | Admin console (frontend)         | `GET /api/admin/roles`             | admin     | Render the role selector and staff count.            |
 | Admin console (frontend)         | `GET /api/admin/roles/:id/screens` | admin     | Show which `assignable` screens a role has.          |

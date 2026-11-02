@@ -446,9 +446,9 @@ export class AdminConsoleService {
   async getMyScreens(userId: string): Promise<MyScreensDto> {
     const staff = await this.db.staff.findFirst({
       where: { user_id: userId, deleted_at: null },
-      select: { role_id: true, role: { select: { is_admin: true } } },
+      select: { role_id: true, role: { select: { code: true, name: true, is_admin: true } } },
     })
-    if (!staff) return { screen_codes: [], provisioned: false }
+    if (!staff) return { screen_codes: [], provisioned: false, role: null }
 
     const grants = await this.db.role_screen.findMany({
       where: { role_id: staff.role_id },
@@ -461,8 +461,9 @@ export class AdminConsoleService {
       select: { code: true },
     })
 
+    const role = { code: staff.role.code, name: staff.role.name }
     if (grants.length === 0) {
-      return { screen_codes: allowedAuto.map((s) => s.code), provisioned: true }
+      return { screen_codes: allowedAuto.map((s) => s.code), provisioned: true, role }
     }
 
     const allowedGranted = await this.db.screen.findMany({
@@ -473,7 +474,7 @@ export class AdminConsoleService {
     const codes = new Set<string>()
     for (const s of allowedAuto) codes.add(s.code)
     for (const s of allowedGranted) codes.add(s.code)
-    return { screen_codes: [...codes], provisioned: true }
+    return { screen_codes: [...codes], provisioned: true, role }
   }
 
   /**

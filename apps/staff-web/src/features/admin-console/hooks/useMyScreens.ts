@@ -13,6 +13,11 @@ export interface UseMyScreensState {
   provisioned: boolean | null
   /** Where the current value came from. `pending` is the brief window before the first fetch resolves. */
   source: 'live' | 'pending'
+  /**
+   * The signed-in user's own role, or `null` when they have no staff account (or the request failed). The console
+   * labels the person with the role they actually hold instead of a fixed "Administrator".
+   */
+  role: { code: string; name: string } | null
 }
 
 /**
@@ -29,6 +34,7 @@ export function useMyScreens(): UseMyScreensState {
     codes: [],
     provisioned: null,
     source: 'pending',
+    role: null,
   }))
 
   useEffect(() => {
@@ -36,7 +42,14 @@ export function useMyScreens(): UseMyScreensState {
     fetchJson<MyScreensResponse>('/api/me/screens')
       .then((d) => {
         if (cancelled) return
-        setState({ loading: false, error: null, codes: d.screen_codes, provisioned: d.provisioned, source: 'live' })
+        setState({
+          loading: false,
+          error: null,
+          codes: d.screen_codes,
+          provisioned: d.provisioned,
+          source: 'live',
+          role: d.role ?? null,
+        })
       })
       .catch((e: unknown) => {
         if (cancelled) return
@@ -48,6 +61,7 @@ export function useMyScreens(): UseMyScreensState {
           // would send a real staff member to the "ask an admin" screen because their network blipped.
           provisioned: null,
           source: 'live',
+          role: null,
         })
       })
     return () => {

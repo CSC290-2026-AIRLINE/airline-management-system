@@ -106,4 +106,11 @@ export interface MyScreensDto {
    * looks identical. Only `provisioned: false` should send someone to the "ask an Admin" screen.
    */
   provisioned: boolean
+  /**
+   * The signed-in user's role — code and display name. `null` when they have no staff account.
+   *
+   * It is here so the console can label the signed-in person with the role they actually hold instead of a fixed
+   * "Administrator". It is their own role only; other people's roles come from the admin endpoints.
+   */
+  role: { code: string; name: string } | null
 }

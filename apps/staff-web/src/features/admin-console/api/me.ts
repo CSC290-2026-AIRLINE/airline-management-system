@@ -10,6 +10,11 @@ export interface MyScreensResponse {
    * for an account they already have would be worse than showing them nothing.
    */
   provisioned: boolean
+  /**
+   * The signed-in user's own role, or `null` when they have no staff account. The console uses it to label the person
+   * with the role they actually hold instead of a fixed "Administrator".
+   */
+  role: { code: string; name: string } | null
 }
 
 /**

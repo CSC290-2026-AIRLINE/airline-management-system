@@ -26,7 +26,7 @@ export class MeController {
   @Get('screens')
   async myScreens(@Req() req: MeRequest): Promise<MyScreensDto> {
     const user = req.user
-    if (!user) return { screen_codes: [], provisioned: false }
+    if (!user) return { screen_codes: [], provisioned: false, role: null }
     return this.svc.getMyScreens(user.id)
   }
 }

@@ -28,12 +28,17 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /**
- * Friendly diagnostic shown when an admin API call fails. Surfaces the HTTP status (when known) and the setup steps
- * the user can take to recover — replaces the small "Failed to load: …" placeholder that page bodies used to render.
+ * Friendly diagnostic shown when an admin API call fails. Surfaces the HTTP status (when known) and, only when the
+ * request never reached the API, the setup steps the user can take to recover — replaces the small "Failed to load: …"
+ * placeholder that page bodies used to render.
  */
 export function AdminErrorCard({ page, error, status, onRetry }: AdminErrorCardProps) {
   const headline = status ? `${page} — HTTP ${status}` : `${page} failed to load`
   const isAuth = status === 401 || status === 403
+  /* No HTTP status means the request got no answer at all — the API is not running, or the browser could not reach
+     it. That is the only case where "start the database and the backend" is the right advice. A 403 or a 500 means
+     the server did answer, and telling a signed-in admin to run `npm run db:up` is noise they have to scroll past. */
+  const showSetup = status === undefined
 
   return (
     <Card className={PAGE_CARD}>
@@ -60,25 +65,38 @@ export function AdminErrorCard({ page, error, status, onRetry }: AdminErrorCardP
           </Section>
         )}
 
-        <Section title="Quick checklist">
-          <ol className="list-decimal pl-5 text-sm leading-relaxed text-[#374151]">
-            <li>
-              Run <Code>npm run db:up</Code> in the repo root (PostgreSQL + SeaweedFS).
-            </li>
-            <li>
-              Run <Code>npm run db:migrate</Code> and <Code>npm run db:seed</Code>.
-            </li>
-            <li>
-              Run <Code>npm run -w apps/backend dev</Code> so port 8080 is serving the API.
-            </li>
-            <li>
-              Sign in via Clerk with an account whose role row has <Code>is_admin=true</Code>.
-            </li>
-          </ol>
-          <p className="mt-1 text-xs text-[#6b7280]">
-            The admin console reads live data — with the API up and a staff account in place, both tabs fill in.
-          </p>
-        </Section>
+        {!isAuth && status !== undefined && (
+          <Section title="What to try">
+            <ul className="list-disc pl-5 text-sm leading-relaxed text-[#374151]">
+              <li>Retry — a failure on the API side is often transient.</li>
+              <li>
+                If it keeps failing, check the backend log on port 8080 for the request to <Code>/api/admin</Code>.
+              </li>
+            </ul>
+          </Section>
+        )}
+
+        {showSetup && (
+          <Section title="Quick checklist">
+            <ol className="list-decimal pl-5 text-sm leading-relaxed text-[#374151]">
+              <li>
+                Run <Code>npm run db:up</Code> in the repo root (PostgreSQL + SeaweedFS).
+              </li>
+              <li>
+                Run <Code>npm run db:migrate</Code> and <Code>npm run db:seed</Code>.
+              </li>
+              <li>
+                Run <Code>npm run -w apps/backend dev</Code> so port 8080 is serving the API.
+              </li>
+              <li>
+                Sign in via Clerk with an account whose role row has <Code>is_admin=true</Code>.
+              </li>
+            </ol>
+            <p className="mt-1 text-xs text-[#6b7280]">
+              The admin console reads live data — with the API up and a staff account in place, both tabs fill in.
+            </p>
+          </Section>
+        )}
 
         <footer className="mt-4">
           <Button size="sm" onClick={onRetry}>

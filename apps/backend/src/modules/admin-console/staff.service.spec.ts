@@ -56,6 +56,7 @@ function makeSvc() {
       count: jest.fn().mockResolvedValue(1),
     },
     audit_log: { create: jest.fn().mockResolvedValue({ id: 'audit-1', seq: 1n }) },
+    refresh_token: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     $executeRaw: jest.fn().mockResolvedValue(1),
   }
   const db = {
@@ -259,5 +260,26 @@ describe('StaffService.setStatus', () => {
     tx.staff.findUniqueOrThrow.mockResolvedValue(staffRecord())
     await svc.setStatus(ADMIN, 'staff-ben', { active: true, reason: REASON })
     expect(tx.user.update.mock.calls[0][0].data.disabled_at).toBeNull()
+  })
+
+  it('revokes the refresh tokens of the deactivated user in the same transaction', async () => {
+    const { svc, db, tx } = makeSvc()
+    db.staff.findFirst.mockResolvedValue(staffRecord())
+    tx.staff.findUniqueOrThrow.mockResolvedValue(staffRecord({ disabled_at: new Date() }))
+    await svc.setStatus(ADMIN, 'staff-ben', { active: false, reason: REASON })
+    // The old 30-day refresh cookie must stop working now, not when it happens to expire.
+    expect(tx.refresh_token.updateMany).toHaveBeenCalledWith({
+      where: { user_id: 'user-ben', revoked_at: null },
+      data: { revoked_at: expect.any(Date) },
+    })
+  })
+
+  it('leaves revoked refresh tokens revoked when the account is activated again', async () => {
+    const { svc, db, tx } = makeSvc()
+    db.staff.findFirst.mockResolvedValue(staffRecord({ disabled_at: new Date() }))
+    tx.staff.findUniqueOrThrow.mockResolvedValue(staffRecord())
+    await svc.setStatus(ADMIN, 'staff-ben', { active: true, reason: REASON })
+    // Reactivating must not hand the old cookie back: the tokens stay revoked, the person signs in again.
+    expect(tx.refresh_token.updateMany).not.toHaveBeenCalled()
   })
 })

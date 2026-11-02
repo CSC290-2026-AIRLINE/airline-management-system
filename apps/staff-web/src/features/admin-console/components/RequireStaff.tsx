@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useScreenAccess } from '../hooks/useScreenAccess'
+import { MyAccessProvider } from './MyAccessProvider'
 import { RefusalScreen } from './RefusalScreen'
 import { StaffNotProvisionedScreen } from './StaffNotProvisionedScreen'
 
@@ -39,7 +40,7 @@ interface RequireStaffProps {
  *     which screen code it is. Do the per-screen check *after* this one.
  */
 export function RequireStaff({ children, loadingFallback }: RequireStaffProps) {
-  const { loading, provisioned } = useScreenAccess()
+  const { loading, provisioned, role } = useScreenAccess()
 
   if (loading) return <>{loadingFallback ?? <p className="p-6 text-sm text-muted-foreground">Checking your access…</p>}</>
   /* `RefusalScreen` supplies the chrome above the card, not the card itself — whatever replaces the shell owns the
@@ -51,5 +52,7 @@ export function RequireStaff({ children, loadingFallback }: RequireStaffProps) {
       </RefusalScreen>
     )
   }
-  return <>{children}</>
+  /* The role comes from the same `GET /api/me/screens` response, so it is handed down through a context rather than
+     fetched again by whoever wants to show it. */
+  return <MyAccessProvider value={{ role }}>{children}</MyAccessProvider>
 }
