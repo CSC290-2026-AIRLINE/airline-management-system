@@ -225,14 +225,10 @@ afterAll(async () => {
 
 const asJson = (res: request.Response) => JSON.parse(res.text) as Record<string, unknown>
 
-/**
- * The `message` a client would render. `ValidationPipe` reports one entry per failed rule,
- * so it is an array; `lib/api.ts` takes the first. Mirrors that rather than asserting the
- * body shape directly, so this keeps testing the contract the UI depends on.
- */
+/** The F7 message rendered by the client after envelope migration. */
 function firstMessage(body: Record<string, unknown>): unknown {
-  const { message } = body
-  return Array.isArray(message) ? message[0] : message
+  const envelope = body.error as { message?: unknown } | undefined
+  return envelope?.message
 }
 
 describe('GET /api/staff/passengers', () => {
@@ -292,9 +288,7 @@ describe('GET /api/staff/passengers', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(400)
 
-    // `lib/api.ts` reads `message` out of the Nest error body and shows it to the user.
-    // The `ValidationPipe` reports one message per failed rule, so `message` is an array
-    // and the client takes the first entry.
+    // The client reads the F7 envelope and its structured validation details.
     expect(firstMessage(asJson(res))).toEqual(expect.any(String))
   })
 

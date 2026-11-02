@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import { F7ExceptionFilter, F7ValidationPipe } from '@backend/modules/passenger-profiles/f7-exception.filter'
+import { UseFilters, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CorrectIdentityDto } from './dto/correct-identity.dto'
@@ -21,7 +22,7 @@ const PASSENGER_ID_PIPE = new ParseUUIDPipe({ errorHttpStatusCode: 400 })
  * route never reads — `PUT .../identity` relies on that to keep the correction to the
  * three identity-lock columns.
  */
-const PASSENGER_VALIDATION_PIPE = new ValidationPipe({ transform: true, whitelist: true })
+const PASSENGER_VALIDATION_PIPE = new F7ValidationPipe({ transform: true, whitelist: true })
 
 /**
  * Staff-facing passenger and customer-holder profiles.
@@ -39,6 +40,7 @@ const PASSENGER_VALIDATION_PIPE = new ValidationPipe({ transform: true, whitelis
  * normalised DTO instances rather than raw request values.
  */
 @UsePipes(PASSENGER_VALIDATION_PIPE)
+@UseFilters(F7ExceptionFilter)
 @Controller('staff/passengers')
 export class PassengerProfilesController {
   constructor(private readonly passengerProfiles: PassengerProfilesService) {}

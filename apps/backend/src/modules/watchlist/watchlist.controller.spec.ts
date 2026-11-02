@@ -96,6 +96,23 @@ describe('Watchlist HTTP contract', () => {
     await app?.close()
   })
 
+  it('wraps JWT guard failures on F7 routes', async () => {
+    const result = await request(app.getHttpServer()).get('/api/security/watchlist').expect(401)
+    expect(result.body).toEqual({ error: { code: 'UNAUTHORIZED', message: expect.any(String) } })
+  })
+  it('returns structured DTO field errors', async () => {
+    const result = await request(app.getHttpServer())
+      .post('/api/security/watchlist')
+      .set('Authorization', 'Bearer valid')
+      .send({ ...payload, gender: 'invalid' })
+      .expect(400)
+    expect(result.body).toMatchObject({
+      error: {
+        code: 'VALIDATION_ERROR',
+        details: { fields: expect.arrayContaining([expect.objectContaining({ field: 'gender', message: expect.any(String) })]) },
+      },
+    })
+  })
   it('requires the existing Bearer authentication even for read routes', async () => {
     await request(app.getHttpServer()).get('/api/security/watchlist').expect(401)
     await request(app.getHttpServer()).get('/api/security/watchlist').set('Authorization', 'Bearer invalid').expect(401)

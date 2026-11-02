@@ -71,3 +71,10 @@ npm exec -w apps/backend -- tsx -r tsconfig-paths/register src/modules/watchlist
 The helper uses the existing DbService and local database configuration. It upserts `{ code: 'security', name: 'Security', is_admin: false }` without duplicating or overwriting an existing role. Assignment requires exactly one enabled, non-deleted staff account linked to Clerk. Only that account's role reference and update timestamp change. Role creation and assignment share a transaction. This helper refuses production and non-loopback database hosts. It does not create Clerk accounts, tokens, fixture passengers, or watchlist entries, and it never runs the shared database seed.
 
 After assignment, verify the staff row's `role_id` points to the `security` role. Existing backend tokens identify the user; Watchlist reads the current role from the database on each request. Use the authenticated API testing steps in TESTING.md to verify real writes. The authenticated frontend reads persisted API data.
+
+## Error responses
+
+This module's controllers use the controller-scoped F7 exception filter. Errors
+follow `{ error: { code, message, details? } }` with the existing HTTP status.
+Validation details use `details.fields: [{ field, message }]`. See the Passenger
+Profiles README's F7 error contract for codes and scope. No global filter is installed.

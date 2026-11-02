@@ -1,3 +1,4 @@
+import { f7ErrorMessage } from '../../customer-search/lib/f7-api-error.ts'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { entryName, type EntryFields, type EntryStatus, type ListType, type WatchlistEntry } from '../watchlist.types'
@@ -79,10 +80,8 @@ export function useWatchlist() {
       else if (response.status === 403) description = 'A staff account with the security role is required.'
       else if (response.status === 404) description = 'This entry no longer exists. Refresh the list.'
       else if (response.status === 409) description = 'This entry changed or was already cleared. Refresh and try again.'
-      else if (response.status === 400) {
-        const body = (await response.json().catch(() => null)) as { message?: string | string[] } | null
-        description = Array.isArray(body?.message) ? body.message.join(' ') : (body?.message ?? 'Check the entered values.')
-      }
+      const body: unknown = await response.json().catch(() => null)
+      if (response.status !== 401) description = f7ErrorMessage(body, description)
       throw new Error(description)
     }
     return response.json() as Promise<T>

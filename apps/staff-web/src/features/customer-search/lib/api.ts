@@ -1,3 +1,4 @@
+import { f7ErrorMessage } from './f7-api-error.ts'
 import { useEffect, useMemo, useRef } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import type { Gender, PersonFilter } from '../types'
@@ -87,11 +88,6 @@ export interface SearchPeopleParams {
   size: number
 }
 
-/** Nest's error body: `{ statusCode, message, error }`, where `message` may be an array. */
-interface ErrorBody {
-  message?: string | string[]
-}
-
 async function toApiError(res: Response): Promise<ApiError> {
   if (res.status === 401) {
     // `fetchWithAuth` already retried once with a fresh token, so this is terminal.
@@ -100,11 +96,8 @@ async function toApiError(res: Response): Promise<ApiError> {
 
   let message = `Request failed (${res.status}).`
   try {
-    const body = (await res.json()) as ErrorBody
-    const raw = Array.isArray(body?.message) ? body.message[0] : body?.message
-    if (typeof raw === 'string' && raw.trim() !== '') {
-      message = raw
-    }
+    const body: unknown = await res.json()
+    message = f7ErrorMessage(body, message)
   } catch {
     // A non-JSON error body (a proxy or gateway page) leaves the default message.
   }

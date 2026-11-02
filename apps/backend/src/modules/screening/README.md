@@ -165,3 +165,10 @@ The port and checks run inside the originating database transaction; adapters mu
 not perform external delivery there. The current sequential batch is intended for
 the stub integration; large F3b batches will need an agreed transactional job/outbox
 contract before production rollout.
+
+## Error responses
+
+This module's controllers use the controller-scoped F7 exception filter. Errors
+follow `{ error: { code, message, details? } }` with the existing HTTP status.
+Validation details use `details.fields: [{ field, message }]`. See the Passenger
+Profiles README's F7 error contract for codes and scope. No global filter is installed.

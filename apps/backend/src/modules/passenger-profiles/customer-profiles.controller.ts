@@ -1,4 +1,5 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import { F7ExceptionFilter, F7ValidationPipe } from '@backend/modules/passenger-profiles/f7-exception.filter'
+import { UseFilters, Controller, Get, Param, ParseUUIDPipe, Query, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { SearchCustomersDto } from './dto/search-customers.dto'
@@ -11,7 +12,7 @@ const CUSTOMER_ID_PIPE = new ParseUUIDPipe({ errorHttpStatusCode: 400 })
  * Same pipe as `PassengerProfilesController`, and for the same reason: `main.ts` registers no
  * global pipe, so a controller without its own `@UsePipes` is silently unvalidated.
  */
-const CUSTOMER_VALIDATION_PIPE = new ValidationPipe({ transform: true, whitelist: true })
+const CUSTOMER_VALIDATION_PIPE = new F7ValidationPipe({ transform: true, whitelist: true })
 
 /**
  * The account-holder side of the Feature 7 Artifact's route table, which lists `/staff/customers`
@@ -34,6 +35,7 @@ const CUSTOMER_VALIDATION_PIPE = new ValidationPipe({ transform: true, whitelist
  * no `@Public()`. See the module README for the unenforced `S` staff-role gap.
  */
 @UsePipes(CUSTOMER_VALIDATION_PIPE)
+@UseFilters(F7ExceptionFilter)
 @Controller('staff/customers')
 export class CustomerProfilesController {
   constructor(private readonly passengerProfiles: PassengerProfilesService) {}

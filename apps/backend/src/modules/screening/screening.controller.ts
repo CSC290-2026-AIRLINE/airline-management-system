@@ -1,10 +1,12 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
+import { F7ExceptionFilter } from '@backend/modules/passenger-profiles/f7-exception.filter'
+import { UseFilters, Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CheckDto, CheckPipe, QueueDto, QueuePipe, ReviewDto, ReviewPipe } from './dto/screening.dto'
 import { ScreeningCheckService } from './screening-check.service'
 import { ScreeningService } from './screening.service'
 
+@UseFilters(F7ExceptionFilter)
 @Controller('security/screenings')
 export class ScreeningController {
   constructor(private readonly service: ScreeningService) {}
@@ -24,6 +26,7 @@ export class ScreeningController {
 
 // Spec: Sys. HTTP remains Security-staff only until shared system auth exists.
 // F3b/F6 call ScreeningCheckService.checkSystem through ScreeningModule internally.
+@UseFilters(F7ExceptionFilter)
 @Controller('screening')
 export class ScreeningCheckController {
   constructor(private readonly checks: ScreeningCheckService) {}
