@@ -32,11 +32,11 @@ The Artifact's route table mounts the account-holder reads under `staff/` alongs
 passenger ones. They are separate routes rather than a client-side filter, so the contract
 lives in the API instead of only in the browser.
 
-**Guard label.** The Artifact marks these `S` (staff). There is no role guard in
-this codebase — `AuthenticatedUser` is `{ id, email }` and `apps/backend/CLAUDE.md`
-says to ask before adding one — so today any authenticated caller, including a
-customer token, reaches these routes. That is an open gap, not a design choice;
-see _Blockers_ below.
+**Guard label.** The global JWT guard authenticates the caller. The F7 controller-scoped
+`StaffProfilesGuard` requires an active staff account from the database: no deleted
+staff/user or disabled user. Customer tokens receive `403 FORBIDDEN`; missing or invalid
+tokens receive `401 UNAUTHORIZED`. Any active staff role is allowed here. The
+Security-only checks on `/security/*` are unchanged.
 
 ### `POST /api/staff/passengers`
 
@@ -378,7 +378,7 @@ rather than a Postgres cast failure.
   rules but the screening service itself is not built, so there is no documented
   contract to call. This module writes the correction and its audit row; the
   re-screen is a reported dependency, not a silent omission.
-- **The `S` staff guard is not enforced.** See the note under _Routes_.
+- **The `S` staff guard is enforced.** See the note under _Routes_ and the controller authorization tests.
 - **The seed data has no passport numbers or Thai names.** `src/db/seed.ts` populates the
   Latin names, date of birth, gender and nationality, but leaves `passport_number`,
   `local_first_name` and `local_last_name` null. Those three are searchable fields, and the

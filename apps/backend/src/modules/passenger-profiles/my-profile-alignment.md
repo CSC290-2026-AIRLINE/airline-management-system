@@ -80,8 +80,8 @@ is introduced. See the Screening README for this exception to the specification.
   implement its check-in flow/messages. This profile scope does not claim that
   check-in is connected.
 - **Staff authorization and masking:** staff search/correction UI and APIs exist,
-  but staff-only authorization and role-dependent passport visibility remain review
-  items. Security APIs enforce their own security-role restriction. Do not infer
+  with staff-only authorization enforced by a controller-scoped guard. Role-dependent
+  passport visibility remains a review item. Security APIs enforce their own security-role restriction. Do not infer
   that a staff-web route alone provides access control.
 - **Screening dependencies:** queue/review and matching services now exist in this
   branch. Booking summaries and authority notifications still use mock adapters;

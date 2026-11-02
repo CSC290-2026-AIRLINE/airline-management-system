@@ -22,7 +22,7 @@ describe('Combined F7 module route registration', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [PassengerProfilesModule] })
       .overrideProvider(DbService)
-      .useValue({})
+      .useValue({ staff: { findFirst: jest.fn().mockResolvedValue({ id: actor.id }) } })
       .overrideProvider(ProfileIdentityService)
       .useValue(identity)
       .compile()
