@@ -28,6 +28,11 @@ const nullableTrim = ({ value }: { value: unknown }) => (typeof value === 'strin
 const country = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim().toLowerCase() : value)
 const passport = ({ value }: { value: unknown }) => normalizePassportNumber(value)
 const latinName = ({ value }: { value: unknown }) => normalizePassportName(value)
+const namePrefix = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'string') return value
+  const normalized = normalizePassportName(value)
+  return typeof normalized === 'string' && normalized !== '' ? normalized : undefined
+}
 const passportName = /^[A-Za-z][A-Za-z .'-]*$/
 
 @ValidatorConstraint({ name: 'birthDate', async: false })
@@ -183,4 +188,14 @@ export class SavedPassengerQueryDto {
   @Min(1)
   @Max(100)
   limit: number = 50
+  /**
+   * Name prefix used for autocomplete. It is trimmed and normalized to the same ASCII passport
+   * spelling the stored names use, so a term with accents still matches the saved identity.
+   * A blank term means "no filter" and returns the whole saved list.
+   */
+  @Transform(namePrefix)
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  q?: string
 }
