@@ -1,3 +1,4 @@
+import { ScreeningModule } from '@backend/modules/screening/screening.module'
 import { Module } from '@nestjs/common'
 import { DbModule } from '@backend/db/db.module'
 import { CustomerAccountProfilesController } from './customer-account-profiles.controller'
@@ -9,7 +10,7 @@ import { PassengerProfilesService } from './passenger-profiles.service'
 import { ProfileIdentityService } from './profile-identity.service'
 
 @Module({
-  imports: [DbModule],
+  imports: [DbModule, ScreeningModule],
   controllers: [CustomerAccountProfilesController, CustomerIdentityController, PassengerProfilesController, CustomerProfilesController],
   providers: [CustomerAccountProfilesService, ProfileIdentityService, PassengerProfilesService],
   exports: [PassengerProfilesService],

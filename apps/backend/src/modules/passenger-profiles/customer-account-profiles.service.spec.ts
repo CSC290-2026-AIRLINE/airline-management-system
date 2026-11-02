@@ -1,3 +1,4 @@
+import { ScreeningRescreenService } from '@backend/modules/screening/screening-rescreen.service'
 import {
   BadRequestException,
   ConflictException,
@@ -8,6 +9,8 @@ import {
 } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { CustomerAccountProfilesService } from './customer-account-profiles.service'
+
+const rescreen = { run: jest.fn().mockResolvedValue({ runs: 0, bookingSource: 'stub' }) }
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
@@ -62,11 +65,34 @@ describe('CustomerAccountProfilesService', () => {
   let db: ReturnType<typeof makeDatabase>
   let service: CustomerAccountProfilesService
   beforeEach(() => {
+    rescreen.run.mockClear()
     db = makeDatabase()
     db.$transaction.mockImplementation((operation: (tx: ReturnType<typeof makeDatabase>) => Promise<unknown>) => operation(db))
-    service = new CustomerAccountProfilesService(db as unknown as DbService)
+    service = new CustomerAccountProfilesService(db as unknown as DbService, rescreen as unknown as ScreeningRescreenService)
   })
 
+  it.each([{ firstName: 'Changed' }, { lastName: 'Changed' }, { passportNumber: 'AB12345' }])(
+    're-screens profile identity edits %j',
+    async (body) => {
+      await service.updateProfile('user-1', body)
+      expect(rescreen.run).toHaveBeenCalledWith(db, expect.any(Date), 'customer_profile', 'identity_change', identity.id)
+    },
+  )
+  it.each([{ firstName: 'Changed' }, { lastName: 'Changed' }, { passportNumber: 'AB12345' }])(
+    're-screens saved passenger identity edits %j',
+    async (body) => {
+      await service.updatePassenger('user-1', 'saved-1', body)
+      expect(rescreen.run).toHaveBeenCalledWith(db, expect.any(Date), 'saved_passenger', 'identity_change', 'saved-1')
+    },
+  )
+  it('does not re-screen contact-only changes', async () => {
+    await service.updateProfile('user-1', { phone: null })
+    expect(rescreen.run).not.toHaveBeenCalled()
+  })
+  it('does not re-screen relationship-only changes', async () => {
+    await service.updatePassenger('user-1', 'saved-1', { relationship: null })
+    expect(rescreen.run).not.toHaveBeenCalled()
+  })
   it('loads only the active customer associated with the authenticated user', async () => {
     const result = await service.getProfile('user-1')
     expect(db.customer.findFirst).toHaveBeenCalledWith(

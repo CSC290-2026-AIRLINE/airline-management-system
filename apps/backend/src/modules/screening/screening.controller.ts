@@ -22,7 +22,8 @@ export class ScreeningController {
   }
 }
 
-// This HTTP entry point is restricted to security. Other features must agree their authorization before integrating.
+// Spec: Sys. HTTP remains Security-staff only until shared system auth exists.
+// F3b/F6 call ScreeningCheckService.checkSystem through ScreeningModule internally.
 @Controller('screening')
 export class ScreeningCheckController {
   constructor(private readonly checks: ScreeningCheckService) {}

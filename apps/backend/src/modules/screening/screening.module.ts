@@ -1,3 +1,4 @@
+import { BookingsPort, StubBookingsPort, ScreeningRescreenService } from './screening-rescreen.service'
 import { Module } from '@nestjs/common'
 import { ScreeningAudit, ScreeningClock, ScreeningContext, SystemScreeningClock } from './screening.context'
 import { ScreeningMatcher } from './screening.matcher'
@@ -10,6 +11,8 @@ import { CheckPipe, QueuePipe, ReviewPipe } from './dto/screening.dto'
 @Module({
   controllers: [ScreeningController, ScreeningCheckController],
   providers: [
+    ScreeningRescreenService,
+    { provide: BookingsPort, useClass: StubBookingsPort },
     ScreeningAudit,
     ScreeningContext,
     ScreeningMatcher,
@@ -22,6 +25,6 @@ import { CheckPipe, QueuePipe, ReviewPipe } from './dto/screening.dto'
     { provide: ScreeningBookingPort, useClass: MockScreeningBooking },
     { provide: ScreeningNotificationPort, useClass: MockScreeningNotification },
   ],
-  exports: [ScreeningCheckService],
+  exports: [ScreeningCheckService, ScreeningRescreenService],
 })
 export class ScreeningModule {}

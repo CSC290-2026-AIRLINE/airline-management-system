@@ -1,3 +1,4 @@
+import { ScreeningRescreenService } from '@backend/modules/screening/screening-rescreen.service'
 import { BadRequestException, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { validate, type ValidationError } from 'class-validator'
@@ -9,6 +10,8 @@ import { PassengerProfilesService } from './passenger-profiles.service'
 
 // `DbService` is only a constructor param type, but `emitDecoratorMetadata` makes it a runtime
 // reference, so the real class has to be replaced before the service module is imported.
+const rescreen = { run: jest.fn().mockResolvedValue({ runs: 0, bookingSource: 'stub' }) }
+
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
 interface SummaryRow {
@@ -102,12 +105,14 @@ beforeEach(() => {
     user: { findUnique: jest.fn().mockResolvedValue({ type: 'staff' }) },
     audit_log: { create: jest.fn().mockResolvedValue({ seq: 1n }) },
     // The real client takes PrismaPromises; the mocks resolve eagerly, so awaiting the array is enough.
-    $transaction: jest.fn(async (operations: unknown[]) => Promise.all(operations)),
+    $transaction: jest.fn(async (operations: unknown[] | ((tx: unknown) => unknown)) =>
+      typeof operations === 'function' ? await operations(db) : await Promise.all(operations),
+    ),
     // Only a term Prisma cannot filter itself reaches this. Empty by default, so a term that
     // needs the cast matches nothing through it — which is what an empty result set means.
     $queryRawUnsafe: jest.fn().mockResolvedValue([]),
   }
-  service = new PassengerProfilesService(db as never)
+  service = new PassengerProfilesService(db as never, rescreen as unknown as ScreeningRescreenService)
 })
 
 // `passenger.update` writes column names, not the camelCase the DTO uses. A correction
@@ -1696,7 +1701,8 @@ describe('PassengerProfilesService.correctIdentity', () => {
     const result = await service.correctIdentity(travellerRow().id, body, ACTOR)
 
     expect(db.$transaction).toHaveBeenCalledTimes(1)
-    expect(db.$transaction.mock.calls[0][0]).toHaveLength(2)
+    expect(db.$transaction.mock.calls[0][0]).toEqual(expect.any(Function))
+    expect(rescreen.run).toHaveBeenCalledWith(db, expect.any(Date), 'staff_identity', 'identity_change', travellerRow().id)
     expect(db.passenger.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: travellerRow().id } }))
     expect(result).toMatchObject({ lastName: 'Petrov', type: 'traveller' })
 

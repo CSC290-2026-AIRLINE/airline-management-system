@@ -44,7 +44,7 @@ List responses expose `passportLast4` and `passportMasked`, never the full passp
 
 `WatchlistClock` is the injection point for business time. `SystemWatchlistClock` currently returns real UTC time for listed, cleared, and audit occurrence timestamps. Replace its module binding when the shared simulation clock becomes available. Database record timestamps continue using real time.
 
-Upcoming-flight re-screening is **not connected**: the required change triggers have not been wired to the screening service yet. Create and update responses explicitly return `screeningStatus: "not_connected"`; they must not be presented as confirmation that flights were re-screened. The authenticated staff page at `/security-screening/watchlist` calls these APIs through the shared authentication provider.
+Upcoming-flight re-screening triggers are wired transactionally through ScreeningModule. The F3b booking adapter is still a stub returning no pairs. With the stub, create and update responses explicitly return `screeningStatus: "not_connected"`; they must not be presented as confirmation that flights were re-screened. The authenticated staff page at `/security-screening/watchlist` calls these APIs through the shared authentication provider.
 
 No Prisma schema changes, migrations, or database resets are included.
 

@@ -1,3 +1,4 @@
+import { ScreeningRescreenService } from '@backend/modules/screening/screening-rescreen.service'
 import type { INestApplication } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
@@ -174,7 +175,9 @@ function makeDb(): FakeDb {
     },
     user: { findUnique: jest.fn().mockResolvedValue({ type: 'staff' }) },
     audit_log: { create: jest.fn().mockResolvedValue({ seq: 1n }) },
-    $transaction: jest.fn(async (operations: unknown[]) => Promise.all(operations)),
+    $transaction: jest.fn(async (operations: unknown[] | ((tx: unknown) => unknown)) =>
+      typeof operations === 'function' ? await operations(db) : await Promise.all(operations),
+    ),
   }
 }
 
@@ -188,7 +191,13 @@ let token: string
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({
     controllers: [PassengerProfilesController, CustomerProfilesController],
-    providers: [PassengerProfilesService, { provide: DbService, useValue: db }, JwtService, { provide: APP_GUARD, useClass: JwtAuthGuard }],
+    providers: [
+      { provide: ScreeningRescreenService, useValue: { run: jest.fn() } },
+      PassengerProfilesService,
+      { provide: DbService, useValue: db },
+      JwtService,
+      { provide: APP_GUARD, useClass: JwtAuthGuard },
+    ],
   }).compile()
 
   app = moduleRef.createNestApplication()

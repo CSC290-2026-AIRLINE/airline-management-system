@@ -1,3 +1,4 @@
+import { ScreeningRescreenService } from '@backend/modules/screening/screening-rescreen.service'
 import {
   BadRequestException,
   ConflictException,
@@ -104,7 +105,10 @@ function startsWithInsensitive(term: string) {
 @Injectable()
 export class CustomerAccountProfilesService {
   private readonly logger = new Logger(CustomerAccountProfilesService.name)
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly rescreen: ScreeningRescreenService,
+  ) {}
 
   private async customerFor(db: Database, userId: string) {
     const customer = await db.customer.findFirst({
@@ -252,6 +256,12 @@ export class CustomerAccountProfilesService {
           if (accountWrite.count !== 1) throw new ConflictException('Profile changed; reload and try again')
           const updated = await this.customerFor(tx, userId)
           await this.auditSensitiveRead(tx, userId, 'customer', [customer.id])
+          if (
+            ['firstName', 'lastName', 'localFirstName', 'localLastName', 'passportNumber'].some(
+              (key) => body[key as keyof ProfileUpdateDto] !== undefined,
+            )
+          )
+            await this.rescreen.run(tx, new Date(), 'customer_profile', 'identity_change', customer.passenger.id)
           return profileView(updated)
         },
         { isolationLevel: 'Serializable' },
@@ -432,6 +442,12 @@ export class CustomerAccountProfilesService {
           if (linkWrite.count !== 1) throw new ConflictException('Saved passenger changed; reload and try again')
           const updated = await this.savedFor(tx, customer.id, passengerId)
           await this.auditSensitiveRead(tx, userId, 'passenger', [passengerId])
+          if (
+            ['firstName', 'lastName', 'localFirstName', 'localLastName', 'passportNumber'].some(
+              (key) => body[key as keyof UpdateSavedPassengerDto] !== undefined,
+            )
+          )
+            await this.rescreen.run(tx, new Date(), 'saved_passenger', 'identity_change', passengerId)
           return savedView(updated)
         },
         { isolationLevel: 'Serializable' },

@@ -148,3 +148,14 @@ npm run build -w apps/backend
 The service tests mock DbService and Clerk and require neither live service. DTO tests exercise the same transform/validation pipe used by the controller. HTTP tests exercise the existing JWT guard and controller validation. Historical verification (not repeated during this change): a separate local PostgreSQL smoke test checked 26 assertions covering profile read/update, owner passport/local names, identity locks, saved-passenger create/list/edit/remove, retained history and sensitive-view audit records; all synthetic fixture writes and their audit rows were rolled back and verified absent afterward. Existing migrations were checked as up to date; no schema or migration change was made.
 
 Historical browser verification (not repeated during this change): the customer completed the provider's verification and email confirmation in the browser. An independent read-only check subsequently confirmed that Clerk's verified primary email matches the PostgreSQL profile, photo metadata matches the provider, and the new email survives a browser reload. No password or OTP was requested in chat or stored in source files. A new image upload/removal has not been executed against the live account; its SDK call is integrated and type-checked. For live use, follow setup.md to start infrastructure and the apps with the existing configuration. On this OneDrive checkout, generated-file/cache cleanup can fail; live review was started using a non-incremental TypeScript compile and the built frontend preview without changing shared build configuration.
+
+## Automatic identity re-screening
+
+Customer profile and saved-passenger name/passport edits call the exported F7
+re-screening service within the write transaction. Staff identity correction stays
+limited to DOB, gender and nationality with a reason; it calls the same service
+with `identity_change`. Correction auditing retains the staff actor, while screening
+runs use a system actor with a null actor ID. Contact-only and relationship-only
+updates do not trigger screening. The upcoming-booking source is currently the
+empty F3b stub documented in the Screening module README, so live booking coverage
+is pending that adapter. Screening history is not used as a booking substitute.

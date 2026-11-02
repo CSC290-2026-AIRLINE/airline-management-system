@@ -103,6 +103,40 @@ describe('ScreeningCheckService', () => {
     await expect(service.check(userId, input)).rejects.toBeInstanceOf(BadRequestException)
     expect(tx.screening_check.create).not.toHaveBeenCalled()
   })
+  it.each(['booking', 'check_in', 'new_entry', 'identity_change', 'entry_change'] as const)(
+    'allows internal %s checks without a staff account and audits the source as system',
+    async (triggerPoint) => {
+      await service.checkSystem('booking_pnr', { ...input, triggerPoint })
+      expect(tx.staff.findFirst).not.toHaveBeenCalled()
+      expect(tx.audit_log.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actor_type: 'system',
+          actor_id: null,
+          actor_role: null,
+          after: expect.objectContaining({ source: 'booking_pnr', triggerPoint }),
+        }),
+      })
+      expect(tx.screening_check.create).toHaveBeenCalledWith({ data: expect.objectContaining({ match_level: 'none', outcome: 'clear' }) })
+    },
+  )
+  it.each(['identity_change', 'entry_change', 'new_entry'] as const)(
+    'flags a strong %s match without holding or denying automatically',
+    async (triggerPoint) => {
+      matcher.match.mockResolvedValue([{ entry: entryFixture(), similarity: 1, level: 'strong' }])
+      await service.checkSystem('watchlist', { ...input, triggerPoint })
+      expect(tx.screening_check.createManyAndReturn.mock.calls[0][0].data[0]).toMatchObject({ outcome: 'flagged', match_level: 'strong' })
+    },
+  )
+  it('records a fresh clean result on repeated identity changes', async () => {
+    tx.screening_check.findFirst.mockResolvedValue(checkFixture())
+    await service.checkSystem('customer_profile', { ...input, triggerPoint: 'identity_change' })
+    expect(tx.screening_check.create).toHaveBeenCalled()
+    expect(tx.screening_check.findFirst).not.toHaveBeenCalled()
+  })
+  it('rejects an invalid system source before accessing passenger data', async () => {
+    await expect(service.checkSystem('', input)).rejects.toBeInstanceOf(BadRequestException)
+    expect(tx.passenger.findFirst).not.toHaveBeenCalled()
+  })
   it('does not grant clearance without a stored screening', async () => {
     expect((await service.status(userId, passengerId, flightId)).outcome).toBe('not_screened')
   })
