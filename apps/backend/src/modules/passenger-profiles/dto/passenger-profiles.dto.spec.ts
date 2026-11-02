@@ -164,4 +164,21 @@ describe('Passenger profile DTO validation', () => {
     const result = (await pipe.transform({ limit: '10' }, { ...metadata(SavedPassengerQueryDto), type: 'query' })) as SavedPassengerQueryDto
     expect(result.limit).toBe(10)
   })
+
+  it('trims the name prefix and normalizes its accents like the stored passport spelling', async () => {
+    const result = (await pipe.transform(
+      { q: '  Élodie ' },
+      { ...metadata(SavedPassengerQueryDto), type: 'query' },
+    )) as SavedPassengerQueryDto
+    expect(result.q).toBe('Elodie')
+  })
+
+  it('treats a blank name prefix as no filter', async () => {
+    const result = (await pipe.transform({ q: '   ' }, { ...metadata(SavedPassengerQueryDto), type: 'query' })) as SavedPassengerQueryDto
+    expect(result.q).toBeUndefined()
+  })
+
+  it.each([{ q: 'x'.repeat(81) }, { q: ['som'] }])('rejects an unusable name prefix: %p', async (query) => {
+    await expect(pipe.transform(query, { ...metadata(SavedPassengerQueryDto), type: 'query' })).rejects.toBeInstanceOf(BadRequestException)
+  })
 })

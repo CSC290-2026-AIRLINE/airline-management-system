@@ -96,6 +96,10 @@ function namesData(body: { firstName?: string; lastName?: string; localFirstName
     ...(body.localLastName !== undefined ? { local_last_name: body.localLastName } : {}),
   }
 }
+/** Name prefix match, so typing the beginning of a name finds the passenger regardless of letter case. */
+function startsWithInsensitive(term: string) {
+  return { startsWith: term, mode: 'insensitive' as const }
+}
 
 @Injectable()
 export class CustomerAccountProfilesService {
@@ -318,7 +322,25 @@ export class CustomerAccountProfilesService {
     return this.databaseOperation(async () => {
       const customer = await this.customerFor(this.db, userId)
       const limit = query.limit ?? 50
-      const where = { customer_id: customer.id, is_saved: true, passenger: { deleted_at: null } }
+      const term = query.q?.trim()
+      const where: Prisma.customer_passengerWhereInput = {
+        customer_id: customer.id,
+        is_saved: true,
+        passenger: {
+          deleted_at: null,
+          // Autocomplete matches the beginning of any name part, in the passport or the local spelling.
+          ...(term
+            ? {
+                OR: [
+                  { first_name: startsWithInsensitive(term) },
+                  { last_name: startsWithInsensitive(term) },
+                  { local_first_name: startsWithInsensitive(term) },
+                  { local_last_name: startsWithInsensitive(term) },
+                ],
+              }
+            : {}),
+        },
+      }
       if (query.cursor) {
         const cursor = await this.db.customer_passenger.findFirst({ where: { ...where, id: query.cursor }, select: { id: true } })
         if (!cursor) throw new NotFoundException('Saved passenger cursor not found')

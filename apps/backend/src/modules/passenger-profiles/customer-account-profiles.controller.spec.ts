@@ -198,4 +198,30 @@ describe('Passenger profile HTTP boundary', () => {
       .expect(204)
     expect(service.removePassenger).toHaveBeenCalledWith('authenticated-user', passengerId)
   })
+
+  it('passes the name prefix to the saved-passenger list and keeps the response contract', async () => {
+    service.listPassengers.mockResolvedValue({ items: [{ id: passengerId }], nextCursor: null })
+    await request(app.getHttpServer() as Server)
+      .get('/api/customers/me/passengers?q=Som')
+      .set('Authorization', 'Bearer valid')
+      .expect(200, { items: [{ id: passengerId }], nextCursor: null })
+    expect(service.listPassengers).toHaveBeenCalledWith('authenticated-user', expect.objectContaining({ q: 'Som' }))
+  })
+
+  it('treats a blank name prefix as no filter', async () => {
+    service.listPassengers.mockResolvedValue({ items: [], nextCursor: null })
+    await request(app.getHttpServer() as Server)
+      .get('/api/customers/me/passengers?q=')
+      .set('Authorization', 'Bearer valid')
+      .expect(200, { items: [], nextCursor: null })
+    const query = service.listPassengers.mock.calls[0][1] as { q?: string }
+    expect(query.q).toBeUndefined()
+  })
+
+  it('requires authentication for the saved-passenger list', async () => {
+    await request(app.getHttpServer() as Server)
+      .get('/api/customers/me/passengers?q=Som')
+      .expect(401)
+    expect(service.listPassengers).not.toHaveBeenCalled()
+  })
 })

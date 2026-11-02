@@ -34,19 +34,21 @@ Both sets of DOB write DTOs now call the same pure `birthDateError(value, today)
 
 All paths start with `/api/customers` and require an active customer account. The service resolves ownership from the authenticated user; clients never submit userId or customerId.
 
-| Method | Path                                 | Result                                                         |
-| ------ | ------------------------------------ | -------------------------------------------------------------- |
-| GET    | `/me`                                | Current customer profile                                       |
-| PUT    | `/me`                                | Update profile and return current profile                      |
-| POST   | `/me/sync-identity`                  | Read verified Clerk primary email/photo and sync local profile |
-| PUT    | `/me/photo`                          | Sync the authenticated owner’s photo from Clerk                |
-| DELETE | `/me/photo`                          | Clear profile photo URL; 204                                   |
-| GET    | `/me/passengers?limit=50&cursor=...` | Saved passenger page                                           |
-| POST   | `/me/passengers`                     | Create saved passenger; 201                                    |
-| PUT    | `/me/passengers/:passengerId`        | Update an owned saved passenger                                |
-| DELETE | `/me/passengers/:passengerId`        | Remove from saved suggestions; 204                             |
+| Method | Path                                       | Result                                                         |
+| ------ | ------------------------------------------ | -------------------------------------------------------------- |
+| GET    | `/me`                                      | Current customer profile                                       |
+| PUT    | `/me`                                      | Update profile and return current profile                      |
+| POST   | `/me/sync-identity`                        | Read verified Clerk primary email/photo and sync local profile |
+| PUT    | `/me/photo`                                | Sync the authenticated owner’s photo from Clerk                |
+| DELETE | `/me/photo`                                | Clear profile photo URL; 204                                   |
+| GET    | `/me/passengers?limit=50&cursor=...&q=...` | Saved passenger page                                           |
+| POST   | `/me/passengers`                           | Create saved passenger; 201                                    |
+| PUT    | `/me/passengers/:passengerId`              | Update an owned saved passenger                                |
+| DELETE | `/me/passengers/:passengerId`              | Remove from saved suggestions; 204                             |
 
 `passengerId` is the passenger UUID returned as `items[].id`. `nextCursor` is an opaque saved-link UUID for the next list request; it is not a passenger ID. Limit defaults to 50, with a maximum of 100. The response is `{ items: [...], nextCursor: string | null }`.
+
+The optional `q` parameter filters the saved list by name prefix for autocomplete. It matches the beginning of the passenger's first name, last name, local first name or local last name, ignoring letter case, so typing the start of a name returns the passengers that begin with it. The term is trimmed and normalized to the same ASCII passport spelling the stored names use, so an accented term still matches. An absent or blank `q` returns the whole saved list, and the response format, ordering, pagination and sensitive-view audit are the same with or without it. A cursor has to belong to the filtered list, so a cursor from a different search term is rejected with 404.
 
 ## Profile contract
 

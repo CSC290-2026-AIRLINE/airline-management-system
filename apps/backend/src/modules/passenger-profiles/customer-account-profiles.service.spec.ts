@@ -344,6 +344,48 @@ describe('CustomerAccountProfilesService', () => {
     await expect(service.listPassengers('user-1', { limit: 50 })).resolves.toEqual({ items: [], nextCursor: null })
   })
 
+  it('matches saved passengers by the prefix of any name part, ignoring letter case', async () => {
+    await service.listPassengers('user-1', { limit: 50, q: 'som' })
+    expect(db.customer_passenger.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          customer_id: 'customer-1',
+          is_saved: true,
+          passenger: {
+            deleted_at: null,
+            OR: [
+              { first_name: { startsWith: 'som', mode: 'insensitive' } },
+              { last_name: { startsWith: 'som', mode: 'insensitive' } },
+              { local_first_name: { startsWith: 'som', mode: 'insensitive' } },
+              { local_last_name: { startsWith: 'som', mode: 'insensitive' } },
+            ],
+          },
+        },
+      }),
+    )
+  })
+
+  it('returns an empty page when no saved passenger name starts with the prefix', async () => {
+    db.customer_passenger.findMany.mockResolvedValue([])
+    await expect(service.listPassengers('user-1', { limit: 50, q: 'zzz' })).resolves.toEqual({ items: [], nextCursor: null })
+    expect(db.audit_log.createMany).not.toHaveBeenCalled()
+  })
+
+  it('keeps the whole saved list when the prefix is blank', async () => {
+    await service.listPassengers('user-1', { limit: 50, q: '   ' })
+    expect(db.customer_passenger.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { customer_id: 'customer-1', is_saved: true, passenger: { deleted_at: null } },
+      }),
+    )
+  })
+
+  it('rejects a pagination cursor that is not visible under the current prefix', async () => {
+    db.customer_passenger.findFirst.mockResolvedValue(null)
+    await expect(service.listPassengers('user-1', { cursor: 'link-1', limit: 50, q: 'som' })).rejects.toBeInstanceOf(NotFoundException)
+    expect(db.customer_passenger.findMany).not.toHaveBeenCalled()
+  })
+
   it('rejects a pagination cursor from another account', async () => {
     db.customer_passenger.findFirst.mockResolvedValue(null)
     await expect(service.listPassengers('user-1', { cursor: 'foreign-link', limit: 50 })).rejects.toBeInstanceOf(NotFoundException)
