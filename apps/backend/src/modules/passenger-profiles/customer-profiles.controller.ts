@@ -1,5 +1,6 @@
+import { StaffProfilesGuard } from './staff-profiles.guard'
 import { F7ExceptionFilter, F7ValidationPipe } from '@backend/modules/passenger-profiles/f7-exception.filter'
-import { UseFilters, Controller, Get, Param, ParseUUIDPipe, Query, UsePipes } from '@nestjs/common'
+import { UseGuards, UseFilters, Controller, Get, Param, ParseUUIDPipe, Query, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { SearchCustomersDto } from './dto/search-customers.dto'
@@ -31,11 +32,12 @@ const CUSTOMER_VALIDATION_PIPE = new F7ValidationPipe({ transform: true, whiteli
  * Response shapes are unchanged from the passenger routes, and passports are masked by the same
  * `toSummary`, so the client maps both identically.
  *
- * The global `JwtAuthGuard` covers these routes exactly as it covers the passenger ones; there is
- * no `@Public()`. See the module README for the unenforced `S` staff-role gap.
+ * The global JWT guard authenticates the caller. StaffProfilesGuard then requires
+ * an active staff account; customer tokens are rejected.
  */
 @UsePipes(CUSTOMER_VALIDATION_PIPE)
 @UseFilters(F7ExceptionFilter)
+@UseGuards(StaffProfilesGuard)
 @Controller('staff/customers')
 export class CustomerProfilesController {
   constructor(private readonly passengerProfiles: PassengerProfilesService) {}

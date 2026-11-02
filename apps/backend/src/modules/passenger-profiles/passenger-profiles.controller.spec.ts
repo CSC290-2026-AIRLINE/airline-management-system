@@ -1,3 +1,4 @@
+import { StaffProfilesGuard } from './staff-profiles.guard'
 import { ScreeningRescreenService } from '@backend/modules/screening/screening-rescreen.service'
 import type { INestApplication } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
@@ -153,6 +154,7 @@ function linkRow(relationship: string, lastBookedAt: Date | null, deletedAt: Dat
 }
 
 interface FakeDb {
+  staff: { findFirst: jest.Mock }
   passenger: { findMany: jest.Mock; count: jest.Mock; findFirst: jest.Mock; update: jest.Mock; create: jest.Mock }
   user: { findUnique: jest.Mock }
   audit_log: { create: jest.Mock }
@@ -161,6 +163,7 @@ interface FakeDb {
 
 function makeDb(): FakeDb {
   return {
+    staff: { findFirst: jest.fn().mockResolvedValue({ id: ACTOR.sub }) },
     passenger: {
       findMany: jest.fn().mockResolvedValue([travellerRow(), holderRow()]),
       count: jest.fn().mockResolvedValue(2),
@@ -194,6 +197,7 @@ beforeAll(async () => {
     providers: [
       { provide: ScreeningRescreenService, useValue: { run: jest.fn() } },
       PassengerProfilesService,
+      StaffProfilesGuard,
       { provide: DbService, useValue: db },
       JwtService,
       { provide: APP_GUARD, useClass: JwtAuthGuard },
@@ -906,4 +910,78 @@ describe('CORS for the staff-web origin', () => {
     expect(res.headers['access-control-allow-origin']).toBe(STAFF_ORIGIN)
     expect(res.headers['access-control-allow-credentials']).toBe('true')
   })
+})
+
+describe('Staff authorization on all F7 staff endpoints', () => {
+  const routes = [
+    { method: 'get', path: '/api/staff/passengers' },
+    { method: 'post', path: '/api/staff/passengers' },
+    { method: 'get', path: '/api/staff/passengers/' + TRAVELLER_ID },
+    { method: 'put', path: '/api/staff/passengers/' + TRAVELLER_ID + '/identity' },
+    { method: 'get', path: '/api/staff/customers' },
+    { method: 'get', path: '/api/staff/customers/' + HOLDER_ID },
+  ] as const
+  it.each(routes)('rejects a signed customer token on $method $path before business access', async ({ method, path }) => {
+    const customerId = '44444444-4444-4444-8444-444444444444'
+    const customerToken = await app.get(JwtService).signAsync({ sub: customerId, email: 'customer@example.test' })
+    db.staff.findFirst.mockResolvedValue(null)
+    const response = await request(app.getHttpServer())
+      [method](path)
+      .set('Authorization', 'Bearer ' + customerToken)
+      .expect(403)
+    expect(response.body.error.code).toBe('FORBIDDEN')
+    expect(db.staff.findFirst).toHaveBeenCalledWith({
+      where: { user_id: customerId, deleted_at: null, user: { type: 'staff', disabled_at: null, deleted_at: null } },
+      select: { id: true },
+    })
+    expect(db.passenger.findMany).not.toHaveBeenCalled()
+    expect(db.passenger.findFirst).not.toHaveBeenCalled()
+    expect(db.passenger.create).not.toHaveBeenCalled()
+    expect(db.passenger.update).not.toHaveBeenCalled()
+    expect(db.audit_log.create).not.toHaveBeenCalled()
+  })
+  it.each(routes)('rejects missing or invalid tokens on $method $path', async ({ method, path }) => {
+    await request(app.getHttpServer())[method](path).expect(401)
+    await request(app.getHttpServer())[method](path).set('Authorization', 'Bearer invalid').expect(401)
+    expect(db.staff.findFirst).not.toHaveBeenCalled()
+  })
+  it.each(['admin', 'security', 'check_in'])('allows active %s staff without requiring Security', async (code) => {
+    db.staff.findFirst.mockResolvedValue({ id: ACTOR.sub, role: { code } })
+    await request(app.getHttpServer())
+      .get('/api/staff/passengers')
+      .set('Authorization', 'Bearer ' + token)
+      .expect(200)
+  })
+  it.each(['customer', 'disabled user', 'deleted user', 'deleted staff', 'missing staff'])(
+    'rejects %s across all endpoints based on current database eligibility',
+    async (scenario) => {
+      const account = {
+        user_id: ACTOR.sub,
+        deleted_at: scenario === 'deleted staff' ? new Date() : null,
+        user: {
+          type: scenario === 'customer' ? 'customer' : 'staff',
+          deleted_at: scenario === 'deleted user' ? new Date() : null,
+          disabled_at: scenario === 'disabled user' ? new Date() : null,
+        },
+      }
+      db.staff.findFirst.mockImplementation(({ where }) => {
+        if (scenario === 'missing staff') return null
+        const matches =
+          account.user_id === where.user_id &&
+          account.deleted_at === where.deleted_at &&
+          Object.entries(where.user).every(([key, value]) => account.user[key as keyof typeof account.user] === value)
+        return matches ? { id: ACTOR.sub } : null
+      })
+      for (const { method, path } of routes)
+        await request(app.getHttpServer())
+          [method](path)
+          .set('Authorization', 'Bearer ' + token)
+          .expect(403)
+      expect(db.passenger.findMany).not.toHaveBeenCalled()
+      expect(db.passenger.findFirst).not.toHaveBeenCalled()
+      expect(db.passenger.create).not.toHaveBeenCalled()
+      expect(db.passenger.update).not.toHaveBeenCalled()
+      expect(db.audit_log.create).not.toHaveBeenCalled()
+    },
+  )
 })

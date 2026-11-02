@@ -1,5 +1,6 @@
+import { StaffProfilesGuard } from './staff-profiles.guard'
 import { F7ExceptionFilter, F7ValidationPipe } from '@backend/modules/passenger-profiles/f7-exception.filter'
-import { UseFilters, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
+import { UseGuards, UseFilters, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CorrectIdentityDto } from './dto/correct-identity.dto'
@@ -30,17 +31,15 @@ const PASSENGER_VALIDATION_PIPE = new F7ValidationPipe({ transform: true, whitel
  * Mounted at `staff/passengers`, matching the Artifact's route table. The global prefix
  * `/api` supplies the leading `/api`.
  *
- * The global `JwtAuthGuard` already requires a Bearer token on every route here, so there
- * is no `@Public()` and no token handling of our own. The Artifact's `S` guard label is a
- * staff-role check; there is no role guard in this codebase and adding one is a
- * cross-cutting auth change, so every authenticated caller reaches these routes today.
- * That gap is reported in the module README rather than papered over here.
+ * The global JWT guard authenticates the caller. StaffProfilesGuard then requires
+ * an active staff account; customer tokens are rejected. No Security role is required.
  *
  * Because of {@link PASSENGER_VALIDATION_PIPE} the parameters below are already-validated,
  * normalised DTO instances rather than raw request values.
  */
 @UsePipes(PASSENGER_VALIDATION_PIPE)
 @UseFilters(F7ExceptionFilter)
+@UseGuards(StaffProfilesGuard)
 @Controller('staff/passengers')
 export class PassengerProfilesController {
   constructor(private readonly passengerProfiles: PassengerProfilesService) {}
