@@ -1,5 +1,13 @@
-import { BadGatewayException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
+import {
+  BadGatewayException,
+  ConflictException,
+  GoneException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { CurrencyRateService, displayFields, type DisplayRate } from '../currency-rate/currency-rate.service'
 import { FareClassService } from '../fare-class/fare-class.service'
 import { FARE_RULE_FIELDS, type SeatType } from '../pricing.constants'
 import { PricingErrorCode, pricingError } from '../pricing.errors'
@@ -30,8 +38,12 @@ interface QuoteKey {
   seat_type: SeatType | null
 }
 
-function presentQuote<T extends { fare_quote_line: unknown[] }>({ fare_quote_line, ...quote }: T) {
-  return { ...quote, lines: fare_quote_line }
+// The lines go out as `lines`. With a display rate, the total is also shown in that currency (worked out, never stored).
+function presentQuote<T extends { fare_quote_line: unknown[]; total_amount: { toFixed(digits: number): string } }>(
+  { fare_quote_line, ...quote }: T,
+  rate: DisplayRate | null,
+) {
+  return { ...quote, lines: fare_quote_line, ...(rate && displayFields(quote.total_amount, rate)) }
 }
 
 function lineRow(line: QuoteLine, index: number) {
@@ -56,6 +68,7 @@ export class FareQuoteService {
     private readonly taxFees: TaxFeeService,
     private readonly settings: SettingService,
     private readonly seatAvailability: SeatAvailability,
+    private readonly currencyRates: CurrencyRateService,
   ) {}
 
   // Returns the live shared quote for this key, or works out and saves a new one. The price is shared by everyone
@@ -82,6 +95,8 @@ export class FareQuoteService {
     }
 
     const promo = dto.promo_code ? await this.promoCodes.checkPromo(dto.promo_code, now) : null
+    // Checked before anything is saved, so an unknown currency never leaves a quote behind.
+    const rate = dto.display_currency ? await this.currencyRates.displayRate(dto.display_currency) : null
     const key: QuoteKey = {
       flight_id: flight.id,
       fare_class_id: fareClass.id,
@@ -90,7 +105,7 @@ export class FareQuoteService {
     }
 
     const live = await this.findLiveQuote(this.db, key, now)
-    if (live) return presentQuote(live)
+    if (live) return presentQuote(live, rate)
 
     const seatsLeftPct = await this.readSeatsLeftPct(flight.id)
     const baseFare = await this.db.base_fare.findFirst({
@@ -154,11 +169,22 @@ export class FareQuoteService {
         include: WITH_LINES,
       })
     })
-    return presentQuote(saved)
+    return presentQuote(saved, rate)
   }
 
-  async findOne(id: string) {
-    return presentQuote(await this.findQuote(id))
+  // An expired quote is gone (410), not missing: 3b should ask for a new one. fee() still reads it, because a booking made
+  // before expiry keeps its fees.
+  async findOne(id: string, displayCurrency?: string) {
+    const quote = await this.findQuote(id)
+    if (quote.expires_at.getTime() <= simNow().getTime()) {
+      throw new GoneException(
+        pricingError(PricingErrorCode.QUOTE_EXPIRED, `Fare quote ${id} expired; ask for a new quote`, {
+          expires_at: quote.expires_at.toISOString(),
+        }),
+      )
+    }
+    const rate = displayCurrency ? await this.currencyRates.displayRate(displayCurrency) : null
+    return presentQuote(quote, rate)
   }
 
   // For Feature 5b. Always from the snapshot frozen on the quote, never the live fare class, so a later change to the

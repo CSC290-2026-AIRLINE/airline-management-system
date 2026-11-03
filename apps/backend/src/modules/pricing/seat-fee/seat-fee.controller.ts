@@ -50,6 +50,6 @@ export class PublicSeatFeeController {
   @Public()
   @Get('price')
   lookup(@Query() query: LookupSeatFeeDto) {
-    return this.seatFeeService.lookup(query.cabin, query.seat_type)
+    return this.seatFeeService.price(query.cabin, query.seat_type, query.from_seat_type)
   }
 }

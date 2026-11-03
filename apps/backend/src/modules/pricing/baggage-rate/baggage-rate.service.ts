@@ -11,6 +11,11 @@ const INCLUDE_LABELS = {
   route: { select: { origin: true, destination: true } },
 } as const
 
+export interface BaggageChargeOptions {
+  heaviestBagKg?: number
+  extraAllowanceKg?: number
+}
+
 @Injectable()
 export class BaggageRateService {
   constructor(private readonly db: DbService) {}
@@ -81,8 +86,21 @@ export class BaggageRateService {
     await this.db.overweight_baggage_rate.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
   }
 
-  // Charge for one bag: a rate for this route wins, otherwise the fare class default (route_id null).
-  async calculateCharge(fareClassId: string, weightKg: number, routeId?: string) {
+  // Charge for a passenger's checked bags: a rate for this route wins, otherwise the fare class default (route_id null).
+  // weightKg is the total; the max_bag_kg limit is per bag, so it is checked on the heaviest one. A tier bonus adds to
+  // the free allowance.
+  async calculateCharge(fareClassId: string, weightKg: number, routeId?: string, options: BaggageChargeOptions = {}) {
+    const heaviestBagKg = options.heaviestBagKg ?? weightKg
+    const extraAllowanceKg = options.extraAllowanceKg ?? 0
+    if (heaviestBagKg > weightKg) {
+      throw new BadRequestException(
+        pricingError(PricingErrorCode.BAGGAGE_QUERY_INVALID, 'heaviest_bag_kg cannot be more than the total weight_kg', {
+          weight_kg: weightKg,
+          heaviest_bag_kg: heaviestBagKg,
+        }),
+      )
+    }
+
     const rate = (routeId && (await this.findLiveRate(fareClassId, routeId))) || (await this.findLiveRate(fareClassId, null))
     if (!rate) {
       throw new NotFoundException(
@@ -97,22 +115,26 @@ export class BaggageRateService {
     const ratePerKg = Number(rate.rate_per_kg)
     const maxBagKg = toNumberOrNull(rate.max_bag_kg)
     // Too heavy is refused, not charged: the bag has to go as cargo.
-    if (maxBagKg !== null && weightKg > maxBagKg) {
+    if (maxBagKg !== null && heaviestBagKg > maxBagKg) {
       throw new UnprocessableEntityException(
-        pricingError(PricingErrorCode.BAG_TOO_HEAVY, `A bag of ${weightKg} kg is over the ${maxBagKg} kg limit and must go as cargo`, {
-          weight_kg: weightKg,
+        pricingError(PricingErrorCode.BAG_TOO_HEAVY, `A bag of ${heaviestBagKg} kg is over the ${maxBagKg} kg limit and must go as cargo`, {
+          heaviest_bag_kg: heaviestBagKg,
           max_bag_kg: maxBagKg,
         }),
       )
     }
 
-    const chargeableKg = chargeableKgFor(weightKg, freeAllowanceKg)
+    const totalAllowanceKg = freeAllowanceKg + extraAllowanceKg
+    const chargeableKg = chargeableKgFor(weightKg, totalAllowanceKg)
     return {
       baggage_rate_id: rate.id,
       fare_class_id: rate.fare_class_id,
       route_id: rate.route_id,
       weight_kg: weightKg,
+      heaviest_bag_kg: heaviestBagKg,
       free_allowance_kg: freeAllowanceKg,
+      extra_allowance_kg: extraAllowanceKg,
+      total_allowance_kg: totalAllowanceKg,
       max_bag_kg: maxBagKg,
       rate_per_kg: ratePerKg,
       chargeable_kg: chargeableKg,

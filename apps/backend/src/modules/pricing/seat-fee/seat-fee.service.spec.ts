@@ -1,5 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { SettingService } from '../setting/setting.service'
+import type { TaxFeeService } from '../tax-fee/tax-fee.service'
 import { SeatFeeService } from './seat-fee.service'
 
 // The real DbService loads @nestjs/config (ESM only), which Jest cannot load. The tests never use it: they pass `db` below.
@@ -14,9 +16,54 @@ describe('SeatFeeService', () => {
     seat_fee: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
   }
 
+  const taxFees = { findAll: jest.fn() }
+  const settings = { getBaseCurrency: jest.fn() }
+
   beforeEach(() => {
     jest.resetAllMocks()
-    service = new SeatFeeService(db as unknown as DbService)
+    service = new SeatFeeService(db as unknown as DbService, taxFees as unknown as TaxFeeService, settings as unknown as SettingService)
+  })
+
+  describe('price at check-in', () => {
+    const VAT = { id: 'vat', code: 'VAT', name: 'VAT', calc_type: 'pct', value: '7.00' }
+    const AIRPORT = { id: 'apt', code: 'APT_FEE', name: 'Airport fee', calc_type: 'flat', value: '20.00' }
+    const fees: Record<string, number> = { normal: 0, exit_row: 9, extra_legroom: 12.5 }
+
+    beforeEach(() => {
+      db.seat_fee.findFirst.mockImplementation(({ where }: { where: { seat_type: string } }) =>
+        Promise.resolve({ ...seatFee, seat_type: where.seat_type, amount: fees[where.seat_type] }),
+      )
+      taxFees.findAll.mockResolvedValue([VAT, AIRPORT])
+      settings.getBaseCurrency.mockResolvedValue('USD')
+    })
+
+    it('prices a new seat with percentage taxes only, never the flat per-leg ones', async () => {
+      const price = await service.price('economy', 'extra_legroom')
+
+      expect(price).toMatchObject({ seat_fee: 12.5, from_seat_fee: null, fee: 12.5, total: 13.38, currency: 'USD' })
+      expect(price.taxes).toEqual([{ tax_fee_id: 'vat', code: 'VAT', name: 'VAT', rate_pct: 7, amount: 0.88 }]) // 0.875 -> 0.88
+    })
+
+    it('charges only the difference when moving up from another seat', async () => {
+      const price = await service.price('economy', 'extra_legroom', 'exit_row')
+
+      expect(price).toMatchObject({ seat_fee: 12.5, from_seat_fee: 9, fee: 3.5, total: 3.75 }) // VAT 0.245 -> 0.25
+    })
+
+    it('is free, not a refund, when moving to a cheaper seat', async () => {
+      const price = await service.price('economy', 'normal', 'extra_legroom')
+
+      expect(price).toMatchObject({ fee: 0, total: 0 })
+      expect(price.taxes[0].amount).toBe(0)
+    })
+
+    it('throws SEAT_FEE_NOT_FOUND when either seat type has no fee', async () => {
+      db.seat_fee.findFirst.mockResolvedValueOnce({ ...seatFee }).mockResolvedValueOnce(null)
+
+      const error = await service.price('economy', 'exit_row', 'normal').catch((e: unknown) => e)
+
+      expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'SEAT_FEE_NOT_FOUND' })
+    })
   })
 
   it('lists only live seat fees', async () => {

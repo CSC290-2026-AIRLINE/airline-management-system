@@ -61,6 +61,35 @@ describe('BaggageRateService', () => {
     it('accepts a bag exactly at the max weight', async () => {
       await expect(service.calculateCharge(FARE_CLASS_ID, 32)).resolves.toMatchObject({ chargeable_kg: 12, charge: 1200 })
     })
+
+    it('checks max_bag_kg on the heaviest bag, not the total', async () => {
+      const result = await service.calculateCharge(FARE_CLASS_ID, 50, undefined, { heaviestBagKg: 28 })
+
+      expect(result).toMatchObject({ weight_kg: 50, heaviest_bag_kg: 28, chargeable_kg: 30, charge: 3000 })
+    })
+
+    it('refuses when the heaviest bag is over the limit, even if the total is not', async () => {
+      const error = await service.calculateCharge(FARE_CLASS_ID, 40, undefined, { heaviestBagKg: 33 }).catch((e: unknown) => e)
+
+      expect((error as UnprocessableEntityException).getResponse()).toMatchObject({
+        code: 'BAG_TOO_HEAVY',
+        details: { heaviest_bag_kg: 33 },
+      })
+    })
+
+    it('adds a tier bonus to the free allowance', async () => {
+      const result = await service.calculateCharge(FARE_CLASS_ID, 28, undefined, { extraAllowanceKg: 5 })
+
+      expect(result).toMatchObject({ free_allowance_kg: 20, extra_allowance_kg: 5, total_allowance_kg: 25, chargeable_kg: 3, charge: 300 })
+    })
+
+    it('refuses a heaviest bag above the total with BAGGAGE_QUERY_INVALID (400), before any lookup', async () => {
+      const error = await service.calculateCharge(FARE_CLASS_ID, 20, undefined, { heaviestBagKg: 25 }).catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(BadRequestException)
+      expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'BAGGAGE_QUERY_INVALID' })
+      expect(db.overweight_baggage_rate.findFirst).not.toHaveBeenCalled()
+    })
   })
 
   it('has no weight limit when max_bag_kg is empty', async () => {

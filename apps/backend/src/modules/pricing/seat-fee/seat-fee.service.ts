@@ -1,12 +1,20 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { toCents } from '../fare-quote/quote-calculator'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
+import { percentOfCents } from '../pricing-rule/pricing-rule.engine'
+import { SettingService } from '../setting/setting.service'
+import { TaxFeeService } from '../tax-fee/tax-fee.service'
 import { CreateSeatFeeDto } from './dto/create-seat-fee.dto'
 import { UpdateSeatFeeDto } from './dto/update-seat-fee.dto'
 
 @Injectable()
 export class SeatFeeService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly taxFees: TaxFeeService,
+    private readonly settings: SettingService,
+  ) {}
 
   findAll() {
     return this.db.seat_fee.findMany({
@@ -29,6 +37,39 @@ export class SeatFeeService {
       throw new NotFoundException(pricingError(PricingErrorCode.SEAT_FEE_NOT_FOUND, `No seat fee for ${cabin} / ${seatType}`))
     }
     return seatFee
+  }
+
+  // The price of a seat at check-in (Feature 6). Changing seat costs the difference between the two fees; a cheaper seat
+  // is free, never a refund. Percentage taxes (VAT) apply to the fee; flat taxes are per flight leg and were paid with
+  // the ticket, so they do not. Each tax is rounded half up on its own, like quote lines.
+  async price(cabin: string, seatType: string, fromSeatType?: string) {
+    const target = await this.lookup(cabin, seatType)
+    const current = fromSeatType ? await this.lookup(cabin, fromSeatType) : null
+    const [taxes, currency] = await Promise.all([this.taxFees.findAll(), this.settings.getBaseCurrency()])
+
+    const feeCents = Math.max(0, toCents(Number(target.amount)) - (current ? toCents(Number(current.amount)) : 0))
+    const taxLines = taxes
+      .filter((tax) => tax.calc_type === 'pct')
+      .map((tax) => ({
+        tax_fee_id: tax.id,
+        code: tax.code,
+        name: tax.name,
+        rate_pct: Number(tax.value),
+        amount: percentOfCents(feeCents, Number(tax.value)) / 100,
+      }))
+    const totalCents = feeCents + taxLines.reduce((sum, line) => sum + toCents(line.amount), 0)
+
+    return {
+      cabin,
+      seat_type: seatType,
+      from_seat_type: fromSeatType ?? null,
+      currency,
+      seat_fee: Number(target.amount),
+      from_seat_fee: current ? Number(current.amount) : null,
+      fee: feeCents / 100,
+      taxes: taxLines,
+      total: totalCents / 100,
+    }
   }
 
   async create(dto: CreateSeatFeeDto) {

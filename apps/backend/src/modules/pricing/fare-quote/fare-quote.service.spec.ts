@@ -1,5 +1,13 @@
-import { BadGatewayException, ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
+import {
+  BadGatewayException,
+  BadRequestException,
+  ConflictException,
+  GoneException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { CurrencyRateService } from '../currency-rate/currency-rate.service'
 import type { FareClassService } from '../fare-class/fare-class.service'
 import { PricingRuleService } from '../pricing-rule/pricing-rule.service'
 import type { PromoCodeService } from '../promo-code/promo-code.service'
@@ -93,6 +101,7 @@ describe('FareQuoteService', () => {
   const taxFees = { findAll: jest.fn() }
   const settings = { getBaseCurrency: jest.fn(), getQuoteHoldMinutes: jest.fn() }
   const seats = { seatsLeftPct: jest.fn() }
+  const currencyRates = { displayRate: jest.fn() }
   let service: FareQuoteService
 
   const dto = { flight_id: FLIGHT_ID, fare_class_id: CLASS_ID }
@@ -116,7 +125,7 @@ describe('FareQuoteService', () => {
     db.base_fare.findFirst.mockResolvedValue({ amount: '100.00' })
     db.pricing_rule.findMany.mockResolvedValue(RULES)
     taxFees.findAll.mockResolvedValue([VAT])
-    settings.getBaseCurrency.mockResolvedValue('THB')
+    settings.getBaseCurrency.mockResolvedValue('USD')
     settings.getQuoteHoldMinutes.mockResolvedValue(15)
     promoCodes.checkPromo.mockResolvedValue(PROMO)
     service = new FareQuoteService(
@@ -128,6 +137,7 @@ describe('FareQuoteService', () => {
       taxFees as unknown as TaxFeeService,
       settings as unknown as SettingService,
       seats,
+      currencyRates as unknown as CurrencyRateService,
     )
   })
 
@@ -171,7 +181,7 @@ describe('FareQuoteService', () => {
         fare_class_id: CLASS_ID,
         promo_code_id: null,
         seat_type: null,
-        currency: 'THB',
+        currency: 'USD',
         seats_left_pct: 15,
         days_to_departure: 7,
         quoted_at: NOW,
@@ -471,11 +481,31 @@ describe('FareQuoteService', () => {
     })
   })
 
+  describe('display currency on create', () => {
+    it('shows the new quote in display_currency without storing it', async () => {
+      currencyRates.displayRate.mockResolvedValue({ currency: 'THB', rate_per_base: 35 })
+
+      const quote = await service.create({ ...dto, display_currency: 'THB' })
+
+      expect(quote).toMatchObject({ display_currency: 'THB', rate_per_base: 35 })
+      expect(quote.display_total_amount).toBe(Math.round(Number(quote.total_amount) * 35 * 100) / 100)
+      expect(savedData()).not.toHaveProperty('display_currency')
+      expect(savedData().currency).toBe('USD')
+    })
+
+    it('refuses an unknown currency before anything is saved', async () => {
+      currencyRates.displayRate.mockRejectedValue(new BadRequestException({ code: 'CURRENCY_UNKNOWN' }))
+
+      await expect(service.create({ ...dto, display_currency: 'XYZ' })).rejects.toBeInstanceOf(BadRequestException)
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+  })
+
   describe('reading a quote', () => {
     const stored = {
       id: QUOTE_ID,
       total_amount: '121.82',
-      currency: 'THB',
+      currency: 'USD',
       fare_rule_snapshot: {
         refundable: true,
         changeable: false,
@@ -485,6 +515,7 @@ describe('FareQuoteService', () => {
         change_fee_pct: 0,
       },
       fare_quote_line: [{ seq: 1 }],
+      expires_at: new Date(NOW.getTime() + 60_000),
     }
 
     it('throws QUOTE_NOT_FOUND for an unknown id', async () => {
@@ -508,6 +539,40 @@ describe('FareQuoteService', () => {
       })
     })
 
+    it('throws 410 QUOTE_EXPIRED once expires_at has passed, even by a moment', async () => {
+      db.fare_quote.findUnique.mockResolvedValue({ ...stored, expires_at: NOW })
+
+      const error = await errorOf(service.findOne(QUOTE_ID))
+
+      expect(error).toBeInstanceOf(GoneException)
+      expect(error.getResponse()).toMatchObject({ code: 'QUOTE_EXPIRED' })
+    })
+
+    it('adds the total in display_currency, converted on read', async () => {
+      db.fare_quote.findUnique.mockResolvedValue({ ...stored, total_amount: 121.82 })
+      currencyRates.displayRate.mockResolvedValue({ currency: 'THB', rate_per_base: 35 })
+
+      const quote = await service.findOne(QUOTE_ID, 'THB')
+
+      expect(currencyRates.displayRate).toHaveBeenCalledWith('THB')
+      expect(quote).toMatchObject({ total_amount: 121.82, display_currency: 'THB', rate_per_base: 35, display_total_amount: 4263.7 })
+    })
+
+    it('leaves the display fields out when no currency is asked for', async () => {
+      db.fare_quote.findUnique.mockResolvedValue(stored)
+
+      const quote = await service.findOne(QUOTE_ID)
+
+      expect(quote).not.toHaveProperty('display_currency')
+      expect(currencyRates.displayRate).not.toHaveBeenCalled()
+    })
+
+    it('still works out fees on an expired quote, because a booking keeps its fees', async () => {
+      db.fare_quote.findUnique.mockResolvedValue({ ...stored, expires_at: new Date(0) })
+
+      await expect(service.fee(QUOTE_ID, 'cancel')).resolves.toMatchObject({ allowed: true })
+    })
+
     it('works out the fee from the frozen snapshot, and never reads the live fare class', async () => {
       db.fare_quote.findUnique.mockResolvedValue(stored)
 
@@ -520,7 +585,7 @@ describe('FareQuoteService', () => {
         flat: 20,
         pct: 10,
         fee: 32.18, // 20.00 + 10% of 121.82
-        currency: 'THB',
+        currency: 'USD',
       })
       expect(fareClasses.findOne).not.toHaveBeenCalled()
     })

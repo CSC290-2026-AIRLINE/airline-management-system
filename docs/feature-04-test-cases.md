@@ -91,7 +91,8 @@ Base fares are not seeded, so add the one the quotes need.
 | ST-03 | Bad values | `PUT /staff/settings/quote_hold_minutes` | `"0"`, `"abc"`, `"1441"`, `"1.5"` | 400 `SETTING_INVALID` each time | |
 | ST-04 | Largest value | `PUT /staff/settings/quote_hold_minutes` | `{"value":"1440"}` | 200 | |
 | ST-05 | Value must be text | `PUT /staff/settings/quote_hold_minutes` | `{"value":30}` | 400 (validation) | |
-| ST-06 | Base currency locked | `PUT /staff/settings/base_currency` | `{"value":"USD"}` | 409 `SETTING_READ_ONLY` | |
+| ST-06 | Base currency locked | `PUT /staff/settings/base_currency` | `{"value":"THB"}` | 409 `SETTING_READ_ONLY` | |
+| ST-08 | Base currency is USD | `GET /staff/settings` on a fresh seed | None | `base_currency` is `USD` | |
 | ST-07 | Unknown key | `PUT /staff/settings/foo` | `{"value":"1"}` | 404 `SETTING_NOT_FOUND` | |
 
 Set `quote_hold_minutes` back to `15` afterwards.
@@ -182,6 +183,12 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | FQ-21 | Promo: used up | `POST /fare-quotes` | `used_count` = `max_uses` | 422 `PROMO_INVALID`, reason `exhausted` | |
 | FQ-22 | Promo as typed | `POST /fare-quotes` | `promo_code: " save10 "` | Accepted, same as `SAVE10` | |
 | FQ-23 | Bad input | `POST /fare-quotes` | `flight_id: "abc"`, then `seat_type: "aisle"` | 400 (validation) both times | |
+| FQ-24 | Display currency | CR-01 first (THB at 35). FQ-01 body plus `"display_currency":"THB"` | None | 201, `total_amount` still in USD, plus `display_currency: "THB"`, `rate_per_base: 35`, `display_total_amount` = total × 35 | |
+| FQ-25 | Display not stored | `GET /fare-quotes/:id` (no query) on the FQ-24 quote | None | No display fields. Change the THB rate, `GET` with `?display_currency=THB`: the new rate is used | |
+| FQ-26 | Display, base currency | FQ-01 body plus `"display_currency":"USD"` | None | `rate_per_base: 1`, `display_total_amount` = `total_amount` | |
+| FQ-27 | Display, unknown | FQ-01 body plus `"display_currency":"XYZ"`, then `GET /fare-quotes/:id?display_currency=XYZ` | None | 400 `CURRENCY_UNKNOWN` both times, and no new quote is saved | |
+| FQ-28 | Display, bad format | `"display_currency":"thb"` | None | 400 (validation) | |
+| FQ-29 | Expired | Set `quote_hold_minutes` to 1, make a quote, wait over a minute, `GET /fare-quotes/:id` | None | 410 `QUOTE_EXPIRED`, `details.expires_at` set | |
 
 ### Cancel and change fees
 
@@ -196,6 +203,7 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 | FE-05 | Uses the snapshot | Change the live class's fees, repeat FE-01 | None | Fee unchanged | |
 | FE-06 | Bad type | `GET /fare-quotes/:id/fee?type=refund` | None | 400 (validation) | |
 | FE-07 | Unknown quote | `GET /fare-quotes/:id/fee?type=cancel` | Random UUID | 404 `QUOTE_NOT_FOUND` | |
+| FE-08 | Expired quote | FE-01 on the FQ-29 quote | None | 200: fees still work after expiry, because a booking keeps them | |
 
 ### Promo redemption
 
@@ -219,7 +227,10 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 | SF-01 | Create | `POST /staff/seat-fees` | `{"cabin":"economy","seat_type":"exit_row","amount":300}` | 201 | |
 | SF-02 | Duplicate | Send SF-01 again | Same body | 409 `SEAT_FEE_EXISTS` | |
 | SF-03 | Bad values | `POST /staff/seat-fees` | `amount: -1`, then `cabin: "vip"`, then `seat_type: "aisle"` | 400 (validation) each time | |
-| SF-04 | Public lookup | `GET /seat-fees/price?cabin=economy&seat_type=exit_row` with **no token** | None | 200, the fee | |
+| SF-04 | Public price | `GET /seat-fees/price?cabin=economy&seat_type=extra_legroom` with **no token** | None | 200, `fee: 12`, VAT line 0.84, `total: 12.84`, `currency: "USD"`. The flat airport fee and fuel surcharge are **not** added | |
+| SF-04b | Upgrade | Same, plus `&from_seat_type=exit_row` | None | `seat_fee: 12`, `from_seat_fee: 9`, `fee: 3`, `total: 3.21` | |
+| SF-04c | Downgrade | `cabin=economy&seat_type=normal&from_seat_type=extra_legroom` | None | `fee: 0`, `total: 0`: never a refund | |
+| SF-04d | Bad from seat | `from_seat_type=window` | None | 400 (validation) | |
 | SF-05 | Lookup, no row | `GET /seat-fees/price?cabin=first&seat_type=exit_row` | None | 404 `SEAT_FEE_NOT_FOUND` | |
 | SF-06 | Lookup, bad value | `GET /seat-fees/price?cabin=vip&seat_type=exit_row` | None | 400 (validation) | |
 | SF-07 | Update to a taken pair | `PUT` another economy row | `{"seat_type":"exit_row"}` | 409 `SEAT_FEE_EXISTS` | |
@@ -262,6 +273,11 @@ Use a default rate with allowance 20 kg, rate 100 per kg, maximum 32 kg.
 | BG-13 | Charge, whole kg | Same | `weight_kg=25` | `charge: 500` | |
 | BG-14 | Charge, rounds up | Same | `weight_kg=25.4` | `chargeable_kg: 6`, `charge: 600` | |
 | BG-15 | Charge, at maximum | Same | `weight_kg=32` | `charge: 1200` | |
+| BG-15b | Several bags | Same | `weight_kg=50&heaviest_bag_kg=28` | Charged on 50 kg (`chargeable_kg: 30`), not refused: the 32 kg limit is per bag | |
+| BG-15c | Heaviest bag too heavy | Same | `weight_kg=40&heaviest_bag_kg=33` | 422 `BAG_TOO_HEAVY`, `details.heaviest_bag_kg: 33` | |
+| BG-15d | Tier bonus | Same | `weight_kg=28&extra_allowance_kg=5` | `free_allowance_kg: 20`, `extra_allowance_kg: 5`, `total_allowance_kg: 25`, `chargeable_kg: 3` | |
+| BG-15e | Heaviest above total | Same | `weight_kg=20&heaviest_bag_kg=25` | 400 `BAGGAGE_QUERY_INVALID` | |
+| BG-15f | Bonus limits | Same | `extra_allowance_kg=-1`, then `101` | 400 (validation) both times | |
 | BG-16 | Too heavy | Same | `weight_kg=33` | 422 `BAG_TOO_HEAVY` | |
 | BG-17 | Override wins | Same, plus `route_id` of BG-02 | `weight_kg=25` | `charge: 750` | |
 | BG-18 | Falls back to default | Same, with another `route_id` | `weight_kg=25` | `charge: 500` | |
@@ -275,14 +291,14 @@ Use a default rate with allowance 20 kg, rate 100 per kg, maximum 32 kg.
 
 | ID | Feature | Steps | Input | Expected | Pass/Fail |
 |----|---------|-------|-------|----------|-----------|
-| CR-01 | Add | `PUT /staff/currency-rates/USD` | `{"rate_per_base":0.028}` | 200, `updated_by` is the signed-in staff member | |
-| CR-02 | Code format | `PUT /staff/currency-rates/usd`, then `/USDT` | `{"rate_per_base":1}` | 400 both times | |
-| CR-03 | Base currency | `PUT /staff/currency-rates/THB` | `{"rate_per_base":1}` | 400 `CURRENCY_IS_BASE` | |
-| CR-04 | Rate limit | `PUT /staff/currency-rates/USD` | `{"rate_per_base":0}` | 400 (validation) | |
-| CR-05 | Existing code | Send CR-01 again with a new rate | `{"rate_per_base":0.029}` | 200, rate replaced, still one row for USD | |
-| CR-06 | Staff can't set the editor | `PUT /staff/currency-rates/USD` | CR-01 body plus `updated_by` | 400 (validation) | |
-| CR-07 | List and get | `GET /staff/currency-rates`, then `/USD` | None | 200, with the staff member's name | |
-| CR-08 | Update | `PUT /staff/currency-rates/USD` | `{"rate_per_base":0.03}` | 200, new rate | |
+| CR-01 | Add | `PUT /staff/currency-rates/THB` | `{"rate_per_base":35}` | 200, `updated_by` is the signed-in staff member | |
+| CR-02 | Code format | `PUT /staff/currency-rates/thb`, then `/THBX` | `{"rate_per_base":1}` | 400 both times | |
+| CR-03 | Base currency | `PUT /staff/currency-rates/USD` | `{"rate_per_base":1}` | 400 `CURRENCY_IS_BASE` | |
+| CR-04 | Rate limit | `PUT /staff/currency-rates/THB` | `{"rate_per_base":0}` | 400 (validation) | |
+| CR-05 | Existing code | Send CR-01 again with a new rate | `{"rate_per_base":36}` | 200, rate replaced, still one row for THB | |
+| CR-06 | Staff can't set the editor | `PUT /staff/currency-rates/THB` | CR-01 body plus `updated_by` | 400 (validation) | |
+| CR-07 | List and get | `GET /staff/currency-rates`, then `/THB` | None | 200, with the staff member's name | |
+| CR-08 | Update | `PUT /staff/currency-rates/THB` | `{"rate_per_base":34.5}` | 200, new rate | |
 | CR-09 | Unknown code | `GET /staff/currency-rates/EUR` | None | 404 `CURRENCY_RATE_NOT_FOUND` | |
 | CR-10 | Malformed code | `GET /staff/currency-rates/eur` | None | 400 | |
 
@@ -413,5 +429,5 @@ Don't record these as failures. They depend on work outside Feature 4, or are op
 | One promo use per quote | Shared quotes mean `used_count` can undercount when two bookings use one quote | DB team and 3b |
 | Redeem card is by hand | Staff redeem from the page until 3b does it on booking | Feature 3b |
 | Customers on staff routes | The Member A guide flags that the auth guard doesn't check user type. No case here until it's decided. | Dev Leads |
-| Finance base currency | `currency-rate.service.ts` has `THB` hardcoded instead of reading settings | Member B |
+| Old databases keep THB | The seed never overwrites settings. A database seeded before the USD switch needs `UPDATE pricing_setting SET value = 'USD' WHERE key = 'base_currency'`, and its amounts are still THB-sized | You, once |
 | Feature 4 seed data | `seed.ts` now adds settings and pricing data, pending the DB team's agreement | DB team |

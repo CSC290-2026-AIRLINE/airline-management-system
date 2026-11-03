@@ -58,7 +58,10 @@ export interface BaggageCharge {
   baggage_rate_id: string
   route_id: string | null
   weight_kg: number
+  heaviest_bag_kg: number
   free_allowance_kg: number
+  extra_allowance_kg: number
+  total_allowance_kg: number
   max_bag_kg: number | null
   rate_per_kg: number
   chargeable_kg: number

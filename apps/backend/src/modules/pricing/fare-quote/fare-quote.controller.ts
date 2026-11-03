@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseFilters, UsePipes } from '@nestjs/common'
-import { CreateFareQuoteDto } from './dto/create-fare-quote.dto'
+import { CreateFareQuoteDto, DisplayCurrencyDto } from './dto/create-fare-quote.dto'
 import { QuoteFeeDto } from './dto/quote-fee.dto'
 import { FareQuoteService } from './fare-quote.service'
 import { PricingExceptionFilter } from '../pricing-exception.filter'
@@ -18,8 +18,8 @@ export class FareQuoteController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.fareQuoteService.findOne(id)
+  findOne(@Param('id', ParseUUIDPipe) id: string, @Query() query: DisplayCurrencyDto) {
+    return this.fareQuoteService.findOne(id, query.display_currency)
   }
 
   @Get(':id/fee')

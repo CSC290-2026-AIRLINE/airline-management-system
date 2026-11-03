@@ -42,10 +42,10 @@ const APPROVAL_POLICIES = [
 ]
 const PRICING_SETTINGS = [
   { key: 'quote_hold_minutes', value: '15' },
-  { key: 'base_currency', value: 'THB' },
+  { key: 'base_currency', value: 'USD' },
 ]
 
-// Feature 4's test data. Amounts are in the base currency. docs/feature-04-test-cases.md uses these codes.
+// Feature 4's test data. Amounts are in the base currency, USD (the spec's decision). docs/feature-04-test-cases.md uses these codes.
 const FARE_CLASSES = [
   {
     code: 'Y',
@@ -53,9 +53,9 @@ const FARE_CLASSES = [
     name: 'Economy Flex',
     refundable: true,
     changeable: true,
-    cancel_fee_flat: 500,
+    cancel_fee_flat: 15,
     cancel_fee_pct: 5,
-    change_fee_flat: 300,
+    change_fee_flat: 10,
   },
   { code: 'Q', cabin: 'economy', name: 'Economy Saver', min_advance_purchase_days: 7 },
   { code: 'W', cabin: 'premium_economy', name: 'Premium Economy', refundable: true, changeable: true, cancel_fee_pct: 10 },
@@ -64,29 +64,29 @@ const FARE_CLASSES = [
 ]
 // Quotes look a seat fee up by cabin and seat type, so every pair needs a row, even when it is free.
 const SEAT_FEE_GRID = {
-  economy: { normal: 0, exit_row: 300, extra_legroom: 400 },
-  premium_economy: { normal: 0, exit_row: 200, extra_legroom: 300 },
+  economy: { normal: 0, exit_row: 9, extra_legroom: 12 },
+  premium_economy: { normal: 0, exit_row: 6, extra_legroom: 9 },
   business: { normal: 0, exit_row: 0, extra_legroom: 0 },
   first: { normal: 0, exit_row: 0, extra_legroom: 0 },
 }
 const TAX_FEES = [
   { code: 'VAT', name: 'VAT', kind: 'tax', calc_type: 'pct', value: 7 },
-  { code: 'APT_FEE', name: 'Airport fee', kind: 'fee', calc_type: 'flat', value: 700 },
-  { code: 'FUEL', name: 'Fuel surcharge', kind: 'surcharge', calc_type: 'flat', value: 250 },
+  { code: 'APT_FEE', name: 'Airport fee', kind: 'fee', calc_type: 'flat', value: 20 },
+  { code: 'FUEL', name: 'Fuel surcharge', kind: 'surcharge', calc_type: 'flat', value: 7 },
 ]
 // The API refuses a free allowance at or above the maximum bag.
 const BAGGAGE_BY_CABIN = {
-  economy: { free_allowance_kg: 20, rate_per_kg: 200, max_bag_kg: 32 },
-  premium_economy: { free_allowance_kg: 25, rate_per_kg: 180, max_bag_kg: 32 },
-  business: { free_allowance_kg: 30, rate_per_kg: 150, max_bag_kg: 32 },
-  first: { free_allowance_kg: 40, rate_per_kg: 120, max_bag_kg: 45 },
+  economy: { free_allowance_kg: 20, rate_per_kg: 6, max_bag_kg: 32 },
+  premium_economy: { free_allowance_kg: 25, rate_per_kg: 5, max_bag_kg: 32 },
+  business: { free_allowance_kg: 30, rate_per_kg: 4, max_bag_kg: 32 },
+  first: { free_allowance_kg: 40, rate_per_kg: 3, max_bag_kg: 45 },
 }
 const BAGGAGE_ROUTE_OVERRIDE = {
   fare_class: 'Y',
   origin: 'BKK',
   destination: 'CNX',
   free_allowance_kg: 25,
-  rate_per_kg: 250,
+  rate_per_kg: 7,
   max_bag_kg: 32,
 }
 const DAY_MS = 86_400_000
@@ -141,6 +141,7 @@ async function seedFlightNetwork() {
 }
 
 // Same defaults as Feature 4's PRICING_SETTING_DEFAULTS. Upserted with no update, so a changed quote hold window survives a re-seed.
+// A database seeded before the switch to USD keeps THB: run `UPDATE pricing_setting SET value = 'USD' WHERE key = 'base_currency'`.
 async function seedPricingSettings() {
   for (const setting of PRICING_SETTINGS) {
     await prisma.pricing_setting.upsert({ where: { key: setting.key }, update: {}, create: setting })

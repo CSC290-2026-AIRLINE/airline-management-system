@@ -49,6 +49,9 @@ export class BaggageChargeController {
 
   @Get()
   calculate(@Query() query: BaggageChargeQueryDto) {
-    return this.baggageRateService.calculateCharge(query.fare_class_id, query.weight_kg, query.route_id)
+    return this.baggageRateService.calculateCharge(query.fare_class_id, query.weight_kg, query.route_id, {
+      heaviestBagKg: query.heaviest_bag_kg,
+      extraAllowanceKg: query.extra_allowance_kg,
+    })
   }
 }

@@ -253,7 +253,7 @@ export function usePricingApi() {
     updateSetting: (key: string, value: string) => request<PricingSetting>(`/settings/${key}`, 'PUT', { value }),
     getBaseCurrency: async () => {
       const settings = await request<PricingSetting[]>('/settings')
-      return settings.find((setting) => setting.key === 'base_currency')?.value ?? 'THB'
+      return settings.find((setting) => setting.key === 'base_currency')?.value ?? 'USD'
     },
   }
 }

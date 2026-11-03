@@ -2,10 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { DbService } from '@backend/db/db.service'
 import { PricingErrorCode, pricingError } from '../pricing.errors'
 import { staffIdFor } from '../pricing.staff'
+import { SettingService } from '../setting/setting.service'
 import { UpdateCurrencyRateDto } from './dto/update-currency-rate.dto'
-
-// TODO: read pricing_setting 'base_currency' once Core's settings module exists. Every stored amount is in this currency.
-export const BASE_CURRENCY = 'THB'
 
 // A Prisma Decimal or a plain number: both have toFixed.
 type Numeric = number | { toFixed(decimalPlaces: number): string }
@@ -13,9 +11,13 @@ type Numeric = number | { toFixed(decimalPlaces: number): string }
 // Who last changed each rate, for the staff page.
 const include = { staff: { select: { id: true, staff_code: true, first_name: true, last_name: true } } }
 
+// Every stored amount is in pricing_setting 'base_currency'; a rate is how much of a currency one unit of it buys.
 @Injectable()
 export class CurrencyRateService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly settings: SettingService,
+  ) {}
 
   findAll() {
     return this.db.currency_rate.findMany({ include, orderBy: { currency_code: 'asc' } })
@@ -31,10 +33,9 @@ export class CurrencyRateService {
 
   // PUT adds the rate or replaces it. The code is the primary key, so an upsert can't create a duplicate.
   async upsert(code: string, dto: UpdateCurrencyRateDto, userId: string) {
-    if (code === BASE_CURRENCY) {
-      throw new BadRequestException(
-        pricingError(PricingErrorCode.CURRENCY_IS_BASE, `${BASE_CURRENCY} is the base currency; its rate is always 1`),
-      )
+    const base = await this.settings.getBaseCurrency()
+    if (code === base) {
+      throw new BadRequestException(pricingError(PricingErrorCode.CURRENCY_IS_BASE, `${base} is the base currency; its rate is always 1`))
     }
     const staffId = await staffIdFor(this.db, userId)
     return this.db.currency_rate.upsert({
@@ -47,12 +48,42 @@ export class CurrencyRateService {
 
   // Converts an amount in the base currency, rounded half up to 2 decimal places. Exported for Feature 2.
   async convert(amount: Numeric, toCurrency: string): Promise<number> {
-    if (toCurrency === BASE_CURRENCY) {
+    if (toCurrency === (await this.settings.getBaseCurrency())) {
       return roundHalfUp(toScaled(amount, 6), 6)
     }
     const { rate_per_base } = await this.findOne(toCurrency)
-    return roundHalfUp(toScaled(amount, 6) * toScaled(rate_per_base, 6), 12)
+    return multiply(amount, rate_per_base)
   }
+
+  // The rate for showing a quote in the customer's currency, 1 for the base currency. Looked up on every read and never
+  // stored, so a rate change shows on the next read. An unknown code is the caller's mistake: 400 CURRENCY_UNKNOWN,
+  // unlike convert's 404 for staff.
+  async displayRate(currency: string): Promise<DisplayRate> {
+    if (currency === (await this.settings.getBaseCurrency())) {
+      return { currency, rate_per_base: 1 }
+    }
+    const rate = await this.db.currency_rate.findUnique({ where: { currency_code: currency } })
+    if (!rate) {
+      throw new BadRequestException(
+        pricingError(PricingErrorCode.CURRENCY_UNKNOWN, `No rate for currency ${currency}`, { display_currency: currency }),
+      )
+    }
+    return { currency, rate_per_base: Number(rate.rate_per_base) }
+  }
+}
+
+export interface DisplayRate {
+  currency: string
+  rate_per_base: number
+}
+
+// The fields a quote gains when the caller asks for display_currency.
+export function displayFields(amount: Numeric, rate: DisplayRate) {
+  return { display_currency: rate.currency, rate_per_base: rate.rate_per_base, display_total_amount: multiply(amount, rate.rate_per_base) }
+}
+
+function multiply(amount: Numeric, rate: Numeric): number {
+  return roundHalfUp(toScaled(amount, 6) * toScaled(rate, 6), 12)
 }
 
 // Money math in integers, so 0.1 + 0.2 style float errors cannot change a rounded amount.

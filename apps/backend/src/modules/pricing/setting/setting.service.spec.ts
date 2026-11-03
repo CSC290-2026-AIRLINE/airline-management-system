@@ -29,7 +29,7 @@ describe('SettingService', () => {
 
     expect(settings).toEqual([
       expect.objectContaining({ key: 'quote_hold_minutes', value: '20' }),
-      { key: 'base_currency', value: 'THB', updated_at: null, updated_by: null },
+      { key: 'base_currency', value: 'USD', updated_at: null, updated_by: null },
     ])
   })
 
@@ -84,7 +84,7 @@ describe('SettingService', () => {
   it('falls back to defaults when the rows are missing', async () => {
     db.pricing_setting.findUnique.mockResolvedValue(null)
 
-    expect(await service.getBaseCurrency()).toBe('THB')
+    expect(await service.getBaseCurrency()).toBe('USD')
     expect(await service.getQuoteHoldMinutes()).toBe(15)
   })
 })
