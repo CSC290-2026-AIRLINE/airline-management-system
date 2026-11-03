@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common'
 import { CreateBaseFareDto } from './dto/create-base-fare.dto'
 import { ListBaseFaresDto } from './dto/list-base-fares.dto'
 import { UpdateBaseFareDto } from './dto/update-base-fare.dto'
@@ -29,7 +29,7 @@ export class BaseFareController {
     return this.baseFareService.create(dto)
   }
 
-  @Patch(':id')
+  @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBaseFareDto) {
     return this.baseFareService.update(id, dto)
   }

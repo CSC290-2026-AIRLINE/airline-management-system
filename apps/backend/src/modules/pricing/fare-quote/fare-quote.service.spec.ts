@@ -236,13 +236,22 @@ describe('FareQuoteService', () => {
       expect(error.getResponse()).toMatchObject({ code: 'FLIGHT_NOT_FOUND' })
     })
 
-    it.each(['cancelled', 'departed', 'arrived', 'holding', 'diverted'])('refuses a %s flight', async (status) => {
+    it('refuses a cancelled flight with FLIGHT_CANCELLED', async () => {
+      db.flight.findUnique.mockResolvedValue({ ...flight, status: 'cancelled' })
+
+      const error = await errorOf(service.create(dto))
+
+      expect(error).toBeInstanceOf(ConflictException)
+      expect(error.getResponse()).toMatchObject({ code: 'FLIGHT_CANCELLED', details: { status: 'cancelled' } })
+    })
+
+    it.each(['departed', 'arrived', 'holding', 'diverted'])('refuses a %s flight with FLIGHT_DEPARTED', async (status) => {
       db.flight.findUnique.mockResolvedValue({ ...flight, status })
 
       const error = await errorOf(service.create(dto))
 
       expect(error).toBeInstanceOf(ConflictException)
-      expect(error.getResponse()).toMatchObject({ code: 'FLIGHT_NOT_BOOKABLE', details: { status } })
+      expect(error.getResponse()).toMatchObject({ code: 'FLIGHT_DEPARTED', details: { status } })
     })
 
     it('sells a delayed flight', async () => {
@@ -254,7 +263,10 @@ describe('FareQuoteService', () => {
     it('refuses a flight whose departure time has passed, even if nobody updated its status', async () => {
       db.flight.findUnique.mockResolvedValue({ ...flight, dep_at: new Date('2026-10-06T04:59:00.000Z') })
 
-      await expect(service.create(dto)).rejects.toBeInstanceOf(ConflictException)
+      const error = await errorOf(service.create(dto))
+
+      expect(error).toBeInstanceOf(ConflictException)
+      expect(error.getResponse()).toMatchObject({ code: 'FLIGHT_DEPARTED' })
     })
   })
 
@@ -275,7 +287,7 @@ describe('FareQuoteService', () => {
 
       expect(error).toBeInstanceOf(UnprocessableEntityException)
       expect(error.getResponse()).toMatchObject({
-        code: 'ADVANCE_PURCHASE_REQUIRED',
+        code: 'FARE_ADVANCE_PURCHASE_NOT_MET',
         details: { min_advance_purchase_days: 14, days_to_departure: 7 },
       })
     })
@@ -351,13 +363,13 @@ describe('FareQuoteService', () => {
   })
 
   describe('other failures', () => {
-    it('throws BASE_FARE_MISSING when the class is not priced on this route', async () => {
+    it('throws BASE_FARE_NOT_FOUND when the class is not priced on this route', async () => {
       db.base_fare.findFirst.mockResolvedValue(null)
 
       const error = await errorOf(service.create(dto))
 
       expect(error).toBeInstanceOf(UnprocessableEntityException)
-      expect(error.getResponse()).toMatchObject({ code: 'BASE_FARE_MISSING' })
+      expect(error.getResponse()).toMatchObject({ code: 'BASE_FARE_NOT_FOUND' })
     })
 
     it('only uses a live base fare', async () => {
@@ -507,7 +519,7 @@ describe('FareQuoteService', () => {
       expect(db.$transaction).not.toHaveBeenCalled()
     })
 
-    it('throws FARE_QUOTE_NOT_FOUND for an unknown quote', async () => {
+    it('throws QUOTE_NOT_FOUND for an unknown quote', async () => {
       db.fare_quote.findUnique.mockResolvedValue(null)
 
       await expect(service.redeem(QUOTE_ID)).rejects.toBeInstanceOf(NotFoundException)
@@ -530,13 +542,13 @@ describe('FareQuoteService', () => {
       fare_quote_line: [{ seq: 1 }],
     }
 
-    it('throws FARE_QUOTE_NOT_FOUND for an unknown id', async () => {
+    it('throws QUOTE_NOT_FOUND for an unknown id', async () => {
       db.fare_quote.findUnique.mockResolvedValue(null)
 
       const error = await errorOf(service.findOne(QUOTE_ID))
 
       expect(error).toBeInstanceOf(NotFoundException)
-      expect(error.getResponse()).toMatchObject({ code: 'FARE_QUOTE_NOT_FOUND' })
+      expect(error.getResponse()).toMatchObject({ code: 'QUOTE_NOT_FOUND' })
     })
 
     it('returns the lines in order', async () => {

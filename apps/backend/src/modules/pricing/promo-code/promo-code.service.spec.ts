@@ -301,9 +301,9 @@ describe('PromoCodeService', () => {
     })
 
     it.each<[string, object | null, Date]>([
-      ['unknown', null, during],
+      ['not_found', null, during],
       ['inactive', { ...stored, is_active: false }, during],
-      ['not_yet_valid', stored, new Date('2026-10-31T23:59:59.000Z')],
+      ['not_started', stored, new Date('2026-10-31T23:59:59.000Z')],
       ['expired', stored, stored.valid_to],
       ['exhausted', { ...stored, used_count: 500 }, during],
     ])('throws PROMO_INVALID with reason %s', async (reason, row, now) => {

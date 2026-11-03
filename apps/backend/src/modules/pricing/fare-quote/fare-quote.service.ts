@@ -74,7 +74,7 @@ export class FareQuoteService {
     if (daysToDeparture < fareClass.min_advance_purchase_days) {
       throw new UnprocessableEntityException(
         pricingError(
-          PricingErrorCode.ADVANCE_PURCHASE_REQUIRED,
+          PricingErrorCode.FARE_ADVANCE_PURCHASE_NOT_MET,
           `${fareClass.code} must be bought at least ${fareClass.min_advance_purchase_days} days before departure`,
           { min_advance_purchase_days: fareClass.min_advance_purchase_days, days_to_departure: daysToDeparture },
         ),
@@ -98,7 +98,7 @@ export class FareQuoteService {
     })
     if (!baseFare) {
       throw new UnprocessableEntityException(
-        pricingError(PricingErrorCode.BASE_FARE_MISSING, `Fare class ${fareClass.code} has no base fare on this route`),
+        pricingError(PricingErrorCode.BASE_FARE_NOT_FOUND, `Fare class ${fareClass.code} has no base fare on this route`),
       )
     }
 
@@ -219,7 +219,7 @@ export class FareQuoteService {
   private async findQuote(id: string) {
     const quote = await this.db.fare_quote.findUnique({ where: { id }, include: WITH_LINES })
     if (!quote) {
-      throw new NotFoundException(pricingError(PricingErrorCode.FARE_QUOTE_NOT_FOUND, `Fare quote ${id} not found`))
+      throw new NotFoundException(pricingError(PricingErrorCode.QUOTE_NOT_FOUND, `Fare quote ${id} not found`))
     }
     return quote
   }
@@ -248,9 +248,13 @@ export class FareQuoteService {
     if (!flight) {
       throw new NotFoundException(pricingError(PricingErrorCode.FLIGHT_NOT_FOUND, `Flight ${id} not found`))
     }
+    if (flight.status === 'cancelled') {
+      throw new ConflictException(pricingError(PricingErrorCode.FLIGHT_CANCELLED, 'This flight is cancelled', { status: flight.status }))
+    }
+    // holding, diverted, departed and arrived have all left the gate, and so has a flight whose time has passed.
     if (!BOOKABLE_STATUSES.includes(flight.status) || flight.dep_at <= now) {
       throw new ConflictException(
-        pricingError(PricingErrorCode.FLIGHT_NOT_BOOKABLE, 'This flight can no longer be booked', { status: flight.status }),
+        pricingError(PricingErrorCode.FLIGHT_DEPARTED, 'This flight has already departed', { status: flight.status }),
       )
     }
     return flight

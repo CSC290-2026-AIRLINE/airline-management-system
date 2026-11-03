@@ -51,11 +51,11 @@ describe('BaggageRateService', () => {
       expect(result).toMatchObject({ chargeable_kg: chargeableKg, charge })
     })
 
-    it('refuses a 33 kg bag with BAGGAGE_TOO_HEAVY (422)', async () => {
+    it('refuses a 33 kg bag with BAG_TOO_HEAVY (422)', async () => {
       const error = await service.calculateCharge(FARE_CLASS_ID, 33).catch((e: unknown) => e)
 
       expect(error).toBeInstanceOf(UnprocessableEntityException)
-      expect((error as UnprocessableEntityException).getResponse()).toMatchObject({ code: 'BAGGAGE_TOO_HEAVY' })
+      expect((error as UnprocessableEntityException).getResponse()).toMatchObject({ code: 'BAG_TOO_HEAVY' })
     })
 
     it('accepts a bag exactly at the max weight', async () => {

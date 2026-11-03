@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreatePaymentScheduleDto } from './dto/create-payment-schedule.dto'
@@ -25,7 +25,7 @@ export class PaymentScheduleController {
     return this.paymentScheduleService.create(dto, user.id)
   }
 
-  @Patch(':id')
+  @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePaymentScheduleDto) {
     return this.paymentScheduleService.update(id, dto)
   }

@@ -11,7 +11,7 @@ Fill in **Pass/Fail** as you run each case by hand. A blank means the case has n
 ## How to test
 
 - **Base URL:** `http://localhost:8080/api`
-- **Token:** sign in on staff-web (port 6161), copy the access token, and send it as `Authorization: Bearer <token>`. Every route needs it except `GET /seat-fees`.
+- **Token:** sign in on staff-web (port 6161), copy the access token, and send it as `Authorization: Bearer <token>`. Every route needs it except `GET /seat-fees/price`.
 - **Errors:** pricing errors look like `{ code, message, details? }`. DTO validation errors have no `code`: they are a 400 with `message` as a list. Where the Expected column says **400 (validation)**, that is the kind it means.
 - **Soft delete:** a deleted row stays in the table with `deleted_at` set, but no longer appears in the API.
 - **Paths:** below, `/staff/...` means `http://localhost:8080/api/staff/...`.
@@ -53,15 +53,15 @@ Base fares are not seeded, so add the one the quotes need.
 | FC-05 | Bad cabin | `POST /staff/fare-classes` | `cabin: "vip"` | 400 (validation) | |
 | FC-06 | Unknown field | `POST /staff/fare-classes` | FC-01 body plus `"foo":1` | 400 (validation) | |
 | FC-07 | Rule on create | `POST /staff/fare-classes` | `refundable: false, cancel_fee_flat: 50` | 400 `FARE_RULE_INVALID`, `details.fields` has `cancel_fee_flat` | |
-| FC-08 | Inactive hidden | PATCH a class to `is_active: false`, then `GET /staff/fare-classes` | None | Class is not listed | |
+| FC-08 | Inactive hidden | PUT a class to `is_active: false`, then `GET /staff/fare-classes` | None | Class is not listed | |
 | FC-09 | Include inactive | `GET /staff/fare-classes?include_inactive=true` | None | Inactive class is listed | |
 | FC-10 | Get one | `GET /staff/fare-classes/:id` | Unknown UUID, then `abc` | 404 `FARE_CLASS_NOT_FOUND`, then 400 | |
-| FC-11 | Update | `PATCH /staff/fare-classes/:id` | `{"name":"New name"}` | 200, only the name changed | |
-| FC-12 | Empty name on update | `PATCH /staff/fare-classes/:id` | `{"name":""}` | 400 (validation) | |
+| FC-11 | Update | `PUT /staff/fare-classes/:id` | `{"name":"New name"}` | 200, only the name changed | |
+| FC-12 | Empty name on update | `PUT /staff/fare-classes/:id` | `{"name":""}` | 400 (validation) | |
 | FC-13 | Read rule | `GET /staff/fare-classes/:id/rule` | None | 200, restriction and fee fields | |
-| FC-14 | Update rule | `PATCH /staff/fare-classes/:id/rule` | `{"refundable":true,"cancel_fee_flat":10,"cancel_fee_pct":5}` | 200, values saved | |
-| FC-15 | Inconsistent rule | `PATCH /staff/fare-classes/:id/rule` | `{"changeable":false,"change_fee_pct":5}` | 400 `FARE_RULE_INVALID` | |
-| FC-16 | Fee percent limit | `PATCH /staff/fare-classes/:id/rule` | `{"cancel_fee_pct":150}` | 400 (validation) | |
+| FC-14 | Update rule | `PUT /staff/fare-classes/:id/rule` | `{"refundable":true,"cancel_fee_flat":10,"cancel_fee_pct":5}` | 200, values saved | |
+| FC-15 | Inconsistent rule | `PUT /staff/fare-classes/:id/rule` | `{"changeable":false,"change_fee_pct":5}` | 400 `FARE_RULE_INVALID` | |
+| FC-16 | Fee percent limit | `PUT /staff/fare-classes/:id/rule` | `{"cancel_fee_pct":150}` | 400 (validation) | |
 | FC-17 | Delete in use | `DELETE` a class with a live base fare | None | 409 `FARE_CLASS_IN_USE` | |
 | FC-18 | Delete and reuse | `DELETE` a class with no base fares, `GET` it, then POST the same code | None | 204, then 404, then 201 | |
 
@@ -76,8 +76,8 @@ Base fares are not seeded, so add the one the quotes need.
 | BF-05 | Unknown route | `POST /staff/base-fares` | Random `route_id` | 404 `ROUTE_NOT_FOUND` | |
 | BF-06 | Deleted class | `POST /staff/base-fares` | Deleted class's `fare_class_id` | 404 `FARE_CLASS_NOT_FOUND` | |
 | BF-07 | Filter | `GET /staff/base-fares?route_id=<id>` | None | Only that route's fares | |
-| BF-08 | Update | `PATCH /staff/base-fares/:id` | `{"amount":120}` | 200, new amount | |
-| BF-09 | Only amount changes | `PATCH /staff/base-fares/:id` | `{"route_id":"<id>"}` | 400 (validation) | |
+| BF-08 | Update | `PUT /staff/base-fares/:id` | `{"amount":120}` | 200, new amount | |
+| BF-09 | Only amount changes | `PUT /staff/base-fares/:id` | `{"route_id":"<id>"}` | 400 (validation) | |
 | BF-10 | Delete | `DELETE`, then `GET` the same id | None | 204, then 404 `BASE_FARE_NOT_FOUND` | |
 
 ## Pricing settings
@@ -110,17 +110,17 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | PR-10 | Adjustment limit | `POST /staff/pricing-rules` | `adjustment_pct: -100` | 400 (validation) | |
 | PR-11 | Priority taken | `POST /staff/pricing-rules` | Priority already used in that group | 409 `PRICING_RULE_PRIORITY_TAKEN` | |
 | PR-12 | Unknown class | `POST /staff/pricing-rules` | Random `fare_class_id` | 404 `FARE_CLASS_NOT_FOUND` | |
-| PR-13 | Update | `PATCH /staff/pricing-rules/:id` | `{"adjustment_pct":12}` | 200 | |
-| PR-14 | Group rules on update | `PATCH` a month rule | `{"month":null}` | 400 `PRICING_RULE_INVALID` | |
-| PR-15 | Reorder | `POST /staff/pricing-rules/reorder` | `{"rule_group":"urgency","ids":[all live ids, new order]}` | 200, priorities 1, 2, 3… in that order, no unique index error | |
-| PR-16 | Reorder mismatch | `POST /staff/pricing-rules/reorder` | Leave one live id out | 400 `PRICING_RULE_REORDER_MISMATCH`, `details.missing` set | |
+| PR-13 | Update | `PUT /staff/pricing-rules/:id` | `{"adjustment_pct":12}` | 200 | |
+| PR-14 | Group rules on update | `PUT` a month rule | `{"month":null}` | 400 `PRICING_RULE_INVALID` | |
+| PR-15 | Reorder | `PUT /staff/pricing-rule-order` | `{"rule_group":"urgency","ids":[all live ids, new order]}` | 200, priorities 1, 2, 3… in that order, no unique index error | |
+| PR-16 | Reorder mismatch | `PUT /staff/pricing-rule-order` | Leave one live id out | 400 `PRICING_RULE_REORDER_MISMATCH`, `details.missing` set | |
 | PR-17 | Delete | `DELETE`, then `GET` the same id | None | 204, then 404 `PRICING_RULE_NOT_FOUND` | |
 
 ## Price simulator
 
 | ID | Feature | Steps | Input | Expected | Pass/Fail |
 |----|---------|-------|-------|----------|-----------|
-| SI-01 | Worked example | Active: PR-01, PR-02, 7% tax, 5.00 flat surcharge. `POST /staff/pricing-rules/simulate` | `{"base_fare":100,"departure_date":"<7 days from today>","seats_left_pct":15,"seat_type":"normal"}` | Lines +10.00, +16.50, tax 8.86, surcharge 5.00. Total **140.36** | |
+| SI-01 | Worked example | Active: PR-01, PR-02, 7% tax, 5.00 flat surcharge. `POST /staff/pricing-simulations` | `{"base_fare":100,"departure_date":"<7 days from today>","seats_left_pct":15,"seat_type":"normal"}` | Lines +10.00, +16.50, tax 8.86, surcharge 5.00. Total **140.36** | |
 | SI-02 | First match wins | Two urgency rules that both match, then swap their order | Same as SI-01 | Only the first rule in order appears | |
 | SI-03 | Inactive rule | Turn PR-01 off | Same as SI-01 | No H-7 line, `urgency` in `unmatched_groups` | |
 | SI-04 | Class-only rule | Set `fare_class_id` on a matching rule | Same as SI-01 | Rule is skipped: the simulator has no fare class | |
@@ -128,8 +128,8 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | SI-06 | Percent promo | Live code, 15% off | SI-01 plus `promo_code` | Promo line −18.98 with detail `15%`, tax on the discounted price, total 120.05 | |
 | SI-07 | Fixed promo | Live code, 20 off | SI-01 plus `promo_code` | Promo line −20.00 with detail `flat` | |
 | SI-08 | Unusable promo | Expired code | SI-01 plus `promo_code` | 422 `PROMO_INVALID` | |
-| SI-09 | Past departure | `POST /staff/pricing-rules/simulate` | Yesterday's date | 400 `SIMULATION_INVALID` | |
-| SI-10 | Seats limit | `POST /staff/pricing-rules/simulate` | `seats_left_pct: 101` | 400 (validation) | |
+| SI-09 | Past departure | `POST /staff/pricing-simulations` | Yesterday's date | 400 `SIMULATION_INVALID` | |
+| SI-10 | Seats limit | `POST /staff/pricing-simulations` | `seats_left_pct: 101` | 400 (validation) | |
 | SI-11 | Dry run | Count `fare_quote` rows and note the promo's `used_count`, run SI-06, check again | None | Nothing changed | |
 
 ## Promo codes
@@ -144,8 +144,8 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | PC-06 | Code format | `POST /staff/promo-codes` | `code: "save10"` | 400 (validation) | |
 | PC-07 | Duplicate | Send PC-01 again | Same body | 409 `PROMO_CODE_TAKEN` | |
 | PC-08 | Used count locked | `POST /staff/promo-codes` | PC-01 body plus `used_count: 5` | 400 (validation) | |
-| PC-09 | Switch discount type | `PATCH /staff/promo-codes/:id` | `{"discount_pct":null,"discount_amount":50}` | 200 | |
-| PC-10 | Max uses too low | Code with 3 uses, then `PATCH` | `{"max_uses":2}` | 400 `PROMO_CODE_INVALID` | |
+| PC-09 | Switch discount type | `PUT /staff/promo-codes/:id` | `{"discount_pct":null,"discount_amount":50}` | 200 | |
+| PC-10 | Max uses too low | Code with 3 uses, then `PUT` | `{"max_uses":2}` | 400 `PROMO_CODE_INVALID` | |
 | PC-11 | List | `GET /staff/promo-codes`, then `?include_inactive=true` | None | Inactive codes appear only the second time | |
 | PC-12 | Delete and reuse | `DELETE`, `GET` it, then POST the same code | None | 204, 404 `PROMO_CODE_NOT_FOUND`, 201 | |
 | PC-13 | Quotes for a code | `GET /staff/promo-codes/quotes?code=SAVE10` | None | 200, newest first, at most 50, with flight and route | |
@@ -159,7 +159,7 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | FQ-01 | **Worked example** | Base fare 100. Active only: an urgency rule +10% matching the flight's days out, a load rule +15% with `max_seats_left_pct: 100`, VAT 7%, and SAVE10. `POST /fare-quotes` | `{"flight_id":"<id>","fare_class_id":"<id>","promo_code":"SAVE10"}` | 201. 100.00 → 110.00 → 126.50 → 113.85 → **121.82**. Lines: +10.00, +16.50, −12.65, +7.97 | |
 | FQ-02 | Lines add up | Add up the FQ-01 lines | None | The sum equals `total_amount` exactly | |
 | FQ-03 | Saved facts | `GET /fare-quotes/:id` | None | Same lines, `currency`, `expires_at` = `quoted_at` + hold minutes | |
-| FQ-04 | Unknown quote | `GET /fare-quotes/:id` | Random UUID | 404 `FARE_QUOTE_NOT_FOUND` | |
+| FQ-04 | Unknown quote | `GET /fare-quotes/:id` | Random UUID | 404 `QUOTE_NOT_FOUND` | |
 | FQ-05 | Reuse inside window | Send FQ-01 again | Same body | Same quote `id`, no new row | |
 | FQ-06 | Different key | Send FQ-01 with a different promo or `seat_type` | Changed body | New quote `id` | |
 | FQ-07 | After expiry | Set hold to 1 minute, make a quote, wait over 1 minute, send it again | Same body | New quote `id` | |
@@ -167,14 +167,15 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | FQ-09 | No seat fee row | No fee for that cabin and seat type | `seat_type: "extra_legroom"` | 404 `SEAT_FEE_NOT_FOUND` | |
 | FQ-10 | Quote is frozen | After FQ-01, change VAT and the base fare, then `GET /fare-quotes/:id` | None | Old lines and total unchanged | |
 | FQ-11 | Unknown flight | `POST /fare-quotes` | Random `flight_id` | 404 `FLIGHT_NOT_FOUND` | |
-| FQ-12 | Not bookable | Flight status `cancelled`, or already departed | That `flight_id` | 409 `FLIGHT_NOT_BOOKABLE` | |
-| FQ-13 | Check beats reuse | Make a quote, cancel the flight, send it again inside the window | Same body | 409 `FLIGHT_NOT_BOOKABLE`, not the saved quote | |
+| FQ-12 | Cancelled flight | Flight status `cancelled` | That `flight_id` | 409 `FLIGHT_CANCELLED` | |
+| FQ-12b | Departed flight | Status `departed`, `arrived`, `holding` or `diverted`, or `dep_at` in the past | That `flight_id` | 409 `FLIGHT_DEPARTED` | |
+| FQ-13 | Check beats reuse | Make a quote, cancel the flight, send it again inside the window | Same body | 409 `FLIGHT_CANCELLED`, not the saved quote | |
 | FQ-14 | Inactive class | Turn the fare class off | Same body | 404 `FARE_CLASS_NOT_FOUND` | |
-| FQ-15 | Advance purchase | Set `min_advance_purchase_days` above the flight's days out | Same body | 422 `ADVANCE_PURCHASE_REQUIRED`, with both day counts in `details` | |
-| FQ-16 | No base fare | Fare class with no base fare on that route | That `fare_class_id` | 422 `BASE_FARE_MISSING` | |
-| FQ-17 | Promo: unknown | `POST /fare-quotes` | `promo_code: "NOPE"` | 422 `PROMO_INVALID`, `details.reason: "unknown"` | |
+| FQ-15 | Advance purchase | Set `min_advance_purchase_days` above the flight's days out | Same body | 422 `FARE_ADVANCE_PURCHASE_NOT_MET`, with both day counts in `details` | |
+| FQ-16 | No base fare | Fare class with no base fare on that route | That `fare_class_id` | 422 `BASE_FARE_NOT_FOUND` | |
+| FQ-17 | Promo: not found | `POST /fare-quotes` | `promo_code: "NOPE"` | 422 `PROMO_INVALID`, `details.reason: "not_found"` | |
 | FQ-18 | Promo: expired | `POST /fare-quotes` | Code past `valid_to` | 422 `PROMO_INVALID`, reason `expired` | |
-| FQ-19 | Promo: not yet valid | `POST /fare-quotes` | Code before `valid_from` | 422 `PROMO_INVALID`, reason `not_yet_valid` | |
+| FQ-19 | Promo: not yet valid | `POST /fare-quotes` | Code before `valid_from` | 422 `PROMO_INVALID`, reason `not_started` | |
 | FQ-20 | Promo: inactive | `POST /fare-quotes` | Inactive code | 422 `PROMO_INVALID`, reason `inactive` | |
 | FQ-21 | Promo: used up | `POST /fare-quotes` | `used_count` = `max_uses` | 422 `PROMO_INVALID`, reason `exhausted` | |
 | FQ-22 | Promo as typed | `POST /fare-quotes` | `promo_code: " save10 "` | Accepted, same as `SAVE10` | |
@@ -192,7 +193,7 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 | FE-04 | Capped at the total | Quote from a class with `cancel_fee_flat: 500` | `type=cancel` | `fee` equals the quote total | |
 | FE-05 | Uses the snapshot | Change the live class's fees, repeat FE-01 | None | Fee unchanged | |
 | FE-06 | Bad type | `GET /fare-quotes/:id/fee?type=refund` | None | 400 (validation) | |
-| FE-07 | Unknown quote | `GET /fare-quotes/:id/fee?type=cancel` | Random UUID | 404 `FARE_QUOTE_NOT_FOUND` | |
+| FE-07 | Unknown quote | `GET /fare-quotes/:id/fee?type=cancel` | Random UUID | 404 `QUOTE_NOT_FOUND` | |
 
 ### Promo redemption
 
@@ -203,7 +204,7 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 | RD-03 | No promo | Redeem a quote with no promo | None | 200, `redeemed: false`, `promo_code_id: null` | |
 | RD-04 | Last use taken | Code with `max_uses: 1`, two quotes (different seat type). Redeem both | None | First 200, second 422 `PROMO_INVALID`, reason `exhausted`. `used_count` stays 1 | |
 | RD-05 | Switched off later | Make a quote, turn the promo off, redeem | None | 200, counted: the price was already agreed | |
-| RD-06 | Unknown quote | `POST /fare-quotes/:id/redeem` | Random UUID | 404 `FARE_QUOTE_NOT_FOUND` | |
+| RD-06 | Unknown quote | `POST /fare-quotes/:id/redeem` | Random UUID | 404 `QUOTE_NOT_FOUND` | |
 
 ## Seat fees
 
@@ -212,11 +213,11 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 | SF-01 | Create | `POST /staff/seat-fees` | `{"cabin":"economy","seat_type":"exit_row","amount":300}` | 201 | |
 | SF-02 | Duplicate | Send SF-01 again | Same body | 409 `SEAT_FEE_EXISTS` | |
 | SF-03 | Bad values | `POST /staff/seat-fees` | `amount: -1`, then `cabin: "vip"`, then `seat_type: "aisle"` | 400 (validation) each time | |
-| SF-04 | Public lookup | `GET /seat-fees?cabin=economy&seat_type=exit_row` with **no token** | None | 200, the fee | |
-| SF-05 | Lookup, no row | `GET /seat-fees?cabin=first&seat_type=exit_row` | None | 404 `SEAT_FEE_NOT_FOUND` | |
-| SF-06 | Lookup, bad value | `GET /seat-fees?cabin=vip&seat_type=exit_row` | None | 400 (validation) | |
-| SF-07 | Update to a taken pair | `PATCH` another economy row | `{"seat_type":"exit_row"}` | 409 `SEAT_FEE_EXISTS` | |
-| SF-08 | Update amount | `PATCH /staff/seat-fees/:id` | `{"amount":350}` | 200 | |
+| SF-04 | Public lookup | `GET /seat-fees/price?cabin=economy&seat_type=exit_row` with **no token** | None | 200, the fee | |
+| SF-05 | Lookup, no row | `GET /seat-fees/price?cabin=first&seat_type=exit_row` | None | 404 `SEAT_FEE_NOT_FOUND` | |
+| SF-06 | Lookup, bad value | `GET /seat-fees/price?cabin=vip&seat_type=exit_row` | None | 400 (validation) | |
+| SF-07 | Update to a taken pair | `PUT` another economy row | `{"seat_type":"exit_row"}` | 409 `SEAT_FEE_EXISTS` | |
+| SF-08 | Update amount | `PUT /staff/seat-fees/:id` | `{"amount":350}` | 200 | |
 | SF-09 | Delete and re-add | `DELETE`, `GET` it, then send SF-01 | None | 204, 404 `SEAT_FEE_NOT_FOUND`, 201 | |
 
 ## Taxes, surcharges and fees
@@ -227,7 +228,7 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 | TF-02 | Flat fee | `POST /staff/tax-fees` | `{"code":"APT_FEE","name":"Airport fee","kind":"fee","calc_type":"flat","value":700}` | 201 | |
 | TF-03 | Code format | `POST /staff/tax-fees` | `code: "vat"` | 400 (validation) | |
 | TF-04 | Percent limit | `POST /staff/tax-fees` | `calc_type: "pct", value: 150` | 400 `TAX_FEE_PCT_TOO_HIGH` | |
-| TF-05 | Limit on update | `PATCH` APT_FEE | `{"calc_type":"pct"}` | 400 `TAX_FEE_PCT_TOO_HIGH` (700 is over 100) | |
+| TF-05 | Limit on update | `PUT` APT_FEE | `{"calc_type":"pct"}` | 400 `TAX_FEE_PCT_TOO_HIGH` (700 is over 100) | |
 | TF-06 | Duplicate | Send TF-01 again | Same body | 409 `TAX_FEE_CODE_TAKEN` | |
 | TF-07 | Bad kind | `POST /staff/tax-fees` | `kind: "levy"` | 400 (validation) | |
 | TF-08 | Inactive hidden | Turn VAT off, `GET /staff/tax-fees`, then `?include_inactive=true` | None | Listed only the second time | |
@@ -240,22 +241,22 @@ Use a default rate with allowance 20 kg, rate 100 per kg, maximum 32 kg.
 
 | ID | Feature | Steps | Input | Expected | Pass/Fail |
 |----|---------|-------|-------|----------|-----------|
-| BG-01 | Default rate | `POST /staff/baggage-rates` | `{"fare_class_id":"<id>","free_allowance_kg":20,"rate_per_kg":100,"max_bag_kg":32}` | 201, `route_id` null | |
-| BG-02 | Route override | `POST /staff/baggage-rates` | BG-01 plus `route_id`, `rate_per_kg: 150` | 201 | |
+| BG-01 | Default rate | `POST /staff/overweight-baggage-rates` | `{"fare_class_id":"<id>","free_allowance_kg":20,"rate_per_kg":100,"max_bag_kg":32}` | 201, `route_id` null | |
+| BG-02 | Route override | `POST /staff/overweight-baggage-rates` | BG-01 plus `route_id`, `rate_per_kg: 150` | 201 | |
 | BG-03 | Duplicate default | Send BG-01 again | Same body | 409 `BAGGAGE_RATE_EXISTS` | |
 | BG-04 | Duplicate override | Send BG-02 again | Same body | 409 `BAGGAGE_RATE_EXISTS` | |
-| BG-05 | Allowance vs maximum | `POST /staff/baggage-rates` | `free_allowance_kg: 32, max_bag_kg: 32` | 400 `BAGGAGE_RATE_INVALID` | |
-| BG-06 | Unknown class | `POST /staff/baggage-rates` | Random `fare_class_id` | 404 `FARE_CLASS_NOT_FOUND` | |
-| BG-07 | Unknown route | `POST /staff/baggage-rates` | Random `route_id` | 404 `ROUTE_NOT_FOUND` | |
-| BG-08 | Bad values | `POST /staff/baggage-rates` | `rate_per_kg: -1`, then `free_allowance_kg: 20.55` | 400 (validation) both times | |
-| BG-09 | Filter | `GET /staff/baggage-rates?fare_class_id=<id>` | None | Only that class | |
-| BG-10 | Charge, under | `GET /baggage-charge?fare_class_id=<id>&weight_kg=19` | None | `charge: 0` | |
+| BG-05 | Allowance vs maximum | `POST /staff/overweight-baggage-rates` | `free_allowance_kg: 32, max_bag_kg: 32` | 400 `BAGGAGE_RATE_INVALID` | |
+| BG-06 | Unknown class | `POST /staff/overweight-baggage-rates` | Random `fare_class_id` | 404 `FARE_CLASS_NOT_FOUND` | |
+| BG-07 | Unknown route | `POST /staff/overweight-baggage-rates` | Random `route_id` | 404 `ROUTE_NOT_FOUND` | |
+| BG-08 | Bad values | `POST /staff/overweight-baggage-rates` | `rate_per_kg: -1`, then `free_allowance_kg: 20.55` | 400 (validation) both times | |
+| BG-09 | Filter | `GET /staff/overweight-baggage-rates?fare_class_id=<id>` | None | Only that class | |
+| BG-10 | Charge, under | `GET /overweight-baggage-fee?fare_class_id=<id>&weight_kg=19` | None | `charge: 0` | |
 | BG-11 | Charge, at allowance | Same | `weight_kg=20` | `charge: 0` | |
 | BG-12 | Charge, just over | Same | `weight_kg=20.1` | `chargeable_kg: 1`, `charge: 100` | |
 | BG-13 | Charge, whole kg | Same | `weight_kg=25` | `charge: 500` | |
 | BG-14 | Charge, rounds up | Same | `weight_kg=25.4` | `chargeable_kg: 6`, `charge: 600` | |
 | BG-15 | Charge, at maximum | Same | `weight_kg=32` | `charge: 1200` | |
-| BG-16 | Too heavy | Same | `weight_kg=33` | 422 `BAGGAGE_TOO_HEAVY` | |
+| BG-16 | Too heavy | Same | `weight_kg=33` | 422 `BAG_TOO_HEAVY` | |
 | BG-17 | Override wins | Same, plus `route_id` of BG-02 | `weight_kg=25` | `charge: 750` | |
 | BG-18 | Falls back to default | Same, with another `route_id` | `weight_kg=25` | `charge: 500` | |
 | BG-19 | No rate | Class with no rate | `weight_kg=25` | 404 `BAGGAGE_RATE_NOT_FOUND` | |
@@ -268,14 +269,14 @@ Use a default rate with allowance 20 kg, rate 100 per kg, maximum 32 kg.
 
 | ID | Feature | Steps | Input | Expected | Pass/Fail |
 |----|---------|-------|-------|----------|-----------|
-| CR-01 | Create | `POST /staff/currency-rates` | `{"currency_code":"USD","rate_per_base":0.028}` | 201, `updated_by` is the signed-in staff member | |
-| CR-02 | Code format | `POST /staff/currency-rates` | `usd`, then `USDT` | 400 (validation) both times | |
-| CR-03 | Base currency | `POST /staff/currency-rates` | `currency_code: "THB"` | 400 `CURRENCY_IS_BASE` | |
-| CR-04 | Rate limit | `POST /staff/currency-rates` | `rate_per_base: 0` | 400 (validation) | |
-| CR-05 | Duplicate | Send CR-01 again | Same body | 409 `CURRENCY_CODE_TAKEN` | |
-| CR-06 | Staff can't set the editor | `POST /staff/currency-rates` | CR-01 body plus `updated_by` | 400 (validation) | |
+| CR-01 | Add | `PUT /staff/currency-rates/USD` | `{"rate_per_base":0.028}` | 200, `updated_by` is the signed-in staff member | |
+| CR-02 | Code format | `PUT /staff/currency-rates/usd`, then `/USDT` | `{"rate_per_base":1}` | 400 both times | |
+| CR-03 | Base currency | `PUT /staff/currency-rates/THB` | `{"rate_per_base":1}` | 400 `CURRENCY_IS_BASE` | |
+| CR-04 | Rate limit | `PUT /staff/currency-rates/USD` | `{"rate_per_base":0}` | 400 (validation) | |
+| CR-05 | Existing code | Send CR-01 again with a new rate | `{"rate_per_base":0.029}` | 200, rate replaced, still one row for USD | |
+| CR-06 | Staff can't set the editor | `PUT /staff/currency-rates/USD` | CR-01 body plus `updated_by` | 400 (validation) | |
 | CR-07 | List and get | `GET /staff/currency-rates`, then `/USD` | None | 200, with the staff member's name | |
-| CR-08 | Update | `PATCH /staff/currency-rates/USD` | `{"rate_per_base":0.03}` | 200, new rate | |
+| CR-08 | Update | `PUT /staff/currency-rates/USD` | `{"rate_per_base":0.03}` | 200, new rate | |
 | CR-09 | Unknown code | `GET /staff/currency-rates/EUR` | None | 404 `CURRENCY_RATE_NOT_FOUND` | |
 | CR-10 | Malformed code | `GET /staff/currency-rates/eur` | None | 400 | |
 
@@ -293,12 +294,12 @@ Use a default rate with allowance 20 kg, rate 100 per kg, maximum 32 kg.
 | PS-08 | List | `GET /staff/payment-schedules` | None | Soonest due first | |
 | PS-09 | Filters | `?status=paid`, then `?overdue=true` | None | Paid bills, then unpaid bills due before today | |
 | PS-10 | Filters combined | `?status=paid&overdue=true` | None | 200, empty list | |
-| PS-11 | Update unpaid | `PATCH /staff/payment-schedules/:id` | `{"amount":25000}` | 200 | |
+| PS-11 | Update unpaid | `PUT /staff/payment-schedules/:id` | `{"amount":25000}` | 200 | |
 | PS-12 | Delete unpaid | `DELETE`, then `GET` the same id | None | 204, then 404 `PAYMENT_SCHEDULE_NOT_FOUND` | |
 | PS-13 | Mark paid | `POST /staff/payment-schedules/:id/pay` | None | 200, `status: "paid"`, `paid_on` today, with the new expense | |
 | PS-14 | Expense matches | Open the expense from PS-13 | None | Same amount and category, `Payee: description`, `incurred_on` = `paid_on` | |
 | PS-15 | Pay twice | Send PS-13 again | None | 409 `PAYMENT_SCHEDULE_PAID`, still one expense | |
-| PS-16 | Paid is locked | `PATCH`, then `DELETE` the paid bill | `{"amount":1}` | 409 `PAYMENT_SCHEDULE_PAID` both times | |
+| PS-16 | Paid is locked | `PUT`, then `DELETE` the paid bill | `{"amount":1}` | 409 `PAYMENT_SCHEDULE_PAID` both times | |
 | PS-17 | Unknown bill | `POST /staff/payment-schedules/:id/pay` | Random UUID | 404 `PAYMENT_SCHEDULE_NOT_FOUND` | |
 
 ## Expenses
@@ -312,24 +313,24 @@ Use a default rate with allowance 20 kg, rate 100 per kg, maximum 32 kg.
 | EX-05 | Can't link a bill | `POST /staff/expenses` | EX-01 plus `payment_schedule_id` | 400 (validation) | |
 | EX-06 | Filter | `GET /staff/expenses?month=2026-10&category=catering` | None | Only that month and category | |
 | EX-07 | Bad filter | `?month=2026-13`, then `?category=fuel` | None | 400 (validation) both times | |
-| EX-08 | Update manual | `PATCH /staff/expenses/:id` | `{"amount":9000}` | 200 | |
+| EX-08 | Update manual | `PUT /staff/expenses/:id` | `{"amount":9000}` | 200 | |
 | EX-09 | Delete manual | `DELETE`, then `GET` the same id | None | 204, then 404 `EXPENSE_NOT_FOUND` | |
-| EX-10 | Bill's expense is locked | `PATCH`, then `DELETE` an expense from PS-13 | `{"amount":1}` | 409 `EXPENSE_FROM_SCHEDULE` both times | |
+| EX-10 | Bill's expense is locked | `PUT`, then `DELETE` an expense from PS-13 | `{"amount":1}` | 409 `EXPENSE_FROM_SCHEDULE` both times | |
 
 ## Monthly summary
 
 | ID | Feature | Steps | Input | Expected | Pass/Fail |
 |----|---------|-------|-------|----------|-----------|
-| FS-01 | Recompute | Expenses in one month: maintenance 1,000, staff 500. `POST /staff/finance/summary/2026-10/recompute` | None | 200, those cost columns, `profit_amount` = −(sum of the month's costs) while revenue is 0 | |
+| FS-01 | Recompute | Expenses in one month: maintenance 1,000, staff 500. `POST /staff/finance/monthly/2026-10/recompute` | None | 200, those cost columns, `profit_amount` = −(sum of the month's costs) while revenue is 0 | |
 | FS-02 | Run again | Send FS-01 again | None | Same numbers, still one row for the month | |
 | FS-03 | Month edges | Expenses on the last day of September and the first day of November | None | Neither counts in October | |
 | FS-04 | Deleted expense | Delete an expense, recompute | None | Its amount is gone | |
-| FS-05 | Read one month | `GET /staff/finance/summary?month=2026-10` | None | 200, the row | |
-| FS-06 | Not computed | `GET /staff/finance/summary?month=2020-01` | None | 404 `FINANCE_SUMMARY_NOT_FOUND` | |
+| FS-05 | Read one month | `GET /staff/finance/monthly/2026-10` | None | 200, the row | |
+| FS-06 | Not computed | `GET /staff/finance/monthly/2020-01` | None | 404 `FINANCE_SUMMARY_NOT_FOUND` | |
 | FS-07 | Read a range | `?from=2026-06&to=2026-10` | None | Oldest first, computed months only | |
 | FS-08 | Range backwards | `?from=2026-10&to=2026-06` | None | 400 `FINANCE_SUMMARY_QUERY_INVALID` | |
 | FS-09 | Wrong mix | No query, then `?month=2026-10&from=2026-01&to=2026-02` | None | 400 `FINANCE_SUMMARY_QUERY_INVALID` both times | |
-| FS-10 | Malformed month | `POST /staff/finance/summary/2026-13/recompute` | None | 400 | |
+| FS-10 | Malformed month | `POST /staff/finance/monthly/2026-13/recompute` | None | 400 | |
 
 ## Sign-in
 
@@ -337,7 +338,7 @@ Use a default rate with allowance 20 kg, rate 100 per kg, maximum 32 kg.
 |----|---------|-------|-------|----------|-----------|
 | AU-01 | Staff route, no token | `GET /staff/fare-classes` with no token | None | 401 | |
 | AU-02 | Quote route, no token | `POST /fare-quotes` with no token | FQ-01 body | 401 | |
-| AU-03 | Baggage charge, no token | `GET /baggage-charge?...` with no token | None | 401 | |
+| AU-03 | Baggage charge, no token | `GET /overweight-baggage-fee?...` with no token | None | 401 | |
 | AU-04 | Signed in, not staff | Use a token from customer-web, `PUT /staff/settings/quote_hold_minutes` | `{"value":"20"}` | 403 `STAFF_NOT_FOUND`, value unchanged | |
 
 ## Staff pages

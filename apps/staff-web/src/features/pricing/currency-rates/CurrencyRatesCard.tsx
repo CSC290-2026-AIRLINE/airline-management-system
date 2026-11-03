@@ -54,7 +54,7 @@ export function CurrencyRatesCard() {
     try {
       // One PATCH per changed row; the backend has no bulk endpoint.
       for (const rate of changed) {
-        await api.update(rate.currency_code, Number(drafts[rate.currency_code]))
+        await api.save(rate.currency_code, Number(drafts[rate.currency_code]))
       }
       setDrafts({})
       setNotice(changed.length === 1 ? 'Rate saved' : `${changed.length} rates saved`)
@@ -172,6 +172,7 @@ export function CurrencyRatesCard() {
       {rates.data && base.data && (
         <AddCurrencyForm
           base={unit}
+          existing={list.map((rate) => rate.currency_code)}
           disabled={saving}
           onAdded={(code) => {
             setNotice(`${code} added`)
@@ -202,12 +203,13 @@ function isPositive(value: string) {
 
 interface AddCurrencyFormProps {
   base: string
+  existing: string[] // codes that already have a rate: PUT would overwrite them silently
   disabled: boolean
   onAdded: (code: string) => void
 }
 
 // Not in the design, but the guide (Step 1) lets staff add a currency.
-function AddCurrencyForm({ base, disabled, onAdded }: AddCurrencyFormProps) {
+function AddCurrencyForm({ base, existing, disabled, onAdded }: AddCurrencyFormProps) {
   const api = useCurrencyRateApi()
   const [code, setCode] = useState('')
   const [rate, setRate] = useState('')
@@ -224,6 +226,10 @@ function AddCurrencyForm({ base, disabled, onAdded }: AddCurrencyFormProps) {
       setError(`${base} is the base currency; its rate is always 1`)
       return
     }
+    if (existing.includes(code)) {
+      setError(`${code} already has a rate. Change it in the table above.`)
+      return
+    }
     if (!isPositive(rate)) {
       setError('The rate must be a number greater than 0')
       return
@@ -231,7 +237,7 @@ function AddCurrencyForm({ base, disabled, onAdded }: AddCurrencyFormProps) {
     setBusy(true)
     setError(null)
     try {
-      await api.create(code, Number(rate))
+      await api.save(code, Number(rate))
       setCode('')
       setRate('')
       onAdded(code)

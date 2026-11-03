@@ -139,9 +139,9 @@ export class PromoCodeService {
   async checkPromo(code: string, simNow: Date) {
     const typed = code.trim().toUpperCase()
     const promo = await this.db.promo_code.findFirst({ where: { code: typed, deleted_at: null } })
-    if (!promo) throw this.invalid('unknown', `Promo code ${typed} does not exist`)
+    if (!promo) throw this.invalid('not_found', `Promo code ${typed} does not exist`)
     if (!promo.is_active) throw this.invalid('inactive', `Promo code ${typed} is not active`)
-    if (simNow < promo.valid_from) throw this.invalid('not_yet_valid', `Promo code ${typed} is not valid yet`)
+    if (simNow < promo.valid_from) throw this.invalid('not_started', `Promo code ${typed} is not valid yet`)
     if (simNow >= promo.valid_to) throw this.invalid('expired', `Promo code ${typed} has expired`)
     if (promo.max_uses !== null && promo.used_count >= promo.max_uses) {
       throw this.invalid('exhausted', `Promo code ${typed} has no uses left`)

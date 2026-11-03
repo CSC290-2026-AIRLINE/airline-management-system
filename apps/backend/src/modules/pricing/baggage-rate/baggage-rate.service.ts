@@ -99,7 +99,7 @@ export class BaggageRateService {
     // Too heavy is refused, not charged: the bag has to go as cargo.
     if (maxBagKg !== null && weightKg > maxBagKg) {
       throw new UnprocessableEntityException(
-        pricingError(PricingErrorCode.BAGGAGE_TOO_HEAVY, `A bag of ${weightKg} kg is over the ${maxBagKg} kg limit and must go as cargo`, {
+        pricingError(PricingErrorCode.BAG_TOO_HEAVY, `A bag of ${weightKg} kg is over the ${maxBagKg} kg limit and must go as cargo`, {
           weight_kg: weightKg,
           max_bag_kg: maxBagKg,
         }),

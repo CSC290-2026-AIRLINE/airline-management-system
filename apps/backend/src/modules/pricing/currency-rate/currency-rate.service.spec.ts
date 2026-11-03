@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 import type { DbService } from '@backend/db/db.service'
@@ -43,7 +43,7 @@ describe('ParseCurrencyCodePipe', () => {
 describe('CurrencyRateService', () => {
   let service: CurrencyRateService
   const db = {
-    currency_rate: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+    currency_rate: { findMany: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
     staff: { findFirst: jest.fn() },
   }
 
@@ -62,68 +62,32 @@ describe('CurrencyRateService', () => {
     expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'CURRENCY_RATE_NOT_FOUND' })
   })
 
-  it('stores the staff id of the logged-in user as updated_by', async () => {
-    db.currency_rate.findUnique.mockResolvedValue(null)
-
-    await service.create({ currency_code: 'USD', rate_per_base: 0.028 }, USER_ID)
+  it('adds or replaces the rate in one upsert, with the logged-in staff member as updated_by', async () => {
+    await service.upsert('USD', { rate_per_base: 0.028 }, USER_ID)
 
     expect(db.staff.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { user_id: USER_ID, deleted_at: null } }))
-    expect(db.currency_rate.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { currency_code: 'USD', rate_per_base: 0.028, updated_by: STAFF_ID } }),
+    expect(db.currency_rate.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { currency_code: 'USD' },
+        create: { currency_code: 'USD', rate_per_base: 0.028, updated_by: STAFF_ID },
+        update: { rate_per_base: 0.028, updated_by: STAFF_ID, updated_at: expect.any(Date) },
+      }),
     )
   })
 
   it('refuses a user with no staff row', async () => {
     db.staff.findFirst.mockResolvedValue(null)
-    db.currency_rate.findUnique.mockResolvedValue(null)
 
-    await expect(service.create({ currency_code: 'USD', rate_per_base: 0.028 }, USER_ID)).rejects.toBeInstanceOf(ForbiddenException)
-    expect(db.currency_rate.create).not.toHaveBeenCalled()
+    await expect(service.upsert('USD', { rate_per_base: 0.028 }, USER_ID)).rejects.toBeInstanceOf(ForbiddenException)
+    expect(db.currency_rate.upsert).not.toHaveBeenCalled()
   })
 
-  it('refuses a row for the base currency', async () => {
-    const error = await service.create({ currency_code: 'THB', rate_per_base: 1 }, USER_ID).catch((e: unknown) => e)
+  it('refuses a rate for the base currency', async () => {
+    const error = await service.upsert('THB', { rate_per_base: 1 }, USER_ID).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(BadRequestException)
     expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'CURRENCY_IS_BASE' })
-    expect(db.currency_rate.create).not.toHaveBeenCalled()
-  })
-
-  it('refuses a code that already has a rate', async () => {
-    db.currency_rate.findUnique.mockResolvedValue(usd)
-
-    const error = await service.create({ currency_code: 'USD', rate_per_base: 0.03 }, USER_ID).catch((e: unknown) => e)
-
-    expect(error).toBeInstanceOf(ConflictException)
-    expect((error as ConflictException).getResponse()).toMatchObject({ code: 'CURRENCY_CODE_TAKEN' })
-    expect(db.currency_rate.create).not.toHaveBeenCalled()
-  })
-
-  it('maps a unique violation from the database to a conflict', async () => {
-    db.currency_rate.findUnique.mockResolvedValue(null)
-    db.currency_rate.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
-
-    await expect(service.create({ currency_code: 'USD', rate_per_base: 0.028 }, USER_ID)).rejects.toBeInstanceOf(ConflictException)
-  })
-
-  it('throws not found when updating an unknown code', async () => {
-    db.currency_rate.findUnique.mockResolvedValue(null)
-
-    await expect(service.update('EUR', { rate_per_base: 0.026 }, USER_ID)).rejects.toBeInstanceOf(NotFoundException)
-    expect(db.currency_rate.update).not.toHaveBeenCalled()
-  })
-
-  it('sets updated_by and updated_at on update', async () => {
-    db.currency_rate.findUnique.mockResolvedValue(usd)
-
-    await service.update('USD', { rate_per_base: 0.029 }, USER_ID)
-
-    expect(db.currency_rate.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { currency_code: 'USD' },
-        data: { rate_per_base: 0.029, updated_by: STAFF_ID, updated_at: expect.any(Date) },
-      }),
-    )
+    expect(db.currency_rate.upsert).not.toHaveBeenCalled()
   })
 
   describe('convert', () => {

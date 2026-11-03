@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common'
 import { Public } from '@backend/auth/decorators/public.decorator'
 import { CreateSeatFeeDto } from './dto/create-seat-fee.dto'
 import { LookupSeatFeeDto } from './dto/lookup-seat-fee.dto'
@@ -24,7 +24,7 @@ export class SeatFeeController {
     return this.seatFeeService.create(dto)
   }
 
-  @Patch(':id')
+  @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSeatFeeDto) {
     return this.seatFeeService.update(id, dto)
   }
@@ -42,7 +42,7 @@ export class PublicSeatFeeController {
   constructor(private readonly seatFeeService: SeatFeeService) {}
 
   @Public()
-  @Get()
+  @Get('price')
   lookup(@Query() query: LookupSeatFeeDto) {
     return this.seatFeeService.lookup(query.cabin, query.seat_type)
   }
