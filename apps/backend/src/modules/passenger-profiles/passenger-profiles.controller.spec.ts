@@ -160,6 +160,7 @@ interface FakeDb {
   user: { findUnique: jest.Mock }
   audit_log: { create: jest.Mock }
   $transaction: jest.Mock
+  $queryRawUnsafe: jest.Mock
 }
 
 function makeDb(): FakeDb {
@@ -182,6 +183,8 @@ function makeDb(): FakeDb {
     $transaction: jest.fn(async (operations: unknown[] | ((tx: unknown) => unknown)) =>
       typeof operations === 'function' ? await operations(db) : await Promise.all(operations),
     ),
+    // The search reads who has a flight to check in for; nobody does here.
+    $queryRawUnsafe: jest.fn().mockResolvedValue([]),
   }
 }
 

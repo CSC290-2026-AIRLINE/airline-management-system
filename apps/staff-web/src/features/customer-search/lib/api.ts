@@ -46,6 +46,15 @@ export interface PassengerSummaryResponse {
   memberSince: string | null
   email: string | null
   phone: string | null
+  /**
+   * The date of the flight this person is on, and that flight's number.
+   *
+   * The list is ordered by this date, so a search row carries it; the `:id` detail routes do
+   * not, which is why it is optional here. The UI does not show it — the order is the
+   * server's and the results table shows who the person is, not which flight they are on.
+   */
+  nextFlightDate?: string | null
+  nextFlightNumber?: string | null
 }
 
 export interface PassengerLinkResponse {
