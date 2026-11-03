@@ -1,9 +1,17 @@
 {
   "name": "airline-management-system",
   "private": true,
-  "workspaces": [
-    "apps/*"
-  ],
+  "workspaces": ["apps/*"],
+  "overrides": {
+    "@nestjs/platform-express": {
+      "multer": "^2.5.0",
+      "express": {
+        "body-parser": "^2.4.0"
+      }
+    },
+    "body-parser": "^2.4.0",
+    "multer": "^2.5.0"
+  },
   "engines": {
     "node": ">=24.0.0"
   },
@@ -21,8 +29,5 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
-  },
-  "dependencies": {
-    "@prisma/client": "^7.10.1"
   }
 }
