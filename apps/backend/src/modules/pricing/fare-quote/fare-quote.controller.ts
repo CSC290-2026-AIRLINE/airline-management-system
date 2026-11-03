@@ -1,11 +1,13 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseFilters, UsePipes } from '@nestjs/common'
 import { CreateFareQuoteDto } from './dto/create-fare-quote.dto'
 import { QuoteFeeDto } from './dto/quote-fee.dto'
 import { FareQuoteService } from './fare-quote.service'
+import { PricingExceptionFilter } from '../pricing-exception.filter'
 import { pricingValidationPipe } from '../pricing.validation'
 
 // Quotes are an audit trail: there is no update or delete route, and there must never be one.
 @UsePipes(pricingValidationPipe)
+@UseFilters(PricingExceptionFilter)
 @Controller('fare-quotes')
 export class FareQuoteController {
   constructor(private readonly fareQuoteService: FareQuoteService) {}
@@ -18,13 +20,6 @@ export class FareQuoteController {
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.fareQuoteService.findOne(id)
-  }
-
-  // Feature 3b, on booking confirmed. Retrying is safe.
-  @Post(':id/redeem')
-  @HttpCode(200)
-  redeem(@Param('id', ParseUUIDPipe) id: string) {
-    return this.fareQuoteService.redeem(id)
   }
 
   @Get(':id/fee')

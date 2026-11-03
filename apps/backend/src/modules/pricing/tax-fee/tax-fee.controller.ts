@@ -1,10 +1,12 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseFilters, UsePipes } from '@nestjs/common'
 import { CreateTaxFeeDto } from './dto/create-tax-fee.dto'
 import { UpdateTaxFeeDto } from './dto/update-tax-fee.dto'
 import { TaxFeeService } from './tax-fee.service'
+import { PricingExceptionFilter } from '../pricing-exception.filter'
 import { pricingValidationPipe } from '../pricing.validation'
 
 @UsePipes(pricingValidationPipe)
+@UseFilters(PricingExceptionFilter)
 @Controller('staff/tax-fees')
 export class TaxFeeController {
   constructor(private readonly taxFeeService: TaxFeeService) {}

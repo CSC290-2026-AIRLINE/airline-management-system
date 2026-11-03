@@ -12,7 +12,7 @@ Fill in **Pass/Fail** as you run each case by hand. A blank means the case has n
 
 - **Base URL:** `http://localhost:8080/api`
 - **Token:** sign in on staff-web (port 6161), copy the access token, and send it as `Authorization: Bearer <token>`. Every route needs it except `GET /seat-fees/price`.
-- **Errors:** pricing errors look like `{ code, message, details? }`. DTO validation errors have no `code`: they are a 400 with `message` as a list. Where the Expected column says **400 (validation)**, that is the kind it means.
+- **Errors:** every pricing error body is `{ "error": { "code", "message", "details"? } }`. A code in the Expected column is `error.code`. **400 (validation)** means `error.code` is `VALIDATION_FAILED`, with the messages in `error.details.errors`. Other Nest errors use the status name as the code, e.g. 401 `UNAUTHORIZED`, 400 `BAD_REQUEST` for a bad UUID.
 - **Soft delete:** a deleted row stays in the table with `deleted_at` set, but no longer appears in the API.
 - **Paths:** below, `/staff/...` means `http://localhost:8080/api/staff/...`.
 
@@ -64,6 +64,8 @@ Base fares are not seeded, so add the one the quotes need.
 | FC-16 | Fee percent limit | `PUT /staff/fare-classes/:id/rule` | `{"cancel_fee_pct":150}` | 400 (validation) | |
 | FC-17 | Delete in use | `DELETE` a class with a live base fare | None | 409 `FARE_CLASS_IN_USE` | |
 | FC-18 | Delete and reuse | `DELETE` a class with no base fares, `GET` it, then POST the same code | None | 204, then 404, then 201 | |
+| FC-19 | Public list | `GET /fare-classes` with no token | None | 200, active classes only, sorted by code | |
+| FC-20 | Public list, inactive | Switch a class off, then `GET /fare-classes` | None | That class is not listed | |
 
 ## Base fares
 
@@ -199,12 +201,16 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 
 | ID | Feature | Steps | Input | Expected | Pass/Fail |
 |----|---------|-------|-------|----------|-----------|
-| RD-01 | First redeem | `POST /fare-quotes/:id/redeem` on a promo quote | None | 200, `redeemed: true`, `already_redeemed: false`, `used_count` up by 1 | |
-| RD-02 | Redeem twice | Send RD-01 again | None | 200, `already_redeemed: true`, `used_count` unchanged | |
-| RD-03 | No promo | Redeem a quote with no promo | None | 200, `redeemed: false`, `promo_code_id: null` | |
-| RD-04 | Last use taken | Code with `max_uses: 1`, two quotes (different seat type). Redeem both | None | First 200, second 422 `PROMO_INVALID`, reason `exhausted`. `used_count` stays 1 | |
-| RD-05 | Switched off later | Make a quote, turn the promo off, redeem | None | 200, counted: the price was already agreed | |
-| RD-06 | Unknown quote | `POST /fare-quotes/:id/redeem` | Random UUID | 404 `QUOTE_NOT_FOUND` | |
+| RD-01 | First redeem | `POST /promo-codes/:id/redemptions` (promo id) | `{"fare_quote_id":"<quote with that promo>"}` | 201, `already_redeemed: false`, `used_count` up by 1 | |
+| RD-02 | Redeem twice | Send RD-01 again | Same body | 201, `already_redeemed: true`, `used_count` unchanged | |
+| RD-03 | Wrong quote | RD-01 with a quote that has no promo, or another promo | That `fare_quote_id` | 404 `QUOTE_NOT_FOUND`, `used_count` unchanged | |
+| RD-04 | Last use taken | Code with `max_uses: 1`, two quotes (different seat type). Redeem both | None | First 201, second 422 `PROMO_INVALID`, reason `exhausted`. `used_count` stays 1 | |
+| RD-05 | Switched off later | Make a quote, turn the promo off, redeem | RD-01 body | 201, counted: the price was already agreed | |
+| RD-06 | Unknown quote | `POST /promo-codes/:id/redemptions` | `fare_quote_id`: random UUID, then `abc` | 404 `QUOTE_NOT_FOUND`, then 400 (validation) | |
+| RD-07 | Booking ref accepted | RD-01 body plus `"booking_ref":"ABC123"` | None | 201 (not stored until the DB has a column for it) | |
+| RD-08 | Undo | After RD-01, `DELETE /promo-codes/:id/redemptions/:fare_quote_id` | None | 204, `used_count` down by 1, the quote shows as not redeemed | |
+| RD-09 | Undo twice | Send RD-08 again | None | 404 `PROMO_REDEMPTION_NOT_FOUND`, `used_count` unchanged | |
+| RD-10 | No token | RD-01 with no token | None | 401 `UNAUTHORIZED` | |
 
 ## Seat fees
 
@@ -339,6 +345,7 @@ Use a default rate with allowance 20 kg, rate 100 per kg, maximum 32 kg.
 | AU-01 | Staff route, no token | `GET /staff/fare-classes` with no token | None | 401 | |
 | AU-02 | Quote route, no token | `POST /fare-quotes` with no token | FQ-01 body | 401 | |
 | AU-03 | Baggage charge, no token | `GET /overweight-baggage-fee?...` with no token | None | 401 | |
+| AU-05 | Error body | Any failing call, e.g. `GET /staff/fare-classes/<random UUID>` | None | Body is `{"error":{"code":"FARE_CLASS_NOT_FOUND","message":"..."}}`, nothing at the top level | |
 | AU-04 | Signed in, not staff | Use a token from customer-web, `PUT /staff/settings/quote_hold_minutes` | `{"value":"20"}` | 403 `STAFF_NOT_FOUND`, value unchanged | |
 
 ## Staff pages
@@ -389,7 +396,7 @@ These can't be set up by hand reliably. Run `npm test -w apps/backend` and recor
 | UT-01 | Seats unavailable | `fare-quote.service.spec.ts` | Seat lookup throws or returns a bad number | 502 `UPSTREAM_UNAVAILABLE`, nothing saved | |
 | UT-02 | Days to departure | `fare-quote.service.spec.ts` | Across midnight, in the origin airport's timezone | Calendar days, not hours ÷ 24 | |
 | UT-03 | Reuse window | `fare-quote.service.spec.ts` | Quote lookup | Checks both `quoted_at <= now` and `expires_at > now`, so a rewound clock can't revive an old quote | |
-| UT-04 | No use left at redeem | `fare-quote.service.spec.ts` | The conditional update counts nothing | 422 `PROMO_INVALID`, redemption rolled back | |
+| UT-04 | No use left at redeem | `promo-code.service.spec.ts` | The conditional update counts nothing | 422 `PROMO_INVALID`, redemption rolled back | |
 | UT-05 | Two identical requests | `fare-quote.service.spec.ts` | Another request saves first | Returns that quote, no second row | |
 | UT-06 | Currency conversion | `currency-rate.service.spec.ts` | `convert()` | Rounded half up to 2 decimals | |
 | UT-07 | Rule engine | `pricing-rule.engine.spec.ts` | No rules, all groups, class-only, inactive | Group order, first match wins | |

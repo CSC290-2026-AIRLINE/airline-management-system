@@ -1,13 +1,15 @@
-import { Body, Controller, Get, Param, Put, UsePipes } from '@nestjs/common'
+import { Body, Controller, Get, Param, Put, UseFilters, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { ParseCurrencyCodePipe } from './currency-code.pipe'
 import { CurrencyRateService } from './currency-rate.service'
 import { UpdateCurrencyRateDto } from './dto/update-currency-rate.dto'
+import { PricingExceptionFilter } from '../pricing-exception.filter'
 import { pricingValidationPipe } from '../pricing.validation'
 
 // No DELETE: the table has no deleted_at, and staff change a rate instead of removing it.
 @UsePipes(pricingValidationPipe)
+@UseFilters(PricingExceptionFilter)
 @Controller('staff/currency-rates')
 export class CurrencyRateController {
   constructor(private readonly currencyRateService: CurrencyRateService) {}

@@ -120,6 +120,7 @@ export interface PromoQuote {
 }
 
 export interface PromoQuotes {
+  id: string
   code: string
   quotes: PromoQuote[]
 }
@@ -159,7 +160,12 @@ export interface PricingSetting {
   value: string
 }
 
-// Body of every pricing error is { code, message, details? }; ValidationPipe errors carry message: string[].
+// Body of every pricing error is { error: { code, message, details? } }; validation errors have code VALIDATION_FAILED.
+interface ApiErrorBody {
+  code?: string
+  message?: string | string[]
+}
+
 export class ApiError extends Error {
   readonly status: number
   readonly code?: string
@@ -186,10 +192,12 @@ export async function readResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) {
     return undefined as T
   }
-  const data = (await res.json().catch(() => null)) as { message?: string | string[]; code?: string } | null
+  const data = (await res.json().catch(() => null)) as ({ error?: { code?: string; message?: string } } & ApiErrorBody) | null
   if (!res.ok) {
-    const message = Array.isArray(data?.message) ? data.message.join('; ') : (data?.message ?? `Request failed (${res.status})`)
-    throw new ApiError(message, res.status, data?.code)
+    // Pricing routes send { error: { code, message } }. Others (auth, a proxy) send Nest's { message, statusCode }.
+    const body: ApiErrorBody = data?.error ?? data ?? {}
+    const message = Array.isArray(body.message) ? body.message.join('; ') : (body.message ?? `Request failed (${res.status})`)
+    throw new ApiError(message, res.status, body.code)
   }
   return data as T
 }
@@ -230,7 +238,10 @@ export function usePricingApi() {
 
     listPromoQuotes: (code: string) => request<PromoQuotes>(`/promo-codes/quotes?code=${encodeURIComponent(code.trim())}`),
     // Not under /api/staff: Feature 3b calls this route too.
-    redeemFareQuote: async (id: string) => readResponse<unknown>(await fetchWithAuth(`/api/fare-quotes/${id}/redeem`, jsonInit('POST'))),
+    redeemPromo: async (promoCodeId: string, fareQuoteId: string) =>
+      readResponse<unknown>(
+        await fetchWithAuth(`/api/promo-codes/${promoCodeId}/redemptions`, jsonInit('POST', { fare_quote_id: fareQuoteId })),
+      ),
 
     // Seat fees belong to Member C's backend (staff/seat-fees); this page only edits the amounts.
     listSeatFees: () => request<SeatFee[]>('/seat-fees'),

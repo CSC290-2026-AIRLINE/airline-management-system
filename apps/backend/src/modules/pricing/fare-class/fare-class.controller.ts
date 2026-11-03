@@ -1,11 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseFilters, UsePipes } from '@nestjs/common'
+import { Public } from '@backend/auth/decorators/public.decorator'
 import { CreateFareClassDto } from './dto/create-fare-class.dto'
 import { UpdateFareClassDto } from './dto/update-fare-class.dto'
 import { UpdateFareRuleDto } from './dto/update-fare-rule.dto'
 import { FareClassService } from './fare-class.service'
+import { PricingExceptionFilter } from '../pricing-exception.filter'
 import { pricingValidationPipe } from '../pricing.validation'
 
 @UsePipes(pricingValidationPipe)
+@UseFilters(PricingExceptionFilter)
 @Controller('staff/fare-classes')
 export class FareClassController {
   constructor(private readonly fareClassService: FareClassService) {}
@@ -44,5 +47,19 @@ export class FareClassController {
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.fareClassService.remove(id)
+  }
+}
+
+// Public so the customer site can list the classes on sale before anyone signs in. Active classes only.
+@UsePipes(pricingValidationPipe)
+@UseFilters(PricingExceptionFilter)
+@Controller('fare-classes')
+export class PublicFareClassController {
+  constructor(private readonly fareClassService: FareClassService) {}
+
+  @Public()
+  @Get()
+  findAll() {
+    return this.fareClassService.findAll()
   }
 }

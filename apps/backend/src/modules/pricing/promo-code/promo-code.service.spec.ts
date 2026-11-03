@@ -51,12 +51,101 @@ describe('PromoCodeService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
-    fare_quote: { findMany: jest.fn() },
+    fare_quote: { findMany: jest.fn(), findUnique: jest.fn() },
+    $transaction: jest.fn(),
+  }
+  // What the $transaction callback receives.
+  const tx = {
+    promo_redemption: { createMany: jest.fn(), deleteMany: jest.fn() },
+    $executeRaw: jest.fn(),
   }
 
   beforeEach(() => {
     jest.resetAllMocks()
+    db.$transaction.mockImplementation((run: (client: typeof tx) => unknown) => run(tx))
     service = new PromoCodeService(db as unknown as DbService)
+  })
+
+  describe('redeem', () => {
+    const QUOTE_ID = '33333333-3333-3333-3333-333333333333'
+    const NOW = new Date('2026-11-03T05:00:00.000Z')
+
+    beforeEach(() => {
+      jest.useFakeTimers({ now: NOW })
+      db.fare_quote.findUnique.mockResolvedValue({ id: QUOTE_ID, promo_code_id: PROMO_ID })
+      tx.promo_redemption.createMany.mockResolvedValue({ count: 1 })
+      tx.$executeRaw.mockResolvedValue(1)
+    })
+
+    afterEach(() => jest.useRealTimers())
+
+    it('records the redemption at simulation time and counts one use, in one transaction', async () => {
+      const result = await service.redeem(PROMO_ID, QUOTE_ID)
+
+      expect(tx.promo_redemption.createMany).toHaveBeenCalledWith({
+        data: [{ promo_code_id: PROMO_ID, fare_quote_id: QUOTE_ID, redeemed_at: NOW }],
+        skipDuplicates: true,
+      })
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
+      expect(db.$transaction).toHaveBeenCalledTimes(1)
+      expect(result).toEqual({ promo_code_id: PROMO_ID, fare_quote_id: QUOTE_ID, already_redeemed: false })
+    })
+
+    it('does not count again on a retry', async () => {
+      tx.promo_redemption.createMany.mockResolvedValue({ count: 0 })
+
+      const result = await service.redeem(PROMO_ID, QUOTE_ID)
+
+      expect(tx.$executeRaw).not.toHaveBeenCalled()
+      expect(result.already_redeemed).toBe(true)
+    })
+
+    it('throws PROMO_INVALID exhausted when no use is left, which rolls the redemption back', async () => {
+      tx.$executeRaw.mockResolvedValue(0)
+
+      const error = await errorOf(service.redeem(PROMO_ID, QUOTE_ID))
+
+      expect(error).toBeInstanceOf(UnprocessableEntityException)
+      expect(error.getResponse()).toMatchObject({ code: 'PROMO_INVALID', details: { reason: 'exhausted' } })
+    })
+
+    it.each([
+      ['an unknown quote', null],
+      ['a quote with no promo', { id: QUOTE_ID, promo_code_id: null }],
+      ['a quote with another promo', { id: QUOTE_ID, promo_code_id: OTHER_ID }],
+    ])('throws QUOTE_NOT_FOUND for %s', async (_label, quote) => {
+      db.fare_quote.findUnique.mockResolvedValue(quote)
+
+      const error = await errorOf(service.redeem(PROMO_ID, QUOTE_ID))
+
+      expect(error).toBeInstanceOf(NotFoundException)
+      expect(error.getResponse()).toMatchObject({ code: 'QUOTE_NOT_FOUND' })
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('unredeem', () => {
+    const QUOTE_ID = '33333333-3333-3333-3333-333333333333'
+
+    it('removes the redemption and gives the use back, in one transaction', async () => {
+      tx.promo_redemption.deleteMany.mockResolvedValue({ count: 1 })
+
+      await service.unredeem(PROMO_ID, QUOTE_ID)
+
+      expect(tx.promo_redemption.deleteMany).toHaveBeenCalledWith({ where: { promo_code_id: PROMO_ID, fare_quote_id: QUOTE_ID } })
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
+      expect(db.$transaction).toHaveBeenCalledTimes(1)
+    })
+
+    it('throws PROMO_REDEMPTION_NOT_FOUND and gives nothing back when there was no redemption', async () => {
+      tx.promo_redemption.deleteMany.mockResolvedValue({ count: 0 })
+
+      const error = await errorOf(service.unredeem(PROMO_ID, QUOTE_ID))
+
+      expect(error).toBeInstanceOf(NotFoundException)
+      expect(error.getResponse()).toMatchObject({ code: 'PROMO_REDEMPTION_NOT_FOUND' })
+      expect(tx.$executeRaw).not.toHaveBeenCalled()
+    })
   })
 
   describe('findAll', () => {
@@ -241,7 +330,7 @@ describe('PromoCodeService', () => {
       expect(db.fare_quote.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { promo_code_id: PROMO_ID }, orderBy: { quoted_at: 'desc' }, take: 50 }),
       )
-      expect(result).toEqual({ code: 'SAVE10', quotes: [] })
+      expect(result).toEqual({ id: PROMO_ID, code: 'SAVE10', quotes: [] })
     })
 
     it('flattens each quote and shows when it was redeemed', async () => {

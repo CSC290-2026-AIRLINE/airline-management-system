@@ -1,13 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseFilters, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreateExpenseDto } from './dto/create-expense.dto'
 import { ListExpensesDto } from './dto/list-expenses.dto'
 import { UpdateExpenseDto } from './dto/update-expense.dto'
 import { ExpenseService } from './expense.service'
+import { PricingExceptionFilter } from '../../pricing-exception.filter'
 import { pricingValidationPipe } from '../../pricing.validation'
 
 @UsePipes(pricingValidationPipe)
+@UseFilters(PricingExceptionFilter)
 @Controller('staff/expenses')
 export class ExpenseController {
   constructor(private readonly expenseService: ExpenseService) {}

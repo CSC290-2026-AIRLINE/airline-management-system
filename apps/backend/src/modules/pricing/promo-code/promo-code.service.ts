@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { simNow } from '../fare-quote/sim-clock'
 import type { PromoInvalidReason } from '../pricing.constants'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
 import { CreatePromoCodeDto } from './dto/create-promo-code.dto'
@@ -121,6 +122,7 @@ export class PromoCodeService {
       },
     })
     return {
+      id: promo.id,
       code: promo.code,
       quotes: quotes.map(({ fare_class, flight, promo_redemption, ...quote }) => ({
         ...quote,
@@ -132,6 +134,66 @@ export class PromoCodeService {
         redeemed_at: promo_redemption[0]?.redeemed_at ?? null,
       })),
     }
+  }
+
+  // Called by Feature 3b when a booking is confirmed. Safe to retry: the use is counted once per quote.
+  //
+  // Only "used up" refuses. The price was agreed when the quote was made, so a promo switched off or expired since then
+  // still counts. The increment is conditional rather than relying on the CHECK on used_count, so two bookings racing
+  // for the last use cannot both win, and throwing rolls the redemption row back.
+  async redeem(promoCodeId: string, fareQuoteId: string) {
+    await this.findQuoteFor(promoCodeId, fareQuoteId)
+    const redeemedAt = simNow()
+
+    const { count } = await this.db.$transaction(async (tx) => {
+      const inserted = await tx.promo_redemption.createMany({
+        data: [{ promo_code_id: promoCodeId, fare_quote_id: fareQuoteId, redeemed_at: redeemedAt }],
+        skipDuplicates: true, // ON CONFLICT DO NOTHING
+      })
+      if (inserted.count === 0) return inserted
+
+      const counted = await tx.$executeRaw`
+        UPDATE promo_code SET used_count = used_count + 1, updated_at = now()
+        WHERE id = ${promoCodeId}::uuid AND (max_uses IS NULL OR used_count < max_uses)`
+      if (counted === 0) {
+        throw new UnprocessableEntityException(
+          pricingError(PricingErrorCode.PROMO_INVALID, 'This promo code has no uses left', { reason: 'exhausted' }),
+        )
+      }
+      return inserted
+    })
+
+    return { promo_code_id: promoCodeId, fare_quote_id: fareQuoteId, already_redeemed: count === 0 }
+  }
+
+  // Undoes a redemption when 3b cancels the booking, giving the use back. Keyed by fare quote id until promo_redemption
+  // has a booking_ref column; the spec's route is DELETE /promo-codes/:id/redemptions/:booking_ref.
+  async unredeem(promoCodeId: string, fareQuoteId: string) {
+    await this.db.$transaction(async (tx) => {
+      const removed = await tx.promo_redemption.deleteMany({ where: { promo_code_id: promoCodeId, fare_quote_id: fareQuoteId } })
+      if (removed.count === 0) {
+        throw new NotFoundException(
+          pricingError(
+            PricingErrorCode.PROMO_REDEMPTION_NOT_FOUND,
+            `Promo code ${promoCodeId} was not redeemed on fare quote ${fareQuoteId}`,
+          ),
+        )
+      }
+      await tx.$executeRaw`
+        UPDATE promo_code SET used_count = used_count - 1, updated_at = now()
+        WHERE id = ${promoCodeId}::uuid AND used_count > 0`
+    })
+  }
+
+  // The quote must exist and carry this promo: a redemption row for any other pair would break its foreign key.
+  private async findQuoteFor(promoCodeId: string, fareQuoteId: string) {
+    const quote = await this.db.fare_quote.findUnique({ where: { id: fareQuoteId }, select: { id: true, promo_code_id: true } })
+    if (!quote || quote.promo_code_id !== promoCodeId) {
+      throw new NotFoundException(
+        pricingError(PricingErrorCode.QUOTE_NOT_FOUND, `No fare quote ${fareQuoteId} using promo code ${promoCodeId}`),
+      )
+    }
+    return quote
   }
 
   // Used by fare quotes. Returns the live promo for a code typed at checkout, or throws PROMO_INVALID with the reason.

@@ -1,11 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseFilters, UsePipes } from '@nestjs/common'
 import { CreatePromoCodeDto } from './dto/create-promo-code.dto'
+import { CreatePromoRedemptionDto } from './dto/create-promo-redemption.dto'
 import { PromoQuotesDto } from './dto/promo-quotes.dto'
 import { UpdatePromoCodeDto } from './dto/update-promo-code.dto'
 import { PromoCodeService } from './promo-code.service'
+import { PricingExceptionFilter } from '../pricing-exception.filter'
 import { pricingValidationPipe } from '../pricing.validation'
 
 @UsePipes(pricingValidationPipe)
+@UseFilters(PricingExceptionFilter)
 @Controller('staff/promo-codes')
 export class PromoCodeController {
   constructor(private readonly promoCodeService: PromoCodeService) {}
@@ -40,5 +43,25 @@ export class PromoCodeController {
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.promoCodeService.remove(id)
+  }
+}
+
+// Not under /staff: Feature 3b calls these when a booking is confirmed or cancelled. Retrying either is safe.
+@UsePipes(pricingValidationPipe)
+@UseFilters(PricingExceptionFilter)
+@Controller('promo-codes/:id/redemptions')
+export class PromoRedemptionController {
+  constructor(private readonly promoCodeService: PromoCodeService) {}
+
+  @Post()
+  redeem(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreatePromoRedemptionDto) {
+    return this.promoCodeService.redeem(id, dto.fare_quote_id)
+  }
+
+  // The spec keys this by booking_ref, which promo_redemption cannot store yet, so it takes the fare quote id for now.
+  @Delete(':fare_quote_id')
+  @HttpCode(204)
+  unredeem(@Param('id', ParseUUIDPipe) id: string, @Param('fare_quote_id', ParseUUIDPipe) fareQuoteId: string) {
+    return this.promoCodeService.unredeem(id, fareQuoteId)
   }
 }

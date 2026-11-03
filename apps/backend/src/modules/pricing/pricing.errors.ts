@@ -19,6 +19,7 @@ export const PricingErrorCode = {
   PROMO_CODE_TAKEN: 'PROMO_CODE_TAKEN',
   PROMO_CODE_INVALID: 'PROMO_CODE_INVALID',
   PROMO_INVALID: 'PROMO_INVALID',
+  PROMO_REDEMPTION_NOT_FOUND: 'PROMO_REDEMPTION_NOT_FOUND',
   QUOTE_NOT_FOUND: 'QUOTE_NOT_FOUND',
   FLIGHT_NOT_FOUND: 'FLIGHT_NOT_FOUND',
   FLIGHT_DEPARTED: 'FLIGHT_DEPARTED',
@@ -45,8 +46,8 @@ export const PricingErrorCode = {
 } as const
 export type PricingErrorCode = (typeof PricingErrorCode)[keyof typeof PricingErrorCode]
 
-// Body for every pricing error: { code, message, details? }. Pass it to a Nest exception, e.g.
-// throw new NotFoundException(pricingError(PricingErrorCode.FARE_CLASS_NOT_FOUND, '...'))
+// Pass this to a Nest exception, e.g. throw new NotFoundException(pricingError(PricingErrorCode.FARE_CLASS_NOT_FOUND, '...')).
+// PricingExceptionFilter sends it to the caller as { error: { code, message, details? } }.
 export function pricingError(code: PricingErrorCode, message: string, details?: Record<string, unknown>) {
   return { code, message, ...(details && { details }) }
 }
