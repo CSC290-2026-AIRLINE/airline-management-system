@@ -214,6 +214,8 @@
   display: none;
 }
 .wl-dialog {
+  inset: 0;
+  margin: auto;
   width: 660px;
   max-width: calc(100vw - 32px);
   max-height: calc(100svh - 32px);
