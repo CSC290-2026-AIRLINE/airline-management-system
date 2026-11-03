@@ -1,3 +1,4 @@
+import { StaffAccessController } from './staff-access.controller'
 import { StaffProfilesGuard } from './staff-profiles.guard'
 import { ScreeningRescreenService } from '@backend/modules/screening/screening-rescreen.service'
 import type { INestApplication } from '@nestjs/common'
@@ -193,7 +194,7 @@ let token: string
 
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({
-    controllers: [PassengerProfilesController, CustomerProfilesController],
+    controllers: [StaffAccessController, PassengerProfilesController, CustomerProfilesController],
     providers: [
       { provide: ScreeningRescreenService, useValue: { run: jest.fn() } },
       PassengerProfilesService,
@@ -914,6 +915,7 @@ describe('CORS for the staff-web origin', () => {
 
 describe('Staff authorization on all F7 staff endpoints', () => {
   const routes = [
+    { method: 'get', path: '/api/staff/access' },
     { method: 'get', path: '/api/staff/passengers' },
     { method: 'post', path: '/api/staff/passengers' },
     { method: 'get', path: '/api/staff/passengers/' + TRAVELLER_ID },
@@ -932,7 +934,7 @@ describe('Staff authorization on all F7 staff endpoints', () => {
     expect(response.body.error.code).toBe('FORBIDDEN')
     expect(db.staff.findFirst).toHaveBeenCalledWith({
       where: { user_id: customerId, deleted_at: null, user: { type: 'staff', disabled_at: null, deleted_at: null } },
-      select: { id: true },
+      select: { id: true, role: { select: { code: true } } },
     })
     expect(db.passenger.findMany).not.toHaveBeenCalled()
     expect(db.passenger.findFirst).not.toHaveBeenCalled()
@@ -984,4 +986,16 @@ describe('Staff authorization on all F7 staff endpoints', () => {
       expect(db.audit_log.create).not.toHaveBeenCalled()
     },
   )
+})
+
+describe('F7 navigation capabilities', () => {
+  it.each(['security', 'admin', 'check_in'])('returns only the current %s staff capability', async (code) => {
+    db.staff.findFirst.mockResolvedValue({ id: ACTOR.sub, role: { code } })
+    await request(app.getHttpServer())
+      .get('/api/staff/access')
+      .set('Authorization', 'Bearer ' + token)
+      .expect(200, { securityScreening: code === 'security' })
+    expect(db.passenger.findMany).not.toHaveBeenCalled()
+    expect(db.audit_log.create).not.toHaveBeenCalled()
+  })
 })

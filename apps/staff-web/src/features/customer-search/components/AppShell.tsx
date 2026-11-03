@@ -1,3 +1,4 @@
+import { useSecurityAccess } from '@staff-web/features/security-screening/use-security-access'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
@@ -80,6 +81,7 @@ function Brand() {
 
 export function AppShell({ children }: AppShellProps) {
   const { logout } = useAppAuth()
+  const { status: securityAccess } = useSecurityAccess()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const drawer = useRef<HTMLDivElement>(null)
@@ -150,16 +152,18 @@ export function AppShell({ children }: AppShellProps) {
           >
             Customer Search
           </Link>
-          <Link
-            to="/security-screening/screening-queue"
-            search={{ status: 'needs-review' }}
-            aria-label="Security Screening"
-            title="Security Screening"
-            viewTransition
-            preload="intent"
-          >
-            Security Screening
-          </Link>
+          {securityAccess === 'allowed' && (
+            <Link
+              to="/security-screening/screening-queue"
+              search={{ status: 'needs-review' }}
+              aria-label="Security Screening"
+              title="Security Screening"
+              viewTransition
+              preload="intent"
+            >
+              Security Screening
+            </Link>
+          )}
         </nav>
         <div className="sq-account">
           <strong>{displayName}</strong>
@@ -229,7 +233,7 @@ export function AppShell({ children }: AppShellProps) {
           </div>
 
           <nav className="cs-drawer__nav" aria-label="Workspace">
-            {DRAWER_ITEMS.map((item) => (
+            {DRAWER_ITEMS.filter((item) => item.to === '/customer-search' || securityAccess === 'allowed').map((item) => (
               <NavItem key={item.label} {...item} onNavigate={() => setDrawerOpen(false)} />
             ))}
           </nav>
