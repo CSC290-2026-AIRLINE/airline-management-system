@@ -176,6 +176,250 @@ describe('PassengerProfilesService.search', () => {
   })
 })
 
+/**
+ * Makes the flight lookup answer with these people and the flights they check in for.
+ *
+ * The service reads `id`, `service_date` and `flight_number` off what Postgres returns, and
+ * relies on the database for the order they come back in — so the order they are given here is
+ * the order the list shows.
+ */
+function rawReturnsUpcomingFlights(flights: { id: string; serviceDate: Date; flightNumber: string }[]) {
+  db.$queryRawUnsafe.mockImplementation((statement: string) =>
+    Promise.resolve(
+      isUpcomingFlightLookup(statement)
+        ? flights.map((flight) => ({
+            id: flight.id,
+            service_date: flight.serviceDate,
+            flight_number: flight.flightNumber,
+          }))
+        : [],
+    ),
+  )
+}
+
+/** The arguments Prisma was handed for one of the search's queries. */
+interface SearchArgs {
+  where?: {
+    id?: { in?: string[]; notIn?: string[] }
+    customer?: unknown
+    NOT?: { customer?: unknown }
+  }
+  skip?: number
+  take?: number
+}
+
+/**
+ * The order of the Customer Search list.
+ *
+ * The list is ordered by the date the person has to check in: the people who are flying come
+ * first, earliest flight first, and everyone else follows in surname order.
+ */
+describe('Customer Search — the order of the list', () => {
+  const EARLY = new Date('2026-08-14T00:00:00.000Z')
+  const LATE = new Date('2026-08-21T00:00:00.000Z')
+
+  const anya = travellerRow({ id: '11111111-1111-4111-8111-111111111111', first_name: 'Anya', last_name: 'Petrov' })
+  const somchai = holderRow({ id: '22222222-2222-4222-8222-222222222222', first_name: 'Somchai', last_name: 'Wong' })
+  const ben = travellerRow({ id: '33333333-3333-4333-8333-333333333333', first_name: 'Ben', last_name: 'Aakul' })
+  const zoe = travellerRow({ id: '44444444-4444-4444-8444-444444444444', first_name: 'Zoe', last_name: 'Yai' })
+
+  /** The people who are flying, and the rest, as the two queries of the search would answer them. */
+  function answersWith(flyingRows: SummaryRow[], restRows: SummaryRow[]) {
+    db.passenger.findMany.mockImplementation((args: SearchArgs) => {
+      // The account-holder and traveller routes each keep their own split, and the database is
+      // what applies it.
+      const wanted = (rows: SummaryRow[]) =>
+        rows.filter((row) => {
+          if (args.where?.customer) {
+            return row.customer !== null
+          }
+          if (args.where?.NOT?.customer) {
+            return row.customer === null
+          }
+          return true
+        })
+      if (args.where?.id?.in) {
+        return Promise.resolve(wanted(flyingRows))
+      }
+      const rest = wanted(restRows)
+      return Promise.resolve(rest.slice(args.skip ?? 0, (args.skip ?? 0) + (args.take ?? rest.length)))
+    })
+    db.passenger.count.mockResolvedValue(flyingRows.length + restRows.length)
+  }
+
+  it('puts the people who have a flight first, in the order the database gave them', async () => {
+    // The database orders the flights by check-in date, so Somchai — who flies earlier — comes
+    // back before Anya, and the people who are not flying come back after both.
+    rawReturnsUpcomingFlights([
+      { id: somchai.id, serviceDate: EARLY, flightNumber: 'TG102' },
+      { id: anya.id, serviceDate: LATE, flightNumber: 'TG101' },
+    ])
+    answersWith([anya, somchai], [ben, zoe])
+
+    const result = await service.search({ q: '', type: 'all', page: 1, size: 20 })
+
+    expect(result.items.map((item) => item.id)).toEqual([somchai.id, anya.id, ben.id, zoe.id])
+    expect(result.items.map((item) => item.nextFlightDate)).toEqual([EARLY, LATE, null, null])
+    expect(result.items.map((item) => item.nextFlightNumber)).toEqual(['TG102', 'TG101', null, null])
+  })
+
+  it('leaves the flight off a row when the person has none to check in for', async () => {
+    db.passenger.findMany.mockResolvedValue([anya])
+
+    const result = await service.search({ q: '', type: 'all', page: 1, size: 20 })
+
+    expect(result.items[0].nextFlightDate).toBeNull()
+    expect(result.items[0].nextFlightNumber).toBeNull()
+  })
+
+  it('keeps the order the database gave, so two people on the same day stay in surname order', async () => {
+    // The database puts the surname first for two people on the same day; the service must not
+    // undo that by sorting the rows again.
+    rawReturnsUpcomingFlights([
+      { id: zoe.id, serviceDate: EARLY, flightNumber: 'TG102' },
+      { id: ben.id, serviceDate: EARLY, flightNumber: 'TG102' },
+    ])
+    answersWith([zoe, ben], [])
+
+    const result = await service.search({ q: '', type: 'all', page: 1, size: 20 })
+
+    expect(result.items.map((item) => item.id)).toEqual([zoe.id, ben.id])
+  })
+
+  it('orders the lookup by the check-in date and then the surname, in the database', async () => {
+    rawReturnsUpcomingFlights([])
+    await service.search({ q: '', type: 'all', page: 1, size: 20 })
+
+    const { sql } = rawSqlAt()
+    expect(sql).toContain('ORDER BY e.service_date ASC, p.last_name ASC, p.first_name ASC, e.passenger_id ASC')
+  })
+
+  it('asks only for flights that have not left yet', async () => {
+    rawReturnsUpcomingFlights([])
+    await service.search({ q: '', type: 'all', page: 1, size: 20 })
+
+    const { sql, values } = rawSqlAt()
+    expect(sql).toContain('WHERE f.dep_at >= $1')
+    expect(values[0]).toBeInstanceOf(Date)
+  })
+
+  it('leaves out the flights that are not being flown', async () => {
+    rawReturnsUpcomingFlights([])
+    await service.search({ q: '', type: 'all', page: 1, size: 20 })
+
+    // A cancelled flight is not one to check in for, and neither is one that has already
+    // left, whatever its timestamps say.
+    expect(rawSqlAt().sql).toContain("f.status NOT IN ('cancelled', 'departed', 'arrived')")
+  })
+
+  it("takes each person's earliest flight, not every flight they appear on", async () => {
+    rawReturnsUpcomingFlights([])
+    await service.search({ q: '', type: 'all', page: 1, size: 20 })
+
+    // A person on two flights has one check-in date — the first one — so the lookup picks
+    // one row per passenger.
+    expect(rawSqlAt().sql).toContain('DISTINCT ON (c.passenger_id)')
+  })
+
+  it('orders a realistic list: earliest flight, then surname, then the people who are not flying', async () => {
+    // Two people fly on the same day, so the surname decides between them; one flies a week
+    // later; the other three are not flying at all and keep the surname order.
+    const aki = travellerRow({ id: 'a1111111-1111-4111-8111-111111111111', first_name: 'Aki', last_name: 'Tanaka' })
+    const ben = travellerRow({ id: 'b2222222-2222-4222-8222-222222222222', first_name: 'Ben', last_name: 'Aakul' })
+    const cleo = travellerRow({ id: 'c3333333-3333-4333-8333-333333333333', first_name: 'Cleo', last_name: 'Cat' })
+    const dan = travellerRow({ id: 'd4444444-4444-4444-8444-444444444444', first_name: 'Dan', last_name: 'Dog' })
+    const eve = travellerRow({ id: 'e5555555-5555-4555-8555-555555555555', first_name: 'Eve', last_name: 'Eel' })
+    const fay = travellerRow({ id: 'f6666666-6666-4666-8666-666666666666', first_name: 'Fay', last_name: 'Fox' })
+
+    // The database puts the two people on 14 August in surname order, then the one on 21 August.
+    rawReturnsUpcomingFlights([
+      { id: ben.id, serviceDate: EARLY, flightNumber: 'TG102' },
+      { id: aki.id, serviceDate: EARLY, flightNumber: 'TG102' },
+      { id: cleo.id, serviceDate: LATE, flightNumber: 'TG103' },
+    ])
+    answersWith([aki, ben, cleo], [dan, eve, fay])
+
+    const result = await service.search({ q: '', type: 'all', page: 1, size: 20 })
+
+    expect(result.items.map((item) => `${item.lastName} ${item.firstName}`)).toEqual([
+      'Aakul Ben',
+      'Tanaka Aki',
+      'Cat Cleo',
+      'Dog Dan',
+      'Eel Eve',
+      'Fox Fay',
+    ])
+    // The date each row was ordered by travels with it, and the people who are not flying
+    // have none.
+    expect(result.items.map((item) => item.nextFlightDate)).toEqual([EARLY, EARLY, LATE, null, null, null])
+    expect(result.total).toBe(6)
+  })
+
+  it('keeps the order across the pages, so page two starts where page one stopped', async () => {
+    // Three people are flying and four are not; two to a page, the order has to carry across.
+    const flying = [
+      travellerRow({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', first_name: 'Ann', last_name: 'Aardvark' }),
+      travellerRow({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', first_name: 'Bob', last_name: 'Bee' }),
+      travellerRow({ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', first_name: 'Cleo', last_name: 'Cat' }),
+    ]
+    const resting = [
+      travellerRow({ id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', first_name: 'Dan', last_name: 'Dog' }),
+      travellerRow({ id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', first_name: 'Eve', last_name: 'Eel' }),
+      travellerRow({ id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', first_name: 'Fay', last_name: 'Fox' }),
+      travellerRow({ id: '99999999-9999-4999-8999-999999999999', first_name: 'Gil', last_name: 'Gazelle' }),
+    ]
+    rawReturnsUpcomingFlights([
+      { id: flying[0].id, serviceDate: EARLY, flightNumber: 'TG102' },
+      { id: flying[1].id, serviceDate: EARLY, flightNumber: 'TG102' },
+      { id: flying[2].id, serviceDate: LATE, flightNumber: 'TG103' },
+    ])
+    answersWith(flying, resting)
+
+    const page1 = await service.search({ q: '', type: 'all', page: 1, size: 2 })
+    const page2 = await service.search({ q: '', type: 'all', page: 2, size: 2 })
+    const page3 = await service.search({ q: '', type: 'all', page: 3, size: 2 })
+
+    expect(page1.items.map((item) => item.id)).toEqual([flying[0].id, flying[1].id])
+    expect(page2.items.map((item) => item.id)).toEqual([flying[2].id, resting[0].id])
+    expect(page3.items.map((item) => item.id)).toEqual([resting[1].id, resting[2].id])
+    expect(page1.total).toBe(7)
+  })
+
+  it('counts everyone who matches, not only the people who are flying', async () => {
+    rawReturnsUpcomingFlights([{ id: anya.id, serviceDate: EARLY, flightNumber: 'TG102' }])
+    answersWith([anya], [ben, zoe])
+
+    await service.search({ q: '', type: 'all', page: 1, size: 20 })
+
+    // The count answers for the whole search; the page only holds the people who are flying.
+    expect(db.passenger.count).toHaveBeenCalledWith({ where: { deleted_at: null } })
+  })
+
+  it('orders the account-holder route the same way, and keeps its own split', async () => {
+    rawReturnsUpcomingFlights([{ id: somchai.id, serviceDate: EARLY, flightNumber: 'TG102' }])
+    // Anya is a traveller, so this route never returns her even though she is not flying.
+    answersWith([somchai], [anya])
+
+    const result = await service.searchAccountHolders({ q: '', page: 1, size: 20 })
+
+    expect(result.items.map((item) => item.id)).toEqual([somchai.id])
+    expect(result.items[0].nextFlightDate).toEqual(EARLY)
+    expect((db.passenger.findMany.mock.calls[0][0].where as SearchWhere).customer).toEqual({ is: { deleted_at: null } })
+  })
+
+  it('orders the traveller route the same way, and keeps its own split', async () => {
+    rawReturnsUpcomingFlights([{ id: anya.id, serviceDate: EARLY, flightNumber: 'TG102' }])
+    // Somchai holds an account, so this route never returns him even though he is not flying.
+    answersWith([anya], [somchai])
+
+    const result = await service.search({ q: '', type: 'traveller', page: 1, size: 20 })
+
+    expect(result.items.map((item) => item.id)).toEqual([anya.id])
+    expect(result.items[0].nextFlightDate).toEqual(EARLY)
+    expect((db.passenger.findMany.mock.calls[0][0].where as SearchWhere).NOT).toEqual({ customer: { is: { deleted_at: null } } })
+  })
+})
+
 /** The `where` Prisma was handed for a search, for the caller to make assertions against. */
 interface SearchWhere {
   deleted_at: null
@@ -222,9 +466,34 @@ function rawSqlAt(call = 0): { sql: string; values: unknown[] } {
   return { sql: (statement as string).replace(/\s+/g, ' ').trim(), values }
 }
 
+/**
+ * True for the statement that asks which people have a flight to check in for.
+ *
+ * The search reads that list on every query, so the mocks that answer the *term* lookups have
+ * to leave it alone — otherwise they would answer a question they were never asked, and a
+ * passenger would be handed a flight that does not exist.
+ */
+function isUpcomingFlightLookup(statement: string): boolean {
+  return statement.includes('screening_check')
+}
+
+/**
+ * The raw statements the service sent for the search terms, with the flight lookup left out.
+ *
+ * A plain name search still costs one statement — the one that reads who is flying — so
+ * "no raw query at all" is no longer the thing to assert; "no statement for this term" is.
+ */
+function rawTermStatements(): string[] {
+  return db.$queryRawUnsafe.mock.calls
+    .map((call) => (call[0] as string).replace(/\s+/g, ' ').trim())
+    .filter((sql) => !isUpcomingFlightLookup(sql))
+}
+
 /** Makes the raw lookup return these ids. The service reads `row.id` off what Postgres returns. */
 function rawReturnsIds(ids: string[]) {
-  db.$queryRawUnsafe.mockResolvedValue(ids.map((id) => ({ id })))
+  db.$queryRawUnsafe.mockImplementation((statement: string) =>
+    Promise.resolve(isUpcomingFlightLookup(statement) ? [] : ids.map((id) => ({ id }))),
+  )
 }
 
 type Clause = Record<string, unknown>
@@ -899,6 +1168,10 @@ describe('Customer Search — a partial term matches across every field', () => 
    */
   function rawAnswersWith(rows: SummaryRow[]) {
     db.$queryRawUnsafe.mockImplementation((statement: string, ...values: unknown[]) => {
+      // The flight lookup asks a different question and is answered elsewhere.
+      if (isUpcomingFlightLookup(statement)) {
+        return Promise.resolve([])
+      }
       const inner = /AND \((.*)\)$/.exec(statement.trim())?.[1] ?? ''
 
       // Every predicate, keyed by the `$n` it occupies, so an alternative can claim its own.
@@ -1059,27 +1332,27 @@ describe('Customer Search — a partial term matches across every field', () => 
       for (const term of ['anya', 'Anabel', 'cafe', 'deadbeef', 'a', '0', 'Somchai']) {
         db.$queryRawUnsafe.mockClear()
         await whereFor(term)
-        expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+        expect(rawTermStatements()).toEqual([])
       }
     })
 
     it('leaves a whole uuid to the equality that already existed', async () => {
       const where = await whereFor(ID_WITH_08)
 
-      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+      expect(rawTermStatements()).toEqual([])
       expect(alternativesFor(where)).toEqual([{ id: ID_WITH_08 }])
     })
 
     it('costs an ordinary name search nothing', async () => {
       await whereFor('Anabel Effertz')
 
-      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+      expect(rawTermStatements()).toEqual([])
     })
 
     it('costs an empty search nothing', async () => {
       await whereFor('')
 
-      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+      expect(rawTermStatements()).toEqual([])
     })
   })
 
@@ -1174,7 +1447,7 @@ describe('Customer Search — a partial term matches across every field', () => 
       // And `0` is a single character, so it never reaches the id either.
       db.$queryRawUnsafe.mockClear()
       await whereFor('0')
-      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+      expect(rawTermStatements()).toEqual([])
     })
 
     it('still refuses a month prefix shorter than three letters', async () => {
@@ -1183,7 +1456,7 @@ describe('Customer Search — a partial term matches across every field', () => 
 
       // Two letters cannot separate March/May or June/July, so `Ju` is not read as July and
       // the cast never sees a month that is not one.
-      expect(db.$queryRawUnsafe).not.toHaveBeenCalled()
+      expect(rawTermStatements()).toEqual([])
     })
 
     it('leaves a name that is also a month alone as far as the range goes', async () => {
@@ -1216,7 +1489,7 @@ describe('Customer Search — a partial term matches across every field', () => 
 
       const where = await whereFor('Sept 08 ab08')
 
-      expect(db.$queryRawUnsafe).toHaveBeenCalledTimes(2)
+      expect(rawTermStatements()).toHaveLength(2)
       expect(where.AND).toHaveLength(2)
       expect(alternativesFor(where)).toContainEqual({ id: { in: [ID_WITH_08] } })
       expect(groupFor(where, 1)).toContainEqual({ id: { in: [] } })
@@ -1228,7 +1501,7 @@ describe('Customer Search — a partial term matches across every field', () => 
       // `08` needs a cast; `Ana` is a name and needs none.
       await whereFor('08 Ana')
 
-      expect(db.$queryRawUnsafe).toHaveBeenCalledTimes(1)
+      expect(rawTermStatements()).toHaveLength(1)
     })
 
     it('never widens what the response exposes in order to make searching work', async () => {

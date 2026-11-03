@@ -110,8 +110,8 @@ nothing is filtered in the browser.
 
 Every value is a bound parameter; a search term never reaches the statement as
 text. The whole lookup is built from fragments in `planToken`, and a query of
-plain names never triggers it — `Anabel Effertz` costs the one transaction it
-always did.
+plain names never triggers it — the search still costs the one transaction it
+always did, plus the one statement below that reads who is flying.
 
 **The placeholders are `$1`, `$2`, … and they have to be.** Fragments are written
 with `?` and renumbered by `numbered()` once the statement is assembled, because
@@ -134,6 +134,82 @@ digit in them. `cafe` is hex-looking but carries no digit, and one character wou
 match nearly every uuid, so neither pays for the cast. Either way the text columns
 are still searched as well — the cast is added to the term's alternatives, never
 substituted for them.
+
+### The order of the list
+
+The list is ordered by **when each person has to check in**, not by surname:
+
+1. the people who have a flight ahead of them come first, the earliest flight first;
+2. two people on the same day are ordered by surname, A–Z;
+3. everyone with no flight ahead of them follows, in the surname order the list has
+   always used.
+
+The check-in date is `flight.service_date` — the day the flight operates, in the
+airport's own time, which is why it does not move with the server's timezone.
+`flight.dep_at` decides whether the flight is still ahead of us, and a flight that is
+cancelled, departed or arrived is not one to check in for whatever its timestamps say.
+
+#### Where the flight comes from — and what it is not
+
+The passenger-to-flight link is `screening_check`, the only foreign-key-backed one
+in the schema: every check records the (passenger, flight) pair it was run against.
+
+**This is the screening history, not the booked ticket.** Feature 3b's booking tables
+are not in this schema yet — `product_order.booking_id` and
+`product_order_line.booking_passenger_id` are ids held without a foreign key, and
+nothing in the backend reads either table — so there is no booked-flight record to
+order by. The consequence is honest and worth stating plainly:
+
+- a passenger with a booked flight but no screening history is **not** in the first
+  half of the list; they fall into the surname half with everyone else;
+- a passenger whose flight was cancelled, or who was screened for a flight they later
+  did not take, still carries that flight until the booking data replaces this.
+
+What would fix it is F3b's `booking` and `booking_passenger` tables carrying
+`passenger_id` and `flight_id`: the statement below is then joined to those instead,
+and nothing else about the ordering moves. `BookingsPort.listUpcomingPassengerFlights`
+is the module-level contract for the same list and is a stub that returns nothing
+today. See _Blockers_ — needs another team_.
+
+The order is the database's, not the browser's. One statement reads the people who
+are flying, already ordered by check-in date and then by surname:
+
+```sql
+WITH earliest AS (
+  SELECT DISTINCT ON (c.passenger_id)
+         c.passenger_id, f.service_date, f.dep_at, f.flight_number
+    FROM screening_check c
+    JOIN flight f ON f.id = c.flight_id
+   WHERE f.dep_at >= $1
+     AND f.status NOT IN ('cancelled', 'departed', 'arrived')
+   ORDER BY c.passenger_id, f.service_date ASC, f.dep_at ASC, f.id ASC
+)
+SELECT e.passenger_id AS id, e.service_date, e.flight_number
+  FROM earliest e
+  JOIN passenger p ON p.id = e.passenger_id
+ WHERE p.deleted_at IS NULL
+ ORDER BY e.service_date ASC, p.last_name ASC, p.first_name ASC, e.passenger_id ASC
+```
+
+Prisma cannot order a passenger by a field of one of its flights — `orderBy` on a
+to-many relation only offers `_count` — so the ordering has to be asked of Postgres.
+The search's own filter still decides which of those people match, and the page is
+then cut across the two halves, so the order holds from the first page to the last.
+`total` still counts everyone who matches, not only the people on this page.
+
+Each row carries the flight it was ordered by:
+
+| Field              | Meaning                                 |
+| ------------------ | --------------------------------------- |
+| `nextFlightDate`   | the day the person checks in, or `null` |
+| `nextFlightNumber` | the number of that flight, or `null`    |
+
+The staff UI does not display them — the results table shows NAME, DATE OF BIRTH,
+NATIONALITY and ID — but they stay on the wire, because they are the key the order
+was built from.
+
+The `:id` detail routes do not carry them — a profile does not need to say when the
+person checks in.
 
 ### Date formats `q` accepts
 
@@ -344,6 +420,12 @@ rather than a Postgres cast failure.
   in this repository — `schema.sql` marks the columns that are meant to read from
   one, but there is nothing to read. `readDateOfBirth` therefore rejects a future
   date against `Date.now()`. Swap it when a simulation clock lands.
+- **The search reads the flight list on every request.** Ordering the list by
+  check-in date needs a second read, because Prisma cannot order a passenger by a
+  field of one of its flights. That statement is indexed on both sides
+  (`flight.dep_at`, `screening_check.flight_id`) and answers with one row per
+  passenger who has a flight ahead of them, so its cost scales with the number of
+  departing passengers rather than with the size of the table.
 
 ## Blockers — needs another team
 
@@ -387,6 +469,27 @@ rather than a Postgres cast failure.
   changed here: `src/db/` is the Database Team's (see `apps/backend/CLAUDE.md`), and a seed
   that faked passports would also make review item 6's normalisation rule untestable against
   realistic values.
+- **The check-in order is read from the screening history, because F3b's booking tables are
+  not in the schema yet.** Ordering the list by check-in date needs a passenger-to-flight
+  link, and the only one this schema carries with a foreign key is `screening_check` — every
+  check records the (passenger, flight) pair it was run against.
+  **This is a screening record, not a booked ticket.** A check row proves the passenger was
+  screened for that flight; it carries no booking id, no check-in timestamp, and no way to
+  tell a live booking from one that was later cancelled or changed. So:
+  - on a database with no screening rows nobody has a flight ahead of them, and the list
+    falls back to the surname order alone — correct, but only because there is nothing to
+    sort by;
+  - a passenger with a booked flight and no screening history sits in the surname half of
+    the list, not the check-in half;
+  - a passenger whose flight was cancelled still carries it until the booking data arrives.
+    **What would resolve it:** F3b's `booking` and `booking_passenger` tables, carrying
+    `passenger_id` and `flight_id` (and, if the check-in day differs from the flight's
+    operating day, the check-in date itself). The lookup in _The order of the list_ is then
+    joined to those tables instead, and the ordering itself does not change.
+    `BookingsPort.listUpcomingPassengerFlights` is already the codebase's abstraction for
+    "the passenger-flight pairs still ahead of us" — it is bound to a stub that returns
+    nothing today, and the order does not read through it. Until that lands, the order is a
+    proxy for the booked flight, and this entry is where that is recorded.
 
 ## Not in this module
 

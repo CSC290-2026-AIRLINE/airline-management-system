@@ -100,6 +100,29 @@ Two consequences worth knowing:
   Opening a profile writes a `view_sensitive` row, and both snapshots mask the
   passport.
 
+## The order of the list
+
+The results are ordered by **when each person has to check in**, not by surname:
+
+1. the people who have a flight ahead of them come first, the earliest flight first;
+2. two people on the same day are ordered by surname, A–Z;
+3. everyone with no flight ahead of them follows, in surname order.
+
+The order is the server's. `GET /api/staff/passengers` sorts the rows in the database and
+pages across that order, so it holds from the first page to the last and is the same on
+the All, Account holders and Travellers tabs. Nothing is sorted in the browser, and the
+page never re-orders the rows it happens to hold.
+
+The list does not repeat the order in the UI: the results table shows NAME, DATE OF BIRTH,
+NATIONALITY and ID, and the card lists show who the person is. Which flight they are on is
+an internal detail of the ordering — the search rows do carry it (`nextFlightDate` and
+`nextFlightNumber`), but this feature does not display it.
+
+The date the order is built from comes from the server's screening history, which is the
+only link between a passenger and a flight the schema has; the booking tables that would
+answer it properly belong to Feature 3b and are not here yet. See
+`apps/backend/src/modules/passenger-profiles/staff-profiles.md` for the whole story.
+
 ## Passport masking
 
 The API masks the passport number — every response carries `•••• 1234`, never

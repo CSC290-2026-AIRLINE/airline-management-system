@@ -51,6 +51,22 @@ export interface PassengerLink {
   person: PassengerSummary
 }
 
+/**
+ * A search row, with the flight the person checks in for.
+ *
+ * The date is what the list is ordered by, so it travels with the row rather than being
+ * looked up again: the order it implies is the order the server chose. It is the day of the
+ * next flight this person is on as far as the screening history knows — see
+ * {@link PassengerProfilesService.upcomingFlights} for where that comes from, and what would
+ * replace it once the booking tables arrive.
+ */
+export interface PassengerSearchSummary extends PassengerSummary {
+  /** The date of the flight the person checks in for, or null when they have none. */
+  nextFlightDate: Date | null
+  /** The number of that flight, or null. */
+  nextFlightNumber: string | null
+}
+
 export interface PassengerProfile extends PassengerSummary {
   profilePhotoUrl: string | null
   savedTravellers: PassengerLink[]
@@ -58,7 +74,7 @@ export interface PassengerProfile extends PassengerSummary {
 }
 
 export interface PassengerSearchResult {
-  items: PassengerSummary[]
+  items: PassengerSearchSummary[]
   total: number
   page: number
   size: number
@@ -167,6 +183,21 @@ type ProfileRow = Omit<SummaryRow, 'customer'> & {
   customer_passenger: ProfileLink[]
 }
 
+/**
+ * One person and the flight they check in for, as {@link PassengerProfilesService.upcomingFlights}
+ * reads them.
+ */
+interface UpcomingFlight {
+  /** The passenger id. */
+  id: string
+  /** The day the flight operates — the day the person checks in. */
+  serviceDate: Date
+  flightNumber: string
+}
+
+/** One row of the search list, with the flight the person checks in for (null when they have none). */
+type SearchEntry = { row: SummaryRow; flight: UpcomingFlight | null }
+
 function toSummary(row: SummaryRow): PassengerSummary {
   return {
     id: row.id,
@@ -183,6 +214,15 @@ function toSummary(row: SummaryRow): PassengerSummary {
     memberSince: row.customer?.created_at ?? null,
     email: row.customer?.user.email ?? null,
     phone: row.customer?.phone ?? null,
+  }
+}
+
+/** A summary row with the flight the person checks in for, which is what the list is ordered by. */
+function toSearchSummary(row: SummaryRow, flight: UpcomingFlight | null): PassengerSearchSummary {
+  return {
+    ...toSummary(row),
+    nextFlightDate: flight?.serviceDate ?? null,
+    nextFlightNumber: flight?.flightNumber ?? null,
   }
 }
 
@@ -728,22 +768,141 @@ export class PassengerProfilesService {
     return rows.map((row) => row.id)
   }
 
+  /**
+   * The people who have a flight to check in for, in the order the list shows them.
+   *
+   * **Where the flight comes from.** `screening_check` is the only foreign-key-backed link
+   * between a passenger and a flight in this schema: every check records the pair it was run
+   * against, and `flight_id` points at the flight the person was screened for. A ticket
+   * booking would answer this better, but Feature 3b's tables are not here yet —
+   * `product_order.booking_id` is an id held without a foreign key, and no code in this
+   * repository reads that table — so the screening history is what holds the link.
+   *
+   * That makes this a proxy, not a booking record: a passenger who has a booked flight but no
+   * screening history does not appear in the first half of the list. What would fix it is
+   * F3b's `booking` and `booking_passenger` tables, carrying `passenger_id` and `flight_id`;
+   * this statement is then replaced by a join on those, and nothing else in the ordering
+   * moves. `BookingsPort.listUpcomingPassengerFlights` is the module-level contract for the
+   * same thing, and it is a stub that returns nothing today.
+   *
+   * **Which flight is "upcoming".** `flight.dep_at` says whether the flight is still ahead of
+   * us, and a flight that has been cancelled, departed or arrived is not one to check in for
+   * whatever its timestamps say. `flight.service_date` is the day the flight operates, in the
+   * airport's own time: that is the day the person checks in, and unlike a timestamp it does
+   * not move with the server's timezone.
+   *
+   * **The order.** The earliest check-in first, then surname, then first name, then id, so two
+   * people on the same day always come back in the same order.
+   */
+  private async upcomingFlights(now: Date): Promise<UpcomingFlight[]> {
+    const statement: SqlFragment = {
+      text: `WITH earliest AS (
+  SELECT DISTINCT ON (c.passenger_id)
+         c.passenger_id, f.service_date, f.dep_at, f.flight_number
+    FROM screening_check c
+    JOIN flight f ON f.id = c.flight_id
+   WHERE f.dep_at >= ?
+     AND f.status NOT IN ('cancelled', 'departed', 'arrived')
+   ORDER BY c.passenger_id, f.service_date ASC, f.dep_at ASC, f.id ASC
+)
+SELECT e.passenger_id AS id, e.service_date, e.flight_number
+  FROM earliest e
+  JOIN passenger p ON p.id = e.passenger_id
+ WHERE p.deleted_at IS NULL
+ ORDER BY e.service_date ASC, p.last_name ASC, p.first_name ASC, e.passenger_id ASC`,
+      values: [now],
+    }
+
+    const rows = await this.db.$queryRawUnsafe<{ id: string; service_date: Date; flight_number: string }[]>(
+      numbered(statement),
+      ...statement.values,
+    )
+    return rows.map((row) => ({ id: row.id, serviceDate: row.service_date, flightNumber: row.flight_number }))
+  }
+
+  /**
+   * The rows of the search that have a flight to check in for, in check-in order.
+   *
+   * The rows are fetched by id and then put back in the order {@link upcomingFlights} gave
+   * them: Prisma cannot order a passenger by a field of one of its flights, so the database
+   * does the ordering and this only keeps it.
+   */
+  private async flyingRows(where: Prisma.passengerWhereInput, flyingIds: string[], upcoming: UpcomingFlight[]): Promise<SearchEntry[]> {
+    const rows = await this.db.passenger.findMany({
+      where: { ...where, id: { in: flyingIds } },
+      select: SUMMARY_SELECT,
+    })
+    const byId = new Map(rows.map((row) => [row.id, row]))
+    return upcoming.flatMap((flight) => {
+      const row = byId.get(flight.id)
+      return row ? [{ row, flight }] : []
+    })
+  }
+
+  /**
+   * The search list, ordered by the check-in date of the flight each person is on.
+   *
+   * The list has two halves. The people who have a flight to check in for come first, in
+   * check-in order — the earliest flight first, and the surname A–Z for two people on the same
+   * day. Everyone else follows, in the surname order this list has always used. The first
+   * half is as good as the data behind it: it is the screening history, which stands in for
+   * the bookings that are not in the schema yet (see {@link upcomingFlights}).
+   *
+   * The halves are read separately and the page is cut across them, so the order holds from
+   * the first page to the last: the people who are flying are placed before the people who
+   * are not, whoever asks for which page.
+   *
+   * The search itself is unchanged. The filter still describes the same people, and the count
+   * beside the page still counts all of them, not only the ones on this page.
+   */
   private async runSearch(where: Prisma.passengerWhereInput, page: number, size: number): Promise<PassengerSearchResult> {
     const skip = (page - 1) * size
 
-    // Counted alongside the page so both read the same snapshot.
-    const [rows, total] = await this.db.$transaction([
-      this.db.passenger.findMany({
-        where,
-        select: SUMMARY_SELECT,
-        orderBy: [{ last_name: 'asc' }, { first_name: 'asc' }, { id: 'asc' }],
-        skip,
-        take: size,
-      }),
-      this.db.passenger.count({ where }),
-    ])
+    // One instant for both reads, so a flight cannot cross the "has it departed?" line between
+    // the two queries and leave the same person in both halves of the list.
+    const now = new Date()
 
-    return { items: rows.map(toSummary), total, page, size }
+    // The people who have a flight to check in for, in the order the list shows them.
+    const upcoming = await this.upcomingFlights(now)
+    const flyingIds = upcoming.map((flight) => flight.id)
+
+    // The first half of the list: the people who are flying and match the search.
+    const flying = flyingIds.length > 0 ? await this.flyingRows(where, flyingIds, upcoming) : []
+
+    // The window the second half of the list covers. It is empty when the page sits wholly
+    // inside the first half, and Prisma's `take: 0` is not worth relying on, so that query is
+    // skipped rather than run.
+    const flyingOnPage = flying.slice(skip, skip + size)
+    const restSkip = Math.max(0, skip - flying.length)
+    const restTake = Math.max(0, size - flyingOnPage.length)
+    const restWhere: Prisma.passengerWhereInput = flyingIds.length > 0 ? { ...where, id: { notIn: flyingIds } } : where
+
+    // The second half of the list: everyone who is not flying, still in surname order.
+    let restRows: SummaryRow[] = []
+    let total = 0
+    if (restTake > 0) {
+      // Counted alongside the page so both read the same snapshot.
+      const [rows, count] = await this.db.$transaction([
+        this.db.passenger.findMany({
+          where: restWhere,
+          select: SUMMARY_SELECT,
+          orderBy: [{ last_name: 'asc' }, { first_name: 'asc' }, { id: 'asc' }],
+          skip: restSkip,
+          take: restTake,
+        }),
+        this.db.passenger.count({ where }),
+      ])
+      restRows = rows
+      total = count
+    } else {
+      total = await this.db.passenger.count({ where })
+    }
+
+    const items = [...flyingOnPage, ...restRows.map((row) => ({ row, flight: null }))].map(({ row, flight }) =>
+      toSearchSummary(row, flight),
+    )
+
+    return { items, total, page, size }
   }
 
   /**
