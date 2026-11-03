@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { toCents } from '../fare-quote/quote-calculator'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
@@ -31,10 +31,14 @@ export class SeatFeeService {
     return seatFee
   }
 
+  // For quotes and check-in pricing. A seat type with no fee in this cabin is not sold there: 422 SEAT_TYPE_UNKNOWN, a
+  // problem with the request rather than a missing staff row (SEAT_FEE_NOT_FOUND is for /staff/seat-fees/:id).
   async lookup(cabin: string, seatType: string) {
     const seatFee = await this.db.seat_fee.findFirst({ where: { cabin, seat_type: seatType, deleted_at: null } })
     if (!seatFee) {
-      throw new NotFoundException(pricingError(PricingErrorCode.SEAT_FEE_NOT_FOUND, `No seat fee for ${cabin} / ${seatType}`))
+      throw new UnprocessableEntityException(
+        pricingError(PricingErrorCode.SEAT_TYPE_UNKNOWN, `${seatType} seats are not sold in ${cabin}`, { cabin, seat_type: seatType }),
+      )
     }
     return seatFee
   }

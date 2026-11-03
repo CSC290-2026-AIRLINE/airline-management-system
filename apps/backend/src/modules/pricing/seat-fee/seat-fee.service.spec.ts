@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common'
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import type { SettingService } from '../setting/setting.service'
 import type { TaxFeeService } from '../tax-fee/tax-fee.service'
@@ -57,12 +57,13 @@ describe('SeatFeeService', () => {
       expect(price.taxes[0].amount).toBe(0)
     })
 
-    it('throws SEAT_FEE_NOT_FOUND when either seat type has no fee', async () => {
+    it('throws SEAT_TYPE_UNKNOWN when either seat type has no fee', async () => {
       db.seat_fee.findFirst.mockResolvedValueOnce({ ...seatFee }).mockResolvedValueOnce(null)
 
       const error = await service.price('economy', 'exit_row', 'normal').catch((e: unknown) => e)
 
-      expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'SEAT_FEE_NOT_FOUND' })
+      expect(error).toBeInstanceOf(UnprocessableEntityException)
+      expect((error as UnprocessableEntityException).getResponse()).toMatchObject({ code: 'SEAT_TYPE_UNKNOWN' })
     })
   })
 
@@ -150,12 +151,15 @@ describe('SeatFeeService', () => {
     expect(db.seat_fee.findFirst).toHaveBeenCalledWith({ where: { cabin: 'economy', seat_type: 'exit_row', deleted_at: null } })
   })
 
-  it('throws SEAT_FEE_NOT_FOUND when the lookup has no row', async () => {
+  it('throws SEAT_TYPE_UNKNOWN (422) when the lookup has no row', async () => {
     db.seat_fee.findFirst.mockResolvedValue(null)
 
     const error = await service.lookup('first', 'exit_row').catch((e: unknown) => e)
 
-    expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'SEAT_FEE_NOT_FOUND' })
+    expect(error).toBeInstanceOf(UnprocessableEntityException)
+    expect((error as UnprocessableEntityException).getResponse()).toMatchObject({
+      code: 'SEAT_TYPE_UNKNOWN',
+      details: { cabin: 'first', seat_type: 'exit_row' },
+    })
   })
 })

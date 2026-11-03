@@ -252,10 +252,13 @@ export class FareQuoteService {
     return flight
   }
 
+  // An unknown class is 404 FARE_CLASS_NOT_FOUND (from findOne); one that exists but is switched off is not on sale.
   private async findSellableClass(id: string) {
     const fareClass = await this.fareClasses.findOne(id)
     if (!fareClass.is_active) {
-      throw new NotFoundException(pricingError(PricingErrorCode.FARE_CLASS_NOT_FOUND, `Fare class ${id} not found`))
+      throw new UnprocessableEntityException(
+        pricingError(PricingErrorCode.FARE_CLASS_UNAVAILABLE, `Fare class ${fareClass.code} is not on sale`, { fare_class_id: id }),
+      )
     }
     return fareClass
   }

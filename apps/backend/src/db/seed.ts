@@ -89,6 +89,34 @@ const BAGGAGE_ROUTE_OVERRIDE = {
   rate_per_kg: 7,
   max_bag_kg: 32,
 }
+// Enough for a fresh clone to produce a non-trivial quote. One fare per route and class, both directions the same.
+const BASE_FARES_BY_ROUTE: Record<string, Record<string, number>> = {
+  'BKK-CNX': { Y: 80, Q: 55, W: 140, J: 260, F: 420 },
+  'BKK-HKT': { Y: 90, Q: 60, W: 155, J: 285, F: 460 },
+}
+// The spec's example rules. Within a group the lowest priority that matches wins.
+const PRICING_RULES = [
+  { rule_group: 'urgency', name: 'H-1', priority: 1, min_days_out: 0, max_days_out: 1, adjustment_pct: 40 },
+  { rule_group: 'urgency', name: 'H-3', priority: 2, min_days_out: 2, max_days_out: 3, adjustment_pct: 30 },
+  { rule_group: 'urgency', name: 'H-7', priority: 3, min_days_out: 4, max_days_out: 7, adjustment_pct: 10 },
+  { rule_group: 'urgency', name: 'H-30', priority: 4, min_days_out: 30, adjustment_pct: -10 },
+  { rule_group: 'load', name: 'Almost full', priority: 1, max_seats_left_pct: 20, adjustment_pct: 15 },
+  { rule_group: 'month', name: 'December', priority: 1, month: 12, adjustment_pct: 20 },
+  {
+    rule_group: 'period',
+    name: 'Songkran 2027',
+    priority: 1,
+    start_date: new Date('2027-04-10'),
+    end_date: new Date('2027-04-16'),
+    adjustment_pct: 25,
+  },
+]
+// How much of each currency one US dollar buys.
+const CURRENCY_RATES = [
+  { currency_code: 'THB', rate_per_base: 35 },
+  { currency_code: 'EUR', rate_per_base: 0.92 },
+  { currency_code: 'JPY', rate_per_base: 150 },
+]
 const DAY_MS = 86_400_000
 
 const prisma = new PrismaClient({
@@ -189,6 +217,35 @@ async function seedPricingCatalog() {
   })
 }
 
+// Base fares and rules need the routes and fare classes; currency rates need a staff member for updated_by, so this runs
+// after the staff are seeded. Existing rows are kept, like the rest of the pricing seed.
+async function seedPricingExamples() {
+  const routes = await prisma.route.findMany({ select: { id: true, origin: true, destination: true } })
+  const fareClasses = await prisma.fare_class.findMany({ where: { deleted_at: null }, select: { id: true, code: true } })
+  await prisma.base_fare.createMany({
+    data: routes.flatMap((route) => {
+      const fares =
+        BASE_FARES_BY_ROUTE[`${route.origin}-${route.destination}`] ?? BASE_FARES_BY_ROUTE[`${route.destination}-${route.origin}`]
+      if (!fares) return []
+      return fareClasses
+        .filter((fareClass) => fares[fareClass.code] !== undefined)
+        .map((fareClass) => ({ route_id: route.id, fare_class_id: fareClass.id, amount: fares[fareClass.code] }))
+    }),
+    skipDuplicates: true,
+  })
+  await prisma.pricing_rule.createMany({ data: PRICING_RULES, skipDuplicates: true })
+
+  const staff = await prisma.staff.findFirst({ where: { deleted_at: null }, orderBy: { created_at: 'asc' }, select: { id: true } })
+  if (!staff) return
+  for (const rate of CURRENCY_RATES) {
+    await prisma.currency_rate.upsert({
+      where: { currency_code: rate.currency_code },
+      update: {},
+      create: { ...rate, updated_by: staff.id },
+    })
+  }
+}
+
 async function seedCustomer() {
   const user = await prisma.user.create({
     data: {
@@ -271,6 +328,7 @@ async function main() {
     const user = await seedStaff(roleIds)
     await seedRefreshTokens(user.id)
   }
+  await seedPricingExamples()
 
   console.log('Seeding complete.')
 }

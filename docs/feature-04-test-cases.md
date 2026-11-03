@@ -20,13 +20,13 @@ Fill in **Pass/Fail** as you run each case by hand. A blank means the case has n
 
 | Needed for | What | How |
 |------------|------|-----|
-| All pricing | Fare classes, seat fees, taxes, baggage rates, promo codes, settings | `npm run db:seed` (each run also adds 3 fake customers and 2 fake staff) |
+| All pricing | Fare classes, seat fees, taxes, baggage rates, promo codes, settings, base fares (4 routes), the spec's example rules, currency rates (THB 35, EUR 0.92, JPY 150) | `npm run db:seed` (each run also adds 3 fake customers and 2 fake staff) |
 | Quotes | A future flight with status `scheduled` or `delayed` | `SELECT id, flight_number, dep_at, status, route_id FROM flight WHERE dep_at > now();` |
-| Quotes | A base fare of 100.00 on that flight's route | BF cases |
-| Worked example | Only VAT 7% active, only the rules listed in FQ-01 active | Turn others off in the pages |
+| Worked example | A base fare of 100.00 on that flight's route | Change the seeded fare to 100 with `PUT /staff/base-fares/:id` |
+| Worked example | Only VAT 7% active, only the rules listed in FQ-01 active | Turn the other seeded taxes and rules off in the pages |
 | Finance | Mock bills, expenses and report rows, if wanted | `docs/money_mock.md` |
 
-**The seed already has some of the rows these cases create.** After seeding, TF-01, TF-02, SF-01, BG-01 and PC-01 return their duplicate error (409) instead of 201. Delete the seeded row first, or use a different code or fare class.
+**The seed already has some of the rows these cases create.** After seeding, TF-01, TF-02, SF-01, BG-01, PC-01 and CR-01 return their duplicate error (409) instead of 201. Delete the seeded row first, or use a different code or fare class.
 
 | Seeded promo | State | Use for |
 |--------------|-------|---------|
@@ -38,9 +38,9 @@ Fill in **Pass/Fail** as you run each case by hand. A blank means the case has n
 | `SOLDOUT` | Used up | FQ-21 |
 | `PAUSED` | Inactive | FQ-20 |
 
-Base fares are not seeded, so add the one the quotes need.
+Seeded rules: urgency H-1 (0–1 days, +40%), H-3 (2–3, +30%), H-7 (4–7, +10%), H-30 (30+, −10%); load Almost full (≤ 20% left, +15%); month December (+20%); period Songkran 2027 (10–16 Apr, +25%). Seeded base fares (USD): BKK↔CNX Y 80, Q 55, W 140, J 260, F 420; BKK↔HKT Y 90, Q 60, W 155, J 285, F 460. Because of these, PR-01 and BF-01 may return their duplicate error: use another priority or route.
 
-**The quote worked example needs care.** Seats left is always 100% until Feature 3b exists (see [Known limits](#known-limits)), so a rule like "under 20% left" can never match a real flight. FQ-01 uses a load rule that covers 100% instead. The simulator lets you type the seats left, so SI-01 can use the normal rule.
+**No new quote can be made until Feature 3b is connected.** The spec says load is never guessed, so without 3b's seat inventory every new quote ends in 502 `UPSTREAM_UNAVAILABLE` (FQ-30). The checks that run first still work: unknown or cancelled flight, fare class, advance purchase, promo, display currency and bad input. Cases that need a saved quote (FQ-01 to FQ-06, FQ-24 to FQ-26, FQ-29, the FE and RD cases) wait for 3b; mark them **Blocked**, not Fail. The simulator lets you type the seats left, so the SI cases and the rules can be tested there now.
 
 ## Fare classes
 
@@ -167,13 +167,13 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | FQ-06 | Different key | Send FQ-01 with a different promo or `seat_type` | Changed body | New quote `id` | |
 | FQ-07 | After expiry | Set hold to 1 minute, make a quote, wait over 1 minute, send it again | Same body | New quote `id` | |
 | FQ-08 | Seat fee | Seat fee exists for that cabin | `seat_type: "exit_row"` | `Seat fee (exit_row)` line before the promo | |
-| FQ-09 | No seat fee row | No fee for that cabin and seat type | `seat_type: "extra_legroom"` | 404 `SEAT_FEE_NOT_FOUND` | |
+| FQ-09 | No seat fee row | No fee for that cabin and seat type | `seat_type: "extra_legroom"` | 422 `SEAT_TYPE_UNKNOWN`, `details` has `cabin` and `seat_type` | |
 | FQ-10 | Quote is frozen | After FQ-01, change VAT and the base fare, then `GET /fare-quotes/:id` | None | Old lines and total unchanged | |
 | FQ-11 | Unknown flight | `POST /fare-quotes` | Random `flight_id` | 404 `FLIGHT_NOT_FOUND` | |
 | FQ-12 | Cancelled flight | Flight status `cancelled` | That `flight_id` | 409 `FLIGHT_CANCELLED` | |
 | FQ-12b | Departed flight | Status `departed`, `arrived`, `holding` or `diverted`, or `dep_at` in the past | That `flight_id` | 409 `FLIGHT_DEPARTED` | |
 | FQ-13 | Check beats reuse | Make a quote, cancel the flight, send it again inside the window | Same body | 409 `FLIGHT_CANCELLED`, not the saved quote | |
-| FQ-14 | Inactive class | Turn the fare class off | Same body | 404 `FARE_CLASS_NOT_FOUND` | |
+| FQ-14 | Inactive class | Turn the fare class off | Same body | 422 `FARE_CLASS_UNAVAILABLE` (a random id is still 404 `FARE_CLASS_NOT_FOUND`) | |
 | FQ-15 | Advance purchase | Set `min_advance_purchase_days` above the flight's days out | Same body | 422 `FARE_ADVANCE_PURCHASE_NOT_MET`, with both day counts in `details` | |
 | FQ-16 | No base fare | Fare class with no base fare on that route | That `fare_class_id` | 422 `BASE_FARE_NOT_FOUND` | |
 | FQ-17 | Promo: not found | `POST /fare-quotes` | `promo_code: "NOPE"` | 422 `PROMO_INVALID`, `details.reason: "not_found"` | |
@@ -188,6 +188,7 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | FQ-26 | Display, base currency | FQ-01 body plus `"display_currency":"USD"` | None | `rate_per_base: 1`, `display_total_amount` = `total_amount` | |
 | FQ-27 | Display, unknown | FQ-01 body plus `"display_currency":"XYZ"`, then `GET /fare-quotes/:id?display_currency=XYZ` | None | 400 `CURRENCY_UNKNOWN` both times, and no new quote is saved | |
 | FQ-28 | Display, bad format | `"display_currency":"thb"` | None | 400 (validation) | |
+| FQ-30 | Load unknown | Any valid FQ-01 body while Feature 3b is not connected | None | 502 `UPSTREAM_UNAVAILABLE`, no quote saved | |
 | FQ-29 | Expired | Set `quote_hold_minutes` to 1, make a quote, wait over a minute, `GET /fare-quotes/:id` | None | 410 `QUOTE_EXPIRED`, `details.expires_at` set | |
 
 ### Cancel and change fees
@@ -231,7 +232,7 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 | SF-04b | Upgrade | Same, plus `&from_seat_type=exit_row` | None | `seat_fee: 12`, `from_seat_fee: 9`, `fee: 3`, `total: 3.21` | |
 | SF-04c | Downgrade | `cabin=economy&seat_type=normal&from_seat_type=extra_legroom` | None | `fee: 0`, `total: 0`: never a refund | |
 | SF-04d | Bad from seat | `from_seat_type=window` | None | 400 (validation) | |
-| SF-05 | Lookup, no row | `GET /seat-fees/price?cabin=first&seat_type=exit_row` | None | 404 `SEAT_FEE_NOT_FOUND` | |
+| SF-05 | Seat type not sold | Delete the first / exit_row fee, then `GET /seat-fees/price?cabin=first&seat_type=exit_row` | None | 422 `SEAT_TYPE_UNKNOWN` | |
 | SF-06 | Lookup, bad value | `GET /seat-fees/price?cabin=vip&seat_type=exit_row` | None | 400 (validation) | |
 | SF-07 | Update to a taken pair | `PUT` another economy row | `{"seat_type":"exit_row"}` | 409 `SEAT_FEE_EXISTS` | |
 | SF-08 | Update amount | `PUT /staff/seat-fees/:id` | `{"amount":350}` | 200 | |
@@ -423,7 +424,7 @@ Don't record these as failures. They depend on work outside Feature 4, or are op
 
 | Limit | Effect on testing | Waiting on |
 |-------|-------------------|------------|
-| Seats left is always 100% | Load rules can't match a nearly full flight on real quotes. `UPSTREAM_UNAVAILABLE` can't happen live. | Feature 3b |
+| No new quotes | Load is never guessed, so every new quote is 502 `UPSTREAM_UNAVAILABLE` until 3b's seat provider replaces the stand-in in `pricing.module.ts` | Feature 3b |
 | Simulation clock isn't connected | Quotes, promos and finance use real time | Platform |
 | Revenue, refunds and pass-through are 0 | **Recompute overwrites them with 0**, so mock revenue from `docs/money_mock.md` is lost and profit shows as a loss | Features 5a and 5b |
 | One promo use per quote | Shared quotes mean `used_count` can undercount when two bookings use one quote | DB team and 3b |

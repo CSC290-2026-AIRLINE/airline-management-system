@@ -281,13 +281,13 @@ describe('FareQuoteService', () => {
   })
 
   describe('fare class checks', () => {
-    it('throws FARE_CLASS_NOT_FOUND for an inactive class', async () => {
+    it('throws FARE_CLASS_UNAVAILABLE (422) for a class that exists but is switched off', async () => {
       fareClasses.findOne.mockResolvedValue({ ...fareClass, is_active: false })
 
       const error = await errorOf(service.create(dto))
 
-      expect(error).toBeInstanceOf(NotFoundException)
-      expect(error.getResponse()).toMatchObject({ code: 'FARE_CLASS_NOT_FOUND' })
+      expect(error).toBeInstanceOf(UnprocessableEntityException)
+      expect(error.getResponse()).toMatchObject({ code: 'FARE_CLASS_UNAVAILABLE' })
     })
 
     it('refuses a class bought too close to departure', async () => {
@@ -405,9 +405,9 @@ describe('FareQuoteService', () => {
     })
 
     it('saves nothing when a chosen seat type has no fee row', async () => {
-      seatFees.lookup.mockRejectedValue(new NotFoundException({ code: 'SEAT_FEE_NOT_FOUND' }))
+      seatFees.lookup.mockRejectedValue(new UnprocessableEntityException({ code: 'SEAT_TYPE_UNKNOWN' }))
 
-      await expect(service.create({ ...dto, seat_type: 'exit_row' })).rejects.toBeInstanceOf(NotFoundException)
+      await expect(service.create({ ...dto, seat_type: 'exit_row' })).rejects.toBeInstanceOf(UnprocessableEntityException)
       expect(tx.fare_quote.create).not.toHaveBeenCalled()
     })
   })
