@@ -1,3 +1,4 @@
+import { SecurityAccessGate } from '@staff-web/features/security-screening/components/SecurityAccessGate'
 import { createFileRoute } from '@tanstack/react-router'
 import { ScreeningQueue } from '@staff-web/features/security-screening/ScreeningQueue'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
@@ -10,5 +11,9 @@ export const Route = createFileRoute('/_authenticated/security-screening/screeni
 
 function ScreeningQueueRoute() {
   const { logout } = useAppAuth()
-  return <ScreeningQueue onSignOut={logout} />
+  return (
+    <SecurityAccessGate>
+      <ScreeningQueue onSignOut={logout} />
+    </SecurityAccessGate>
+  )
 }

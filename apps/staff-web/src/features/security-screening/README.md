@@ -49,3 +49,18 @@ npm run build -w apps/staff-web
 Transport/model tests cover masking collisions, server time, highest revision, review requests, first-review revision zero, errors without automatic write retry, and history preservation. The project-wide formatting check may still report existing scaffold files; changed feature files are checked separately without reformatting unrelated code.
 
 Manual integration requires the existing backend and staff app running with the team's Clerk configuration and a legitimate security account. Open `http://localhost:6161/screening-queue`, review an actual check and inspect `screening_review` and `audit_log` in Prisma Studio. Refreshing the browser should retain a saved decision under Decided today. A second browser with stale details should receive a reload conflict after another reviewer saves.
+
+## Security Screening visibility
+
+Staff-web reads `GET /api/staff/access` through the existing AuthProvider.
+Customer Search hides the Security Screening menu on desktop and mobile until the
+backend confirms `securityScreening: true`. Queue/review and Watchlist routes use
+`SecurityAccessGate`, so protected components and their data requests do not mount
+while access is pending, denied or unavailable. Direct URLs show an access message
+and a link back to Customer Search. Network failures offer a retry. Decisions are
+scoped to the current user and access token; previous-account results cannot grant
+access. Backend Security-role checks still enforce every protected operation.
+
+This F7 capability endpoint leaves shared login/session responses unchanged. Role
+changes take effect on a fresh access check (navigation, token change or reload);
+backend authorization always checks the current database role.

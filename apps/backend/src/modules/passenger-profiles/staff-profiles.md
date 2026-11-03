@@ -400,3 +400,13 @@ rather than a Postgres cast failure.
   none — worth confirming with the Admin Console team (Feature 15), which owns that
   surface, before it is relied on.
 - **Reading audit rows** — the Admin Console team (Feature 15) owns that surface.
+
+## F7 navigation capability
+
+`GET /api/staff/access` returns `{ securityScreening: boolean }` for the current
+active staff account. It reads the current database role and returns true only for
+`security`. Customer, disabled and deleted accounts are forbidden; missing or invalid
+JWTs are unauthorized. It does not read passenger/screening records or change the
+shared authentication response. This additional F7 endpoint supports hiding the
+Security Screening menu and gating direct URLs in staff-web; backend authorization
+on Watchlist, queue and review remains authoritative.

@@ -1,3 +1,4 @@
+import { StaffAccessController } from './staff-access.controller'
 import { StaffProfilesGuard } from './staff-profiles.guard'
 import { ScreeningModule } from '@backend/modules/screening/screening.module'
 import { Module } from '@nestjs/common'
@@ -12,7 +13,13 @@ import { ProfileIdentityService } from './profile-identity.service'
 
 @Module({
   imports: [DbModule, ScreeningModule],
-  controllers: [CustomerAccountProfilesController, CustomerIdentityController, PassengerProfilesController, CustomerProfilesController],
+  controllers: [
+    StaffAccessController,
+    CustomerAccountProfilesController,
+    CustomerIdentityController,
+    PassengerProfilesController,
+    CustomerProfilesController,
+  ],
   providers: [StaffProfilesGuard, CustomerAccountProfilesService, ProfileIdentityService, PassengerProfilesService],
   exports: [PassengerProfilesService],
 })
