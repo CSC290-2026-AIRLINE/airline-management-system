@@ -1,4 +1,4 @@
-import { StaffProfilesGuard } from './staff-profiles.guard'
+import { FullPassportAccess, StaffProfilesGuard } from './staff-profiles.guard'
 import { F7ExceptionFilter, F7ValidationPipe } from '@backend/modules/passenger-profiles/f7-exception.filter'
 import { UseGuards, UseFilters, Controller, Get, Param, ParseUUIDPipe, Query, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
@@ -29,7 +29,7 @@ const CUSTOMER_VALIDATION_PIPE = new F7ValidationPipe({ transform: true, whiteli
  * `customer`, and reusing that id is what lets the staff-web client key a person by one id
  * regardless of which route loaded the row. A traveller id is a `404` here.
  *
- * Response shapes are unchanged from the passenger routes, and passports are masked by the same
+ * Response shapes are unchanged from the passenger routes, and passport visibility uses the same
  * `toSummary`, so the client maps both identically.
  *
  * The global JWT guard authenticates the caller. StaffProfilesGuard then requires
@@ -43,12 +43,16 @@ export class CustomerProfilesController {
   constructor(private readonly passengerProfiles: PassengerProfilesService) {}
 
   @Get()
-  searchAccountHolders(@Query() query: SearchCustomersDto) {
-    return this.passengerProfiles.searchAccountHolders(query)
+  searchAccountHolders(@Query() query: SearchCustomersDto, @FullPassportAccess() fullPassport: boolean) {
+    return this.passengerProfiles.searchAccountHolders(query, fullPassport)
   }
 
   @Get(':id')
-  getAccountHolder(@Param('id', CUSTOMER_ID_PIPE) id: string, @CurrentUser() actor: AuthenticatedUser) {
-    return this.passengerProfiles.getAccountHolder(id, actor)
+  getAccountHolder(
+    @Param('id', CUSTOMER_ID_PIPE) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+    @FullPassportAccess() fullPassport: boolean,
+  ) {
+    return this.passengerProfiles.getAccountHolder(id, actor, fullPassport)
   }
 }

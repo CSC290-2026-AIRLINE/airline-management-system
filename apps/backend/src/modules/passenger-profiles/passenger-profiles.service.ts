@@ -198,7 +198,7 @@ interface UpcomingFlight {
 /** One row of the search list, with the flight the person checks in for (null when they have none). */
 type SearchEntry = { row: SummaryRow; flight: UpcomingFlight | null }
 
-function toSummary(row: SummaryRow): PassengerSummary {
+function toSummary(row: SummaryRow, fullPassport = false): PassengerSummary {
   return {
     id: row.id,
     type: row.customer ? 'accountHolder' : 'traveller',
@@ -209,8 +209,8 @@ function toSummary(row: SummaryRow): PassengerSummary {
     dateOfBirth: row.date_of_birth,
     gender: row.gender,
     nationality: row.nationality,
-    // Masked here, not in the browser: see {@link maskPassport}.
-    passportNumber: maskPassport(row.passport_number),
+    // The database-backed staff capability controls disclosure; audits always mask.
+    passportNumber: fullPassport ? row.passport_number : maskPassport(row.passport_number),
     memberSince: row.customer?.created_at ?? null,
     email: row.customer?.user.email ?? null,
     phone: row.customer?.phone ?? null,
@@ -218,9 +218,9 @@ function toSummary(row: SummaryRow): PassengerSummary {
 }
 
 /** A summary row with the flight the person checks in for, which is what the list is ordered by. */
-function toSearchSummary(row: SummaryRow, flight: UpcomingFlight | null): PassengerSearchSummary {
+function toSearchSummary(row: SummaryRow, flight: UpcomingFlight | null, fullPassport = false): PassengerSearchSummary {
   return {
-    ...toSummary(row),
+    ...toSummary(row, fullPassport),
     nextFlightDate: flight?.serviceDate ?? null,
     nextFlightNumber: flight?.flightNumber ?? null,
   }
@@ -229,11 +229,8 @@ function toSearchSummary(row: SummaryRow, flight: UpcomingFlight | null): Passen
 /**
  * Masks a passport number for the API response, keeping the last four characters.
  *
- * The Artifact requires the API to mask the passport "for non-security staff", so the
- * masking happens here rather than in the browser. There is no security role to tell the
- * two apart — `staff.role_id` points at roles seeded as check-in/gate/baggage/admin, none of
- * them security — so this masks for every caller and the exception is reported as a
- * blocker rather than guessed at. See the module README.
+ * Audit snapshots always use this mask. Staff response serializers reveal the full
+ * value only when the controller supplies the database-backed Security capability.
  *
  * The search list is masked as well as the detail screen: a staff member typing a passport
  * into the search box is doing customer service, and the row they are about to open is the
@@ -729,8 +726,8 @@ export class PassengerProfilesService {
     private readonly rescreen: ScreeningRescreenService,
   ) {}
 
-  async search(dto: SearchPassengersDto): Promise<PassengerSearchResult> {
-    return this.runSearch(await this.buildSearchWhere(dto.q, dto.type), dto.page, dto.size)
+  async search(dto: SearchPassengersDto, fullPassport = false): Promise<PassengerSearchResult> {
+    return this.runSearch(await this.buildSearchWhere(dto.q, dto.type), dto.page, dto.size, fullPassport)
   }
 
   /**
@@ -739,8 +736,8 @@ export class PassengerProfilesService {
    * Identical query, ordering and paging — the only difference is that the split is fixed, so a
    * caller cannot ask this route for travellers.
    */
-  async searchAccountHolders(dto: SearchCustomersDto): Promise<PassengerSearchResult> {
-    return this.runSearch(await this.buildSearchWhere(dto.q, 'accountHolder'), dto.page, dto.size)
+  async searchAccountHolders(dto: SearchCustomersDto, fullPassport = false): Promise<PassengerSearchResult> {
+    return this.runSearch(await this.buildSearchWhere(dto.q, 'accountHolder'), dto.page, dto.size, fullPassport)
   }
 
   /**
@@ -855,7 +852,12 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
    * The search itself is unchanged. The filter still describes the same people, and the count
    * beside the page still counts all of them, not only the ones on this page.
    */
-  private async runSearch(where: Prisma.passengerWhereInput, page: number, size: number): Promise<PassengerSearchResult> {
+  private async runSearch(
+    where: Prisma.passengerWhereInput,
+    page: number,
+    size: number,
+    fullPassport = false,
+  ): Promise<PassengerSearchResult> {
     const skip = (page - 1) * size
 
     // One instant for both reads, so a flight cannot cross the "has it departed?" line between
@@ -899,7 +901,7 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
     }
 
     const items = [...flyingOnPage, ...restRows.map((row) => ({ row, flight: null }))].map(({ row, flight }) =>
-      toSearchSummary(row, flight),
+      toSearchSummary(row, flight, fullPassport),
     )
 
     return { items, total, page, size }
@@ -914,7 +916,7 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
    * recording and a `reason` to justify it, and a create has neither. Say so here rather
    * than leaving a silent gap for the Admin Console team.
    */
-  async create(dto: CreatePassengerDto, actor: AuthenticatedUser): Promise<PassengerSummary> {
+  async create(dto: CreatePassengerDto, actor: AuthenticatedUser, fullPassport = false): Promise<PassengerSummary> {
     const created = await this.db.passenger.create({
       data: {
         first_name: dto.firstName,
@@ -932,10 +934,10 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
     // Ids only; the names are already in the response and in the row.
     this.logger.log(`Passenger ${created.id} created by user ${actor.id}`)
 
-    return toSummary(created)
+    return toSummary(created, fullPassport)
   }
 
-  async getProfile(id: string, actor: AuthenticatedUser): Promise<PassengerProfile> {
+  async getProfile(id: string, actor: AuthenticatedUser, fullPassport = false): Promise<PassengerProfile> {
     const row = await this.findProfileRow(id)
     if (!row) {
       throw new NotFoundException(`Passenger ${id} was not found`)
@@ -945,7 +947,7 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
     // response is sent, rather than being lost if the process exits mid-request.
     await this.auditView(row, actor)
 
-    return this.buildProfile(row)
+    return this.buildProfile(row, fullPassport)
   }
 
   /**
@@ -956,7 +958,7 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
    * check runs *before* {@link auditView}, so a rejected read leaves no audit row — the same
    * rule the not-found path follows.
    */
-  async getAccountHolder(id: string, actor: AuthenticatedUser): Promise<PassengerProfile> {
+  async getAccountHolder(id: string, actor: AuthenticatedUser, fullPassport = false): Promise<PassengerProfile> {
     const row = await this.findProfileRow(id)
     if (!row) {
       throw new NotFoundException(`Passenger ${id} was not found`)
@@ -967,7 +969,7 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
 
     await this.auditView(row, actor)
 
-    return this.buildProfile(row)
+    return this.buildProfile(row, fullPassport)
   }
 
   /**
@@ -996,7 +998,7 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
     })
   }
 
-  private buildProfile(row: ProfileRow): PassengerProfile {
+  private buildProfile(row: ProfileRow, fullPassport = false): PassengerProfile {
     const isAccountHolder = row.customer !== null
 
     // `customer_passenger` is "who a customer books for" (schema.sql), so it
@@ -1017,12 +1019,14 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
         // The holder is not one of their own travellers, even when their own
         // passenger row is among the account's saved links.
         if (link.passenger.id === row.id) return []
-        return [{ relationship: link.relationship_type, lastBookedAt: link.last_booked_at, person: toSummary(link.passenger) }]
+        return [
+          { relationship: link.relationship_type, lastBookedAt: link.last_booked_at, person: toSummary(link.passenger, fullPassport) },
+        ]
       }
       if (!link.customer || link.customer.deleted_at) {
         return []
       }
-      const holder = toSummary(link.customer.passenger)
+      const holder = toSummary(link.customer.passenger, fullPassport)
       return [
         {
           relationship: link.relationship_type,
@@ -1038,7 +1042,7 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
     })
 
     return {
-      ...toSummary(row),
+      ...toSummary(row, fullPassport),
       profilePhotoUrl: row.customer?.profile_photo_url ?? null,
       savedTravellers: isAccountHolder ? links : [],
       linkedAccounts: isAccountHolder ? [] : links,
@@ -1094,7 +1098,7 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
    * birth, gender and nationality, and `CorrectIdentityDto` does not declare the others,
    * so `whitelist` drops them before they reach this method.
    */
-  async correctIdentity(id: string, dto: CorrectIdentityDto, actor: AuthenticatedUser): Promise<PassengerSummary> {
+  async correctIdentity(id: string, dto: CorrectIdentityDto, actor: AuthenticatedUser, fullPassport = false): Promise<PassengerSummary> {
     const existing = await this.db.passenger.findFirst({ where: { id, deleted_at: null }, select: SUMMARY_SELECT })
     if (!existing) {
       throw new NotFoundException(`Passenger ${id} was not found`)
@@ -1147,7 +1151,7 @@ SELECT e.passenger_id AS id, e.service_date, e.flight_number
     // Ids only; identity fields are already in the audit row.
     this.logger.log(`Passenger ${id} identity corrected by user ${actor.id}`)
 
-    return toSummary(updated)
+    return toSummary(updated, fullPassport)
   }
 
   private async buildSearchWhere(q: string, type: PersonType): Promise<Prisma.passengerWhereInput> {

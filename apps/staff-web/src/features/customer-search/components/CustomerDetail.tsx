@@ -1,5 +1,5 @@
 import type { Person } from '../types'
-import { EM_DASH, formatDateOfBirth, genderLabel, maskPassport, nationalityLabel, personName } from '../lib/format'
+import { EM_DASH, formatDateOfBirth, genderLabel, displayPassport, nationalityLabel, personName } from '../lib/format'
 import { ArrowRightIcon, ChevronLeftIcon, CloseIcon, PencilIcon } from './Icons'
 import { Avatar, DetailSection, ReadOnlyPill, TypeBadge } from './shared'
 
@@ -77,7 +77,7 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
             <Field label="Date of birth" value={formatDateOfBirth(person.dateOfBirth)} />
             <Field label="Nationality" value={nationalityLabel(person.nationality)} />
             <Field label="Gender" value={genderLabel(person.gender)} />
-            <Field label="Passport" value={maskPassport(person.passportNumber)} />
+            <Field label="Passport" value={displayPassport(person.passportNumber)} />
           </dl>
         </DetailSection>
       ) : (
@@ -96,7 +96,7 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
             <Field label="Date of birth" value={formatDateOfBirth(person.dateOfBirth)} />
             <Field label="Nationality" value={nationalityLabel(person.nationality)} />
             <Field label="Gender" value={genderLabel(person.gender)} />
-            <Field label="Passport" value={maskPassport(person.passportNumber)} />
+            <Field label="Passport" value={displayPassport(person.passportNumber)} />
           </dl>
         </DetailSection>
       )}
