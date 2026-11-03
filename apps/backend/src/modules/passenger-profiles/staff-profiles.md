@@ -273,8 +273,8 @@ column group, and adding `Effertz` intersects with a second.
 
 ### `GET /api/staff/customers` and `GET /api/staff/customers/:id`
 
-The account-holder side. Both reuse `toSummary`, so **passports are masked here exactly as
-they are on the passenger routes**, and both are audited the same way.
+The account-holder side. Both reuse `toSummary`, so **passport visibility follows the same role policy as
+the passenger routes**, and both are audited the same way.
 
 `GET /api/staff/customers` takes `q`, `page` and `size`, with `q` matched by the identical
 rules described above — same tokenizer, same "every term must match", same date ranges. The
@@ -317,16 +317,16 @@ holder is not one of their own travellers. A soft-deleted passenger or account
 gives `404`; a link whose account is soft-deleted is dropped from
 `linkedAccounts`.
 
-**Passport numbers are masked by the API.** The Artifact requires the passport
-to be masked "for non-security staff", so masking happens in `toSummary` rather
-than in the browser: every response carries `•••• 1234`, never the full number.
-Matching is unaffected — a passport search term is compared in SQL against the
-stored column, so staff can still find a passenger by typing the real number.
+**Passport visibility is enforced by the API.** The controller's staff guard reads
+the current role from the database. Security staff receive full passport values;
+other staff receive only the final four characters, such as `•••• 1234`. This
+applies to passenger/account-holder lists and details, saved travellers, linked
+accounts, and create/correction responses. Missing values remain null. The frontend
+displays the authorized response without re-masking it. Query/body role claims do
+not grant access. Internal service calls default to masked responses.
 
-There is no security role to except: `staff.role_id` points at roles seeded as
-check-in/gate/baggage/admin, so the mask currently applies to every caller. The
-Artifact's security-staff exception is therefore **unimplemented** and is
-recorded under _Blockers_ rather than approximated.
+Search matching still uses the stored passport value. Audit snapshots remain masked
+for every role, and Watchlist/Screening Review masking is unchanged.
 
 **Opening a profile is audited.** The Artifact requires that "opening passenger
 or customer detail is audited as `view_sensitive`", so this route writes an
@@ -437,13 +437,7 @@ rather than a Postgres cast failure.
   index on `id::text` and one on `date_of_birth` cast to text would fix both, and
   would also let the cast be dropped for `id`. That is a shared schema change — see the
   deviation above for what happens without it.
-- **The security-staff exception on passport masking is unimplemented.** The
-  Artifact masks the passport "for non-security staff", which implies security
-  staff see it in the clear. The role model cannot express that: `staff.role_id`
-  references `role`, seeded as check-in/gate/baggage/admin, with no security role,
-  and no code anywhere reads that role for authorization. Masking is therefore
-  applied to every caller. Resolving it needs a security role and a role guard —
-  both shared, cross-cutting changes this module must not make on its own.
+- **Role-based passport visibility is implemented.** See the detail route policy above.
 - **Widening `audit_log.action` is Feature 15's call.** A correction is logged as
   `update`. If Feature 15 wants a dedicated action, that is a migration on the
   shared enum.

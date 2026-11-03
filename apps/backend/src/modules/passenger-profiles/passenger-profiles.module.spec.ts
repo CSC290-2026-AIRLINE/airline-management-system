@@ -62,7 +62,7 @@ describe('Combined F7 module route registration', () => {
     await request(app.getHttpServer() as Server)
       .get('/api/staff/passengers/' + id)
       .expect(200, { source: 'staff' })
-    expect(staffRead).toHaveBeenCalledWith(id, actor)
+    expect(staffRead).toHaveBeenCalledWith(id, actor, false)
     expect(own).not.toHaveBeenCalled()
   })
   it('keeps the staff account-holder controller registered', async () => {
@@ -70,7 +70,7 @@ describe('Combined F7 module route registration', () => {
     await request(app.getHttpServer() as Server)
       .get('/api/staff/customers/' + id)
       .expect(200, { source: 'staff-account' })
-    expect(read).toHaveBeenCalledWith(id, actor)
+    expect(read).toHaveBeenCalledWith(id, actor, false)
   })
   it('keeps first-sign-in identity setup on the customer service', async () => {
     const setup = jest.spyOn(customer, 'completeIdentitySetup').mockResolvedValue({ needsIdentitySetup: false } as never)

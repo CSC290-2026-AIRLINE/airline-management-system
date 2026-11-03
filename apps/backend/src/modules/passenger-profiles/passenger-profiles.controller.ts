@@ -1,4 +1,4 @@
-import { StaffProfilesGuard } from './staff-profiles.guard'
+import { FullPassportAccess, StaffProfilesGuard } from './staff-profiles.guard'
 import { F7ExceptionFilter, F7ValidationPipe } from '@backend/modules/passenger-profiles/f7-exception.filter'
 import { UseGuards, UseFilters, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
@@ -45,19 +45,23 @@ export class PassengerProfilesController {
   constructor(private readonly passengerProfiles: PassengerProfilesService) {}
 
   @Get()
-  search(@Query() query: SearchPassengersDto) {
-    return this.passengerProfiles.search(query)
+  search(@Query() query: SearchPassengersDto, @FullPassportAccess() fullPassport: boolean) {
+    return this.passengerProfiles.search(query, fullPassport)
   }
 
   @Post()
   @HttpCode(201)
-  create(@Body() body: CreatePassengerDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.passengerProfiles.create(body, actor)
+  create(@Body() body: CreatePassengerDto, @CurrentUser() actor: AuthenticatedUser, @FullPassportAccess() fullPassport: boolean) {
+    return this.passengerProfiles.create(body, actor, fullPassport)
   }
 
   @Get(':id')
-  getProfile(@Param('id', PASSENGER_ID_PIPE) id: string, @CurrentUser() actor: AuthenticatedUser) {
-    return this.passengerProfiles.getProfile(id, actor)
+  getProfile(
+    @Param('id', PASSENGER_ID_PIPE) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+    @FullPassportAccess() fullPassport: boolean,
+  ) {
+    return this.passengerProfiles.getProfile(id, actor, fullPassport)
   }
 
   /**
@@ -66,7 +70,12 @@ export class PassengerProfilesController {
    * for the correction rather than two that can drift.
    */
   @Put(':id/identity')
-  correctIdentity(@Param('id', PASSENGER_ID_PIPE) id: string, @Body() body: CorrectIdentityDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.passengerProfiles.correctIdentity(id, body, actor)
+  correctIdentity(
+    @Param('id', PASSENGER_ID_PIPE) id: string,
+    @Body() body: CorrectIdentityDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @FullPassportAccess() fullPassport: boolean,
+  ) {
+    return this.passengerProfiles.correctIdentity(id, body, actor, fullPassport)
   }
 }

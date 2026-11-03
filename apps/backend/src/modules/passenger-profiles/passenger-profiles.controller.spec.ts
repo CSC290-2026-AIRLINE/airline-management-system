@@ -1002,3 +1002,76 @@ describe('F7 navigation capabilities', () => {
     expect(db.audit_log.create).not.toHaveBeenCalled()
   })
 })
+
+describe('Database-backed passport visibility', () => {
+  it.each(['security', 'admin', 'check_in'])('applies the %s role to lists, details and linked people', async (code) => {
+    db.staff.findFirst.mockResolvedValue({ id: ACTOR.sub, role: { code } })
+    const expected = code === 'security' ? travellerRow().passport_number : '•••• 4567'
+    for (const path of ['/api/staff/passengers', '/api/staff/customers']) {
+      const response = await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', 'Bearer ' + token)
+        .expect(200)
+      expect(response.body.items[0].passportNumber).toBe(expected)
+    }
+    db.passenger.findFirst.mockResolvedValue({
+      ...holderRow(),
+      customer: { ...holderRow().customer!, customer_passenger: [linkRow('Child', null)] },
+      customer_passenger: [],
+    })
+    for (const path of ['/api/staff/passengers/' + HOLDER_ID, '/api/staff/customers/' + HOLDER_ID]) {
+      const response = await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', 'Bearer ' + token)
+        .expect(200)
+      expect(response.body.passportNumber).toBe(expected)
+      expect(response.body.savedTravellers[0].person.passportNumber).toBe(expected)
+    }
+    db.passenger.findFirst.mockResolvedValue({ ...travellerRow(), customer_passenger: [linkRow('Child', null)] })
+    const response = await request(app.getHttpServer())
+      .get('/api/staff/passengers/' + TRAVELLER_ID)
+      .set('Authorization', 'Bearer ' + token)
+      .expect(200)
+    expect(response.body.linkedAccounts[0].person.passportNumber).toBe(expected)
+    const audits = JSON.stringify(db.audit_log.create.mock.calls)
+    expect(audits).not.toContain(travellerRow().passport_number!)
+    expect(audits).toContain('•••• 4567')
+  })
+  it('ignores browser-supplied role and passport visibility claims', async () => {
+    db.staff.findFirst.mockResolvedValue({ id: ACTOR.sub, role: { code: 'admin' } })
+    const response = await request(app.getHttpServer())
+      .get('/api/staff/passengers?role=security&fullPassport=true')
+      .set('Authorization', 'Bearer ' + token)
+      .expect(200)
+    expect(response.body.items[0].passportNumber).toBe('•••• 4567')
+  })
+})
+
+describe('Passport policy on staff write responses', () => {
+  it.each(['security', 'admin', 'check_in'])('applies %s visibility on create and correction responses', async (code) => {
+    db.staff.findFirst.mockResolvedValue({ id: ACTOR.sub, role: { code } })
+    const expected = code === 'security' ? 'AB1234567' : '•••• 4567'
+    const created = await request(app.getHttpServer())
+      .post('/api/staff/passengers')
+      .set('Authorization', 'Bearer ' + token)
+      .send({ firstName: 'Anya', lastName: 'Petrov', passportNumber: 'AB1234567' })
+      .expect(201)
+    expect(created.body.passportNumber).toBe(expected)
+    const corrected = await request(app.getHttpServer())
+      .put('/api/staff/passengers/' + TRAVELLER_ID + '/identity')
+      .set('Authorization', 'Bearer ' + token)
+      .send({ dateOfBirth: '1992-08-03', gender: 'F', nationality: 'th', reason: 'Passport compared', confirm: true })
+      .expect(200)
+    expect(corrected.body.passportNumber).toBe(expected)
+    expect(JSON.stringify(db.audit_log.create.mock.calls)).not.toContain('AB1234567')
+  })
+  it.each(['security', 'admin'])('preserves missing passport values for %s', async (code) => {
+    db.staff.findFirst.mockResolvedValue({ id: ACTOR.sub, role: { code } })
+    db.passenger.findMany.mockResolvedValue([{ ...travellerRow(), passport_number: null }])
+    const response = await request(app.getHttpServer())
+      .get('/api/staff/passengers')
+      .set('Authorization', 'Bearer ' + token)
+      .expect(200)
+    expect(response.body.items[0].passportNumber).toBeNull()
+  })
+})
