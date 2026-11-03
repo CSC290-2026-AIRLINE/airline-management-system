@@ -7,6 +7,9 @@ import { Avatar, TypeBadge } from './shared'
  * Card list used in two places:
  *  - the narrow left column of the desktop split view (when a person is selected)
  *  - the mobile results list, which adds an ID/DOB/nationality summary line
+ *
+ * The list is ordered by when each person checks in, but the order is the server's and the
+ * cards do not repeat it: they show who the person is, not which flight they are on.
  */
 
 interface PeopleCardListProps {
