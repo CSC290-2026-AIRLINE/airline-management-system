@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@staff-web/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Button } from '@staff-web/features/pricing/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/features/pricing/components/ui/table'
 import { usePricingApi } from '../api'
 import { useAddOnChargesApi, type TaxFee } from '../add-on-charges/api'
 import { calcTypeShortLabel, taxKindLabel, taxValueLabel } from '../add-on-charges/labels'

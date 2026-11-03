@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/features/pricing/components/ui/select'
 import { usePricingApi } from '../api'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { PricingShell } from '../components/PricingShell'

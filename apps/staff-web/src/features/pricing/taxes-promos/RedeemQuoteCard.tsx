@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react'
-import { Badge } from '@staff-web/components/ui/badge'
-import { Button } from '@staff-web/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
-import { Input } from '@staff-web/components/ui/input'
-import { Label } from '@staff-web/components/ui/label'
+import { Badge } from '@staff-web/features/pricing/components/ui/badge'
+import { Button } from '@staff-web/features/pricing/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/features/pricing/components/ui/card'
+import { Input } from '@staff-web/features/pricing/components/ui/input'
+import { Label } from '@staff-web/features/pricing/components/ui/label'
 import { errorMessage, usePricingApi, type PromoQuotes } from '../api'
 
 const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

@@ -1,4 +1,4 @@
-import { Badge } from '@staff-web/components/ui/badge'
+import { Badge } from '@staff-web/features/pricing/components/ui/badge'
 import type { BillStatus } from './bill-status'
 import { shortDate } from './finance-format'
 

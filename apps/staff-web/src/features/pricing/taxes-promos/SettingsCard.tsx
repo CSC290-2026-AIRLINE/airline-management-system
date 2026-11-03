@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Button } from '@staff-web/components/ui/button'
-import { Input } from '@staff-web/components/ui/input'
+import { Button } from '@staff-web/features/pricing/components/ui/button'
+import { Input } from '@staff-web/features/pricing/components/ui/input'
 import { errorMessage, usePricingApi } from '../api'
 import { useLoad } from '../hooks/useLoad'
 import { PRIMARY_BUTTON } from './charge-styles'

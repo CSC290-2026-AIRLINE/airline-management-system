@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@staff-web/components/ui/button'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Button } from '@staff-web/features/pricing/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/features/pricing/components/ui/table'
 import type { Expense } from './finance-api'
 import { AMOUNT, categoryLabel, fullDate, monthLabel } from './finance-format'
 import {

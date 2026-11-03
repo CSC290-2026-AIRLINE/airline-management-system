@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Input } from '@staff-web/components/ui/input'
-import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Input } from '@staff-web/features/pricing/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@staff-web/features/pricing/components/ui/native-select'
 import { useAddOnChargesApi, type BaggageCharge, type BaggageRate } from '../add-on-charges/api'
 import { routeLabel } from '../add-on-charges/labels'
 import { useLoad } from '../hooks/useLoad'

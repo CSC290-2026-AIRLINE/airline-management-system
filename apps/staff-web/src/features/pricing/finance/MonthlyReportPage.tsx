@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import { Button } from '@staff-web/components/ui/button'
+import { Button } from '@staff-web/features/pricing/components/ui/button'
 import { errorMessage, usePricingApi } from '../api'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { PricingShell } from '../components/PricingShell'

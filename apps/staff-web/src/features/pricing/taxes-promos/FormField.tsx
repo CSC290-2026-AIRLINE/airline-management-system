@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Label } from '@staff-web/components/ui/label'
+import { Label } from '@staff-web/features/pricing/components/ui/label'
 
 interface FormFieldProps {
   htmlFor: string

@@ -1,4 +1,4 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/features/pricing/components/ui/table'
 import type { FinanceSummary } from './finance-api'
 import { AMOUNT, monthLabel } from './finance-format'
 import { headRowClass, phoneListClass, tableWrapClass } from './finance-styles'
