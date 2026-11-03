@@ -4,6 +4,7 @@ import { DbModule } from './db/db.module'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
+import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { validateEnv } from './config/env.validation'
 import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
 import { ScreeningModule } from '@backend/modules/screening/screening.module'
@@ -14,6 +15,7 @@ import { WatchlistModule } from '@backend/modules/watchlist/watchlist.module'
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     DbModule,
     AuthModule,
+    AdminConsoleModule,
     PassengerProfilesModule,
     ScreeningModule,
     WatchlistModule,
