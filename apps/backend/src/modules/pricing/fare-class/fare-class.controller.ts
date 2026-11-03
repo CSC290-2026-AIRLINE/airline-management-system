@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
 import { CreateFareClassDto } from './dto/create-fare-class.dto'
 import { UpdateFareClassDto } from './dto/update-fare-class.dto'
 import { UpdateFareRuleDto } from './dto/update-fare-rule.dto'
 import { FareClassService } from './fare-class.service'
+import { pricingValidationPipe } from '../pricing.validation'
 
+@UsePipes(pricingValidationPipe)
 @Controller('staff/fare-classes')
 export class FareClassController {
   constructor(private readonly fareClassService: FareClassService) {}

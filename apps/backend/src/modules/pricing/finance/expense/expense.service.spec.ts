@@ -17,7 +17,7 @@ const supplies = { category: 'other', description: 'Office supplies', amount: 30
 const manual = { id: EXPENSE_ID, ...supplies, payment_schedule_id: null }
 const fromSchedule = { ...manual, category: 'maintenance', payment_schedule_id: SCHEDULE_ID }
 
-// Same options as the global ValidationPipe in main.ts, so unknown fields such as payment_schedule_id are rejected too.
+// Same options as pricingValidationPipe, so unknown fields such as payment_schedule_id are rejected too.
 async function errorsFor<T extends object>(dto: new () => T, body: Record<string, unknown>) {
   const errors = await validate(plainToInstance(dto, body), { whitelist: true, forbidNonWhitelisted: true })
   return errors.map((e) => e.property)

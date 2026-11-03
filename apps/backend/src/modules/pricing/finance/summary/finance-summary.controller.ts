@@ -1,8 +1,10 @@
-import { Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common'
+import { Controller, Get, HttpCode, Param, Post, Query, UsePipes } from '@nestjs/common'
 import { SummaryQueryDto } from './dto/summary-query.dto'
 import { FinanceSummaryService } from './finance-summary.service'
 import { ParseMonthPipe } from './month.pipe'
+import { pricingValidationPipe } from '../../pricing.validation'
 
+@UsePipes(pricingValidationPipe)
 @Controller('staff/finance/monthly')
 export class FinanceSummaryController {
   constructor(private readonly financeSummaryService: FinanceSummaryService) {}

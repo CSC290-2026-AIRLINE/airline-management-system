@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
 import { CreatePromoCodeDto } from './dto/create-promo-code.dto'
 import { PromoQuotesDto } from './dto/promo-quotes.dto'
 import { UpdatePromoCodeDto } from './dto/update-promo-code.dto'
 import { PromoCodeService } from './promo-code.service'
+import { pricingValidationPipe } from '../pricing.validation'
 
+@UsePipes(pricingValidationPipe)
 @Controller('staff/promo-codes')
 export class PromoCodeController {
   constructor(private readonly promoCodeService: PromoCodeService) {}

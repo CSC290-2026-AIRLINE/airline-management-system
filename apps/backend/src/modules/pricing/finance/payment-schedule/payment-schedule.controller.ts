@@ -1,11 +1,13 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreatePaymentScheduleDto } from './dto/create-payment-schedule.dto'
 import { ListPaymentSchedulesDto } from './dto/list-payment-schedules.dto'
 import { UpdatePaymentScheduleDto } from './dto/update-payment-schedule.dto'
 import { PaymentScheduleService } from './payment-schedule.service'
+import { pricingValidationPipe } from '../../pricing.validation'
 
+@UsePipes(pricingValidationPipe)
 @Controller('staff/payment-schedules')
 export class PaymentScheduleController {
   constructor(private readonly paymentScheduleService: PaymentScheduleService) {}

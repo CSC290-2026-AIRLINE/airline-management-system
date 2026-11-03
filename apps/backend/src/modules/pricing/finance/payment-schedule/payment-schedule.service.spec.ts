@@ -15,7 +15,7 @@ const bill = { category: 'maintenance', payee: 'Thai Aero Maintenance', amount: 
 const scheduled = { id: SCHEDULE_ID, ...bill, status: 'scheduled', paid_on: null }
 const paid = { ...scheduled, status: 'paid', paid_on: new Date('2026-11-29') }
 
-// Same options as the global ValidationPipe in main.ts, so unknown fields such as status are rejected too.
+// Same options as pricingValidationPipe, so unknown fields such as status are rejected too.
 async function errorsFor(body: Record<string, unknown>) {
   const errors = await validate(plainToInstance(CreatePaymentScheduleDto, body), { whitelist: true, forbidNonWhitelisted: true })
   return errors.map((e) => e.property)
