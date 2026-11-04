@@ -18,6 +18,7 @@ import {
 } from '../dto/operations.dto'
 import { ConflictService, type ListConflictsQueryDto } from './conflict.service'
 import { FlightConfirmService } from './flight-confirm.service'
+import { FlightInsightService } from './flight-insight.service'
 import { GateCheckService } from './gate-check.service'
 import { FlightOperationsService } from './flight-operations.service'
 import { StaffActorService } from './staff-actor.service'
@@ -29,6 +30,7 @@ export class FlightOperationsController {
     private readonly operations: FlightOperationsService,
     private readonly confirmation: FlightConfirmService,
     private readonly gates: GateCheckService,
+    private readonly insight: FlightInsightService,
     private readonly conflicts: ConflictService,
     private readonly actors: StaffActorService,
   ) {}
@@ -46,6 +48,16 @@ export class FlightOperationsController {
   @HttpCode(200)
   check(@Body() body: unknown) {
     return this.gates.check(parseGateCheckBody(body))
+  }
+
+  @Get('flights/:id/cost-estimate')
+  costEstimate(@Param('id') id: string) {
+    return this.insight.costEstimate(id)
+  }
+
+  @Get('flights/:id/impact')
+  impact(@Param('id') id: string) {
+    return this.insight.impact(id)
   }
 
   @Get('flights/:id/availability')
