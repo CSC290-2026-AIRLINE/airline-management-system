@@ -18,6 +18,8 @@ import { TimetableController } from './timetable.controller'
 import { TimetableService } from './timetable.service'
 import { AIRCRAFT_DIRECTORY, DbAircraftDirectory } from './operations/aircraft-directory'
 import { AircraftFeasibilityService } from './operations/aircraft-feasibility.service'
+import { ApprovalPolicyController } from './operations/approval-policy.controller'
+import { ApprovalPolicyService } from './operations/approval-policy.service'
 import { AUDIT_SINK, AuditServiceSink } from './operations/audit-sink'
 import { CascadeDetector } from './operations/cascade-detector'
 import { ConflictService } from './operations/conflict.service'
@@ -42,6 +44,7 @@ import { StaffActorService } from './operations/staff-actor.service'
     AirportFeeController,
     CongestionController,
     FlightOperationsController,
+    ApprovalPolicyController,
   ],
   providers: [
     FlightSchedulingService,
@@ -52,6 +55,7 @@ import { StaffActorService } from './operations/staff-actor.service'
     SettingsService,
     AirportFeeService,
     CongestionService,
+    ApprovalPolicyService,
     AircraftFeasibilityService,
     // Until Feature 9 publishes its aircraft API, availability and type facts are read from its tables.
     { provide: AIRCRAFT_DIRECTORY, useClass: DbAircraftDirectory },
