@@ -20,6 +20,16 @@ describe('validateEnv', () => {
     expect(config.REFRESH_TOKEN_TTL_DAYS).toBe(30)
   })
 
+  it('defaults COOKIE_SECURE to NODE_ENV=production', () => {
+    expect(validateEnv(validEnv).COOKIE_SECURE).toBe(false)
+    expect(validateEnv({ ...validEnv, NODE_ENV: 'production' }).COOKIE_SECURE).toBe(true)
+  })
+
+  it('lets COOKIE_SECURE override the NODE_ENV default', () => {
+    expect(validateEnv({ ...validEnv, NODE_ENV: 'production', COOKIE_SECURE: 'false' }).COOKIE_SECURE).toBe(false)
+    expect(validateEnv({ ...validEnv, COOKIE_SECURE: 'true' }).COOKIE_SECURE).toBe(true)
+  })
+
   it('throws and lists every missing variable', () => {
     const env = { ...validEnv, ACCESS_TOKEN_SECRET: undefined, CLERK_SECRET_KEY_STAFF: '' }
 

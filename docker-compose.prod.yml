@@ -16,7 +16,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d airline_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -49,7 +49,7 @@ services:
   # it in the VM's .env file).
 
   backend:
-    image: ${DOCKERHUB_USER}/airline-backend:${IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_USER:?DOCKERHUB_USER must be set in .env}/airline-backend:${IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: airline_backend
     restart: always
@@ -64,14 +64,19 @@ services:
       REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
       CLERK_SECRET_KEY_CUSTOMER: ${CLERK_SECRET_KEY_CUSTOMER}
       CLERK_SECRET_KEY_STAFF: ${CLERK_SECRET_KEY_STAFF}
-      CUSTOMER_WEB_ORIGIN: ${CUSTOMER_WEB_ORIGIN}
-      STAFF_WEB_ORIGIN: ${STAFF_WEB_ORIGIN}
+      # Exact browser origins (scheme://host:port, no trailing slash). Also the
+      # CORS allow-list, so a blank value would break every request.
+      CUSTOMER_WEB_ORIGIN: ${CUSTOMER_WEB_ORIGIN:?CUSTOMER_WEB_ORIGIN must be set in .env}
+      STAFF_WEB_ORIGIN: ${STAFF_WEB_ORIGIN:?STAFF_WEB_ORIGIN must be set in .env}
+      # The VM serves plain HTTP, where browsers drop Secure cookies (the
+      # refresh token). Set COOKIE_SECURE=true once HTTPS is in front.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     depends_on:
       postgres:
         condition: service_healthy
 
   customer-web:
-    image: ${DOCKERHUB_USER}/airline-customer-web:${IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_USER:?DOCKERHUB_USER must be set in .env}/airline-customer-web:${IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: airline_customer_web
     restart: always
@@ -79,7 +84,7 @@ services:
       - "5151:80"
 
   staff-web:
-    image: ${DOCKERHUB_USER}/airline-staff-web:${IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_USER:?DOCKERHUB_USER must be set in .env}/airline-staff-web:${IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: airline_staff_web
     restart: always
