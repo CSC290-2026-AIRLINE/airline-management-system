@@ -11,6 +11,7 @@ import {
 import { DbService } from '@backend/db/db.service'
 import type {
   AircraftChangeInput,
+  BatchAircraftInput,
   BatchDelayInput,
   CancelInput,
   DelayInput,
@@ -111,26 +112,38 @@ export class FlightOperationsService {
   }
 
   /** Delays each flight in departure order. One failure never blocks the others; the caller answers 207 with every outcome. */
-  async batchDelay(input: BatchDelayInput, actorId: string) {
+  batchDelay(input: BatchDelayInput, actorId: string) {
+    return this.runBatch(input.flight_ids, (id) => this.delay(id, input, actorId))
+  }
+
+  /** Puts the same aircraft on several flights, one at a time in departure order, each through the gates of a single change. */
+  batchAircraft(input: BatchAircraftInput, actorId: string) {
+    return this.runBatch(input.flight_ids, (id) => this.changeAircraft(id, input, actorId))
+  }
+
+  /**
+   * One result per flight, in departure order, with 404 for ids that match no flight at the end. Each flight is its own operation, so
+   * one failure does not stop the others. Sequential on purpose: a later flight of the same aircraft sees the earlier change (cascade
+   * check, aircraft lock).
+   */
+  private async runBatch(flightIds: string[], operation: (id: string) => Promise<OperationResult>) {
     const rows = await this.db.flight.findMany({
-      where: { id: { in: input.flight_ids } },
+      where: { id: { in: flightIds } },
       orderBy: { dep_at: 'asc' },
       select: { id: true },
     })
     const known = new Set(rows.map((r) => r.id))
     const results: { flight_id: string; status: number; result?: OperationResult; error?: unknown }[] = []
-    // Sequential on purpose: a later flight of the same aircraft sees the earlier delay (cascade check, aircraft lock).
     for (const { id } of rows) {
       try {
-        results.push({ flight_id: id, status: 200, result: await this.delay(id, input, actorId) })
+        results.push({ flight_id: id, status: 200, result: await operation(id) })
       } catch (e) {
         if (!(e instanceof HttpException)) throw e
         results.push({ flight_id: id, status: e.getStatus(), error: e.getResponse() })
       }
     }
     // Unknown ids have no departure time, so they come last, after the flights in departure order.
-    for (const flight_id of input.flight_ids.filter((id) => !known.has(id)))
-      results.push({ flight_id, status: 404, error: 'Flight not found' })
+    for (const flight_id of flightIds.filter((id) => !known.has(id))) results.push({ flight_id, status: 404, error: 'Flight not found' })
     return { results }
   }
 

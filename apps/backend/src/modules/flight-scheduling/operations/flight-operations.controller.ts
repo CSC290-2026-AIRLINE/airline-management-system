@@ -5,6 +5,7 @@ import {
   parseAircraftChangeBody,
   parseBatchDelayBody,
   parseCancelBody,
+  parseBatchAircraftBody,
   parseBatchConfirmBody,
   parseGateCheckBody,
   parseDelayBody,
@@ -58,6 +59,13 @@ export class FlightOperationsController {
   async batchDelay(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
     const input = parseBatchDelayBody(body)
     return this.operations.batchDelay(input, await this.actors.staffIdFor(user))
+  }
+
+  @Post('flights/batch/aircraft')
+  @HttpCode(207)
+  async batchAircraft(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    const input = parseBatchAircraftBody(body)
+    return this.operations.batchAircraft(input, await this.actors.staffIdFor(user))
   }
 
   @Get('partner-airlines')

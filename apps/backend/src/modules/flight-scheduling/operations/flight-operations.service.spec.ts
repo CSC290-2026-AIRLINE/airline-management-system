@@ -141,6 +141,44 @@ describe('FlightOperationsService', () => {
     })
   })
 
+  describe('batchAircraft', () => {
+    const SECOND = '00000000-0000-0000-0000-0000000000f2'
+    const MISSING = '00000000-0000-0000-0000-0000000000f3'
+    const NEW_AIRCRAFT = '00000000-0000-0000-0000-0000000000a2'
+
+    it('puts the aircraft on each flight in departure order, and a flight that cannot take it does not stop the others', async () => {
+      db.flight.findMany.mockResolvedValue([{ id: SECOND }, { id: FLIGHT }])
+      tx.flight.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(flightRow({ id: where.id, status: where.id === SECOND ? 'departed' : 'scheduled' })),
+      )
+      feasibility.checkAircraftFeasibility.mockResolvedValue({ status: 'feasible', violations: [], pending: [] })
+
+      const { results } = await service.batchAircraft({ flight_ids: [FLIGHT, SECOND, MISSING], aircraft_id: NEW_AIRCRAFT }, STAFF)
+
+      expect(results.map((r) => [r.flight_id, r.status])).toEqual([
+        [SECOND, 409],
+        [FLIGHT, 200],
+        [MISSING, 404],
+      ])
+      expect(writer.append).toHaveBeenCalledTimes(1)
+      expect(appended()[2]).toMatchObject({ columns: { type: 'aircraft_changed', new_aircraft_id: NEW_AIRCRAFT } })
+    })
+
+    it('reports the failing gate of a flight in its own result', async () => {
+      db.flight.findMany.mockResolvedValue([{ id: FLIGHT }])
+      feasibility.checkAircraftFeasibility.mockResolvedValue({
+        status: 'not_feasible',
+        violations: [{ kind: 'range_exceeded' }],
+        pending: [],
+      })
+
+      const { results } = await service.batchAircraft({ flight_ids: [FLIGHT], aircraft_id: NEW_AIRCRAFT }, STAFF)
+
+      expect(results[0]).toMatchObject({ flight_id: FLIGHT, status: 409, error: { violations: [{ kind: 'range_exceeded' }] } })
+      expect(writer.append).not.toHaveBeenCalled()
+    })
+  })
+
   describe('delay', () => {
     const input = { reason_code: 'ZZWX', delay_minutes: 45 }
 
