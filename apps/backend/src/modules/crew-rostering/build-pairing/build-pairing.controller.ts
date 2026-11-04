@@ -54,12 +54,6 @@ export class BuildPairingController {
     return this.buildPairingService.commitPairings(parseBuildParams(source), parseDrafts(source.pairings))
   }
 
-  /** Deletes pairings stored by an earlier version of this step that were never committed. */
-  @Delete('pairings')
-  async clearPairings(@Query() query: Record<string, string | undefined>): Promise<{ deleted: number; kept: number }> {
-    return this.buildPairingService.clearPairings(parseBuildParams(query))
-  }
-
   @Put('pairings/:pairingId/legs')
   async saveLegs(@Param('pairingId') pairingId: string, @Body() body: unknown): Promise<SaveLegsResult> {
     return this.buildPairingService.saveLegs(requireUuid(pairingId, 'pairingId'), parseLegs(asObject(body).legs))

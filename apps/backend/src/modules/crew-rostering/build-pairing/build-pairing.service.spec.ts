@@ -186,7 +186,7 @@ describe('BuildPairingService.saveLegs on a committed pairing', () => {
     const { service, db } = setupEdit()
     await service.saveLegs('pairing-1', [leg('1')])
 
-    const result = await service.clearPairings(params)
+    const result = await (service as unknown as { discardDrafts: (p: typeof params) => Promise<unknown> }).discardDrafts(params)
 
     expect(db.pairing.deleteMany).not.toHaveBeenCalled()
     expect(result).toEqual({ deleted: 0, kept: 1 })

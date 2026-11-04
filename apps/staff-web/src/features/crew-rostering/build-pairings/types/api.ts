@@ -140,10 +140,6 @@ export function createBuildPairingsApi(fetchWithAuth: FetchWithAuth) {
       return { ...toList(payload), committed: payload.committed }
     },
 
-    async clear(params: BuildPairingParams): Promise<{ deleted: number; kept: number }> {
-      return request(fetchWithAuth, `/pairings?${query(params)}`, { method: 'DELETE' })
-    },
-
     async saveLegs(pairingId: string, legs: readonly FlightLeg[]): Promise<SaveLegsResult> {
       const result = await request<{ pairing: PairingPayload; withdrawnFromRun: boolean }>(fetchWithAuth, `/pairings/${pairingId}/legs`, {
         method: 'PUT',

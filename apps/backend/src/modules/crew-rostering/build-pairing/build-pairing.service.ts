@@ -506,11 +506,6 @@ export class BuildPairingService {
     }
   }
 
-  /** Deletes the window's pairings that are not in any roster run yet. Committed ones are kept. */
-  async clearPairings(params: BuildParams): Promise<{ deleted: number; kept: number }> {
-    return this.discardDrafts(params)
-  }
-
   private async discardDrafts(params: BuildParams): Promise<{ deleted: number; kept: number }> {
     const rows = await this.db.pairing.findMany({
       where: { base_airport: params.base, pairing_leg: { some: { flight: { service_date: this.serviceDates(params) } } } },

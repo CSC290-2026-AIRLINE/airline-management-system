@@ -6,7 +6,7 @@
  *
  * Shared primitives (types, formatters, the roster-run shell) are imported from
  * `build-pairings` until both pages move up to `crew-rostering/shared/`, which is
- * what `build-pairings/components/app-shell.tsx` and `ui.tsx` already plan for.
+ * what `shared/app-shell` and `ui.tsx` already plan for.
  */
 
 import type { AirportCode, IsoInstant, LocalDate } from '../../build-pairings/types/types'

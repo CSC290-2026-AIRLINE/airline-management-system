@@ -46,12 +46,6 @@ export class AssignCrewController {
       demoBreaks: parseFlag(demoBreaks, 'demoBreaks'),
     })
   }
-
-  /** Re-checks every rule without changing who is crewed. */
-  @Post('runs/:rosterRunId/check')
-  async check(@Param('rosterRunId') rosterRunId: string): Promise<RunResult> {
-    return this.assignCrewService.check(requireUuid(rosterRunId, 'rosterRunId'))
-  }
 }
 
 /* ── input parsing ──────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 You are a Senior NestJS Backend Engineer working on **Feature 8: Crew Management & Rostering**.
 
 Your task is to implement the backend codebase strictly inside the following directory path:
-`/Users/xiangxiang/Desktop/Integrated-Project /Airline-Integrated-PJ/airline-management-system/apps/backend/src/modules/crew-rostering`
+`apps/backend/src/modules/crew-rostering`
 
 ### Architecture & Folder Structure Rules
 
@@ -41,7 +41,7 @@ _(Note: Do NOT use DTO files. Handle request validation/typing directly or inlin
 - **DO NOT** create, modify, or add anything to the database schema. Do not run migrations or alter existing DB schemas.
 - If you encounter any uncertainty regarding database table names or if a table name error occurs, ignore it or proceed based on standard naming conventions. **Do not create or modify schemas.**
 - Refer to and query data based strictly on the schema and table definitions documented in:
-  `/Users/xiangxiang/Desktop/Integrated-Project /Airline-Integrated-PJ/airline-management-system/apps/backend/src/db/db_docs/docs/f8-crew-management-and-rostering.md`
+  `apps/backend/src/db/db_docs/docs/f8-crew-management-and-rostering.md`
 
 ---
 
