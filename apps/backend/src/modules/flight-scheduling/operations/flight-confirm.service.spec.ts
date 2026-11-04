@@ -164,3 +164,75 @@ describe('FlightConfirmService.confirm', () => {
     expect(publisher.publishCommitted).not.toHaveBeenCalled()
   })
 })
+
+describe('FlightConfirmService.confirmBatch', () => {
+  const service = new FlightConfirmService({} as never, {} as never, {} as never, {} as never, new MissingScheduleApprovals())
+  const confirm = jest.spyOn(service, 'confirm')
+  const flight = (number: string, dep: string) =>
+    input({ approval_id: `approval-${number}`, flight_number: number, scheduled_dep_at: new Date(dep) })
+  const done = (number: string) => ({
+    flight: { id: `f-${number}` },
+    event: { id: `e-${number}`, type: 'created', seq: 1, occurred_at: new Date() },
+  })
+
+  beforeEach(() => confirm.mockReset())
+
+  it('confirms each flight on its own and keeps going after a failure', async () => {
+    confirm.mockImplementation((f) => {
+      if (f.flight_number === 'ZZ102') return Promise.reject(new ConflictException({ message: 'A gate failed', rule: 'x' }))
+      return Promise.resolve(done(f.flight_number) as never)
+    })
+
+    const { results } = await service.confirmBatch(
+      {
+        flights: [
+          flight('ZZ101', '2026-11-02T01:00:00Z'),
+          flight('ZZ102', '2026-11-02T02:00:00Z'),
+          flight('ZZ103', '2026-11-02T03:00:00Z'),
+        ],
+      },
+      STAFF,
+    )
+
+    expect(results.map((r) => [r.flight_number, r.status])).toEqual([
+      ['ZZ101', 201],
+      ['ZZ102', 409],
+      ['ZZ103', 201],
+    ])
+    expect(results[1]).toMatchObject({ error: { message: 'A gate failed', rule: 'x' }, approval_id: 'approval-ZZ102' })
+    expect(results[0]).toMatchObject({ result: { flight: { id: 'f-ZZ101' } } })
+    expect(confirm).toHaveBeenCalledTimes(3)
+  })
+
+  it('runs the flights in departure order, one at a time, and says where each was in the request', async () => {
+    const started: string[] = []
+    confirm.mockImplementation(async (f) => {
+      started.push(f.flight_number)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      return done(f.flight_number) as never
+    })
+
+    const { results } = await service.confirmBatch(
+      {
+        flights: [
+          flight('ZZ103', '2026-11-02T03:00:00Z'),
+          flight('ZZ101', '2026-11-02T01:00:00Z'),
+          flight('ZZ102', '2026-11-02T02:00:00Z'),
+        ],
+      },
+      STAFF,
+    )
+
+    expect(started).toEqual(['ZZ101', 'ZZ102', 'ZZ103'])
+    expect(results.map((r) => [r.flight_number, r.index])).toEqual([
+      ['ZZ101', 1],
+      ['ZZ102', 2],
+      ['ZZ103', 0],
+    ])
+  })
+
+  it('does not hide an unexpected error', async () => {
+    confirm.mockRejectedValue(new Error('db down'))
+    await expect(service.confirmBatch({ flights: [flight('ZZ101', '2026-11-02T01:00:00Z')] }, STAFF)).rejects.toThrow('db down')
+  })
+})

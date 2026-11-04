@@ -135,6 +135,36 @@ suite('schedule approvals and confirm against Postgres', () => {
     expect((await db.flight_event_outbox.findUniqueOrThrow({ where: { event_id: event.id } })).published_at).not.toBeNull()
   })
 
+  it('confirms a batch, giving each flight its own result and saving the others when one fails', async () => {
+    const [good, other, approved, spare] = [
+      await aircraft('JJJ', longType),
+      await aircraft('KKK', longType),
+      await aircraft('LLL', longType),
+      await aircraft('MMM', longType),
+    ]
+    const [n1, n2, n3] = [nextNumber(), nextNumber(), nextNumber()]
+    const [a1, a2, a3] = [
+      await approvals.create(request(n1, good), staff),
+      await approvals.create(request(n2, other), staff),
+      await approvals.create(request(n3, approved), staff),
+    ]
+
+    const { results } = await confirm.confirmBatch(
+      // the middle flight names an aircraft other than the one its approval is for
+      { flights: [confirmBody(a1.id, n1, good), confirmBody(a3.id, n3, spare), confirmBody(a2.id, n2, other)] },
+      staff,
+    )
+
+    expect(results.map((r) => [r.flight_number, r.status]).sort()).toEqual([
+      [n1, 201],
+      [n2, 201],
+      [n3, 409],
+    ])
+    expect(results.find((r) => r.flight_number === n3)?.error).toMatchObject({ rule: 'approval_mismatch' })
+    expect(await db.flight.count({ where: { flight_number: { in: [n1, n2, n3] } } })).toBe(2)
+    expect(await approvals.get(a3.id)).toMatchObject({ status: 'approved' })
+  })
+
   it('does not accept the same approval twice', async () => {
     const plane = await aircraft('BBB', longType)
     const number = nextNumber()

@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common'
 import {
+  parseBatchConfirmBody,
   parseCancelBody,
   parseConfirmBody,
   parseDelayBody,
@@ -144,6 +145,48 @@ describe('operations DTO parsers', () => {
     it('rejects an arrival not after the departure', () => {
       expect(errorsOf(() => parseConfirmBody({ ...valid, scheduled_arr_at: valid.scheduled_dep_at }))).toEqual([
         'scheduled_arr_at must be after scheduled_dep_at',
+      ])
+    })
+  })
+
+  describe('parseBatchConfirmBody', () => {
+    const one = (over: object = {}) => ({
+      approval_id: APPROVAL,
+      route_id: '00000000-0000-0000-0000-0000000000c2',
+      flight_number: 'zz101',
+      service_date: '2026-11-03',
+      aircraft_id: '00000000-0000-0000-0000-0000000000a1',
+      scheduled_dep_at: '2026-11-02T18:00:00Z',
+      scheduled_arr_at: '2026-11-02T20:00:00Z',
+      ...over,
+    })
+    const other = '00000000-0000-0000-0000-0000000000b2'
+
+    it('parses a list of flights, each as one confirm', () => {
+      const parsed = parseBatchConfirmBody({ flights: [one(), one({ approval_id: other, flight_number: 'zz102' })] })
+      expect(parsed.flights.map((f) => [f.approval_id, f.flight_number])).toEqual([
+        [APPROVAL, 'ZZ101'],
+        [other, 'ZZ102'],
+      ])
+    })
+
+    it('reports every error with the position of its flight', () => {
+      expect(
+        errorsOf(() => parseBatchConfirmBody({ flights: [one(), one({ approval_id: undefined }), one({ service_date: 'x' })] })),
+      ).toEqual(['flights[1]: approval_id is required', 'flights[2]: service_date must be YYYY-MM-DD'])
+    })
+
+    it('rejects an empty list, a list that is too long and a body without one', () => {
+      expect(errorsOf(() => parseBatchConfirmBody({ flights: [] }))).toEqual(['flights must hold 1 to 50 flights to confirm'])
+      expect(errorsOf(() => parseBatchConfirmBody({ flights: Array.from({ length: 51 }, () => one()) }))).toEqual([
+        'flights must hold 1 to 50 flights to confirm',
+      ])
+      expect(errorsOf(() => parseBatchConfirmBody(one()))).toEqual(['flights must hold 1 to 50 flights to confirm'])
+    })
+
+    it('rejects two flights that use the same approval', () => {
+      expect(errorsOf(() => parseBatchConfirmBody({ flights: [one(), one({ flight_number: 'zz102' })] }))).toEqual([
+        'flights must use a different approval_id each',
       ])
     })
   })
