@@ -1,44 +1,59 @@
+import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { SegmentedControl } from '../components/SegmentedControl'
 import { Callout } from '../components/Callout'
+import { Card } from '../components/Card'
 import { FormField } from '../components/FormField'
+import { ListState } from '../components/ListState'
 import { NotConnected } from '../components/NotConnected'
 import { PageHeader } from '../components/PageHeader'
+import { SegmentedControl } from '../components/SegmentedControl'
 import { SelectField } from '../components/SelectField'
 import { StaffShell } from '../components/StaffShell'
-import { Toast } from '../components/Toast'
-import { Card } from '../components/Card'
-import { EmptyState } from '../components/EmptyState'
 import { TableWrap } from '../components/TableWrap'
+import { Toast } from '../components/Toast'
+import { CONNECTED } from '../connected'
+import { formatDateTime, formatServiceDate, localParts, localToIso } from '../format'
 import { useNotice } from '../hooks/useNotice'
-import { answerRequest, CONNECTED } from '../connected'
-import type { ApproverRequest } from '../types'
+import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
+import { useResource } from '../hooks/useResource'
+import type { AirportRow, ApprovalRow } from '../types'
 import '../flight-scheduling.css'
 
 const ANSWERS = ['Approve', 'Offer slots', 'Offer a window', 'Reject'] as const
 type Answer = (typeof ANSWERS)[number]
-const REJECT_REASONS = ['capacity_full', 'slot_unavailable', 'curfew', 'other']
+// The reasons the backend accepts (schedule_approval.reject_reason).
+const REJECT_REASONS = ['curfew', 'capacity_full', 'no_slot_available', 'other']
+const TIME = /^\d\d:\d\d$/
 
-// A team member plays the slot coordinator. The approval flow has no tables or API yet, so the console is hidden (see connected.ts).
+// A team member plays the slot coordinator. Requests come from GET /approvals?status=pending and each answer is POST /approvals/:id/respond.
+// Times typed here are local at the request's airport, on the date of the requested departure.
 export function ApproverConsolePage() {
-  // ponytail: load these from GET /approvals?status=pending once it exists.
-  const [requests, setRequests] = useState<ApproverRequest[]>([])
-  const [active, setActive] = useState<ApproverRequest | null>(null)
+  const { fetchWithAuth } = useAppAuth()
+  const pending = useResource<ApprovalRow[]>(CONNECTED.approvalQueue ? '/approvals?status=pending&limit=100' : null, fetchWithAuth)
+  const airports = usePagedList<AirportRow>('/airports?limit=100', fetchWithAuth)
+  const [active, setActive] = useState<ApprovalRow | null>(null)
   const [answer, setAnswer] = useState<Answer>('Approve')
   const [slots, setSlots] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [reject, setReject] = useState('')
+  const [busy, setBusy] = useState(false)
   const [notice, say] = useNotice()
 
+  const requests = pending.data ?? []
+  const zone = (r: ApprovalRow) => airports.rows.find((a) => a.iata_code === r.approver_airport)?.timezone ?? 'UTC'
+  const slotTimes = slots
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
   const ready =
     answer === 'Approve' ||
-    (answer === 'Offer slots' && slots.trim() !== '') ||
-    (answer === 'Offer a window' && from !== '' && to !== '') ||
+    (answer === 'Offer slots' && slotTimes.length > 0 && slotTimes.every((t) => TIME.test(t))) ||
+    (answer === 'Offer a window' && TIME.test(from) && TIME.test(to) && to > from) ||
     (answer === 'Reject' && reject !== '')
 
-  function open(r: ApproverRequest) {
+  function open(r: ApprovalRow) {
     setActive(r)
     setAnswer('Approve')
     setSlots('')
@@ -47,14 +62,31 @@ export function ApproverConsolePage() {
     setReject('')
   }
 
-  async function send(r: ApproverRequest) {
+  function body(r: ApprovalRow) {
+    const date = localParts(r.proposed_dep_at, zone(r)).date
+    const instant = (t: string) => localToIso(date, t, zone(r))
+    if (answer === 'Approve') return { answer: 'approve' }
+    if (answer === 'Reject') return { answer: 'reject', reject_reason: reject }
+    if (answer === 'Offer slots') return { answer: 'offer', offers: slotTimes.map((t) => ({ starts_at: instant(t) })) }
+    return { answer: 'offer', offers: [{ starts_at: instant(from), ends_at: instant(to) }] }
+  }
+
+  async function send(r: ApprovalRow) {
+    setBusy(true)
     try {
-      await answerRequest(r.id, answer)
-      setRequests(requests.filter((x) => x.id !== r.id))
+      const res = await fetchWithAuth(`${BASE}/approvals/${r.id}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body(r)),
+      })
+      if (!res.ok) throw new Error(await errorMessage(res))
       setActive(null)
-      say(`Answer sent for ${r.flight} on ${r.date}: ${answer.toLowerCase()}.`)
+      pending.reload()
+      say(`Answer sent for ${r.flight_number} on ${formatServiceDate(r.service_date)}: ${answer.toLowerCase()}.`)
     } catch (e) {
       say(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -65,22 +97,23 @@ export function ApproverConsolePage() {
           Shown when approval mode is manual. A team member plays the airport slot coordinator and answers each request, so every case can
           be shown on demand. Nothing connects to a real airport or airline.
         </PageHeader>
-        {!CONNECTED.approvals && (
-          <NotConnected>The console is hidden until the schedule_approval tables and the /approvals API exist.</NotConnected>
-        )}
+        {!CONNECTED.approvalQueue && <NotConnected>The console is hidden until the /approvals API is connected.</NotConnected>}
 
-        {CONNECTED.approvals && (
+        {CONNECTED.approvalQueue && (
           <>
             <Callout tone="info" action={<Link to="/settings">Open Settings</Link>}>
-              In manual mode requests wait here for an answer. In auto mode the system answers by each airport's approval policy after the
-              response delay, through the same respond route.
+              In manual mode requests wait here for an answer. In auto mode the system answers by each airport's approval policy, so
+              requests only show here while approval mode is manual or a response delay is set.
             </Callout>
 
-            {requests.length === 0 ? (
-              <EmptyState>
-                <p>No requests are waiting for an answer.</p>
-              </EmptyState>
-            ) : (
+            <ListState
+              loading={pending.loading}
+              error={pending.error}
+              empty={requests.length === 0}
+              noun="requests"
+              emptyText="No requests are waiting for an answer."
+            />
+            {requests.length > 0 && (
               <TableWrap>
                 <table className="fs-table fs-t-requests">
                   <thead>
@@ -98,13 +131,14 @@ export function ApproverConsolePage() {
                   <tbody>
                     {requests.map((r) => (
                       <tr key={r.id} className={active?.id === r.id ? 'fs-row-on' : undefined}>
-                        <td>{r.requested}</td>
-                        <td className="fs-flight">{r.flight}</td>
-                        <td>{r.date}</td>
-                        <td>{r.purpose}</td>
-                        <td>{r.proposed}</td>
-                        <td className="fs-nowrap">{r.aircraft}</td>
-                        <td>{r.approver}</td>
+                        <td>{formatDateTime(r.requested_at, 'UTC')} UTC</td>
+                        <td className="fs-flight">{r.flight_number}</td>
+                        <td>{formatServiceDate(r.service_date)}</td>
+                        <td>{r.purpose === 'new_flight' ? 'New flight' : 'Reschedule'}</td>
+                        <td>{formatDateTime(r.proposed_dep_at, zone(r))}</td>
+                        {/* ponytail: the tail number comes from F9; show the start of the id until F9 has an aircraft list. */}
+                        <td className="fs-nowrap">{r.aircraft_id.slice(0, 8)}</td>
+                        <td>{r.approver_airport}</td>
                         <td>
                           <button type="button" className="fs-button-light" onClick={() => open(r)}>
                             Answer
@@ -120,14 +154,18 @@ export function ApproverConsolePage() {
             {active && (
               <Card>
                 <h2>
-                  Answer {active.flight} on {active.date}
+                  Answer {active.flight_number} on {formatServiceDate(active.service_date)}
                 </h2>
                 <SegmentedControl options={ANSWERS} value={answer} onChange={setAnswer} />
-                {answer === 'Approve' && <Callout tone="good">The proposed time {active.proposed} is approved as requested.</Callout>}
+                {answer === 'Approve' && (
+                  <Callout tone="good">
+                    The proposed time {localParts(active.proposed_dep_at, zone(active)).time} is approved as requested.
+                  </Callout>
+                )}
                 {answer === 'Offer slots' && (
                   <div className="fs-reason">
                     <FormField
-                      label="Slots offered (times, separated by commas)"
+                      label={`Slots offered (local times at ${active.approver_airport}, separated by commas)`}
                       value={slots}
                       placeholder="10:00, 10:30, 11:00"
                       onChange={(e) => setSlots(e.target.value)}
@@ -151,7 +189,7 @@ export function ApproverConsolePage() {
                   </div>
                 )}
                 <div className="fs-form-actions">
-                  <button type="button" className="fs-button" disabled={!ready} onClick={() => void send(active)}>
+                  <button type="button" className="fs-button" disabled={!ready || busy} onClick={() => void send(active)}>
                     Send answer
                   </button>
                   <button type="button" className="fs-button-ghost" onClick={() => setActive(null)}>
