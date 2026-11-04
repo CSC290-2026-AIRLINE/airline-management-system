@@ -5,7 +5,7 @@ import { parseLimit, UUID } from '../pagination'
 import { AIRCRAFT_DIRECTORY, type AircraftDirectory, F9_NOT_CONNECTED } from './aircraft-directory'
 import { AUDIT_SINK, type AuditSink } from './audit-sink'
 import { FLIGHT_CLOCK, type FlightClock } from './flight-clock'
-import { FlightOperationsService, type OperationResult, PARTNER_ROUTE_MISSING } from './flight-operations.service'
+import { FlightOperationsService, type OperationResult } from './flight-operations.service'
 import { APPROVAL_TABLES_MISSING } from './schedule-approvals'
 
 const STATUSES = ['open', 'resolved', 'dismissed', 'superseded']
@@ -89,6 +89,8 @@ export class ConflictService {
   async options(id: string): Promise<{ conflict: Awaited<ReturnType<ConflictService['get']>>; options: ResolutionOption[] }> {
     const conflict = await this.get(id)
     const open = conflict.status === 'open'
+    const { origin, destination } = conflict.flight.route
+    const partners = await this.db.partner_airline_route.count({ where: { route: { origin, destination } } })
     return {
       conflict,
       options: [
@@ -109,10 +111,10 @@ export class ConflictService {
         { resolution: 'cancel_refund', available: open, needs: ['reason_code'], notes: [] },
         {
           resolution: 'rebook_partner',
-          available: false,
+          available: open && partners > 0,
           needs: ['reason_code', 'partner_airline'],
           notes: [],
-          blocked_by: PARTNER_ROUTE_MISSING,
+          ...(partners === 0 && { blocked_by: `No partner airline flies ${origin}-${destination}` }),
         },
       ],
     }
