@@ -56,6 +56,7 @@ export interface AirportBrief {
 
 // GET /flights/:id
 export interface FlightDetail extends Omit<FlightRow, 'route_id'> {
+  aircraft_id: string
   pattern_id: string | null
   created_at: string
   effective_destination: string
@@ -201,12 +202,25 @@ export interface DisruptionLogRow {
   by: string
 }
 
-// What the cost estimate needs besides airport fees: feature 9 operating cost, planned ground time, feature 4 fare and 3b seats sold.
-export interface CostInputs {
-  operatingPerHour: number
-  groundHours: number
-  seats: number
-  seatPrice: number
+// GET /flights/:id/availability?dep_at=
+export interface Availability {
+  flight_id: string
+  dep_at: string
+  arr_at: string
+  feasible: boolean
+  outcome: 'feasible' | 'not_feasible' | 'incomplete'
+  violations: { kind: string; detail: string }[]
+  pending: string[]
+}
+
+// GET /flights/:id/cost-estimate. Revenue and per-hour fees are listed in `pending` until the features that own them are connected.
+export interface CostEstimate {
+  flight_id: string
+  flight_number: string
+  block_hours: number
+  lines: { item: string; basis: string; amount: number; currency: string }[]
+  total: { amount: number; currency: string } | null
+  pending: string[]
 }
 
 // GET /flights/:id/impact

@@ -1,4 +1,4 @@
-import type { AircraftOption, ApprovalAnswer, CostInputs, GateResult, RescheduleCheck } from './types'
+import type { AircraftOption, ApprovalAnswer, GateResult } from './types'
 
 // Parts of the Feature 2 screens that wait for another feature, or for a table the Database Team has not added yet. Their UI stays in
 // the pages but is hidden while the flag is false, and nothing here is demo data: lists are empty and actions refuse.
@@ -7,6 +7,7 @@ export const CONNECTED: Record<
   | 'simClock'
   | 'aircraft'
   | 'gates'
+  | 'availability'
   | 'approvals'
   | 'approvalQueue'
   | 'approvalPolicy'
@@ -18,11 +19,12 @@ export const CONNECTED: Record<
 > = {
   simClock: false, // F1 simulation clock
   aircraft: false, // F9 aircraft list, for change and assign aircraft
-  gates: false, // POST /flights/check and GET /flights/:id/availability
+  gates: false, // Generate flights: the Check gates button and the result column (POST /flights/check works, but a flight needs an aircraft from the F9 list)
+  availability: true, // flight detail: check another time and reschedule (GET /flights/:id/availability, POST /approvals, POST /flights/:id/reschedule)
   approvals: false, // requesting approval and confirming from Generate flights, and the approval mode card in Settings (need the F9 aircraft list and a settings API)
   approvalQueue: true, // Approvals and Approver console: GET /approvals, POST /approvals/:id/respond and /revise
   approvalPolicy: true, // GET/PUT /airports/:iata/approval-policy
-  costEstimate: false, // GET /flights/:id/cost-estimate (F9 operating cost, F4 fares, F3b seats sold)
+  costEstimate: true, // flight detail: GET /flights/:id/cost-estimate (operating cost and fees; revenue from F4 and F3b is listed as pending)
   impact: false, // GET /flights/:id/impact (bookings, crew, bags, cargo)
   partnerRoutes: false, // partner_airline_route table
   eventLog: false, // an endpoint that lists events across all flights
@@ -44,15 +46,9 @@ export const openConflictCount = (): number | null => null
 
 export const checkGates: (aircraftId: string) => Promise<GateResult> = () => notConnected('The gate check (POST /flights/check)')
 
-export const checkReschedule: (flightId: string, departure: string) => Promise<RescheduleCheck[]> = () =>
-  notConnected('The availability check (GET /flights/:id/availability)')
-
 export const requestApproval: (origins: string[]) => Promise<ApprovalAnswer[]> = () => notConnected('Approval requests (POST /approvals)')
 
 export const requestReschedule: (flightId: string, departure: string) => Promise<void> = () =>
   notConnected('Reschedule approval (POST /approvals)')
 
 export const confirmApproved: (keys: string[]) => Promise<void> = () => notConnected('Confirming approved flights (POST /flights/confirm)')
-
-// The cost inputs that come from F9, F4 and F3b, or null while they are not connected.
-export const costInputsFor = (): CostInputs | null => null
