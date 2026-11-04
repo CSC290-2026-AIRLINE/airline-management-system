@@ -6,7 +6,6 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { F9_NOT_CONNECTED, PendingAircraftDirectory } from './aircraft-directory'
-import { PendingAuditSink } from './audit-sink'
 import { ConflictService } from './conflict.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -204,14 +203,15 @@ describe('ConflictService', () => {
       })
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'schedule_conflict.dismissed', entityId: CONFLICT, actorId: STAFF, reason: 'Handled by phone' }),
+        db, // the transaction client: $transaction hands the mock db to its callback
       )
     })
 
-    it('fails with the audit error, so the transaction rolls back, while Feature 15 is not connected', async () => {
+    it('fails with the audit error, so the transaction rolls back, when the audit entry cannot be written', async () => {
       db.schedule_conflict.updateMany.mockResolvedValue({ count: 1 })
-      const pending = new ConflictService(db as never, operations as never, new PendingAuditSink(), directory, { now: () => SIM_NOW })
+      audit.record.mockRejectedValue(new BadGatewayException('audit down'))
 
-      await expect(pending.dismiss(CONFLICT, { reason: 'x' }, STAFF)).rejects.toThrow(BadGatewayException)
+      await expect(service.dismiss(CONFLICT, { reason: 'x' }, STAFF)).rejects.toThrow(BadGatewayException)
     })
 
     it('refuses a conflict another user closed first, before any audit entry is written', async () => {
