@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { AuditModule } from '../admin-console/audit/audit.module'
 import { AirportFeeController } from './airport-fee.controller'
 import { AirportFeeService } from './airport-fee.service'
 import { AirportController } from './airport.controller'
@@ -17,7 +18,7 @@ import { TimetableController } from './timetable.controller'
 import { TimetableService } from './timetable.service'
 import { AIRCRAFT_DIRECTORY, PendingAircraftDirectory } from './operations/aircraft-directory'
 import { AircraftFeasibilityService } from './operations/aircraft-feasibility.service'
-import { AUDIT_SINK, PendingAuditSink } from './operations/audit-sink'
+import { AUDIT_SINK, AuditServiceSink } from './operations/audit-sink'
 import { CascadeDetector } from './operations/cascade-detector'
 import { ConflictService } from './operations/conflict.service'
 import { FLIGHT_CLOCK, InterimMachineClock } from './operations/flight-clock'
@@ -30,6 +31,7 @@ import { DbScheduleApprovals, SCHEDULE_APPROVALS } from './operations/schedule-a
 import { StaffActorService } from './operations/staff-actor.service'
 
 @Module({
+  imports: [AuditModule],
   controllers: [
     FlightSchedulingController,
     AirportController,
@@ -55,8 +57,7 @@ import { StaffActorService } from './operations/staff-actor.service'
     { provide: AIRCRAFT_DIRECTORY, useClass: PendingAircraftDirectory },
     // Until Feature 1 publishes its simulation clock, business times come from the machine clock.
     { provide: FLIGHT_CLOCK, useClass: InterimMachineClock },
-    // Until Feature 15 publishes its audit API, dismissing a conflict fails with 502 (the audit entry cannot be written).
-    { provide: AUDIT_SINK, useClass: PendingAuditSink },
+    { provide: AUDIT_SINK, useClass: AuditServiceSink },
     { provide: SCHEDULE_APPROVALS, useClass: DbScheduleApprovals },
     FlightEventWriter,
     FlightEventBus,

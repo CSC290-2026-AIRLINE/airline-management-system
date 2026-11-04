@@ -180,8 +180,8 @@ export class ConflictService {
   }
 
   /**
-   * Closes a conflict without a resolution. The reason lives only in Feature 15's audit entry, so the entry is written before
-   * the transaction commits: if it cannot be written, the conflict stays open (Iteration-03, "dismiss ... writes an audit
+   * Closes a conflict without a resolution. The reason lives only in Feature 15's audit entry, so the entry is written on the
+   * same transaction: if it cannot be written, the conflict stays open (Iteration-03, "dismiss ... writes an audit
    * entry").
    */
   async dismiss(id: string, input: DismissInput, actorId: string) {
@@ -194,7 +194,7 @@ export class ConflictService {
         data: { status: 'dismissed', resolved_by: actorId, resolved_at: now, updated_at: new Date() },
       })
       if (updated.count === 0) throw new ConflictException('Conflict was closed by someone else')
-      await this.audit.record({ action: 'schedule_conflict.dismissed', entityId: id, actorId, reason: input.reason, occurredAt: now })
+      await this.audit.record({ action: 'schedule_conflict.dismissed', entityId: id, actorId, reason: input.reason, occurredAt: now }, tx)
     })
     return this.get(id)
   }
