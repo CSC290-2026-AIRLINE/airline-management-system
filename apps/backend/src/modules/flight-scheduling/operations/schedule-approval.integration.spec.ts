@@ -276,6 +276,35 @@ suite('schedule approvals and confirm against Postgres', () => {
     ).resolves.toBe(409)
   })
 
+  it('puts one aircraft on several flights in departure order, and a flight it cannot take does not stop the others', async () => {
+    const [a, b, target] = [await aircraft('TTT', longType), await aircraft('UUU', longType), await aircraft('VVV', longType)]
+    const save = async (plane: string, from: string, to: string) => {
+      const number = nextNumber()
+      const approval = await approvals.create(
+        { ...request(number, plane), dep_at: new Date(`${date}T${from}:00Z`), arr_at: new Date(`${date}T${to}:00Z`) },
+        staff,
+      )
+      const body = {
+        ...confirmBody(approval.id, number, plane),
+        scheduled_dep_at: new Date(`${date}T${from}:00Z`),
+        scheduled_arr_at: new Date(`${date}T${to}:00Z`),
+      }
+      return (await confirm.confirm(body, staff)).flight.id
+    }
+    // Both fly BKK to CNX. Once the target has flown the first, it is at CNX and cannot start the second from BKK.
+    const [first, second] = [await save(a, '03:00', '04:15'), await save(b, '08:00', '09:15')]
+
+    const { results } = await operations.batchAircraft({ flight_ids: [second, first], aircraft_id: target }, staff)
+
+    expect(results.map((r) => [r.flight_id, r.status])).toEqual([
+      [first, 200],
+      [second, 409],
+    ])
+    expect(results[1].error).toMatchObject({ violations: [expect.objectContaining({ kind: 'aircraft_position' })] })
+    expect((await db.flight.findUniqueOrThrow({ where: { id: first } })).aircraft_id).toBe(target)
+    expect((await db.flight.findUniqueOrThrow({ where: { id: second } })).aircraft_id).toBe(b)
+  })
+
   it('does not accept the same approval twice', async () => {
     const plane = await aircraft('BBB', longType)
     const number = nextNumber()

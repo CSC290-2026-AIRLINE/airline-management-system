@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common'
 import {
+  parseBatchAircraftBody,
   parseBatchConfirmBody,
   parseCancelBody,
   parseConfirmBody,
@@ -244,6 +245,31 @@ describe('operations DTO parsers', () => {
     it('requires the approval and times that run forward', () => {
       expect(errorsOf(() => parseRescheduleBody({ ...body, approval_id: undefined }))).toEqual(['approval_id is required'])
       expect(errorsOf(() => parseRescheduleBody({ ...body, arr_at: body.dep_at }))).toEqual(['arr_at must be after dep_at'])
+    })
+  })
+
+  describe('parseBatchAircraftBody', () => {
+    const FLIGHT_ID = '00000000-0000-0000-0000-0000000000f1'
+    const AIRCRAFT_ID = '00000000-0000-0000-0000-0000000000a1'
+
+    it('parses the flights and the aircraft, dropping a repeated flight id', () => {
+      expect(parseBatchAircraftBody({ flight_ids: [FLIGHT_ID, FLIGHT_ID], aircraft_id: AIRCRAFT_ID, note: ' swap ' })).toEqual({
+        flight_ids: [FLIGHT_ID],
+        aircraft_id: AIRCRAFT_ID,
+        note: 'swap',
+      })
+    })
+
+    it('rejects no flights, too many, a bad id and a missing aircraft', () => {
+      expect(errorsOf(() => parseBatchAircraftBody({ flight_ids: [], aircraft_id: AIRCRAFT_ID }))).toEqual([
+        'flight_ids must hold 1 to 50 ids',
+      ])
+      expect(errorsOf(() => parseBatchAircraftBody({ flight_ids: ['x'], aircraft_id: AIRCRAFT_ID }))).toEqual(['flight_ids must be UUIDs'])
+      expect(errorsOf(() => parseBatchAircraftBody({ flight_ids: [FLIGHT_ID] }))).toEqual(['aircraft_id is required'])
+      const many = Array.from({ length: 51 }, (_, i) => `00000000-0000-0000-0000-${String(i).padStart(12, '0')}`)
+      expect(errorsOf(() => parseBatchAircraftBody({ flight_ids: many, aircraft_id: AIRCRAFT_ID }))).toEqual([
+        'flight_ids must hold 1 to 50 ids',
+      ])
     })
   })
 })

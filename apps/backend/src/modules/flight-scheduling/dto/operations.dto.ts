@@ -14,6 +14,10 @@ export interface BatchDelayInput extends DelayInput {
   flight_ids: string[]
 }
 
+export interface BatchAircraftInput extends AircraftChangeInput {
+  flight_ids: string[]
+}
+
 export interface DivertInput {
   reason_code: string
   airport_code: string
@@ -149,6 +153,18 @@ export function parseDelayBody(raw: unknown): DelayInput {
 
 // 50 is a guard against a runaway request, not an agreed business limit.
 const MAX_BATCH = 50
+
+/** POST flights/batch/aircraft: the flights and the one aircraft to put on all of them. */
+export function parseBatchAircraftBody(raw: unknown): BatchAircraftInput {
+  const body = asBody(raw)
+  const f = new Fields(body)
+  const ids = body.flight_ids
+  const flight_ids = Array.isArray(ids) ? [...new Set(ids.map(String))] : []
+  if (!Array.isArray(ids) || !flight_ids.length || flight_ids.length > MAX_BATCH)
+    f.errors.push(`flight_ids must hold 1 to ${MAX_BATCH} ids`)
+  else if (flight_ids.some((id) => !UUID.test(id))) f.errors.push('flight_ids must be UUIDs')
+  return f.done({ flight_ids, aircraft_id: f.uuid('aircraft_id'), note: f.optionalText('note') })
+}
 
 export function parseBatchDelayBody(raw: unknown): BatchDelayInput {
   const body = asBody(raw)
