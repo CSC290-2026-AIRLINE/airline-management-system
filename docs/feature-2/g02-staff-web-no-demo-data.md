@@ -11,15 +11,16 @@ Written 23 Oct 2026 by Kewalin (side B) for Nontouch (side A). Branch `feat-02-a
 
 ## How hiding works: `connected.ts`
 
-`apps/staff-web/src/features/flight-scheduling/connected.ts` holds one flag per unfinished part. All are `false` today.
+`apps/staff-web/src/features/flight-scheduling/connected.ts` holds one flag per unfinished part. All are `false` today except `approvalQueue` and `approvalPolicy`, which are `true` now that their APIs exist.
 
 | Flag | Waiting for | Hidden while `false` |
 |---|---|---|
 | `simClock` | F1 simulation clock | Clock chip in `TopBar` |
 | `aircraft` | F9 aircraft list | Change aircraft (flight detail, batch bar, conflicts); Assign aircraft and the Aircraft column (Generate flights) |
 | `gates` | `POST /flights/check`, `GET /flights/:id/availability` | "Check another time or reschedule" card; Check gates button; Check result column |
-| `approvals` | `schedule_approval` tables and `/approvals` API | Approvals and Approver console page bodies; Approval mode card in Settings; Request approval and Confirm buttons; Approval column |
-| `approvalPolicy` | `airport_approval_policy` table and API | Approval policy table and edit form |
+| `approvals` | F9 aircraft list and a settings API for the approval mode | Approval mode card in Settings; Request approval and Confirm buttons; Approval column (Generate flights) |
+| `approvalQueue` | `GET /approvals`, `POST /approvals/:id/respond` and `/revise` (connected) | Approvals and Approver console page bodies |
+| `approvalPolicy` | `GET/PUT /airports/:iata/approval-policy` (connected) | Approval policy table and edit form |
 | `impact` | `GET /flights/:id/impact` | Impact numbers on the Conflicts resolve card |
 | `partnerRoutes` | `partner_airline_route` table | Partner airlines column (Routes); Rebook with partner option |
 | `eventLog` | An endpoint that lists events across all flights | Disruption log table and filters |
@@ -33,14 +34,11 @@ The same file also has:
   - `checkReschedule`
   - `requestApproval`
   - `requestReschedule`
-  - `reviseApproval`
   - `confirmApproved`
-  - `answerRequest`
-  - `savePolicy`
 
   Nothing pretends to succeed.
 
-Pages whose whole body is hidden (Approvals, Approver console, Approval policy, Disruption log) show a `<NotConnected>` line saying what is missing. `MockNotice` was renamed to `NotConnected`.
+Pages whose whole body is hidden (Disruption log) show a `<NotConnected>` line saying what is missing. `MockNotice` was renamed to `NotConnected`.
 
 ### To switch a part on
 

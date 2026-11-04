@@ -148,42 +148,45 @@ export interface ApprovalAnswer {
   slots: string[] // HH:MM departures offered, when approval is 'offered'
 }
 
-export type ApprovalStatus = 'Approved' | 'Other times offered' | 'Pending' | 'Rejected'
+export type ApprovalStatus = 'pending' | 'approved' | 'alternative_offered' | 'rejected' | 'superseded' | 'consumed' | 'expired'
 
-// One row on the Approvals page.
-export interface ApprovalRequest {
+// One offered departure time: a slot has no end, a window runs to ends_at inclusive.
+export interface ApprovalOffer {
+  kind: 'slot' | 'window'
+  starts_at: string
+  ends_at: string | null
+}
+
+// One row from GET /approvals.
+export interface ApprovalRow {
   id: string
-  flight: string
-  date: string
-  purpose: 'New flight' | 'Reschedule'
-  proposed: string // HH:MM
-  block_time_min: number
-  aircraft: string
+  purpose: 'new_flight' | 'reschedule'
+  flight_id: string | null
+  route_id: string
+  flight_number: string
+  service_date: string
+  aircraft_id: string
+  proposed_dep_at: string
+  proposed_arr_at: string
+  approver_airport: string | null
   status: ApprovalStatus
-  approver: string // "BKK · revision 1"
-  answer: string
-  action: string // the button on the row
-  history: string[] // earlier revisions and answers, oldest first
+  reject_reason: string | null
+  response_note: string | null
+  revision: number
+  previous_approval_id: string | null
+  covered_by_approval_id: string | null
+  requested_at: string
+  responded_at: string | null
+  offers: ApprovalOffer[]
 }
 
-// One request waiting on the Approver console.
-export interface ApproverRequest {
-  id: string
-  requested: string
-  flight: string
-  date: string
-  purpose: string
-  proposed: string
-  aircraft: string
-  approver: string
-}
-
+// GET /airports/:iata/approval-policy. Null times mean no curfew; a null cap means no limit.
 export interface ApprovalPolicy {
   airport: string
-  curfewFrom: string // '' when there is no curfew
-  curfewTo: string
-  maxPerHour: number
-  offers: 'A list of slots' | 'A time window'
+  curfew_start_local: string | null
+  curfew_end_local: string | null
+  max_departure_per_hour: number | null
+  offer_style: 'slots' | 'window'
 }
 
 // One row of the disruption log (events across all flights).

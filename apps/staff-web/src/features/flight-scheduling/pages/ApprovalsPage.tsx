@@ -1,120 +1,133 @@
+import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Callout } from '../components/Callout'
+import { Card } from '../components/Card'
 import { FormField } from '../components/FormField'
+import { ListState } from '../components/ListState'
 import { NotConnected } from '../components/NotConnected'
 import { PageHeader } from '../components/PageHeader'
 import { SelectField } from '../components/SelectField'
 import { StaffShell } from '../components/StaffShell'
-import { StatusPill } from '../components/StatusPill'
-import { Toast } from '../components/Toast'
-import { Card } from '../components/Card'
-import { EmptyState } from '../components/EmptyState'
 import { Stats } from '../components/Stats'
+import { StatusPill } from '../components/StatusPill'
 import { TableWrap } from '../components/TableWrap'
-import { clockOf, minutesOf } from '../format'
+import { Toast } from '../components/Toast'
+import { offerText, STATUS_LABEL, TONE } from '../approval-labels'
+import { CONNECTED } from '../connected'
+import { formatDateTime, formatServiceDate, localParts, localToIso } from '../format'
 import { useNotice } from '../hooks/useNotice'
-import { AIRCRAFT, checkGates as runGateCheck, CONNECTED, reviseApproval } from '../connected'
-import type { ApprovalRequest, ApprovalStatus, GateResult } from '../types'
+import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
+import { useResource } from '../hooks/useResource'
+import type { AirportRow, ApprovalRow, ApprovalStatus } from '../types'
 import '../flight-scheduling.css'
 
-const TONE: Record<ApprovalStatus, string> = {
-  Approved: 'active',
-  'Other times offered': 'delayed',
-  Pending: 'departed',
-  Rejected: 'cancelled',
-}
-
-// Approval requests have no table or API yet, so the page body is hidden (see connected.ts) and its actions refuse.
+// Every request sent to the simulated approver, from GET /approvals. Revising posts a new request (POST /approvals/:id/revise); an
+// offered time that an earlier offer already covers is approved at once, otherwise the approver answers again.
 export function ApprovalsPage() {
-  // ponytail: load these from GET /approvals once it exists.
-  const [rows, setRows] = useState<ApprovalRequest[]>([])
+  const { fetchWithAuth } = useAppAuth()
+  const approvals = useResource<ApprovalRow[]>(CONNECTED.approvalQueue ? '/approvals?limit=100' : null, fetchWithAuth)
+  const airports = usePagedList<AirportRow>('/airports?limit=100', fetchWithAuth)
   const [status, setStatus] = useState('')
   const [flight, setFlight] = useState('')
-  const [revising, setRevising] = useState<ApprovalRequest | null>(null)
+  const [revising, setRevising] = useState<ApprovalRow | null>(null)
   const [time, setTime] = useState('')
-  const [aircraft, setAircraft] = useState('')
-  const [gate, setGate] = useState<GateResult | null>(null)
+  const [busy, setBusy] = useState(false)
   const [notice, say] = useNotice()
 
+  const rows = approvals.data ?? []
+  const zone = (r: ApprovalRow) => airports.rows.find((a) => a.iata_code === r.approver_airport)?.timezone ?? 'UTC'
   const count = (s: ApprovalStatus) => rows.filter((r) => r.status === s).length
-  const shown = rows.filter((r) => (status === '' || r.status === status) && (flight === '' || r.flight === flight))
+  const shown = rows.filter((r) => (status === '' || r.status === status) && (flight === '' || r.flight_number === flight))
 
-  function act(r: ApprovalRequest) {
-    if (r.action === 'Confirm') {
-      say('Confirm approved flights on Generate flights.')
-    } else if (r.action === 'Pick a slot' || r.action === 'Pick a time' || r.action === 'Revise') {
-      setRevising(r)
-      setTime(r.proposed)
-      setAircraft(r.aircraft)
-      setGate(null)
-    }
+  function open(r: ApprovalRow) {
+    setRevising(r)
+    // Start from the first offered time, or the time that was requested.
+    setTime(localParts(r.offers[0]?.starts_at ?? r.proposed_dep_at, zone(r)).time)
   }
 
-  // Arrival follows from the request's own route block time.
-  const arrival = (t: string, blockMin: number) => (/^\d\d:\d\d$/.test(t) ? clockOf(minutesOf(t) + blockMin) : '—')
-
-  async function checkGates() {
-    try {
-      setGate(await runGateCheck(aircraft))
-    } catch (e) {
-      say(e instanceof Error ? e.message : String(e))
-    }
+  // The revised request keeps the flight's length and the date the request had at the airport.
+  function revisedTimes(r: ApprovalRow) {
+    if (!/^\d\d:\d\d$/.test(time)) return null
+    const dep = localToIso(localParts(r.proposed_dep_at, zone(r)).date, time, zone(r))
+    const length = Date.parse(r.proposed_arr_at) - Date.parse(r.proposed_dep_at)
+    return { dep_at: dep, arr_at: new Date(Date.parse(dep) + length).toISOString() }
   }
 
-  async function sendRevision(r: ApprovalRequest) {
+  async function sendRevision(r: ApprovalRow) {
+    const times = revisedTimes(r)
+    if (!times) return
+    setBusy(true)
     try {
-      const next = await reviseApproval(r.id, { time, aircraft })
-      setRows(rows.map((x) => (x.id === r.id ? next : x)))
+      const res = await fetchWithAuth(`${BASE}/approvals/${r.id}/revise`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(times),
+      })
+      if (!res.ok) throw new Error(await errorMessage(res))
+      const next = (await res.json()) as ApprovalRow
       setRevising(null)
-      say(`New request sent for ${r.flight} on ${r.date}: ${next.status.toLowerCase()}.`)
+      approvals.reload()
+      say(`New request sent for ${r.flight_number} on ${formatServiceDate(r.service_date)}: ${STATUS_LABEL[next.status].toLowerCase()}.`)
     } catch (e) {
       say(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
     }
   }
+
+  const history = revising
+    ? rows
+        .filter((r) => r.flight_number === revising.flight_number && r.service_date === revising.service_date)
+        .sort((a, b) => a.revision - b.revision)
+    : []
+  const times = revising ? revisedTimes(revising) : null
 
   return (
     <StaffShell>
       <main className="fs-page">
         <PageHeader title="Approvals">
-          Every request sent to the simulated approver, with its answer. Pick a slot or a time inside an offered window, change the
-          aircraft, or request approval for a reschedule. A request is not a flight, so search never sees it.
+          Every request sent to the simulated approver, with its answer. Pick a time that was offered, or send a revised request. A request
+          is not a flight, so search never sees it.
         </PageHeader>
-        {!CONNECTED.approvals && (
-          <NotConnected>Approval requests are hidden until the schedule_approval tables and the /approvals API exist.</NotConnected>
-        )}
+        {!CONNECTED.approvalQueue && <NotConnected>Approval requests are hidden until the /approvals API is connected.</NotConnected>}
 
-        {CONNECTED.approvals && (
+        {CONNECTED.approvalQueue && (
           <>
             <Stats
               items={[
-                { value: count('Pending'), label: 'pending' },
-                { value: count('Other times offered'), label: 'other times offered' },
-                { value: count('Approved'), label: 'approved' },
-                { value: count('Rejected'), label: 'rejected' },
+                { value: count('pending'), label: 'pending' },
+                { value: count('alternative_offered'), label: 'other times offered' },
+                { value: count('approved'), label: 'approved' },
+                { value: count('rejected'), label: 'rejected' },
               ]}
             />
 
             <div className="fs-filters">
               <SelectField label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
-                <option value="">All live and rejected</option>
-                {(Object.keys(TONE) as ApprovalStatus[]).map((s) => (
-                  <option key={s}>{s}</option>
+                <option value="">All statuses</option>
+                {(Object.keys(STATUS_LABEL) as ApprovalStatus[]).map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </option>
                 ))}
               </SelectField>
               <SelectField label="Flight number" value={flight} onChange={(e) => setFlight(e.target.value)}>
                 <option value="">All flight numbers</option>
-                {[...new Set(rows.map((r) => r.flight))].map((f) => (
+                {[...new Set(rows.map((r) => r.flight_number))].map((f) => (
                   <option key={f}>{f}</option>
                 ))}
               </SelectField>
             </div>
 
-            {shown.length === 0 ? (
-              <EmptyState>
-                <p>No requests match these filters.</p>
-              </EmptyState>
-            ) : (
+            <ListState
+              loading={approvals.loading}
+              error={approvals.error}
+              empty={shown.length === 0}
+              noun="approval requests"
+              emptyText="No requests match these filters."
+            />
+            {shown.length > 0 && (
               <TableWrap>
                 <table className="fs-table fs-t-approvals">
                   <thead>
@@ -132,28 +145,32 @@ export function ApprovalsPage() {
                   <tbody>
                     {shown.map((r) => (
                       <tr key={r.id}>
-                        <td className="fs-flight">{r.flight}</td>
-                        <td>{r.date}</td>
-                        <td>{r.purpose}</td>
-                        <td>{r.proposed}</td>
-                        <td className="fs-nowrap">{r.aircraft}</td>
+                        <td className="fs-flight">{r.flight_number}</td>
+                        <td>{formatServiceDate(r.service_date)}</td>
+                        <td>{r.purpose === 'new_flight' ? 'New flight' : 'Reschedule'}</td>
+                        <td>{formatDateTime(r.proposed_dep_at, zone(r))}</td>
+                        {/* ponytail: the tail number comes from F9; show the start of the id until F9 has an aircraft list. */}
+                        <td className="fs-nowrap">{r.aircraft_id.slice(0, 8)}</td>
                         <td>
-                          <StatusPill status={TONE[r.status]} label={r.status} />
-                          <div className="fs-sub">{r.approver}</div>
+                          <StatusPill status={TONE[r.status]} label={STATUS_LABEL[r.status]} />
+                          <div className="fs-sub">
+                            {r.approver_airport} · revision {r.revision}
+                          </div>
                         </td>
-                        <td>{r.answer}</td>
                         <td>
-                          {r.action === 'Open console' ? (
+                          {r.response_note ?? '—'}
+                          {r.offers.length > 0 && <div className="fs-sub">Offered: {offerText(r, zone(r))}</div>}
+                          {r.covered_by_approval_id && <div className="fs-sub">Covered by an earlier offer</div>}
+                        </td>
+                        <td>
+                          {r.status === 'pending' && (
                             <Link to="/approver-console" className="fs-link">
                               Open console
                             </Link>
-                          ) : (
-                            <button
-                              type="button"
-                              className={r.action === 'Pick a time' ? 'fs-button fs-button-sm' : 'fs-button-light'}
-                              onClick={() => act(r)}
-                            >
-                              {r.action}
+                          )}
+                          {(r.status === 'alternative_offered' || r.status === 'rejected') && (
+                            <button type="button" className="fs-button-light" onClick={() => open(r)}>
+                              {r.status === 'alternative_offered' ? 'Pick a time' : 'Revise'}
                             </button>
                           )}
                         </td>
@@ -167,52 +184,33 @@ export function ApprovalsPage() {
               <>
                 <Card>
                   <h2>
-                    Revise {revising.flight} · {revising.date} · {revising.purpose.toLowerCase()}
+                    Revise {revising.flight_number} · {formatServiceDate(revising.service_date)} ·{' '}
+                    {revising.purpose === 'new_flight' ? 'new flight' : 'reschedule'}
                   </h2>
-                  <p className="fs-sub">
-                    The {revising.approver.split(' ')[0]} slot coordinator answered: {revising.answer} Pick a time, or change the aircraft.
-                  </p>
                   <Callout tone="info">
-                    <StatusPill
-                      status={TONE[revising.status]}
-                      label={revising.status === 'Other times offered' ? 'Time window' : revising.status}
-                    />{' '}
-                    {revising.answer} · service day {revising.date}
+                    <StatusPill status={TONE[revising.status]} label={STATUS_LABEL[revising.status]} />{' '}
+                    {revising.response_note ?? 'No note.'}
+                    {revising.offers.length > 0 && ` Offered: ${offerText(revising, zone(revising))}.`} Times are local at{' '}
+                    {revising.approver_airport}.
                   </Callout>
                   <div className="fs-filters">
                     <FormField label="New departure time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-                    <FormField label="Arrival (from block time)" value={arrival(time, revising.block_time_min)} readOnly />
-                    <SelectField
-                      label="Aircraft"
-                      value={aircraft}
-                      onChange={(e) => {
-                        setAircraft(e.target.value)
-                        setGate(null)
-                      }}
-                    >
-                      {AIRCRAFT.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.id === revising.aircraft ? `${a.label} · unchanged` : a.label}
-                        </option>
-                      ))}
-                    </SelectField>
+                    <FormField
+                      label="Arrival (same flight length)"
+                      value={times ? localParts(times.arr_at, zone(revising)).time : '—'}
+                      readOnly
+                    />
+                    <FormField label="Aircraft (unchanged)" value={revising.aircraft_id.slice(0, 8)} readOnly />
                   </div>
-                  {gate && (
-                    <Callout tone={gate.passed ? 'good' : 'crit'}>
-                      <b>{gate.passed ? 'Gates passed.' : 'A gate failed.'}</b>{' '}
-                      {gate.passed ? 'You can send the revised request.' : gate.text}
-                    </Callout>
-                  )}
                   <div className="fs-form-actions">
-                    {gate?.passed ? (
-                      <button type="button" className="fs-button" onClick={() => void sendRevision(revising)}>
-                        Request approval for {time}
-                      </button>
-                    ) : (
-                      <button type="button" className="fs-button" disabled={time === ''} onClick={() => void checkGates()}>
-                        Check gates
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="fs-button"
+                      disabled={busy || times === null}
+                      onClick={() => void sendRevision(revising)}
+                    >
+                      Request approval for {time || '—'}
+                    </button>
                     <button type="button" className="fs-button-ghost" onClick={() => setRevising(null)}>
                       Cancel
                     </button>
@@ -220,11 +218,14 @@ export function ApprovalsPage() {
                 </Card>
                 <Card>
                   <h2>
-                    Request history · {revising.flight} {revising.date}
+                    Request history · {revising.flight_number} {formatServiceDate(revising.service_date)}
                   </h2>
                   <ul className="fs-events">
-                    {revising.history.map((h) => (
-                      <li key={h}>{h}</li>
+                    {history.map((h) => (
+                      <li key={h.id}>
+                        Revision {h.revision}: {formatDateTime(h.proposed_dep_at, zone(h))} · {STATUS_LABEL[h.status].toLowerCase()}
+                        {h.response_note ? ` · ${h.response_note}` : ''}
+                      </li>
                     ))}
                   </ul>
                 </Card>

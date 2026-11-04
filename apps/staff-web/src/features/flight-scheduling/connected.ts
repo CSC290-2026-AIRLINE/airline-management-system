@@ -1,17 +1,27 @@
-import type { AircraftOption, ApprovalAnswer, ApprovalPolicy, ApprovalRequest, CostInputs, GateResult, RescheduleCheck } from './types'
+import type { AircraftOption, ApprovalAnswer, CostInputs, GateResult, RescheduleCheck } from './types'
 
 // Parts of the Feature 2 screens that wait for another feature, or for a table the Database Team has not added yet. Their UI stays in
 // the pages but is hidden while the flag is false, and nothing here is demo data: lists are empty and actions refuse.
 // When a part's endpoint exists: set its flag to true, replace its stub below with the real call, and drop the page's <NotConnected>.
 export const CONNECTED: Record<
-  'simClock' | 'aircraft' | 'gates' | 'approvals' | 'approvalPolicy' | 'costEstimate' | 'impact' | 'partnerRoutes' | 'eventLog',
+  | 'simClock'
+  | 'aircraft'
+  | 'gates'
+  | 'approvals'
+  | 'approvalQueue'
+  | 'approvalPolicy'
+  | 'costEstimate'
+  | 'impact'
+  | 'partnerRoutes'
+  | 'eventLog',
   boolean
 > = {
   simClock: false, // F1 simulation clock
   aircraft: false, // F9 aircraft list, for change and assign aircraft
   gates: false, // POST /flights/check and GET /flights/:id/availability
-  approvals: false, // schedule_approval tables and the /approvals routes
-  approvalPolicy: false, // airport_approval_policy table and its API
+  approvals: false, // requesting approval and confirming from Generate flights, and the approval mode card in Settings (need the F9 aircraft list and a settings API)
+  approvalQueue: true, // Approvals and Approver console: GET /approvals, POST /approvals/:id/respond and /revise
+  approvalPolicy: true, // GET/PUT /airports/:iata/approval-policy
   costEstimate: false, // GET /flights/:id/cost-estimate (F9 operating cost, F4 fares, F3b seats sold)
   impact: false, // GET /flights/:id/impact (bookings, crew, bags, cargo)
   partnerRoutes: false, // partner_airline_route table
@@ -42,16 +52,7 @@ export const requestApproval: (origins: string[]) => Promise<ApprovalAnswer[]> =
 export const requestReschedule: (flightId: string, departure: string) => Promise<void> = () =>
   notConnected('Reschedule approval (POST /approvals)')
 
-export const reviseApproval: (id: string, change: { time: string; aircraft: string }) => Promise<ApprovalRequest> = () =>
-  notConnected('Revising a request (POST /approvals/:id/revise)')
-
 export const confirmApproved: (keys: string[]) => Promise<void> = () => notConnected('Confirming approved flights (POST /flights/confirm)')
-
-export const answerRequest: (id: string, answer: string) => Promise<void> = () =>
-  notConnected('Answering a request (POST /approvals/:id/respond)')
-
-export const savePolicy: (policy: ApprovalPolicy) => Promise<ApprovalPolicy> = () =>
-  notConnected('Saving an approval policy (PUT /airports/:iata/approval-policy)')
 
 // The cost inputs that come from F9, F4 and F3b, or null while they are not connected.
 export const costInputsFor = (): CostInputs | null => null
