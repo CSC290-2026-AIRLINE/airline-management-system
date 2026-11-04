@@ -118,9 +118,7 @@ export class FlightOperationsService {
       select: { id: true },
     })
     const known = new Set(rows.map((r) => r.id))
-    const results: { flight_id: string; status: number; result?: OperationResult; error?: unknown }[] = input.flight_ids
-      .filter((id) => !known.has(id))
-      .map((flight_id) => ({ flight_id, status: 404, error: 'Flight not found' }))
+    const results: { flight_id: string; status: number; result?: OperationResult; error?: unknown }[] = []
     // Sequential on purpose: a later flight of the same aircraft sees the earlier delay (cascade check, aircraft lock).
     for (const { id } of rows) {
       try {
@@ -130,6 +128,9 @@ export class FlightOperationsService {
         results.push({ flight_id: id, status: e.getStatus(), error: e.getResponse() })
       }
     }
+    // Unknown ids have no departure time, so they come last, after the flights in departure order.
+    for (const flight_id of input.flight_ids.filter((id) => !known.has(id)))
+      results.push({ flight_id, status: 404, error: 'Flight not found' })
     return { results }
   }
 

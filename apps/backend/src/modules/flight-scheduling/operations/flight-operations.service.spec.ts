@@ -133,9 +133,9 @@ describe('FlightOperationsService', () => {
       )
 
       expect(results.map((r) => [r.flight_id, r.status])).toEqual([
-        [MISSING, 404],
         [CANCELLED, 409],
         [FLIGHT, 200],
+        [MISSING, 404],
       ])
       expect(writer.append).toHaveBeenCalledTimes(1)
     })
