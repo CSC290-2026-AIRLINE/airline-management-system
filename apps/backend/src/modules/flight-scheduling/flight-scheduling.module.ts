@@ -31,6 +31,7 @@ import { FlightEventBus, FlightEventPublisher } from './operations/flight-event-
 import { FlightEventWriter } from './operations/flight-event-writer'
 import { FlightOperationsController } from './operations/flight-operations.controller'
 import { FlightOperationsService } from './operations/flight-operations.service'
+import { FlightInsightService } from './operations/flight-insight.service'
 import { GateCheckService } from './operations/gate-check.service'
 import { DbScheduleApprovals, SCHEDULE_APPROVALS } from './operations/schedule-approvals'
 import { StaffActorService } from './operations/staff-actor.service'
@@ -73,6 +74,7 @@ import { StaffActorService } from './operations/staff-actor.service'
     FlightEventPublisher,
     FlightConfirmService,
     GateCheckService,
+    FlightInsightService,
     CascadeDetector,
     StaffActorService,
     FlightOperationsService,

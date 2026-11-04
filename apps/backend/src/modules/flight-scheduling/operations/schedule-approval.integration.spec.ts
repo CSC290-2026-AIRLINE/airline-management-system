@@ -7,6 +7,7 @@ import { ApprovalService } from './approval.service'
 import { FlightConfirmService } from './flight-confirm.service'
 import { CascadeDetector } from './cascade-detector'
 import { FlightOperationsService } from './flight-operations.service'
+import { FlightInsightService } from './flight-insight.service'
 import { GateCheckService } from './gate-check.service'
 import { SettingsService } from '../settings.service'
 import { FlightEventBus, FlightEventPublisher } from './flight-event-bus'
@@ -38,6 +39,7 @@ suite('schedule approvals and confirm against Postgres', () => {
   let approvals: ApprovalService
   let confirm: FlightConfirmService
   let gates: GateCheckService
+  let insight: FlightInsightService
   let operations: FlightOperationsService
 
   const run = Math.random().toString(36).slice(2, 8).toUpperCase()
@@ -114,6 +116,7 @@ suite('schedule approvals and confirm against Postgres', () => {
       new DbScheduleApprovals(),
       clock,
     )
+    insight = new FlightInsightService(db)
     await db.$connect()
     staff = (await db.staff.findFirstOrThrow({ select: { id: true } })).id
     routeId = (await db.route.findFirstOrThrow({ where: { origin: 'BKK', destination: 'CNX' }, select: { id: true } })).id
@@ -303,6 +306,60 @@ suite('schedule approvals and confirm against Postgres', () => {
     expect(results[1].error).toMatchObject({ violations: [expect.objectContaining({ kind: 'aircraft_position' })] })
     expect((await db.flight.findUniqueOrThrow({ where: { id: first } })).aircraft_id).toBe(target)
     expect((await db.flight.findUniqueOrThrow({ where: { id: second } })).aircraft_id).toBe(b)
+  })
+
+  it('estimates the cost of a saved flight from the aircraft type and the fees in force that day, and refuses the impact', async () => {
+    const plane = await aircraft('WWW', longType)
+    const number = nextNumber()
+    const approval = await approvals.create(request(number, plane), staff)
+    const { flight } = await confirm.confirm(confirmBody(approval.id, number, plane), staff)
+    // fees that are in force on this run's day only, so other runs of this suite do not add to them
+    await db.airport_fee.createMany({
+      data: [
+        {
+          airport: 'BKK',
+          fee_type: 'landing',
+          applies_on: 'departure',
+          amount: 500,
+          unit: 'per_flight',
+          currency: 'THB',
+          effective_from: day,
+          effective_to: day,
+        },
+        {
+          airport: 'CNX',
+          fee_type: 'navigation',
+          applies_on: 'arrival',
+          amount: 2,
+          unit: 'per_tonne',
+          currency: 'THB',
+          effective_from: day,
+          effective_to: day,
+        },
+        {
+          airport: 'CNX',
+          fee_type: 'parking',
+          applies_on: 'arrival',
+          amount: 90,
+          unit: 'per_hour',
+          currency: 'THB',
+          effective_from: day,
+          effective_to: day,
+        },
+      ],
+    })
+
+    const estimate = await insight.costEstimate(flight.id)
+
+    // 75 block minutes at 100 an hour, a 500 fee per flight, and 2 per tonne of 50 tonnes
+    expect(estimate.lines.map((l) => [l.item, l.amount])).toEqual([
+      ['Operating cost', 125],
+      ['BKK landing fee, departure', 500],
+      ['CNX navigation fee, arrival', 100],
+    ])
+    expect(estimate.total).toEqual({ amount: 725, currency: 'THB' })
+    expect(estimate.pending.some((p) => p.includes('CNX parking fee, arrival'))).toBe(true)
+    await expect(settle(insight.impact(flight.id))).resolves.toBe(502)
   })
 
   it('does not accept the same approval twice', async () => {
