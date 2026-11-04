@@ -6,6 +6,7 @@ import {
   parseBatchDelayBody,
   parseCancelBody,
   parseBatchConfirmBody,
+  parseGateCheckBody,
   parseDelayBody,
   parseDismissBody,
   parseDivertBody,
@@ -15,6 +16,7 @@ import {
 } from '../dto/operations.dto'
 import { ConflictService, type ListConflictsQueryDto } from './conflict.service'
 import { FlightConfirmService } from './flight-confirm.service'
+import { GateCheckService } from './gate-check.service'
 import { FlightOperationsService } from './flight-operations.service'
 import { StaffActorService } from './staff-actor.service'
 
@@ -24,6 +26,7 @@ export class FlightOperationsController {
   constructor(
     private readonly operations: FlightOperationsService,
     private readonly confirmation: FlightConfirmService,
+    private readonly gates: GateCheckService,
     private readonly conflicts: ConflictService,
     private readonly actors: StaffActorService,
   ) {}
@@ -34,6 +37,18 @@ export class FlightOperationsController {
   async confirm(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
     const input = parseBatchConfirmBody(body)
     return this.confirmation.confirmBatch(input, await this.actors.staffIdFor(user))
+  }
+
+  // Read-only: runs the gates for proposed flights that are not saved yet. Always 200 with one result per flight.
+  @Post('flights/check')
+  @HttpCode(200)
+  check(@Body() body: unknown) {
+    return this.gates.check(parseGateCheckBody(body))
+  }
+
+  @Get('flights/:id/availability')
+  availability(@Param('id') id: string, @Query('dep_at') depAt?: string) {
+    return this.gates.availability(id, depAt)
   }
 
   // Declared before the ':id' routes so 'batch' is never read as a flight id.
