@@ -1,6 +1,6 @@
 # Cross-feature Relationships, Constraints & Migrations
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA.** See the [current schema snapshot](../docs.md#current-schema-snapshot) for the verified source commit and schema totals. Committed definitions do not prove deployment or completed application behavior.
 
 ## Cross-feature relationships
 
@@ -24,17 +24,18 @@ F8 run ownership is enforced through roster_run_pairing: pairing_id is unique ac
 
 ## Migration history
 
-| Migration                                   | Effect                                                                                                                     |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `20260928160443`                            | Original plural-table scaffold                                                                                             |
-| `20260928162047`                            | Replaces plural tables with singular user, refresh_token, customer; reconnects staff                                       |
-| `20261012150000_level1_schema`              | Drops four scaffold tables with CASCADE, creates 69-table Level 1 schema and inserts admin role                            |
-| `20261023130000_feature2_schedule_approval` | Adds four F2 tables, airport country CHECK, departed/arrived event values, two approval setting keys and inserted defaults |
-| `20261024120000_feature8_crew_rostering`    | Adds eleven F8 tables, sequence, indexes, CHECKs, FKs and eleven inserted settings                                         |
+| Migration                                        | Effect                                                                                                                                                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `20260928160443`                                 | Original plural-table scaffold                                                                                                                                                                                                 |
+| `20260928162047`                                 | Replaces plural tables with singular user, refresh_token, customer; reconnects staff                                                                                                                                           |
+| `20261012150000_level1_schema`                   | Drops four scaffold tables with CASCADE, creates 69-table Level 1 schema and inserts admin role                                                                                                                                |
+| `20261023130000_feature2_schedule_approval`      | Adds four F2 tables, airport country CHECK, departed/arrived event values, two approval setting keys and inserted defaults                                                                                                     |
+| `20261024120000_feature8_crew_rostering`         | Adds eleven F8 tables, sequence, indexes, CHECKs, FKs and eleven inserted settings                                                                                                                                             |
+| `20261025120000_feature7_screening_iteration_03` | F7 Iteration-03: identity snapshot and `name_similarity` on screening_check, `entry_change` trigger point, drops `flight_dep_at`, `revision` on screening_review in place of one review per check, `gender` on watchlist_entry |
 
-**Data preservation:** Level 1 drops existing scaffold records. F2's country CHECK can reject existing free-text or uppercase country values. The new migrations use CREATE TABLE and INSERT statements without general rerun protection; let Prisma track migration application. Assess existing data before deployment; no migration/reset was run for this docs update.
+**Data preservation:** Level 1 drops existing scaffold records. F2's country CHECK can reject existing free-text or uppercase country values. The F7 screening migration fills the snapshot of existing screening_check rows from today's passenger and watchlist values (the compared values were never stored) and makes existing reviews revision 1. The new migrations use CREATE TABLE and INSERT statements without general rerun protection; let Prisma track migration application. Assess existing data before deployment; no migration/reset was run for this docs update.
 
-The original Level 1 migration has not been rewritten. Current schema.sql consolidates that baseline with F2/F8 additions; it is no longer identical to the historical migration. Run migration deployment through the Database Team rather than executing consolidated SQL over an existing database.
+The original Level 1 migration has not been rewritten. Current schema.sql consolidates that baseline with F2/F8/F7 additions; it is no longer identical to the historical migration. Run migration deployment through the Database Team rather than executing consolidated SQL over an existing database.
 
 ## SQL behavior Prisma does not fully express
 
@@ -47,6 +48,7 @@ Preserve these rules when introspecting or generating migrations:
 - forbid_mutation() triggers: flight_event blocks UPDATE/DELETE; audit_log and stock_movement also block TRUNCATE. A separate trigger protects aircraft_type.layout.
 - Generated identity sequences on flight_event.seq and audit_log.seq; omit these on inserts. Allocation order does not guarantee commit order.
 - F8 partial indexes prevent duplicate active crew/leg and pilot-seat assignments, but cross-flight overlap, rest/legality, publish gating and published-history policies require backend transactions.
+- F7 screening snapshots, conditional entry-side NULL checks and UNIQUE (screening_check_id, revision) are SQL rules. Screening immutability, latest-review resolution and queue queries require application logic; there are no screening-table immutability triggers.
 - The Prisma header requires list back-relations for user.customer, user.staff and fare_quote.promo_redemption after re-introspection. This is an ORM modeling adjustment, not permission to change SQL cardinality.
 
 Historical design comments are requirements, not proof that workers, guards, audit masking or reference datasets are implemented. Verify a running database independently before recording deployment approval.

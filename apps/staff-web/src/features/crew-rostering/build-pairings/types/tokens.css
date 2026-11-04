@@ -5,8 +5,6 @@
  * classes (`bg-navy`, `text-valid`, `font-display`, ...), so the palette is
  * declared once and never hardcoded in a component.
  */
-@import 'tailwindcss';
-
 @import '@fontsource/inter/400.css';
 @import '@fontsource/inter/500.css';
 @import '@fontsource/inter/600.css';
