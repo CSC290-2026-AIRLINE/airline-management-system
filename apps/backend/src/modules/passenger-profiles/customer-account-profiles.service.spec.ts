@@ -410,6 +410,38 @@ describe('CustomerAccountProfilesService', () => {
     expect(db.customer_passenger.findFirst).not.toHaveBeenCalled()
   })
 
+  it.each([undefined, 'som', 'สม', '   '])('orders suggestions by booking recency with nulls last for prefix %s', async (q) => {
+    await service.listPassengers('user-1', { limit: 2, q })
+    expect(db.customer_passenger.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ last_booked_at: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+        where: expect.objectContaining({ customer_id: 'customer-1', is_saved: true }),
+        take: 3,
+      }),
+    )
+  })
+
+  it('continues after the saved-link cursor using the same booking order and returns the final page', async () => {
+    db.customer_passenger.findFirst.mockResolvedValue({ id: 'previous-link' })
+    db.customer_passenger.findMany.mockResolvedValue([{ ...saved, id: 'last-link', last_booked_at: null }])
+    const result = await service.listPassengers('user-1', { limit: 1, cursor: 'previous-link', q: 'som' })
+    expect(db.customer_passenger.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'previous-link', customer_id: 'customer-1', is_saved: true }),
+      }),
+    )
+    expect(db.customer_passenger.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: { id: 'previous-link' },
+        skip: 1,
+        take: 2,
+        orderBy: [{ last_booked_at: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+      }),
+    )
+    expect(result.items).toHaveLength(1)
+    expect(result.nextCursor).toBeNull()
+  })
+
   it('returns an empty page when no passengers are saved', async () => {
     db.customer_passenger.findMany.mockResolvedValue([])
     await expect(service.listPassengers('user-1', { limit: 50 })).resolves.toEqual({ items: [], nextCursor: null })

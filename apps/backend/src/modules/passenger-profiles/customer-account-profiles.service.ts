@@ -362,7 +362,7 @@ export class CustomerAccountProfilesService {
       const results = await this.db.customer_passenger.findMany({
         where,
         select: savedSelect,
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        orderBy: [{ last_booked_at: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
         take: limit + 1,
         ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       })

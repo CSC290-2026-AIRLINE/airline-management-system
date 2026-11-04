@@ -23,7 +23,7 @@ for their detailed contracts and remaining limitations.
 | Saved passengers                 | The owner uses customer.passenger_id rather than a self link. Removing a saved passenger sets is_saved=false and preserves the passenger/link/history. Identity and relationship edits share a transaction. Relationship is optional and describes the passenger's relationship to the owner.                                       |
 | Privacy and audit                | Owner APIs resolve ownership from the authenticated user. Sensitive reads and returned identity data are audited before the response; list auditing covers the returned page. The overview masks passports and the owner's edit form can show the complete number. Customer read audit metadata does not copy full identity values. |
 | Validation                       | Backend validation requires usable Latin passport names, valid nationality/passport values, and calendar DOBs from 1900-01-01 through the current permitted date. Client validation supplements server validation.                                                                                                                  |
-| Saved-passenger prefix search    | GET /api/customers/me/passengers accepts optional q, matching prefixes of passport and local name parts case-insensitively. Blank q returns the unfiltered saved list. Filtering, ownership and cursor behavior have tests. Most-recently-booked ordering remains pending; current ordering uses link creation time.                |
+| Saved-passenger prefix search    | GET /api/customers/me/passengers accepts optional q, matching prefixes of passport and local name parts case-insensitively. Blank q returns the unfiltered saved list. Filtering, ownership and cursor behavior have tests. Results use last_booked_at descending, nulls last, with a stable saved-link ID tie-breaker.             |
 
 Customer endpoints use PUT for updates. PUT /api/customers/me/photo reads the
 owner's image metadata from Clerk after the frontend uploads/removes an image
@@ -73,8 +73,7 @@ is introduced. See the Screening README for this exception to the specification.
   integrated. Passport spelling must be entered explicitly; local names are stored
   separately. Latin accent normalization does not imply Thai transliteration.
 - **Booking integration:** F3b must provide the upcoming-booking adapter and update
-  last_booked_at. Saved-passenger search currently orders by created_at, not booking
-  recency. Booking-form autocomplete UI and any inclusion of the account owner are
+  last_booked_at. Saved-passenger search reads this column for booking-recency ordering. Booking-form autocomplete UI and any inclusion of the account owner are
   separate integration work; the existence of q does not complete that UI.
 - **Check-in integration:** F6 must consume the internal screening service and
   implement its check-in flow/messages. This profile scope does not claim that

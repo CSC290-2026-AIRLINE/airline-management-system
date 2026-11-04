@@ -193,3 +193,5 @@ Customer-web and staff-web F7 clients read the envelope and show validation fiel
 in their existing error areas. Legacy Nest/auth messages and non-JSON fallback
 messages remain supported. These conventions can be adopted by a future global
 filter in a separate PR; this PR does not register one.
+
+Saved-passenger suggestions are ordered by `customer_passenger.last_booked_at` descending, with nulls last and saved-link `id` descending as a stable tie-breaker. The same order applies with and without `q` and on cursor pages. F3b must update `last_booked_at` when a booking succeeds; F7 reads this existing column and does not manufacture booking timestamps. Cursor pages reflect current data, so concurrent bookings can change the order between requests.
