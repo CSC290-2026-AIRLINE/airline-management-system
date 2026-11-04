@@ -71,14 +71,14 @@ export interface DismissInput {
 const MAX_INT = 2_147_483_647
 const IATA = /^[A-Z]{3}$/
 
-type Body = Record<string, unknown>
+export type Body = Record<string, unknown>
 
-function asBody(body: unknown): Body {
+export function asBody(body: unknown): Body {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('body must be a JSON object')
   return body as Body
 }
 
-class Fields {
+export class Fields {
   readonly errors: string[] = []
   constructor(private readonly body: Body) {}
 
