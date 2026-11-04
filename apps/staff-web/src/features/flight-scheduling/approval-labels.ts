@@ -1,4 +1,4 @@
-import { localParts } from './format'
+import { localParts } from './format.ts'
 import type { ApprovalRow, ApprovalStatus } from './types'
 
 export const STATUS_LABEL: Record<ApprovalStatus, string> = {
