@@ -45,7 +45,7 @@ export function SettingsPage() {
         <PageHeader title="Settings">
           Feature 2 keeps its own settings in the flight_setting table. Each value is checked for its key before it is saved.
         </PageHeader>
-        {!CONNECTED.approvals && (
+        {!CONNECTED.approvalMode && (
           <NotConnected>Approval mode and response delay are hidden until the approval flow has a table and an API.</NotConnected>
         )}
         {settings.error && <p className="fs-error">{settings.error}</p>}
@@ -67,7 +67,7 @@ function SettingsForm({ initial }: { initial: Saved }) {
   const errors: string[] = []
   if (!/^\d+$/.test(form.holding) || Number(form.holding) < 1) errors.push('holding_limit_min must be a whole number of minutes')
   if (!/^[A-Za-z0-9]{2}$/.test(form.airline)) errors.push('airline_code must be two letters')
-  if (CONNECTED.approvals && !/^\d+$/.test(form.delay)) errors.push('approval_response_delay_min must be a whole number of minutes')
+  if (CONNECTED.approvalMode && !/^\d+$/.test(form.delay)) errors.push('approval_response_delay_min must be a whole number of minutes')
   const changed = JSON.stringify(form) !== JSON.stringify(saved)
 
   async function save() {
@@ -110,7 +110,7 @@ function SettingsForm({ initial }: { initial: Saved }) {
         </div>
       </Card>
 
-      {CONNECTED.approvals && (
+      {CONNECTED.approvalMode && (
         <Card>
           <h2>Schedule approval</h2>
           <div className="fs-setting">

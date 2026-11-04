@@ -4,7 +4,6 @@ import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { Callout } from '../components/Callout'
 import { FormField } from '../components/FormField'
 import { ListState } from '../components/ListState'
-import { NotConnected } from '../components/NotConnected'
 import { PageHeader } from '../components/PageHeader'
 import { SelectField } from '../components/SelectField'
 import { StaffShell } from '../components/StaffShell'
@@ -12,23 +11,32 @@ import { StatusPill } from '../components/StatusPill'
 import { Toast } from '../components/Toast'
 import { Card } from '../components/Card'
 import { TableWrap } from '../components/TableWrap'
-import { clockOf, formatServiceDate, minutesOf } from '../format'
+import { clockOf, formatServiceDate, localParts, localToIso } from '../format'
+import {
+  approvalBody,
+  approvalOutcome,
+  checkOutcome,
+  chunks,
+  confirmBody,
+  confirmOutcome,
+  gateCheckBody,
+  moveTo,
+  type ConfirmResult,
+  type GateCheckResult,
+  type PlanFlight,
+} from '../generate-flights'
+import { useAircraft } from '../hooks/useAircraft'
 import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
-import {
-  AIRCRAFT,
-  checkGates as runGateCheck,
-  confirmApproved as sendConfirm,
-  CONNECTED,
-  requestApproval as sendApprovalRequests,
-} from '../connected'
-import type { Approval, RouteRow, TimetableRow } from '../types'
+import { CONNECTED } from '../connected'
+import type { AirportRow, Approval, ApprovalRow, RouteRow, TimetableRow } from '../types'
 import '../flight-scheduling.css'
 
 interface PlannedFlight {
   service_date: string
   flight_number: string
   scheduled_dep_at: string
+  scheduled_arr_at: string
   departure_local: string // 2026-10-04T07:00, origin time
   arrival_local: string // destination time
   overnight: boolean
@@ -38,16 +46,17 @@ interface PlannedFlight {
 
 // POST /schedule-builder/preview for one timetable (real).
 interface Preview {
+  timetable_id: string
   flight_number: string
-  route: { origin: string; destination: string }
+  route: { id: string; origin: string; destination: string }
   period: { from: string; to: string }
   summary: { total: number; new: number; already_exists: number }
   warnings: string[]
   flights: PlannedFlight[]
 }
 
-// One line of the unsaved preview. The aircraft, check and approval columns and their actions are hidden until F9, the gate check and
-// the approval flow exist (see connected.ts); the preview itself is real.
+// One line of the unsaved preview. Its aircraft, gate check, approval and confirm are the real POST /flights/check, POST /approvals,
+// POST /approvals/:id/revise and POST /flights/confirm.
 interface Row {
   key: string
   flight: string
@@ -60,6 +69,11 @@ interface Row {
   skipped: boolean
   note: string
   aircraft: string
+  routeId: string
+  patternId: string | null
+  depAt: string // UTC instants, what the API takes
+  arrAt: string
+  approvalId: string | null
   check: 'none' | 'passed' | 'failed'
   checkText: string
   approval: Approval
@@ -83,6 +97,9 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
   const timetables = usePagedList<TimetableRow>('/timetables?limit=100', fetchWithAuth)
   const routes = usePagedList<RouteRow>('/routes?is_active=true&limit=100', fetchWithAuth)
   const routeById = new Map(routes.rows.map((r) => [r.id, r]))
+  const airports = usePagedList<AirportRow>('/airports?limit=100', fetchWithAuth)
+  const { aircraft: fleet } = useAircraft(fetchWithAuth)
+  const zoneOf = (code: string) => airports.rows.find((a) => a.iata_code === code)?.timezone ?? 'UTC'
 
   const [selected, setSelected] = useState<Set<string>>(new Set(pattern ? [pattern] : []))
   const [from, setFrom] = useState('')
@@ -137,6 +154,11 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
               skipped: f.already_exists,
               note: f.warnings.join('; '),
               aircraft: '',
+              routeId: p.route.id,
+              patternId: p.timetable_id,
+              depAt: f.scheduled_dep_at,
+              arrAt: f.scheduled_arr_at,
+              approvalId: null,
               check: 'none',
               checkText: '',
               approval: 'none',
@@ -164,79 +186,137 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
   }
   const selectable = rows.filter((r) => !r.skipped)
 
-  async function checkGates() {
-    for (const r of chosen) {
-      if (!r.aircraft) {
-        update(new Set([r.key]), () => ({ check: 'none', checkText: 'Assign an aircraft first' }))
-        continue
-      }
-      let result
-      try {
-        result = await runGateCheck(r.aircraft)
-      } catch (e) {
-        say(e instanceof Error ? e.message : String(e))
-        return
-      }
-      update(new Set([r.key]), () => ({
-        check: result.passed ? 'passed' : 'failed',
-        checkText: result.text,
-        approval: result.passed ? 'not_requested' : 'none',
-      }))
-    }
-    say('Gates checked.')
+  const planOf = (r: Row): PlanFlight => ({
+    routeId: r.routeId,
+    patternId: r.patternId,
+    flight: r.flight,
+    date: r.date,
+    aircraft: r.aircraft,
+    depAt: r.depAt,
+    arrAt: r.arrAt,
+  })
+
+  // Posts JSON to the flight-scheduling API and returns the parsed body, or throws the API's own message.
+  async function post<T>(path: string, body: object): Promise<T> {
+    const res = await fetchWithAuth(`${BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error(await errorMessage(res))
+    return (await res.json()) as T
   }
 
-  async function requestApproval() {
-    const ready = chosen.filter((r) => r.check === 'passed')
-    let answers
+  // The gates of each flight with an aircraft, in calls of at most 50. The answer names the exact rule a flight breaks.
+  async function checkGates() {
+    const without = chosen.filter((r) => !r.aircraft)
+    update(new Set(without.map((r) => r.key)), () => ({ check: 'none', checkText: 'Assign an aircraft first' }))
     try {
-      answers = await sendApprovalRequests(ready.map((r) => r.origin))
+      for (const group of chunks(chosen.filter((r) => r.aircraft))) {
+        const { results } = await post<{ results: GateCheckResult[] }>('/flights/check', gateCheckBody(group.map(planOf)))
+        for (const result of results) {
+          const outcome = checkOutcome(result)
+          update(new Set([group[result.index].key]), () => ({
+            check: outcome.check,
+            checkText: outcome.text,
+            approval: outcome.check === 'passed' ? 'not_requested' : 'none',
+            approvalId: null,
+            answer: '',
+            slots: [],
+          }))
+        }
+      }
+      say('Gates checked.')
     } catch (e) {
       say(e instanceof Error ? e.message : String(e))
-      return
     }
-    const byKey = new Map(ready.map((r, i) => [r.key, answers[i]]))
-    setRows((all) =>
-      all.map((r) => {
-        const a = byKey.get(r.key)
-        return a ? { ...r, approval: a.approval, answer: a.text, slots: a.slots } : r
-      }),
-    )
-    const count = (a: Approval) => answers.filter((x) => x.approval === a).length
+  }
+
+  // One request per flight that passed its gates; the simulated approver of the origin airport answers each.
+  async function requestApproval() {
+    const ready = chosen.filter((r) => r.check === 'passed')
+    const answers: Approval[] = []
+    for (const r of ready) {
+      try {
+        const a = await post<ApprovalRow>('/approvals', approvalBody(planOf(r)))
+        const outcome = approvalOutcome(a, zoneOf(r.origin))
+        answers.push(outcome.approval)
+        update(new Set([r.key]), () => ({ ...outcome, approvalId: a.id }))
+      } catch (e) {
+        answers.push('none')
+        update(new Set([r.key]), () => ({
+          approval: 'none',
+          approvalId: null,
+          answer: '',
+          check: 'failed',
+          checkText: e instanceof Error ? e.message : String(e),
+        }))
+      }
+    }
+    const count = (a: Approval) => answers.filter((x) => x === a).length
     say(
       `${ready.length} requests sent: ${count('approved')} approved, ${count('offered')} other times offered, ${count('pending')} pending, ${count('rejected')} rejected.`,
     )
   }
 
-  // The row keeps its flight time; only the departure moves, and the arrival follows from the same block time.
-  function pickSlot(r: Row, slot: string) {
-    const block = (minutesOf(r.arrives) - minutesOf(r.departs) + 24 * 60) % (24 * 60)
-    update(new Set([r.key]), () => ({
-      departs: slot,
-      arrives: clockOf(minutesOf(slot) + block),
-      approval: 'not_requested',
-      answer: `${slot} chosen; request approval again`,
-      slots: [],
-    }))
-    say(`${r.flight} on ${r.date} moved to ${slot}.`)
-  }
-
-  async function confirmApproved() {
-    const ok = chosen.filter((r) => r.approval === 'approved')
+  // An offered time is a revision of the request: the approver already offered it, so it is approved at once.
+  async function pickSlot(r: Row, slot: string) {
+    if (!r.approvalId) return
+    const zone = zoneOf(r.origin)
+    const moved = moveTo(r, slot, zone)
     try {
-      await sendConfirm(ok.map((r) => r.key))
+      const a = await post<ApprovalRow>(`/approvals/${r.approvalId}/revise`, { dep_at: moved.depAt, arr_at: moved.arrAt })
+      update(new Set([r.key]), () => ({
+        ...moved,
+        ...approvalOutcome(a, zone),
+        approvalId: a.id,
+        departs: localParts(moved.depAt, zone).time,
+        arrives: localParts(moved.arrAt, zoneOf(r.destination)).time,
+      }))
+      say(`${r.flight} on ${r.date} moved to ${slot}: ${approvalOutcome(a, zone).approval}.`)
     } catch (e) {
       say(e instanceof Error ? e.message : String(e))
-      return
     }
-    setConfirmed(ok)
-    setRows((all) => all.filter((r) => !ok.some((o) => o.key === r.key)))
-    setPicked(new Set())
-    say(`${ok.length} of ${ok.length} flights confirmed.`)
+  }
+
+  // Saves the approved flights, in calls of at most 50. A flight that fails stays in the table with the reason.
+  async function confirmApproved() {
+    const ok = chosen.filter((r) => r.approval === 'approved' && r.approvalId)
+    const saved: Row[] = []
+    try {
+      for (const group of chunks(ok)) {
+        const { results } = await post<{ results: ConfirmResult[] }>(
+          '/flights/confirm',
+          confirmBody(group.map((r) => ({ ...planOf(r), approvalId: r.approvalId as string }))),
+        )
+        for (const result of results) {
+          const row = group[result.index]
+          const outcome = confirmOutcome(result)
+          if (outcome.saved) saved.push(row)
+          else
+            update(new Set([row.key]), () => ({
+              check: 'failed',
+              checkText: outcome.text,
+              approval: 'none',
+              approvalId: null,
+              answer: '',
+              slots: [],
+            }))
+        }
+      }
+    } catch (e) {
+      say(e instanceof Error ? e.message : String(e))
+    }
+    if (saved.length > 0) {
+      setConfirmed((done) => [...(done ?? []), ...saved])
+      setRows((all) => all.filter((r) => !saved.some((o) => o.key === r.key)))
+      setPicked(new Set())
+    }
+    say(`${saved.length} of ${ok.length} flights confirmed.`)
   }
 
   function assign() {
-    update(picked, () => ({ aircraft: assignTo, check: 'none', checkText: '', approval: 'none', answer: '', slots: [] }))
+    update(picked, () => ({ aircraft: assignTo, check: 'none', checkText: '', approval: 'none', approvalId: null, answer: '', slots: [] }))
     setAssigning(false)
   }
 
@@ -251,6 +331,8 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
     if (!route) return
     const [h, m] = oneOff.time.split(':').map(Number)
     const arr = h * 60 + m + route.block_time_min
+    // The time is local at the origin, which is also where the service date counts.
+    const depAt = localToIso(oneOff.date, oneOff.time, zoneOf(route.origin))
     const row: Row = {
       key: `${oneOff.flight}-${oneOff.date}`,
       flight: oneOff.flight.toUpperCase(),
@@ -263,6 +345,11 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
       skipped: false,
       note: 'one-off flight',
       aircraft: '',
+      routeId: route.id,
+      patternId: null,
+      depAt,
+      arrAt: new Date(Date.parse(depAt) + route.block_time_min * 60000).toISOString(),
+      approvalId: null,
       check: 'none',
       checkText: '',
       approval: 'none',
@@ -413,12 +500,6 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
 
         {previews && (
           <>
-            {!(CONNECTED.aircraft && CONNECTED.gates && CONNECTED.approvals) && (
-              <NotConnected>
-                The previewed flights are real. Assigning aircraft, the gate checks, approval and confirm are hidden until feature 9, the
-                gate check and the approval flow exist.
-              </NotConnected>
-            )}
             {previews.length > 0 && (
               <Card>
                 <h2>Preview report</h2>
@@ -498,7 +579,7 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
                   <div className="fs-batch-form">
                     <SelectField label="Aircraft for all selected flights" value={assignTo} onChange={(e) => setAssignTo(e.target.value)}>
                       <option value="">Choose an aircraft</option>
-                      {AIRCRAFT.map((a) => (
+                      {fleet.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.label}
                         </option>
@@ -597,7 +678,8 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
                         {CONNECTED.aircraft && (
                           <td>
                             {r.aircraft ? (
-                              AIRCRAFT.find((a) => a.id === r.aircraft)
+                              fleet
+                                .find((a) => a.id === r.aircraft)
                                 ?.label.split(' · ')
                                 .slice(0, 2)
                                 .join(' · ')
@@ -640,7 +722,7 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
                                 {r.approval === 'offered' && (
                                   <span className="fs-actions fs-start">
                                     {r.slots.map((slot) => (
-                                      <button key={slot} type="button" className="fs-button-light" onClick={() => pickSlot(r, slot)}>
+                                      <button key={slot} type="button" className="fs-button-light" onClick={() => void pickSlot(r, slot)}>
                                         {slot}
                                       </button>
                                     ))}
