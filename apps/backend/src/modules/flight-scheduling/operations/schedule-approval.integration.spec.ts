@@ -5,7 +5,10 @@ import { DbAircraftDirectory } from './aircraft-directory'
 import { AircraftFeasibilityService } from './aircraft-feasibility.service'
 import { ApprovalService } from './approval.service'
 import { FlightConfirmService } from './flight-confirm.service'
+import { CascadeDetector } from './cascade-detector'
+import { FlightOperationsService } from './flight-operations.service'
 import { GateCheckService } from './gate-check.service'
+import { SettingsService } from '../settings.service'
 import { FlightEventBus, FlightEventPublisher } from './flight-event-bus'
 import { FlightEventWriter } from './flight-event-writer'
 import { DbScheduleApprovals } from './schedule-approvals'
@@ -35,6 +38,7 @@ suite('schedule approvals and confirm against Postgres', () => {
   let approvals: ApprovalService
   let confirm: FlightConfirmService
   let gates: GateCheckService
+  let operations: FlightOperationsService
 
   const run = Math.random().toString(36).slice(2, 8).toUpperCase()
   // A random day in 2027, so a rerun does not meet the hourly cap of an earlier run.
@@ -99,6 +103,17 @@ suite('schedule approvals and confirm against Postgres', () => {
       new DbScheduleApprovals(),
     )
     gates = new GateCheckService(db, new AircraftFeasibilityService(db, new DbAircraftDirectory(db)))
+    const feasibility = new AircraftFeasibilityService(db, new DbAircraftDirectory(db))
+    operations = new FlightOperationsService(
+      db,
+      new FlightEventWriter(clock),
+      new FlightEventPublisher(db, new FlightEventBus(), clock),
+      new CascadeDetector(feasibility, clock),
+      feasibility,
+      new SettingsService(db),
+      new DbScheduleApprovals(),
+      clock,
+    )
     await db.$connect()
     staff = (await db.staff.findFirstOrThrow({ select: { id: true } })).id
     routeId = (await db.route.findFirstOrThrow({ where: { origin: 'BKK', destination: 'CNX' }, select: { id: true } })).id
@@ -233,6 +248,32 @@ suite('schedule approvals and confirm against Postgres', () => {
     const moved = await gates.availability(flight.id, `${date}T06:00:00Z`)
     expect(moved).toMatchObject({ feasible: true, dep_at: new Date(`${date}T06:00:00Z`), arr_at: new Date(`${date}T07:15:00Z`) })
     expect((await db.flight.findUniqueOrThrow({ where: { id: flight.id } })).dep_at).toEqual(dep)
+  })
+
+  it('reschedules a flight with an approved request for the new times, once', async () => {
+    const plane = await aircraft('SSS', longType)
+    const number = nextNumber()
+    const created = await approvals.create(request(number, plane), staff)
+    const { flight } = await confirm.confirm(confirmBody(created.id, number, plane), staff)
+    const newDep = new Date(`${date}T06:00:00Z`)
+    const newArr = new Date(`${date}T07:15:00Z`)
+    const ask = () =>
+      approvals.create({ ...request(number, plane), purpose: 'reschedule', flight_id: flight.id, dep_at: newDep, arr_at: newArr }, staff)
+    const approved = await ask()
+    expect(approved).toMatchObject({ status: 'approved', purpose: 'reschedule' })
+
+    // times other than the approved ones are refused, and the flight stays where it was
+    await expect(
+      settle(operations.reschedule(flight.id, { approval_id: approved.id, dep_at: new Date(`${date}T07:00:00Z`), arr_at: newArr }, staff)),
+    ).resolves.toBe(409)
+    expect((await db.flight.findUniqueOrThrow({ where: { id: flight.id } })).dep_at).toEqual(dep)
+
+    const { flight: moved } = await operations.reschedule(flight.id, { approval_id: approved.id, dep_at: newDep, arr_at: newArr }, staff)
+    expect(moved.dep_at).toEqual(newDep)
+    expect(await approvals.get(approved.id)).toMatchObject({ status: 'consumed', resulting_flight_id: flight.id })
+    await expect(
+      settle(operations.reschedule(flight.id, { approval_id: approved.id, dep_at: newDep, arr_at: newArr }, staff)),
+    ).resolves.toBe(409)
   })
 
   it('does not accept the same approval twice', async () => {

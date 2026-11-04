@@ -12,6 +12,7 @@ import {
   parseDivertBody,
   parseEndHoldBody,
   parseHoldBody,
+  parseRescheduleBody,
   parseResolveBody,
 } from '../dto/operations.dto'
 import { ConflictService, type ListConflictsQueryDto } from './conflict.service'
@@ -102,6 +103,13 @@ export class FlightOperationsController {
   async endHold(@Param('id') id: string, @Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
     const { note } = parseEndHoldBody(body)
     return this.operations.endHold(id, note, await this.actors.staffIdFor(user))
+  }
+
+  @Post('flights/:id/reschedule')
+  @HttpCode(200)
+  async reschedule(@Param('id') id: string, @Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    const input = parseRescheduleBody(body)
+    return this.operations.reschedule(id, input, await this.actors.staffIdFor(user))
   }
 
   @Put('flights/:id/aircraft')

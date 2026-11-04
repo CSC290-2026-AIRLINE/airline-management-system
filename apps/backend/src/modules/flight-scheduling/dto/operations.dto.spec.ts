@@ -9,6 +9,7 @@ import {
   parseGateCheckBody,
   parseEndHoldBody,
   parseHoldBody,
+  parseRescheduleBody,
   parseResolveBody,
 } from './operations.dto'
 
@@ -224,6 +225,25 @@ describe('operations DTO parsers', () => {
         'flights must hold 1 to 50 flights to check',
       ])
       expect(errorsOf(() => parseGateCheckBody(one()))).toEqual(['flights must hold 1 to 50 flights to check'])
+    })
+  })
+
+  describe('parseRescheduleBody', () => {
+    const body = { approval_id: APPROVAL, dep_at: '2026-11-02T13:00:00Z', arr_at: '2026-11-02T15:00:00Z' }
+
+    it('parses the approval and the new times, with an optional reason and note', () => {
+      expect(parseRescheduleBody({ ...body, reason_code: 'zzwx', note: ' later ' })).toEqual({
+        approval_id: APPROVAL,
+        dep_at: new Date('2026-11-02T13:00:00Z'),
+        arr_at: new Date('2026-11-02T15:00:00Z'),
+        reason_code: 'ZZWX',
+        note: 'later',
+      })
+    })
+
+    it('requires the approval and times that run forward', () => {
+      expect(errorsOf(() => parseRescheduleBody({ ...body, approval_id: undefined }))).toEqual(['approval_id is required'])
+      expect(errorsOf(() => parseRescheduleBody({ ...body, arr_at: body.dep_at }))).toEqual(['arr_at must be after dep_at'])
     })
   })
 })

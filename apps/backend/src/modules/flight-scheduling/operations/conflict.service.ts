@@ -6,7 +6,6 @@ import { AIRCRAFT_DIRECTORY, type AircraftDirectory, F9_NOT_CONNECTED } from './
 import { AUDIT_SINK, type AuditSink } from './audit-sink'
 import { FLIGHT_CLOCK, type FlightClock } from './flight-clock'
 import { FlightOperationsService, type OperationResult } from './flight-operations.service'
-import { APPROVAL_TABLES_MISSING } from './schedule-approvals'
 
 const STATUSES = ['open', 'resolved', 'dismissed', 'superseded']
 
@@ -103,10 +102,9 @@ export class ConflictService {
         },
         {
           resolution: 'reschedule',
-          available: false,
+          available: open,
           needs: ['approval_id', 'dep_at', 'arr_at'],
           notes: [],
-          blocked_by: APPROVAL_TABLES_MISSING,
         },
         { resolution: 'cancel_refund', available: open, needs: ['reason_code'], notes: [] },
         {

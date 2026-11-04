@@ -196,6 +196,12 @@ export function parseAircraftChangeBody(raw: unknown): AircraftChangeInput {
   return f.done({ aircraft_id: f.uuid('aircraft_id'), note: f.optionalText('note') })
 }
 
+/** POST flights/:id/reschedule: the approved request and the new times it covers. */
+export function parseRescheduleBody(raw: unknown): RescheduleInput {
+  const f = new Fields(asBody(raw))
+  return f.done(rescheduleFields(f))
+}
+
 function rescheduleFields(f: Fields): RescheduleInput {
   const approval_id = f.uuid('approval_id')
   const dep_at = f.instant('dep_at')
