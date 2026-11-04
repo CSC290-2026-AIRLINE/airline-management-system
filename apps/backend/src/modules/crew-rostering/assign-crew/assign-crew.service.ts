@@ -81,6 +81,18 @@ export interface AssignCrewParams {
   base: string
 }
 
+/** How auto-assign picks people. */
+export interface AutoAssignOptions {
+  /**
+   * Demo mode: now and then a seat gets someone who is not rested, a local speaker is skipped or
+   * a police officer is left out, so Ops have breaks to fix. Off by default, so a normal run
+   * picks only legal crew and a break comes only from a real shortage.
+   */
+  demoBreaks?: boolean
+  /** The random source; fixed in tests. */
+  random?: () => number
+}
+
 export interface RosterRunRow {
   id: string
   base: string
@@ -347,7 +359,7 @@ export class AssignCrewService {
    * so a re-run is a re-crew rather than a second set of seats. Rows Ops added by hand
    * (`assigned_by = 'ops'`) stay, and the seats they fill are not filled again.
    */
-  async autoAssign(rosterRunId: string, pairingIds: string[]): Promise<RunResult> {
+  async autoAssign(rosterRunId: string, pairingIds: string[], options: AutoAssignOptions = {}): Promise<RunResult> {
     const { run, pairings } = await this.loadRun(rosterRunId)
     if (run.status === 'published') throw new ConflictException('This roster is published and can no longer be crewed automatically')
 
@@ -378,7 +390,7 @@ export class AssignCrewService {
 
     const rows: Prisma.pairing_leg_assignmentCreateManyInput[] = []
     for (const pairing of targets) {
-      const plan = this.planPairing(pairing, pool, busy)
+      const plan = this.planPairing(pairing, pool, busy, options)
       for (const leg of pairing.legs) {
         const byOps = kept.filter((row) => row.pairing_leg_id === leg.id)
         const onLeg = new Set(byOps.map((row) => row.crew_id))
@@ -446,12 +458,19 @@ export class AssignCrewService {
    * A candidate must hold the seat's role, a licence valid through the last flight date,
    * the fleet of every leg (police travel as passengers and are exempt), a current type
    * rating if a pilot, enough rest either side of the pairing and room under the 28-day
-   * cap. Among those, a person is picked at random; now and then (`BREAK_RATE`) the pick is
-   * someone who is qualified but not rested, so a run has rule breaks for Ops to fix. With nobody
-   * legal a seat stays empty. The chosen people are then marked busy, which the next pairing's
-   * legal picks respect.
+   * cap. Among those, a person is picked at random, a local-language speaker first for the
+   * cabin when one is legal and free, and the police complement is always filled. With nobody
+   * legal a seat stays empty, which is a real `NO_LEGAL_CREW` shortage. Only with `demoBreaks`
+   * does the dice sometimes pick someone qualified but not rested (`BREAK_RATE`), skip the local
+   * speaker or leave a police officer out. The chosen people are then marked busy, which the
+   * next pairing's legal picks respect.
    */
-  private planPairing(pairing: RunPairing, pool: CrewDbRow[], busy: Map<string, BusyLeg[]>): Record<SeatRole, CrewDbRow[]> {
+  private planPairing(
+    pairing: RunPairing,
+    pool: CrewDbRow[],
+    busy: Map<string, BusyLeg[]>,
+    { demoBreaks = false, random = Math.random }: AutoAssignOptions,
+  ): Record<SeatRole, CrewDbRow[]> {
     const { limits } = pairing
     const first = pairing.legs[0]
     const last = pairing.legs[pairing.legs.length - 1]
@@ -489,8 +508,8 @@ export class AssignCrewService {
       const picked: CrewDbRow[] = []
       for (let taken = 0; taken < Math.max(0, count); taken += 1) {
         const legal = pool.filter((member) => eligible(member, seat) && prefer(member))
-        const loose = pool.filter((member) => eligible(member, seat, false) && prefer(member))
-        const member = pickOne(legal, loose, Math.random)
+        const loose = demoBreaks ? pool.filter((member) => eligible(member, seat, false) && prefer(member)) : legal
+        const member = pickOne(legal, loose, random)
         if (!member) break
         chosen.add(member.id)
         picked.push(member)
@@ -511,14 +530,15 @@ export class AssignCrewService {
     for (const languages of languageSets.values()) {
       const have = cabin.filter((member) => speaks(member.languages, languages)).length
       const room = CABIN_CREW_PER_LEG - cabin.length
-      // Now and then the speaker is left to chance, which is what raises NO_LOCAL_CREW.
-      const wanted = Math.random() < LOCAL_MISS_RATE ? 0 : Math.min(room, limits.minLocalCrew - have)
+      // In demo mode the speaker is sometimes left to chance, which is what raises NO_LOCAL_CREW.
+      const wanted = demoBreaks && random() < LOCAL_MISS_RATE ? 0 : Math.min(room, limits.minLocalCrew - have)
       cabin.push(...pick('cabin_crew', wanted, (member) => speaks(member.languages, languages)))
     }
     cabin.push(...pick('cabin_crew', CABIN_CREW_PER_LEG - cabin.length))
 
     const international = pairing.legs.some((leg) => leg.international)
-    const policeWanted = Math.random() < POLICE_SHORT_RATE ? Math.max(0, limits.minPoliceInternational - 1) : limits.minPoliceInternational
+    const policeWanted =
+      demoBreaks && random() < POLICE_SHORT_RATE ? Math.max(0, limits.minPoliceInternational - 1) : limits.minPoliceInternational
     const police = international ? pick('police', policeWanted) : []
 
     const plan: Record<SeatRole, CrewDbRow[]> = { captain, first_officer: firstOfficer, cabin_crew: cabin, police }

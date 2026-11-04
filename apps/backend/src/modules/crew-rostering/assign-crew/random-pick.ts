@@ -1,11 +1,11 @@
 /**
- * The dice behind auto-assign.
+ * The dice behind auto-assign's demo mode.
  *
- * Auto-assign stands in for a roster tool that fills seats without being perfect, so Ops
- * have something to fix in the next step. Each seat is filled at random, and now and then the
- * pick is somebody who is qualified for the seat but not rested, which is what produces the
- * `REST_SHORT`, `OVERLAP` and `HOURS_28D` breaks. Pure, with the random source passed in, so
- * the odds can be tested with a fixed sequence.
+ * By default auto-assign picks only legal crew. With `demoBreaks` it stands in for a roster tool
+ * that is not perfect, so Ops have something to fix in the next step: each seat is filled at
+ * random, and now and then the pick is somebody who is qualified for the seat but not rested,
+ * which is what produces the `REST_SHORT`, `OVERLAP` and `HOURS_28D` breaks. Pure, with the
+ * random source passed in, so the odds can be tested with a fixed sequence.
  */
 
 /** How often a seat is filled by someone who clears the role, licence and fleet checks but not rest or hours. */

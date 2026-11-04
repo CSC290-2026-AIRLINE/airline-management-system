@@ -32,10 +32,19 @@ export class AssignCrewController {
     return this.assignCrewService.getRun(requireUuid(rosterRunId, 'rosterRunId'))
   }
 
-  /** Crews the chosen pairings. An empty or missing `pairingIds` crews the whole run. */
+  /**
+   * Crews the chosen pairings with legal crew only. An empty or missing `pairingIds` crews the whole run.
+   * `?demoBreaks=true` lets the dice plant rule breaks for Ops to fix, for demos.
+   */
   @Post('runs/:rosterRunId/auto-assign')
-  async autoAssign(@Param('rosterRunId') rosterRunId: string, @Body() body: unknown): Promise<RunResult> {
-    return this.assignCrewService.autoAssign(requireUuid(rosterRunId, 'rosterRunId'), parsePairingIds(asObjectOrEmpty(body).pairingIds))
+  async autoAssign(
+    @Param('rosterRunId') rosterRunId: string,
+    @Body() body: unknown,
+    @Query('demoBreaks') demoBreaks?: string,
+  ): Promise<RunResult> {
+    return this.assignCrewService.autoAssign(requireUuid(rosterRunId, 'rosterRunId'), parsePairingIds(asObjectOrEmpty(body).pairingIds), {
+      demoBreaks: parseFlag(demoBreaks, 'demoBreaks'),
+    })
   }
 
   /** Re-checks every rule without changing who is crewed. */
@@ -61,4 +70,10 @@ function parsePairingIds(value: unknown): string[] {
   if (value === undefined || value === null) return []
   if (!Array.isArray(value)) throw new BadRequestException('pairingIds must be an array')
   return value.map((entry, index) => requireUuid(entry, `pairingIds[${index}]`))
+}
+
+function parseFlag(value: string | undefined, field: string): boolean {
+  if (value === undefined || value === 'false') return false
+  if (value === 'true') return true
+  throw new BadRequestException(`${field} must be true or false`)
 }
