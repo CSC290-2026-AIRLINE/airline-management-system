@@ -252,6 +252,43 @@ export function parseConfirmBody(raw: unknown): ConfirmInput {
   return f.done({ approval_id, route_id, pattern_id, flight_number, service_date, aircraft_id, scheduled_dep_at, scheduled_arr_at })
 }
 
+export interface GateCheckFlight {
+  route_id: string
+  flight_number: string
+  aircraft_id: string
+  dep_at: Date
+  arr_at: Date
+}
+
+export interface GateCheckInput {
+  flights: GateCheckFlight[]
+}
+
+/** POST flights/check: `{ flights: [ ... ] }`, proposed flights that are not saved yet. Errors are reported with their position. */
+export function parseGateCheckBody(raw: unknown): GateCheckInput {
+  const list = asBody(raw).flights
+  if (!Array.isArray(list) || list.length < 1 || list.length > MAX_BATCH) {
+    throw new BadRequestException([`flights must hold 1 to ${MAX_BATCH} flights to check`])
+  }
+  const errors: string[] = []
+  const flights: GateCheckFlight[] = []
+  list.forEach((item, i) => {
+    const f = new Fields(typeof item === 'object' && item !== null ? (item as Body) : {})
+    const flight = {
+      route_id: f.uuid('route_id'),
+      flight_number: f.code('flight_number'),
+      aircraft_id: f.uuid('aircraft_id'),
+      dep_at: f.instant('dep_at'),
+      arr_at: f.instant('arr_at'),
+    }
+    if (!f.errors.length && !(flight.arr_at > flight.dep_at)) f.errors.push('arr_at must be after dep_at')
+    errors.push(...f.errors.map((m) => `flights[${i}]: ${m}`))
+    flights.push(flight)
+  })
+  if (errors.length) throw new BadRequestException(errors)
+  return { flights }
+}
+
 export interface BatchConfirmInput {
   flights: ConfirmInput[]
 }

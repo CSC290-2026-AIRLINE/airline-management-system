@@ -5,6 +5,7 @@ import { DbAircraftDirectory } from './aircraft-directory'
 import { AircraftFeasibilityService } from './aircraft-feasibility.service'
 import { ApprovalService } from './approval.service'
 import { FlightConfirmService } from './flight-confirm.service'
+import { GateCheckService } from './gate-check.service'
 import { FlightEventBus, FlightEventPublisher } from './flight-event-bus'
 import { FlightEventWriter } from './flight-event-writer'
 import { DbScheduleApprovals } from './schedule-approvals'
@@ -33,6 +34,7 @@ suite('schedule approvals and confirm against Postgres', () => {
   let db: DbService & PrismaClient
   let approvals: ApprovalService
   let confirm: FlightConfirmService
+  let gates: GateCheckService
 
   const run = Math.random().toString(36).slice(2, 8).toUpperCase()
   // A random day in 2027, so a rerun does not meet the hourly cap of an earlier run.
@@ -96,6 +98,7 @@ suite('schedule approvals and confirm against Postgres', () => {
       new FlightEventPublisher(db, new FlightEventBus(), clock),
       new DbScheduleApprovals(),
     )
+    gates = new GateCheckService(db, new AircraftFeasibilityService(db, new DbAircraftDirectory(db)))
     await db.$connect()
     staff = (await db.staff.findFirstOrThrow({ select: { id: true } })).id
     routeId = (await db.route.findFirstOrThrow({ where: { origin: 'BKK', destination: 'CNX' }, select: { id: true } })).id
@@ -203,6 +206,33 @@ suite('schedule approvals and confirm against Postgres', () => {
     })
     expect(await db.flight.count({ where: { flight_number: n2 } })).toBe(0)
     expect(await approvals.get(a2.id)).toMatchObject({ status: 'approved' })
+  })
+
+  it('checks proposed flights and a new time for a saved flight, and saves nothing', async () => {
+    const [busy, free] = [await aircraft('QQQ', longType), await aircraft('RRR', longType)]
+    const number = nextNumber()
+    const approval = await approvals.create(request(number, busy), staff)
+    const { flight } = await confirm.confirm(confirmBody(approval.id, number, busy), staff)
+    const proposed = (aircraft_id: string, flight_number: string) => ({
+      route_id: routeId,
+      flight_number,
+      aircraft_id,
+      dep_at: new Date(`${date}T03:30:00Z`),
+      arr_at: new Date(`${date}T04:45:00Z`),
+    })
+    const [clash, fine] = [nextNumber(), nextNumber()]
+
+    const { results } = await gates.check({ flights: [proposed(busy, clash), proposed(free, fine)] })
+
+    expect(results[0]).toMatchObject({ status: 200, feasible: false, outcome: 'not_feasible' })
+    expect(results[0].violations).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'aircraft_position', rule: 'overlap' })]))
+    expect(results[1]).toMatchObject({ status: 200, feasible: true, outcome: 'feasible' })
+    expect(await db.flight.count({ where: { flight_number: { in: [clash, fine] } } })).toBe(0)
+
+    // the saved flight can move later in the day on its own aircraft, and checking does not move it
+    const moved = await gates.availability(flight.id, `${date}T06:00:00Z`)
+    expect(moved).toMatchObject({ feasible: true, dep_at: new Date(`${date}T06:00:00Z`), arr_at: new Date(`${date}T07:15:00Z`) })
+    expect((await db.flight.findUniqueOrThrow({ where: { id: flight.id } })).dep_at).toEqual(dep)
   })
 
   it('does not accept the same approval twice', async () => {

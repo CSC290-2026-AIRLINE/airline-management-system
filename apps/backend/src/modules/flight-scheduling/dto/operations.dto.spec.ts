@@ -6,6 +6,7 @@ import {
   parseDelayBody,
   parseDismissBody,
   parseDivertBody,
+  parseGateCheckBody,
   parseEndHoldBody,
   parseHoldBody,
   parseResolveBody,
@@ -188,6 +189,41 @@ describe('operations DTO parsers', () => {
       expect(errorsOf(() => parseBatchConfirmBody({ flights: [one(), one({ flight_number: 'zz102' })] }))).toEqual([
         'flights must use a different approval_id each',
       ])
+    })
+  })
+
+  describe('parseGateCheckBody', () => {
+    const one = (over: object = {}) => ({
+      route_id: '00000000-0000-0000-0000-0000000000c2',
+      flight_number: 'zz101',
+      aircraft_id: '00000000-0000-0000-0000-0000000000a1',
+      dep_at: '2026-11-02T03:00:00Z',
+      arr_at: '2026-11-02T05:00:00Z',
+      ...over,
+    })
+
+    it('parses proposed flights and upper-cases the flight number', () => {
+      const { flights } = parseGateCheckBody({ flights: [one(), one({ flight_number: 'zz102' })] })
+      expect(flights.map((f) => f.flight_number)).toEqual(['ZZ101', 'ZZ102'])
+      expect(flights[0].dep_at).toEqual(new Date('2026-11-02T03:00:00Z'))
+    })
+
+    it('needs no approval and no service date', () => {
+      expect(() => parseGateCheckBody({ flights: [one()] })).not.toThrow()
+    })
+
+    it('reports every error with the position of its flight', () => {
+      expect(
+        errorsOf(() => parseGateCheckBody({ flights: [one(), one({ aircraft_id: 'x' }), one({ arr_at: '2026-11-02T03:00:00Z' })] })),
+      ).toEqual(['flights[1]: aircraft_id must be a UUID', 'flights[2]: arr_at must be after dep_at'])
+    })
+
+    it('rejects an empty list, one that is too long and a body without one', () => {
+      expect(errorsOf(() => parseGateCheckBody({ flights: [] }))).toEqual(['flights must hold 1 to 50 flights to check'])
+      expect(errorsOf(() => parseGateCheckBody({ flights: Array.from({ length: 51 }, () => one()) }))).toEqual([
+        'flights must hold 1 to 50 flights to check',
+      ])
+      expect(errorsOf(() => parseGateCheckBody(one()))).toEqual(['flights must hold 1 to 50 flights to check'])
     })
   })
 })
