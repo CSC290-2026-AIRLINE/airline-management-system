@@ -372,6 +372,7 @@ describe('FlightOperationsService', () => {
       await reschedule()
 
       expect(approvals.consume).toHaveBeenCalledWith(tx, expect.objectContaining({ purpose: 'reschedule', serviceDate: SERVICE_DATE }))
+      expect(feasibility.checkAircraftFeasibility).toHaveBeenCalledWith(AIRCRAFT, expect.anything(), tx, { congestion: true })
       expect(appended()[4]).toEqual({
         scheduled_dep_at: at('13:00'),
         scheduled_arr_at: at('15:00'),

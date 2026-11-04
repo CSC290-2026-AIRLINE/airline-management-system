@@ -165,6 +165,46 @@ suite('schedule approvals and confirm against Postgres', () => {
     expect(await approvals.get(a3.id)).toMatchObject({ status: 'approved' })
   })
 
+  it('rejects a flight that would pass the movement limit of a congestion window, and accepts one that fits', async () => {
+    // Its own day, so the window does not touch the other tests. 09:30 to 11:30 at Bangkok, one movement per hour from 09:30.
+    const other = new Date(Date.UTC(2028, 0, 1 + Math.floor(Math.random() * 360)))
+    const otherDate = other.toISOString().slice(0, 10)
+    const at = (hhmm: string) => new Date(`${otherDate}T${hhmm}:00Z`)
+    await db.disruption_reason.upsert({
+      where: { code: 'ZTCG' },
+      create: { code: 'ZTCG', category: 'other', description: 'integration test' },
+      update: {},
+    })
+    await db.airport_congestion.create({
+      data: { airport: 'BKK', starts_at: at('02:30'), ends_at: at('04:30'), max_movement_per_hour: 1, disruption_reason_code: 'ZTCG' },
+    })
+    const body = (number: string, plane: string, approval_id: string) => ({
+      approval_id,
+      route_id: routeId,
+      flight_number: number,
+      service_date: other,
+      aircraft_id: plane,
+      scheduled_dep_at: at('03:00'),
+      scheduled_arr_at: at('04:15'),
+    })
+    const ask = (number: string, plane: string) =>
+      approvals.create({ ...request(number, plane), service_date: other, dep_at: at('03:00'), arr_at: at('04:15') }, staff)
+    const [first, second] = [await aircraft('NNN', longType), await aircraft('OOO', longType)]
+    const [n1, n2] = [nextNumber(), nextNumber()]
+    const [a1, a2] = [await ask(n1, first), await ask(n2, second)]
+
+    await expect(confirm.confirm(body(n1, first, a1.id), staff)).resolves.toMatchObject({ flight: { status: 'scheduled' } })
+    await expect(confirm.confirm(body(n2, second, a2.id), staff)).rejects.toMatchObject({
+      response: {
+        violations: [
+          expect.objectContaining({ kind: 'congestion_exceeded', airport: 'BKK', movement: 'departure', limit: 1, movements: 2 }),
+        ],
+      },
+    })
+    expect(await db.flight.count({ where: { flight_number: n2 } })).toBe(0)
+    expect(await approvals.get(a2.id)).toMatchObject({ status: 'approved' })
+  })
+
   it('does not accept the same approval twice', async () => {
     const plane = await aircraft('BBB', longType)
     const number = nextNumber()

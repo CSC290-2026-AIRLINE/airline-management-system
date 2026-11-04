@@ -284,7 +284,7 @@ export class FlightOperationsService {
 
     const candidate = { ...legOf(flight), scheduledDepAt: input.dep_at, depAt: input.dep_at, arrAt: input.arr_at }
     assertGatesPass(
-      await this.feasibility.checkAircraftFeasibility(flight.aircraft_id, candidate, tx),
+      await this.feasibility.checkAircraftFeasibility(flight.aircraft_id, candidate, tx, { congestion: true }),
       'The new times do not pass the gates for this aircraft',
     )
     const approval = await this.approvals.consume(tx, {

@@ -14,6 +14,7 @@ export type GateViolation =
   | FeasibilityViolation
   | { kind: 'aircraft_unavailable'; rule: string; detail: string }
   | { kind: 'range_exceeded'; distanceKm: number; maxRangeKm: number; detail: string }
+  | { kind: 'congestion_exceeded'; airport: string; movement: 'departure' | 'arrival'; limit: number; movements: number; detail: string }
 
 export interface FeasibilityReport {
   /** incomplete: nothing failed, but some gates could not run (see `pending`), so this is not a pass. */
@@ -23,6 +24,7 @@ export interface FeasibilityReport {
 }
 
 const NOT_CANCELLED = { not: 'cancelled' }
+const HOUR_MS = 60 * 60 * 1000
 
 /**
  * A flight is saved only when every gate passes (Iteration-03). A failed gate is 409 with the failing rules; a gate that
@@ -50,7 +52,14 @@ export class AircraftFeasibilityService {
    * turnaround against the aircraft's other flights. Read-only. Callers that save pass their transaction as `client`, after
    * taking the aircraft lock, so the check sees exactly what the write will commit against.
    */
-  async checkAircraftFeasibility(aircraftId: string, candidate: FeasibilityCandidate, client: Tx = this.db): Promise<FeasibilityReport> {
+  async checkAircraftFeasibility(
+    aircraftId: string,
+    candidate: FeasibilityCandidate,
+    client: Tx = this.db,
+    // Congestion only applies to a flight that is being placed in time (confirm, reschedule). Changing the aircraft adds no movement,
+    // so it must not fail because a window was recorded over hours that are already full.
+    options: { congestion?: boolean } = {},
+  ): Promise<FeasibilityReport> {
     if (!UUID.test(aircraftId)) throw new BadRequestException('aircraft_id must be a UUID')
     if (!(candidate.arrAt > candidate.depAt)) throw new BadRequestException('arrival must be after departure')
 
@@ -81,9 +90,52 @@ export class AircraftFeasibilityService {
     const required = await this.resolver(client, [candidate.origin, candidate.destination], facts?.minTurnaroundMinutes ?? null)
 
     violations.push(...checkAircraftFeasibility(candidate, others, required).violations)
+    if (options.congestion) violations.push(...(await this.congestionViolations(client, candidate)))
 
     const status = violations.length ? 'not_feasible' : pending.length ? 'incomplete' : 'feasible'
     return { status, violations, pending }
+  }
+
+  /**
+   * A congestion window (airport_congestion) limits the movements, departures plus arrivals, in each hour counted from the window's
+   * start (the same buckets the congestion list uses). The candidate's departure is checked at its origin and its arrival at its
+   * destination; the movements of other flights in that hour plus this one must not pass the limit.
+   * ponytail: no lock per airport, so two confirms for different aircraft in one full hour can both pass; add an airport advisory lock
+   * if that matters. A diverted flight still counts at its planned destination.
+   */
+  private async congestionViolations(client: Tx, candidate: FeasibilityCandidate): Promise<GateViolation[]> {
+    const violations: GateViolation[] = []
+    const moves = [
+      { airport: candidate.origin, at: candidate.depAt, movement: 'departure' as const },
+      { airport: candidate.destination, at: candidate.arrAt, movement: 'arrival' as const },
+    ]
+    for (const { airport, at, movement } of moves) {
+      const window = await client.airport_congestion.findFirst({ where: { airport, starts_at: { lte: at }, ends_at: { gt: at } } })
+      if (!window) continue
+      const from = new Date(window.starts_at.getTime() + Math.floor((at.getTime() - window.starts_at.getTime()) / HOUR_MS) * HOUR_MS)
+      const to = new Date(Math.min(from.getTime() + HOUR_MS, window.ends_at.getTime()))
+      const others = await client.flight.count({
+        where: {
+          status: NOT_CANCELLED,
+          ...(candidate.flightId && { id: { not: candidate.flightId } }),
+          OR: [
+            { route: { origin: airport }, dep_at: { gte: from, lt: to } },
+            { route: { destination: airport }, arr_at: { gte: from, lt: to } },
+          ],
+        },
+      })
+      if (others + 1 > window.max_movement_per_hour) {
+        violations.push({
+          kind: 'congestion_exceeded',
+          airport,
+          movement,
+          limit: window.max_movement_per_hour,
+          movements: others + 1,
+          detail: `${airport} allows ${window.max_movement_per_hour} movements per hour in that window; this ${movement} would be movement ${others + 1} of the hour starting ${from.toISOString()}`,
+        })
+      }
+    }
+    return violations
   }
 
   // The aircraft's nearest flight on each side by timetable order, plus anything overlapping the candidate's window.

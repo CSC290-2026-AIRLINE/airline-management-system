@@ -79,6 +79,7 @@ describe('FlightConfirmService.confirm', () => {
       AIRCRAFT,
       expect.objectContaining({ flightId: null, distanceKm: 800 }),
       tx,
+      { congestion: true },
     )
     expect(approvals.consume).toHaveBeenCalledWith(tx, expect.objectContaining({ approvalId: APPROVAL, purpose: 'new_flight' }))
     expect(tx.flight.create).toHaveBeenCalledWith({
