@@ -3,7 +3,7 @@ import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { loadBaseContext } from '../base-context'
 import { buildChains } from './chain-builder'
-import { isRestBetween, localDay } from '../crew-format'
+import { isRestBetween, localDay, shortName } from '../crew-format'
 
 /**
  * Feature 8 · Step 2 — build pairings.
@@ -130,6 +130,22 @@ export interface SaveLegsResult {
    * Kept so the page's types keep working.
    */
   withdrawnFromRun: boolean
+}
+
+export interface FlightImpactRow {
+  flightId: string
+  flightNumber: string
+  /** The pairings that use the flight; a flight is in one pairing at most, so there is none or one. */
+  pairings: {
+    id: string
+    code: string
+    rosterRunId: string | null
+    rosterRunStatus: 'draft' | 'published' | null
+    /** Everyone crewed on the pairing, once each. */
+    crew: { id: string; name: string; role: string }[]
+  }[]
+  pairingCount: number
+  crewCount: number
 }
 
 export interface DeletePairingResult {
@@ -415,6 +431,59 @@ export class BuildPairingService {
 
     const context = await this.loadContext(row.base_airport)
     return { pairing: this.toPairingRow(await this.findPairing(pairingId), context), withdrawnFromRun: false }
+  }
+
+  /**
+   * What a change to this flight touches: the pairings that use it and the crew assigned to them.
+   * Feature 2 reads it to re-check rosters after a flight changes.
+   */
+  async flightImpact(flightId: string): Promise<FlightImpactRow> {
+    const flight = await this.db.flight.findUnique({
+      where: { id: flightId },
+      select: {
+        id: true,
+        flight_number: true,
+        pairing_leg: {
+          select: {
+            pairing: {
+              select: { id: true, code: true, roster_run_pairing: { select: { roster_run: { select: { id: true, status: true } } } } },
+            },
+          },
+        },
+      },
+    })
+    if (!flight) throw new NotFoundException(`Flight ${flightId} was not found`)
+
+    const pairing = flight.pairing_leg?.pairing ?? null
+    const assignments = pairing
+      ? await this.db.pairing_leg_assignment.findMany({
+          where: { pairing_id: pairing.id, unassigned_at: null },
+          select: { role: true, crew: { select: { id: true, first_name: true, last_name: true } } },
+          orderBy: { created_at: 'asc' },
+        })
+      : []
+    const crew = [
+      ...new Map(assignments.map((row) => [row.crew.id, { id: row.crew.id, name: shortName(row.crew), role: row.role }])).values(),
+    ]
+
+    const run = pairing?.roster_run_pairing?.roster_run ?? null
+    return {
+      flightId: flight.id,
+      flightNumber: flight.flight_number,
+      pairings: pairing
+        ? [
+            {
+              id: pairing.id,
+              code: pairing.code,
+              rosterRunId: run?.id ?? null,
+              rosterRunStatus: run ? (run.status === 'published' ? 'published' : 'draft') : null,
+              crew,
+            },
+          ]
+        : [],
+      pairingCount: pairing ? 1 : 0,
+      crewCount: crew.length,
+    }
   }
 
   /** Hard-deletes a draft pairing; its flights go back to the unpaired list. */

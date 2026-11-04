@@ -6,6 +6,7 @@ import {
   type CommitResult,
   type GenerateResult,
   type DeletePairingResult,
+  type FlightImpactRow,
   type PairingListResult,
   type SaveLegInput,
   type SaveLegsResult,
@@ -38,6 +39,12 @@ export class BuildPairingController {
   @Post('pairings/generate')
   async generatePairings(@Body() body: unknown): Promise<GenerateResult> {
     return this.buildPairingService.generatePairings(parseBuildParams(asObject(body)))
+  }
+
+  /** The pairings and crew a change to this flight affects. Feature 2 uses it to re-check rosters. */
+  @Get('flights/:flightId/impact')
+  async flightImpact(@Param('flightId') flightId: string): Promise<FlightImpactRow> {
+    return this.buildPairingService.flightImpact(requireUuid(flightId, 'flightId'))
   }
 
   /** Stores the chosen pairings and hands them to the window's draft roster run. */
