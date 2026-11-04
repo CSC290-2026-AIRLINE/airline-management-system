@@ -1,4 +1,4 @@
-import { DbAircraftDirectory } from './aircraft-directory'
+import { DbAircraftDirectory, PendingAircraftDirectory } from './aircraft-directory'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
@@ -8,7 +8,7 @@ const FROM = new Date('2026-11-02T09:00:00Z')
 const TO = new Date('2026-11-02T11:00:00Z')
 
 describe('DbAircraftDirectory', () => {
-  const db = { aircraft: { findFirst: jest.fn() }, aircraft_status_period: { findFirst: jest.fn() } }
+  const db = { aircraft: { findFirst: jest.fn(), findMany: jest.fn() }, aircraft_status_period: { findFirst: jest.fn() } }
   const directory = new DbAircraftDirectory(db as never)
   const row = (over: object = {}) => ({
     tail_number: 'ZZ-AAA',
@@ -108,6 +108,32 @@ describe('DbAircraftDirectory', () => {
     it('returns null for an unknown aircraft', async () => {
       db.aircraft.findFirst.mockResolvedValue(null)
       await expect(directory.typeFacts(AIRCRAFT)).resolves.toBeNull()
+    })
+  })
+
+  describe('list', () => {
+    it('lists the fleet by tail number, leaving out deleted and retired aircraft and inactive types', async () => {
+      db.aircraft.findMany.mockResolvedValue([
+        { id: 'a1', tail_number: 'ZZ-AAA', aircraft_type: { code: 'Z320', model: 'Zed 320', max_range_km: 3000 } },
+      ])
+
+      await expect(directory.list()).resolves.toEqual([
+        { id: 'a1', tailNumber: 'ZZ-AAA', typeCode: 'Z320', model: 'Zed 320', maxRangeKm: 3000 },
+      ])
+      expect(db.aircraft.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            deleted_at: null,
+            OR: [{ retired_on: null }, { retired_on: { gte: expect.any(Date) } }],
+            aircraft_type: { is_active: true, deleted_at: null },
+          },
+          orderBy: { tail_number: 'asc' },
+        }),
+      )
+    })
+
+    it('is empty while Feature 9 is not connected', async () => {
+      await expect(new PendingAircraftDirectory().list()).resolves.toEqual([])
     })
   })
 })

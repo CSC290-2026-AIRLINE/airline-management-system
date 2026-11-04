@@ -362,6 +362,45 @@ suite('schedule approvals and confirm against Postgres', () => {
     await expect(settle(insight.impact(flight.id))).resolves.toBe(502)
   })
 
+  it('lists the fleet for the pickers, without retired aircraft or inactive types', async () => {
+    const listed = await aircraft('XXX', longType)
+    const retired = (
+      await db.aircraft.create({
+        data: {
+          tail_number: `YYY-${run}`,
+          aircraft_type_id: longType,
+          entry_into_service_date: new Date('2020-01-01'),
+          retired_on: new Date('2021-01-01'),
+          base_airport_code: 'BKK',
+        },
+      })
+    ).id
+    const inactiveType = (
+      await db.aircraft_type.create({
+        data: {
+          code: `OFF${run}`,
+          manufacturer: 'Test',
+          model: 'Off',
+          layout: {},
+          hold_weight_limit_kg: 1,
+          max_takeoff_weight_kg: 1,
+          max_range_km: 1,
+          min_turnaround_minutes: 1,
+          operating_cost_per_hour: 0,
+          cost_currency: 'THB',
+          is_active: false,
+        },
+      })
+    ).id
+    const hidden = await aircraft('ZZZ', inactiveType)
+
+    const ids = (await new DbAircraftDirectory(db).list()).map((a) => a.id)
+
+    expect(ids).toContain(listed)
+    expect(ids).not.toContain(retired)
+    expect(ids).not.toContain(hidden)
+  })
+
   it('does not accept the same approval twice', async () => {
     const plane = await aircraft('BBB', longType)
     const number = nextNumber()

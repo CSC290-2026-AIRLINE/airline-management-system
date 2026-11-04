@@ -17,6 +17,7 @@ import { SettingsService } from './settings.service'
 import { TimetableController } from './timetable.controller'
 import { TimetableService } from './timetable.service'
 import { AIRCRAFT_DIRECTORY, DbAircraftDirectory } from './operations/aircraft-directory'
+import { AircraftController } from './operations/aircraft.controller'
 import { AircraftFeasibilityService } from './operations/aircraft-feasibility.service'
 import { ApprovalController } from './operations/approval.controller'
 import { ApprovalService } from './operations/approval.service'
@@ -50,6 +51,7 @@ import { StaffActorService } from './operations/staff-actor.service'
     FlightOperationsController,
     ApprovalPolicyController,
     ApprovalController,
+    AircraftController,
   ],
   providers: [
     FlightSchedulingService,
