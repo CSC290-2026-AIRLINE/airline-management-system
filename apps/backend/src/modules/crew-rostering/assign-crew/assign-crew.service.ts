@@ -3,7 +3,7 @@ import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { loadBaseContext } from '../base-context'
 import { LOCAL_MISS_RATE, POLICE_SHORT_RATE, pickOne } from './random-pick'
-import { isoDate, localDay, shortName } from '../crew-format'
+import { isoDate, isRestBetween, shortName } from '../crew-format'
 
 /**
  * Feature 8 · Step 3 — assign crew.
@@ -563,7 +563,7 @@ export class AssignCrewService {
     for (const pairing of pairings) {
       const { limits } = pairing
 
-      for (const day of this.dutyDays(pairing.legs, context.timeZone)) {
+      for (const day of this.dutyDays(pairing.legs, limits)) {
         const minutes = this.dutyMinutes(day, limits)
         if (day.length > limits.maxFlightsPerDuty || minutes > limits.maxDutyHours * 60) {
           raise({
@@ -750,12 +750,18 @@ export class AssignCrewService {
     })
   }
 
-  /** Consecutive legs of one pairing that depart on the same local day form one duty. */
-  private dutyDays(legs: Leg[], timeZone: string): Leg[][] {
+  /**
+   * Consecutive legs of one pairing form one duty unless the rest between them (release to the
+   * next report) is at least the minimum rest. A leg landing 23:45 and the next leaving 00:05 is
+   * one duty, not two on either side of midnight.
+   */
+  private dutyDays(legs: Leg[], limits: RuleLimitsRow): Leg[][] {
     const days: Leg[][] = []
     for (const leg of legs) {
       const current = days[days.length - 1]
-      if (current && localDay(current[0].dep, timeZone) === localDay(leg.dep, timeZone)) current.push(leg)
+      const previous = current?.[current.length - 1]
+      if (previous && !isRestBetween(previous.arr, leg.dep, limits.reportMinutes, limits.releaseMinutes, limits.minRestHours))
+        current.push(leg)
       else days.push([leg])
     }
     return days
@@ -767,15 +773,27 @@ export class AssignCrewService {
     return Math.max(0, Math.round((end - start) / 60_000))
   }
 
-  /** A person's duties across every run: their legs grouped by pairing and local day, in time order. */
+  /**
+   * A person's duties across every run, in time order. Within one pairing, legs are one duty
+   * unless the rest between them reaches the minimum; different pairings are always separate
+   * duties, so rest between them is still checked.
+   */
   private personDuties(legs: BusyLeg[], context: Context): { firstLegId: string; start: number; end: number }[] {
-    const groups = new Map<string, BusyLeg[]>()
+    const { reportMinutes, releaseMinutes, minRestHours } = context.defaults
+    const groups: BusyLeg[][] = []
+    const open = new Map<string, BusyLeg[]>()
     for (const leg of [...legs].sort((a, b) => a.dep.getTime() - b.dep.getTime())) {
-      const key = `${leg.pairingId}|${localDay(leg.dep, context.timeZone)}`
-      groups.set(key, [...(groups.get(key) ?? []), leg])
+      const current = open.get(leg.pairingId)
+      const previous = current?.[current.length - 1]
+      if (current && previous && !isRestBetween(previous.arr, leg.dep, reportMinutes, releaseMinutes, minRestHours)) {
+        current.push(leg)
+      } else {
+        const group = [leg]
+        open.set(leg.pairingId, group)
+        groups.push(group)
+      }
     }
-    const { reportMinutes, releaseMinutes } = context.defaults
-    return [...groups.values()]
+    return groups
       .map((group) => ({
         firstLegId: group[0].legId,
         start: group[0].dep.getTime() - reportMinutes * 60_000,

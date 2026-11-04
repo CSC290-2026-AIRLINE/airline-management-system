@@ -3,7 +3,7 @@ import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { loadBaseContext } from '../base-context'
 import { buildChains } from './chain-builder'
-import { localDay } from '../crew-format'
+import { isRestBetween, localDay } from '../crew-format'
 
 /**
  * Feature 8 · Step 2 — build pairings.
@@ -581,7 +581,7 @@ export class BuildPairingService {
       gap === -1 ? '' : `${legs[gap].flightNumber} leaves ${legs[gap].origin} but the leg before it ends at ${legs[gap - 1].destination}.`,
     )
 
-    const days = this.dutyDays(legs, timeZone)
+    const days = this.dutyDays(legs, limits)
     const busiest = Math.max(...days.map((day) => day.length))
     add(
       'FLIGHTS_PER_DAY_EXCEEDED',
@@ -602,13 +602,22 @@ export class BuildPairingService {
     return { status: checks.some((check) => check.status === 'failed') ? 'failed' : 'passed', checks }
   }
 
-  /** Consecutive legs that depart on the same local day form one duty. */
-  private dutyDays(legs: FlightLegRow[], timeZone: string): FlightLegRow[][] {
+  /** Consecutive legs form one duty unless the rest between them reaches the minimum rest. */
+  private dutyDays(legs: FlightLegRow[], limits: PairingLimitsRow): FlightLegRow[][] {
     const days: FlightLegRow[][] = []
     for (const leg of legs) {
       const current = days[days.length - 1]
-      if (current && localDay(new Date(current[0].departureAt), timeZone) === localDay(new Date(leg.departureAt), timeZone))
-        current.push(leg)
+      const previous = current?.[current.length - 1]
+      const rested =
+        previous &&
+        isRestBetween(
+          new Date(previous.arrivalAt),
+          new Date(leg.departureAt),
+          limits.reportMinutes,
+          limits.releaseMinutes,
+          limits.minRestHours,
+        )
+      if (current && !rested) current.push(leg)
       else days.push([leg])
     }
     return days

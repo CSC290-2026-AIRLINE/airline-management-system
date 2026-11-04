@@ -19,3 +19,20 @@ export function localDay(instant: Date, timeZone: string): string {
 export function localTime(instant: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(instant)
 }
+
+/**
+ * Whether the time between one leg's arrival and the next leg's departure is a rest, that is,
+ * at least `minRestHours` from release (arrival plus `releaseMinutes`) to the next report
+ * (departure minus `reportMinutes`). Legs without a rest between them belong to one duty.
+ */
+export function isRestBetween(
+  arrival: Date,
+  nextDeparture: Date,
+  reportMinutes: number,
+  releaseMinutes: number,
+  minRestHours: number,
+): boolean {
+  const released = arrival.getTime() + releaseMinutes * 60_000
+  const reported = nextDeparture.getTime() - reportMinutes * 60_000
+  return reported - released >= minRestHours * 3_600_000
+}
