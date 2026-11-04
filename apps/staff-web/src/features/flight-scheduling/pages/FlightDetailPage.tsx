@@ -11,13 +11,25 @@ import { StatusPill } from '../components/StatusPill'
 import { Toast } from '../components/Toast'
 import { Card } from '../components/Card'
 import { TableWrap } from '../components/TableWrap'
-import { AIRCRAFT, checkReschedule, CONNECTED, costInputsFor, partnersFor, requestReschedule } from '../connected'
-import { capitalize, formatDateTime, WEEKDAYS } from '../format'
+import { STATUS_LABEL } from '../approval-labels'
+import { availabilityChecks } from '../availability'
+import { AIRCRAFT, CONNECTED, partnersFor } from '../connected'
+import { capitalize, formatDateTime, localParts, localToIso, WEEKDAYS } from '../format'
 import { useDisruptionReasons } from '../hooks/useDisruptionReasons'
 import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage } from '../hooks/usePagedList'
 import { useResource } from '../hooks/useResource'
-import type { AirportFeeRow, ConflictRow, FlightDetail, FlightEventRow, RescheduleCheck, TimetableRow } from '../types'
+import type {
+  AirportFeeRow,
+  ApprovalRow,
+  Availability,
+  ConflictRow,
+  CostEstimate,
+  FlightDetail,
+  FlightEventRow,
+  RescheduleCheck,
+  TimetableRow,
+} from '../types'
 import '../flight-scheduling.css'
 
 const thb = (n: number) => `${Math.round(n).toLocaleString('en-US')} THB`
@@ -37,6 +49,8 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
   const events = useResource<FlightEventRow[]>(`/flights/${flightId}/events`, fetchWithAuth)
   const conflicts = useResource<ConflictRow[]>(`/conflicts?flight_id=${flightId}`, fetchWithAuth)
   const pattern = useResource<TimetableRow>(flight.data?.pattern_id ? `/timetables/${flight.data.pattern_id}` : null, fetchWithAuth)
+
+  const estimate = useResource<CostEstimate>(CONNECTED.costEstimate ? `/flights/${flightId}/cost-estimate` : null, fetchWithAuth)
 
   const originFees = useResource<{ data: AirportFeeRow[] }>(
     flight.data?.route.origin ? `/airport-fees?airport=${flight.data.route.origin.iata_code}` : null,
@@ -61,7 +75,8 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
   const [aircraft, setAircraft] = useState('')
   const [proposed, setProposed] = useState('')
   const [checks, setChecks] = useState<RescheduleCheck[] | null>(null)
-  const [requested, setRequested] = useState(false)
+  const [slot, setSlot] = useState<{ dep_at: string; arr_at: string } | null>(null)
+  const [approval, setApproval] = useState<ApprovalRow | null>(null)
 
   // Sends one disruption to the backend, then reloads the flight, its events and its conflicts.
   async function send(path: string, method: 'POST' | 'PUT', body: object, success: string) {
@@ -91,23 +106,98 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
   const record = (action: 'delay' | 'cancel', body: object, success: string) =>
     send(action, 'POST', { reason_code: reason, ...body }, success)
 
+  // The proposed time is typed as local time at the origin airport, which is how the approver and the timetable read it.
+  const originZone = flight.data?.route.origin?.timezone ?? 'UTC'
+  const asInstant = (local: string) => localToIso(local.slice(0, 10), local.slice(11, 16), originZone)
+
+  function forgetCheck() {
+    setChecks(null)
+    setSlot(null)
+    setApproval(null)
+  }
+
+  // Posts JSON to the flight-scheduling API and returns the parsed body, or throws the API's own message.
+  async function post<T>(path: string, body: object): Promise<T> {
+    const res = await fetchWithAuth(`${BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error(await errorMessage(res))
+    return (await res.json()) as T
+  }
+
+  const fail = (e: unknown) => {
+    setWarn(true)
+    say(e instanceof Error ? e.message : String(e))
+  }
+
+  // Read-only: the same gates a reschedule runs, for the flight at the proposed departure.
   async function check() {
-    setRequested(false)
+    forgetCheck()
     try {
-      setChecks(await checkReschedule(flightId, proposed))
+      const res = await fetchWithAuth(`${BASE}/flights/${flightId}/availability?dep_at=${encodeURIComponent(asInstant(proposed))}`)
+      if (!res.ok) throw new Error(await errorMessage(res))
+      const a = (await res.json()) as Availability
+      setChecks(availabilityChecks(a))
+      setSlot({ dep_at: a.dep_at, arr_at: a.arr_at })
+      // A request for exactly this time may already be approved, for example after picking an offered time on the Approvals page.
+      if (CONNECTED.approvalQueue && a.feasible) {
+        const list = await fetchWithAuth(`${BASE}/approvals?status=approved&limit=100`)
+        if (list.ok) {
+          const rows = (await list.json()) as ApprovalRow[]
+          const found = rows.find(
+            (r) => r.purpose === 'reschedule' && r.flight_id === flightId && Date.parse(r.proposed_dep_at) === Date.parse(a.dep_at),
+          )
+          setApproval(found ?? null)
+        }
+      }
     } catch (e) {
-      setWarn(true)
-      say(e instanceof Error ? e.message : String(e))
+      fail(e)
     }
   }
 
-  async function request() {
+  // A reschedule changes the published timetable, so it is a request to the origin airport's (simulated) approver first.
+  async function request(f: FlightDetail) {
+    if (!slot) return
+    setBusy(true)
     try {
-      await requestReschedule(flightId, proposed)
-      setRequested(true)
+      const next = await post<ApprovalRow>('/approvals', {
+        purpose: 'reschedule',
+        flight_id: f.id,
+        route_id: f.route.id,
+        flight_number: f.flight_number,
+        service_date: f.service_date.slice(0, 10),
+        aircraft_id: f.aircraft_id,
+        ...slot,
+      })
+      setApproval(next)
+      setWarn(false)
+      say(`Request sent: ${STATUS_LABEL[next.status].toLowerCase()}.`)
     } catch (e) {
-      setWarn(true)
-      say(e instanceof Error ? e.message : String(e))
+      fail(e)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // With the request approved, moves the flight to the approved times.
+  async function reschedule() {
+    if (!slot || !approval) return
+    setBusy(true)
+    try {
+      await post(`/flights/${flightId}/reschedule`, { approval_id: approval.id, ...slot })
+      setWarn(false)
+      say('Flight rescheduled.')
+      forgetCheck()
+      setProposed('')
+      flight.reload()
+      events.reload()
+      conflicts.reload()
+    } catch (e) {
+      fail(e)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -116,7 +206,6 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
   else if (flight.error || !flight.data) body = <p role="alert">Could not load the flight: {flight.error}</p>
   else {
     const f = flight.data
-    const originZone = f.route.origin?.timezone ?? 'UTC'
     const destZone = f.route.destination?.timezone ?? 'UTC'
     const origin = f.route.origin?.iata_code ?? '—'
     const destination = f.effective_destination
@@ -129,32 +218,8 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
     ]
     const open = conflicts.data ?? []
     const partners = partnersFor(origin, destination)
-    // The full estimate needs feature 9 (operating cost, aircraft weight), the planned ground time and features 4 and 3b (revenue);
-    // until they are connected only the fees are listed. ponytail: amounts are treated as THB.
-    const inputs = costInputsFor()
-    const blockHours = f.route.block_time_min / 60
-    const cost = inputs && [
-      {
-        item: 'Operating cost',
-        basis: `${blockHours.toFixed(2)} block hours at ${thb(inputs.operatingPerHour)} per hour (feature 9)`,
-        amount: blockHours * inputs.operatingPerHour,
-      },
-      ...fees.map((fee) => ({
-        item: `${fee.airport} ${fee.fee_type} fee · ${fee.applies_on}`,
-        basis:
-          fee.unit === 'per_flight'
-            ? `${thb(fee.amount)} per flight`
-            : fee.unit === 'per_hour'
-              ? `${thb(fee.amount)} per hour × ${inputs.groundHours} h planned ground time`
-              : `${thb(fee.amount)} per tonne (aircraft weight comes from feature 9)`,
-        amount: fee.unit === 'per_tonne' ? 0 : fee.amount * (fee.unit === 'per_hour' ? inputs.groundHours : 1),
-      })),
-    ]
-    const estimated = cost?.reduce((sum, c) => sum + c.amount, 0) ?? 0
-    const revenue = inputs ? inputs.seats * inputs.seatPrice : 0
-    const arrivalProposed = proposed
-      ? formatDateTime(new Date(Date.parse(`${proposed}:00Z`) + f.route.block_time_min * 60000).toISOString(), 'UTC')
-      : '—'
+    const cost = estimate.data
+    const money = (n: number, currency: string) => `${Math.round(n).toLocaleString('en-US')} ${currency}`
 
     body = (
       <>
@@ -211,15 +276,15 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
             <div className="fs-fold-head">
               <h2>Cost estimate</h2>
               <button type="button" className="fs-fold-toggle" aria-expanded={costOpen} onClick={() => setCostOpen(!costOpen)}>
-                {cost ? thb(estimated) : `${fees.length} ${fees.length === 1 ? 'fee' : 'fees'}`}
+                {cost?.total ? money(cost.total.amount, cost.total.currency) : `${fees.length} ${fees.length === 1 ? 'fee' : 'fees'}`}
               </button>
             </div>
             <div className="fs-fold-body">
-              {cost && inputs && (
+              {cost && (
                 <>
                   <p className="fs-sub">
                     Block time times the aircraft type operating cost (feature 9), plus departure fees at {origin} and arrival fees at{' '}
-                    {destination}.
+                    {destination} in force on {day}.
                   </p>
                   <TableWrap>
                     <table className="fs-table fs-t-cost">
@@ -231,11 +296,11 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {cost.map((c) => (
+                        {cost.lines.map((c) => (
                           <tr key={c.item}>
                             <td>{c.item}</td>
                             <td className="fs-to">{c.basis}</td>
-                            <td className="fs-num">{thb(c.amount)}</td>
+                            <td className="fs-num">{money(c.amount, c.currency)}</td>
                           </tr>
                         ))}
                         <tr>
@@ -244,25 +309,22 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
                           </td>
                           <td></td>
                           <td className="fs-num">
-                            <b>{thb(estimated)}</b>
+                            <b>{cost.total ? money(cost.total.amount, cost.total.currency) : 'Mixed currencies'}</b>
                           </td>
                         </tr>
                       </tbody>
                     </table>
                   </TableWrap>
-                  <p className="fs-sub">
-                    Expected revenue (feature 4 fare quote and feature 3b seats sold): {inputs.seats} seats at {thb(inputs.seatPrice)} ={' '}
-                    {thb(revenue)}. Calculated when you open this page and not stored on the flight.
-                  </p>
-                  {revenue < estimated && (
-                    <Callout tone="crit">
-                      <b>Loss warning.</b> Expected revenue is {thb(estimated - revenue)} lower than the estimated cost. Change the aircraft
-                      or reschedule before confirming.
+                  {cost.pending.length > 0 && (
+                    <Callout tone="info">
+                      <b>Not included.</b> {cost.pending.join('; ')}.
                     </Callout>
                   )}
                 </>
               )}
-              {cost ? null : fees.length === 0 ? (
+              {cost ? null : estimate.loading ? (
+                <p className="fs-sub">Loading the estimate…</p>
+              ) : fees.length === 0 ? (
                 <p className="fs-sub">
                   No departure fees at {origin} or arrival fees at {destination} are in force on {day}.
                 </p>
@@ -417,21 +479,24 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
               </Card>
             </div>
 
-            {CONNECTED.gates && (
+            {CONNECTED.availability && (
               <Card>
                 <h2>Check another time or reschedule</h2>
                 <p className="fs-sub">
                   A reschedule changes the published timetable, so it needs an approval from the simulated {origin} slot coordinator first.
-                  The checks are read-only until you request approval.
+                  The checks are read-only until you request approval. Times are local at {origin}.
                 </p>
                 <div className="fs-filters">
                   <FormField
                     label="Proposed departure"
                     type="datetime-local"
                     value={proposed}
-                    onChange={(e) => setProposed(e.target.value)}
+                    onChange={(e) => {
+                      setProposed(e.target.value)
+                      forgetCheck()
+                    }}
                   />
-                  <FormField label="Arrival (from block time)" value={arrivalProposed} readOnly />
+                  <FormField label="Arrival (same flight length)" value={slot ? localParts(slot.arr_at, destZone).time : '—'} readOnly />
                   <button
                     type="button"
                     className="fs-button-light fs-button-lg fs-align-end"
@@ -450,22 +515,31 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
                         </li>
                       ))}
                     </ul>
-                    {CONNECTED.approvals && (
+                    {CONNECTED.approvalQueue && !approval && (
                       <div className="fs-form-actions">
                         <button
                           type="button"
                           className="fs-button"
-                          disabled={requested || checks.some((c) => c.label !== 'Passed')}
-                          onClick={() => void request()}
+                          disabled={busy || checks.some((c) => c.label !== 'Passed')}
+                          onClick={() => void request(f)}
                         >
                           Request approval for {proposed.slice(11, 16)}
                         </button>
-                        <span className="fs-sub">Approved requests move the flight and publish flight.rescheduled.</span>
+                        <span className="fs-sub">An approved request lets you move the flight, which publishes flight.rescheduled.</span>
                       </div>
                     )}
-                    {requested && (
-                      <Callout tone="info">
-                        Approval requested. The {origin} slot coordinator (simulated) answers on the Approvals page.
+                    {approval?.status === 'approved' && (
+                      <div className="fs-form-actions">
+                        <button type="button" className="fs-button" disabled={busy} onClick={() => void reschedule()}>
+                          Reschedule to {proposed.slice(11, 16)}
+                        </button>
+                        <span className="fs-sub">Approved by {approval.approver_airport}.</span>
+                      </div>
+                    )}
+                    {approval && approval.status !== 'approved' && (
+                      <Callout tone="info" action={<Link to="/approvals">Open Approvals</Link>}>
+                        <b>{STATUS_LABEL[approval.status]}.</b> {approval.response_note ?? 'Waiting for the approver.'} Pick a time that was
+                        offered on the Approvals page, then check that time here again to reschedule.
                       </Callout>
                     )}
                   </>

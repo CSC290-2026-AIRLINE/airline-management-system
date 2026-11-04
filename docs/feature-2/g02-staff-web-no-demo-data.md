@@ -11,27 +11,27 @@ Written 23 Oct 2026 by Kewalin (side B) for Nontouch (side A). Branch `feat-02-a
 
 ## How hiding works: `connected.ts`
 
-`apps/staff-web/src/features/flight-scheduling/connected.ts` holds one flag per unfinished part. All are `false` today except `approvalQueue` and `approvalPolicy`, which are `true` now that their APIs exist.
+`apps/staff-web/src/features/flight-scheduling/connected.ts` holds one flag per unfinished part. All are `false` today except `approvalQueue`, `approvalPolicy`, `availability` and `costEstimate`, which are `true` now that their APIs exist.
 
 | Flag | Waiting for | Hidden while `false` |
 |---|---|---|
 | `simClock` | F1 simulation clock | Clock chip in `TopBar` |
 | `aircraft` | F9 aircraft list | Change aircraft (flight detail, batch bar, conflicts); Assign aircraft and the Aircraft column (Generate flights) |
-| `gates` | `POST /flights/check`, `GET /flights/:id/availability` | "Check another time or reschedule" card; Check gates button; Check result column |
+| `gates` | F9 aircraft list (`POST /flights/check` exists, but a generated flight needs an aircraft from the list) | Check gates button and Check result column (Generate flights) |
+| `availability` | `GET /flights/:id/availability`, `POST /approvals`, `POST /flights/:id/reschedule` (connected) | "Check another time or reschedule" card on the flight detail page |
 | `approvals` | F9 aircraft list and a settings API for the approval mode | Approval mode card in Settings; Request approval and Confirm buttons; Approval column (Generate flights) |
 | `approvalQueue` | `GET /approvals`, `POST /approvals/:id/respond` and `/revise` (connected) | Approvals and Approver console page bodies |
 | `approvalPolicy` | `GET/PUT /airports/:iata/approval-policy` (connected) | Approval policy table and edit form |
 | `impact` | `GET /flights/:id/impact` | Impact numbers on the Conflicts resolve card |
 | `partnerRoutes` | `partner_airline_route` table | Partner airlines column (Routes); Rebook with partner option |
 | `eventLog` | An endpoint that lists events across all flights | Disruption log table and filters |
-| `costEstimate` | `GET /flights/:id/cost-estimate` (F9, F4, F3b) | Not read by any page yet. The full cost table shows by itself once `costInputsFor()` returns values |
+| `costEstimate` | `GET /flights/:id/cost-estimate` (connected; revenue from F4 and F3b is listed as pending) | Cost table on the flight detail page; without it only the fees are listed |
 
 The same file also has:
 
-- **Empty lists:** `AIRCRAFT = []`, plus `partnersFor()`, `simClockNow()`, `openConflictCount()` and `costInputsFor()`, which return empty or `null`.
+- **Empty lists:** `AIRCRAFT = []`, plus `partnersFor()`, `simClockNow()`, and `openConflictCount()`, which return empty or `null`.
 - **Stubs that refuse** with "… is not connected yet.":
   - `checkGates`
-  - `checkReschedule`
   - `requestApproval`
   - `requestReschedule`
   - `confirmApproved`
