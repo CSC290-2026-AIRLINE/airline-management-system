@@ -409,7 +409,10 @@ export class AssignCrewService {
         })
         if (raced > 0) throw new ConflictException('Some of this crew were assigned elsewhere while auto-assign ran. Run it again.')
       }
-      await tx.pairing_leg_assignment.deleteMany({ where: { pairing_id: { in: [...targetIds] }, assigned_by: 'auto' } })
+      // Rows already taken off (a sick call or a swap) are history, so only the live automatic rows are replaced.
+      await tx.pairing_leg_assignment.deleteMany({
+        where: { pairing_id: { in: [...targetIds] }, assigned_by: 'auto', unassigned_at: null },
+      })
       if (rows.length > 0) await tx.pairing_leg_assignment.createMany({ data: rows })
     })
 
