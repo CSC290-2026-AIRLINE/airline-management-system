@@ -16,7 +16,7 @@ import { SettingsController } from './settings.controller'
 import { SettingsService } from './settings.service'
 import { TimetableController } from './timetable.controller'
 import { TimetableService } from './timetable.service'
-import { AIRCRAFT_DIRECTORY, PendingAircraftDirectory } from './operations/aircraft-directory'
+import { AIRCRAFT_DIRECTORY, DbAircraftDirectory } from './operations/aircraft-directory'
 import { AircraftFeasibilityService } from './operations/aircraft-feasibility.service'
 import { AUDIT_SINK, AuditServiceSink } from './operations/audit-sink'
 import { CascadeDetector } from './operations/cascade-detector'
@@ -53,8 +53,8 @@ import { StaffActorService } from './operations/staff-actor.service'
     AirportFeeService,
     CongestionService,
     AircraftFeasibilityService,
-    // Until Feature 9 publishes its aircraft API, availability and type facts answer "unknown".
-    { provide: AIRCRAFT_DIRECTORY, useClass: PendingAircraftDirectory },
+    // Until Feature 9 publishes its aircraft API, availability and type facts are read from its tables.
+    { provide: AIRCRAFT_DIRECTORY, useClass: DbAircraftDirectory },
     // Until Feature 1 publishes its simulation clock, business times come from the machine clock.
     { provide: FLIGHT_CLOCK, useClass: InterimMachineClock },
     { provide: AUDIT_SINK, useClass: AuditServiceSink },
