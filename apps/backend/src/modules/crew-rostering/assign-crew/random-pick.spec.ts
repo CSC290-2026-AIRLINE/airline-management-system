@@ -23,6 +23,12 @@ describe('pickOne', () => {
     expect(pickOne(legal, loose, sequence(BREAK_RATE - 0.01, 0))).toBe('tired')
   })
 
+  it('never picks a tired person when the loose pool is the legal pool, as in a normal (non-demo) run', () => {
+    // With nobody extra in the loose pool there is no break roll at all, so the only roll chooses within the legal people.
+    expect(pickOne(legal, legal, sequence(0))).toBe('rested-a')
+    expect(pickOne(legal, legal, sequence(0.99))).toBe('rested-b')
+  })
+
   it('stays legal when nobody is tired, even on a break roll', () => {
     expect(pickOne(legal, legal, sequence(0, 0))).toBe('rested-a')
   })
