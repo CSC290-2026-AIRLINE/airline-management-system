@@ -31,7 +31,11 @@ const flightRow = (id: string, origin: string, destination: string, dep: string,
 })
 
 describe('AircraftFeasibilityService.checkAircraftFeasibility', () => {
-  const db = { flight: { findMany: jest.fn() }, airport: { findMany: jest.fn() } }
+  const db = {
+    flight: { findMany: jest.fn(), count: jest.fn() },
+    airport: { findMany: jest.fn() },
+    airport_congestion: { findFirst: jest.fn() },
+  }
   const directory: jest.Mocked<AircraftDirectory> = { connected: true, availability: jest.fn(), typeFacts: jest.fn() }
   const service = new AircraftFeasibilityService(db as never, directory)
 
@@ -165,6 +169,99 @@ describe('AircraftFeasibilityService.checkAircraftFeasibility', () => {
   it('exposes the same larger-of turnaround rule for the cascade check', async () => {
     const resolve = await service.turnaroundResolver(db as never, AIRCRAFT, ['ZZB', 'ZZC'])
     expect([resolve('ZZB'), resolve('ZZC'), resolve('ZZX')]).toEqual([60, 40, 40])
+  })
+
+  describe('congestion windows', () => {
+    const window = (over: object = {}) => ({
+      airport: 'ZZB',
+      starts_at: new Date('2026-11-02T08:00:00Z'),
+      ends_at: new Date('2026-11-02T12:00:00Z'),
+      max_movement_per_hour: 2,
+      ...over,
+    })
+    const check = (c: Partial<FeasibilityCandidate> = {}) =>
+      service.checkAircraftFeasibility(AIRCRAFT, candidate(c), undefined, { congestion: true })
+
+    beforeEach(() => {
+      neighbours()
+      db.airport_congestion.findFirst.mockResolvedValue(null)
+      db.flight.count.mockResolvedValue(0)
+    })
+
+    it('does not look at congestion unless asked', async () => {
+      await service.checkAircraftFeasibility(AIRCRAFT, candidate())
+      expect(db.airport_congestion.findFirst).not.toHaveBeenCalled()
+    })
+
+    it('passes when no window covers the departure or the arrival', async () => {
+      await expect(check()).resolves.toMatchObject({ status: 'feasible' })
+      expect(db.flight.count).not.toHaveBeenCalled()
+    })
+
+    it('passes while the hour has room, counting the other movements of that hour', async () => {
+      db.airport_congestion.findFirst.mockImplementation(({ where }: { where: { airport: string } }) =>
+        Promise.resolve(where.airport === 'ZZB' ? window() : null),
+      )
+      db.flight.count.mockResolvedValue(1) // one other movement plus this one is 2, the limit
+
+      await expect(check()).resolves.toMatchObject({ status: 'feasible' })
+      // 09:00 departure is the second hour of a window that starts at 08:00
+      expect(db.flight.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          status: { not: 'cancelled' },
+          OR: [
+            { route: { origin: 'ZZB' }, dep_at: { gte: new Date('2026-11-02T09:00:00Z'), lt: new Date('2026-11-02T10:00:00Z') } },
+            { route: { destination: 'ZZB' }, arr_at: { gte: new Date('2026-11-02T09:00:00Z'), lt: new Date('2026-11-02T10:00:00Z') } },
+          ],
+        }),
+      })
+    })
+
+    it('fails a departure that would be over the limit, with the numbers', async () => {
+      db.airport_congestion.findFirst.mockImplementation(({ where }: { where: { airport: string } }) =>
+        Promise.resolve(where.airport === 'ZZB' ? window() : null),
+      )
+      db.flight.count.mockResolvedValue(2)
+
+      const report = await check()
+
+      expect(report.status).toBe('not_feasible')
+      expect(report.violations).toEqual([
+        expect.objectContaining({ kind: 'congestion_exceeded', airport: 'ZZB', movement: 'departure', limit: 2, movements: 3 }),
+      ])
+      expect(() => assertGatesPass(report, 'x')).toThrow(ConflictException)
+    })
+
+    it('fails an arrival over the limit at the destination', async () => {
+      db.airport_congestion.findFirst.mockImplementation(({ where }: { where: { airport: string } }) =>
+        Promise.resolve(where.airport === 'ZZC' ? window({ airport: 'ZZC', max_movement_per_hour: 1 }) : null),
+      )
+      db.flight.count.mockResolvedValue(1)
+
+      const report = await check()
+      expect(report.violations).toEqual([expect.objectContaining({ kind: 'congestion_exceeded', airport: 'ZZC', movement: 'arrival' })])
+    })
+
+    it('leaves out the flight being moved when it counts the hour', async () => {
+      db.airport_congestion.findFirst.mockResolvedValue(window())
+      await check({ flightId: 'f-self' })
+      expect(db.flight.count).toHaveBeenCalledWith({ where: expect.objectContaining({ id: { not: 'f-self' } }) })
+    })
+
+    it('ends the last hour at the end of the window', async () => {
+      db.airport_congestion.findFirst.mockImplementation(({ where }: { where: { airport: string } }) =>
+        Promise.resolve(where.airport === 'ZZB' ? window({ ends_at: new Date('2026-11-02T09:30:00Z') }) : null),
+      )
+      await check()
+      expect(db.flight.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          OR: [
+            expect.objectContaining({ dep_at: { gte: new Date('2026-11-02T09:00:00Z'), lt: new Date('2026-11-02T09:30:00Z') } }),
+            expect.anything(),
+          ],
+        }),
+      })
+    })
   })
 })
 

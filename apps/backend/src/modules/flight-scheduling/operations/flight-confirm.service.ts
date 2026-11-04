@@ -94,6 +94,7 @@ export class FlightConfirmService {
             distanceKm: route.distance_km,
           },
           tx,
+          { congestion: true },
         )
         assertGatesPass(report, 'A gate failed; the flight was not saved')
 
