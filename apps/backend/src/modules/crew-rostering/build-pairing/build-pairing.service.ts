@@ -125,7 +125,10 @@ export interface SaveLegInput {
 
 export interface SaveLegsResult {
   pairing: PairingRow
-  /** True when the edit took the pairing out of its draft roster run. */
+  /**
+   * Always false: an edited pairing stays in its draft roster run (only the legs removed lose their crew and breaks).
+   * Kept so the page's types keep working.
+   */
   withdrawnFromRun: boolean
 }
 
@@ -362,7 +365,9 @@ export class BuildPairingService {
    * Replaces a pairing's legs.
    *
    * Legs are diffed rather than rewritten so the ones that stay keep their row. A pairing
-   * in a published run is refused; one in a draft run is taken out of the run.
+   * in a published run is refused; one in a draft run stays in that run, and only the legs
+   * taken off lose their assignments and rule breaks (the foreign keys require it). Seats on
+   * the legs that stay are kept, and the next auto-assign and check fill and re-judge the rest.
    */
   async saveLegs(pairingId: string, legs: SaveLegInput[]): Promise<SaveLegsResult> {
     const flightIds = [...new Set(legs.map((leg) => leg.flightId))]
@@ -391,7 +396,7 @@ export class BuildPairingService {
       await this.mapUniqueViolation(
         () =>
           this.db.$transaction(async (tx) => {
-            if (run) await this.withdrawFromRun(tx, pairingId)
+            if (run && removedLegIds.length > 0) await this.releaseLegs(tx, removedLegIds)
             if (removedLegIds.length > 0) await tx.pairing_leg.deleteMany({ where: { id: { in: removedLegIds } } })
             if (added.length > 0) {
               await tx.pairing_leg.createMany({
@@ -409,7 +414,7 @@ export class BuildPairingService {
     }
 
     const context = await this.loadContext(row.base_airport)
-    return { pairing: this.toPairingRow(await this.findPairing(pairingId), context), withdrawnFromRun: changed && run !== null }
+    return { pairing: this.toPairingRow(await this.findPairing(pairingId), context), withdrawnFromRun: false }
   }
 
   /** Hard-deletes a draft pairing; its flights go back to the unpaired list. */
@@ -703,6 +708,12 @@ export class BuildPairingService {
     await tx.rule_break.deleteMany({ where: { pairing_id: pairingId } })
     await tx.pairing_leg_assignment.deleteMany({ where: { pairing_id: pairingId } })
     await tx.roster_run_pairing.deleteMany({ where: { pairing_id: pairingId } })
+  }
+
+  /** Clears the crew and rule breaks of legs about to be deleted from a pairing that stays in its run. */
+  private async releaseLegs(tx: Prisma.TransactionClient, legIds: string[]): Promise<void> {
+    await tx.rule_break.deleteMany({ where: { pairing_leg_id: { in: legIds } } })
+    await tx.pairing_leg_assignment.deleteMany({ where: { pairing_leg_id: { in: legIds } } })
   }
 
   /** A flight is in one pairing at most (`pairing_leg.flight_id` is unique). */

@@ -127,3 +127,68 @@ describe('BuildPairingService.commitPairings', () => {
     )
   })
 })
+
+/** Just enough of `DbService` for `saveLegs` on a pairing in a draft run, and for dropping drafts. */
+function setupEdit() {
+  const out = flight('1', 'BKK', 'NRT', 1, 7)
+  const back = flight('2', 'NRT', 'BKK', 9, 15)
+  const row = {
+    id: 'pairing-1',
+    code: 'P-1',
+    base_airport: 'BKK',
+    pairing_leg: [
+      { id: 'leg-1', added_by: 'auto', flight: out },
+      { id: 'leg-2', added_by: 'auto', flight: back },
+    ],
+    roster_run_pairing: { roster_run: { id: 'run-1', status: 'draft' } },
+  }
+  const tx = {
+    rule_break: { deleteMany: jest.fn() },
+    pairing_leg_assignment: { deleteMany: jest.fn() },
+    roster_run_pairing: { deleteMany: jest.fn() },
+    pairing_leg: { deleteMany: jest.fn(), createMany: jest.fn() },
+    pairing: { update: jest.fn() },
+  }
+  const db = {
+    crew_setting: { findMany: jest.fn().mockResolvedValue([]) },
+    country_legality_rule: { findMany: jest.fn().mockResolvedValue([]) },
+    airport: {
+      findMany: jest.fn().mockResolvedValue([
+        { iata_code: 'BKK', country: 'TH', timezone: 'Asia/Bangkok' },
+        { iata_code: 'NRT', country: 'JP', timezone: 'Asia/Tokyo' },
+      ]),
+    },
+    pairing: {
+      findUnique: jest.fn().mockResolvedValue(row),
+      findMany: jest.fn().mockResolvedValue([{ id: row.id, roster_run_pairing: { pairing_id: row.id } }]),
+      deleteMany: jest.fn(),
+    },
+    flight: { findMany: jest.fn().mockResolvedValue([{ id: '1', flight_number: 'FD1', pairing_leg: { pairing_id: 'pairing-1' } }]) },
+    $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)),
+  }
+  return { service: new BuildPairingService(db as unknown as DbService), tx, db }
+}
+
+describe('BuildPairingService.saveLegs on a committed pairing', () => {
+  it('keeps the pairing in its run and clears only the legs taken off', async () => {
+    const { service, tx } = setupEdit()
+
+    const result = await service.saveLegs('pairing-1', [leg('1')])
+
+    expect(tx.roster_run_pairing.deleteMany).not.toHaveBeenCalled()
+    expect(tx.rule_break.deleteMany).toHaveBeenCalledWith({ where: { pairing_leg_id: { in: ['leg-2'] } } })
+    expect(tx.pairing_leg_assignment.deleteMany).toHaveBeenCalledWith({ where: { pairing_leg_id: { in: ['leg-2'] } } })
+    expect(tx.pairing_leg.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['leg-2'] } } })
+    expect(result.withdrawnFromRun).toBe(false)
+  })
+
+  it('is still in the run after the next Generate, which drops only pairings outside every run', async () => {
+    const { service, db } = setupEdit()
+    await service.saveLegs('pairing-1', [leg('1')])
+
+    const result = await service.clearPairings(params)
+
+    expect(db.pairing.deleteMany).not.toHaveBeenCalled()
+    expect(result).toEqual({ deleted: 0, kept: 1 })
+  })
+})
