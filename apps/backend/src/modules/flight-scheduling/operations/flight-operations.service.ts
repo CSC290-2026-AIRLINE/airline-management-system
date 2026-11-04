@@ -62,9 +62,6 @@ const ON_GROUND: FlightStatus[] = ['scheduled', 'delayed']
 // A flight that is cancelled or has arrived is final.
 const FINAL: FlightStatus[] = ['cancelled', 'arrived']
 
-/** Iteration-03 blocker: partner rebooking is offered only where partner_airline_route has a row, and that table is missing. */
-export const PARTNER_ROUTE_MISSING = 'Rebooking with a partner needs partner_airline_route, which is not in the database schema yet'
-
 export interface OperationResult {
   flight: LockedFlight
   event: { id: string; type: string; seq: number; occurred_at: Date }
@@ -136,7 +133,7 @@ export class FlightOperationsService {
     return { results }
   }
 
-  /** Active partner airlines, for rebooking a cancelled flight. Which partner flies which route needs partner_airline_route. */
+  /** Active partner airlines, for rebooking a cancelled flight. partner_airline_route says which of them fly a given route. */
   listPartnerAirlines() {
     return this.db.partner_airline.findMany({ where: { is_active: true }, orderBy: { code: 'asc' }, select: { code: true, name: true } })
   }
@@ -235,9 +232,22 @@ export class FlightOperationsService {
     this.assertStatus(flight, ON_GROUND, 'cancel')
     this.assertNotDeparted(flight, 'cancel')
     await assertReason(tx, input.reason_code)
-    if (input.resolution === 'rebook_partner') throw new UnprocessableEntityException(PARTNER_ROUTE_MISSING)
+    if (input.resolution === 'rebook_partner') {
+      const { origin, destination } = flight.route
+      const flies = await tx.partner_airline_route.findFirst({
+        where: { partner_airline: input.partner_airline, route: { origin, destination } },
+        select: { route_id: true },
+      })
+      if (!flies) throw new UnprocessableEntityException(`Partner ${input.partner_airline} does not fly ${origin}-${destination}`)
+    }
     // Bookings and crew after a cancellation belong to other features; Feature 2 only records and publishes (spec v2 s16).
-    const event = buildFlightEvent({ type: 'cancelled', reasonCode: input.reason_code, resolution: input.resolution, note: input.note })
+    const event = buildFlightEvent({
+      type: 'cancelled',
+      reasonCode: input.reason_code,
+      resolution: input.resolution,
+      partnerAirline: input.partner_airline,
+      note: input.note,
+    })
     return this.commit(tx, flight, event, actorId, {})
   }
 

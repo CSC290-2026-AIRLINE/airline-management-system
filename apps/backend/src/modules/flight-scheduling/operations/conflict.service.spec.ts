@@ -21,6 +21,7 @@ describe('ConflictService', () => {
   const tx = { schedule_conflict: { findUnique: jest.fn(), update: jest.fn() } }
   const db = {
     schedule_conflict: { findMany: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() },
+    partner_airline_route: { count: jest.fn() },
     $transaction: jest.fn((fn: (t: unknown) => unknown) => fn(db)),
   }
   const operations = {
@@ -37,7 +38,13 @@ describe('ConflictService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
-    db.schedule_conflict.findUnique.mockResolvedValue({ id: CONFLICT, flight_id: FLIGHT, status: 'open' })
+    db.schedule_conflict.findUnique.mockResolvedValue({
+      id: CONFLICT,
+      flight_id: FLIGHT,
+      status: 'open',
+      flight: { route: { origin: 'ZZB', destination: 'ZZC' } },
+    })
+    db.partner_airline_route.count.mockResolvedValue(1)
     tx.schedule_conflict.findUnique.mockResolvedValue({ status: 'open' })
     tx.schedule_conflict.update.mockResolvedValue({ id: CONFLICT, status: 'resolved' })
     for (const fn of [operations.applyAircraftChange, operations.applyReschedule, operations.applyCancel]) fn.mockResolvedValue(result)
@@ -58,17 +65,22 @@ describe('ConflictService', () => {
   })
 
   describe('options', () => {
-    it('offers the four resolutions, with reschedule and partner rebooking blocked by the missing tables', async () => {
+    it('offers the four resolutions, with reschedule blocked by the missing approval tables', async () => {
       const { options } = await service.options(CONFLICT)
 
       expect(options.map((o) => [o.resolution, o.available])).toEqual([
         ['change_aircraft', true],
         ['reschedule', false],
         ['cancel_refund', true],
-        ['rebook_partner', false],
+        ['rebook_partner', true],
       ])
       expect(options[1].blocked_by).toContain('schedule_approval')
-      expect(options[3].blocked_by).toContain('partner_airline_route')
+    })
+
+    it('blocks rebook_partner when no partner airline flies the route', async () => {
+      db.partner_airline_route.count.mockResolvedValue(0)
+      const { options } = await service.options(CONFLICT)
+      expect(options[3]).toMatchObject({ resolution: 'rebook_partner', available: false, blocked_by: 'No partner airline flies ZZB-ZZC' })
     })
 
     it('blocks change_aircraft while Feature 9 is not connected, since no aircraft can pass the gates', async () => {
@@ -77,11 +89,16 @@ describe('ConflictService', () => {
       const { options } = await pending.options(CONFLICT)
 
       expect(options[0]).toMatchObject({ resolution: 'change_aircraft', available: false, blocked_by: F9_NOT_CONNECTED })
-      expect(options.filter((o) => o.available).map((o) => o.resolution)).toEqual(['cancel_refund'])
+      expect(options.filter((o) => o.available).map((o) => o.resolution)).toEqual(['cancel_refund', 'rebook_partner'])
     })
 
     it('marks every option unavailable on a closed conflict', async () => {
-      db.schedule_conflict.findUnique.mockResolvedValue({ id: CONFLICT, flight_id: FLIGHT, status: 'dismissed' })
+      db.schedule_conflict.findUnique.mockResolvedValue({
+        id: CONFLICT,
+        flight_id: FLIGHT,
+        status: 'dismissed',
+        flight: { route: { origin: 'ZZB', destination: 'ZZC' } },
+      })
 
       const { options } = await service.options(CONFLICT)
 

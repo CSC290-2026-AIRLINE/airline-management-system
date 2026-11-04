@@ -42,6 +42,7 @@ describe('FlightOperationsService', () => {
     flight: { findUnique: jest.fn() },
     disruption_reason: { findUnique: jest.fn() },
     airport: { findUnique: jest.fn() },
+    partner_airline_route: { findFirst: jest.fn() },
   }
   const db = {
     $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => {
@@ -224,10 +225,21 @@ describe('FlightOperationsService', () => {
       )
     })
 
-    it('blocks partner rebooking with 422 until partner_airline_route exists', async () => {
+    it('rebooks with a partner that flies the route', async () => {
+      tx.partner_airline_route.findFirst.mockResolvedValue({ route_id: 'r1' })
+      await service.cancel(FLIGHT, { reason_code: 'ZZTX', resolution: 'rebook_partner', partner_airline: 'ZP' }, STAFF)
+
+      expect(tx.partner_airline_route.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { partner_airline: 'ZP', route: { origin: 'ZZB', destination: 'ZZC' } } }),
+      )
+      expect(appended()[2]).toMatchObject({ status: 'cancelled', columns: { resolution: 'rebook_partner', partner_airline: 'ZP' } })
+    })
+
+    it('rejects a partner that does not fly the route with 422', async () => {
+      tx.partner_airline_route.findFirst.mockResolvedValue(null)
       await expect(
         service.cancel(FLIGHT, { reason_code: 'ZZTX', resolution: 'rebook_partner', partner_airline: 'ZP' }, STAFF),
-      ).rejects.toThrow(/partner_airline_route/)
+      ).rejects.toThrow(UnprocessableEntityException)
       expect(writer.append).not.toHaveBeenCalled()
     })
 
