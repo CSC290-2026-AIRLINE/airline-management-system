@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { AIRCRAFT, CONNECTED } from '../connected'
+import { CONNECTED } from '../connected'
 import { formatServiceDate } from '../format'
+import { useAircraft } from '../hooks/useAircraft'
 import { useDisruptionReasons } from '../hooks/useDisruptionReasons'
 import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage, type Fetcher } from '../hooks/usePagedList'
@@ -19,11 +20,15 @@ interface BatchItem {
 interface BatchOutcome {
   flight_id: string
   status: number
-  error?: string | { message?: string | string[] }
+  error?: string | { message?: string | string[]; violations?: { detail?: string }[] }
 }
 
-// A per-flight error is either a string or the Nest error body ({ message: string | string[] }).
-const outcomeError = (error: BatchOutcome['error']) => (typeof error === 'string' ? error : [error?.message ?? 'Failed'].flat().join('; '))
+// A per-flight error is either a string or the Nest error body ({ message: string | string[] }); a failed gate also lists the rules it broke.
+const outcomeError = (error: BatchOutcome['error']) => {
+  if (typeof error === 'string') return error
+  const rules = (error?.violations ?? []).map((v) => v.detail).filter(Boolean)
+  return [[error?.message ?? 'Failed'].flat().join('; '), ...rules].join(': ')
+}
 
 interface BatchActionsProps {
   selected: FlightRow[]
@@ -33,10 +38,10 @@ interface BatchActionsProps {
 }
 
 // "N flights selected" bar with Change aircraft and Delay, and the Batch result under it.
-// Delay goes to POST /flights/batch/delay in one call. Change aircraft (PUT /flights/:id/aircraft) is sent per flight and is hidden until
-// the F9 aircraft list exists.
+// Both go in one call and answer 207 with an outcome per flight, in departure order: POST /flights/batch/delay and POST /flights/batch/aircraft.
 export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActionsProps) {
   const { reasons } = useDisruptionReasons()
+  const { aircraft: fleet } = useAircraft(fetcher)
   const [mode, setMode] = useState<'aircraft' | 'delay' | null>(null)
   const [aircraft, setAircraft] = useState('')
   const [minutes, setMinutes] = useState('30')
@@ -49,30 +54,15 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
   const count = selected.length
   const delay = Number(minutes)
   const ready = mode === 'aircraft' ? aircraft !== '' : Number.isInteger(delay) && delay > 0 && reason !== ''
-  const tail = AIRCRAFT.find((a) => a.id === aircraft)?.label.split(' · ')[0] ?? aircraft
+  const tail = fleet.find((a) => a.id === aircraft)?.label.split(' · ')[0] ?? aircraft
 
-  // Change aircraft stays one call per flight (PUT /flights/:id/aircraft has no batch endpoint, and it is hidden until F9 exists).
-  async function applyAircraft(flight: FlightRow): Promise<BatchItem> {
+  // One call for all the flights: the server runs them in departure order and answers 207 with an outcome per flight.
+  async function applyBatch(path: string, body: object, flights: FlightRow[], success: string): Promise<BatchItem[]> {
     try {
-      const res = await fetcher(`${BASE}/flights/${flight.id}/aircraft`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aircraft_id: aircraft }),
-      })
-      if (!res.ok) return { flight, ok: false, detail: await errorMessage(res) }
-      return { flight, ok: true, detail: `${tail} assigned.` }
-    } catch (e) {
-      return { flight, ok: false, detail: e instanceof Error ? e.message : String(e) }
-    }
-  }
-
-  // One POST /flights/batch/delay answers 207 with an outcome per flight; the server delays them in departure order.
-  async function applyDelay(flights: FlightRow[]): Promise<BatchItem[]> {
-    try {
-      const res = await fetcher(`${BASE}/flights/batch/delay`, {
+      const res = await fetcher(`${BASE}/flights/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flight_ids: flights.map((f) => f.id), reason_code: reason, delay_minutes: delay }),
+        body: JSON.stringify({ flight_ids: flights.map((f) => f.id), ...body }),
       })
       if (!res.ok) {
         const detail = await errorMessage(res)
@@ -82,7 +72,7 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
       const byId = new Map(results.map((r) => [r.flight_id, r]))
       return flights.map((flight) => {
         const r = byId.get(flight.id)
-        if (r?.status === 200) return { flight, ok: true, detail: `Delayed ${delay} min.` }
+        if (r?.status === 200) return { flight, ok: true, detail: success }
         return { flight, ok: false, detail: r ? `${r.status}. ${outcomeError(r.error)}` : 'No result returned.' }
       })
     } catch (e) {
@@ -94,9 +84,10 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
   async function apply() {
     setBusy(true)
     const flights = [...selected].sort((a, b) => a.dep_at.localeCompare(b.dep_at))
-    const items: BatchItem[] = []
-    if (mode === 'aircraft') for (const flight of flights) items.push(await applyAircraft(flight))
-    else items.push(...(await applyDelay(flights)))
+    const items =
+      mode === 'aircraft'
+        ? await applyBatch('batch/aircraft', { aircraft_id: aircraft }, flights, `${tail} assigned.`)
+        : await applyBatch('batch/delay', { reason_code: reason, delay_minutes: delay }, flights, `Delayed ${delay} min.`)
     setResult(items)
     const changed = items.filter((i) => i.ok).length
     setWarn(changed < items.length)
@@ -133,7 +124,7 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
             <div className="fs-batch-form">
               <SelectField label="New aircraft for all selected flights" value={aircraft} onChange={(e) => setAircraft(e.target.value)}>
                 <option value="">Choose an aircraft</option>
-                {AIRCRAFT.map((a) => (
+                {fleet.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.label}
                   </option>

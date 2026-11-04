@@ -11,15 +11,16 @@ Written 23 Oct 2026 by Kewalin (side B) for Nontouch (side A). Branch `feat-02-a
 
 ## How hiding works: `connected.ts`
 
-`apps/staff-web/src/features/flight-scheduling/connected.ts` holds one flag per unfinished part. All are `false` today except `approvalQueue`, `approvalPolicy`, `availability` and `costEstimate`, which are `true` now that their APIs exist.
+`apps/staff-web/src/features/flight-scheduling/connected.ts` holds one flag per unfinished part. `false` today: `simClock`, `approvalMode`, `impact`, `partnerRoutes` and `eventLog`. The others are `true` now that their APIs exist.
 
 | Flag | Waiting for | Hidden while `false` |
 |---|---|---|
 | `simClock` | F1 simulation clock | Clock chip in `TopBar` |
-| `aircraft` | F9 aircraft list | Change aircraft (flight detail, batch bar, conflicts); Assign aircraft and the Aircraft column (Generate flights) |
-| `gates` | F9 aircraft list (`POST /flights/check` exists, but a generated flight needs an aircraft from the list) | Check gates button and Check result column (Generate flights) |
+| `aircraft` | `GET /aircraft` (connected; reads Feature 9's tables until F9 has an API) | Change aircraft (flight detail, batch bar, conflicts); Assign aircraft and the Aircraft column (Generate flights) |
+| `gates` | `POST /flights/check` (connected) | Check gates button and Check result column (Generate flights) |
 | `availability` | `GET /flights/:id/availability`, `POST /approvals`, `POST /flights/:id/reschedule` (connected) | "Check another time or reschedule" card on the flight detail page |
-| `approvals` | F9 aircraft list and a settings API for the approval mode | Approval mode card in Settings; Request approval and Confirm buttons; Approval column (Generate flights) |
+| `approvals` | `POST /approvals`, `POST /approvals/:id/revise`, `POST /flights/confirm` (connected) | Request approval and Confirm buttons; Approval column (Generate flights) |
+| `approvalMode` | A settings API for `approval_mode` | Approval mode card in Settings |
 | `approvalQueue` | `GET /approvals`, `POST /approvals/:id/respond` and `/revise` (connected) | Approvals and Approver console page bodies |
 | `approvalPolicy` | `GET/PUT /airports/:iata/approval-policy` (connected) | Approval policy table and edit form |
 | `impact` | `GET /flights/:id/impact` | Impact numbers on the Conflicts resolve card |
@@ -29,14 +30,8 @@ Written 23 Oct 2026 by Kewalin (side B) for Nontouch (side A). Branch `feat-02-a
 
 The same file also has:
 
-- **Empty lists:** `AIRCRAFT = []`, plus `partnersFor()`, `simClockNow()`, and `openConflictCount()`, which return empty or `null`.
-- **Stubs that refuse** with "… is not connected yet.":
-  - `checkGates`
-  - `requestApproval`
-  - `requestReschedule`
-  - `confirmApproved`
-
-  Nothing pretends to succeed.
+- **Empty lists:** `partnersFor()`, `simClockNow()` and `openConflictCount()`, which return empty or `null`.
+- **No stubs are left that refuse:** `checkGates`, `requestApproval`, `requestReschedule` and `confirmApproved` were replaced by the real calls (see `generate-flights.ts` and the pages).
 
 Pages whose whole body is hidden (Disruption log) show a `<NotConnected>` line saying what is missing. `MockNotice` was renamed to `NotConnected`.
 
@@ -85,7 +80,7 @@ Dismiss returns 502 until F15 audit exists, and the page shows that error.
 - [ ] **You own these files.** Almost all of them are side A code. Review before either of us commits, so we avoid merge conflicts.
 - [ ] **The rule in the feature `CLAUDE.md` changed.** Mocks in `mocks/` are no longer allowed.
 - [ ] **The types for hidden parts are assumptions.** `ApprovalRequest`, `ApproverRequest`, `ApprovalPolicy`, `DisruptionLogRow`, `CostInputs`, `FlightImpact`, `AircraftOption`, `GateResult` and `RescheduleCheck` are marked `ponytail:`. They describe what the screens need, not an agreed contract.
-- [ ] **One behaviour changed on Generate flights.** Picking an offered slot no longer marks the flight approved. It goes back to "request approval again", because the approver has to answer the new time.
+- [ ] **Picking an offered slot on Generate flights** sends a revision of the request (`POST /approvals/:id/revise`); the backend approves it at once because the approver already offered that time.
 - [x] **The schedule board is under the signed-in layout.** It lives in `routes/_authenticated/schedule-board.tsx` and uses `useAppAuth().fetchWithAuth`. The open-conflict badge and stat can read `GET /conflicts` once `openConflictCount()` in `connected.ts` is wired.
 
 ## Sign-in bypass is removed

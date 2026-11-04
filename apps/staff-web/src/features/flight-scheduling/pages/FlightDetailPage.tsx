@@ -13,8 +13,9 @@ import { Card } from '../components/Card'
 import { TableWrap } from '../components/TableWrap'
 import { STATUS_LABEL } from '../approval-labels'
 import { availabilityChecks } from '../availability'
-import { AIRCRAFT, CONNECTED, partnersFor } from '../connected'
+import { CONNECTED, partnersFor } from '../connected'
 import { capitalize, formatDateTime, localParts, localToIso, WEEKDAYS } from '../format'
+import { useAircraft } from '../hooks/useAircraft'
 import { useDisruptionReasons } from '../hooks/useDisruptionReasons'
 import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage } from '../hooks/usePagedList'
@@ -45,6 +46,7 @@ function eventText(e: FlightEventRow) {
 export function FlightDetailPage({ flightId }: { flightId: string }) {
   const { reasons } = useDisruptionReasons()
   const { fetchWithAuth } = useAppAuth()
+  const { aircraft: fleet } = useAircraft(fetchWithAuth)
   const flight = useResource<FlightDetail>(`/flights/${flightId}`, fetchWithAuth)
   const events = useResource<FlightEventRow[]>(`/flights/${flightId}/events`, fetchWithAuth)
   const conflicts = useResource<ConflictRow[]>(`/conflicts?flight_id=${flightId}`, fetchWithAuth)
@@ -384,7 +386,7 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
                   </p>
                   <SelectField label="Aircraft (from feature 9)" value={aircraft} onChange={(e) => setAircraft(e.target.value)}>
                     <option value="">Choose an aircraft</option>
-                    {AIRCRAFT.map((a) => (
+                    {fleet.map((a) => (
                       <option key={a.id} value={a.id} disabled={!a.usable}>
                         {a.label}
                       </option>

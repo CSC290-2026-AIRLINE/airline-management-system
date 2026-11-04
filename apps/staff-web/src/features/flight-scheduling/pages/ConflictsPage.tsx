@@ -1,8 +1,9 @@
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Callout } from '../components/Callout'
 import { Card } from '../components/Card'
-import { AIRCRAFT, CONNECTED, partnersFor, requestReschedule } from '../connected'
+import { CONNECTED, partnersFor } from '../connected'
 import { FormField } from '../components/FormField'
 import { ListState } from '../components/ListState'
 import { PageHeader } from '../components/PageHeader'
@@ -14,6 +15,7 @@ import { Stats } from '../components/Stats'
 import { TableWrap } from '../components/TableWrap'
 import { Toast } from '../components/Toast'
 import { capitalize, formatDateTime } from '../format'
+import { useAircraft } from '../hooks/useAircraft'
 import { useDisruptionReasons } from '../hooks/useDisruptionReasons'
 import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage } from '../hooks/usePagedList'
@@ -38,6 +40,7 @@ const utc = (iso: string) => `${formatDateTime(iso, 'UTC')} UTC`
 export function ConflictsPage() {
   const { fetchWithAuth } = useAppAuth()
   const { reasons } = useDisruptionReasons()
+  const { aircraft: fleet } = useAircraft(fetchWithAuth)
   const conflicts = useResource<ConflictRow[]>('/conflicts', fetchWithAuth)
   const [activeId, setActiveId] = useState<string | null>(null)
   const options = useResource<ConflictOptions>(activeId && `/conflicts/${activeId}/options`, fetchWithAuth)
@@ -55,10 +58,8 @@ export function ConflictsPage() {
   const option = options.data?.options.find((o) => o.resolution === RESOLUTION[mode])
   const available = option?.available === true
   const impact = useResource<FlightImpact>(CONNECTED.impact && active ? `/flights/${active.flight_id}/impact` : null, fetchWithAuth)
-  // ponytail: later departures that clear the conflict; GET /flights/:id/availability will supply them.
-  const slots: { extra: number; depart: string; arrive: string }[] = []
   const partners = active ? partnersFor(active.flight.route.origin, active.flight.route.destination) : []
-  const ready = available && reason !== '' && (mode === 'Cancel and refund' || pick !== '')
+  const ready = available && mode !== 'Reschedule' && reason !== '' && (mode === 'Cancel and refund' || pick !== '')
 
   const choose = (c: ConflictRow) => {
     setActiveId(c.id)
@@ -88,17 +89,6 @@ export function ConflictsPage() {
   }
 
   async function apply(c: ConflictRow) {
-    if (mode === 'Reschedule') {
-      // A reschedule needs an approved request first; the conflict stays open until then.
-      try {
-        await requestReschedule(c.flight_id, pick)
-        say(`Approval requested for ${pick}. The conflict stays open until it is approved.`)
-        setActiveId(null)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
-      }
-      return
-    }
     const body =
       mode === 'Change aircraft'
         ? { resolution: 'change_aircraft', aircraft_id: pick }
@@ -212,7 +202,7 @@ export function ConflictsPage() {
               <Callout tone="warn">{option.blocked_by ?? `${mode} is not available for this conflict.`}</Callout>
             )}
 
-            {available && (
+            {available && mode !== 'Reschedule' && (
               <div className="fs-reason">
                 <SelectField label="Disruption reason (required)" value={reason} onChange={(e) => setReason(e.target.value)}>
                   <option value="">Choose a disruption reason</option>
@@ -227,7 +217,7 @@ export function ConflictsPage() {
 
             {available && mode === 'Change aircraft' && (
               <div className="fs-options">
-                {AIRCRAFT.map((a) => (
+                {fleet.map((a) => (
                   <label key={a.id} className={`fs-option${a.usable ? '' : ' fs-option-off'}${pick === a.id ? ' fs-pattern-on' : ''}`}>
                     <input type="radio" name="aircraft" disabled={!a.usable} checked={pick === a.id} onChange={() => setPick(a.id)} />
                     <span>
@@ -240,29 +230,17 @@ export function ConflictsPage() {
             )}
 
             {available && mode === 'Reschedule' && (
-              <>
-                <p className="fs-sub">
-                  Choose a new departure time. Each option passes the aircraft, position, turnaround and congestion checks; the chosen time
-                  then goes to the simulated slot coordinator for approval.
-                </p>
-                <div className="fs-options">
-                  {slots.map((s) => (
-                    <label key={s.depart} className={`fs-option${pick === s.depart ? ' fs-pattern-on' : ''}`}>
-                      <input type="radio" name="slot" checked={pick === s.depart} onChange={() => setPick(s.depart)} />
-                      <span>
-                        <b>Depart {s.depart}</b> <span className="fs-to">· arrive {s.arrive}</span>{' '}
-                        <StatusPill status="delayed" label={`+${s.extra} min`} />
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                {pick && (
-                  <Callout tone="info">
-                    <b>Needs approval.</b> The flight moves, and flight.rescheduled is published, only when the approver approves {pick};
-                    the conflict stays open until then.
-                  </Callout>
-                )}
-              </>
+              <Callout
+                tone="info"
+                action={
+                  <Link to="/flights/$flightId" params={{ flightId: active.flight_id }}>
+                    Open the flight
+                  </Link>
+                }
+              >
+                <b>Reschedule on the flight page.</b> Check a new departure time there, request approval and move the flight once it is
+                approved. The conflict is checked again after the move and closes by itself if the new time clears it.
+              </Callout>
             )}
 
             {available && mode === 'Rebook with partner' && (
@@ -289,7 +267,7 @@ export function ConflictsPage() {
             <div className="fs-form-actions fs-between">
               <span className="fs-form-actions">
                 <button type="button" className="fs-button" disabled={!ready || busy} onClick={() => void apply(active)}>
-                  {busy ? 'Applying…' : mode === 'Reschedule' ? 'Request approval and apply' : 'Apply resolution'}
+                  {busy ? 'Applying…' : 'Apply resolution'}
                 </button>
                 <button type="button" className="fs-button-ghost" onClick={() => setActiveId(null)}>
                   Close
