@@ -30,7 +30,7 @@ describe('ConflictService', () => {
     applyCancel: jest.fn(),
   }
   const audit = { record: jest.fn() }
-  const directory = { connected: true, availability: jest.fn(), typeFacts: jest.fn() }
+  const directory = { connected: true, availability: jest.fn(), typeFacts: jest.fn(), list: jest.fn() }
   const service = new ConflictService(db as never, operations as never, audit, directory, { now: () => SIM_NOW })
 
   const result = { flight: {}, event: { id: 'e9' }, conflicts: {}, warnings: [] }

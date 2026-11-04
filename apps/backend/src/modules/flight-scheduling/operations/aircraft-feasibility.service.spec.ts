@@ -36,7 +36,7 @@ describe('AircraftFeasibilityService.checkAircraftFeasibility', () => {
     airport: { findMany: jest.fn() },
     airport_congestion: { findFirst: jest.fn() },
   }
-  const directory: jest.Mocked<AircraftDirectory> = { connected: true, availability: jest.fn(), typeFacts: jest.fn() }
+  const directory: jest.Mocked<AircraftDirectory> = { connected: true, availability: jest.fn(), typeFacts: jest.fn(), list: jest.fn() }
   const service = new AircraftFeasibilityService(db as never, directory)
 
   // findMany is called three times: previous, next, overlapping.

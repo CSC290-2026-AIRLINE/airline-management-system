@@ -19,6 +19,15 @@ export interface AircraftTypeFacts {
   minTurnaroundMinutes: number
 }
 
+/** One aircraft a flight can be assigned to, for a picker. */
+export interface AircraftSummary {
+  id: string
+  tailNumber: string
+  typeCode: string
+  model: string
+  maxRangeKm: number
+}
+
 export interface AircraftDirectory {
   /** false while Feature 9's API is not connected: no aircraft can pass the gates, so nothing that needs them is offered. */
   readonly connected: boolean
@@ -26,6 +35,8 @@ export interface AircraftDirectory {
   availability(aircraftId: string, from: Date, to: Date): Promise<AircraftAvailability>
   /** null when Feature 9 cannot tell us yet. */
   typeFacts(aircraftId: string): Promise<AircraftTypeFacts | null>
+  /** The aircraft in the fleet today (not deleted, not retired, type active), by tail number. Whether one can fly a given flight is `availability`. */
+  list(): Promise<AircraftSummary[]>
 }
 
 export const F9_NOT_CONNECTED = 'Feature 9 aircraft API is not connected yet'
@@ -40,6 +51,10 @@ export class PendingAircraftDirectory implements AircraftDirectory {
 
   typeFacts(): Promise<AircraftTypeFacts | null> {
     return Promise.resolve(null)
+  }
+
+  list(): Promise<AircraftSummary[]> {
+    return Promise.resolve([])
   }
 }
 
@@ -95,6 +110,27 @@ export class DbAircraftDirectory implements AircraftDirectory {
       }
     }
     return { kind: 'available' }
+  }
+
+  async list(): Promise<AircraftSummary[]> {
+    const today = new Date(dayOf(new Date()))
+    const rows = await this.db.aircraft.findMany({
+      where: {
+        deleted_at: null,
+        OR: [{ retired_on: null }, { retired_on: { gte: today } }],
+        aircraft_type: { is_active: true, deleted_at: null },
+      },
+      orderBy: { tail_number: 'asc' },
+      take: 200, // ponytail: no paging; a fleet is a few hundred aircraft at most
+      select: { id: true, tail_number: true, aircraft_type: { select: { code: true, model: true, max_range_km: true } } },
+    })
+    return rows.map((a) => ({
+      id: a.id,
+      tailNumber: a.tail_number,
+      typeCode: a.aircraft_type.code,
+      model: a.aircraft_type.model,
+      maxRangeKm: a.aircraft_type.max_range_km,
+    }))
   }
 
   async typeFacts(aircraftId: string): Promise<AircraftTypeFacts | null> {
