@@ -251,3 +251,30 @@ export function parseConfirmBody(raw: unknown): ConfirmInput {
   if (!f.errors.length && !(scheduled_arr_at > scheduled_dep_at)) f.errors.push('scheduled_arr_at must be after scheduled_dep_at')
   return f.done({ approval_id, route_id, pattern_id, flight_number, service_date, aircraft_id, scheduled_dep_at, scheduled_arr_at })
 }
+
+export interface BatchConfirmInput {
+  flights: ConfirmInput[]
+}
+
+/** POST flights/confirm: `{ flights: [ ... ] }`, each entry the body of one confirm. Every error is reported with its position. */
+export function parseBatchConfirmBody(raw: unknown): BatchConfirmInput {
+  const list = asBody(raw).flights
+  if (!Array.isArray(list) || list.length < 1 || list.length > MAX_BATCH) {
+    throw new BadRequestException([`flights must hold 1 to ${MAX_BATCH} flights to confirm`])
+  }
+  const errors: string[] = []
+  const flights: ConfirmInput[] = []
+  list.forEach((item, i) => {
+    try {
+      flights.push(parseConfirmBody(item))
+    } catch (e) {
+      if (!(e instanceof BadRequestException)) throw e
+      const message = (e.getResponse() as { message: string | string[] }).message
+      errors.push(...[message].flat().map((m) => `flights[${i}]: ${m}`))
+    }
+  })
+  const approvals = flights.map((f) => f.approval_id)
+  if (new Set(approvals).size !== approvals.length) errors.push('flights must use a different approval_id each')
+  if (errors.length) throw new BadRequestException(errors)
+  return { flights }
+}

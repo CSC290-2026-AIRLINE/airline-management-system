@@ -5,7 +5,7 @@ import {
   parseAircraftChangeBody,
   parseBatchDelayBody,
   parseCancelBody,
-  parseConfirmBody,
+  parseBatchConfirmBody,
   parseDelayBody,
   parseDismissBody,
   parseDivertBody,
@@ -28,11 +28,12 @@ export class FlightOperationsController {
     private readonly actors: StaffActorService,
   ) {}
 
+  // Always 207 with one result per flight, like batch delay: the status of each flight is in its own result.
   @Post('flights/confirm')
-  @HttpCode(201)
+  @HttpCode(207)
   async confirm(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
-    const input = parseConfirmBody(body)
-    return this.confirmation.confirm(input, await this.actors.staffIdFor(user))
+    const input = parseBatchConfirmBody(body)
+    return this.confirmation.confirmBatch(input, await this.actors.staffIdFor(user))
   }
 
   // Declared before the ':id' routes so 'batch' is never read as a flight id.

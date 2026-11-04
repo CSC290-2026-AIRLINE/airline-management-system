@@ -1,6 +1,6 @@
-import { ConflictException, Inject, Injectable, UnprocessableEntityException } from '@nestjs/common'
+import { ConflictException, HttpException, Inject, Injectable, UnprocessableEntityException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import type { ConfirmInput } from '../dto/operations.dto'
+import type { BatchConfirmInput, ConfirmInput } from '../dto/operations.dto'
 import { formatLocal } from '../local-time'
 import { prismaCode } from '../pagination'
 import { AircraftFeasibilityService, assertGatesPass } from './aircraft-feasibility.service'
@@ -24,6 +24,35 @@ export class FlightConfirmService {
     private readonly publisher: FlightEventPublisher,
     @Inject(SCHEDULE_APPROVALS) private readonly approvals: ScheduleApprovals,
   ) {}
+
+  /**
+   * Confirms several flights, each in its own transaction, so one failure never blocks the others. They run in departure order, so a later
+   * flight of the same aircraft meets the earlier one in the position and turnaround gates. Results follow that order; `index` is the
+   * flight's place in the request.
+   */
+  async confirmBatch(input: BatchConfirmInput, actorId: string) {
+    const ordered = input.flights
+      .map((flight, index) => ({ flight, index }))
+      .sort((a, b) => a.flight.scheduled_dep_at.getTime() - b.flight.scheduled_dep_at.getTime() || a.index - b.index)
+    const results: {
+      index: number
+      approval_id: string
+      flight_number: string
+      status: number
+      result?: Awaited<ReturnType<FlightConfirmService['confirm']>>
+      error?: unknown
+    }[] = []
+    for (const { flight, index } of ordered) {
+      const base = { index, approval_id: flight.approval_id, flight_number: flight.flight_number }
+      try {
+        results.push({ ...base, status: 201, result: await this.confirm(flight, actorId) })
+      } catch (e) {
+        if (!(e instanceof HttpException)) throw e
+        results.push({ ...base, status: e.getStatus(), error: e.getResponse() })
+      }
+    }
+    return { results }
+  }
 
   async confirm(input: ConfirmInput, actorId: string) {
     const route = await this.db.route.findUnique({
