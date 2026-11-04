@@ -72,7 +72,7 @@ export function BuildPairingsPage() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-page-bg lg:flex-row">
+    <div className="crew-shell flex min-h-screen w-full flex-col bg-page-bg lg:flex-row">
       <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={account.full} onSignOut={account.signOut} />
       <MobileTopBar
         simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT}

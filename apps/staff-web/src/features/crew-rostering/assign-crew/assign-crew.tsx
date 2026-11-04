@@ -102,7 +102,7 @@ export function AssignCrewPage() {
   )
 
   return (
-    <div className="flex min-h-screen w-full bg-page-bg">
+    <div className="crew-shell flex min-h-screen w-full bg-page-bg">
       {/* `contents` keeps the sidebar a direct flex child, so its own `mt-auto`
           footer still pins to the bottom of the viewport on desktop. */}
       <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={role.full} onSignOut={() => void logout()} />

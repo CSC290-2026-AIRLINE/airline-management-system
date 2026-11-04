@@ -85,7 +85,7 @@ export function FixPublishPage() {
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-page-bg">
+    <div className="crew-shell flex min-h-screen w-full bg-page-bg">
       <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={role.full} onSignOut={() => void logout()} />
 
       <div className="flex min-w-0 flex-1 flex-col">

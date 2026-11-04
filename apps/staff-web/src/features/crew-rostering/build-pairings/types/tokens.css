@@ -79,3 +79,14 @@
     transform: translate(-50%, 0);
   }
 }
+
+/* The starter styles in index.css cap `#root` at 1126px and centre its text. The crew rostering pages fill the
+ * viewport (sidebar + main), as the admin console does, so they opt out. `:has()` keeps every other page as it was. */
+@layer base {
+  #root:has(.crew-shell) {
+    width: 100%;
+    max-width: none;
+    border: 0;
+    text-align: left;
+  }
+}
