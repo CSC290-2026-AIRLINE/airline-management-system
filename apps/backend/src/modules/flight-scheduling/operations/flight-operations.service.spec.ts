@@ -361,9 +361,22 @@ describe('FlightOperationsService', () => {
 
     beforeEach(() => feasibility.checkAircraftFeasibility.mockResolvedValue({ status: 'feasible', violations: [], pending: [] }))
 
-    it('is blocked with 422 while schedule_approval is missing, and writes nothing', async () => {
-      await expect(reschedule()).rejects.toThrow(UnprocessableEntityException)
+    it('is refused with 409 when the approval is missing, not approved or does not match, and writes nothing', async () => {
+      await expect(reschedule()).rejects.toThrow(ConflictException)
+      approvals.consume.mockResolvedValue({
+        ok: false,
+        rule: 'approval_mismatch',
+        detail: 'Approval does not match the request: departure time',
+      })
+      await expect(reschedule()).rejects.toMatchObject({ response: { rule: 'approval_mismatch' } })
       expect(writer.append).not.toHaveBeenCalled()
+    })
+
+    it('is reachable as its own operation, with the same locks as the other writes', async () => {
+      approvals.consume.mockResolvedValue({ ok: true })
+      await service.reschedule(FLIGHT, input, STAFF)
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(2)
+      expect(appended()[2]).toMatchObject({ status: 'scheduled', columns: { type: 'rescheduled' } })
     })
 
     it('with an approval, moves the published and current times and leaves service_date alone', async () => {

@@ -164,6 +164,11 @@ export class FlightOperationsService {
     return this.run(flightId, (tx, flight) => this.applyCancel(tx, flight, input, actorId))
   }
 
+  /** Moves a flight to the times of an approved reschedule request, after the gates pass for them. */
+  reschedule(flightId: string, input: RescheduleInput, actorId: string) {
+    return this.run(flightId, (tx, flight) => this.applyReschedule(tx, flight, input, actorId))
+  }
+
   changeAircraft(flightId: string, input: AircraftChangeInput, actorId: string) {
     return this.run(flightId, (tx, flight) => this.applyAircraftChange(tx, flight, input, actorId), input.aircraft_id)
   }
@@ -297,7 +302,8 @@ export class FlightOperationsService {
       depAt: input.dep_at,
       arrAt: input.arr_at,
     })
-    if (!approval.ok) throw new UnprocessableEntityException({ message: approval.detail, rule: approval.rule })
+    // 409 like confirm: the approval is a state of the system, not a mistake in the request.
+    if (!approval.ok) throw new ConflictException({ message: approval.detail, rule: approval.rule })
     await this.approvals.markConsumed(tx, input.approval_id, flight.id)
 
     const event = buildFlightEvent({

@@ -64,16 +64,16 @@ describe('ConflictService', () => {
   })
 
   describe('options', () => {
-    it('offers the four resolutions, with reschedule blocked by the missing approval tables', async () => {
+    it('offers the four resolutions on an open conflict', async () => {
       const { options } = await service.options(CONFLICT)
 
       expect(options.map((o) => [o.resolution, o.available])).toEqual([
         ['change_aircraft', true],
-        ['reschedule', false],
+        ['reschedule', true],
         ['cancel_refund', true],
         ['rebook_partner', true],
       ])
-      expect(options[1].blocked_by).toContain('schedule_approval')
+      expect(options.every((o) => o.blocked_by === undefined)).toBe(true)
     })
 
     it('blocks rebook_partner when no partner airline flies the route', async () => {
@@ -88,7 +88,7 @@ describe('ConflictService', () => {
       const { options } = await pending.options(CONFLICT)
 
       expect(options[0]).toMatchObject({ resolution: 'change_aircraft', available: false, blocked_by: F9_NOT_CONNECTED })
-      expect(options.filter((o) => o.available).map((o) => o.resolution)).toEqual(['cancel_refund', 'rebook_partner'])
+      expect(options.filter((o) => o.available).map((o) => o.resolution)).toEqual(['reschedule', 'cancel_refund', 'rebook_partner'])
     })
 
     it('marks every option unavailable on a closed conflict', async () => {
