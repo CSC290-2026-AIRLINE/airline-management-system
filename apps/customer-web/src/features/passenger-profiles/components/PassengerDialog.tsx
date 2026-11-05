@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
 import BirthDateInput from '@customer-web/features/passenger-profiles/components/BirthDateInput'
+import NationalitySelect from './NationalitySelect'
 import { birthDateLabel, type Passenger } from '@customer-web/features/passenger-profiles/profile-context'
-import { errorMessage, nationalityOptions, nationalityCode, nationalityLabel } from '../profile-api'
+import { errorMessage, nationalityCode, nationalityLabel } from '../profile-api'
 import { parseBirthDateInput } from '../birth-date'
 
 const relationships = ['Spouse', 'Parent', 'Child', 'Sibling', 'Guardian', 'Companion', 'Other']
@@ -182,30 +183,18 @@ export default function PassengerDialog({
               ))}
             </select>
           </label>
-          <label className="profile-field">
-            Nationality
-            <select
-              required
-              disabled={!!passenger}
+          {passenger ? (
+            <label className="profile-field">
+              Nationality
+              <input disabled value={draft.nationality || nationalityLabel(draft.nationalityCode)} aria-describedby="passenger-lock-note" />
+            </label>
+          ) : (
+            <NationalitySelect
               value={draft.nationalityCode}
-              onChange={(event) => change('nationalityCode', event.target.value)}
-              aria-describedby="passenger-lock-note"
-            >
-              <option value="" disabled>
-                Select ▾
-              </option>
-              {[
-                ...nationalityOptions,
-                ...(!nationalityOptions.some(([code]) => code === draft.nationalityCode) && draft.nationalityCode
-                  ? [[draft.nationalityCode, draft.nationality]]
-                  : []),
-              ].map(([code, label]) => (
-                <option key={code} value={code}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
+              onChange={(code) => change('nationalityCode', code)}
+              describedBy="passenger-lock-note"
+            />
+          )}
         </div>
         <label className="profile-field">
           Passport number (optional)

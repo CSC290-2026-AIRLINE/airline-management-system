@@ -34,6 +34,7 @@ export function WatchlistEntryForm({
   const [listType, setListType] = useState(entry?.listType ?? '')
   const [gender, setGender] = useState<EntryFields['gender']>(entry?.gender ?? '')
   const [nationality, setNationality] = useState(entry?.nationality ?? '')
+  const [birthDate, setBirthDate] = useState(inputDate(entry?.dateOfBirth))
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submitting) return
@@ -110,9 +111,14 @@ export function WatchlistEntryForm({
             Date of birth
             <input
               name="dateOfBirth"
-              defaultValue={inputDate(entry?.dateOfBirth)}
+              value={birthDate}
+              onChange={(event) => {
+                const digits = event.target.value.replace(/\D/g, '').slice(0, 8)
+                setBirthDate([digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join(' / '))
+              }}
               placeholder="DD / MM / YYYY"
               inputMode="numeric"
+              autoComplete="bday"
               maxLength={14}
             />
           </label>
