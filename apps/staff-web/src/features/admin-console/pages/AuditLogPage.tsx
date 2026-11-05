@@ -216,10 +216,10 @@ interface LinkedEntryState {
  * Audit log page. Both access gates live in `routes/_authenticated/admin/route.tsx`, one level up: it owns
  * `RequireStaff` (one `GET /api/me/screens` for all three tabs). Do not add another gate in here.
  *
- * The open row lives in the URL — `/admin/audit-log/$auditId`, the spec's deep link — so an entry can be linked to and
- * closed with Back. The list is paginated, so a linked entry is often not on the page in view; it is then fetched on
- * its own (`GET /api/admin/audit-log/:id`) and shown in a panel above the table. An id that does not exist falls back
- * to the list with a "not found" banner.
+ * The open row is React state: clicking a row never changes the URL. A deep link — `/admin/audit-log/$auditId`, from the
+ * spec — still opens its entry when it is arrived at. The list is paginated, so a linked entry is often not on the page
+ * in view; it is then fetched on its own (`GET /api/admin/audit-log/:id`) and shown in a panel above the table. An id
+ * that does not exist falls back to the list with a "not found" banner.
  */
 export function AuditLogPage() {
   const listAudit = useListAudit()
@@ -235,8 +235,14 @@ export function AuditLogPage() {
     to: undefined,
   })
   const [limit, setLimit] = useState(25)
-  /* The open entry's id, from the URL. */
-  const expanded = auditId ?? null
+  /* The open entry's id. Local state: starts from a deep link's `auditId`, and follows the URL only when a different
+     link is arrived at, never when a row is clicked. */
+  const [expanded, setExpanded] = useState<string | null>(auditId ?? null)
+  const [linkedFromUrl, setLinkedFromUrl] = useState<string | null>(auditId ?? null)
+  if ((auditId ?? null) !== linkedFromUrl) {
+    setLinkedFromUrl(auditId ?? null)
+    setExpanded(auditId ?? null)
+  }
   const [notFoundId, setNotFoundId] = useState<string | null>(null)
   /* Only read below the 768px breakpoint, where the filter fields collapse behind a toggle. Desktop always shows
      them, so this staying false there costs nothing. */
@@ -282,17 +288,19 @@ export function AuditLogPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsFetch, expanded])
 
-  /* A wrong link: remember it for the banner and send the URL back to the list. */
+  /* A wrong link: remember it for the banner, close it, and send the URL back to the list. */
   const linkIsBad = !!expanded && linked.id === expanded && !linked.loading && linked.notFound
-  if (linkIsBad && notFoundId !== expanded) setNotFoundId(expanded)
+  if (linkIsBad && notFoundId !== expanded) {
+    setNotFoundId(expanded)
+    setExpanded(null)
+  }
   useEffect(() => {
-    if (linkIsBad) void navigate({ to: '/admin/audit-log', search: true, replace: true })
-  }, [linkIsBad, navigate])
+    if (notFoundId && auditId) void navigate({ to: '/admin/audit-log', search: true, replace: true })
+  }, [notFoundId, auditId, navigate])
 
   function openEntry(id: string | null) {
     setNotFoundId(null)
-    if (id) void navigate({ to: '/admin/audit-log/$auditId', params: { auditId: id }, search: true })
-    else void navigate({ to: '/admin/audit-log', search: true })
+    setExpanded(id)
   }
 
   function clear() {
