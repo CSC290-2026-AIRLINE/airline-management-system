@@ -201,13 +201,20 @@
   font-display: swap;
   src: url('./assets/inter-bold.ttf') format('truetype');
 }
+html:has(.account-page),
+body:has(.account-page) {
+  background: #fff;
+  overscroll-behavior-y: none;
+}
 #root:has(.account-page) {
+  display: block;
   width: 100%;
   max-width: none;
   text-align: left;
   border: 0;
 }
 .account-page {
+  box-sizing: border-box;
   --profile-ink: #0a1424;
   --profile-muted: #677287;
   min-height: 100svh;

@@ -4,10 +4,11 @@ import { nationalityOptions, nationalitySearchText } from '../profile-api'
 type Props = {
   value: string
   disabled?: boolean
+  describedBy?: string
   onChange: (code: string) => void
 }
 
-export default function NationalitySelect({ value, disabled, onChange }: Props) {
+export default function NationalitySelect({ value, disabled, describedBy = 'setup-lock-warning', onChange }: Props) {
   const id = useId()
   const input = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
@@ -46,7 +47,7 @@ export default function NationalitySelect({ value, disabled, onChange }: Props) 
         aria-expanded={open}
         aria-controls={`${id}-list`}
         aria-activedescendant={open && options[active] ? `${id}-${active}` : undefined}
-        aria-describedby="setup-lock-warning"
+        aria-describedby={describedBy}
         autoComplete="off"
         placeholder="Search nationality"
         required
