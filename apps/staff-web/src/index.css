@@ -1,6 +1,10 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* The app is light-only. Tie `dark:` to a `.dark` class (nothing sets it) rather than the OS setting, otherwise the shadcn
+   components' `dark:` styles override the admin console's light styles for anyone on a dark OS. */
+@custom-variant dark (&:is(.dark *));
+
 /*
  * Tailwind + shadcn/ui theme.
  *
@@ -56,7 +60,7 @@
   --color-secondary: #eef1f7;
   --color-secondary-foreground: #0a1424;
   --color-muted: #f2f4f8;
-  --color-muted-foreground: #6f7c91;
+  --color-muted-foreground: #5a6679;
   --color-accent: #f4f6fa;
   --color-accent-foreground: #0a1424;
   --color-destructive: #b8171f;
@@ -84,6 +88,29 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+
+  /* Tailwind v4 resets buttons to `cursor: default`; restore the pointer on everything clickable. */
+  button:not(:disabled),
+  a[href],
+  summary,
+  label[for],
+  [role='button']:not([aria-disabled='true']),
+  [role='tab'],
+  [role='checkbox'],
+  [role='switch'],
+  [role='combobox'],
+  [role='menuitem'],
+  [role='menuitemradio'],
+  [role='option'] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  button[aria-disabled='true'],
+  [aria-disabled='true'],
+  [data-disabled] {
+    cursor: not-allowed;
   }
 }
 
