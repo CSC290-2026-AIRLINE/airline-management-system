@@ -43,7 +43,7 @@ interface NoAccessScreenProps {
 export function NoAccessScreen({ screenName, roleName, recorded = true, homeTo = '/', children }: NoAccessScreenProps) {
   return (
     <StatusCard
-      icon={<LockKeyhole className="size-[30px]" strokeWidth={1.8} />}
+      icon={<LockKeyhole className="size-7.5" strokeWidth={1.8} />}
       title="You don't have access to this page"
       body={
         roleName
