@@ -31,12 +31,12 @@ interface StaffNotProvisionedScreenProps {
 export function StaffNotProvisionedScreen({ email, signInTo = '/login', children }: StaffNotProvisionedScreenProps) {
   return (
     <StatusCard
-      icon={<UserRound className="size-[30px]" strokeWidth={1.8} />}
+      icon={<UserRound className="size-7.5" strokeWidth={1.8} />}
       title="No staff account for this email"
       body={
         <>
-          <span className="font-semibold text-[#374151]">{email ?? 'This account'}</span> hasn&apos;t been set up as staff yet. Ask an Admin
-          to create your account, then sign in again.
+          <span className="font-semibold text-muted-foreground">{email ?? 'This account'}</span> hasn&apos;t been set up as staff yet. Ask
+          an Admin to create your account, then sign in again.
         </>
       }
       badgeKey="STAFF_NOT_PROVISIONED"

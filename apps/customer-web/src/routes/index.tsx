@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { SignedIn, SignedOut } from '@clerk/clerk-react'
+import { Sitemap } from '@customer-web/components/Sitemap'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -19,6 +20,7 @@ function HomePage() {
         <Link to="/dashboard">Go to dashboard</Link>
         <Link to="/account/my-profile">My Profile</Link>
       </SignedIn>
+      <Sitemap />
     </section>
   )
 }

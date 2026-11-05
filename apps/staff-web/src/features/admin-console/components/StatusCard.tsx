@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Button } from '@staff-web/components/ui/button'
+import { Card, CardContent } from '@staff-web/components/ui/card'
 
 interface StatusCardProps {
   /** Decorative — the screen reader already gets the heading, so this is hidden from it. */
@@ -40,33 +41,31 @@ export function StatusCard({ icon, title, body, note, badgeKey, badgeDetail, act
   return (
     <div data-slot="status-wrap" data-access-denied="" className="flex min-h-full flex-auto items-center justify-center px-6 py-12">
       {children}
-      <section
-        className="w-full max-w-[716px] rounded-2xl border border-line bg-white px-12 pt-14 pb-11 text-center shadow-[0_4px_16px_rgba(15,23,42,0.06)] max-phone:px-6 max-phone:pt-10 max-phone:pb-8"
-        role="alert"
-        aria-live="polite"
-      >
-        <span className="inline-flex size-[72px] items-center justify-center rounded-full bg-[#fdeaea] text-[#dc2626]" aria-hidden="true">
-          {icon}
-        </span>
+      <Card className="w-full max-w-179 text-center" role="alert">
+        <CardContent className="px-12 py-8 max-phone:px-6">
+          <span className="inline-flex size-18 items-center justify-center rounded-full bg-danger-soft text-danger" aria-hidden="true">
+            {icon}
+          </span>
 
-        <h2 className="mx-0 mt-6 mb-2 font-sans text-[26px] leading-tight font-bold text-[#111827]">{title}</h2>
-        <p className="mb-[18px] text-sm leading-relaxed text-[#6b7280] max-[880px]:text-[13px]">{body}</p>
+          <h2 className="mx-0 mt-6 mb-2 font-sans text-2xl leading-tight font-bold text-foreground">{title}</h2>
+          <p className="mb-4 text-sm leading-relaxed text-muted-foreground max-laptop:text-sm">{body}</p>
 
-        {note && <p className="-mt-2.5 mb-[18px] text-sm leading-relaxed text-[#9ca3af] max-[880px]:text-[13px]">{note}</p>}
+          {note && <p className="-mt-2.5 mb-4 text-sm leading-relaxed text-foreground max-laptop:text-sm">{note}</p>}
 
-        <p className="mb-7 inline-block rounded-md bg-[#f1f3f6] px-2.5 py-1 font-mono text-xs text-[#6b7280]">
-          <span className="font-semibold text-[#0e7490]">{badgeKey}</span>
-          {badgeDetail && <span>{badgeDetail}</span>}
-        </p>
+          <p className="mb-7 inline-block rounded-md bg-accent px-2.5 py-1 font-mono text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">{badgeKey}</span>
+            {badgeDetail && <span>{badgeDetail}</span>}
+          </p>
 
-        {/* Its own flex row so the button always starts a new line below the badge — as inline-level siblings the two
+          {/* Its own flex row so the button always starts a new line below the badge — as inline-level siblings the two
             would share one line and collide once the badge gets long. */}
-        <div className="flex justify-center">
-          <Button asChild className="h-auto rounded-lg bg-[#0e1b3d] px-7 py-3 text-sm font-semibold hover:bg-[#16295a]">
-            <a href={action.href}>{action.label}</a>
-          </Button>
-        </div>
-      </section>
+          <div className="flex justify-center">
+            <Button asChild className="h-auto bg-primary px-7 py-3 text-sm hover:bg-navy-active">
+              <a href={action.href}>{action.label}</a>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
