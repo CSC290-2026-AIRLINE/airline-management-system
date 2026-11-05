@@ -18,6 +18,7 @@ function HomePage() {
       </SignedOut>
       <SignedIn>
         <Link to="/dashboard">Go to dashboard</Link>
+        <Link to="/account/my-profile">My Profile</Link>
       </SignedIn>
       <Sitemap />
     </section>

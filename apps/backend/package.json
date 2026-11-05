@@ -19,7 +19,12 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "db:seed": "tsx -r tsconfig-paths/register src/db/seed.ts"
+    "db:seed": "tsx -r tsconfig-paths/register src/db/seed.ts",
+    "db:generate": "prisma generate",
+    "prestart:dev": "npm run db:generate",
+    "prebuild": "npm run db:generate",
+    "pretest": "npm run db:generate",
+    "db:seed:security": "tsx -r tsconfig-paths/register src/modules/watchlist/seed.ts"
   },
   "dependencies": {
     "@clerk/backend": "^3.18.1",
