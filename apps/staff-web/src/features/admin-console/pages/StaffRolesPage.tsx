@@ -4,7 +4,7 @@ import { ArrowLeft, CircleAlert, CircleCheck, Plus, SquarePen, Users, X } from '
 import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@staff-web/components/ui/dialog'
 import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
@@ -13,7 +13,6 @@ import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Switch } from '@staff-web/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { cn } from '@staff-web/lib/utils'
-import editIcon from '../assets/icon-edit.svg'
 import { StaffApiError, type StaffCreateBody } from '../api/staff'
 import { MIN_REASON_LENGTH, useStaff } from '../hooks/useStaff'
 import { NoAccessScreen } from '../components/NoAccessScreen'
@@ -156,7 +155,6 @@ function Dropdown({
         aria-invalid={invalid || undefined}
         className={cn(
           'w-full gap-1.5 border-input bg-background px-3.5 text-left text-sm font-medium text-foreground focus-visible:ring-2 focus-visible:ring-primary/30',
-          variant === 'filter' && 'rounded-[9px] data-[size=default]:h-12 max-phone:data-[size=default]:h-10',
           variant === 'field' && 'border-border text-foreground',
           variant === 'card' && 'border-input bg-accent px-3 text-sm text-foreground max-phone:text-sm',
           invalid && 'border-danger-line',
@@ -926,9 +924,11 @@ export function StaffRolesPage() {
               { label: 'Inactive accounts', value: stats.inactive },
               { label: 'Assigned roles', value: stats.assignedRoles },
             ].map((c) => (
-              <Card key={c.label} className="gap-1 rounded-xl border-slate-300 p-4">
-                <CardDescription className="text-[11px] font-semibold tracking-[0.6px] uppercase">{c.label}</CardDescription>
-                <CardTitle className="text-2xl font-extrabold text-primary tabular-nums">{c.value}</CardTitle>
+              <Card key={c.label} className="py-4">
+                <CardHeader className="gap-1 px-4">
+                  <CardDescription className="text-xs font-medium tracking-wide uppercase">{c.label}</CardDescription>
+                  <CardTitle className="text-2xl font-bold text-primary tabular-nums">{c.value}</CardTitle>
+                </CardHeader>
               </Card>
             ))}
           </div>
@@ -952,97 +952,75 @@ export function StaffRolesPage() {
             </Alert>
           )}
 
-          <div
-            role="search"
-            aria-label="Staff filters"
-            className="flex items-center gap-3 max-phone:flex-col max-phone:items-stretch max-phone:rounded-xl max-phone:border max-phone:bg-card max-phone:p-4"
-          >
-            <div className="flex min-w-50 flex-1 flex-col gap-1.5">
-              <Label
-                htmlFor="staff-search"
-                className="sr-only text-[11px] font-semibold tracking-wide text-muted-foreground uppercase max-phone:not-sr-only"
-              >
-                Search staff
-              </Label>
-              <Input
-                id="staff-search"
-                className="h-12 rounded-[9px] border-input bg-background px-3.5 text-sm max-phone:h-10"
-                type="search"
-                value={query}
-                placeholder="Search staff…"
-                aria-label="Search staff by name, email or staff ID"
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </div>
-            <div className="contents max-phone:grid max-phone:grid-cols-2 max-phone:gap-3">
-              <div className="flex w-47.5 flex-col gap-1.5 max-phone:w-auto">
-                <Label
-                  htmlFor="staff-role-filter"
-                  className="sr-only text-[11px] font-semibold tracking-wide text-muted-foreground uppercase max-phone:not-sr-only"
-                >
-                  Role
-                </Label>
-                <Dropdown
-                  id="staff-role-filter"
-                  variant="filter"
-                  value={roleFilter}
-                  options={[{ value: '', label: 'All roles' }, ...roleOptions]}
-                  placeholder="All roles"
-                  ariaLabel="Filter by role"
-                  deselectable
-                  onChange={(v) => setRoleFilter(v || null)}
-                />
-              </div>
-              <div className="flex w-47.5 flex-col gap-1.5 max-phone:w-auto">
-                <Label
-                  htmlFor="staff-status-filter"
-                  className="sr-only text-[11px] font-semibold tracking-wide text-muted-foreground uppercase max-phone:not-sr-only"
-                >
-                  Status
-                </Label>
-                <Dropdown
-                  id="staff-status-filter"
-                  variant="filter"
-                  value={statusFilter}
-                  options={STATUS_OPTIONS}
-                  placeholder="Any status"
-                  ariaLabel="Filter by status"
-                  deselectable
-                  onChange={(v) => setStatusFilter(v as StatusFilter | null)}
-                />
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 rounded-[9px] border-input px-6 font-semibold max-phone:h-10"
-              disabled={!filtering}
-              onClick={clearFilters}
-            >
-              <span className="max-phone:hidden">Clear</span>
-              <span className="hidden max-phone:inline">Clear filters</span>
-            </Button>
-            <Button
-              type="button"
-              className="h-12 rounded-[9px] px-6 font-semibold max-phone:h-10"
-              onClick={() => openDialog({ kind: 'create' })}
-            >
-              Create staff account
-            </Button>
-          </div>
-
-          <Card aria-labelledby="sr-table-title" role="region" className="gap-4 rounded-[14px] py-5">
-            <CardHeader className="flex items-baseline justify-between px-3">
-              <CardTitle id="sr-table-title" className="text-xl font-bold">
+          <Card aria-labelledby="sr-table-title" role="region">
+            <CardHeader>
+              <CardTitle id="sr-table-title" className="text-lg">
                 Staff accounts
               </CardTitle>
-              <CardDescription aria-live="polite" className="text-[13px]">
+              <CardDescription aria-live="polite">
                 {filtering
                   ? `${rows.length} matching staff account${rows.length === 1 ? '' : 's'}`
                   : `${stats.active} active of ${stats.total}`}
               </CardDescription>
+              <CardAction>
+                <Button type="button" onClick={() => openDialog({ kind: 'create' })}>
+                  <Plus aria-hidden="true" />
+                  <span className="max-phone:hidden">Create staff account</span>
+                  <span className="hidden max-phone:inline">Create</span>
+                </Button>
+              </CardAction>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4 px-3">
+            <CardContent className="flex flex-col gap-6">
+              <div role="search" aria-label="Staff filters" className="flex flex-wrap items-end gap-3 max-phone:grid max-phone:grid-cols-2">
+                <div className="flex min-w-50 flex-1 flex-col gap-1.5 max-phone:col-span-2 max-phone:min-w-0">
+                  <Label htmlFor="staff-search" className="text-xs text-muted-foreground">
+                    Search staff
+                  </Label>
+                  <Input
+                    id="staff-search"
+                    type="search"
+                    value={query}
+                    placeholder="Name, email or staff ID"
+                    aria-label="Search staff by name, email or staff ID"
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                </div>
+                <div className="flex w-48 flex-col gap-1.5 max-phone:w-auto">
+                  <Label htmlFor="staff-role-filter" className="text-xs text-muted-foreground">
+                    Role
+                  </Label>
+                  <Dropdown
+                    id="staff-role-filter"
+                    variant="filter"
+                    value={roleFilter}
+                    options={[{ value: '', label: 'All roles' }, ...roleOptions]}
+                    placeholder="All roles"
+                    ariaLabel="Filter by role"
+                    deselectable
+                    onChange={(v) => setRoleFilter(v || null)}
+                  />
+                </div>
+                <div className="flex w-48 flex-col gap-1.5 max-phone:w-auto">
+                  <Label htmlFor="staff-status-filter" className="text-xs text-muted-foreground">
+                    Status
+                  </Label>
+                  <Dropdown
+                    id="staff-status-filter"
+                    variant="filter"
+                    value={statusFilter}
+                    options={STATUS_OPTIONS}
+                    placeholder="Any status"
+                    ariaLabel="Filter by status"
+                    deselectable
+                    onChange={(v) => setStatusFilter(v as StatusFilter | null)}
+                  />
+                </div>
+                <Button type="button" variant="ghost" className="max-phone:col-span-2" disabled={!filtering} onClick={clearFilters}>
+                  <X aria-hidden="true" />
+                  Clear filters
+                </Button>
+              </div>
+
               {isPhone ? (
                 /* Phone layout: one card per account instead of the table. Tapping the status pill opens the same
                  Activate / Deactivate dialog as the desktop switch; picking a role opens Edit with that role chosen,
@@ -1111,18 +1089,18 @@ export function StaffRolesPage() {
               ) : (
                 <Table className="table-fixed">
                   <colgroup>
-                    <col className="w-42" />
-                    <col className="w-49" />
-                    <col className="w-24" />
                     <col />
-                    <col className="w-32" />
-                    <col className="w-34" />
+                    <col />
+                    <col className="w-24" />
+                    <col className="w-36" />
+                    <col className="w-36" />
+                    <col className="w-36" />
                     <col className="w-14" />
                   </colgroup>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
                       {['Name', 'Email', 'Staff ID', 'Role', 'Status', 'Last sign-in'].map((h) => (
-                        <TableHead key={h} className="text-[11px] font-semibold text-muted-foreground uppercase">
+                        <TableHead key={h} className="text-xs tracking-wide text-muted-foreground uppercase">
                           {h}
                         </TableHead>
                       ))}
@@ -1133,17 +1111,17 @@ export function StaffRolesPage() {
                   </TableHeader>
                   <TableBody>
                     {rows.map((s) => (
-                      <TableRow key={s.id} className={cn('h-12.75', s.id === staff.viewerStaffId && 'bg-muted/55')}>
-                        <TableCell className="truncate text-sm font-semibold text-foreground" title={fullName(s)}>
+                      <TableRow key={s.id}>
+                        <TableCell className="truncate font-medium text-foreground" title={fullName(s)}>
                           {fullName(s)}
                           {s.id === staff.viewerStaffId && <Badge className="ml-2">You</Badge>}
                         </TableCell>
-                        <TableCell className="truncate text-[13px] text-muted-foreground" title={s.email}>
+                        <TableCell className="truncate text-muted-foreground" title={s.email}>
                           {s.email}
                         </TableCell>
-                        <TableCell className="text-[13px] text-foreground">{s.staff_code}</TableCell>
-                        <TableCell className="truncate text-[13px] font-semibold text-foreground" title={s.role.name}>
-                          {s.role.name}
+                        <TableCell className="text-muted-foreground">{s.staff_code}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{s.role.name}</Badge>
                         </TableCell>
                         <TableCell>
                           <span className="inline-flex items-center gap-2">
@@ -1153,23 +1131,22 @@ export function StaffRolesPage() {
                               onCheckedChange={() => onToggle(s)}
                               className="data-[state=checked]:bg-success"
                             />
-                            <span className={cn('text-[13px] font-semibold text-muted-foreground', s.active && 'text-success-strong')}>
+                            <span className={cn('text-sm text-muted-foreground', s.active && 'text-success-strong')}>
                               {s.active ? 'Active' : 'Inactive'}
                             </span>
                           </span>
                         </TableCell>
-                        <TableCell className="text-[13px] text-muted-foreground">{formatSignIn(s.last_sign_in_at)}</TableCell>
+                        <TableCell className="text-muted-foreground">{formatSignIn(s.last_sign_in_at)}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
                             size="icon-sm"
-                            className="rounded-lg border-slate-300"
                             aria-label={`Edit ${fullName(s)}`}
                             title="Edit"
                             onClick={() => openEdit(s.id)}
                           >
-                            <img src={editIcon} alt="" className="size-4.5" />
+                            <SquarePen aria-hidden="true" />
                           </Button>
                         </TableCell>
                       </TableRow>

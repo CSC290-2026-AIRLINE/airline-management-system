@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Eye, X } from 'lucide-react'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
-import { Card, CardContent } from '@staff-web/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Checkbox } from '@staff-web/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@staff-web/components/ui/dialog'
 import { Input } from '@staff-web/components/ui/input'
@@ -310,58 +310,48 @@ export function RoleAccessPage() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <Card className="pt-7 pb-6 max-tablet:pt-3.5">
-        <CardContent className="px-6 max-tablet:px-4">
-          {/* Header ------------------------------------------------------- */}
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
-            <div className="flex min-w-0 flex-1 basis-80 flex-col gap-1.5 lg:max-w-135">
-              <h2 className="font-sans text-xl font-bold tracking-[-1px] text-foreground">Screens for {currentRole?.name ?? '—'}</h2>
-              <p className="text-sm text-muted-foreground">
-                Pick which screens each role can see. Screen access only: what a screen allows is set by its own feature.
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-2 max-tablet:w-full max-tablet:items-stretch">
-              <div className="flex items-end gap-4 max-tablet:flex-col-reverse max-tablet:items-stretch max-tablet:gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10.5 rounded-lg border-slate-300 px-4"
-                  onClick={() => void openPreview()}
-                >
-                  <Eye aria-hidden="true" />
-                  Preview as user
-                </Button>
-                <div className="flex w-54.5 flex-col gap-1.5 max-tablet:w-full">
-                  <Label className="text-xs font-semibold text-muted-foreground" htmlFor="role-select">
-                    Role
-                  </Label>
-                  <Select value={roleId ?? undefined} onValueChange={(v) => selectRole(v || null)} disabled={dirty || saving}>
-                    <SelectTrigger
-                      id="role-select"
-                      className="w-full rounded-[9px] border-border bg-background px-3.5 text-[15px] data-[size=default]:h-12 max-tablet:data-[size=default]:h-10"
-                      aria-describedby={dirty ? 'role-select-hint' : undefined}
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" className="border-border font-sans">
-                      {registry.roles.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
-                          {r.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Screens for {currentRole?.name ?? '—'}</CardTitle>
+          <CardDescription>
+            Pick which screens each role can see. Screen access only: what a screen allows is set by its own feature.
+          </CardDescription>
+          <CardAction>
+            <Button type="button" variant="outline" onClick={() => void openPreview()}>
+              <Eye aria-hidden="true" />
+              <span className="max-phone:hidden">Preview as user</span>
+              <span className="hidden max-phone:inline">Preview</span>
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          {/* Role picker + status ----------------------------------------- */}
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+            <div className="flex w-56 flex-col gap-1.5 max-tablet:w-full">
+              <Label className="text-xs text-muted-foreground" htmlFor="role-select">
+                Role
+              </Label>
+              <Select value={roleId ?? undefined} onValueChange={(v) => selectRole(v || null)} disabled={dirty || saving}>
+                <SelectTrigger id="role-select" className="w-full" aria-describedby={dirty ? 'role-select-hint' : undefined}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper" className="border-border font-sans">
+                  {registry.roles.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {dirty && (
                 <p id="role-select-hint" className="text-xs text-muted-foreground">
                   Save or discard your changes to switch roles.
                 </p>
               )}
-              <p className="text-xs font-semibold text-warning tabular-nums" aria-live="polite">
-                {currentRole?.staff_count ?? 0} staff with this role · {changeCount} unsaved change{changeCount === 1 ? '' : 's'}
-              </p>
             </div>
+            <p className="text-sm font-medium text-warning tabular-nums" aria-live="polite">
+              {currentRole?.staff_count ?? 0} staff with this role · {changeCount} unsaved change{changeCount === 1 ? '' : 's'}
+            </p>
           </div>
 
           {/* Screen matrix ----------------------------------------------- */}
@@ -404,7 +394,7 @@ export function RoleAccessPage() {
                             <li
                               key={s.id}
                               className={cn(
-                                'flex h-12.5 items-center gap-5 border-b border-border pr-1.5 pl-4 text-[15px] text-foreground max-tablet:h-10 max-tablet:gap-3 max-tablet:border-0 max-tablet:pl-0 max-tablet:text-sm',
+                                'flex h-12 items-center gap-5 border-b border-border pr-1.5 pl-4 text-sm text-foreground max-tablet:h-10 max-tablet:gap-3 max-tablet:border-0 max-tablet:pl-0 max-tablet:text-sm',
                                 locked ? 'cursor-default hover:bg-accent' : 'cursor-pointer hover:bg-accent',
                               )}
                               onClick={() => toggle(s.id, s.kind)}
@@ -414,9 +404,8 @@ export function RoleAccessPage() {
                                 aria-disabled={locked || !roleId}
                                 aria-label={s.name}
                                 className={cn(
-                                  'size-5.5 rounded-sm border-input bg-background data-[state=checked]:border-foreground data-[state=checked]:bg-foreground',
                                   locked &&
-                                    'data-[state=checked]:border-[#c5cdd9] data-[state=checked]:bg-[#c5cdd9] data-[state=checked]:text-white',
+                                    'data-[state=checked]:border-input data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground',
                                 )}
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -425,11 +414,11 @@ export function RoleAccessPage() {
                               />
                               <span className="min-w-0 flex-1 truncate">{s.name}</span>
                               {s.kind === 'core' && (
-                                <Badge variant="secondary" className="w-20.5 text-muted-foreground">
+                                <Badge variant="secondary" className="w-20 text-muted-foreground">
                                   Core
                                 </Badge>
                               )}
-                              {unsaved && <Badge className="w-20.5 bg-warning-soft text-warning">Unsaved</Badge>}
+                              {unsaved && <Badge className="w-20 bg-warning-soft text-warning">Unsaved</Badge>}
                               {locked && <span className="sr-only">{LOCKED_TIP}</span>}
                             </li>
                           )

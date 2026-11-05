@@ -1,10 +1,10 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { ChevronDown, ChevronRight, CircleAlert, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleAlert, SlidersHorizontal, X } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
-import { Card, CardContent } from '@staff-web/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
@@ -132,11 +132,11 @@ function FilterSelect({
   const id = useId()
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <Label htmlFor={id} className="text-xs font-semibold text-muted-foreground">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
         {label}
       </Label>
       <Select value={value ?? ALL} onValueChange={(v) => onChange(v === ALL ? undefined : v)}>
-        <SelectTrigger id={id} className="w-full rounded-[9px] border-border bg-background px-3.5 text-[15px] data-[size=default]:h-12">
+        <SelectTrigger id={id} className="w-full">
           <SelectValue />
         </SelectTrigger>
         <SelectContent position="popper" className="max-h-80 border-border font-sans">
@@ -403,20 +403,16 @@ export function AuditLogPage() {
 
   return (
     <>
-      <Card className="border-border bg-background pt-7 pb-6 font-sans text-foreground max-tablet:pt-3.5">
-        <CardContent className="px-6 max-tablet:px-4">
+      <Card className="font-sans">
+        <CardHeader>
+          <CardTitle className="text-lg">Audit log</CardTitle>
+          <CardDescription>
+            Every sign-in, sign-out, change and sensitive-data view across all actors and features. Newest first.
+          </CardDescription>
+          <CardAction aria-live="polite">{loading && <Badge variant="outline">Loading…</Badge>}</CardAction>
+        </CardHeader>
+        <CardContent>
           <div className="mb-6 flex flex-col gap-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex min-w-0 flex-col gap-1">
-                <h2 className="font-sans text-xl font-bold tracking-[-1px] text-foreground">Audit log</h2>
-                <p className="max-w-prose text-sm text-muted-foreground">
-                  Every sign-in, sign-out, change and sensitive-data view across all actors and features. Newest first.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2" aria-live="polite">
-                {loading && <Badge variant="outline">Loading…</Badge>}
-              </div>
-            </div>
             <p className="hidden text-xs text-muted-foreground max-tablet:block">Tap a row to see before and after values.</p>
 
             {/* Filters ---------------------------------------------------- */}
@@ -460,24 +456,22 @@ export function AuditLogPage() {
                 onChange={(v) => setFilters((f) => ({ ...f, action: v as ActionType | undefined }))}
               />
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="audit-from" className="text-xs font-semibold text-muted-foreground">
+                <Label htmlFor="audit-from" className="text-xs text-muted-foreground">
                   From
                 </Label>
                 <Input
                   id="audit-from"
-                  className="h-12 rounded-[9px] border-border bg-background px-3.5 text-[15px]"
                   type="date"
                   value={filters.from ?? ''}
                   onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value || undefined }))}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="audit-to" className="text-xs font-semibold text-muted-foreground">
+                <Label htmlFor="audit-to" className="text-xs text-muted-foreground">
                   To
                 </Label>
                 <Input
                   id="audit-to"
-                  className="h-12 rounded-[9px] border-border bg-background px-3.5 text-[15px]"
                   type="date"
                   value={filters.to ?? ''}
                   onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value || undefined }))}
@@ -485,11 +479,12 @@ export function AuditLogPage() {
               </div>
               <Button
                 type="button"
-                variant="outline"
-                className="h-12 justify-self-end rounded-[9px] border-border px-4 font-semibold max-laptop:col-span-3 max-tablet:col-span-1 max-tablet:justify-self-stretch"
+                variant="ghost"
+                className="justify-self-end max-laptop:col-span-3 max-tablet:col-span-1 max-tablet:justify-self-stretch"
                 disabled={!hasFilters}
                 onClick={clear}
               >
+                <X aria-hidden="true" />
                 Clear filters{activeFilterCount > 0 && ` (${activeFilterCount})`}
               </Button>
             </div>
