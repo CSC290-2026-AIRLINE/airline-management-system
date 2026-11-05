@@ -40,6 +40,84 @@ const APPROVAL_POLICIES = [
   { airport: 'BKK', curfew_start_local: '00:00', curfew_end_local: '05:00', max_departure_per_hour: 20, offer_style: 'slots' },
   { airport: 'CNX', curfew_start_local: '23:00', curfew_end_local: '06:00', max_departure_per_hour: 8, offer_style: 'window' },
 ]
+const PRICING_SETTINGS = [
+  { key: 'quote_hold_minutes', value: '15' },
+  { key: 'base_currency', value: 'USD' },
+]
+
+// Feature 4's test data. Amounts are in the base currency, USD (the spec's decision). docs/feature-04-test-cases.md uses these codes.
+const FARE_CLASSES = [
+  {
+    code: 'Y',
+    cabin: 'economy',
+    name: 'Economy Flex',
+    refundable: true,
+    changeable: true,
+    cancel_fee_flat: 15,
+    cancel_fee_pct: 5,
+    change_fee_flat: 10,
+  },
+  { code: 'Q', cabin: 'economy', name: 'Economy Saver', min_advance_purchase_days: 7 },
+  { code: 'W', cabin: 'premium_economy', name: 'Premium Economy', refundable: true, changeable: true, cancel_fee_pct: 10 },
+  { code: 'J', cabin: 'business', name: 'Business', refundable: true, changeable: true },
+  { code: 'F', cabin: 'first', name: 'First', refundable: true, changeable: true },
+]
+// Quotes look a seat fee up by cabin and seat type, so every pair needs a row, even when it is free.
+const SEAT_FEE_GRID = {
+  economy: { normal: 0, exit_row: 9, extra_legroom: 12 },
+  premium_economy: { normal: 0, exit_row: 6, extra_legroom: 9 },
+  business: { normal: 0, exit_row: 0, extra_legroom: 0 },
+  first: { normal: 0, exit_row: 0, extra_legroom: 0 },
+}
+const TAX_FEES = [
+  { code: 'VAT', name: 'VAT', kind: 'tax', calc_type: 'pct', value: 7 },
+  { code: 'APT_FEE', name: 'Airport fee', kind: 'fee', calc_type: 'flat', value: 20 },
+  { code: 'FUEL', name: 'Fuel surcharge', kind: 'surcharge', calc_type: 'flat', value: 7 },
+]
+// The API refuses a free allowance at or above the maximum bag.
+const BAGGAGE_BY_CABIN = {
+  economy: { free_allowance_kg: 20, rate_per_kg: 6, max_bag_kg: 32 },
+  premium_economy: { free_allowance_kg: 25, rate_per_kg: 5, max_bag_kg: 32 },
+  business: { free_allowance_kg: 30, rate_per_kg: 4, max_bag_kg: 32 },
+  first: { free_allowance_kg: 40, rate_per_kg: 3, max_bag_kg: 45 },
+}
+const BAGGAGE_ROUTE_OVERRIDE = {
+  fare_class: 'Y',
+  origin: 'BKK',
+  destination: 'CNX',
+  free_allowance_kg: 25,
+  rate_per_kg: 7,
+  max_bag_kg: 32,
+}
+// Enough for a fresh clone to produce a non-trivial quote. One fare per route and class, both directions the same.
+const BASE_FARES_BY_ROUTE: Record<string, Record<string, number>> = {
+  'BKK-CNX': { Y: 80, Q: 55, W: 140, J: 260, F: 420 },
+  'BKK-HKT': { Y: 90, Q: 60, W: 155, J: 285, F: 460 },
+}
+// The spec's example rules. Within a group the lowest priority that matches wins.
+const PRICING_RULES = [
+  { rule_group: 'urgency', name: 'H-1', priority: 1, min_days_out: 0, max_days_out: 1, adjustment_pct: 40 },
+  { rule_group: 'urgency', name: 'H-3', priority: 2, min_days_out: 2, max_days_out: 3, adjustment_pct: 30 },
+  { rule_group: 'urgency', name: 'H-7', priority: 3, min_days_out: 4, max_days_out: 7, adjustment_pct: 10 },
+  { rule_group: 'urgency', name: 'H-30', priority: 4, min_days_out: 30, adjustment_pct: -10 },
+  { rule_group: 'load', name: 'Almost full', priority: 1, max_seats_left_pct: 20, adjustment_pct: 15 },
+  { rule_group: 'month', name: 'December', priority: 1, month: 12, adjustment_pct: 20 },
+  {
+    rule_group: 'period',
+    name: 'Songkran 2027',
+    priority: 1,
+    start_date: new Date('2027-04-10'),
+    end_date: new Date('2027-04-16'),
+    adjustment_pct: 25,
+  },
+]
+// How much of each currency one US dollar buys.
+const CURRENCY_RATES = [
+  { currency_code: 'THB', rate_per_base: 35 },
+  { currency_code: 'EUR', rate_per_base: 0.92 },
+  { currency_code: 'JPY', rate_per_base: 150 },
+]
+const DAY_MS = 86_400_000
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -86,6 +164,84 @@ async function seedFlightNetwork() {
       where: { airport: policy.airport },
       update: {},
       create: { ...policy, curfew_start_local: timeOfDay(curfew_start_local), curfew_end_local: timeOfDay(curfew_end_local) },
+    })
+  }
+}
+
+// Same defaults as Feature 4's PRICING_SETTING_DEFAULTS. Upserted with no update, so a changed quote hold window survives a re-seed.
+// A database seeded before the switch to USD keeps THB: run `UPDATE pricing_setting SET value = 'USD' WHERE key = 'base_currency'`.
+async function seedPricingSettings() {
+  for (const setting of PRICING_SETTINGS) {
+    await prisma.pricing_setting.upsert({ where: { key: setting.key }, update: {}, create: setting })
+  }
+}
+
+// The unique indexes only cover live rows, so a Prisma upsert can't use them. skipDuplicates (ON CONFLICT DO NOTHING) gives the
+// same result as the upserts above: running the seed again keeps existing rows, and any edits made in the app.
+async function seedPricingCatalog() {
+  await prisma.fare_class.createMany({ data: FARE_CLASSES, skipDuplicates: true })
+  await prisma.seat_fee.createMany({
+    data: Object.entries(SEAT_FEE_GRID).flatMap(([cabin, fees]) =>
+      Object.entries(fees).map(([seat_type, amount]) => ({ cabin, seat_type, amount })),
+    ),
+    skipDuplicates: true,
+  })
+  await prisma.tax_fee.createMany({ data: TAX_FEES, skipDuplicates: true })
+
+  const fareClasses = await prisma.fare_class.findMany({ where: { code: { in: FARE_CLASSES.map((row) => row.code) }, deleted_at: null } })
+  const { fare_class, origin, destination, ...override } = BAGGAGE_ROUTE_OVERRIDE
+  const overrideRoute = await prisma.route.findFirst({ where: { origin, destination } })
+  const overrideClass = fareClasses.find((row) => row.code === fare_class)
+  await prisma.overweight_baggage_rate.createMany({
+    data: [
+      ...fareClasses.map((row) => ({ fare_class_id: row.id, ...BAGGAGE_BY_CABIN[row.cabin as keyof typeof BAGGAGE_BY_CABIN] })),
+      ...(overrideRoute && overrideClass ? [{ ...override, fare_class_id: overrideClass.id, route_id: overrideRoute.id }] : []),
+    ],
+    skipDuplicates: true,
+  })
+
+  // One code in each state the Promo codes card shows, with dates relative to today so they don't go stale.
+  const daysFromNow = (days: number) => new Date(Date.now() + days * DAY_MS)
+  const live = { valid_from: daysFromNow(-30), valid_to: daysFromNow(365) }
+  await prisma.promo_code.createMany({
+    data: [
+      { code: 'SAVE10', kind: 'promo', discount_pct: 10, ...live },
+      { code: 'MINUS20', kind: 'promo', discount_amount: 20, ...live },
+      { code: 'CORP15', kind: 'corporate', discount_pct: 15, ...live },
+      { code: 'SOON20', kind: 'promo', discount_pct: 20, valid_from: daysFromNow(30), valid_to: daysFromNow(120) },
+      { code: 'OLD5', kind: 'promo', discount_pct: 5, valid_from: daysFromNow(-120), valid_to: daysFromNow(-30) },
+      { code: 'SOLDOUT', kind: 'promo', discount_pct: 25, max_uses: 50, used_count: 50, ...live },
+      { code: 'PAUSED', kind: 'promo', discount_pct: 5, is_active: false, ...live },
+    ],
+    skipDuplicates: true,
+  })
+}
+
+// Base fares and rules need the routes and fare classes; currency rates need a staff member for updated_by, so this runs
+// after the staff are seeded. Existing rows are kept, like the rest of the pricing seed.
+async function seedPricingExamples() {
+  const routes = await prisma.route.findMany({ select: { id: true, origin: true, destination: true } })
+  const fareClasses = await prisma.fare_class.findMany({ where: { deleted_at: null }, select: { id: true, code: true } })
+  await prisma.base_fare.createMany({
+    data: routes.flatMap((route) => {
+      const fares =
+        BASE_FARES_BY_ROUTE[`${route.origin}-${route.destination}`] ?? BASE_FARES_BY_ROUTE[`${route.destination}-${route.origin}`]
+      if (!fares) return []
+      return fareClasses
+        .filter((fareClass) => fares[fareClass.code] !== undefined)
+        .map((fareClass) => ({ route_id: route.id, fare_class_id: fareClass.id, amount: fares[fareClass.code] }))
+    }),
+    skipDuplicates: true,
+  })
+  await prisma.pricing_rule.createMany({ data: PRICING_RULES, skipDuplicates: true })
+
+  const staff = await prisma.staff.findFirst({ where: { deleted_at: null }, orderBy: { created_at: 'asc' }, select: { id: true } })
+  if (!staff) return
+  for (const rate of CURRENCY_RATES) {
+    await prisma.currency_rate.upsert({
+      where: { currency_code: rate.currency_code },
+      update: {},
+      create: { ...rate, updated_by: staff.id },
     })
   }
 }
@@ -154,10 +310,14 @@ async function seedRefreshTokens(userId: string) {
 }
 
 async function main() {
-  console.log(`Seeding ${STAFF_ROLES.length} roles, the Feature 2 demo network, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`)
+  console.log(
+    `Seeding ${STAFF_ROLES.length} roles, the Feature 2 demo network, Feature 4 pricing data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
+  )
 
   const roleIds = await seedRoles()
   await seedFlightNetwork()
+  await seedPricingSettings()
+  await seedPricingCatalog()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()
@@ -168,6 +328,7 @@ async function main() {
     const user = await seedStaff(roleIds)
     await seedRefreshTokens(user.id)
   }
+  await seedPricingExamples()
 
   console.log('Seeding complete.')
 }
