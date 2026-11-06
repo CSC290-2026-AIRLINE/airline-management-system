@@ -1182,6 +1182,8 @@ model staff {
   bag_match_bag_match_linked_byTostaff                                  bag_match[]               @relation("bag_match_linked_byTostaff")
   bag_match_bag_match_reviewed_byTostaff                                bag_match[]               @relation("bag_match_reviewed_byTostaff")
   baggage_setting                                                       baggage_setting[]
+  bi_etl_run                                                            bi_etl_run[]
+  bi_setting                                                            bi_setting[]
   boarding_event                                                        boarding_event[]
   booking                                                               booking[]
   booking_service_request                                               booking_service_request[]
@@ -1774,6 +1776,118 @@ model bag_match {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model baggage_setting {
+  key        String   @id
+  value      String
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_by String?  @db.Uuid
+  staff      staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bi_booking_day {
+  route_id           String   @db.Uuid
+  booking_date       DateTime @db.Date
+  booking_count      Int
+  cancellation_count Int
+  bi_route           bi_route @relation(fields: [route_id], references: [route_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([route_id, booking_date])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bi_etl_run {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  trigger               String
+  requested_by_staff_id String?   @db.Uuid
+  status                String    @unique(map: "bi_etl_run_one_running_uq", where: raw("(status = 'running'::text)")) @default("running")
+  data_as_of            DateTime  @db.Timestamptz(6)
+  started_at            DateTime  @default(now()) @db.Timestamptz(6)
+  finished_at           DateTime? @db.Timestamptz(6)
+  row_count             Int?
+  error_message         String?
+  staff                 staff?    @relation(fields: [requested_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([started_at(sort: Desc)], map: "bi_etl_run_success_idx", where: raw("(status = 'success'::text)"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bi_flight {
+  flight_id              String            @id @db.Uuid
+  route_id               String            @db.Uuid
+  flight_number          String
+  flight_date            DateTime          @db.Date
+  status                 String
+  scheduled_departure_at DateTime          @db.Timestamptz(6)
+  actual_departure_at    DateTime?         @db.Timestamptz(6)
+  delay_minutes          Int?
+  revenue_amount         Decimal           @db.Decimal(12, 2)
+  refund_amount          Decimal           @db.Decimal(12, 2)
+  bi_route               bi_route          @relation(fields: [route_id], references: [route_id], onDelete: NoAction, onUpdate: NoAction)
+  bi_flight_cabin        bi_flight_cabin[]
+  bi_flight_delay        bi_flight_delay[]
+
+  @@unique([flight_number, flight_date])
+  @@index([flight_date], map: "bi_flight_date_idx")
+  @@index([route_id, flight_date], map: "bi_flight_route_date_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bi_flight_cabin {
+  flight_id      String    @db.Uuid
+  cabin          String
+  seat_available Int
+  seat_sold      Int
+  bi_flight      bi_flight @relation(fields: [flight_id], references: [flight_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([flight_id, cabin])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bi_flight_delay {
+  event_id      String    @id @db.Uuid
+  flight_id     String    @db.Uuid
+  reason_code   String?
+  category      String
+  delay_minutes Int
+  bi_flight     bi_flight @relation(fields: [flight_id], references: [flight_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([flight_id], map: "bi_flight_delay_flight_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bi_metric_day {
+  route_id        String   @db.Uuid
+  flight_date     DateTime @db.Date
+  flight_count    Int
+  cancelled_count Int
+  departed_count  Int
+  on_time_count   Int
+  delay_minutes   Int
+  seat_available  Int
+  seat_sold       Int
+  revenue_amount  Decimal  @db.Decimal(14, 2)
+  refund_amount   Decimal  @db.Decimal(14, 2)
+  bi_route        bi_route @relation(fields: [route_id], references: [route_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([route_id, flight_date])
+  @@index([flight_date], map: "bi_metric_day_date_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bi_route {
+  route_id       String           @id @db.Uuid
+  origin         String
+  destination    String
+  distance_km    Int
+  bi_booking_day bi_booking_day[]
+  bi_flight      bi_flight[]
+  bi_metric_day  bi_metric_day[]
+
+  @@unique([origin, destination])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bi_setting {
   key        String   @id
   value      String
   updated_at DateTime @default(now()) @db.Timestamptz(6)
