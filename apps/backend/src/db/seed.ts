@@ -17,6 +17,8 @@ const STAFF_ROLES = [
   { code: 'gate', name: 'Gate', is_admin: false },
   { code: 'baggage', name: 'Baggage', is_admin: false },
   { code: 'admin', name: 'Admin', is_admin: true },
+  { code: 'cs-agent', name: 'CS Agent', is_admin: false },
+  { code: 'cs-supervisor', name: 'CS Supervisor', is_admin: false },
 ]
 const GENDERS = ['M', 'F', 'X']
 

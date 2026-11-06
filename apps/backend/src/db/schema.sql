@@ -1,20 +1,21 @@
--- Level 1 schema (features 2, 4, 7, 8, 9, 12 and 15), Level 2 (features 6 and 10), and the Feature 1 baseline they
+-- Level 1 schema (features 2, 4, 7, 8, 9, 12 and 15), Level 2 (features 6, 10 and 13), and the Feature 1 baseline they
 -- depend on.
 -- One file, in apply order. Run it once against an empty PostgreSQL 15 or later database (the project runs 16).
 -- Prisma cannot express most of this (exclusion constraints, expression and trigram indexes, check constraints, triggers),
 -- so the migration in prisma/migrations/*_level1_schema is this file with the old scaffold tables dropped first and the
 -- 'admin' role inserted last. Later migrations: prisma/migrations/*_feature2_schedule_approval adds to Part 2 and Part
--- 11; prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 11;
+-- 12; prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 12;
 -- prisma/migrations/*_feature7_screening_iteration_03 changes watchlist_entry and the screening tables in Part 5;
--- prisma/migrations/*_feature6_check_in_boarding is Part 9 plus its foreign keys in Part 11;
--- prisma/migrations/*_feature10_lost_and_found is Part 10 plus its foreign keys in Part 11.
+-- prisma/migrations/*_feature6_check_in_boarding is Part 9 plus its foreign keys in Part 12;
+-- prisma/migrations/*_feature10_lost_and_found is Part 10 plus its foreign keys in Part 12;
+-- prisma/migrations/*_feature13_customer_service is Part 11 plus its foreign keys in Part 12.
 -- Keep the files in step. schema.prisma is generated from the migrated database with `prisma db pull`.
 -- Reference rows the migrations insert (settings, message types and templates, tier rules and so on) are here too.
 -- Placeholder and demo rows (gates, visa examples, fare-class earn rules and so on) are in seed.ts, which runs only in
 -- development and CI.
 
 -- ======================================================================================================================
--- PART 1 of 11: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
+-- PART 1 of 12: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
 -- ======================================================================================================================
 
 -- Feature 1 baseline assumed by features 2, 4, 7, 9 and 15.
@@ -90,13 +91,13 @@ CREATE INDEX refresh_token_user_idx ON refresh_token (user_id);
 
 
 -- ======================================================================================================================
--- PART 2 of 11: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
+-- PART 2 of 12: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
 -- ======================================================================================================================
 
 -- Feature 2 (Flight Scheduling and Network Ops) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format checks, overlap rules other than the aircraft
 -- timetable, event shape checks and helper triggers are the backend's job.
--- Cross-module foreign keys are in Part 11 of this file.
+-- Cross-module foreign keys are in Part 12 of this file.
 
 -- Reference data -----------------------------------------------------------------------------------
 
@@ -445,13 +446,13 @@ INSERT INTO flight_setting (key, value) VALUES
 
 
 -- ======================================================================================================================
--- PART 3 of 11: FEATURE 9 - AIRCRAFT MANAGEMENT
+-- PART 3 of 12: FEATURE 9 - AIRCRAFT MANAGEMENT
 -- ======================================================================================================================
 
 -- Feature 9 (Aircraft Management) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Layout validation, format checks, task and
 -- maintenance state consistency and the turnaround readiness calculation are the backend's job.
--- Cross-module foreign keys (airport, flight) are in Part 11 of this file.
+-- Cross-module foreign keys (airport, flight) are in Part 12 of this file.
 -- Dates are calendar dates on the simulated calendar. end_date is the LAST unavailable day (inclusive).
 
 CREATE TABLE aircraft_type (
@@ -593,13 +594,13 @@ INSERT INTO fleet_setting (key, value) VALUES ('reserve_ratio', '1.10');
 
 
 -- ======================================================================================================================
--- PART 4 of 11: FEATURE 4 - PRICING, FARE RULES AND FINANCE
+-- PART 4 of 12: FEATURE 4 - PRICING, FARE RULES AND FINANCE
 -- ======================================================================================================================
 
 -- Feature 4 (Pricing and Fare Rules) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format and range checks, rule-shape checks,
 -- immutability of quotes and the base_currency lock are the backend's job.
--- Cross-module foreign keys (route, flight) are in Part 11 of this file.
+-- Cross-module foreign keys (route, flight) are in Part 12 of this file.
 -- All money is NUMERIC in the base currency (pricing_setting 'base_currency'). Percent columns are plain percents (15.00 = 15%).
 -- Columns that mean "when, in the simulation" (quoted_at, expires_at, paid_on, computed_at) have no default.
 
@@ -863,7 +864,7 @@ CREATE TABLE finance_monthly_summary (
 
 
 -- ======================================================================================================================
--- PART 5 of 11: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
+-- PART 5 of 12: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
 -- ======================================================================================================================
 
 -- Feature 7 (Customer and Passenger Profiles) - proposed schema.
@@ -871,7 +872,7 @@ CREATE TABLE finance_monthly_summary (
 -- and immutability of screening rows are the backend's job.
 -- "user" and staff are in Part 1 of this file. This REPLACES the old scaffold customer table:
 -- names, DOB, gender, nationality moved to passenger; seat and meal preferences were cut from scope.
--- The flight cross-module FK is in Part 11 of this file.
+-- The flight cross-module FK is in Part 12 of this file.
 
 -- Normalised name used for matching: uppercase letters and digits only. Passport spelling is ASCII.
 -- A function (not a stored column) so there is nothing for the backend to keep in sync; indexes use the same expression.
@@ -1035,7 +1036,7 @@ CREATE TABLE screening_review (
 
 
 -- ======================================================================================================================
--- PART 6 of 11: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
+-- PART 6 of 12: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
 -- ======================================================================================================================
 
 -- Feature 15 (Admin Console) - proposed schema.
@@ -1116,7 +1117,7 @@ CREATE TRIGGER audit_log_no_truncate
 
 
 -- ======================================================================================================================
--- PART 7 of 11: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
+-- PART 7 of 12: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
 -- ======================================================================================================================
 
 -- Feature 12 (Onboard Products) - proposed schema.
@@ -1124,7 +1125,7 @@ CREATE TRIGGER audit_log_no_truncate
 -- completion rules, FEFO transfers, the order and payment state machine and on-hand reconciliation are the backend's job
 -- Uses customer (feature 7), staff (feature 1) and forbid_mutation() (baseline).
 -- booking_id, booking_passenger_id and payment_id belong to features 3b and 5, whose schemas do not exist yet: no foreign key.
--- The route, flight, aircraft and airport foreign keys are in Part 11 of this file.
+-- The route, flight, aircraft and airport foreign keys are in Part 12 of this file.
 -- Business timestamps (generated_at, transferred_at, submitted_at, sold_at, occurred_at, expires_at) have no default and
 -- come from the simulation clock. created_at and updated_at are real time.
 -- Money is NUMERIC in the base currency (feature 4, pricing_setting 'base_currency'). Orders and sales keep a currency snapshot.
@@ -1514,13 +1515,13 @@ CREATE TRIGGER stock_movement_no_truncate
 
 
 -- ======================================================================================================================
--- PART 8 of 11: FEATURE 8 - CREW MANAGEMENT AND ROSTERING
+-- PART 8 of 12: FEATURE 8 - CREW MANAGEMENT AND ROSTERING
 -- ======================================================================================================================
 
 -- Feature 8 (Crew Management and Rostering) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Pairing validation (closed at base, legs chained,
 -- duty and day limits), the legality rules, cross-flight overlap and the publish gate are the backend's job.
--- Uses staff (feature 1). The airport and flight foreign keys (feature 2) are in Part 11 of this file.
+-- Uses staff (feature 1). The airport and flight foreign keys (feature 2) are in Part 12 of this file.
 -- Business timestamps (assigned_at, unassigned_at, published_at, resolved_at) have no default and come from the
 -- simulation clock. created_at and updated_at are real time.
 -- Country codes use the team's nationality format (2 letters, lower case: th, jp, kr) and must match airport.country.
@@ -1751,13 +1752,13 @@ CREATE INDEX rule_break_run_open_idx ON rule_break (roster_run_id) WHERE resolve
 
 
 -- ======================================================================================================================
--- PART 9 of 11: FEATURE 6 - CHECK-IN, SEAT AND BOARDING
+-- PART 9 of 12: FEATURE 6 - CHECK-IN, SEAT AND BOARDING
 -- ======================================================================================================================
 
 -- Feature 6 (Check-in, Seat and Boarding), from G7's Iteration-03 doc. New tables only.
 -- MRZ check digits, the check-in window, passport expiry and visa checks, seat rules, excess fee maths, the boarding
 -- order and the head-count comparison are the backend's job.
--- Uses staff (feature 1) and passenger (feature 7). The airport and flight foreign keys (feature 2) are in Part 11 of this file.
+-- Uses staff (feature 1) and passenger (feature 7). The airport and flight foreign keys (feature 2) are in Part 12 of this file.
 -- booking_passenger (feature 3b) and payment (feature 5) do not exist yet, so those ids have no foreign key.
 -- Feature 3 owns seats and seat holds, so there is no seat table.
 -- Business timestamps (checked_in_at, weighed_at, checked_at, printed_at, closed_at, occurred_at) have no default and
@@ -2039,14 +2040,14 @@ CREATE TRIGGER boarding_event_no_truncate
 
 
 -- ======================================================================================================================
--- PART 10 of 11: FEATURE 10 - LOST AND FOUND BAGGAGE
+-- PART 10 of 12: FEATURE 10 - LOST AND FOUND BAGGAGE
 -- ======================================================================================================================
 
 -- Feature 10 (Lost and Found Baggage), from the F10 Iteration-03 doc. New tables only.
 -- Matching, the lost and unclaimed jobs, tag ownership, delivery choice rules and the status changes that follow a
 -- match or a delivery are the backend's job.
 -- Uses staff (feature 1), passenger and customer (feature 7) and expense (feature 4). The airport and flight foreign keys
--- (feature 2) and the checked_bag foreign key (feature 6) are in Part 11 of this file.
+-- (feature 2) and the checked_bag foreign key (feature 6) are in Part 12 of this file.
 -- booking_passenger (feature 3b) does not exist yet, so that id has no foreign key.
 -- Business timestamps (reported_at, lost_at, closed_at, found_at, suggested_at, reviewed_at, occurred_at,
 -- delivered_at) have no default and come from the simulation clock. created_at and updated_at are real time, and the
@@ -2278,10 +2279,363 @@ CREATE INDEX bag_cost_report_idx ON bag_cost (report_id);
 
 
 -- ======================================================================================================================
--- PART 11 of 11: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
+-- PART 11 of 12: FEATURE 13 - CUSTOMER SERVICE, COMPLAINTS AND NOTIFICATIONS
 -- ======================================================================================================================
 
--- Cross-module foreign keys for features 2, 4, 6, 7, 8, 9, 10 and 12, grouped by the feature that holds the id.
+-- Feature 13 (Customer Service, Complaints and Notifications), from Group 16's Iteration-03 doc. New tables only.
+-- The complaint status steps, the 7-day reopen, recipients, preferences, template rendering and retries are the
+-- backend's job.
+-- Uses staff (feature 1), passenger and customer (feature 7) and product (feature 12). The flight foreign keys (feature 2)
+-- and the lost_bag_report foreign key (feature 10) are in Part 12 of this file.
+-- booking_passenger (feature 3b) does not exist yet, so that id has no foreign key.
+-- Business timestamps (opened_at, resolved_at, closed_at, occurred_at, decided_at, result_at, received_at, processed_at,
+-- queued_at, sent_at) have no default and come from the simulation clock. created_at and updated_at are real time, and
+-- the backend sets updated_at on every update (no trigger, no @updatedAt).
+-- Money is in the base currency (feature 4's pricing_setting 'base_currency').
+-- The notification types and a default template for each type and channel are here because production runs only
+-- `migrate deploy`. The cs-agent and cs-supervisor roles are in seed.ts.
+
+-- Complaints ---------------------------------------------------------------------------------------------
+
+CREATE SEQUENCE complaint_case_seq MAXVALUE 999999;
+
+-- What every complaint has, so one queue and one history cover the three types; each type's details are in its own
+-- table, as Ajarn asked. case_number is 'CS-', the simulated year, '-' and complaint_case_seq padded to 6 digits, built by
+-- the backend. It is shown to the complainant but is never a credential.
+-- passenger_id is who complained (feature 7), so no names are copied here. A signed-in customer is reached through the
+-- account and a feature 10 case through its report; anyone else leaves an email or a phone.
+-- Status: with_supervisor (no owner) -> assigned -> resolved -> closed. A reopened case goes back to with_supervisor and
+-- loses its owner and resolution. A duplicate is resolved with duplicate_of_case_id set, and the charts leave it out.
+CREATE TABLE complaint_case (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_number          TEXT NOT NULL UNIQUE CHECK (case_number ~ '^CS-[0-9]{4}-[0-9]{6}$'),
+  type                 TEXT NOT NULL CHECK (type IN ('employee', 'flight', 'food')),
+  passenger_id         UUID NOT NULL REFERENCES passenger (id),
+  customer_id          UUID REFERENCES customer (id),       -- NULL for a passenger without an account
+  booking_passenger_id UUID,                                -- feature 3b (no FK yet); the booking that was checked
+  contact_email        TEXT,
+  contact_phone        TEXT,
+  status               TEXT NOT NULL DEFAULT 'with_supervisor'
+                         CHECK (status IN ('with_supervisor', 'assigned', 'resolved', 'closed')),
+  owner_staff_id       UUID REFERENCES staff (id),
+  source               TEXT NOT NULL DEFAULT 'complainant' CHECK (source IN ('complainant', 'feature_10')),
+  lost_bag_report_id   UUID UNIQUE,                         -- feature 10 (cross-module FK); one case per lost report
+  duplicate_of_case_id UUID REFERENCES complaint_case (id),
+  opened_at            TIMESTAMPTZ NOT NULL,                -- simulation clock
+  resolved_at          TIMESTAMPTZ,                         -- simulation clock
+  closed_at            TIMESTAMPTZ,                         -- simulation clock; reopen allowed for 7 days after this
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (id, type),                                        -- lets each detail table pin its type
+  CHECK (customer_id IS NOT NULL OR booking_passenger_id IS NOT NULL),
+  CHECK (customer_id IS NOT NULL OR lost_bag_report_id IS NOT NULL OR contact_email IS NOT NULL OR contact_phone IS NOT NULL),
+  CHECK ((source = 'feature_10') = (lost_bag_report_id IS NOT NULL)),
+  CHECK (source = 'complainant' OR type = 'flight'),        -- a lost bag is a flight case
+  CHECK ((status = 'with_supervisor') = (owner_staff_id IS NULL)),
+  CHECK ((status IN ('resolved', 'closed')) = (resolved_at IS NOT NULL)),
+  CHECK ((status = 'closed') = (closed_at IS NOT NULL)),
+  CHECK (duplicate_of_case_id IS NULL OR (duplicate_of_case_id <> id AND status IN ('resolved', 'closed')))
+);
+
+CREATE INDEX complaint_case_queue_idx ON complaint_case (status, opened_at) WHERE status IN ('with_supervisor', 'assigned');
+CREATE INDEX complaint_case_chart_idx ON complaint_case (type, opened_at) WHERE duplicate_of_case_id IS NULL;
+CREATE INDEX complaint_case_passenger_idx ON complaint_case (passenger_id);
+CREATE INDEX complaint_case_customer_idx ON complaint_case (customer_id) WHERE customer_id IS NOT NULL;
+CREATE INDEX complaint_case_booking_passenger_idx ON complaint_case (booking_passenger_id) WHERE booking_passenger_id IS NOT NULL;
+CREATE INDEX complaint_case_owner_idx ON complaint_case (owner_staff_id) WHERE owner_staff_id IS NOT NULL;
+CREATE INDEX complaint_case_duplicate_idx ON complaint_case (duplicate_of_case_id) WHERE duplicate_of_case_id IS NOT NULL;
+
+-- Each detail table pins its type in the foreign key, so a case has details in its own type's table only. The backend
+-- writes the case and its details in one transaction. The key is (case_id, case_type): case_type is fixed per table, so
+-- it is still one row per case, and Prisma's db pull reads a one-to-one relation that needs no hand edit.
+CREATE TABLE employee_complaint (
+  case_id         UUID NOT NULL,
+  case_type       TEXT NOT NULL DEFAULT 'employee' CHECK (case_type = 'employee'),
+  location        TEXT NOT NULL CHECK (location IN ('check_in', 'gate', 'onboard', 'call_centre', 'other')),
+  staff_name      TEXT,                                     -- free text from the complainant
+  linked_staff_id UUID REFERENCES staff (id),               -- set by the agent later
+  description     TEXT NOT NULL,
+  PRIMARY KEY (case_id, case_type),
+  FOREIGN KEY (case_id, case_type) REFERENCES complaint_case (id, type)
+);
+
+-- The complainant types a flight number and date; the backend finds the flight (flight_number + service_date is unique
+-- in feature 2) and checks it is on the booking (FLIGHT_NOT_ON_BOOKING). lost_bag is only for feature 10 cases.
+CREATE TABLE flight_complaint (
+  case_id   UUID NOT NULL,
+  case_type TEXT NOT NULL DEFAULT 'flight' CHECK (case_type = 'flight'),
+  flight_id UUID NOT NULL,                                  -- feature 2's flight (cross-module FK)
+  issue     TEXT NOT NULL CHECK (issue IN ('delay', 'cancellation', 'seat', 'cleanliness', 'lost_bag', 'other')),
+  details   TEXT NOT NULL,
+  PRIMARY KEY (case_id, case_type),
+  FOREIGN KEY (case_id, case_type) REFERENCES complaint_case (id, type)
+);
+
+CREATE INDEX flight_complaint_flight_idx ON flight_complaint (flight_id);
+
+-- product_id is the meal (or snack or drink) from feature 12, if known: the passenger's meal line on the booking, or the
+-- flight's default meal for a passenger who ordered none. Duty-free is not food, and the pinned category keeps it out.
+CREATE TABLE food_complaint (
+  case_id          UUID NOT NULL,
+  case_type        TEXT NOT NULL DEFAULT 'food' CHECK (case_type = 'food'),
+  flight_id        UUID NOT NULL,                           -- feature 2's flight (cross-module FK)
+  product_id       UUID,
+  product_category TEXT CHECK (product_category IN ('meal', 'snack', 'beverage')),
+  issue            TEXT NOT NULL CHECK (issue IN ('wrong_meal', 'quality', 'allergy', 'missing', 'other')),
+  details          TEXT NOT NULL,
+  PRIMARY KEY (case_id, case_type),
+  FOREIGN KEY (case_id, case_type) REFERENCES complaint_case (id, type),
+  FOREIGN KEY (product_id, product_category) REFERENCES product (id, category),
+  CHECK ((product_id IS NULL) = (product_category IS NULL))
+);
+
+CREATE INDEX food_complaint_flight_idx ON food_complaint (flight_id);
+CREATE INDEX food_complaint_product_idx ON food_complaint (product_id) WHERE product_id IS NOT NULL;
+
+-- Case history (the record Ajarn asked for). Append-only through the shared forbid_mutation() trigger.
+-- The complainant sees the events that are not internal; staff notes are always internal.
+CREATE TABLE case_event (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_id        UUID NOT NULL REFERENCES complaint_case (id),
+  event_type     TEXT NOT NULL CHECK (event_type IN (
+                   'created', 'routed_to_supervisor', 'assigned', 'status_changed', 'note_added', 'marked_duplicate',
+                   'compensation_decided', 'compensation_result', 'closed', 'reopened')),
+  actor_type     TEXT NOT NULL CHECK (actor_type IN ('staff', 'complainant', 'system')),
+  actor_staff_id UUID REFERENCES staff (id),
+  from_value     TEXT,
+  to_value       TEXT,
+  note           TEXT,
+  is_internal    BOOLEAN NOT NULL DEFAULT false,
+  occurred_at    TIMESTAMPTZ NOT NULL,                      -- simulation clock
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((actor_type = 'staff') = (actor_staff_id IS NOT NULL)),
+  CHECK (event_type <> 'note_added' OR (note IS NOT NULL AND actor_type = 'staff' AND is_internal))
+);
+
+CREATE INDEX case_event_case_idx ON case_event (case_id, occurred_at);
+
+CREATE TRIGGER case_event_append_only
+  BEFORE UPDATE OR DELETE ON case_event
+  FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+
+CREATE TRIGGER case_event_no_truncate
+  BEFORE TRUNCATE ON case_event
+  FOR EACH STATEMENT EXECUTE FUNCTION forbid_mutation();
+
+-- Compensation is paid only through feature 5B. A case has one live decision (pending or paid); a decision feature 5B
+-- rejected stays as history, and staff may decide again. The request to feature 5B uses this row's id as the
+-- idempotency key, so a retry of the same decision is never paid twice, while a new decision is a new request.
+CREATE TABLE case_compensation (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_id             UUID NOT NULL REFERENCES complaint_case (id),
+  decided_by_staff_id UUID NOT NULL REFERENCES staff (id),
+  type                TEXT NOT NULL CHECK (type IN ('voucher', 'refund')),
+  amount              NUMERIC(12, 2) NOT NULL CHECK (amount > 0), -- base currency
+  reason              TEXT NOT NULL,
+  status              TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed')),
+  payout_ref          TEXT,                                 -- from feature 5B
+  failure_reason      TEXT,                                 -- from feature 5B
+  decided_at          TIMESTAMPTZ NOT NULL,                 -- simulation clock
+  result_at           TIMESTAMPTZ,                          -- simulation clock; when feature 5B answered
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (status <> 'paid' OR payout_ref IS NOT NULL),
+  CHECK ((status = 'failed') = (failure_reason IS NOT NULL)),
+  CHECK ((status = 'pending') = (result_at IS NULL))
+);
+
+CREATE UNIQUE INDEX case_compensation_live_uq ON case_compensation (case_id) WHERE status <> 'failed';
+
+-- Notifications ------------------------------------------------------------------------------------------
+
+-- Every kind of message, so templates, preferences and the delivery log share one list. is_mandatory types always go out
+-- on at least one channel (email when the customer turned every channel off).
+-- security_alert and security_alert_withdrawn go by email to the authority address in the backend's config (mocked),
+-- never to a customer: feature 7 sends the first when its security staff confirm a watchlist match, and the second
+-- when a later review corrects that decision. The delivery log and the preferences page leave both out.
+CREATE TABLE notification_type (
+  code           TEXT PRIMARY KEY,
+  source_feature TEXT NOT NULL,                             -- '2', '6', '7', '10', '13'
+  name           TEXT NOT NULL,
+  is_mandatory   BOOLEAN NOT NULL DEFAULT false
+);
+
+INSERT INTO notification_type (code, source_feature, name, is_mandatory) VALUES
+  ('flight_delayed', '2', 'Flight delayed', true),
+  ('flight_rescheduled', '2', 'Flight rescheduled', true),
+  ('flight_diverted', '2', 'Flight diverted', true),
+  ('flight_cancelled', '2', 'Flight cancelled', true),
+  ('check_in_completed', '6', 'Check-in completed', false),
+  ('boarding_pass_issued', '6', 'Boarding pass issued', false),
+  ('gate_changed', '6', 'Gate changed', true),
+  ('boarding_call', '6', 'Boarding call', false),
+  ('security_alert', '7', 'Security alert to the authority', true),
+  ('security_alert_withdrawn', '7', 'Security alert withdrawn', true),
+  ('bag_case_updated', '10', 'Lost bag case updated', false),
+  ('bag_delivery_updated', '10', 'Bag delivery updated', false),
+  ('complaint_received', '13', 'Complaint received', false),
+  ('complaint_updated', '13', 'Complaint updated', false);
+
+-- An email has a subject and an SMS does not; a push may have a title.
+-- The rows below are the defaults, so every message can go out after `migrate deploy`; the supervisor edits the wording
+-- through the template routes. The backend fills these placeholders: {{passenger_name}}, {{flight_number}},
+-- {{service_date}}, {{new_departure}}, {{diverted_to}}, {{seat}}, {{gate}}, {{boarding_time}}, {{case_number}},
+-- {{status}}, {{delivery_status}} and {{reference}} (feature 7's reference for a security alert).
+CREATE TABLE notification_template (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type_code        TEXT NOT NULL REFERENCES notification_type (code),
+  channel          TEXT NOT NULL CHECK (channel IN ('email', 'sms', 'push')),
+  subject_template TEXT,
+  body_template    TEXT NOT NULL,                           -- placeholders like {{flight_number}}
+  is_active        BOOLEAN NOT NULL DEFAULT true,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by       UUID REFERENCES staff (id),
+  UNIQUE (type_code, channel),
+  CHECK (channel <> 'email' OR subject_template IS NOT NULL),
+  CHECK (channel <> 'sms' OR subject_template IS NULL)
+);
+
+INSERT INTO notification_template (type_code, channel, subject_template, body_template) VALUES
+  ('flight_delayed', 'email', 'Flight {{flight_number}} is delayed',
+   'Dear {{passenger_name}}, flight {{flight_number}} on {{service_date}} is delayed. The new departure time is {{new_departure}}.'),
+  ('flight_delayed', 'sms', NULL, 'Flight {{flight_number}} on {{service_date}} is delayed. New departure: {{new_departure}}.'),
+  ('flight_delayed', 'push', 'Flight delayed', 'Flight {{flight_number}} now departs at {{new_departure}}.'),
+  ('flight_rescheduled', 'email', 'Flight {{flight_number}} has a new time',
+   'Dear {{passenger_name}}, flight {{flight_number}} on {{service_date}} has been rescheduled. The new departure time is {{new_departure}}.'),
+  ('flight_rescheduled', 'sms', NULL, 'Flight {{flight_number}} on {{service_date}} has been rescheduled. New departure: {{new_departure}}.'),
+  ('flight_rescheduled', 'push', 'Flight rescheduled', 'Flight {{flight_number}} now departs at {{new_departure}}.'),
+  ('flight_diverted', 'email', 'Flight {{flight_number}} has been diverted',
+   'Dear {{passenger_name}}, flight {{flight_number}} on {{service_date}} has been diverted to {{diverted_to}}. We will send you more information soon.'),
+  ('flight_diverted', 'sms', NULL, 'Flight {{flight_number}} on {{service_date}} has been diverted to {{diverted_to}}.'),
+  ('flight_diverted', 'push', 'Flight diverted', 'Flight {{flight_number}} has been diverted to {{diverted_to}}.'),
+  ('flight_cancelled', 'email', 'Flight {{flight_number}} is cancelled',
+   'Dear {{passenger_name}}, flight {{flight_number}} on {{service_date}} has been cancelled. We will contact you about your options.'),
+  ('flight_cancelled', 'sms', NULL, 'Flight {{flight_number}} on {{service_date}} has been cancelled.'),
+  ('flight_cancelled', 'push', 'Flight cancelled', 'Flight {{flight_number}} on {{service_date}} has been cancelled.'),
+  ('check_in_completed', 'email', 'You are checked in for flight {{flight_number}}',
+   'Dear {{passenger_name}}, you are checked in for flight {{flight_number}} on {{service_date}}.'),
+  ('check_in_completed', 'sms', NULL, 'You are checked in for flight {{flight_number}} on {{service_date}}.'),
+  ('check_in_completed', 'push', 'Checked in', 'You are checked in for flight {{flight_number}}.'),
+  ('boarding_pass_issued', 'email', 'Your boarding pass for flight {{flight_number}}',
+   'Dear {{passenger_name}}, your boarding pass for flight {{flight_number}} on {{service_date}} is ready. Seat {{seat}}, boarding from {{boarding_time}}.'),
+  ('boarding_pass_issued', 'sms', NULL, 'Boarding pass ready for flight {{flight_number}}. Seat {{seat}}, boarding from {{boarding_time}}.'),
+  ('boarding_pass_issued', 'push', 'Boarding pass ready', 'Flight {{flight_number}}, seat {{seat}}.'),
+  ('gate_changed', 'email', 'Gate change for flight {{flight_number}}',
+   'Dear {{passenger_name}}, flight {{flight_number}} on {{service_date}} now boards at gate {{gate}}.'),
+  ('gate_changed', 'sms', NULL, 'Gate change: flight {{flight_number}} now boards at gate {{gate}}.'),
+  ('gate_changed', 'push', 'Gate change', 'Flight {{flight_number}} now boards at gate {{gate}}.'),
+  ('boarding_call', 'email', 'Flight {{flight_number}} is boarding',
+   'Dear {{passenger_name}}, flight {{flight_number}} is now boarding at gate {{gate}}.'),
+  ('boarding_call', 'sms', NULL, 'Flight {{flight_number}} is now boarding at gate {{gate}}.'),
+  ('boarding_call', 'push', 'Now boarding', 'Flight {{flight_number}} is boarding at gate {{gate}}.'),
+  ('security_alert', 'email', 'Security alert: flight {{flight_number}} on {{service_date}}',
+   'Airline security confirmed a watchlist match for passenger {{passenger_name}} on flight {{flight_number}} on {{service_date}}. Reference: {{reference}}.'),
+  ('security_alert_withdrawn', 'email', 'Security alert withdrawn: flight {{flight_number}} on {{service_date}}',
+   'The security alert {{reference}} for passenger {{passenger_name}} on flight {{flight_number}} on {{service_date}} is withdrawn. Airline security found that it was not a match.'),
+  ('bag_case_updated', 'email', 'Update on your bag case {{case_number}}',
+   'Dear {{passenger_name}}, your lost bag case {{case_number}} is now: {{status}}.'),
+  ('bag_case_updated', 'sms', NULL, 'Lost bag case {{case_number}}: {{status}}.'),
+  ('bag_case_updated', 'push', 'Bag case update', 'Case {{case_number}}: {{status}}.'),
+  ('bag_delivery_updated', 'email', 'Delivery update for bag case {{case_number}}',
+   'Dear {{passenger_name}}, the delivery of your bag for case {{case_number}} is now: {{delivery_status}}.'),
+  ('bag_delivery_updated', 'sms', NULL, 'Bag case {{case_number}} delivery: {{delivery_status}}.'),
+  ('bag_delivery_updated', 'push', 'Bag delivery update', 'Case {{case_number}}: {{delivery_status}}.'),
+  ('complaint_received', 'email', 'We received your complaint {{case_number}}',
+   'Dear {{passenger_name}}, we received your complaint. Your case number is {{case_number}}, and a supervisor will look at it.'),
+  ('complaint_received', 'sms', NULL, 'We received your complaint. Case number: {{case_number}}.'),
+  ('complaint_received', 'push', 'Complaint received', 'Your case number is {{case_number}}.'),
+  ('complaint_updated', 'email', 'Update on your complaint {{case_number}}',
+   'Dear {{passenger_name}}, your complaint {{case_number}} is now: {{status}}.'),
+  ('complaint_updated', 'sms', NULL, 'Complaint {{case_number}}: {{status}}.'),
+  ('complaint_updated', 'push', 'Complaint update', 'Case {{case_number}}: {{status}}.');
+
+-- No row = email on, SMS and push off.
+CREATE TABLE notification_preference (
+  customer_id UUID NOT NULL REFERENCES customer (id),
+  type_code   TEXT NOT NULL REFERENCES notification_type (code),
+  channel     TEXT NOT NULL CHECK (channel IN ('email', 'sms', 'push')),
+  is_enabled  BOOLEAN NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (customer_id, type_code, channel)
+);
+
+-- Events from other features, and feature 13's own case events (source '13'), so every message comes from an event.
+-- source_event_id is the sender's id (feature 2's flight_event.id, feature 13's case_event.id); the unique key makes a
+-- repeated event a no-op.
+CREATE TABLE inbound_event (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source          TEXT NOT NULL CHECK (source ~ '^[0-9]{1,2}[ab]?$'), -- '2', '3b', '6', '7', '10', '13'
+  source_event_id TEXT NOT NULL,
+  event_type      TEXT NOT NULL,
+  payload         JSONB NOT NULL,
+  received_at     TIMESTAMPTZ NOT NULL,                     -- simulation clock
+  processed_at    TIMESTAMPTZ,                              -- simulation clock
+  UNIQUE (source, source_event_id)
+);
+
+CREATE INDEX inbound_event_pending_idx ON inbound_event (received_at) WHERE processed_at IS NULL;
+
+-- One row per message: one per event, recipient and channel. body is NULL only when the message failed before it could
+-- be rendered (no active template). After insert only status, attempts, sent_at and error change, plus subject and body
+-- while they are still NULL (a retry after the template is fixed); rows are never deleted.
+CREATE TABLE notification (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  inbound_event_id UUID NOT NULL REFERENCES inbound_event (id),
+  type_code        TEXT NOT NULL REFERENCES notification_type (code),
+  channel          TEXT NOT NULL CHECK (channel IN ('email', 'sms', 'push')),
+  recipient        TEXT NOT NULL,                           -- email, phone, or the customer id for push; the authority's email for the security types
+  customer_id      UUID REFERENCES customer (id),
+  case_id          UUID REFERENCES complaint_case (id),
+  subject          TEXT,
+  body             TEXT,                                    -- rendered text, as sent
+  status           TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'sent', 'failed')),
+  attempts         INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  error            TEXT,
+  queued_at        TIMESTAMPTZ NOT NULL,                    -- simulation clock
+  sent_at          TIMESTAMPTZ,                             -- simulation clock
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (inbound_event_id, recipient, channel),
+  CHECK ((status = 'sent') = (sent_at IS NOT NULL)),
+  CHECK (status <> 'failed' OR error IS NOT NULL),
+  CHECK (status = 'failed' OR body IS NOT NULL),
+  CHECK (channel <> 'push' OR customer_id IS NOT NULL)
+);
+
+CREATE INDEX notification_customer_idx ON notification (customer_id, queued_at DESC) WHERE customer_id IS NOT NULL;
+CREATE INDEX notification_case_idx ON notification (case_id) WHERE case_id IS NOT NULL;
+CREATE INDEX notification_queued_idx ON notification (queued_at) WHERE status = 'queued';
+
+CREATE FUNCTION notification_forbid_content_change() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF (NEW.id, NEW.inbound_event_id, NEW.type_code, NEW.channel, NEW.recipient, NEW.customer_id, NEW.case_id, NEW.queued_at)
+       IS DISTINCT FROM (OLD.id, OLD.inbound_event_id, OLD.type_code, OLD.channel, OLD.recipient, OLD.customer_id,
+                         OLD.case_id, OLD.queued_at)
+     OR (OLD.subject IS NOT NULL AND NEW.subject IS DISTINCT FROM OLD.subject)
+     OR (OLD.body IS NOT NULL AND NEW.body IS DISTINCT FROM OLD.body) THEN
+    RAISE EXCEPTION 'a notification keeps what was sent; only status, attempts, sent_at and error change';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER notification_content_fixed
+  BEFORE UPDATE ON notification
+  FOR EACH ROW EXECUTE FUNCTION notification_forbid_content_change();
+
+CREATE TRIGGER notification_no_delete
+  BEFORE DELETE ON notification
+  FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+
+CREATE TRIGGER notification_no_truncate
+  BEFORE TRUNCATE ON notification
+  FOR EACH STATEMENT EXECUTE FUNCTION forbid_mutation();
+
+
+-- ======================================================================================================================
+-- PART 12 of 12: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
+-- ======================================================================================================================
+
+-- Cross-module foreign keys for features 2, 4, 6, 7, 8, 9, 10, 12 and 13, grouped by the feature that holds the id.
 -- Recommended: the targets are never hard-deleted (airport, route, flight and aircraft are deactivated or cancelled),
 -- everything lives in one Postgres, and the DB leads own the migration order. Apply after every feature script.
 -- This part is optional: delete it (or any statement) and the features still work, with the backend
@@ -2346,3 +2700,9 @@ ALTER TABLE bag_location_event ADD CONSTRAINT bag_location_event_airport_fk    F
 ALTER TABLE bag_location_event ADD CONSTRAINT bag_location_event_to_airport_fk FOREIGN KEY (to_airport)        REFERENCES airport (iata_code);
 ALTER TABLE bag_location_event ADD CONSTRAINT bag_location_event_flight_fk     FOREIGN KEY (sent_on_flight_id) REFERENCES flight (id);
 ALTER TABLE bag_delivery       ADD CONSTRAINT bag_delivery_airport_fk          FOREIGN KEY (pickup_airport)    REFERENCES airport (iata_code);
+
+-- Feature 13 -> features 2 and 10
+-- complaint_case.booking_passenger_id (feature 3b) has no foreign key: that schema does not exist yet.
+ALTER TABLE complaint_case   ADD CONSTRAINT complaint_case_lost_bag_report_fk FOREIGN KEY (lost_bag_report_id) REFERENCES lost_bag_report (id);
+ALTER TABLE flight_complaint ADD CONSTRAINT flight_complaint_flight_fk        FOREIGN KEY (flight_id)          REFERENCES flight (id);
+ALTER TABLE food_complaint   ADD CONSTRAINT food_complaint_flight_fk          FOREIGN KEY (flight_id)          REFERENCES flight (id);
