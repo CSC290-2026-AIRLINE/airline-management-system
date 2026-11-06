@@ -1,24 +1,25 @@
--- Level 1 schema (features 2, 4, 7, 8, 9, 12 and 15), Level 2 (features 3, 6, 10, 11, 13 and 17), and the Feature 1
--- baseline they depend on.
+-- Level 1 schema (features 2, 4, 7, 8, 9, 12 and 15), Level 2 (features 3, 6, 10, 11, 13 and 17), Level 3 (feature 5),
+-- and the Feature 1 baseline they depend on.
 -- One file, in apply order. Run it once against an empty PostgreSQL 15 or later database (the project runs 16).
 -- Prisma cannot express most of this (exclusion constraints, expression and trigram indexes, check constraints, triggers),
 -- so the migration in prisma/migrations/*_level1_schema is this file with the old scaffold tables dropped first and the
 -- 'admin' role inserted last. Later migrations: prisma/migrations/*_feature2_schedule_approval adds to Part 2 and Part
--- 15; prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 15;
+-- 16; prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 16;
 -- prisma/migrations/*_feature7_screening_iteration_03 changes watchlist_entry and the screening tables in Part 5;
--- prisma/migrations/*_feature6_check_in_boarding is Part 9 plus its foreign keys in Part 15;
--- prisma/migrations/*_feature10_lost_and_found is Part 10 plus its foreign keys in Part 15;
--- prisma/migrations/*_feature13_customer_service is Part 11 plus its foreign keys in Part 15;
--- prisma/migrations/*_feature3_search_booking_seats is Part 12 plus its foreign keys in Part 15;
--- prisma/migrations/*_feature11_loyalty is Part 13 plus its foreign keys in Part 15;
--- prisma/migrations/*_feature17_cargo is Part 14 plus its foreign keys in Part 15.
+-- prisma/migrations/*_feature6_check_in_boarding is Part 9 plus its foreign keys in Part 16;
+-- prisma/migrations/*_feature10_lost_and_found is Part 10 plus its foreign keys in Part 16;
+-- prisma/migrations/*_feature13_customer_service is Part 11 plus its foreign keys in Part 16;
+-- prisma/migrations/*_feature3_search_booking_seats is Part 12 plus its foreign keys in Part 16;
+-- prisma/migrations/*_feature11_loyalty is Part 13 plus its foreign keys in Part 16;
+-- prisma/migrations/*_feature17_cargo is Part 14 plus its foreign keys in Part 16;
+-- prisma/migrations/*_feature5_payments_finance is Part 15 plus its foreign keys in Part 16.
 -- Keep the files in step. schema.prisma is generated from the migrated database with `prisma db pull`.
 -- Reference rows the migrations insert (settings, message types and templates, tier rules and so on) are here too.
 -- Placeholder and demo rows (gates, visa examples, fare-class earn rules and so on) are in seed.ts, which runs only in
 -- development and CI.
 
 -- ======================================================================================================================
--- PART 1 of 15: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
+-- PART 1 of 16: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
 -- ======================================================================================================================
 
 -- Feature 1 baseline assumed by features 2, 4, 7, 9 and 15.
@@ -94,13 +95,13 @@ CREATE INDEX refresh_token_user_idx ON refresh_token (user_id);
 
 
 -- ======================================================================================================================
--- PART 2 of 15: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
+-- PART 2 of 16: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
 -- ======================================================================================================================
 
 -- Feature 2 (Flight Scheduling and Network Ops) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format checks, overlap rules other than the aircraft
 -- timetable, event shape checks and helper triggers are the backend's job.
--- Cross-module foreign keys are in Part 15 of this file.
+-- Cross-module foreign keys are in Part 16 of this file.
 
 -- Reference data -----------------------------------------------------------------------------------
 
@@ -449,13 +450,13 @@ INSERT INTO flight_setting (key, value) VALUES
 
 
 -- ======================================================================================================================
--- PART 3 of 15: FEATURE 9 - AIRCRAFT MANAGEMENT
+-- PART 3 of 16: FEATURE 9 - AIRCRAFT MANAGEMENT
 -- ======================================================================================================================
 
 -- Feature 9 (Aircraft Management) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Layout validation, format checks, task and
 -- maintenance state consistency and the turnaround readiness calculation are the backend's job.
--- Cross-module foreign keys (airport, flight) are in Part 15 of this file.
+-- Cross-module foreign keys (airport, flight) are in Part 16 of this file.
 -- Dates are calendar dates on the simulated calendar. end_date is the LAST unavailable day (inclusive).
 
 CREATE TABLE aircraft_type (
@@ -597,13 +598,13 @@ INSERT INTO fleet_setting (key, value) VALUES ('reserve_ratio', '1.10');
 
 
 -- ======================================================================================================================
--- PART 4 of 15: FEATURE 4 - PRICING, FARE RULES AND FINANCE
+-- PART 4 of 16: FEATURE 4 - PRICING, FARE RULES AND FINANCE
 -- ======================================================================================================================
 
 -- Feature 4 (Pricing and Fare Rules) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format and range checks, rule-shape checks,
 -- immutability of quotes and the base_currency lock are the backend's job.
--- Cross-module foreign keys (route, flight) are in Part 15 of this file.
+-- Cross-module foreign keys (route, flight) are in Part 16 of this file.
 -- All money is NUMERIC in the base currency (pricing_setting 'base_currency'). Percent columns are plain percents (15.00 = 15%).
 -- Columns that mean "when, in the simulation" (quoted_at, expires_at, paid_on, computed_at) have no default.
 
@@ -867,7 +868,7 @@ CREATE TABLE finance_monthly_summary (
 
 
 -- ======================================================================================================================
--- PART 5 of 15: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
+-- PART 5 of 16: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
 -- ======================================================================================================================
 
 -- Feature 7 (Customer and Passenger Profiles) - proposed schema.
@@ -875,7 +876,7 @@ CREATE TABLE finance_monthly_summary (
 -- and immutability of screening rows are the backend's job.
 -- "user" and staff are in Part 1 of this file. This REPLACES the old scaffold customer table:
 -- names, DOB, gender, nationality moved to passenger; seat and meal preferences were cut from scope.
--- The flight cross-module FK is in Part 15 of this file.
+-- The flight cross-module FK is in Part 16 of this file.
 
 -- Normalised name used for matching: uppercase letters and digits only. Passport spelling is ASCII.
 -- A function (not a stored column) so there is nothing for the backend to keep in sync; indexes use the same expression.
@@ -1039,7 +1040,7 @@ CREATE TABLE screening_review (
 
 
 -- ======================================================================================================================
--- PART 6 of 15: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
+-- PART 6 of 16: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
 -- ======================================================================================================================
 
 -- Feature 15 (Admin Console) - proposed schema.
@@ -1120,15 +1121,15 @@ CREATE TRIGGER audit_log_no_truncate
 
 
 -- ======================================================================================================================
--- PART 7 of 15: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
+-- PART 7 of 16: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
 -- ======================================================================================================================
 
 -- Feature 12 (Onboard Products) - proposed schema.
 -- Contents: the doc's own checks and the columns and tables the doc is missing. Settings resolution (flight, route, network),
 -- completion rules, FEFO transfers, the order and payment state machine and on-hand reconciliation are the backend's job
 -- Uses customer (feature 7), staff (feature 1) and forbid_mutation() (baseline).
--- payment_id belongs to feature 5, whose schema does not exist yet: no foreign key.
--- The route, flight, aircraft and airport foreign keys, and the booking ones (feature 3b), are in Part 15 of this file.
+-- The route, flight, aircraft and airport foreign keys, and the booking (feature 3b) and payment (feature 5) ones,
+-- are in Part 16 of this file.
 -- Business timestamps (generated_at, transferred_at, submitted_at, sold_at, occurred_at, expires_at) have no default and
 -- come from the simulation clock. created_at and updated_at are real time.
 -- Money is NUMERIC in the base currency (feature 4, pricing_setting 'base_currency'). Orders and sales keep a currency snapshot.
@@ -1518,13 +1519,13 @@ CREATE TRIGGER stock_movement_no_truncate
 
 
 -- ======================================================================================================================
--- PART 8 of 15: FEATURE 8 - CREW MANAGEMENT AND ROSTERING
+-- PART 8 of 16: FEATURE 8 - CREW MANAGEMENT AND ROSTERING
 -- ======================================================================================================================
 
 -- Feature 8 (Crew Management and Rostering) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Pairing validation (closed at base, legs chained,
 -- duty and day limits), the legality rules, cross-flight overlap and the publish gate are the backend's job.
--- Uses staff (feature 1). The airport and flight foreign keys (feature 2) are in Part 15 of this file.
+-- Uses staff (feature 1). The airport and flight foreign keys (feature 2) are in Part 16 of this file.
 -- Business timestamps (assigned_at, unassigned_at, published_at, resolved_at) have no default and come from the
 -- simulation clock. created_at and updated_at are real time.
 -- Country codes use the team's nationality format (2 letters, lower case: th, jp, kr) and must match airport.country.
@@ -1755,15 +1756,14 @@ CREATE INDEX rule_break_run_open_idx ON rule_break (roster_run_id) WHERE resolve
 
 
 -- ======================================================================================================================
--- PART 9 of 15: FEATURE 6 - CHECK-IN, SEAT AND BOARDING
+-- PART 9 of 16: FEATURE 6 - CHECK-IN, SEAT AND BOARDING
 -- ======================================================================================================================
 
 -- Feature 6 (Check-in, Seat and Boarding), from G7's Iteration-03 doc. New tables only.
 -- MRZ check digits, the check-in window, passport expiry and visa checks, seat rules, excess fee maths, the boarding
 -- order and the head-count comparison are the backend's job.
--- Uses staff (feature 1) and passenger (feature 7). The foreign keys to airport and flight (feature 2) and to the
--- booking coupon (feature 3b) are in Part 15 of this file. payment (feature 5) does not exist yet, so excess_payment_id
--- has no foreign key.
+-- Uses staff (feature 1) and passenger (feature 7). The foreign keys to airport and flight (feature 2), the booking
+-- coupon (feature 3b) and payment (feature 5) are in Part 16 of this file.
 -- Feature 3 owns seats and seat holds, so there is no seat table.
 -- Business timestamps (checked_in_at, weighed_at, checked_at, printed_at, closed_at, occurred_at) have no default and
 -- come from the simulation clock. created_at and updated_at are real time. Nothing updates updated_at by itself (no
@@ -1932,7 +1932,7 @@ CREATE TABLE checked_bag (
   excess_kg         NUMERIC(5, 1) NOT NULL DEFAULT 0 CHECK (excess_kg >= 0),
   rate_per_kg       NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (rate_per_kg >= 0), -- base currency
   excess_fee        NUMERIC(12, 2) NOT NULL DEFAULT 0,
-  excess_payment_id UUID,                                  -- feature 5 (no FK yet)
+  excess_payment_id UUID,                                  -- feature 5 (cross-module FK)
   status            TEXT NOT NULL DEFAULT 'weighed' CHECK (status IN ('weighed', 'tagged', 'offloaded')),
   weighed_by        UUID NOT NULL REFERENCES staff (id),
   weighed_at        TIMESTAMPTZ NOT NULL,                  -- simulation clock
@@ -2044,14 +2044,14 @@ CREATE TRIGGER boarding_event_no_truncate
 
 
 -- ======================================================================================================================
--- PART 10 of 15: FEATURE 10 - LOST AND FOUND BAGGAGE
+-- PART 10 of 16: FEATURE 10 - LOST AND FOUND BAGGAGE
 -- ======================================================================================================================
 
 -- Feature 10 (Lost and Found Baggage), from the F10 Iteration-03 doc. New tables only.
 -- Matching, the lost and unclaimed jobs, tag ownership, delivery choice rules and the status changes that follow a
 -- match or a delivery are the backend's job.
 -- Uses staff (feature 1), passenger and customer (feature 7) and expense (feature 4). The foreign keys to airport and
--- flight (feature 2), checked_bag (feature 6) and the booking coupon (feature 3b) are in Part 15 of this file.
+-- flight (feature 2), checked_bag (feature 6) and the booking coupon (feature 3b) are in Part 16 of this file.
 -- Business timestamps (reported_at, lost_at, closed_at, found_at, suggested_at, reviewed_at, occurred_at,
 -- delivered_at) have no default and come from the simulation clock. created_at and updated_at are real time, and the
 -- backend sets updated_at on every update (no trigger, no @updatedAt).
@@ -2282,14 +2282,14 @@ CREATE INDEX bag_cost_report_idx ON bag_cost (report_id);
 
 
 -- ======================================================================================================================
--- PART 11 of 15: FEATURE 13 - CUSTOMER SERVICE, COMPLAINTS AND NOTIFICATIONS
+-- PART 11 of 16: FEATURE 13 - CUSTOMER SERVICE, COMPLAINTS AND NOTIFICATIONS
 -- ======================================================================================================================
 
 -- Feature 13 (Customer Service, Complaints and Notifications), from Group 16's Iteration-03 doc. New tables only.
 -- The complaint status steps, the 7-day reopen, recipients, preferences, template rendering and retries are the
 -- backend's job.
 -- Uses staff (feature 1), passenger and customer (feature 7) and product (feature 12). The foreign keys to flight
--- (feature 2), lost_bag_report (feature 10) and booking_passenger (feature 3b) are in Part 15 of this file.
+-- (feature 2), lost_bag_report (feature 10) and booking_passenger (feature 3b) are in Part 16 of this file.
 -- Business timestamps (opened_at, resolved_at, closed_at, occurred_at, decided_at, result_at, received_at, processed_at,
 -- queued_at, sent_at) have no default and come from the simulation clock. created_at and updated_at are real time, and
 -- the backend sets updated_at on every update (no trigger, no @updatedAt).
@@ -2634,7 +2634,7 @@ CREATE TRIGGER notification_no_truncate
 
 
 -- ======================================================================================================================
--- PART 12 of 15: FEATURE 3 - SEARCH, BOOKING AND SEAT INVENTORY
+-- PART 12 of 16: FEATURE 3 - SEARCH, BOOKING AND SEAT INVENTORY
 -- ======================================================================================================================
 
 -- Feature 3 (Search, Booking and Seat Inventory), from the F3 Iteration-01 doc and the DB team's review. New tables,
@@ -2644,7 +2644,7 @@ CREATE TRIGGER notification_no_truncate
 -- DB team review).
 -- Uses staff (feature 1), customer and passenger (feature 7). The flight, fare class, fare quote, partner airline and
 -- flight event foreign keys, and the foreign keys that features 6, 7, 10, 12 and 13 left open for feature 3b, are in
--- Part 15 of this file. payment_id (feature 5) has no foreign key until that schema exists.
+-- Part 16 of this file, with the payment one (feature 5).
 -- Business timestamps (booked_at, hold_expires_at, confirmed_at, cancelled_at, assigned_at, released_at, requested_at,
 -- handled_at, processed_at, completed_at) have no default and come from the simulation clock. created_at and updated_at
 -- are real time, and the backend sets updated_at on every update (no trigger, no @updatedAt).
@@ -2923,7 +2923,7 @@ CREATE INDEX booking_change_old_segment_idx ON booking_change (old_segment_id);
 
 
 -- ======================================================================================================================
--- PART 13 of 15: FEATURE 11 - LOYALTY PROGRAMME
+-- PART 13 of 16: FEATURE 11 - LOYALTY PROGRAMME
 -- ======================================================================================================================
 
 -- Feature 11 (Loyalty Programme), from the F11 Iteration-02 doc (with tier benefits and insurance) and the DB team's
@@ -2933,7 +2933,7 @@ CREATE INDEX booking_change_old_segment_idx ON booking_change (old_segment_id);
 -- review). Earn, redeem and benefit rows point at feature 3's booking_coupon, insurance policies at its booking, and
 -- award seats are counted in feature 3's seat_inventory.
 -- Uses staff (feature 1), customer (feature 7), fare_class (feature 4) and audit_log (feature 15). The foreign keys to
--- other features are in Part 15 of this file.
+-- other features are in Part 16 of this file.
 -- Business timestamps (joined_at, tier_qualified_at, tier_expires_at, occurred_at, expires_at, used_at, issued_at,
 -- cancelled_at) have no default and come from the simulation clock. created_at and updated_at are real time, and the
 -- backend sets updated_at on every update.
@@ -3242,7 +3242,7 @@ INSERT INTO notification_template (type_code, channel, subject_template, body_te
 
 
 -- ======================================================================================================================
--- PART 14 of 15: FEATURE 17 - CARGO AND AIR FREIGHT
+-- PART 14 of 16: FEATURE 17 - CARGO AND AIR FREIGHT
 -- ======================================================================================================================
 
 -- Feature 17 (Cargo and Air Freight), from the F17 Iteration-02 doc and the DB team's review. New tables, plus a key
@@ -3250,8 +3250,8 @@ INSERT INTO notification_template (type_code, channel, subject_template, body_te
 -- Contents: the doc's own checks and the columns the doc is missing. Flight assignment, capacity, regulation keywords, the
 -- hold timer, the weight tolerance, the claim window and the refund calls are the backend's job (see the DB team review).
 -- Uses staff (feature 1), customer (feature 7), and route, flight, flight_event and airport (feature 2); those foreign
--- keys are in Part 15 of this file.
--- payment_id (feature 5a) and refund_id (feature 5b) have no foreign key until those schemas exist.
+-- keys are in Part 16 of this file.
+-- The payment_id (feature 5a) and refund_id (feature 5b) foreign keys are there too.
 -- Business timestamps (booked_at, hold_expires_at, awb_issued_at, occurred_at, filed_at, decided_at, notified_at, read_at)
 -- have no default and come from the simulation clock. created_at and updated_at are real time.
 -- Money is NUMERIC in the base currency (feature 4's pricing_setting 'base_currency'); bookings and claims keep a
@@ -3606,10 +3606,465 @@ INSERT INTO cargo_handling_conflict (handling_class_a, handling_class_b, reason)
 
 
 -- ======================================================================================================================
--- PART 15 of 15: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
+-- PART 15 of 16: FEATURE 5 - CHECKOUT, PAYMENT AND REFUNDS, FINANCE JOURNAL AND CREW PAY
 -- ======================================================================================================================
 
--- Cross-module foreign keys for features 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13 and 17, grouped by the feature that holds the id.
+-- Feature 5 (Checkout, Payment and Refunds; Finance Journal and Crew Pay), from the F5 Iteration-03 doc (revision 2)
+-- and the DB team's review. New tables, plus the foreign keys features 3, 6, 12 and 17 left open for feature 5.
+-- Contents: the doc's own checks and the columns the doc is missing. The state moves, the hold and deadline checks, the
+-- refund policy, the pro-rata split, the line totals and the pay maths inputs are the backend's job (see the DB team review).
+-- Payments point at feature 3's booking and coupons and at feature 17's cargo booking, and compensation is feature 13's
+-- case_compensation. Uses staff (feature 1), customer (feature 7), crew and pairing (feature 8), audit_log (feature 15)
+-- and flight_event (feature 2). The foreign keys to other features, and the ones features 3, 6, 12 and 17 left open
+-- for feature 5, are in Part 16 of this file.
+-- Business timestamps (started_at, expires_at, authorised_at, captured_at, voided_at, capture_stalled_at,
+-- requested_at, completed_at, issued_at, redeemed_at, occurred_at, paid_at, processed_at) have no default and come from
+-- the simulation clock.
+-- created_at, updated_at and received_at are real time, and the backend sets updated_at on every update.
+-- Money is NUMERIC in the base currency (feature 4's pricing_setting 'base_currency'), like fare_quote and every other
+-- amount in the repo; payments and vouchers keep a currency snapshot. Only the Stripe provider converts to minor units.
+-- Rows are never deleted: a payment, refund, voucher or pay run ends in a status.
+
+-- Settings -------------------------------------------------------------------------------------------------
+
+-- Closed list of keys, like crew_setting and cargo_setting. Values are validated by the backend.
+-- capture_retry_limit and pay_run_override_limit (base currency) are placeholders to confirm.
+CREATE TABLE payment_setting (
+  key        TEXT PRIMARY KEY CHECK (key IN (
+               'min_hold_minutes', 'capture_retry_limit', 'voucher_valid_months', 'overtime_threshold_hours',
+               'overtime_multiplier', 'pay_run_override_limit')),
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by UUID REFERENCES staff (id)
+);
+
+INSERT INTO payment_setting (key, value) VALUES
+  ('min_hold_minutes', '3'),
+  ('capture_retry_limit', '5'),
+  ('voucher_valid_months', '12'),
+  ('overtime_threshold_hours', '10'),
+  ('overtime_multiplier', '1.5'),
+  ('pay_run_override_limit', '50000.00');
+
+-- Vouchers -------------------------------------------------------------------------------------------------
+
+-- Single-use credit for one customer, redeemed whole. Issued for one feature 13 compensation decision, or for the
+-- voucher share of one refund (a mixed payment, or a refund made as a voucher). A payment names the voucher it uses
+-- (payment.voucher_id), so the voucher is reserved while that payment is open and used once it is captured.
+CREATE TABLE compensation_voucher (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code                 TEXT NOT NULL UNIQUE CHECK (code ~ '^[A-HJ-NP-Z2-9]{10}$'),
+  customer_id          UUID NOT NULL REFERENCES customer (id),
+  amount               NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+  currency             TEXT NOT NULL,                          -- base currency when issued
+  status               TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'redeemed', 'expired', 'cancelled')),
+  case_compensation_id UUID UNIQUE,                            -- feature 13's decision (cross-module FK)
+  refund_id            UUID UNIQUE,                            -- the refund whose share it returns
+  issued_at            TIMESTAMPTZ NOT NULL,
+  expires_at           TIMESTAMPTZ NOT NULL,                   -- issued_at + voucher_valid_months
+  redeemed_at          TIMESTAMPTZ,
+  cancel_reason        TEXT CHECK (btrim(cancel_reason) <> ''),
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (id, customer_id),
+  CHECK (num_nonnulls(case_compensation_id, refund_id) = 1),
+  CHECK (expires_at > issued_at),
+  CHECK ((status = 'redeemed') = (redeemed_at IS NOT NULL)),
+  CHECK ((status = 'cancelled') = (cancel_reason IS NOT NULL))
+);
+
+CREATE INDEX compensation_voucher_customer_idx ON compensation_voucher (customer_id, status);
+CREATE INDEX compensation_voucher_expiry_idx ON compensation_voucher (expires_at) WHERE status = 'active';
+
+-- Payments -------------------------------------------------------------------------------------------------
+
+-- One attempt to collect money for one purchase. The selling feature (3b, 6, 12 or 17) gives the lines, the amount,
+-- the deadline (expires_at) and purchase_ref, its own key for what is bought: 'booking:<id>', 'seat_assignment:<id>',
+-- 'check_in:<id>:bags:<n>', 'product_order:<id>', 'cargo_booking:<id>', 'cargo_reweigh:<id>'. 5a never prices.
+-- A purchase has at most one payment that is open, paid or refunded in full (reversed), so two tabs or a double click
+-- cannot pay twice, and a refund that fails late can always move a reversed payment back to captured. A payment that
+-- ended unpaid (failed, voided, expired) frees the purchase_ref; buying again after a full refund uses a new one.
+-- booking_id is set for every purchase on a booking, cargo_booking_id for feature 17. A sale on board (feature 12's
+-- product_sale) has neither and no payer, and runs on the fake provider.
+-- voucher_id is the customer's own voucher (composite foreign key); a voucher is on one payment at a time.
+-- Zero-cash payment: an award booking with no taxes due is a payment of 0.00 on provider 'none'. 5a calls feature 3b's
+-- confirm, then moves it created -> captured with authorised_at = captured_at and issues a 0.00 receipt ("Paid with N
+-- miles"). Only source_feature 3 may be 0.00.
+-- Status: created -> authorised, captured (zero-cash only), failed or expired; authorised -> captured or voided;
+-- captured -> reversed (every line refunded in full). A late refund failure is the only way back from reversed.
+-- capture_stalled_at: the seller confirmed, but capture failed capture_retry_limit times. The payment stays authorised
+-- and is on the staff exception list; staff retry the capture, or cancel the booking in 3b (3b asks 5a to void).
+CREATE TABLE payment (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_feature    SMALLINT NOT NULL CHECK (source_feature IN (3, 6, 12, 17)),
+  purchase_ref      TEXT NOT NULL,
+  payer_customer_id UUID REFERENCES customer (id),
+  booking_id        UUID,                                      -- feature 3b's booking (cross-module FK)
+  cargo_booking_id  UUID,                                      -- feature 17's cargo_booking (cross-module FK)
+  voucher_id        UUID,
+  idempotency_key   TEXT NOT NULL,                             -- the Idempotency-Key header of POST /checkout
+  status            TEXT NOT NULL DEFAULT 'created'
+                      CHECK (status IN ('created', 'authorised', 'captured', 'failed', 'voided', 'expired', 'reversed')),
+  provider          TEXT NOT NULL CHECK (provider IN ('stripe', 'fake', 'none')),   -- none = nothing on the card
+  currency          TEXT NOT NULL,                             -- base currency when started
+  amount_total      NUMERIC(12, 2) NOT NULL CHECK (amount_total >= 0),
+  voucher_amount    NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (voucher_amount >= 0),
+  card_amount       NUMERIC(12, 2) NOT NULL CHECK (card_amount >= 0),
+  provider_fee      NUMERIC(12, 2) CHECK (provider_fee >= 0),  -- Stripe's fee from the capture's balance transaction
+  capture_attempts  SMALLINT NOT NULL DEFAULT 0 CHECK (capture_attempts >= 0),
+  last_error        TEXT,
+  started_at        TIMESTAMPTZ NOT NULL,
+  expires_at        TIMESTAMPTZ NOT NULL,                      -- the booking's hold end, or the selling feature's deadline
+  authorised_at     TIMESTAMPTZ,
+  captured_at       TIMESTAMPTZ,
+  voided_at         TIMESTAMPTZ,
+  capture_stalled_at TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE NULLS NOT DISTINCT (payer_customer_id, idempotency_key),
+  UNIQUE (id, booking_id),
+  UNIQUE (id, cargo_booking_id),
+  FOREIGN KEY (voucher_id, payer_customer_id) REFERENCES compensation_voucher (id, customer_id),
+  CHECK (amount_total = voucher_amount + card_amount),
+  CHECK ((voucher_id IS NULL) = (voucher_amount = 0)),
+  CHECK ((provider = 'none') = (card_amount = 0)),
+  CHECK (num_nonnulls(booking_id, cargo_booking_id) <= 1),
+  CHECK ((source_feature = 17) = (cargo_booking_id IS NOT NULL)),
+  CHECK (source_feature NOT IN (3, 6) OR booking_id IS NOT NULL),
+  CHECK (payer_customer_id IS NOT NULL OR (source_feature = 12 AND booking_id IS NULL AND voucher_id IS NULL)),
+  CHECK (expires_at > started_at),
+  CHECK ((status IN ('authorised', 'captured', 'voided', 'reversed')) = (authorised_at IS NOT NULL)),
+  CHECK ((status IN ('captured', 'reversed')) = (captured_at IS NOT NULL)),
+  CHECK ((status = 'voided') = (voided_at IS NOT NULL)),
+  CHECK (amount_total > 0 OR source_feature = 3),
+  CHECK (capture_stalled_at IS NULL OR status = 'authorised')
+);
+
+CREATE UNIQUE INDEX payment_one_live_per_purchase_uq ON payment (source_feature, purchase_ref)
+  WHERE status IN ('created', 'authorised', 'captured', 'reversed');
+-- voucher_id fixes the customer, so the index is per voucher; the customer is in it to match the foreign key.
+CREATE UNIQUE INDEX payment_voucher_uq ON payment (voucher_id, payer_customer_id)
+  WHERE voucher_id IS NOT NULL AND status IN ('created', 'authorised', 'captured', 'reversed');
+CREATE INDEX payment_booking_idx ON payment (booking_id) WHERE booking_id IS NOT NULL;
+CREATE INDEX payment_cargo_booking_idx ON payment (cargo_booking_id) WHERE cargo_booking_id IS NOT NULL;
+CREATE INDEX payment_customer_idx ON payment (payer_customer_id, started_at DESC);
+CREATE INDEX payment_reconcile_idx ON payment (updated_at) WHERE status IN ('created', 'authorised');
+CREATE INDEX payment_capture_stalled_idx ON payment (capture_stalled_at) WHERE capture_stalled_at IS NOT NULL;
+
+-- One charge inside a payment, copied from the selling feature and never recomputed. A coupon line is the coupon's
+-- price_total: the fare quote's total (fare, seat chosen while booking, taxes, promo) for a cash coupon, the taxes and
+-- carrier charges for an award coupon (0.00 when none are due). seat_fee is a seat bought after booking. insurance is
+-- feature 11's policy bought at the member price with the booking, one per payment, for the whole booking. The coupon
+-- belongs to the payment's booking (composite foreign keys). refunded_amount counts the refunds that are not rejected
+-- or failed, so a line can never be refunded beyond what it charged. The lines add up to amount_total (backend).
+CREATE TABLE payment_line (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  payment_id        UUID NOT NULL REFERENCES payment (id),
+  booking_id        UUID,
+  booking_coupon_id UUID,                                      -- feature 3b's coupon (cross-module FK)
+  line_type         TEXT NOT NULL CHECK (line_type IN (
+                      'fare', 'award_fee', 'seat_fee', 'baggage', 'upgrade', 'onboard_order', 'insurance', 'cargo_freight',
+                      'cargo_surcharge')),
+  source_ref        TEXT,                                      -- what the line charges for, once per payment (below)
+  description       TEXT NOT NULL,
+  amount            NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
+  refunded_amount   NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (refunded_amount >= 0),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (id, payment_id),
+  FOREIGN KEY (payment_id, booking_id) REFERENCES payment (id, booking_id),
+  CHECK (refunded_amount <= amount),
+  CHECK (line_type NOT IN ('fare', 'award_fee', 'seat_fee') OR booking_coupon_id IS NOT NULL),
+  CHECK (booking_coupon_id IS NULL OR booking_id IS NOT NULL),
+  CHECK (line_type <> 'insurance'
+         OR (booking_id IS NOT NULL AND booking_coupon_id IS NULL AND source_ref IS NOT DISTINCT FROM ('insurance:' || booking_id)))
+);
+
+-- A coupon's fare, award fee or seat fee once per payment. Bag and meal lines carry the coupon too, so a flight
+-- cancellation finds them, and one payment may hold several of them. source_ref names what each line charges for:
+-- 'checked_bag:<id>', 'product_order_line:<id>', 'product_order:<id>' for a whole order on one line, or
+-- 'insurance:<booking id>'.
+CREATE UNIQUE INDEX payment_line_coupon_once_uq ON payment_line (payment_id, line_type, booking_coupon_id)
+  WHERE line_type IN ('fare', 'award_fee', 'seat_fee');
+CREATE UNIQUE INDEX payment_line_item_once_uq ON payment_line (payment_id, source_ref) WHERE source_ref IS NOT NULL;
+CREATE INDEX payment_line_payment_idx ON payment_line (payment_id);
+CREATE INDEX payment_line_coupon_idx ON payment_line (booking_coupon_id) WHERE booking_coupon_id IS NOT NULL;
+
+-- One Stripe Checkout Session. A decline leaves it open (Stripe lets the customer try again on the same page), with the
+-- last failure_code; a new attempt is made only after 5a has expired the old session through Stripe. One attempt is
+-- open, and one is authorised, per payment.
+CREATE TABLE payment_attempt (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  payment_id          UUID NOT NULL REFERENCES payment (id),
+  provider_session_id TEXT NOT NULL UNIQUE,
+  provider_intent_id  TEXT UNIQUE,                             -- known once the customer starts paying
+  status              TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'authorised', 'failed', 'expired', 'cancelled')),
+  failure_code        TEXT,
+  card_brand          TEXT,
+  card_last4          TEXT CHECK (card_last4 ~ '^[0-9]{4}$'),  -- the last four only, never the number
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One open and one authorised session per payment. status is in the key for the same reason as seat_assignment_live_uq.
+CREATE UNIQUE INDEX payment_attempt_live_uq ON payment_attempt (payment_id, status) WHERE status IN ('open', 'authorised');
+
+-- One row per verified Stripe webhook, written before the event is applied. A repeat is skipped only when its row has
+-- processed_at set; a row with processed_at NULL is applied again by the reconcile job, so an event is never lost.
+CREATE TABLE payment_event_receipt (
+  provider_event_id TEXT PRIMARY KEY,                          -- Stripe evt_...
+  event_type        TEXT NOT NULL,
+  payment_id        UUID REFERENCES payment (id),
+  received_at       TIMESTAMPTZ NOT NULL DEFAULT now(),        -- real clock
+  processed_at      TIMESTAMPTZ
+);
+
+CREATE INDEX payment_event_receipt_unprocessed_idx ON payment_event_receipt (received_at) WHERE processed_at IS NULL;
+
+-- Refunds --------------------------------------------------------------------------------------------------
+
+-- One refund request. source_key makes it idempotent: 'customer_cancel:<booking id>',
+-- 'flight_cancelled:<flight event id>:<payment id>', 'cargo_rejected:<cargo booking id>', 'reissue:<refund id>'.
+-- voucher_amount is the share returned as a new voucher (all of it when method is voucher); the rest goes back to the
+-- card through Stripe. fee_withheld is the cancellation fee kept, from the fare quote's fare_rule_snapshot.
+-- A compensation refund pays one feature 13 decision. A refund outside policy waits in pending_approval until an admin
+-- approves it; the approval is written to feature 15's audit_log in the same transaction (audit_log_id).
+-- Status: requested or pending_approval -> approved or rejected; approved -> processing -> succeeded or failed.
+CREATE TABLE refund (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  payment_id           UUID NOT NULL REFERENCES payment (id),
+  source_key           TEXT NOT NULL UNIQUE,
+  reason               TEXT NOT NULL CHECK (reason IN (
+                         'customer_cancel', 'flight_cancelled', 'rebook_difference', 'customer_request', 'staff_adjustment',
+                         'compensation', 'cargo_cancel', 'cargo_rejected', 'cargo_reweigh')),
+  method               TEXT NOT NULL DEFAULT 'original' CHECK (method IN ('original', 'voucher')),
+  status               TEXT NOT NULL DEFAULT 'requested'
+                         CHECK (status IN ('requested', 'pending_approval', 'approved', 'processing', 'succeeded', 'failed', 'rejected')),
+  amount               NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+  voucher_amount       NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (voucher_amount >= 0),
+  fee_withheld         NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (fee_withheld >= 0),
+  provider_refund_id   TEXT UNIQUE,                            -- Stripe re_...
+  requested_by_user_id UUID REFERENCES "user" (id),            -- NULL for a system refund
+  case_compensation_id UUID UNIQUE,                            -- feature 13's decision (cross-module FK)
+  audit_log_id         UUID,                                   -- feature 15's audit_log (cross-module FK)
+  decision_note        TEXT CHECK (btrim(decision_note) <> ''),
+  failure_reason       TEXT,
+  requested_at         TIMESTAMPTZ NOT NULL,
+  completed_at         TIMESTAMPTZ,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (id, payment_id),
+  CHECK (voucher_amount <= amount),
+  CHECK (method = 'original' OR voucher_amount = amount),
+  CHECK (provider_refund_id IS NULL OR voucher_amount < amount),
+  CHECK ((reason = 'compensation') = (case_compensation_id IS NOT NULL)),
+  CHECK (status <> 'rejected' OR decision_note IS NOT NULL),
+  CHECK (status <> 'failed' OR failure_reason IS NOT NULL),
+  CHECK ((status = 'succeeded') = (completed_at IS NOT NULL))
+);
+
+CREATE INDEX refund_payment_idx ON refund (payment_id);
+CREATE INDEX refund_queue_idx ON refund (requested_at) WHERE status IN ('requested', 'pending_approval', 'failed');
+CREATE INDEX refund_processing_idx ON refund (updated_at) WHERE status = 'processing';
+
+-- How a refund splits across the lines of its own payment.
+CREATE TABLE refund_line (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  refund_id       UUID NOT NULL,
+  payment_id      UUID NOT NULL,
+  payment_line_id UUID NOT NULL,
+  amount          NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+  UNIQUE (refund_id, payment_line_id),
+  FOREIGN KEY (refund_id, payment_id) REFERENCES refund (id, payment_id),
+  FOREIGN KEY (payment_line_id, payment_id) REFERENCES payment_line (id, payment_id)
+);
+
+CREATE INDEX refund_line_payment_line_idx ON refund_line (payment_line_id);
+
+ALTER TABLE compensation_voucher ADD CONSTRAINT compensation_voucher_refund_fk FOREIGN KEY (refund_id) REFERENCES refund (id);
+
+-- Feature 2's flight events that 5b has handled (cancelled with resolution refund). A repeat finds its row and is
+-- skipped. On startup the backend handles, in seq order, every such flight_event without a row here.
+CREATE TABLE refund_event_receipt (
+  event_id     UUID PRIMARY KEY,                               -- feature 2's flight_event (cross-module FK)
+  processed_at TIMESTAMPTZ NOT NULL
+);
+
+-- Documents ------------------------------------------------------------------------------------------------
+
+-- A receipt (tickets and purchases) or an invoice (cargo) once per captured payment, and a credit note per succeeded
+-- refund of that payment. Built from the finalised rows, never from the request, and never edited. A receipt may be
+-- 0.00 (a zero-cash award booking, "Paid with N miles"); an invoice or a credit note is above 0.
+-- document_number is formatted by the backend from receipt_number_seq.
+CREATE SEQUENCE receipt_number_seq;
+
+CREATE TABLE receipt (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  payment_id      UUID NOT NULL REFERENCES payment (id),
+  refund_id       UUID,
+  document_type   TEXT NOT NULL CHECK (document_type IN ('receipt', 'invoice', 'credit_note')),
+  document_number TEXT NOT NULL UNIQUE,
+  amount          NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
+  billing_name    TEXT,
+  issued_at       TIMESTAMPTZ NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (refund_id, payment_id),                            -- one credit note per refund
+  FOREIGN KEY (refund_id, payment_id) REFERENCES refund (id, payment_id),
+  CHECK ((document_type = 'credit_note') = (refund_id IS NOT NULL)),
+  CHECK (amount > 0 OR document_type = 'receipt')
+);
+
+CREATE UNIQUE INDEX receipt_one_per_payment_uq ON receipt (payment_id) WHERE refund_id IS NULL;
+
+-- Finance journal (5c) -------------------------------------------------------------------------------------
+
+-- Append-only record of every money movement, written in the same transaction as the movement. The finance module and
+-- feature 4's monthly summary read it in-process, in seq order; nothing is sent and nothing waits for them.
+-- posting_key makes a repeat a no-op (INSERT ... ON CONFLICT (posting_key) DO NOTHING). Amounts in payload are positive
+-- and in the posting's currency; posting_type gives the direction. No account codes.
+CREATE TABLE finance_posting (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  seq          BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
+  posting_key  TEXT NOT NULL UNIQUE,                           -- e.g. 'payment_captured:<payment id>'
+  posting_type TEXT NOT NULL CHECK (posting_type IN (
+                 'payment_captured', 'payment_provider_fee', 'refund_succeeded', 'refund_reversed', 'voucher_issued',
+                 'voucher_redeemed', 'voucher_expired', 'compensation_paid', 'crew_pay_accrued', 'crew_pay_paid')),
+  source_type  TEXT NOT NULL CHECK (source_type IN ('payment', 'refund', 'compensation_voucher', 'payroll_line', 'pay_run')),
+  source_id    UUID NOT NULL,
+  currency     TEXT NOT NULL,
+  payload      JSONB NOT NULL,                                 -- {"lines": [{"category": "fare", "amount": "120.50"}], ...}
+  occurred_at  TIMESTAMPTZ NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX finance_posting_occurred_idx ON finance_posting (occurred_at);
+CREATE INDEX finance_posting_source_idx ON finance_posting (source_type, source_id);
+
+CREATE TRIGGER finance_posting_append_only
+  BEFORE UPDATE OR DELETE ON finance_posting
+  FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+
+CREATE TRIGGER finance_posting_no_truncate
+  BEFORE TRUNCATE ON finance_posting
+  FOR EACH STATEMENT EXECUTE FUNCTION forbid_mutation();
+
+-- Crew pay (5c) --------------------------------------------------------------------------------------------
+
+-- Pay per feature 8 crew role (captain, first_officer, cabin_crew, police), in the base currency. The rows are
+-- placeholders for seed.ts (dev and CI), like feature 4's fare classes; staff maintain them.
+CREATE TABLE crew_pay_rate (
+  crew_role   TEXT PRIMARY KEY CHECK (crew_role IN ('captain', 'first_officer', 'cabin_crew', 'police')),
+  hourly_rate NUMERIC(10, 2) NOT NULL CHECK (hourly_rate > 0),
+  per_diem    NUMERIC(10, 2) NOT NULL CHECK (per_diem >= 0),   -- per overnight away from base
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by  UUID REFERENCES staff (id)
+);
+
+-- One batch of crew pay. A different staff member approves it (the creator cannot); a run above
+-- pay_run_override_limit, or with an adjustment, also needs an admin's audit entry (audit_log_id).
+CREATE TABLE pay_run (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  period_start         DATE NOT NULL,
+  period_end           DATE NOT NULL,
+  status               TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'approved', 'paid', 'cancelled')),
+  created_by_staff_id  UUID NOT NULL REFERENCES staff (id),
+  approved_by_staff_id UUID REFERENCES staff (id),
+  audit_log_id         UUID,                                   -- feature 15's audit_log (cross-module FK)
+  paid_at              TIMESTAMPTZ,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (period_end >= period_start),
+  CHECK (approved_by_staff_id <> created_by_staff_id),
+  CHECK (status NOT IN ('approved', 'paid') OR approved_by_staff_id IS NOT NULL),
+  CHECK ((status = 'paid') = (paid_at IS NOT NULL))
+);
+
+-- One part of a crew member's pay. The unit is one crew member on one feature 8 pairing, priced by a job once the
+-- pairing's last leg has arrived: base (flight hours x hourly rate), overtime (duty hours over the threshold, summed over
+-- the pairing's duty days, x rate x multiplier) and per_diem (overnights x per diem). Each priced line keeps its inputs,
+-- and its amount is round(quantity x rate x multiplier, 2), half up, so a rate change never rewrites it. A pairing is
+-- priced once per line type. An adjustment (a staff entry or a correction to a paid pairing) may be negative and joins
+-- the next run. earned_on is the local date the pairing ended; a run pays the accrued lines up to its period_end.
+CREATE TABLE payroll_line (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  crew_id     UUID NOT NULL REFERENCES crew (id),
+  pairing_id  UUID REFERENCES pairing (id),
+  line_type   TEXT NOT NULL CHECK (line_type IN ('base', 'overtime', 'per_diem', 'adjustment')),
+  quantity    NUMERIC(6, 2) CHECK (quantity > 0),              -- hours, or overnights for per_diem
+  rate        NUMERIC(10, 2) CHECK (rate > 0),
+  multiplier  NUMERIC(3, 2) CHECK (multiplier >= 1),
+  amount      NUMERIC(12, 2) NOT NULL,
+  description TEXT NOT NULL CHECK (btrim(description) <> ''), -- the reason, for an adjustment
+  earned_on   DATE NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'accrued' CHECK (status IN ('accrued', 'in_run', 'paid', 'cancelled')),
+  pay_run_id  UUID REFERENCES pay_run (id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((line_type = 'adjustment') = (quantity IS NULL)),
+  CHECK (num_nonnulls(quantity, rate, multiplier) IN (0, 3)),
+  CHECK (line_type = 'adjustment' OR (pairing_id IS NOT NULL AND amount = round(quantity * rate * multiplier, 2))),
+  CHECK (line_type <> 'adjustment' OR amount <> 0),
+  CHECK ((status IN ('in_run', 'paid')) = (pay_run_id IS NOT NULL))
+);
+
+CREATE UNIQUE INDEX payroll_line_priced_uq ON payroll_line (crew_id, pairing_id, line_type) WHERE line_type <> 'adjustment';
+CREATE INDEX payroll_line_accrued_idx ON payroll_line (earned_on) WHERE status = 'accrued';
+CREATE INDEX payroll_line_crew_idx ON payroll_line (crew_id, earned_on DESC);
+CREATE INDEX payroll_line_run_idx ON payroll_line (pay_run_id) WHERE pay_run_id IS NOT NULL;
+
+-- One payment to one crew member in a run: the sum of that person's lines in it. Provider is fake in this iteration.
+CREATE TABLE payout (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pay_run_id     UUID NOT NULL REFERENCES pay_run (id),
+  crew_id        UUID NOT NULL REFERENCES crew (id),
+  amount         NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+  provider       TEXT NOT NULL DEFAULT 'fake' CHECK (provider = 'fake'),
+  status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed')),
+  reference      TEXT,
+  failure_reason TEXT,
+  paid_at        TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (pay_run_id, crew_id),
+  CHECK ((status = 'paid') = (paid_at IS NOT NULL)),
+  CHECK ((status = 'failed') = (failure_reason IS NOT NULL))
+);
+
+CREATE INDEX payout_crew_idx ON payout (crew_id);
+
+-- Messages (feature 13) -------------------------------------------------------------------------------------
+
+-- Sent through feature 13's inbound_event with source '5'. source_event_id is 'payment_received:<payment id>',
+-- 'refund_issued:<refund id>', 'refund_failed:<refund id>' and 'voucher_issued:<voucher id>', so a repeat is a no-op.
+-- A voucher code goes only to the customer's own contact. Placeholders the backend fills: {{passenger_name}},
+-- {{reference}}, {{amount}}, {{document_number}}, {{voucher_code}}, {{expires_on}}.
+INSERT INTO notification_type (code, source_feature, name, is_mandatory) VALUES
+  ('payment_received', '5', 'Payment received', true),
+  ('refund_issued', '5', 'Refund issued', true),
+  ('refund_failed', '5', 'Refund failed', true),
+  ('voucher_issued', '5', 'Voucher issued', true);
+
+INSERT INTO notification_template (type_code, channel, subject_template, body_template) VALUES
+  ('payment_received', 'email', 'Payment received for {{reference}}',
+   'Dear {{passenger_name}}, we received {{amount}} for {{reference}}. Your receipt is {{document_number}}.'),
+  ('payment_received', 'sms', NULL, 'Flython received {{amount}} for {{reference}}. Receipt {{document_number}}.'),
+  ('payment_received', 'push', 'Payment received', '{{amount}} received for {{reference}}.'),
+  ('refund_issued', 'email', 'Refund of {{amount}} for {{reference}}',
+   'Dear {{passenger_name}}, we have refunded {{amount}} for {{reference}}. A card refund usually reaches your account in 5 to 10 business days.'),
+  ('refund_issued', 'sms', NULL, 'Flython refunded {{amount}} for {{reference}}. Allow 5 to 10 business days.'),
+  ('refund_issued', 'push', 'Refund issued', '{{amount}} refunded for {{reference}}.'),
+  ('refund_failed', 'email', 'Your refund for {{reference}} could not be completed',
+   'Dear {{passenger_name}}, your refund of {{amount}} for {{reference}} could not be completed. Our team will contact you.'),
+  ('refund_failed', 'sms', NULL, 'Your Flython refund of {{amount}} for {{reference}} failed. We will contact you.'),
+  ('refund_failed', 'push', 'Refund failed', 'Your refund for {{reference}} failed. We will contact you.'),
+  ('voucher_issued', 'email', 'Your Flython voucher for {{amount}}',
+   'Dear {{passenger_name}}, here is your voucher {{voucher_code}} for {{amount}}, valid until {{expires_on}}. It is used whole on one payment.'),
+  ('voucher_issued', 'sms', NULL, 'Flython voucher {{voucher_code}} for {{amount}}, valid until {{expires_on}}.'),
+  ('voucher_issued', 'push', 'Voucher issued', 'A voucher for {{amount}} is in My Vouchers.');
+
+
+-- ======================================================================================================================
+-- PART 16 of 16: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
+-- ======================================================================================================================
+
+-- Cross-module foreign keys for features 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 and 17, grouped by the feature that holds the id.
 -- Recommended: the targets are never hard-deleted (airport, route, flight and aircraft are deactivated or cancelled),
 -- everything lives in one Postgres, and the DB leads own the migration order. Apply after every feature script.
 -- This part is optional: delete it (or any statement) and the features still work, with the backend
@@ -3633,8 +4088,7 @@ ALTER TABLE fare_quote              ADD CONSTRAINT fare_quote_flight_fk         
 ALTER TABLE screening_check ADD CONSTRAINT screening_check_flight_fk FOREIGN KEY (flight_id) REFERENCES flight (id);
 ALTER TABLE screening_check ADD CONSTRAINT screening_check_pnr_fk    FOREIGN KEY (pnr_id)    REFERENCES booking (id);
 
--- Feature 12 -> features 2, 3b and 9. The booking keys prove that the passenger is booked on that flight.
--- payment_id (feature 5) has no foreign key: that schema does not exist yet.
+-- Feature 12 -> features 2, 3b, 5 and 9. The booking keys prove that the passenger is booked on that flight.
 ALTER TABLE product_offering   ADD CONSTRAINT product_offering_route_fk       FOREIGN KEY (route_id)                        REFERENCES route (id);
 ALTER TABLE product_offering   ADD CONSTRAINT product_offering_flight_fk      FOREIGN KEY (flight_id)                       REFERENCES flight (id);
 ALTER TABLE cabin_setting      ADD CONSTRAINT cabin_setting_route_fk          FOREIGN KEY (route_id)                        REFERENCES route (id);
@@ -3642,6 +4096,7 @@ ALTER TABLE cabin_setting      ADD CONSTRAINT cabin_setting_flight_fk         FO
 ALTER TABLE product_order      ADD CONSTRAINT product_order_flight_fk         FOREIGN KEY (flight_id)                       REFERENCES flight (id);
 ALTER TABLE product_order      ADD CONSTRAINT product_order_booking_flight_fk FOREIGN KEY (booking_id, flight_id)           REFERENCES booking_segment (booking_id, flight_id);
 ALTER TABLE product_order_line ADD CONSTRAINT product_order_line_coupon_fk    FOREIGN KEY (booking_passenger_id, flight_id) REFERENCES booking_coupon (booking_passenger_id, flight_id);
+ALTER TABLE product_order      ADD CONSTRAINT product_order_payment_fk        FOREIGN KEY (payment_id)                      REFERENCES payment (id);
 ALTER TABLE warehouse          ADD CONSTRAINT warehouse_airport_fk            FOREIGN KEY (airport_code)                    REFERENCES airport (iata_code);
 ALTER TABLE supplier           ADD CONSTRAINT supplier_airport_fk             FOREIGN KEY (airport_code)                    REFERENCES airport (iata_code);
 ALTER TABLE catering_order     ADD CONSTRAINT catering_order_flight_fk        FOREIGN KEY (flight_id)                       REFERENCES flight (id);
@@ -3650,6 +4105,7 @@ ALTER TABLE stock_transfer     ADD CONSTRAINT stock_transfer_aircraft_fk      FO
 ALTER TABLE aircraft_stock     ADD CONSTRAINT aircraft_stock_aircraft_fk      FOREIGN KEY (aircraft_id)                     REFERENCES aircraft (id);
 ALTER TABLE flight_report      ADD CONSTRAINT flight_report_flight_fk         FOREIGN KEY (flight_id)                       REFERENCES flight (id);
 ALTER TABLE product_sale       ADD CONSTRAINT product_sale_flight_fk          FOREIGN KEY (flight_id)                       REFERENCES flight (id);
+ALTER TABLE product_sale       ADD CONSTRAINT product_sale_payment_fk         FOREIGN KEY (payment_id)                      REFERENCES payment (id);
 ALTER TABLE stock_movement     ADD CONSTRAINT stock_movement_flight_fk        FOREIGN KEY (flight_id)                       REFERENCES flight (id);
 ALTER TABLE stock_movement     ADD CONSTRAINT stock_movement_aircraft_fk      FOREIGN KEY (aircraft_id)                     REFERENCES aircraft (id);
 
@@ -3659,13 +4115,13 @@ ALTER TABLE pairing     ADD CONSTRAINT pairing_base_airport_fk    FOREIGN KEY (b
 ALTER TABLE roster_run  ADD CONSTRAINT roster_run_base_airport_fk FOREIGN KEY (base_airport) REFERENCES airport (iata_code);
 ALTER TABLE pairing_leg ADD CONSTRAINT pairing_leg_flight_fk      FOREIGN KEY (flight_id)    REFERENCES flight (id);
 
--- Feature 6 -> features 2 and 3b. The coupon key proves that the passenger is booked on that flight.
--- excess_payment_id (feature 5) has no foreign key: that schema does not exist yet.
-ALTER TABLE gate            ADD CONSTRAINT gate_airport_fk           FOREIGN KEY (airport_code)                                  REFERENCES airport (iata_code);
-ALTER TABLE check_in        ADD CONSTRAINT check_in_flight_fk        FOREIGN KEY (flight_id)                                     REFERENCES flight (id);
-ALTER TABLE check_in        ADD CONSTRAINT check_in_coupon_fk        FOREIGN KEY (booking_passenger_id, flight_id, passenger_id) REFERENCES booking_coupon (booking_passenger_id, flight_id, passenger_id);
-ALTER TABLE flight_boarding ADD CONSTRAINT flight_boarding_flight_fk FOREIGN KEY (flight_id)                                     REFERENCES flight (id);
-ALTER TABLE boarding_event  ADD CONSTRAINT boarding_event_flight_fk  FOREIGN KEY (flight_id)                                     REFERENCES flight (id);
+-- Feature 6 -> features 2, 3b and 5. The coupon key proves that the passenger is booked on that flight.
+ALTER TABLE gate            ADD CONSTRAINT gate_airport_fk               FOREIGN KEY (airport_code)                                  REFERENCES airport (iata_code);
+ALTER TABLE check_in        ADD CONSTRAINT check_in_flight_fk            FOREIGN KEY (flight_id)                                     REFERENCES flight (id);
+ALTER TABLE check_in        ADD CONSTRAINT check_in_coupon_fk            FOREIGN KEY (booking_passenger_id, flight_id, passenger_id) REFERENCES booking_coupon (booking_passenger_id, flight_id, passenger_id);
+ALTER TABLE checked_bag     ADD CONSTRAINT checked_bag_excess_payment_fk FOREIGN KEY (excess_payment_id)                             REFERENCES payment (id);
+ALTER TABLE flight_boarding ADD CONSTRAINT flight_boarding_flight_fk     FOREIGN KEY (flight_id)                                     REFERENCES flight (id);
+ALTER TABLE boarding_event  ADD CONSTRAINT boarding_event_flight_fk      FOREIGN KEY (flight_id)                                     REFERENCES flight (id);
 
 -- Feature 10 -> features 2, 3b and 6
 ALTER TABLE station_contact    ADD CONSTRAINT station_contact_airport_fk       FOREIGN KEY (airport_code)                                  REFERENCES airport (iata_code);
@@ -3685,14 +4141,14 @@ ALTER TABLE complaint_case   ADD CONSTRAINT complaint_case_booking_passenger_fk 
 ALTER TABLE flight_complaint ADD CONSTRAINT flight_complaint_flight_fk          FOREIGN KEY (flight_id)            REFERENCES flight (id);
 ALTER TABLE food_complaint   ADD CONSTRAINT food_complaint_flight_fk            FOREIGN KEY (flight_id)            REFERENCES flight (id);
 
--- Feature 3b -> features 2 and 4. fare_class gets UNIQUE (id, cabin) so a segment can prove its cabin; it changes no row.
--- seat_assignment.payment_id (feature 5) has no foreign key: that schema does not exist yet.
+-- Feature 3b -> features 2, 4 and 5. fare_class gets UNIQUE (id, cabin) so a segment can prove its cabin; it changes no row.
 ALTER TABLE seat_inventory       ADD CONSTRAINT seat_inventory_flight_fk          FOREIGN KEY (flight_id)            REFERENCES flight (id);
 ALTER TABLE fare_class           ADD CONSTRAINT fare_class_id_cabin_key           UNIQUE (id, cabin);
 ALTER TABLE booking_segment      ADD CONSTRAINT booking_segment_fare_class_fk     FOREIGN KEY (fare_class_id, cabin) REFERENCES fare_class (id, cabin);
 ALTER TABLE booking_coupon       ADD CONSTRAINT booking_coupon_fare_quote_fk      FOREIGN KEY (fare_quote_id)        REFERENCES fare_quote (id);
 ALTER TABLE booking_coupon       ADD CONSTRAINT booking_coupon_partner_airline_fk FOREIGN KEY (partner_airline)      REFERENCES partner_airline (code);
 ALTER TABLE flight_event_receipt ADD CONSTRAINT flight_event_receipt_event_fk     FOREIGN KEY (event_id)             REFERENCES flight_event (id);
+ALTER TABLE seat_assignment      ADD CONSTRAINT seat_assignment_payment_fk        FOREIGN KEY (payment_id)           REFERENCES payment (id);
 
 -- Search finds feature 2's flights by route and local date.
 CREATE INDEX flight_route_service_date_idx ON flight (route_id, service_date);
@@ -3707,12 +4163,24 @@ ALTER TABLE booking                  ADD CONSTRAINT booking_id_customer_key     
 ALTER TABLE loyalty_benefit_use      ADD CONSTRAINT loyalty_benefit_use_coupon_fk           FOREIGN KEY (booking_coupon_id, flight_id) REFERENCES booking_coupon (id, flight_id);
 ALTER TABLE loyalty_insurance_policy ADD CONSTRAINT loyalty_insurance_policy_booking_fk     FOREIGN KEY (booking_id, customer_id)      REFERENCES booking (id, customer_id);
 
--- Feature 17 -> features 2 and 7. flight gets UNIQUE (id, route_id) so a booking proves its flight is on its route; it changes no row.
--- payment_id and refund_id (feature 5) have no foreign key: that schema does not exist yet.
+-- Feature 17 -> features 2, 5 and 7. flight gets UNIQUE (id, route_id) so a booking proves its flight is on its route; it changes no row.
 ALTER TABLE flight               ADD CONSTRAINT flight_id_route_key                  UNIQUE (id, route_id);
 ALTER TABLE cargo_booking        ADD CONSTRAINT cargo_booking_customer_fk            FOREIGN KEY (customer_id)         REFERENCES customer (id);
 ALTER TABLE cargo_booking        ADD CONSTRAINT cargo_booking_route_fk               FOREIGN KEY (route_id)            REFERENCES route (id);
 ALTER TABLE cargo_booking        ADD CONSTRAINT cargo_booking_flight_route_fk        FOREIGN KEY (flight_id, route_id) REFERENCES flight (id, route_id);
+ALTER TABLE cargo_booking        ADD CONSTRAINT cargo_booking_payment_fk             FOREIGN KEY (payment_id)          REFERENCES payment (id);
 ALTER TABLE cargo_shipment_event ADD CONSTRAINT cargo_shipment_event_flight_fk       FOREIGN KEY (flight_id)           REFERENCES flight (id);
 ALTER TABLE cargo_shipment_event ADD CONSTRAINT cargo_shipment_event_airport_fk      FOREIGN KEY (airport_code)        REFERENCES airport (iata_code);
 ALTER TABLE cargo_shipment_event ADD CONSTRAINT cargo_shipment_event_flight_event_fk FOREIGN KEY (flight_event_id)     REFERENCES flight_event (id);
+ALTER TABLE cargo_shipment_event ADD CONSTRAINT cargo_shipment_event_refund_fk       FOREIGN KEY (refund_id)           REFERENCES refund (id);
+
+-- Feature 5 -> features 2, 3b, 13, 15 and 17. booking_coupon gets UNIQUE (id, booking_id) so a payment line proves its coupon is on the payment's booking; it changes no row.
+ALTER TABLE booking_coupon       ADD CONSTRAINT booking_coupon_id_booking_key             UNIQUE (id, booking_id);
+ALTER TABLE payment              ADD CONSTRAINT payment_booking_fk                        FOREIGN KEY (booking_id)                    REFERENCES booking (id);
+ALTER TABLE payment              ADD CONSTRAINT payment_cargo_booking_fk                  FOREIGN KEY (cargo_booking_id)              REFERENCES cargo_booking (id);
+ALTER TABLE payment_line         ADD CONSTRAINT payment_line_coupon_fk                    FOREIGN KEY (booking_coupon_id, booking_id) REFERENCES booking_coupon (id, booking_id);
+ALTER TABLE refund               ADD CONSTRAINT refund_case_compensation_fk               FOREIGN KEY (case_compensation_id)          REFERENCES case_compensation (id);
+ALTER TABLE refund               ADD CONSTRAINT refund_audit_log_fk                       FOREIGN KEY (audit_log_id)                  REFERENCES audit_log (id);
+ALTER TABLE compensation_voucher ADD CONSTRAINT compensation_voucher_case_compensation_fk FOREIGN KEY (case_compensation_id)          REFERENCES case_compensation (id);
+ALTER TABLE refund_event_receipt ADD CONSTRAINT refund_event_receipt_event_fk             FOREIGN KEY (event_id)                      REFERENCES flight_event (id);
+ALTER TABLE pay_run              ADD CONSTRAINT pay_run_audit_log_fk                      FOREIGN KEY (audit_log_id)                  REFERENCES audit_log (id);

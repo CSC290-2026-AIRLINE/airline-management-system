@@ -1,5 +1,5 @@
 // Generated with `prisma db pull` from a database migrated by src/db/schema.sql. After every re-pull, change these
-// 10 back-relations to lists by hand. The first 5 fail `prisma validate`
+// 12 back-relations to lists by hand. The first 5 fail `prisma validate`
 // otherwise: Prisma rejects a one-to-one relation over a composite foreign key unless the composite is unique, and the
 // database does not need that extra unique:
 //   fare_quote.promo_redemption         ->  promo_redemption[]
@@ -7,16 +7,19 @@
 //   user.staff                          ->  staff[]
 //   booking_coupon.check_in             ->  check_in[]
 //   booking_segment.booking_change_booking_change_old_segment_id_booking_idTobooking_segment  ->  booking_change[]
-// The other 5 are read as one-to-one from a partial unique, although the table holds more rows:
+// The other 7 are read as one-to-one from a partial unique, although the table holds more rows:
 //   boarding_pass.boarding_event        ->  boarding_event[]        (boarding_event_final_uq: one boarded or no-show, plus rejected scans)
 //   checked_bag.found_bag               ->  found_bag[]             (found_bag_checked_bag_uq skips continued_with_flight rows)
 //   complaint_case.case_compensation    ->  case_compensation[]     (case_compensation_live_uq skips failed decisions)
 //   booking_coupon.product_order_line   ->  product_order_line[]    (product_order_line_meal_uq covers live meal lines only)
 //   cargo_booking.cargo_shipment_event  ->  cargo_shipment_event[]  (cargo_shipment_event_first_uq covers the first event only)
+//   payment.receipt                     ->  receipt[]               (receipt_one_per_payment_uq skips refund receipts)
+//   compensation_voucher.payment        ->  payment[]               (payment_voucher_uq skips failed and expired payments)
 // Prisma Client offers findUnique on partial uniques, but they cover only some rows: find a pass's boarded or no-show
 // event, a booking passenger's live check_in, a checked bag's live found_bag, a case's live compensation, a coupon's held
 // or assigned seat, a coupon's live meal line, a coupon's upgrade, a member's lounge visit on a flight, a booking's active
-// insurance policy and a cargo booking's first or accepted event with findFirst and the index's condition.
+// insurance policy, a cargo booking's first or accepted event and a payment's open or authorised attempt and its payment
+// receipt with findFirst and the index's condition.
 
 generator client {
   provider        = "prisma-client"
@@ -259,6 +262,8 @@ model audit_log {
   after               Json?
   is_sensitive        Boolean               @default(false)
   loyalty_transaction loyalty_transaction[]
+  pay_run             pay_run[]
+  refund              refund[]
 
   @@index([actor_type, actor_id, occurred_at(sort: Desc)], map: "audit_log_actor_idx")
   @@index([entity_type, entity_id, occurred_at(sort: Desc)], map: "audit_log_entity_idx")
@@ -373,6 +378,7 @@ model customer {
   deleted_at              DateTime?                 @db.Timestamptz(6)
   booking                 booking[]
   cargo_booking           cargo_booking[]
+  compensation_voucher    compensation_voucher[]
   complaint_case          complaint_case[]
   passenger               passenger                 @relation(fields: [passenger_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   user                    user                      @relation(fields: [user_id, user_type], references: [id, type], onDelete: NoAction, onUpdate: NoAction)
@@ -381,6 +387,7 @@ model customer {
   loyalty_member          loyalty_member?
   notification            notification[]
   notification_preference notification_preference[]
+  payment                 payment[]
   product_order           product_order[]
 }
 
@@ -617,6 +624,7 @@ model flight_event {
   partner_airline_flight_event_partner_airlineTopartner_airline         partner_airline?       @relation("flight_event_partner_airlineTopartner_airline", fields: [partner_airline], references: [code], onDelete: NoAction, onUpdate: NoAction)
   flight_event_outbox                                                   flight_event_outbox?
   flight_event_receipt                                                  flight_event_receipt?
+  refund_event_receipt                                                  refund_event_receipt?
   schedule_conflict_schedule_conflict_caused_by_event_idToflight_event  schedule_conflict[]    @relation("schedule_conflict_caused_by_event_idToflight_event")
   schedule_conflict_schedule_conflict_resolution_event_idToflight_event schedule_conflict[]    @relation("schedule_conflict_resolution_event_idToflight_event")
 
@@ -885,6 +893,7 @@ model product_order {
   booking_segment    booking_segment      @relation(fields: [booking_id, flight_id], references: [booking_id, flight_id], onDelete: NoAction, onUpdate: NoAction, map: "product_order_booking_flight_fk")
   customer           customer             @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   flight             flight               @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "product_order_flight_fk")
+  payment            payment?             @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "product_order_payment_fk")
   product_order_line product_order_line[]
   stock_movement     stock_movement[]
 
@@ -929,6 +938,7 @@ model product_sale {
   sold_at           DateTime @db.Timestamptz(6)
   created_at        DateTime @default(now()) @db.Timestamptz(6)
   flight            flight   @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "product_sale_flight_fk")
+  payment           payment  @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "product_sale_payment_fk")
   product           product  @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([payment_id, product_id])
@@ -1190,6 +1200,7 @@ model staff {
   complaint_case                                                        complaint_case[]
   country_legality_rule                                                 country_legality_rule[]
   crew                                                                  crew?
+  crew_pay_rate                                                         crew_pay_rate[]
   crew_setting                                                          crew_setting[]
   currency_rate                                                         currency_rate[]
   employee_complaint                                                    employee_complaint[]
@@ -1209,7 +1220,10 @@ model staff {
   loyalty_tier_rule                                                     loyalty_tier_rule[]
   loyalty_transaction                                                   loyalty_transaction[]
   notification_template                                                 notification_template[]
+  pay_run_pay_run_approved_by_staff_idTostaff                           pay_run[]                 @relation("pay_run_approved_by_staff_idTostaff")
+  pay_run_pay_run_created_by_staff_idTostaff                            pay_run[]                 @relation("pay_run_created_by_staff_idTostaff")
   payment_schedule                                                      payment_schedule[]
+  payment_setting                                                       payment_setting[]
   pricing_setting                                                       pricing_setting[]
   purchase_receipt                                                      purchase_receipt[]
   rule_break                                                            rule_break[]
@@ -1356,6 +1370,7 @@ model user {
   booking_change booking_change[]
   customer       customer[]
   refresh_token  refresh_token[]
+  refund         refund[]
   staff          staff[]
 
   @@unique([id, type])
@@ -1550,6 +1565,8 @@ model crew {
   staff                  staff?                   @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   crew_certification     crew_certification[]
   pairing_leg_assignment pairing_leg_assignment[]
+  payout                 payout[]
+  payroll_line           payroll_line[]
   rule_break             rule_break[]
 
   @@index([base_airport, role], map: "crew_base_role_idx", where: raw("(deleted_at IS NULL)"))
@@ -1584,6 +1601,7 @@ model pairing {
   updated_at         DateTime            @default(now()) @db.Timestamptz(6)
   airport            airport             @relation(fields: [base_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "pairing_base_airport_fk")
   pairing_leg        pairing_leg[]
+  payroll_line       payroll_line[]
   roster_run_pairing roster_run_pairing?
 
   @@index([base_airport], map: "pairing_base_idx")
@@ -1822,6 +1840,7 @@ model booking {
   booking_passenger        booking_passenger[]
   booking_segment          booking_segment[]
   loyalty_insurance_policy loyalty_insurance_policy[]
+  payment                  payment[]
   screening_check          screening_check[]
 
   @@unique([customer_id, idempotency_key])
@@ -1878,12 +1897,14 @@ model booking_coupon {
   lost_bag_report                                                 lost_bag_report[]
   loyalty_benefit_use                                             loyalty_benefit_use[]
   loyalty_transaction                                             loyalty_transaction[]
+  payment_line                                                    payment_line[]
   product_order_line                                              product_order_line[]
   seat_assignment                                                 seat_assignment[]
 
   @@unique([booking_passenger_id, flight_id])
   @@unique([booking_passenger_id, flight_id, passenger_id])
   @@unique([booking_segment_id, booking_passenger_id])
+  @@unique([id, booking_id], map: "booking_coupon_id_booking_key")
   @@unique([id, flight_id])
   @@unique([flight_id, passenger_id], map: "booking_coupon_person_uq", where: raw("(status = ANY (ARRAY['held'::text, 'confirmed'::text]))"))
   @@index([booking_id], map: "booking_coupon_booking_idx")
@@ -1965,46 +1986,48 @@ model booking_service_request {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model cargo_booking {
-  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  booking_ref          String                @unique
-  customer_id          String                @db.Uuid
-  route_id             String                @db.Uuid
-  flight_id            String                @db.Uuid
-  ship_date            DateTime              @db.Date
-  commodity_type_id    String                @db.Uuid
-  handling_class       String
-  goods_description    String
-  un_number            String?
-  pieces               Int
-  declared_weight_kg   Decimal               @db.Decimal(10, 1)
-  declared_volume_m3   Decimal               @db.Decimal(8, 3)
-  shipper_name         String
-  shipper_phone        String?
-  consignee_name       String
-  consignee_address    String
-  consignee_phone      String?
-  distance_km          Int
-  quoted_chargeable_kg Decimal               @db.Decimal(10, 1)
-  quoted_rate_id       String                @db.Uuid
-  rate_per_kg          Decimal               @db.Decimal(10, 2)
-  min_charge           Decimal               @db.Decimal(10, 2)
-  quoted_charge        Decimal               @db.Decimal(12, 2)
-  currency             String
-  booked_at            DateTime              @db.Timestamptz(6)
-  hold_expires_at      DateTime              @db.Timestamptz(6)
-  payment_id           String?               @unique @db.Uuid
-  awb_number           String?               @unique
-  awb_issued_at        DateTime?             @db.Timestamptz(6)
-  created_at           DateTime              @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime              @default(now()) @db.Timestamptz(6)
-  cargo_commodity_type cargo_commodity_type  @relation(fields: [commodity_type_id, handling_class], references: [id, handling_class], onDelete: NoAction, onUpdate: NoAction)
-  customer             customer              @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_customer_fk")
-  flight               flight                @relation(fields: [flight_id, route_id], references: [id, route_id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_flight_route_fk")
-  cargo_rate           cargo_rate            @relation(fields: [quoted_rate_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  route                route                 @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_route_fk")
-  cargo_claim          cargo_claim?
-  cargo_notice         cargo_notice[]
-  cargo_shipment_event cargo_shipment_event[]
+  id                                              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_ref                                     String                @unique
+  customer_id                                     String                @db.Uuid
+  route_id                                        String                @db.Uuid
+  flight_id                                       String                @db.Uuid
+  ship_date                                       DateTime              @db.Date
+  commodity_type_id                               String                @db.Uuid
+  handling_class                                  String
+  goods_description                               String
+  un_number                                       String?
+  pieces                                          Int
+  declared_weight_kg                              Decimal               @db.Decimal(10, 1)
+  declared_volume_m3                              Decimal               @db.Decimal(8, 3)
+  shipper_name                                    String
+  shipper_phone                                   String?
+  consignee_name                                  String
+  consignee_address                               String
+  consignee_phone                                 String?
+  distance_km                                     Int
+  quoted_chargeable_kg                            Decimal               @db.Decimal(10, 1)
+  quoted_rate_id                                  String                @db.Uuid
+  rate_per_kg                                     Decimal               @db.Decimal(10, 2)
+  min_charge                                      Decimal               @db.Decimal(10, 2)
+  quoted_charge                                   Decimal               @db.Decimal(12, 2)
+  currency                                        String
+  booked_at                                       DateTime              @db.Timestamptz(6)
+  hold_expires_at                                 DateTime              @db.Timestamptz(6)
+  payment_id                                      String?               @unique @db.Uuid
+  awb_number                                      String?               @unique
+  awb_issued_at                                   DateTime?             @db.Timestamptz(6)
+  created_at                                      DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at                                      DateTime              @default(now()) @db.Timestamptz(6)
+  cargo_commodity_type                            cargo_commodity_type  @relation(fields: [commodity_type_id, handling_class], references: [id, handling_class], onDelete: NoAction, onUpdate: NoAction)
+  customer                                        customer              @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_customer_fk")
+  flight                                          flight                @relation(fields: [flight_id, route_id], references: [id, route_id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_flight_route_fk")
+  payment_cargo_booking_payment_idTopayment       payment?              @relation("cargo_booking_payment_idTopayment", fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_payment_fk")
+  cargo_rate                                      cargo_rate            @relation(fields: [quoted_rate_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  route                                           route                 @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_route_fk")
+  cargo_claim                                     cargo_claim?
+  cargo_notice                                    cargo_notice[]
+  cargo_shipment_event                            cargo_shipment_event[]
+  payment_payment_cargo_booking_idTocargo_booking payment[]             @relation("payment_cargo_booking_idTocargo_booking")
 
   @@index([customer_id, booked_at(sort: Desc)], map: "cargo_booking_customer_idx")
   @@index([flight_id], map: "cargo_booking_flight_idx")
@@ -2155,6 +2178,7 @@ model cargo_shipment_event {
   cargo_shipment_event       cargo_shipment_event?    @relation("cargo_shipment_eventTocargo_shipment_event", fields: [previous_event_id, cargo_booking_id, status_before], references: [id, cargo_booking_id, status_after], onDelete: NoAction, onUpdate: NoAction, map: "cargo_shipment_event_previous_fk")
   other_cargo_shipment_event cargo_shipment_event?    @relation("cargo_shipment_eventTocargo_shipment_event")
   staff                      staff?                   @relation(fields: [recorded_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  refund                     refund?                  @relation(fields: [refund_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_shipment_event_refund_fk")
   cargo_status_transition    cargo_status_transition? @relation(fields: [status_before, event_type, status_after, actor_type], references: [status_before, event_type, status_after, actor_type], onDelete: NoAction, onUpdate: NoAction, map: "cargo_shipment_event_transition_fk")
 
   @@unique([cargo_booking_id, event_type], map: "cargo_shipment_event_accepted_uq", where: raw("(event_type = 'accepted'::text)"))
@@ -2207,21 +2231,23 @@ model carry_on_check {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model case_compensation {
-  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  case_id             String         @unique(map: "case_compensation_live_uq", where: raw("(status <> 'failed'::text)")) @db.Uuid
-  decided_by_staff_id String         @db.Uuid
-  type                String
-  amount              Decimal        @db.Decimal(12, 2)
-  reason              String
-  status              String         @default("pending")
-  payout_ref          String?
-  failure_reason      String?
-  decided_at          DateTime       @db.Timestamptz(6)
-  result_at           DateTime?      @db.Timestamptz(6)
-  created_at          DateTime       @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime       @default(now()) @db.Timestamptz(6)
-  complaint_case      complaint_case @relation(fields: [case_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  staff               staff          @relation(fields: [decided_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id              String                @unique(map: "case_compensation_live_uq", where: raw("(status <> 'failed'::text)")) @db.Uuid
+  decided_by_staff_id  String                @db.Uuid
+  type                 String
+  amount               Decimal               @db.Decimal(12, 2)
+  reason               String
+  status               String                @default("pending")
+  payout_ref           String?
+  failure_reason       String?
+  decided_at           DateTime              @db.Timestamptz(6)
+  result_at            DateTime?             @db.Timestamptz(6)
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime              @default(now()) @db.Timestamptz(6)
+  complaint_case       complaint_case        @relation(fields: [case_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff                staff                 @relation(fields: [decided_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  compensation_voucher compensation_voucher?
+  refund               refund?
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -2294,11 +2320,38 @@ model checked_bag {
   updated_at        DateTime   @default(now()) @db.Timestamptz(6)
   deleted_at        DateTime?  @db.Timestamptz(6)
   check_in          check_in   @relation(fields: [check_in_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment           payment?   @relation(fields: [excess_payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "checked_bag_excess_payment_fk")
   staff             staff      @relation(fields: [weighed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   found_bag         found_bag[]
 
   @@index([check_in_id], map: "checked_bag_check_in_idx", where: raw("(deleted_at IS NULL)"))
   @@index([check_in_id], map: "checked_bag_unpaid_idx", where: raw("((excess_fee > (0)::numeric) AND (excess_payment_id IS NULL) AND (deleted_at IS NULL))"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model compensation_voucher {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                 String             @unique
+  customer_id          String             @db.Uuid
+  amount               Decimal            @db.Decimal(12, 2)
+  currency             String
+  status               String             @default("active")
+  case_compensation_id String?            @unique @db.Uuid
+  refund_id            String?            @unique @db.Uuid
+  issued_at            DateTime           @db.Timestamptz(6)
+  expires_at           DateTime           @db.Timestamptz(6)
+  redeemed_at          DateTime?          @db.Timestamptz(6)
+  cancel_reason        String?
+  created_at           DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime           @default(now()) @db.Timestamptz(6)
+  case_compensation    case_compensation? @relation(fields: [case_compensation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "compensation_voucher_case_compensation_fk")
+  customer             customer           @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  refund               refund?            @relation(fields: [refund_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "compensation_voucher_refund_fk")
+  payment              payment[]
+
+  @@unique([id, customer_id])
+  @@index([customer_id, status], map: "compensation_voucher_customer_idx")
+  @@index([expires_at], map: "compensation_voucher_expiry_idx", where: raw("(status = 'active'::text)"))
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -2346,6 +2399,16 @@ model complaint_case {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model crew_pay_rate {
+  crew_role   String   @id
+  hourly_rate Decimal  @db.Decimal(10, 2)
+  per_diem    Decimal  @db.Decimal(10, 2)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_by  String?  @db.Uuid
+  staff       staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model employee_complaint {
   case_id         String         @db.Uuid
   case_type       String         @default("employee")
@@ -2357,6 +2420,23 @@ model employee_complaint {
   staff           staff?         @relation(fields: [linked_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([case_id, case_type])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model finance_posting {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seq          BigInt   @unique @default(autoincrement())
+  posting_key  String   @unique
+  posting_type String
+  source_type  String
+  source_id    String   @db.Uuid
+  currency     String
+  payload      Json
+  occurred_at  DateTime @db.Timestamptz(6)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([occurred_at], map: "finance_posting_occurred_idx")
+  @@index([source_type, source_id], map: "finance_posting_source_idx")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -2753,6 +2833,258 @@ model notification_type {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pay_run {
+  id                                        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  period_start                              DateTime       @db.Date
+  period_end                                DateTime       @db.Date
+  status                                    String         @default("draft")
+  created_by_staff_id                       String         @db.Uuid
+  approved_by_staff_id                      String?        @db.Uuid
+  audit_log_id                              String?        @db.Uuid
+  paid_at                                   DateTime?      @db.Timestamptz(6)
+  created_at                                DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at                                DateTime       @default(now()) @db.Timestamptz(6)
+  staff_pay_run_approved_by_staff_idTostaff staff?         @relation("pay_run_approved_by_staff_idTostaff", fields: [approved_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  audit_log                                 audit_log?     @relation(fields: [audit_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pay_run_audit_log_fk")
+  staff_pay_run_created_by_staff_idTostaff  staff          @relation("pay_run_created_by_staff_idTostaff", fields: [created_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payout                                    payout[]
+  payroll_line                              payroll_line[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payment {
+  id                                                       String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source_feature                                           Int                     @db.SmallInt
+  purchase_ref                                             String
+  payer_customer_id                                        String?                 @db.Uuid
+  booking_id                                               String?                 @db.Uuid
+  cargo_booking_id                                         String?                 @db.Uuid
+  voucher_id                                               String?                 @db.Uuid
+  idempotency_key                                          String
+  status                                                   String                  @default("created")
+  provider                                                 String
+  currency                                                 String
+  amount_total                                             Decimal                 @db.Decimal(12, 2)
+  voucher_amount                                           Decimal                 @default(0) @db.Decimal(12, 2)
+  card_amount                                              Decimal                 @db.Decimal(12, 2)
+  provider_fee                                             Decimal?                @db.Decimal(12, 2)
+  capture_attempts                                         Int                     @default(0) @db.SmallInt
+  last_error                                               String?
+  started_at                                               DateTime                @db.Timestamptz(6)
+  expires_at                                               DateTime                @db.Timestamptz(6)
+  authorised_at                                            DateTime?               @db.Timestamptz(6)
+  captured_at                                              DateTime?               @db.Timestamptz(6)
+  voided_at                                                DateTime?               @db.Timestamptz(6)
+  capture_stalled_at                                       DateTime?               @db.Timestamptz(6)
+  created_at                                               DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                                               DateTime                @default(now()) @db.Timestamptz(6)
+  cargo_booking_cargo_booking_payment_idTopayment          cargo_booking?          @relation("cargo_booking_payment_idTopayment")
+  checked_bag                                              checked_bag[]
+  booking                                                  booking?                @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "payment_booking_fk")
+  cargo_booking_payment_cargo_booking_idTocargo_booking    cargo_booking?          @relation("payment_cargo_booking_idTocargo_booking", fields: [cargo_booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "payment_cargo_booking_fk")
+  customer                                                 customer?               @relation(fields: [payer_customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  compensation_voucher                                     compensation_voucher?   @relation(fields: [voucher_id, payer_customer_id], references: [id, customer_id], onDelete: NoAction, onUpdate: NoAction)
+  payment_attempt                                          payment_attempt[]
+  payment_event_receipt                                    payment_event_receipt[]
+  payment_line_payment_line_payment_id_booking_idTopayment payment_line[]          @relation("payment_line_payment_id_booking_idTopayment")
+  payment_line_payment_line_payment_idTopayment            payment_line[]          @relation("payment_line_payment_idTopayment")
+  product_order                                            product_order?
+  product_sale                                             product_sale[]
+  receipt                                                  receipt[]
+  refund                                                   refund[]
+  seat_assignment                                          seat_assignment[]
+
+  @@unique([id, booking_id])
+  @@unique([id, cargo_booking_id])
+  @@unique([source_feature, purchase_ref], map: "payment_one_live_per_purchase_uq", where: raw("(status = ANY (ARRAY['created'::text, 'authorised'::text, 'captured'::text, 'reversed'::text]))"))
+  @@unique([payer_customer_id, idempotency_key])
+  @@unique([voucher_id, payer_customer_id], map: "payment_voucher_uq", where: raw("((voucher_id IS NOT NULL) AND (status = ANY (ARRAY['created'::text, 'authorised'::text, 'captured'::text, 'reversed'::text])))"))
+  @@index([booking_id], map: "payment_booking_idx", where: raw("(booking_id IS NOT NULL)"))
+  @@index([capture_stalled_at], map: "payment_capture_stalled_idx", where: raw("(capture_stalled_at IS NOT NULL)"))
+  @@index([cargo_booking_id], map: "payment_cargo_booking_idx", where: raw("(cargo_booking_id IS NOT NULL)"))
+  @@index([payer_customer_id, started_at(sort: Desc)], map: "payment_customer_idx")
+  @@index([updated_at], map: "payment_reconcile_idx", where: raw("(status = ANY (ARRAY['created'::text, 'authorised'::text]))"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payment_attempt {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id          String   @db.Uuid
+  provider_session_id String   @unique
+  provider_intent_id  String?  @unique
+  status              String   @default("open")
+  failure_code        String?
+  card_brand          String?
+  card_last4          String?
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @default(now()) @db.Timestamptz(6)
+  payment             payment  @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([payment_id, status], map: "payment_attempt_live_uq", where: raw("(status = ANY (ARRAY['open'::text, 'authorised'::text]))"))
+}
+
+model payment_event_receipt {
+  provider_event_id String    @id
+  event_type        String
+  payment_id        String?   @db.Uuid
+  received_at       DateTime  @default(now()) @db.Timestamptz(6)
+  processed_at      DateTime? @db.Timestamptz(6)
+  payment           payment?  @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([received_at], map: "payment_event_receipt_unprocessed_idx", where: raw("(processed_at IS NULL)"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payment_line {
+  id                                                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id                                          String          @db.Uuid
+  booking_id                                          String?         @db.Uuid
+  booking_coupon_id                                   String?         @db.Uuid
+  line_type                                           String
+  source_ref                                          String?
+  description                                         String
+  amount                                              Decimal         @db.Decimal(12, 2)
+  refunded_amount                                     Decimal         @default(0) @db.Decimal(12, 2)
+  created_at                                          DateTime        @default(now()) @db.Timestamptz(6)
+  booking_coupon                                      booking_coupon? @relation(fields: [booking_coupon_id, booking_id], references: [id, booking_id], onDelete: NoAction, onUpdate: NoAction, map: "payment_line_coupon_fk")
+  payment_payment_line_payment_id_booking_idTopayment payment?        @relation("payment_line_payment_id_booking_idTopayment", fields: [payment_id, booking_id], references: [id, booking_id], onDelete: NoAction, onUpdate: NoAction)
+  payment_payment_line_payment_idTopayment            payment         @relation("payment_line_payment_idTopayment", fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  refund_line                                         refund_line[]
+
+  @@unique([payment_id, line_type, booking_coupon_id], map: "payment_line_coupon_once_uq", where: raw("(line_type = ANY (ARRAY['fare'::text, 'award_fee'::text, 'seat_fee'::text]))"))
+  @@unique([id, payment_id])
+  @@unique([payment_id, source_ref], map: "payment_line_item_once_uq", where: raw("(source_ref IS NOT NULL)"))
+  @@index([booking_coupon_id], map: "payment_line_coupon_idx", where: raw("(booking_coupon_id IS NOT NULL)"))
+  @@index([payment_id], map: "payment_line_payment_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payment_setting {
+  key        String   @id
+  value      String
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_by String?  @db.Uuid
+  staff      staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payout {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pay_run_id     String    @db.Uuid
+  crew_id        String    @db.Uuid
+  amount         Decimal   @db.Decimal(12, 2)
+  provider       String    @default("fake")
+  status         String    @default("pending")
+  reference      String?
+  failure_reason String?
+  paid_at        DateTime? @db.Timestamptz(6)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  crew           crew      @relation(fields: [crew_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pay_run        pay_run   @relation(fields: [pay_run_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([pay_run_id, crew_id])
+  @@index([crew_id], map: "payout_crew_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payroll_line {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  crew_id     String   @db.Uuid
+  pairing_id  String?  @db.Uuid
+  line_type   String
+  quantity    Decimal? @db.Decimal(6, 2)
+  rate        Decimal? @db.Decimal(10, 2)
+  multiplier  Decimal? @db.Decimal(3, 2)
+  amount      Decimal  @db.Decimal(12, 2)
+  description String
+  earned_on   DateTime @db.Date
+  status      String   @default("accrued")
+  pay_run_id  String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  crew        crew     @relation(fields: [crew_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pairing     pairing? @relation(fields: [pairing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pay_run     pay_run? @relation(fields: [pay_run_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([crew_id, pairing_id, line_type], map: "payroll_line_priced_uq", where: raw("(line_type <> 'adjustment'::text)"))
+  @@index([earned_on], map: "payroll_line_accrued_idx", where: raw("(status = 'accrued'::text)"))
+  @@index([crew_id, earned_on(sort: Desc)], map: "payroll_line_crew_idx")
+  @@index([pay_run_id], map: "payroll_line_run_idx", where: raw("(pay_run_id IS NOT NULL)"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model receipt {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id      String   @unique(map: "receipt_one_per_payment_uq", where: raw("(refund_id IS NULL)")) @db.Uuid
+  refund_id       String?  @db.Uuid
+  document_type   String
+  document_number String   @unique
+  amount          Decimal  @db.Decimal(12, 2)
+  billing_name    String?
+  issued_at       DateTime @db.Timestamptz(6)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  payment         payment  @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  refund          refund?  @relation(fields: [refund_id, payment_id], references: [id, payment_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([refund_id, payment_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model refund {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id           String                 @db.Uuid
+  source_key           String                 @unique
+  reason               String
+  method               String                 @default("original")
+  status               String                 @default("requested")
+  amount               Decimal                @db.Decimal(12, 2)
+  voucher_amount       Decimal                @default(0) @db.Decimal(12, 2)
+  fee_withheld         Decimal                @default(0) @db.Decimal(12, 2)
+  provider_refund_id   String?                @unique
+  requested_by_user_id String?                @db.Uuid
+  case_compensation_id String?                @unique @db.Uuid
+  audit_log_id         String?                @db.Uuid
+  decision_note        String?
+  failure_reason       String?
+  requested_at         DateTime               @db.Timestamptz(6)
+  completed_at         DateTime?              @db.Timestamptz(6)
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  cargo_shipment_event cargo_shipment_event[]
+  compensation_voucher compensation_voucher?
+  receipt              receipt?
+  audit_log            audit_log?             @relation(fields: [audit_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "refund_audit_log_fk")
+  case_compensation    case_compensation?     @relation(fields: [case_compensation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "refund_case_compensation_fk")
+  payment              payment                @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user                 user?                  @relation(fields: [requested_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  refund_line          refund_line[]
+
+  @@unique([id, payment_id])
+  @@index([payment_id], map: "refund_payment_idx")
+  @@index([updated_at], map: "refund_processing_idx", where: raw("(status = 'processing'::text)"))
+  @@index([requested_at], map: "refund_queue_idx", where: raw("(status = ANY (ARRAY['requested'::text, 'pending_approval'::text, 'failed'::text]))"))
+}
+
+model refund_event_receipt {
+  event_id     String       @id @db.Uuid
+  processed_at DateTime     @db.Timestamptz(6)
+  flight_event flight_event @relation(fields: [event_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "refund_event_receipt_event_fk")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model refund_line {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  refund_id       String       @db.Uuid
+  payment_id      String       @db.Uuid
+  payment_line_id String       @db.Uuid
+  amount          Decimal      @db.Decimal(12, 2)
+  payment_line    payment_line @relation(fields: [payment_line_id, payment_id], references: [id, payment_id], onDelete: NoAction, onUpdate: NoAction)
+  refund          refund       @relation(fields: [refund_id, payment_id], references: [id, payment_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([refund_id, payment_line_id])
+  @@index([payment_line_id], map: "refund_line_payment_line_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model seat_assignment {
   id                   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   booking_coupon_id    String         @db.Uuid
@@ -2769,6 +3101,7 @@ model seat_assignment {
   updated_at           DateTime       @default(now()) @db.Timestamptz(6)
   staff                staff?         @relation(fields: [assigned_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   booking_coupon       booking_coupon @relation(fields: [booking_coupon_id, flight_id], references: [id, flight_id], onDelete: NoAction, onUpdate: NoAction)
+  payment              payment?       @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "seat_assignment_payment_fk")
 
   @@unique([booking_coupon_id, status], map: "seat_assignment_live_uq", where: raw("(status = ANY (ARRAY['held'::text, 'assigned'::text]))"))
   @@unique([flight_id, seat_code], map: "seat_assignment_seat_uq", where: raw("(status <> 'released'::text)"))

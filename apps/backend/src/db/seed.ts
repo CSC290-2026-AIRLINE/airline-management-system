@@ -66,6 +66,14 @@ const STATION_CONTACTS = [
 // creates the classes; a class that is not there yet gets no rule.
 const EARN_MULTIPLIERS: Record<string, number> = { Y: 1, Q: 0.5, W: 1.25, J: 1.5, F: 2 }
 
+// Feature 5: placeholder crew pay per Feature 8 crew role, in the base currency. Staff maintain the real rates.
+const CREW_PAY_RATES = [
+  { crew_role: 'captain', hourly_rate: 85, per_diem: 40 },
+  { crew_role: 'first_officer', hourly_rate: 60, per_diem: 40 },
+  { crew_role: 'cabin_crew', hourly_rate: 25, per_diem: 30 },
+  { crew_role: 'police', hourly_rate: 30, per_diem: 30 },
+]
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 })
@@ -154,6 +162,13 @@ async function seedLoyalty() {
   }
 }
 
+// Upserted with no update, so a rerun keeps the rates staff changed in the app.
+async function seedCrewPay() {
+  for (const rate of CREW_PAY_RATES) {
+    await prisma.crew_pay_rate.upsert({ where: { crew_role: rate.crew_role }, update: {}, create: rate })
+  }
+}
+
 async function seedCustomer() {
   const user = await prisma.user.create({
     data: {
@@ -219,7 +234,7 @@ async function seedRefreshTokens(userId: string) {
 
 async function main() {
   console.log(
-    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 6, 10 and 11 demo data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
+    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 6, 10, 11 and 5 demo data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
   )
 
   const roleIds = await seedRoles()
@@ -227,6 +242,7 @@ async function main() {
   await seedCheckIn()
   await seedLostAndFound()
   await seedLoyalty()
+  await seedCrewPay()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()
