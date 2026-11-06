@@ -41,6 +41,18 @@ const APPROVAL_POLICIES = [
   { airport: 'CNX', curfew_start_local: '23:00', curfew_end_local: '06:00', max_departure_per_hour: 8, offer_style: 'window' },
 ]
 
+// Feature 6: the final demo needs two gates at one airport. The visa rows are examples, not real visa policy
+// (no row means no visa is needed), and the bag tag airline number is the doc's placeholder.
+const GATES = [
+  { airport_code: 'BKK', code: 'A1' },
+  { airport_code: 'BKK', code: 'A2' },
+]
+const VISA_REQUIREMENTS = [
+  { nationality: 'ng', destination_country: 'th', visa_required: true },
+  { nationality: 'jp', destination_country: 'th', visa_required: false },
+]
+const BAG_TAG_AIRLINE_NUMBER = '999'
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 })
@@ -88,6 +100,26 @@ async function seedFlightNetwork() {
       create: { ...policy, curfew_start_local: timeOfDay(curfew_start_local), curfew_end_local: timeOfDay(curfew_end_local) },
     })
   }
+}
+
+// Upserted like the flight network. Gates need the airports above.
+async function seedCheckIn() {
+  for (const gate of GATES) {
+    await prisma.gate.upsert({ where: { airport_code_code: gate }, update: {}, create: gate })
+  }
+  for (const visa of VISA_REQUIREMENTS) {
+    const { nationality, destination_country } = visa
+    await prisma.visa_requirement.upsert({
+      where: { nationality_destination_country: { nationality, destination_country } },
+      update: {},
+      create: visa,
+    })
+  }
+  await prisma.check_in_setting.upsert({
+    where: { key: 'bag_tag_airline_number' },
+    update: {},
+    create: { key: 'bag_tag_airline_number', value: BAG_TAG_AIRLINE_NUMBER },
+  })
 }
 
 async function seedCustomer() {
@@ -154,10 +186,11 @@ async function seedRefreshTokens(userId: string) {
 }
 
 async function main() {
-  console.log(`Seeding ${STAFF_ROLES.length} roles, the Feature 2 demo network, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`)
+  console.log(`Seeding ${STAFF_ROLES.length} roles, the Feature 2 and 6 demo data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`)
 
   const roleIds = await seedRoles()
   await seedFlightNetwork()
+  await seedCheckIn()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()
