@@ -1,14 +1,15 @@
 // Generated with `prisma db pull` from a database migrated by src/db/schema.sql. After every re-pull, change these
-// 4 back-relations to lists by hand. The first 3 fail `prisma validate`
+// 5 back-relations to lists by hand. The first 3 fail `prisma validate`
 // otherwise: Prisma rejects a one-to-one relation over a composite foreign key unless the composite is unique, and the
 // database does not need that extra unique:
 //   fare_quote.promo_redemption   ->  promo_redemption[]
 //   user.customer                 ->  customer[]
 //   user.staff                    ->  staff[]
-// The other 1 is read as one-to-one from a partial unique, although the table holds more rows:
+// The other 2 are read as one-to-one from a partial unique, although the table holds more rows:
 //   boarding_pass.boarding_event  ->  boarding_event[]  (boarding_event_final_uq: one boarded or no-show, plus rejected scans)
-// Prisma Client offers findUnique on partial uniques, but they cover only some rows: find a pass's boarded or no-show event
-// and a booking passenger's live check_in with findFirst and the index's condition.
+//   checked_bag.found_bag         ->  found_bag[]       (found_bag_checked_bag_uq skips continued_with_flight rows)
+// Prisma Client offers findUnique on partial uniques, but they cover only some rows: find a pass's boarded or no-show
+// event, a booking passenger's live check_in and a checked bag's live found_bag with findFirst and the index's condition.
 
 generator client {
   provider        = "prisma-client"
@@ -177,15 +178,20 @@ model airport {
   airport_approval_policy_airport_approval_policy_airportToairport airport_approval_policy? @relation("airport_approval_policy_airportToairport")
   airport_congestion_airport_congestion_airportToairport           airport_congestion[]     @relation("airport_congestion_airportToairport")
   airport_fee_airport_fee_airportToairport                         airport_fee[]            @relation("airport_fee_airportToairport")
+  bag_delivery                                                     bag_delivery[]
+  bag_location_event_bag_location_event_airport_codeToairport      bag_location_event[]     @relation("bag_location_event_airport_codeToairport")
+  bag_location_event_bag_location_event_to_airportToairport        bag_location_event[]     @relation("bag_location_event_to_airportToairport")
   crew                                                             crew[]
   flight                                                           flight[]
   flight_event                                                     flight_event[]
+  found_bag                                                        found_bag[]
   gate                                                             gate[]
   pairing                                                          pairing[]
   roster_run                                                       roster_run[]
   route_route_destinationToairport                                 route[]                  @relation("route_destinationToairport")
   route_route_originToairport                                      route[]                  @relation("route_originToairport")
   schedule_approval                                                schedule_approval[]
+  station_contact                                                  station_contact?
   supplier                                                         supplier[]
   warehouse                                                        warehouse?
 }
@@ -359,6 +365,7 @@ model customer {
   passenger          passenger            @relation(fields: [passenger_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   user               user                 @relation(fields: [user_id, user_type], references: [id, type], onDelete: NoAction, onUpdate: NoAction)
   customer_passenger customer_passenger[]
+  lost_bag_report    lost_bag_report[]
   product_order      product_order[]
 }
 
@@ -405,6 +412,7 @@ model expense {
   created_at          DateTime          @default(now()) @db.Timestamptz(6)
   updated_at          DateTime          @default(now()) @db.Timestamptz(6)
   deleted_at          DateTime?         @db.Timestamptz(6)
+  bag_cost            bag_cost?
   staff               staff             @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   payment_schedule    payment_schedule? @relation(fields: [payment_schedule_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -515,6 +523,7 @@ model flight {
   created_at                                                      DateTime             @default(now()) @db.Timestamptz(6)
   updated_at                                                      DateTime             @default(now()) @db.Timestamptz(6)
   aircraft_turnaround                                             aircraft_turnaround?
+  bag_location_event                                              bag_location_event[]
   boarding_event                                                  boarding_event[]
   cabin_setting                                                   cabin_setting[]
   catering_order                                                  catering_order?
@@ -527,6 +536,8 @@ model flight {
   flight_boarding                                                 flight_boarding?
   flight_event                                                    flight_event[]
   flight_report                                                   flight_report?
+  found_bag                                                       found_bag[]
+  lost_bag_report                                                 lost_bag_report[]
   pairing_leg                                                     pairing_leg?
   product_offering                                                product_offering[]
   product_order                                                   product_order[]
@@ -699,6 +710,7 @@ model passenger {
   check_in           check_in[]
   customer           customer?
   customer_passenger customer_passenger[]
+  lost_bag_report    lost_bag_report[]
   screening_check    screening_check[]
 
   @@index([date_of_birth], map: "passenger_dob_idx", where: raw("(date_of_birth IS NOT NULL)"))
@@ -1118,6 +1130,10 @@ model staff {
   aircraft_maintenance                                                  aircraft_maintenance[]
   aircraft_status_period                                                aircraft_status_period[]
   airport_congestion                                                    airport_congestion[]
+  bag_location_event                                                    bag_location_event[]
+  bag_match_bag_match_linked_byTostaff                                  bag_match[]              @relation("bag_match_linked_byTostaff")
+  bag_match_bag_match_reviewed_byTostaff                                bag_match[]              @relation("bag_match_reviewed_byTostaff")
+  baggage_setting                                                       baggage_setting[]
   boarding_event                                                        boarding_event[]
   cabin_setting                                                         cabin_setting[]
   carry_on_allowance                                                    carry_on_allowance[]
@@ -1136,6 +1152,8 @@ model staff {
   flight_event                                                          flight_event[]
   flight_report                                                         flight_report[]
   flight_setting                                                        flight_setting[]
+  found_bag                                                             found_bag[]
+  lost_bag_report                                                       lost_bag_report[]
   payment_schedule                                                      payment_schedule[]
   pricing_setting                                                       pricing_setting[]
   purchase_receipt                                                      purchase_receipt[]
@@ -1146,6 +1164,7 @@ model staff {
   screening_review                                                      screening_review[]
   role                                                                  role                     @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   user                                                                  user                     @relation(fields: [user_id, user_type], references: [id, type], onDelete: NoAction, onUpdate: NoAction)
+  station_contact                                                       station_contact[]
   stock_movement                                                        stock_movement[]
   stock_transfer                                                        stock_transfer[]
   travel_document_travel_document_name_mismatch_cleared_byTostaff       travel_document[]        @relation("travel_document_name_mismatch_cleared_byTostaff")
@@ -1605,6 +1624,89 @@ model rule_break {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bag_cost {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_id       String          @db.Uuid
+  expense_id      String          @unique @db.Uuid
+  kind            String
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  expense         expense         @relation(fields: [expense_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lost_bag_report lost_bag_report @relation(fields: [report_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([report_id], map: "bag_cost_report_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bag_delivery {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_id       String          @unique @db.Uuid
+  delivery_type   String?
+  address         String?
+  pickup_airport  String?
+  status          String          @default("waiting_choice")
+  delivered_at    DateTime?       @db.Timestamptz(6)
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime        @default(now()) @db.Timestamptz(6)
+  airport         airport?        @relation(fields: [pickup_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "bag_delivery_airport_fk")
+  lost_bag_report lost_bag_report @relation(fields: [report_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bag_location_event {
+  id                                               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  found_bag_id                                     String    @db.Uuid
+  airport_code                                     String
+  action                                           String
+  to_airport                                       String?
+  sent_on_flight_id                                String?   @db.Uuid
+  note                                             String?
+  staff_id                                         String?   @db.Uuid
+  occurred_at                                      DateTime  @db.Timestamptz(6)
+  created_at                                       DateTime  @default(now()) @db.Timestamptz(6)
+  airport_bag_location_event_airport_codeToairport airport   @relation("bag_location_event_airport_codeToairport", fields: [airport_code], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "bag_location_event_airport_fk")
+  flight                                           flight?   @relation(fields: [sent_on_flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bag_location_event_flight_fk")
+  found_bag                                        found_bag @relation(fields: [found_bag_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff                                            staff?    @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  airport_bag_location_event_to_airportToairport   airport?  @relation("bag_location_event_to_airportToairport", fields: [to_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "bag_location_event_to_airport_fk")
+
+  @@index([found_bag_id, occurred_at], map: "bag_location_event_bag_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bag_match {
+  id                                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_id                          String          @db.Uuid
+  found_bag_id                       String          @db.Uuid
+  match_level                        String
+  status                             String          @default("suggested")
+  linked_by                          String?         @db.Uuid
+  reviewed_by                        String?         @db.Uuid
+  review_note                        String?
+  suggested_at                       DateTime        @db.Timestamptz(6)
+  reviewed_at                        DateTime?       @db.Timestamptz(6)
+  created_at                         DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at                         DateTime        @default(now()) @db.Timestamptz(6)
+  found_bag                          found_bag       @relation(fields: [found_bag_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff_bag_match_linked_byTostaff   staff?          @relation("bag_match_linked_byTostaff", fields: [linked_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lost_bag_report                    lost_bag_report @relation(fields: [report_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff_bag_match_reviewed_byTostaff staff?          @relation("bag_match_reviewed_byTostaff", fields: [reviewed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([found_bag_id, status], map: "bag_match_bag_confirmed_uq", where: raw("(status = 'confirmed'::text)"))
+  @@unique([report_id, status], map: "bag_match_report_confirmed_uq", where: raw("(status = 'confirmed'::text)"))
+  @@unique([report_id, found_bag_id])
+  @@index([found_bag_id], map: "bag_match_found_bag_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model baggage_setting {
+  key        String   @id
+  value      String
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_by String?  @db.Uuid
+  staff      staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model boarding_event {
   id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   flight_id         String         @db.Uuid
@@ -1702,22 +1804,23 @@ model check_in_setting {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model checked_bag {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  check_in_id       String    @db.Uuid
-  tag_number        String?   @unique
-  weight_kg         Decimal   @db.Decimal(5, 1)
-  excess_kg         Decimal   @default(0) @db.Decimal(5, 1)
-  rate_per_kg       Decimal   @default(0) @db.Decimal(12, 2)
-  excess_fee        Decimal   @default(0) @db.Decimal(12, 2)
-  excess_payment_id String?   @db.Uuid
-  status            String    @default("weighed")
-  weighed_by        String    @db.Uuid
-  weighed_at        DateTime  @db.Timestamptz(6)
-  created_at        DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
-  deleted_at        DateTime? @db.Timestamptz(6)
-  check_in          check_in  @relation(fields: [check_in_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  staff             staff     @relation(fields: [weighed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  check_in_id       String     @db.Uuid
+  tag_number        String?    @unique
+  weight_kg         Decimal    @db.Decimal(5, 1)
+  excess_kg         Decimal    @default(0) @db.Decimal(5, 1)
+  rate_per_kg       Decimal    @default(0) @db.Decimal(12, 2)
+  excess_fee        Decimal    @default(0) @db.Decimal(12, 2)
+  excess_payment_id String?    @db.Uuid
+  status            String     @default("weighed")
+  weighed_by        String     @db.Uuid
+  weighed_at        DateTime   @db.Timestamptz(6)
+  created_at        DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime   @default(now()) @db.Timestamptz(6)
+  deleted_at        DateTime?  @db.Timestamptz(6)
+  check_in          check_in   @relation(fields: [check_in_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff             staff      @relation(fields: [weighed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  found_bag         found_bag[]
 
   @@index([check_in_id], map: "checked_bag_check_in_idx", where: raw("(deleted_at IS NULL)"))
   @@index([check_in_id], map: "checked_bag_unpaid_idx", where: raw("((excess_fee > (0)::numeric) AND (excess_payment_id IS NULL) AND (deleted_at IS NULL))"))
@@ -1742,6 +1845,36 @@ model flight_boarding {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model found_bag {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  checked_bag_id     String?              @unique(map: "found_bag_checked_bag_uq", where: raw("(status <> 'continued_with_flight'::text)")) @db.Uuid
+  tag_number         String?
+  flight_id          String?              @db.Uuid
+  bag_type           String?
+  colour             String?
+  brand              String?
+  description        String?
+  found_airport      String
+  found_at           DateTime             @db.Timestamptz(6)
+  source             String               @default("staff")
+  status             String               @default("held")
+  recorded_by        String?              @db.Uuid
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  bag_location_event bag_location_event[]
+  bag_match          bag_match[]
+  airport            airport              @relation(fields: [found_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "found_bag_airport_fk")
+  checked_bag        checked_bag?         @relation(fields: [checked_bag_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "found_bag_checked_bag_fk")
+  flight             flight?              @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "found_bag_flight_fk")
+  staff              staff?               @relation(fields: [recorded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([flight_id], map: "found_bag_flight_idx", where: raw("(flight_id IS NOT NULL)"))
+  @@index([found_airport], map: "found_bag_held_idx", where: raw("(status = 'held'::text)"))
+  @@index([found_at], map: "found_bag_held_since_idx", where: raw("(status = 'held'::text)"))
+  @@index([tag_number], map: "found_bag_tag_idx", where: raw("(tag_number IS NOT NULL)"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model gate {
   id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   airport_code    String
@@ -1754,6 +1887,54 @@ model gate {
   airport         airport           @relation(fields: [airport_code], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "gate_airport_fk")
 
   @@unique([airport_code, code])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model lost_bag_report {
+  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_number             String        @unique
+  booking_passenger_id    String        @db.Uuid
+  passenger_id            String        @db.Uuid
+  flight_id               String        @db.Uuid
+  reported_by_customer_id String?       @db.Uuid
+  reported_by_staff_id    String?       @db.Uuid
+  tag_number              String?       @unique(map: "lost_bag_report_open_tag_uq", where: raw("((tag_number IS NOT NULL) AND (status = ANY (ARRAY['open'::text, 'matched'::text, 'delivering'::text, 'lost'::text])))"))
+  bag_type                String
+  colour                  String
+  brand                   String?
+  description             String?
+  photo_url               String?
+  contact_email           String?
+  contact_phone           String?
+  status                  String        @default("open")
+  reported_at             DateTime      @db.Timestamptz(6)
+  lost_at                 DateTime?     @db.Timestamptz(6)
+  closed_at               DateTime?     @db.Timestamptz(6)
+  created_at              DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime      @default(now()) @db.Timestamptz(6)
+  bag_cost                bag_cost[]
+  bag_delivery            bag_delivery?
+  bag_match               bag_match[]
+  flight                  flight        @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "lost_bag_report_flight_fk")
+  passenger               passenger     @relation(fields: [passenger_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer                customer?     @relation(fields: [reported_by_customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff                   staff?        @relation(fields: [reported_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([booking_passenger_id], map: "lost_bag_report_booking_passenger_idx")
+  @@index([reported_by_customer_id], map: "lost_bag_report_customer_idx", where: raw("(reported_by_customer_id IS NOT NULL)"))
+  @@index([flight_id], map: "lost_bag_report_flight_idx")
+  @@index([reported_at], map: "lost_bag_report_open_idx", where: raw("(status = 'open'::text)"))
+}
+
+model station_contact {
+  airport_code String   @id
+  desk_name    String
+  phone        String
+  email        String?
+  updated_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_by   String?  @db.Uuid
+  airport      airport  @relation(fields: [airport_code], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "station_contact_airport_fk")
+  staff        staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

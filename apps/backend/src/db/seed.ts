@@ -53,6 +53,13 @@ const VISA_REQUIREMENTS = [
 ]
 const BAG_TAG_AIRLINE_NUMBER = '999'
 
+// Feature 10: a baggage desk at each demo airport. Placeholder numbers and example.com addresses, not real contacts.
+const STATION_CONTACTS = [
+  { airport_code: 'BKK', desk_name: 'BKK Baggage Services', phone: '+66 2 000 0001', email: 'baggage.bkk@example.com' },
+  { airport_code: 'CNX', desk_name: 'CNX Baggage Services', phone: '+66 53 000 001', email: 'baggage.cnx@example.com' },
+  { airport_code: 'HKT', desk_name: 'HKT Baggage Services', phone: '+66 76 000 001', email: 'baggage.hkt@example.com' },
+]
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 })
@@ -122,6 +129,13 @@ async function seedCheckIn() {
   })
 }
 
+// Upserted like the flight network. Contacts need the airports above.
+async function seedLostAndFound() {
+  for (const contact of STATION_CONTACTS) {
+    await prisma.station_contact.upsert({ where: { airport_code: contact.airport_code }, update: {}, create: contact })
+  }
+}
+
 async function seedCustomer() {
   const user = await prisma.user.create({
     data: {
@@ -186,11 +200,14 @@ async function seedRefreshTokens(userId: string) {
 }
 
 async function main() {
-  console.log(`Seeding ${STAFF_ROLES.length} roles, the Feature 2 and 6 demo data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`)
+  console.log(
+    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 6 and 10 demo data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
+  )
 
   const roleIds = await seedRoles()
   await seedFlightNetwork()
   await seedCheckIn()
+  await seedLostAndFound()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()
