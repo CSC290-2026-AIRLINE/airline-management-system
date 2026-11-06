@@ -62,6 +62,10 @@ const STATION_CONTACTS = [
   { airport_code: 'HKT', desk_name: 'HKT Baggage Services', phone: '+66 76 000 001', email: 'baggage.hkt@example.com' },
 ]
 
+// Feature 11: placeholder miles multipliers for Feature 4's demo fare classes, by fare class code. Feature 4's seed
+// creates the classes; a class that is not there yet gets no rule.
+const EARN_MULTIPLIERS: Record<string, number> = { Y: 1, Q: 0.5, W: 1.25, J: 1.5, F: 2 }
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 })
@@ -138,6 +142,18 @@ async function seedLostAndFound() {
   }
 }
 
+// Upserted with no update, so a rerun keeps the multipliers staff changed in the app.
+async function seedLoyalty() {
+  const fareClasses = await prisma.fare_class.findMany({ where: { code: { in: Object.keys(EARN_MULTIPLIERS) }, deleted_at: null } })
+  for (const { id, code } of fareClasses) {
+    await prisma.loyalty_earn_rule.upsert({
+      where: { fare_class_id: id },
+      update: {},
+      create: { fare_class_id: id, multiplier: EARN_MULTIPLIERS[code] },
+    })
+  }
+}
+
 async function seedCustomer() {
   const user = await prisma.user.create({
     data: {
@@ -203,13 +219,14 @@ async function seedRefreshTokens(userId: string) {
 
 async function main() {
   console.log(
-    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 6 and 10 demo data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
+    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 6, 10 and 11 demo data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
   )
 
   const roleIds = await seedRoles()
   await seedFlightNetwork()
   await seedCheckIn()
   await seedLostAndFound()
+  await seedLoyalty()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()

@@ -14,7 +14,8 @@
 //   booking_coupon.product_order_line  ->  product_order_line[]  (product_order_line_meal_uq covers live meal lines only)
 // Prisma Client offers findUnique on partial uniques, but they cover only some rows: find a pass's boarded or no-show
 // event, a booking passenger's live check_in, a checked bag's live found_bag, a case's live compensation, a coupon's held
-// or assigned seat and a coupon's live meal line with findFirst and the index's condition.
+// or assigned seat, a coupon's live meal line, a coupon's upgrade, a member's lounge visit on a flight and a booking's
+// active insurance policy with findFirst and the index's condition.
 
 generator client {
   provider        = "prisma-client"
@@ -239,22 +240,23 @@ model airport_fee {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model audit_log {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  seq            BigInt   @unique @default(autoincrement())
-  occurred_at    DateTime @db.Timestamptz(6)
-  recorded_at    DateTime @default(now()) @db.Timestamptz(6)
-  actor_type     String
-  actor_id       String?  @db.Uuid
-  actor_role     String?
-  source_feature String
-  action         String
-  entity_type    String?
-  entity_id      String?
-  summary        String?
-  reason         String?
-  before         Json?
-  after          Json?
-  is_sensitive   Boolean  @default(false)
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seq                 BigInt                @unique @default(autoincrement())
+  occurred_at         DateTime              @db.Timestamptz(6)
+  recorded_at         DateTime              @default(now()) @db.Timestamptz(6)
+  actor_type          String
+  actor_id            String?               @db.Uuid
+  actor_role          String?
+  source_feature      String
+  action              String
+  entity_type         String?
+  entity_id           String?
+  summary             String?
+  reason              String?
+  before              Json?
+  after               Json?
+  is_sensitive        Boolean               @default(false)
+  loyalty_transaction loyalty_transaction[]
 
   @@index([actor_type, actor_id, occurred_at(sort: Desc)], map: "audit_log_actor_idx")
   @@index([entity_type, entity_id, occurred_at(sort: Desc)], map: "audit_log_entity_idx")
@@ -373,6 +375,7 @@ model customer {
   user                    user                      @relation(fields: [user_id, user_type], references: [id, type], onDelete: NoAction, onUpdate: NoAction)
   customer_passenger      customer_passenger[]
   lost_bag_report         lost_bag_report[]
+  loyalty_member          loyalty_member?
   notification            notification[]
   notification_preference notification_preference[]
   product_order           product_order[]
@@ -448,6 +451,8 @@ model fare_class {
   base_fare                 base_fare[]
   booking_segment           booking_segment[]
   fare_quote                fare_quote[]
+  loyalty_earn_rule         loyalty_earn_rule?
+  loyalty_transaction       loyalty_transaction[]
   overweight_baggage_rate   overweight_baggage_rate[]
   pricing_rule              pricing_rule[]
 
@@ -1185,6 +1190,13 @@ model staff {
   flight_setting                                                        flight_setting[]
   found_bag                                                             found_bag[]
   lost_bag_report                                                       lost_bag_report[]
+  loyalty_award_release                                                 loyalty_award_release[]
+  loyalty_benefit_use                                                   loyalty_benefit_use[]
+  loyalty_earn_rule                                                     loyalty_earn_rule[]
+  loyalty_setting                                                       loyalty_setting[]
+  loyalty_tier_benefit                                                  loyalty_tier_benefit[]
+  loyalty_tier_rule                                                     loyalty_tier_rule[]
+  loyalty_transaction                                                   loyalty_transaction[]
   notification_template                                                 notification_template[]
   payment_schedule                                                      payment_schedule[]
   pricing_setting                                                       pricing_setting[]
@@ -1777,30 +1789,32 @@ model boarding_pass {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model booking {
-  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  booking_reference  String              @unique
-  customer_id        String              @db.Uuid
-  booked_by_staff_id String?             @db.Uuid
-  trip_type          String
-  status             String              @default("held")
-  payment_type       String              @default("cash")
-  currency           String
-  contact_email      String
-  contact_phone      String?
-  idempotency_key    String
-  booked_at          DateTime            @db.Timestamptz(6)
-  hold_expires_at    DateTime            @db.Timestamptz(6)
-  confirmed_at       DateTime?           @db.Timestamptz(6)
-  cancelled_at       DateTime?           @db.Timestamptz(6)
-  created_at         DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime            @default(now()) @db.Timestamptz(6)
-  staff              staff?              @relation(fields: [booked_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  customer           customer            @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  booking_passenger  booking_passenger[]
-  booking_segment    booking_segment[]
-  screening_check    screening_check[]
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_reference        String                     @unique
+  customer_id              String                     @db.Uuid
+  booked_by_staff_id       String?                    @db.Uuid
+  trip_type                String
+  status                   String                     @default("held")
+  payment_type             String                     @default("cash")
+  currency                 String
+  contact_email            String
+  contact_phone            String?
+  idempotency_key          String
+  booked_at                DateTime                   @db.Timestamptz(6)
+  hold_expires_at          DateTime                   @db.Timestamptz(6)
+  confirmed_at             DateTime?                  @db.Timestamptz(6)
+  cancelled_at             DateTime?                  @db.Timestamptz(6)
+  created_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  staff                    staff?                     @relation(fields: [booked_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer                 customer                   @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking_passenger        booking_passenger[]
+  booking_segment          booking_segment[]
+  loyalty_insurance_policy loyalty_insurance_policy[]
+  screening_check          screening_check[]
 
   @@unique([customer_id, idempotency_key])
+  @@unique([id, customer_id], map: "booking_id_customer_key")
   @@index([booked_by_staff_id], map: "booking_booked_by_idx", where: raw("(booked_by_staff_id IS NOT NULL)"))
   @@index([customer_id, booked_at(sort: Desc)], map: "booking_customer_idx")
   @@index([hold_expires_at], map: "booking_hold_expiry_idx", where: raw("(status = 'held'::text)"))
@@ -1830,27 +1844,29 @@ model booking_change {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model booking_coupon {
-  id                                                              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  booking_id                                                      String              @db.Uuid
-  booking_segment_id                                              String              @db.Uuid
-  booking_passenger_id                                            String              @db.Uuid
-  flight_id                                                       String              @db.Uuid
-  passenger_id                                                    String              @db.Uuid
-  fare_quote_id                                                   String?             @db.Uuid
-  price_total                                                     Decimal             @db.Decimal(12, 2)
-  ticket_number                                                   String?             @unique
-  status                                                          String              @default("held")
+  id                                                              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id                                                      String                @db.Uuid
+  booking_segment_id                                              String                @db.Uuid
+  booking_passenger_id                                            String                @db.Uuid
+  flight_id                                                       String                @db.Uuid
+  passenger_id                                                    String                @db.Uuid
+  fare_quote_id                                                   String?               @db.Uuid
+  price_total                                                     Decimal               @db.Decimal(12, 2)
+  ticket_number                                                   String?               @unique
+  status                                                          String                @default("held")
   cancel_reason                                                   String?
   partner_airline                                                 String?
-  cancelled_at                                                    DateTime?           @db.Timestamptz(6)
-  created_at                                                      DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at                                                      DateTime            @default(now()) @db.Timestamptz(6)
-  booking_passenger                                               booking_passenger   @relation(fields: [booking_passenger_id, booking_id, passenger_id], references: [id, booking_id, passenger_id], onDelete: NoAction, onUpdate: NoAction)
-  booking_segment                                                 booking_segment     @relation(fields: [booking_segment_id, booking_id, flight_id], references: [id, booking_id, flight_id], onDelete: NoAction, onUpdate: NoAction)
-  fare_quote                                                      fare_quote?         @relation(fields: [fare_quote_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "booking_coupon_fare_quote_fk")
-  partner_airline_booking_coupon_partner_airlineTopartner_airline partner_airline?    @relation("booking_coupon_partner_airlineTopartner_airline", fields: [partner_airline], references: [code], onDelete: NoAction, onUpdate: NoAction, map: "booking_coupon_partner_airline_fk")
+  cancelled_at                                                    DateTime?             @db.Timestamptz(6)
+  created_at                                                      DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at                                                      DateTime              @default(now()) @db.Timestamptz(6)
+  booking_passenger                                               booking_passenger     @relation(fields: [booking_passenger_id, booking_id, passenger_id], references: [id, booking_id, passenger_id], onDelete: NoAction, onUpdate: NoAction)
+  booking_segment                                                 booking_segment       @relation(fields: [booking_segment_id, booking_id, flight_id], references: [id, booking_id, flight_id], onDelete: NoAction, onUpdate: NoAction)
+  fare_quote                                                      fare_quote?           @relation(fields: [fare_quote_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "booking_coupon_fare_quote_fk")
+  partner_airline_booking_coupon_partner_airlineTopartner_airline partner_airline?      @relation("booking_coupon_partner_airlineTopartner_airline", fields: [partner_airline], references: [code], onDelete: NoAction, onUpdate: NoAction, map: "booking_coupon_partner_airline_fk")
   check_in                                                        check_in[]
   lost_bag_report                                                 lost_bag_report[]
+  loyalty_benefit_use                                             loyalty_benefit_use[]
+  loyalty_transaction                                             loyalty_transaction[]
   product_order_line                                              product_order_line[]
   seat_assignment                                                 seat_assignment[]
 
@@ -2274,6 +2290,176 @@ model lost_bag_report {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_award_release {
+  flight_id            String         @db.Uuid
+  cabin                String
+  miles_cost           Int
+  released_by_staff_id String         @db.Uuid
+  created_at           DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime       @default(now()) @db.Timestamptz(6)
+  staff                staff          @relation(fields: [released_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  seat_inventory       seat_inventory @relation(fields: [flight_id, cabin], references: [flight_id, cabin], onDelete: NoAction, onUpdate: NoAction, map: "loyalty_award_release_seat_inventory_fk")
+
+  @@id([flight_id, cabin])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_benefit_use {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  member_id         String         @db.Uuid
+  benefit_type      String
+  booking_coupon_id String         @db.Uuid
+  flight_id         String         @db.Uuid
+  from_cabin        String?
+  to_cabin          String?
+  guests            Int            @default(0) @db.SmallInt
+  staff_id          String?        @db.Uuid
+  used_at           DateTime       @db.Timestamptz(6)
+  created_at        DateTime       @default(now()) @db.Timestamptz(6)
+  booking_coupon    booking_coupon @relation(fields: [booking_coupon_id, flight_id], references: [id, flight_id], onDelete: NoAction, onUpdate: NoAction, map: "loyalty_benefit_use_coupon_fk")
+  loyalty_member    loyalty_member @relation(fields: [member_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff             staff?         @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([member_id, flight_id], map: "loyalty_benefit_lounge_once_uq", where: raw("(benefit_type = 'lounge_visit'::text)"))
+  @@unique([booking_coupon_id, benefit_type], map: "loyalty_benefit_upgrade_once_uq", where: raw("(benefit_type = 'upgrade'::text)"))
+  @@index([member_id, used_at(sort: Desc)], map: "loyalty_benefit_use_member_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_earn_rule {
+  fare_class_id       String     @id @db.Uuid
+  multiplier          Decimal    @db.Decimal(4, 2)
+  updated_by_staff_id String?    @db.Uuid
+  created_at          DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime   @default(now()) @db.Timestamptz(6)
+  fare_class          fare_class @relation(fields: [fare_class_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "loyalty_earn_rule_fare_class_fk")
+  staff               staff?     @relation(fields: [updated_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_insurance_policy {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  member_id      String         @db.Uuid
+  customer_id    String         @db.Uuid
+  booking_id     String         @db.Uuid
+  policy_number  String         @unique @default(dbgenerated("('FLI'::text || nextval('loyalty_policy_number_seq'::regclass))"))
+  cover_type     String         @default("basic")
+  price          Decimal        @db.Decimal(12, 2)
+  currency       String
+  status         String         @default("active")
+  issued_at      DateTime       @db.Timestamptz(6)
+  cancelled_at   DateTime?      @db.Timestamptz(6)
+  created_at     DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime       @default(now()) @db.Timestamptz(6)
+  booking        booking        @relation(fields: [booking_id, customer_id], references: [id, customer_id], onDelete: NoAction, onUpdate: NoAction, map: "loyalty_insurance_policy_booking_fk")
+  loyalty_member loyalty_member @relation(fields: [member_id, customer_id], references: [id, customer_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([booking_id, status], map: "loyalty_insurance_active_uq", where: raw("(status = 'active'::text)"))
+  @@index([member_id, issued_at(sort: Desc)], map: "loyalty_insurance_member_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_member {
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id              String                     @unique @db.Uuid
+  member_number            String                     @unique @default(dbgenerated("('FL'::text || nextval('loyalty_member_number_seq'::regclass))"))
+  miles_balance            Int                        @default(0)
+  tier_code                String?
+  tier_qualified_at        DateTime?                  @db.Timestamptz(6)
+  tier_expires_at          DateTime?                  @db.Timestamptz(6)
+  joined_at                DateTime                   @db.Timestamptz(6)
+  created_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  loyalty_benefit_use      loyalty_benefit_use[]
+  loyalty_insurance_policy loyalty_insurance_policy[]
+  customer                 customer                   @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  loyalty_tier_rule        loyalty_tier_rule?         @relation(fields: [tier_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  loyalty_transaction      loyalty_transaction[]
+
+  @@unique([id, customer_id])
+  @@index([tier_expires_at], map: "loyalty_member_tier_expiry_idx", where: raw("(tier_code IS NOT NULL)"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_setting {
+  key        String   @id
+  value      String
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_by String?  @db.Uuid
+  staff      staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_tier_benefit {
+  tier_code           String            @id
+  lounge_guests       Int?              @db.SmallInt
+  extra_baggage_kg    Decimal           @default(0) @db.Decimal(5, 1)
+  priority_checkin    Boolean           @default(false)
+  priority_boarding   Boolean           @default(false)
+  upgrade_eligible    Boolean           @default(false)
+  insurance_price     Decimal?          @db.Decimal(12, 2)
+  updated_by_staff_id String?           @db.Uuid
+  created_at          DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime          @default(now()) @db.Timestamptz(6)
+  loyalty_tier_rule   loyalty_tier_rule @relation(fields: [tier_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  staff               staff?            @relation(fields: [updated_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_tier_rule {
+  code                 String                @id
+  name                 String
+  rank                 Int                   @unique @db.SmallInt
+  min_miles            Int
+  min_flights          Int
+  valid_months         Int                   @default(12) @db.SmallInt
+  updated_by_staff_id  String?               @db.Uuid
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime              @default(now()) @db.Timestamptz(6)
+  loyalty_member       loyalty_member[]
+  loyalty_tier_benefit loyalty_tier_benefit?
+  staff                staff?                @relation(fields: [updated_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_transaction {
+  id                                                                                                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seq                                                                                                  BigInt               @unique @default(autoincrement())
+  member_id                                                                                            String               @db.Uuid
+  type                                                                                                 String
+  miles                                                                                                Int
+  balance_after                                                                                        Int                  @default(0)
+  booking_coupon_id                                                                                    String?              @db.Uuid
+  distance_km                                                                                          Int?
+  fare_class_id                                                                                        String?              @db.Uuid
+  multiplier                                                                                           Decimal?             @db.Decimal(4, 2)
+  expires_at                                                                                           DateTime?            @db.Timestamptz(6)
+  expired_transaction_id                                                                               String?              @db.Uuid
+  reversed_transaction_id                                                                              String?              @db.Uuid
+  reason                                                                                               String?
+  audit_log_id                                                                                         String?              @db.Uuid
+  created_by_staff_id                                                                                  String?              @db.Uuid
+  occurred_at                                                                                          DateTime             @db.Timestamptz(6)
+  created_at                                                                                           DateTime             @default(now()) @db.Timestamptz(6)
+  audit_log                                                                                            audit_log?           @relation(fields: [audit_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "loyalty_transaction_audit_log_fk")
+  booking_coupon                                                                                       booking_coupon?      @relation(fields: [booking_coupon_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "loyalty_transaction_coupon_fk")
+  staff                                                                                                staff?               @relation(fields: [created_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  loyalty_transaction_loyalty_transaction_expired_transaction_id_member_idToloyalty_transaction        loyalty_transaction? @relation("loyalty_transaction_expired_transaction_id_member_idToloyalty_transaction", fields: [expired_transaction_id, member_id], references: [id, member_id], onDelete: NoAction, onUpdate: NoAction)
+  other_loyalty_transaction_loyalty_transaction_expired_transaction_id_member_idToloyalty_transaction  loyalty_transaction? @relation("loyalty_transaction_expired_transaction_id_member_idToloyalty_transaction")
+  fare_class                                                                                           fare_class?          @relation(fields: [fare_class_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "loyalty_transaction_fare_class_fk")
+  loyalty_member                                                                                       loyalty_member       @relation(fields: [member_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  loyalty_transaction_loyalty_transaction_reversed_transaction_id_member_idToloyalty_transaction       loyalty_transaction? @relation("loyalty_transaction_reversed_transaction_id_member_idToloyalty_transaction", fields: [reversed_transaction_id, member_id], references: [id, member_id], onDelete: NoAction, onUpdate: NoAction)
+  other_loyalty_transaction_loyalty_transaction_reversed_transaction_id_member_idToloyalty_transaction loyalty_transaction? @relation("loyalty_transaction_reversed_transaction_id_member_idToloyalty_transaction")
+
+  @@unique([booking_coupon_id, type], map: "loyalty_transaction_coupon_uq", where: raw("(booking_coupon_id IS NOT NULL)"))
+  @@unique([expired_transaction_id, member_id])
+  @@unique([id, member_id])
+  @@unique([reversed_transaction_id, member_id])
+  @@index([expires_at], map: "loyalty_transaction_expiry_idx", where: raw("(expires_at IS NOT NULL)"))
+  @@index([member_id, seq(sort: Desc)], map: "loyalty_transaction_member_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model notification {
   id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   inbound_event_id  String            @db.Uuid
@@ -2367,18 +2553,19 @@ model seat_assignment {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model seat_inventory {
-  flight_id        String            @db.Uuid
-  cabin            String
-  capacity         Int
-  held_count       Int               @default(0)
-  sold_count       Int               @default(0)
-  award_limit      Int               @default(0)
-  award_held_count Int               @default(0)
-  award_sold_count Int               @default(0)
-  created_at       DateTime          @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime          @default(now()) @db.Timestamptz(6)
-  booking_segment  booking_segment[]
-  flight           flight            @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "seat_inventory_flight_fk")
+  flight_id             String                 @db.Uuid
+  cabin                 String
+  capacity              Int
+  held_count            Int                    @default(0)
+  sold_count            Int                    @default(0)
+  award_limit           Int                    @default(0)
+  award_held_count      Int                    @default(0)
+  award_sold_count      Int                    @default(0)
+  created_at            DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime               @default(now()) @db.Timestamptz(6)
+  booking_segment       booking_segment[]
+  loyalty_award_release loyalty_award_release?
+  flight                flight                 @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "seat_inventory_flight_fk")
 
   @@id([flight_id, cabin])
 }
