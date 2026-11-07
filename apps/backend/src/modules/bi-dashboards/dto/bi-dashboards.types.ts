@@ -5,9 +5,10 @@ export interface BiRunSummary {
   id: string
   trigger: BiRunTrigger
   status: 'running' | 'success' | 'failed'
-  data_as_of: Date
-  started_at: Date
-  finished_at: Date | null
+  /** UTC, ISO 8601 with a `Z` suffix. Read as text so the driver's timezone cannot shift it. */
+  data_as_of: string
+  started_at: string
+  finished_at: string | null
   row_count: number | null
   error_message: string | null
 }

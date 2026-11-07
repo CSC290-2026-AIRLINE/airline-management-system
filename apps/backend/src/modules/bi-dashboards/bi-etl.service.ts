@@ -58,7 +58,7 @@ export class BiEtlService implements OnModuleInit {
     try {
       const rows = await this.db.$queryRaw<{ id: string }[]>`
         INSERT INTO bi_etl_run (trigger, requested_by_staff_id, data_as_of)
-        VALUES (${trigger}, ${staffId}::uuid, ${this.clock.now()})
+        VALUES (${trigger}, ${staffId}::uuid, ${this.clock.now().toISOString()}::timestamptz)
         RETURNING id`
       return rows[0].id
     } catch (error) {
@@ -201,7 +201,7 @@ export class BiEtlService implements OnModuleInit {
       UPDATE bi_etl_run
       SET status = 'success', finished_at = now(), row_count = ${rowCount}
       WHERE id = ${runId}::uuid
-      RETURNING id, trigger, status, data_as_of, started_at, finished_at, row_count, error_message`
+      RETURNING id, trigger, status, to_char(data_as_of AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS data_as_of, to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS started_at, to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS finished_at, row_count, error_message`
     this.logger.log(`BI refresh ${runId} succeeded with ${rowCount} flights`)
     return rows[0]
   }

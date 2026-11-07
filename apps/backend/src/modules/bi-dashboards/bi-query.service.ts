@@ -16,7 +16,7 @@ export class BiQueryService {
   async status(): Promise<{ latest_success: BiRunSummary | null; refreshing: boolean }> {
     const [latest, running] = await Promise.all([
       this.db.$queryRaw<BiRunSummary[]>`
-        SELECT id, trigger, status, data_as_of, started_at, finished_at, row_count, error_message
+        SELECT id, trigger, status, to_char(data_as_of AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS data_as_of, to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS started_at, to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS finished_at, row_count, error_message
         FROM bi_etl_run
         WHERE status = 'success'
         ORDER BY started_at DESC
