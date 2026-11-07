@@ -85,6 +85,7 @@ function makeSvc() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     bag_delivery: { upsert: jest.fn().mockResolvedValue({}) },
+    $queryRaw: jest.fn().mockImplementation((_sql: TemplateStringsArray, id: string) => Promise.resolve([{ id, status: 'open' }])),
     $transaction: jest.fn(),
   }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db))
@@ -231,6 +232,20 @@ describe('BagMatchReviewService.confirm', () => {
     expect(db.bag_delivery.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ where: { report_id: REPORT_ID }, create: expect.objectContaining({ status: 'waiting_choice' }) }),
     )
+  })
+
+  it('locks the case, then the bag, before changing anything', async () => {
+    const { svc, db } = makeSvc()
+
+    await svc.confirm({ staffId: STAFF_ID, matchId: MATCH_ID, note: 'Tag matches' })
+
+    expect(
+      db.$queryRaw.mock.calls.map(([sql, id]: [TemplateStringsArray, string]) => [sql.join('?').match(/FROM (\w+)/)?.[1], id]),
+    ).toEqual([
+      ['lost_bag_report', REPORT_ID],
+      ['found_bag', FOUND_BAG_ID],
+    ])
+    expect(db.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(db.bag_match.updateMany.mock.invocationCallOrder[0])
   })
 
   it('needs a note', async () => {

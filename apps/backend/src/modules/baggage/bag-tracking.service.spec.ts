@@ -6,6 +6,7 @@ jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
 const STAFF_ID = '11111111-1111-4111-8111-111111111111'
 const BAG_ID = '66666666-6666-4666-8666-666666666666'
+const REPORT_ID = '77777777-7777-4777-8777-777777777777'
 const FLIGHT_ID = '22222222-2222-4222-8222-222222222222'
 const SIM_NOW = new Date('2026-11-01T10:00:00Z')
 
@@ -30,6 +31,7 @@ function makeSvc(opts: { status?: string | null; last?: EventRow | null } = {}) 
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({}),
     },
+    bag_match: { findFirst: jest.fn().mockResolvedValue(null) },
     $queryRaw: jest.fn().mockResolvedValue(status === null ? [] : [{ status }]),
     $transaction: jest.fn(),
   }
@@ -102,6 +104,34 @@ describe('BagTrackingService.recordMove', () => {
     const { svc } = makeSvc()
 
     await expect(svc.recordMove({ ...base, action: 'delivered' as never })).rejects.toMatchObject({ code: 'INVALID_MOVE' })
+  })
+
+  it('locks the case of a matched bag before the bag', async () => {
+    const { svc, db } = makeSvc({ status: 'matched' })
+    db.bag_match.findFirst.mockResolvedValue({ report_id: REPORT_ID })
+
+    await svc.recordMove({ ...base, action: 'held' })
+
+    const tables = db.$queryRaw.mock.calls.map(([sql]: [TemplateStringsArray]) => sql.join('?').match(/FROM (\w+)/)?.[1])
+    expect(tables).toEqual(['lost_bag_report', 'found_bag'])
+    expect(db.bag_location_event.create).toHaveBeenCalled()
+  })
+
+  it('locks only the bag when it has no case', async () => {
+    const { svc, db } = makeSvc()
+
+    await svc.recordMove({ ...base, action: 'held' })
+
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(db.$queryRaw.mock.calls[0][0].join('?')).toContain('FROM found_bag')
+  })
+
+  it('starts again when a match was confirmed between the read and the lock', async () => {
+    const { svc, db } = makeSvc()
+    db.bag_match.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ report_id: REPORT_ID })
+
+    await expect(svc.recordMove({ ...base, action: 'held' })).rejects.toMatchObject({ code: 'INVALID_MOVE' })
+    expect(db.bag_location_event.create).not.toHaveBeenCalled()
   })
 
   it('refuses to move a closed bag', async () => {

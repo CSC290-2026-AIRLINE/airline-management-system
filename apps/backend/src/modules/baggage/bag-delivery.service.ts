@@ -20,18 +20,24 @@ import {
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { FoundBagStatus } from './common/found-bag.types'
+import { lockFoundBag, lockLostReport } from './common/case-locks'
 import { checkOwnership, documentLast4, type PresentedIdentity } from './common/ownership-check'
 import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/patterns'
 
 /** audit_log.source_feature and entity_type of the ownership checks at handover. */
 export const AUDIT_SOURCE_FEATURE = '10'
 export const OWNERSHIP_CHECK_ENTITY = 'bag_ownership_check'
+/** audit_log.entity_type of a recorded delivery choice. */
+export const DELIVERY_ENTITY = 'bag_delivery'
 
 /** How many past checks a delivery shows. */
 const MAX_CHECKS = 20
 
 /** Deliveries that need the desk first: bags to send, then bags on their way, then waiting for the passenger, then done. */
 const STATUS_ORDER: DeliveryStatus[] = ['preparing', 'ready_for_pickup', 'in_transit', 'waiting_choice', 'delivered']
+
+/** Cases whose bag is still on its way back. A closed or cancelled case takes no more delivery steps. */
+const ACTIVE_CASE_STATUSES: ReportStatus[] = ['matched', 'delivering', 'lost']
 
 const MISMATCH_LABELS: Record<OwnershipMismatch, string> = {
   booking_reference: 'booking reference',
@@ -43,12 +49,40 @@ export interface DeliveryFilter {
   status?: DeliveryStatus
 }
 
-export interface DeliveryChoiceInput {
-  staffId: string
+/** How the passenger wants the bag back. */
+export interface DeliveryChoice {
   deliveryId: string
   deliveryType: DeliveryType
   address?: string | null
   pickupAirport?: string | null
+}
+
+/**
+ * Who records a delivery choice. `id` is the staff id (staff.id) or the passenger's customer id (customer.id); `userId`
+ * is the signed-in user (user.id), the actor of the audit row. The caller has already checked that this actor may act on
+ * the case: the staff guard for the desk, the passenger controller's ownership check for a passenger.
+ */
+export interface DeliveryChoiceActor {
+  type: 'staff' | 'passenger'
+  id: string
+  userId: string
+}
+
+/** The desk's call: the staff endpoint always knows its staff member and user. */
+export interface DeliveryChoiceInput extends DeliveryChoice {
+  staffId: string
+  userId: string
+}
+
+/** The delivery after a choice, without the desk-only details (ownership checks, costs, contacts). */
+export interface DeliveryChoiceResult {
+  id: string
+  reportId: string
+  status: DeliveryStatus
+  deliveryType: DeliveryType
+  address: string | null
+  pickupAirport: string | null
+  updatedAt: Date
 }
 
 export interface DeliveryStatusInput {
@@ -230,20 +264,33 @@ export class BagDeliveryService {
     return { ...toBagDelivery(row), ownershipChecks: await this.listChecks(id) }
   }
 
-  /**
-   * The passenger's choice, taken by the desk (for example on the phone). Same rule as the passenger's own choice: it can
-   * change until the bag is in transit.
-   */
+  /** The passenger's choice, taken by the desk (for example on the phone). */
   async recordChoice(input: DeliveryChoiceInput): Promise<BagDeliveryDetail> {
     requireStaff(input.staffId)
 
-    if (!DELIVERY_TYPES.includes(input.deliveryType)) {
+    const { staffId, userId, ...choice } = input
+    const result = await this.applyChoice({ type: 'staff', id: staffId, userId }, choice)
+
+    return this.getById(result.id)
+  }
+
+  /**
+   * Records how the bag comes back, for the desk or for the passenger. It can change until the bag is in transit
+   * (ALREADY_SENT after that). Runs with the case locked, and logs who made the choice in audit_log. The caller checks
+   * first that the actor may act on this case; the passenger side calls this after its own ownership check.
+   */
+  async applyChoice(actor: DeliveryChoiceActor, choice: DeliveryChoice): Promise<DeliveryChoiceResult> {
+    if (!['staff', 'passenger'].includes(actor.type) || !UUID_PATTERN.test(actor.id) || !UUID_PATTERN.test(actor.userId)) {
+      throw invalid('Who made the choice is required')
+    }
+
+    if (!DELIVERY_TYPES.includes(choice.deliveryType)) {
       throw invalid('Invalid delivery type')
     }
 
-    const pickup = input.deliveryType === 'airport_pickup'
-    const address = input.address?.trim() || null
-    const pickupAirport = input.pickupAirport?.trim().toUpperCase() || null
+    const pickup = choice.deliveryType === 'airport_pickup'
+    const address = choice.address?.trim() || null
+    const pickupAirport = choice.pickupAirport?.trim().toUpperCase() || null
 
     if (pickup && (!pickupAirport || !AIRPORT_CODE_PATTERN.test(pickupAirport))) {
       throw invalid('An airport pickup needs a 3-letter airport code')
@@ -253,27 +300,61 @@ export class BagDeliveryService {
       throw invalid('A delivery to an address needs the address')
     }
 
-    const delivery = await this.findDelivery(input.deliveryId)
-
-    if (!CHOICE_OPEN_STATUSES.includes(delivery.status as DeliveryStatus)) {
-      throw new FoundBagError(FOUND_BAG_ERROR_CODES.ALREADY_SENT, 'The bag is already on its way; the delivery can no longer change')
-    }
+    const { report_id: reportId } = await this.findDelivery(choice.deliveryId)
+    const auditActor = await this.audit.resolveActor(actor.userId)
+    const now = new Date()
 
     try {
-      const { count } = await this.db.bag_delivery.updateMany({
-        where: { id: delivery.id, status: { in: CHOICE_OPEN_STATUSES } },
-        data: {
-          delivery_type: input.deliveryType,
-          address: pickup ? null : address,
-          pickup_airport: pickup ? pickupAirport : null,
-          status: 'preparing',
-          updated_at: new Date(),
-        },
-      })
+      return await this.db.$transaction(async (tx) => {
+        const { report, delivery } = await this.lockCase(tx, reportId, choice.deliveryId)
 
-      if (count !== 1) {
-        throw new FoundBagError(FOUND_BAG_ERROR_CODES.ALREADY_SENT, 'The bag is already on its way; the delivery can no longer change')
-      }
+        if (!CHOICE_OPEN_STATUSES.includes(delivery.status as DeliveryStatus)) {
+          throw new FoundBagError(FOUND_BAG_ERROR_CODES.ALREADY_SENT, 'The bag is already on its way; the delivery can no longer change')
+        }
+
+        const row = await tx.bag_delivery.update({
+          where: { id: delivery.id },
+          data: {
+            delivery_type: choice.deliveryType,
+            address: pickup ? null : address,
+            pickup_airport: pickup ? pickupAirport : null,
+            status: 'preparing',
+            updated_at: now,
+          },
+        })
+
+        await this.audit.write(
+          {
+            actor: auditActor,
+            sourceFeature: AUDIT_SOURCE_FEATURE,
+            action: 'update',
+            entityType: DELIVERY_ENTITY,
+            entityId: delivery.id,
+            summary: `Delivery choice recorded by ${actor.type} for lost bag case ${report.case_number}`,
+            before: { deliveryType: delivery.delivery_type, pickupAirport: delivery.pickup_airport, status: delivery.status },
+            after: {
+              deliveryType: row.delivery_type,
+              pickupAirport: row.pickup_airport,
+              status: row.status,
+              chosenBy: actor.type,
+              [actor.type === 'staff' ? 'staffId' : 'customerId']: actor.id,
+              reportId,
+            },
+            occurredAt: this.clock.now(),
+          },
+          tx,
+        )
+
+        return {
+          id: row.id,
+          reportId: row.report_id,
+          status: row.status as DeliveryStatus,
+          deliveryType: row.delivery_type as DeliveryType,
+          address: row.address,
+          pickupAirport: row.pickup_airport,
+          updatedAt: row.updated_at,
+        }
+      })
     } catch (e) {
       if (prismaErrorCode(e) === 'P2003') {
         throw invalid('Unknown pickup airport')
@@ -281,26 +362,30 @@ export class BagDeliveryService {
 
       throw e
     }
-
-    return this.getById(delivery.id)
   }
 
   /**
    * Moves a delivery on. in_transit: an address delivery leaves the station holding the bag (out_for_delivery), or a
    * pickup bag is sent to the pickup airport. ready_for_pickup: the pickup bag is at the pickup airport (its arrival is
-   * recorded if it was in transit there). The case becomes delivering at either step.
+   * recorded if it was in transit there). The case becomes delivering in the same transaction, with the case and then
+   * the bag locked, so every check below reads state no one else can change until it commits.
    */
   async setStatus(input: DeliveryStatusInput): Promise<BagDeliveryDetail> {
     requireStaff(input.staffId)
 
+    if (input.status !== 'in_transit' && input.status !== 'ready_for_pickup') {
+      throw invalid('Staff can set in transit or ready for pickup; a handover sets delivered')
+    }
+
     const note = input.note?.trim() || null
-    const delivery = await this.findDelivery(input.deliveryId)
-    const pickup = delivery.delivery_type === 'airport_pickup'
-    const bagId = await this.confirmedBagId(delivery.report_id)
+    const { report_id: reportId } = await this.findDelivery(input.deliveryId)
     const now = new Date()
     const at = this.clock.now()
 
     await this.db.$transaction(async (tx) => {
+      const { delivery, bagId } = await this.lockCaseAndBag(tx, reportId, input.deliveryId)
+      const pickup = delivery.delivery_type === 'airport_pickup'
+
       const last = await tx.bag_location_event.findFirst({
         where: { found_bag_id: bagId },
         orderBy: [{ occurred_at: 'desc' }, { created_at: 'desc' }],
@@ -350,7 +435,7 @@ export class BagDeliveryService {
         })
 
         await tx.found_bag.updateMany({ where: { id: bagId, status: 'matched' }, data: { status: 'sent', updated_at: now } })
-      } else if (input.status === 'ready_for_pickup') {
+      } else {
         from = ['preparing', 'in_transit']
 
         if (!pickup) {
@@ -372,8 +457,6 @@ export class BagDeliveryService {
         } else if (last.airport_code !== delivery.pickup_airport) {
           throw wrongStatus(`The bag is at ${last.airport_code}; send it to ${delivery.pickup_airport} first`)
         }
-      } else {
-        throw invalid('Staff can set in transit or ready for pickup; a handover sets delivered')
       }
 
       const updated = await tx.bag_delivery.updateMany({
@@ -386,19 +469,19 @@ export class BagDeliveryService {
       }
 
       await tx.lost_bag_report.updateMany({
-        where: { id: delivery.report_id, status: 'matched' },
+        where: { id: reportId, status: 'matched' },
         data: { status: 'delivering', updated_at: now },
       })
     })
 
-    return this.getById(delivery.id)
+    return this.getById(input.deliveryId)
   }
 
   /**
-   * Hands the bag over. The person collecting it is checked against the case first, and the check is written to
-   * audit_log either way. A failed check changes nothing else and is answered with OWNERSHIP_NOT_VERIFIED. A passed
-   * check, in one transaction: the delivery and the bag become delivered, a delivered tracking event is added, the case is
-   * closed, and the check is logged.
+   * Hands the bag over. With the case and then the bag locked, the person collecting it is checked against the case,
+   * and the check is written to audit_log either way. A failed check changes nothing else and is answered with
+   * OWNERSHIP_NOT_VERIFIED. A passed check, in the same transaction: the delivery and the bag become delivered, a
+   * delivered tracking event is added, the case is closed, and the check is logged.
    */
   async handOver(input: HandOverInput): Promise<BagDeliveryDetail> {
     requireStaff(input.staffId)
@@ -419,70 +502,70 @@ export class BagDeliveryService {
       throw invalid("Enter the representative's name")
     }
 
-    const delivery = await this.findDelivery(input.deliveryId)
-    const pickup = delivery.delivery_type === 'airport_pickup'
-    const handOverFrom: DeliveryStatus = pickup ? 'ready_for_pickup' : 'in_transit'
-
-    if (delivery.status !== handOverFrom) {
-      throw wrongStatus(pickup ? 'The bag is not ready for pickup yet' : 'The bag is not out for delivery yet')
-    }
-
-    const bagId = await this.confirmedBagId(delivery.report_id)
-    const report = await this.db.lost_bag_report.findUniqueOrThrow({
-      where: { id: delivery.report_id },
-      select: {
-        case_number: true,
-        passenger: { select: { last_name: true, passport_number: true } },
-        booking_coupon: { select: { booking_passenger: { select: { booking: { select: { booking_reference: true } } } } } },
-      },
-    })
-
-    const result = checkOwnership(
-      {
-        bookingReference: report.booking_coupon.booking_passenger.booking.booking_reference,
-        lastName: report.passenger.last_name,
-        passportNumber: report.passenger.passport_number,
-      },
-      identity,
-    )
-
-    const at = this.clock.now()
+    const { report_id: reportId } = await this.findDelivery(input.deliveryId)
     const actor = await this.audit.resolveActor(input.userId)
     const last4 = documentLast4(identity.documentNumber)
-    const auditEntry = {
-      actor,
-      sourceFeature: AUDIT_SOURCE_FEATURE,
-      action: 'create' as const,
-      entityType: OWNERSHIP_CHECK_ENTITY,
-      entityId: delivery.id,
-      summary: `Ownership check ${result.passed ? 'passed' : 'failed'} for lost bag case ${report.case_number}`,
-      reason: note,
-      after: {
-        passed: result.passed,
-        mismatches: result.mismatches,
-        collector: identity.collector,
-        representativeName,
-        documentType: identity.documentType,
-        documentLast4: last4,
-        staffId: input.staffId,
-        reportId: delivery.report_id,
-        foundBagId: bagId,
-      },
-      sensitive: true,
-      occurredAt: at,
-    }
-
-    if (!result.passed) {
-      await this.audit.write(auditEntry)
-      const what = result.mismatches.map((m) => MISMATCH_LABELS[m]).join(', ')
-      throw new FoundBagError(FOUND_BAG_ERROR_CODES.OWNERSHIP_NOT_VERIFIED, `Ownership not verified: the ${what} does not match the case`)
-    }
-
+    const at = this.clock.now()
     const now = new Date()
-    const who = identity.collector === 'passenger' ? 'passenger' : `representative ${representativeName}`
-    const eventNote = `Handed to ${who}; ${identity.documentType.replace('_', ' ')} ending ${last4}${note ? `. ${note}` : ''}`
 
-    await this.db.$transaction(async (tx) => {
+    const failure = await this.db.$transaction(async (tx) => {
+      const { delivery, bagId } = await this.lockCaseAndBag(tx, reportId, input.deliveryId)
+      const pickup = delivery.delivery_type === 'airport_pickup'
+      const handOverFrom: DeliveryStatus = pickup ? 'ready_for_pickup' : 'in_transit'
+
+      if (delivery.status !== handOverFrom) {
+        throw wrongStatus(pickup ? 'The bag is not ready for pickup yet' : 'The bag is not out for delivery yet')
+      }
+
+      const report = await tx.lost_bag_report.findUniqueOrThrow({
+        where: { id: reportId },
+        select: {
+          case_number: true,
+          passenger: { select: { last_name: true, passport_number: true } },
+          booking_coupon: { select: { booking_passenger: { select: { booking: { select: { booking_reference: true } } } } } },
+        },
+      })
+
+      const result = checkOwnership(
+        {
+          bookingReference: report.booking_coupon.booking_passenger.booking.booking_reference,
+          lastName: report.passenger.last_name,
+          passportNumber: report.passenger.passport_number,
+        },
+        identity,
+      )
+
+      await this.audit.write(
+        {
+          actor,
+          sourceFeature: AUDIT_SOURCE_FEATURE,
+          action: 'create',
+          entityType: OWNERSHIP_CHECK_ENTITY,
+          entityId: delivery.id,
+          summary: `Ownership check ${result.passed ? 'passed' : 'failed'} for lost bag case ${report.case_number}`,
+          reason: note,
+          after: {
+            passed: result.passed,
+            mismatches: result.mismatches,
+            collector: identity.collector,
+            representativeName,
+            documentType: identity.documentType,
+            documentLast4: last4,
+            staffId: input.staffId,
+            reportId,
+            foundBagId: bagId,
+          },
+          sensitive: true,
+          occurredAt: at,
+        },
+        tx,
+      )
+
+      // A failed check commits only its audit row; the error is thrown once the transaction is done.
+      if (!result.passed) {
+        return result.mismatches
+      }
+
       const updated = await tx.bag_delivery.updateMany({
         where: { id: delivery.id, status: handOverFrom },
         data: { status: 'delivered', delivered_at: at, updated_at: now },
@@ -504,12 +587,14 @@ export class BagDeliveryService {
         throw wrongStatus('This bag has no location yet')
       }
 
+      const who = identity.collector === 'passenger' ? 'passenger' : `representative ${representativeName}`
+
       await tx.bag_location_event.create({
         data: {
           found_bag_id: bagId,
           airport_code: last.airport_code,
           action: 'delivered',
-          note: eventNote,
+          note: `Handed to ${who}; ${identity.documentType.replace('_', ' ')} ending ${last4}${note ? `. ${note}` : ''}`,
           staff_id: input.staffId,
           occurred_at: at,
         },
@@ -521,14 +606,51 @@ export class BagDeliveryService {
       })
 
       await tx.lost_bag_report.updateMany({
-        where: { id: delivery.report_id, status: { in: ['matched', 'delivering', 'lost'] } },
+        where: { id: reportId, status: { in: ACTIVE_CASE_STATUSES } },
         data: { status: 'closed', closed_at: at, updated_at: now },
       })
 
-      await this.audit.write(auditEntry, tx)
+      return null
     })
 
-    return this.getById(delivery.id)
+    if (failure) {
+      const what = failure.map((m) => MISMATCH_LABELS[m]).join(', ')
+      throw new FoundBagError(FOUND_BAG_ERROR_CODES.OWNERSHIP_NOT_VERIFIED, `Ownership not verified: the ${what} does not match the case`)
+    }
+
+    return this.getById(input.deliveryId)
+  }
+
+  /**
+   * Locks the case (see case-locks) and reads the delivery again under the lock. A closed or cancelled case takes no
+   * more delivery steps.
+   */
+  private async lockCase(tx: Prisma.TransactionClient, reportId: string, deliveryId: string) {
+    const locked = await lockLostReport(tx, reportId)
+
+    if (!locked) {
+      throw notFound()
+    }
+
+    if (!ACTIVE_CASE_STATUSES.includes(locked.status as ReportStatus)) {
+      throw wrongStatus(`This case is ${locked.status}`)
+    }
+
+    const delivery = await this.findDelivery(deliveryId, tx)
+
+    return { report: locked, delivery }
+  }
+
+  /** lockCase, then the case's confirmed bag: always in this order. */
+  private async lockCaseAndBag(tx: Prisma.TransactionClient, reportId: string, deliveryId: string) {
+    const { delivery } = await this.lockCase(tx, reportId, deliveryId)
+    const bagId = await this.confirmedBagId(reportId, tx)
+
+    if (!(await lockFoundBag(tx, bagId))) {
+      throw wrongStatus('This case has no confirmed bag')
+    }
+
+    return { delivery, bagId }
   }
 
   private async listChecks(deliveryId: string): Promise<OwnershipCheck[]> {
@@ -555,9 +677,9 @@ export class BagDeliveryService {
     return rows.flatMap((row) => toOwnershipCheck(row, names) ?? [])
   }
 
-  private async findDelivery(id: string) {
+  private async findDelivery(id: string, db: Prisma.TransactionClient = this.db) {
     const delivery = UUID_PATTERN.test(id)
-      ? await this.db.bag_delivery.findUnique({
+      ? await db.bag_delivery.findUnique({
           where: { id },
           select: { id: true, report_id: true, status: true, delivery_type: true, pickup_airport: true },
         })
@@ -571,8 +693,8 @@ export class BagDeliveryService {
   }
 
   /** The found bag of the case's confirmed match. Every delivery has one: confirming a match is what creates it. */
-  private async confirmedBagId(reportId: string): Promise<string> {
-    const match = await this.db.bag_match.findFirst({ where: { report_id: reportId, status: 'confirmed' }, select: { found_bag_id: true } })
+  private async confirmedBagId(reportId: string, db: Prisma.TransactionClient): Promise<string> {
+    const match = await db.bag_match.findFirst({ where: { report_id: reportId, status: 'confirmed' }, select: { found_bag_id: true } })
 
     if (!match) {
       throw wrongStatus('This case has no confirmed bag')

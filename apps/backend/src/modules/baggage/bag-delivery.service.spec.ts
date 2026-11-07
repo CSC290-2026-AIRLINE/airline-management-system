@@ -11,6 +11,8 @@ const USER_ID = '22222222-2222-4222-8222-222222222222'
 const DELIVERY_ID = '33333333-3333-4333-8333-333333333333'
 const REPORT_ID = '77777777-7777-4777-8777-777777777777'
 const FOUND_BAG_ID = '66666666-6666-4666-8666-666666666666'
+const CUSTOMER_ID = '88888888-8888-4888-8888-888888888888'
+const CUSTOMER_USER_ID = '99999999-9999-4999-8999-999999999999'
 const SIM_NOW = new Date('2026-10-30T08:00:00Z')
 
 const IDENTITY: PresentedIdentity = {
@@ -58,7 +60,9 @@ function deliveryRow(data: Record<string, unknown> = {}) {
   }
 }
 
-function makeSvc(delivery: Record<string, unknown> = {}) {
+function makeSvc(delivery: Record<string, unknown> = {}, reportStatus = 'delivering') {
+  /** The rows locked with SELECT ... FOR UPDATE, in order. */
+  const locks: string[] = []
   const db = {
     bag_delivery: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -72,6 +76,11 @@ function makeSvc(delivery: Record<string, unknown> = {}) {
           ),
         ),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      update: jest
+        .fn()
+        .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({ id: DELIVERY_ID, report_id: REPORT_ID, updated_at: SIM_NOW, ...data }),
+        ),
     },
     bag_match: { findFirst: jest.fn().mockResolvedValue({ found_bag_id: FOUND_BAG_ID }) },
     bag_location_event: {
@@ -89,6 +98,13 @@ function makeSvc(delivery: Record<string, unknown> = {}) {
     },
     audit_log: { findMany: jest.fn().mockResolvedValue([]) },
     staff: { findMany: jest.fn().mockResolvedValue([]) },
+    $queryRaw: jest.fn().mockImplementation((sql: TemplateStringsArray, id: string) => {
+      const table = sql.join('?').includes('FROM lost_bag_report') ? 'lost_bag_report' : 'found_bag'
+      locks.push(table)
+      return Promise.resolve(
+        table === 'lost_bag_report' ? [{ id, status: reportStatus, case_number: 'LB-2026-000120' }] : [{ id, status: 'sent' }],
+      )
+    }),
     $transaction: jest.fn(),
   }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db))
@@ -99,7 +115,7 @@ function makeSvc(delivery: Record<string, unknown> = {}) {
   }
   const svc = new BagDeliveryService(db as unknown as DbService, audit as unknown as AuditService, { now: () => SIM_NOW })
 
-  return { svc, db, audit }
+  return { svc, db, audit, locks }
 }
 
 describe('BagDeliveryService', () => {
@@ -175,46 +191,136 @@ describe('BagDeliveryService', () => {
   })
 
   describe('recordChoice', () => {
-    it('records an airport pickup and moves the delivery to preparing', async () => {
-      const { svc, db } = makeSvc({ status: 'waiting_choice', delivery_type: null })
+    const staffChoice = { staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID }
 
-      await svc.recordChoice({
-        staffId: STAFF_ID,
-        deliveryId: DELIVERY_ID,
-        deliveryType: 'airport_pickup',
-        pickupAirport: 'nrt',
-        address: 'x',
-      })
+    it('records an airport pickup with the case locked and logs the staff member', async () => {
+      const { svc, db, audit, locks } = makeSvc({ status: 'waiting_choice', delivery_type: null }, 'matched')
 
-      expect(db.bag_delivery.updateMany).toHaveBeenCalledWith({
-        where: { id: DELIVERY_ID, status: { in: ['waiting_choice', 'preparing'] } },
+      await svc.recordChoice({ ...staffChoice, deliveryType: 'airport_pickup', pickupAirport: 'nrt', address: 'x' })
+
+      expect(locks).toEqual(['lost_bag_report'])
+      expect(db.bag_delivery.update).toHaveBeenCalledWith({
+        where: { id: DELIVERY_ID },
         data: expect.objectContaining({ delivery_type: 'airport_pickup', pickup_airport: 'NRT', address: null, status: 'preparing' }),
       })
+      expect(audit.resolveActor).toHaveBeenCalledWith(USER_ID)
+      expect(audit.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'update',
+          entityType: 'bag_delivery',
+          entityId: DELIVERY_ID,
+          after: expect.objectContaining({ deliveryType: 'airport_pickup', chosenBy: 'staff', staffId: STAFF_ID }),
+        }),
+        db,
+      )
     })
 
     it('needs an address for a delivery to an address', async () => {
       const { svc } = makeSvc({ status: 'waiting_choice' })
 
-      await expect(
-        svc.recordChoice({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, deliveryType: 'home', address: '  ' }),
-      ).rejects.toMatchObject({
+      await expect(svc.recordChoice({ ...staffChoice, deliveryType: 'home', address: '  ' })).rejects.toMatchObject({
         code: 'INVALID_DELIVERY',
       })
     })
 
     it('answers ALREADY_SENT once the bag is on its way', async () => {
-      const { svc, db } = makeSvc({ status: 'in_transit' })
+      const { svc, db, audit } = makeSvc({ status: 'in_transit' })
 
-      await expect(
-        svc.recordChoice({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, deliveryType: 'home', address: '1 Main St' }),
-      ).rejects.toMatchObject({
+      await expect(svc.recordChoice({ ...staffChoice, deliveryType: 'home', address: '1 Main St' })).rejects.toMatchObject({
         code: 'ALREADY_SENT',
       })
-      expect(db.bag_delivery.updateMany).not.toHaveBeenCalled()
+      expect(db.bag_delivery.update).not.toHaveBeenCalled()
+      expect(audit.write).not.toHaveBeenCalled()
+    })
+
+    it('refuses a choice on a cancelled case', async () => {
+      const { svc, db } = makeSvc({ status: 'waiting_choice' }, 'cancelled')
+
+      await expect(svc.recordChoice({ ...staffChoice, deliveryType: 'home', address: '1 Main St' })).rejects.toMatchObject({
+        code: 'INVALID_STATUS',
+      })
+      expect(db.bag_delivery.update).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('applyChoice (shared with the passenger side)', () => {
+    const passenger = { type: 'passenger' as const, id: CUSTOMER_ID, userId: CUSTOMER_USER_ID }
+
+    it('records the passenger as the actor, without a staff id', async () => {
+      const { svc, db, audit } = makeSvc({ status: 'preparing' }, 'matched')
+      audit.resolveActor.mockResolvedValue({ type: 'customer', id: CUSTOMER_USER_ID, role: null })
+
+      const result = await svc.applyChoice(passenger, { deliveryId: DELIVERY_ID, deliveryType: 'hotel', address: ' Hotel Gracery ' })
+
+      expect(result).toMatchObject({
+        id: DELIVERY_ID,
+        reportId: REPORT_ID,
+        status: 'preparing',
+        deliveryType: 'hotel',
+        address: 'Hotel Gracery',
+      })
+      expect(audit.resolveActor).toHaveBeenCalledWith(CUSTOMER_USER_ID)
+      const entry = audit.write.mock.calls[0][0]
+      expect(entry.actor).toEqual({ type: 'customer', id: CUSTOMER_USER_ID, role: null })
+      expect(entry.after).toMatchObject({ chosenBy: 'passenger', customerId: CUSTOMER_ID })
+      expect(entry.after).not.toHaveProperty('staffId')
+      expect(db.bag_delivery.update).toHaveBeenCalledTimes(1)
+    })
+
+    it('needs to know who made the choice', async () => {
+      const { svc, db } = makeSvc({ status: 'preparing' })
+
+      await expect(
+        svc.applyChoice({ ...passenger, userId: '' }, { deliveryId: DELIVERY_ID, deliveryType: 'home', address: '1 Main St' }),
+      ).rejects.toMatchObject({ code: 'INVALID_DELIVERY' })
+      expect(db.$transaction).not.toHaveBeenCalled()
     })
   })
 
   describe('setStatus', () => {
+    it('locks the case, then the bag, and sets the case delivering in the same transaction', async () => {
+      const { svc, db, locks } = makeSvc({ status: 'preparing' }, 'matched')
+      db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'NRT', action: 'arrived', to_airport: null })
+
+      await svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })
+
+      expect(db.$transaction).toHaveBeenCalledTimes(1)
+      expect(locks).toEqual(['lost_bag_report', 'found_bag'])
+      expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.bag_delivery.updateMany.mock.invocationCallOrder[0])
+      expect(db.lost_bag_report.updateMany.mock.invocationCallOrder[0]).toBeGreaterThan(
+        db.bag_delivery.updateMany.mock.invocationCallOrder[0],
+      )
+    })
+
+    it('reads the delivery again under the lock', async () => {
+      const { svc, db } = makeSvc({ status: 'preparing' })
+      // Someone else sent the bag between the first read and the lock.
+      db.bag_delivery.findUnique
+        .mockResolvedValueOnce({ id: DELIVERY_ID, report_id: REPORT_ID, status: 'preparing', delivery_type: 'hotel', pickup_airport: null })
+        .mockResolvedValueOnce({
+          id: DELIVERY_ID,
+          report_id: REPORT_ID,
+          status: 'in_transit',
+          delivery_type: 'hotel',
+          pickup_airport: null,
+        })
+
+      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })).rejects.toMatchObject({
+        code: 'INVALID_STATUS',
+      })
+      expect(db.bag_location_event.create).not.toHaveBeenCalled()
+    })
+
+    it('refuses to send the bag of a closed case', async () => {
+      const { svc, db, locks } = makeSvc({ status: 'preparing' }, 'closed')
+
+      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })).rejects.toMatchObject({
+        code: 'INVALID_STATUS',
+      })
+      expect(locks).toEqual(['lost_bag_report'])
+      expect(db.bag_location_event.create).not.toHaveBeenCalled()
+    })
+
     it('sends an address delivery out from the station holding the bag', async () => {
       const { svc, db } = makeSvc({ status: 'preparing' })
       db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'NRT', action: 'arrived', to_airport: null })
@@ -286,14 +392,19 @@ describe('BagDeliveryService', () => {
 
   describe('handOver', () => {
     it('logs a failed check and changes nothing else', async () => {
-      const { svc, db, audit } = makeSvc()
+      const { svc, db, audit, locks } = makeSvc()
 
       await expect(
         svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, identity: { ...IDENTITY, lastName: 'Becker' } }),
       ).rejects.toMatchObject({ code: 'OWNERSHIP_NOT_VERIFIED' })
 
+      // The check runs under the locks, and its audit row commits with the transaction before the error is thrown.
+      expect(locks).toEqual(['lost_bag_report', 'found_bag'])
       expect(audit.write).toHaveBeenCalledTimes(1)
-      expect(audit.write.mock.calls[0]).toHaveLength(1)
+      expect(audit.write.mock.calls[0][1]).toBe(db)
+      expect(db.bag_delivery.updateMany).not.toHaveBeenCalled()
+      expect(db.bag_location_event.create).not.toHaveBeenCalled()
+      expect(db.lost_bag_report.updateMany).not.toHaveBeenCalled()
       expect(audit.write.mock.calls[0][0]).toMatchObject({
         sourceFeature: '10',
         action: 'create',
@@ -301,7 +412,6 @@ describe('BagDeliveryService', () => {
         entityId: DELIVERY_ID,
         after: { passed: false, mismatches: ['last_name'], documentLast4: '4567', staffId: STAFF_ID },
       })
-      expect(db.$transaction).not.toHaveBeenCalled()
     })
 
     it('never stores the full document number', async () => {

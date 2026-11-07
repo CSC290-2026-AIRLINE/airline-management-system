@@ -57,7 +57,7 @@ export class BagDeliveryController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: RecordDeliveryChoiceDto,
   ): Promise<BagDeliveryDetail> {
-    return this.deliveries.recordChoice({ ...dto, staffId: staff.staffId, deliveryId: id })
+    return this.deliveries.recordChoice({ ...dto, staffId: staff.staffId, userId: staff.id, deliveryId: id })
   }
 
   /** In transit or ready for pickup. Delivered is set by a handover. */

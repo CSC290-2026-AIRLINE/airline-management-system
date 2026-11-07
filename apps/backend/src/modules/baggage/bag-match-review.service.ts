@@ -11,6 +11,7 @@ import {
   type MatchStatus,
   type StaffName,
 } from './common/bag-match.types'
+import { lockFoundBag, lockLostReport } from './common/case-locks'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { FoundBagStatus } from './common/found-bag.types'
@@ -281,6 +282,12 @@ export class BagMatchReviewService {
 
     try {
       await this.db.$transaction(async (tx) => {
+        // The case, then the bag: the lock order of every write to a case (see case-locks). A passenger cancelling the
+        // case or a desk moving the bag waits for this confirmation, or this waits for them.
+        if (!(await lockLostReport(tx, match.report_id)) || !(await lockFoundBag(tx, match.found_bag_id))) {
+          throw notFound()
+        }
+
         // Each step only changes a row still in the state it was read in, so a concurrent review loses cleanly.
         const confirmed = await tx.bag_match.updateMany({
           where: { id: match.id, status: { in: OPEN_MATCH_STATUSES } },

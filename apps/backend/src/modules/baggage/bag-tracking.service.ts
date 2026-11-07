@@ -3,6 +3,7 @@ import type { bag_location_event } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import type { BagLocation, BagLocationAction, BagLocationEvent, BagTrackingHistory, StaffMoveAction } from './common/bag-location.types'
 import { STAFF_MOVE_ACTIONS } from './common/bag-location.types'
+import { lockFoundBag, lockLostReport } from './common/case-locks'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { FoundBagStatus } from './common/found-bag.types'
@@ -123,17 +124,32 @@ export class BagTrackingService {
       throw invalidMove('Only a sent bag has a destination airport or flight')
     }
 
+    const caseOfBag = { where: { found_bag_id: foundBagId, status: 'confirmed' }, select: { report_id: true } }
+    const owner = await this.db.bag_match.findFirst(caseOfBag)
+
     try {
       await this.db.$transaction(async (tx) => {
-        // Lock the bag so two desks cannot move it at the same time.
-        const locked = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM found_bag WHERE id = ${foundBagId}::uuid FOR UPDATE`
+        // Lock the bag so two desks cannot move it at the same time. A bag that belongs to a case is locked after its
+        // case, the order every write to a case uses (see case-locks), so a move cannot interleave with a delivery step.
+        if (owner) {
+          await lockLostReport(tx, owner.report_id)
+        }
 
-        if (locked.length === 0) {
+        const locked = await lockFoundBag(tx, foundBagId)
+
+        if (!locked) {
           throw notFound()
         }
 
-        if (CLOSED_STATUSES.includes(locked[0].status as FoundBagStatus)) {
-          throw new FoundBagError(FOUND_BAG_ERROR_CODES.BAG_CLOSED, `A ${locked[0].status} bag can no longer be moved`)
+        if (CLOSED_STATUSES.includes(locked.status as FoundBagStatus)) {
+          throw new FoundBagError(FOUND_BAG_ERROR_CODES.BAG_CLOSED, `A ${locked.status} bag can no longer be moved`)
+        }
+
+        // Its case cannot change while the bag is locked; if a match was confirmed just before, start again in order.
+        const ownerNow = await tx.bag_match.findFirst(caseOfBag)
+
+        if ((ownerNow?.report_id ?? null) !== (owner?.report_id ?? null)) {
+          throw invalidMove('This bag has just been matched with a case; reload and try again')
         }
 
         const last = await tx.bag_location_event.findFirst({
