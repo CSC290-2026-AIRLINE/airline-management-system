@@ -39,13 +39,15 @@ export function buildLoadFactorChart(daily: BiDailyMetric[]): string {
 }
 
 export function buildRevenuePerSeatChart(routes: BiRouteMetric[]): string {
+  // A route with no departed flights has no rate. It is left out rather than drawn as 0.00.
+  const bars = routes.flatMap((r) => {
+    const value = computeKpis(r).revenue_per_seat
+    return value === null ? [] : [{ label: `${r.origin} – ${r.destination}`, value }]
+  })
   return renderBarChart({
     title: 'Revenue per seat by route',
     subtitle: 'Revenue minus refunds, divided by seats available on departed flights',
-    bars: routes.map((r) => ({
-      label: `${r.origin} – ${r.destination}`,
-      value: computeKpis(r).revenue_per_seat ?? 0,
-    })),
+    bars,
     format: formatMoney,
   })
 }
