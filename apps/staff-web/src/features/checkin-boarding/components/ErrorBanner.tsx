@@ -3,7 +3,7 @@ import { Message } from './pills.tsx'
 export function ErrorBanner({ message, onDismiss }: { message: string | null; onDismiss?: () => void }) {
   if (!message) return null
   return (
-    <Message tone="error">
+    <Message tone="error" role="alert">
       <span className="flex items-start justify-between gap-3">
         <span>{message}</span>
         {onDismiss ? (

@@ -51,6 +51,8 @@ export function GatePage({ api }: { api: StaffApi }) {
   const [manualCount, setManualCount] = useState('')
   const [confirmClose, setConfirmClose] = useState(false)
   const [mismatch, setMismatch] = useState<string | null>(null)
+  /** The count that produced the mismatch, so only that count can be confirmed. */
+  const [mismatchCount, setMismatchCount] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -123,6 +125,7 @@ export function GatePage({ api }: { api: StaffApi }) {
     setGateId(id)
     setScan(null)
     setMismatch(null)
+    setMismatchCount(null)
     setConfirmClose(false)
     setCalled(2)
   }
@@ -152,6 +155,13 @@ export function GatePage({ api }: { api: StaffApi }) {
         const other = swappable[(index + 1) % swappable.length]
         await api.setGate(item.flight.id, { gateId: other.gate.id })
       }
+      // Another flight is at this gate now, so the old flight's state must not carry over.
+      setScan(null)
+      setMismatch(null)
+      setMismatchCount(null)
+      setConfirmClose(false)
+      setCalled(2)
+      setHeadcount(null)
       await load()
       setGateMessage('Gates swapped. Passengers told (Feature 13), change audited.')
     } catch (err) {
@@ -185,7 +195,7 @@ export function GatePage({ api }: { api: StaffApi }) {
   /** The mismatch sentence of the design, with the counts the gate compared. */
   const mismatchMessage = (counted: Headcount | null): string => {
     const boarded = counted?.boardedCount ?? headcount?.boardedCount ?? list?.boardedCount ?? 0
-    const by = counted?.sensorCount ?? counted?.manualCount ?? headcount?.sensorCount ?? headcount?.manualCount ?? 0
+    const by = counted?.manualCount ?? counted?.sensorCount ?? headcount?.manualCount ?? headcount?.sensorCount ?? 0
     return `Head-count mismatch: ${boarded} marked boarded, sensor counted ${by}. Check the aircraft, then press Close gate again to confirm.`
   }
 
@@ -193,19 +203,23 @@ export function GatePage({ api }: { api: StaffApi }) {
     if (!flight) return
     setBusy(true)
     setError(null)
-    const confirm = confirmClose
     let counted: Headcount | null = null
     try {
       // An empty manual count closes on the gate sensor's reading instead.
       counted = manualCount.trim() === '' ? await readSensor() : await saveManualCount()
       if (!counted) return
+      const savedCount = counted.manualCount ?? counted.sensorCount ?? null
+      // Only the count that produced the mismatch can be confirmed.
+      const confirm = confirmClose && mismatchCount !== null && savedCount === mismatchCount
       await api.closeGate(flight.id, { confirmMismatch: confirm })
       setConfirmClose(false)
       setMismatch(null)
+      setMismatchCount(null)
       await load()
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'HEADCOUNT_MISMATCH') {
         setMismatch(mismatchMessage(counted))
+        setMismatchCount(counted?.manualCount ?? counted?.sensorCount ?? null)
         setConfirmClose(true)
       } else {
         setError(messageOf(err))
@@ -307,7 +321,7 @@ export function GatePage({ api }: { api: StaffApi }) {
             variant="outline"
             size="sm"
             className={SECONDARY_BUTTON}
-            disabled={busy || swappable.length < 2}
+            disabled={busy || swappable.length < 2 || Boolean(list?.closedAt)}
             onClick={() => void swapGates()}
           >
             {swapLabel}
@@ -416,7 +430,13 @@ export function GatePage({ api }: { api: StaffApi }) {
             inputMode="numeric"
             value={manualCount}
             disabled={Boolean(list?.closedAt)}
-            onChange={(event) => setManualCount(event.target.value)}
+            onChange={(event) => {
+              setManualCount(event.target.value)
+              // The count changed, so a mismatch that is no longer true must not stay armed.
+              setConfirmClose(false)
+              setMismatch(null)
+              setMismatchCount(null)
+            }}
             placeholder="Leave empty to use the sensor"
           />
         </div>

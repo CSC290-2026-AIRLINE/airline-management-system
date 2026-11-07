@@ -50,8 +50,12 @@ const MESSAGE_TONES = {
 
 export type MessageTone = keyof typeof MESSAGE_TONES
 
-export function Message({ tone, children }: { tone: MessageTone; children: ReactNode }) {
-  return <div className={cn('rounded-[10px] border px-4 py-3 text-[16px] leading-[1.5]', MESSAGE_TONES[tone])}>{children}</div>
+export function Message({ tone, children, role }: { tone: MessageTone; children: ReactNode; role?: string }) {
+  return (
+    <div role={role} className={cn('rounded-[10px] border px-4 py-3 text-[16px] leading-[1.5]', MESSAGE_TONES[tone])}>
+      {children}
+    </div>
+  )
 }
 
 export function IssuePills({ issues }: { issues: IssueCode[] }) {
