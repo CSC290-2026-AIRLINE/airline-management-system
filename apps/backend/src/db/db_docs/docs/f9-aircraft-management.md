@@ -1,6 +1,6 @@
 # F9 — Aircraft management
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA.** See the [current schema snapshot](../docs.md#current-schema-snapshot) for the verified source commit and schema totals. Committed definitions do not prove deployment or completed application behavior.
 
 **Tables (8):** [`aircraft_type`](#table-aircraft_type) · [`aircraft`](#table-aircraft) · [`aircraft_status_period`](#table-aircraft_status_period) · [`aircraft_maintenance`](#table-aircraft_maintenance) · [`aircraft_operating_day`](#table-aircraft_operating_day) · [`aircraft_turnaround`](#table-aircraft_turnaround) · [`aircraft_turnaround_task`](#table-aircraft_turnaround_task) · [`fleet_setting`](#table-fleet_setting)
 

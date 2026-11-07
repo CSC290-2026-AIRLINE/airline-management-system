@@ -180,3 +180,25 @@
     border-right-color: var(--border);
   }
 }
+
+.sitemap {
+  margin-top: 32px;
+
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  li {
+    padding: 2px 0;
+  }
+
+  a {
+    color: #2563eb;
+
+    &:hover {
+      color: #1d4ed8;
+    }
+  }
+}
