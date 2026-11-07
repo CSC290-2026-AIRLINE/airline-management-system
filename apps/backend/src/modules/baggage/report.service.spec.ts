@@ -148,4 +148,56 @@ describe('ReportService', () => {
     expect(reports).toHaveLength(1)
     expect(reports[0].bookingPassengerId).toBe('BP001')
   })
+
+  it('allows the owner to cancel an open report', async () => {
+    const created = await service.create(validInput)
+
+    const cancelled = await service.cancel(created.caseNumber, access)
+
+    expect(cancelled.status).toBe('cancelled')
+    expect(cancelled.closedAt).toBeInstanceOf(Date)
+
+    const saved = await service.getByCaseNumber(created.caseNumber, access)
+    expect(saved.status).toBe('cancelled')
+  })
+
+  it('prevents another passenger from cancelling a report', async () => {
+    const created = await service.create(validInput)
+
+    await expect(
+      service.cancel(created.caseNumber, {
+        bookingReference: 'XYZ789',
+        surname: 'Jones',
+        passengerId: 'P002',
+      }),
+    ).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+
+    const saved = await service.getByCaseNumber(created.caseNumber, access)
+    expect(saved.status).toBe('open')
+  })
+
+  it('rejects cancellation with invalid booking details', async () => {
+    const created = await service.create(validInput)
+
+    await expect(
+      service.cancel(created.caseNumber, {
+        ...access,
+        bookingReference: 'INVALID',
+      }),
+    ).rejects.toMatchObject({
+      code: 'INVALID_REPORT',
+    })
+  })
+
+  it('rejects cancelling an already cancelled report', async () => {
+    const created = await service.create(validInput)
+
+    await service.cancel(created.caseNumber, access)
+
+    await expect(service.cancel(created.caseNumber, access)).rejects.toMatchObject({
+      code: 'CANCELLATION_NOT_ALLOWED',
+    })
+  })
 })

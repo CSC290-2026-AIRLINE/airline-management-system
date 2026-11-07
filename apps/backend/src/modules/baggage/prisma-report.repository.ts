@@ -116,4 +116,63 @@ export class PrismaReportRepository implements ReportRepository {
 
     return rows.map(toReport)
   }
+
+  async cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null> {
+    return this.db.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id
+        FROM lost_bag_report
+        WHERE id = ${reportId}::uuid
+          AND booking_passenger_id = ${bookingPassengerId}::uuid
+        FOR UPDATE
+        `
+
+      if (locked.length === 0) return null
+      const report = await tx.lost_bag_report.findFirst({
+        where: {
+          id: reportId,
+          booking_passenger_id: bookingPassengerId,
+          status: { in: ['open', 'matched', 'lost'] },
+        },
+        include: {
+          bag_delivery: true,
+          bag_match: {
+            where: { status: 'confirmed' },
+            select: { found_bag_id: true },
+          },
+        },
+      })
+
+      if (!report) return null
+
+      // Once delivery has begun, the passenger cannot cancel.
+      if (report.bag_delivery && !['waiting_choice', 'preparing'].includes(report.bag_delivery.status)) {
+        return null
+      }
+
+      const matchedBagIds = report.bag_match.map((match) => match.found_bag_id)
+
+      if (matchedBagIds.length > 0) {
+        const dispatched = await tx.bag_location_event.findFirst({
+          where: {
+            found_bag_id: { in: matchedBagIds },
+            action: { in: ['sent', 'out_for_delivery'] },
+          },
+        })
+
+        if (dispatched) return null
+      }
+
+      const updated = await tx.lost_bag_report.update({
+        where: { id: report.id },
+        data: {
+          status: 'cancelled',
+          closed_at: closedAt,
+          updated_at: closedAt,
+        },
+      })
+
+      return toReport(updated)
+    })
+  }
 }

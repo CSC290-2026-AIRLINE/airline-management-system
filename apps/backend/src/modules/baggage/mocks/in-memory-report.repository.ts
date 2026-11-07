@@ -37,4 +37,26 @@ export class InMemoryReportRepository implements ReportRepository {
 
     return Promise.resolve(reports)
   }
+
+  cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null> {
+    const index = this.reports.findIndex(
+      (report) =>
+        report.id === reportId && report.bookingPassengerId === bookingPassengerId && ['open', 'matched', 'lost'].includes(report.status),
+    )
+
+    if (index === -1) {
+      return Promise.resolve(null)
+    }
+
+    const cancelled: LostBagReport = {
+      ...this.reports[index],
+      status: 'cancelled',
+      closedAt,
+      updatedAt: closedAt,
+    }
+
+    this.reports[index] = cancelled
+
+    return Promise.resolve({ ...cancelled })
+  }
 }

@@ -7,6 +7,7 @@ import type { LostBagReport } from './common/report.types'
 import type { BookingVerification, CheckedBagLookup, ReportRepository, CaseNumberSequence, SimulationClock } from './common/report.ports'
 
 export interface CreateReportInput {
+  reportedByCustomerId?: string
   flightId: string
   bookingReference: string
   surname: string
@@ -83,7 +84,7 @@ export class ReportService {
       bookingPassengerId: passenger.bookingPassengerId,
       passengerId: passenger.passengerId,
       flightId: passenger.flightId,
-      reportedByCustomerId: null,
+      reportedByCustomerId: input.reportedByCustomerId ?? null,
       reportedByStaffId: null,
       tagNumber,
       bagType: input.bagType,
@@ -128,5 +129,27 @@ export class ReportService {
     }
 
     return this.repository.listByBookingPassengerId(passenger.bookingPassengerId)
+  }
+
+  async cancel(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
+    const passenger = await this.bookings.verifyPassenger(access)
+
+    if (!passenger) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
+    }
+
+    const report = await this.repository.findByCaseNumber(caseNumber)
+
+    if (!report || report.bookingPassengerId !== passenger.bookingPassengerId) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
+    }
+
+    const cancelled = await this.repository.cancelIfNotDispatched(report.id, passenger.bookingPassengerId, this.clock.now())
+
+    if (!cancelled) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.CANCELLATION_NOT_ALLOWED, 'This report can no longer be cancelled')
+    }
+
+    return cancelled
   }
 }

@@ -8,6 +8,8 @@ export interface ReportRepository {
   findLiveByTag(tagNumber: string): Promise<LostBagReport | null>
 
   listByBookingPassengerId(bookingPassengerId: string): Promise<LostBagReport[]>
+
+  cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null>
 }
 
 export interface CaseNumberSequence {
