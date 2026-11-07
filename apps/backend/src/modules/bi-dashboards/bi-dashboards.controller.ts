@@ -19,7 +19,8 @@ import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { BiFinanceService, type BiFinanceMonth } from './bi-finance.service'
 import { computeKpis, sumMetrics } from './bi-rates'
 import { BiEtlService } from './bi-etl.service'
-import { BiQueryService, type BiFlightRow } from './bi-query.service'
+import { BiQueryService } from './bi-query.service'
+import { toFlightDto, type FlightDto } from './bi-flight-rows'
 import { periodOf, seriesByPeriod } from './bi-period'
 import { toCsv } from './bi-csv'
 import {
@@ -120,7 +121,7 @@ export class BiDashboardsController {
   /** The flights behind a figure: drill-down lists for the period, cabin, cause and revenue views. */
   @Get('flights')
   flights(@Query() filter: BiFilterDto): Promise<FlightDto[]> {
-    return this.query.flights(filter).then((rows) => rows.map(toFlightDto(filter.revenue_mode ?? 'after_refunds')))
+    return this.query.flights(filter).then((rows) => rows.map(toFlightDto(filter.revenue_mode ?? 'after_refunds', filter.cabin)))
   }
 
   /** The flights list as CSV, with the same filters as `/bi/flights`. */
@@ -128,7 +129,7 @@ export class BiDashboardsController {
   @Header('Content-Type', 'text/csv; charset=utf-8')
   async exportFlights(@Query() filter: BiFilterDto, @Res({ passthrough: true }) res: Response): Promise<string> {
     res.setHeader('Content-Disposition', 'attachment; filename="flights.csv"')
-    const rows = (await this.query.flights(filter)).map(toFlightDto(filter.revenue_mode ?? 'after_refunds'))
+    const rows = (await this.query.flights(filter)).map(toFlightDto(filter.revenue_mode ?? 'after_refunds', filter.cabin))
     return toCsv(
       ['flight', 'date', 'route', 'status', 'delay_min', 'cause', 'seats_sold', 'seats_available', 'revenue_thb'],
       rows.map((r) => [
@@ -217,7 +218,7 @@ export class BiDashboardsController {
       case 'load-factor':
         return buildLoadFactorChart(await this.seriesRows(filter), filter.group)
       case 'revenue-per-seat':
-        return buildRevenuePerSeatChart(await this.query.routeMetrics(filter))
+        return buildRevenuePerSeatChart(await this.seriesRows(filter), filter.group)
       case 'bookings':
         return buildBookingsChart(await this.bookingsSeriesRows(filter), filter.group)
       case 'delay-causes':
@@ -240,32 +241,6 @@ export interface PeriodBookingsDto {
   period: string
   bookings: number
   cancellations: number
-}
-
-export interface FlightDto {
-  flight_number: string
-  flight_date: string
-  route: string
-  status: string
-  delay_minutes: number | null
-  cause: string | null
-  seat_sold: number
-  seat_available: number
-  revenue: number
-}
-
-function toFlightDto(mode: 'after_refunds' | 'before_refunds') {
-  return (row: BiFlightRow): FlightDto => ({
-    flight_number: row.flight_number,
-    flight_date: row.flight_date,
-    route: `${row.origin} – ${row.destination}`,
-    status: row.status,
-    delay_minutes: row.delay_minutes,
-    cause: row.cause,
-    seat_sold: row.seat_sold,
-    seat_available: row.seat_available,
-    revenue: Number((mode === 'after_refunds' ? row.revenue_amount - row.refund_amount : row.revenue_amount).toFixed(2)),
-  })
 }
 
 function isChartName(value: string): value is BiChartName {

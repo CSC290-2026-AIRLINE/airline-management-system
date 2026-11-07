@@ -1,27 +1,23 @@
-import { emptySums } from '../bi-rates'
 import { buildCabinsChart, buildOnTimeChart, buildRevenuePerSeatChart } from './chart-builders'
 
 describe('buildRevenuePerSeatChart', () => {
-  const route = (origin: string, destination: string, departed: number, seats: number, revenue: number) => ({
-    ...emptySums(),
-    route_id: `${origin}-${destination}`,
-    origin,
-    destination,
-    departed_count: departed,
-    seat_available: seats,
-    revenue_amount: revenue,
+  it('labels each period and leaves a gap, not 0.00, for a period with no departures', () => {
+    const svg = buildRevenuePerSeatChart(
+      [
+        { period: '2026-11-02', revenue_per_seat: 1200 },
+        { period: '2026-11-03', revenue_per_seat: null },
+      ],
+      'day',
+    )
+
+    expect(svg).toContain('2026-11-02')
+    expect(svg).toContain('2026-11-03')
+    // The gap period is not a point: the latest real value (1,200.00) is the one printed.
+    expect(svg).toContain('1,200.00')
   })
 
-  it('leaves out routes with no departed flights instead of drawing them as 0.00', () => {
-    const svg = buildRevenuePerSeatChart([route('BKK', 'CNX', 2, 360, 3500), route('BKK', 'HKT', 0, 0, 0)])
-
-    expect(svg).toContain('BKK – CNX')
-    expect(svg).not.toContain('BKK – HKT')
-    expect(svg).not.toContain('0.00')
-  })
-
-  it('shows the empty state when no route has departures', () => {
-    const svg = buildRevenuePerSeatChart([route('BKK', 'HKT', 0, 0, 0)])
+  it('shows the empty state when no period has departures', () => {
+    const svg = buildRevenuePerSeatChart([{ period: '2026-11-02', revenue_per_seat: null }], 'day')
 
     expect(svg).toContain('No data for this period')
   })
@@ -45,12 +41,13 @@ describe('period and cabin charts', () => {
 
   it('shows each cabin with its load factor and leaves out cabins with no seats', () => {
     const svg = buildCabinsChart([
-      { label: 'Economy', load_factor: 0.5 },
-      { label: 'First', load_factor: null },
+      { cabin: 'economy', label: 'Economy', seat_sold: 75, seat_available: 150, load_factor: 0.5 },
+      { cabin: 'first', label: 'First', seat_sold: 0, seat_available: 0, load_factor: null },
     ])
 
     expect(svg).toContain('Economy')
-    expect(svg).not.toContain('>First<')
+    expect(svg).toContain('No departed flights')
     expect(svg).toContain('50%')
+    expect(svg).toContain('75 of 150 seats')
   })
 })

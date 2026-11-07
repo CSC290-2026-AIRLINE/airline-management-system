@@ -1,22 +1,26 @@
 /**
- * Pure SVG chart rendering. No I/O and no chart library: the colours and fonts are the staff app's own (see
- * apps/staff-web/src/index.css), so a chart reads as part of the same product.
+ * Pure SVG chart rendering. No I/O and no chart library.
  *
- * Each chart is a card with a title, a subtitle, the data drawn as marks, and a `<title>`/`<desc>` pair so screen readers
- * get the same summary as the picture. Colour is never the only signal: series are also named in the legend.
+ * The data colours come from the dataviz reference palette, checked with its validator: a small set of hues that stay
+ * apart for colour-blind readers, on a white card. Each chart is a card with a title, a subtitle, a headline figure and,
+ * for two or more series, a legend. It also has a <title>/<desc> pair so screen readers get the same summary as the
+ * picture. Colour is never the only signal: series are named in the legend, and values are printed where they fit.
  */
 
 export const PALETTE = {
+  ink: '#0b0b0b',
+  secondary: '#52514e',
   navy: '#14213d',
-  navyActive: '#2a4372',
-  gold: '#f2a800',
-  danger: '#b8171f',
-  ink: '#0a1424',
-  muted: '#5a6679',
-  line: '#e6e8ef',
+  grid: '#e8eaf0',
   border: '#d9dfe9',
   card: '#ffffff',
-  page: '#f7f9fc',
+  track: '#f1f3f7',
+  blue: '#2a78d6',
+  orange: '#eb6834',
+  aqua: '#1baf7a',
+  yellow: '#eda100',
+  violet: '#6250d6',
+  red: '#e34948',
 } as const
 
 const WIDTH = 720
@@ -24,27 +28,67 @@ const SANS = "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
 const HEADING = "Merriweather, Georgia, 'Times New Roman', serif"
 const TICK_COUNT = 4
 const MAX_X_LABELS = 8
+const MAX_VALUE_LABELS = 14
 
-export interface LineSeries {
+/** The plot area of the axis charts (area and column). */
+const AXIS = { left: 74, right: WIDTH - 40, top: 128, bottom: 300, height: 340 }
+
+export interface Headline {
+  value: string
+  caption: string
+}
+
+export interface CardSpec {
+  title: string
+  subtitle: string
+  headline?: Headline
+}
+
+export interface Series {
   name: string
   color: string
-  /** One value per label. `null` breaks the line (no data for that day). */
+  /** One value per label. `null` means no data for that label: the line breaks and the column is left out. */
   points: (number | null)[]
 }
 
-export interface LineChartSpec {
-  title: string
-  subtitle: string
+export interface AxisChartSpec extends CardSpec {
   labels: string[]
-  series: LineSeries[]
+  series: Series[]
   format: (value: number) => string
 }
 
-export interface BarChartSpec {
-  title: string
-  subtitle: string
-  bars: { label: string; value: number }[]
-  format: (value: number) => string
+export interface AreaChartSpec extends AxisChartSpec {
+  /** Fill the area under the line. Off for a plain line with markers. */
+  area: boolean
+}
+
+export interface ColumnChartSpec extends AxisChartSpec {
+  /** Print each column's value above it, where there is room. */
+  showValues: boolean
+}
+
+export interface RankedBar {
+  label: string
+  value: number
+  /** Printed at the right of the row, for example "1,250 min · 12 delays". */
+  detail: string
+}
+
+export interface RankedBarSpec extends CardSpec {
+  bars: RankedBar[]
+  color: string
+}
+
+export interface MeterRow {
+  label: string
+  /** 0 to 1, or null when there is nothing to measure. */
+  fraction: number | null
+  color: string
+  detail: string
+}
+
+export interface MeterSpec extends CardSpec {
+  rows: MeterRow[]
 }
 
 export function escapeXml(text: string): string {
@@ -63,69 +107,100 @@ export function formatMoney(value: number): string {
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export function renderLineChart(spec: LineChartSpec): string {
-  const left = 64
-  const right = WIDTH - 48
-  const top = 118
-  const bottom = 300
-  const height = 340
-  const values = spec.series.flatMap((s) => s.points).filter((v): v is number => v !== null)
-
+export function renderAreaChart(spec: AreaChartSpec): string {
+  const values = spec.series.flatMap((s) => s.points).filter(isNumber)
   if (values.length === 0 || spec.labels.length === 0) {
-    return frame(spec, height, emptyBody(height))
+    return frame(spec, AXIS.height, emptyBody(AXIS.height), spec.series)
   }
 
-  const ticks = niceTicks(values)
-  const min = ticks[0]
-  const max = ticks[ticks.length - 1]
-  const yOf = (v: number) => bottom - ((v - min) / (max - min)) * (bottom - top)
-  const xOf = (i: number) => (spec.labels.length === 1 ? (left + right) / 2 : left + (i * (right - left)) / (spec.labels.length - 1))
+  const { ticks, yOf, xOf } = axes(spec, values)
+  const body =
+    gridAndLabels(spec, ticks, yOf, xOf) +
+    spec.series
+      .map((series) => {
+        const runs = segments(series.points)
+        const areas = spec.area
+          ? runs
+              .map((run) => {
+                const top = run.map((i) => `L${xOf(i)} ${yOf(series.points[i] as number)}`).join(' ')
+                const first = run[0]
+                const last = run[run.length - 1]
+                return `<path d="M${xOf(first)} ${AXIS.bottom} ${top} L${xOf(last)} ${AXIS.bottom} Z" fill="${series.color}" fill-opacity="0.16"/>`
+              })
+              .join('')
+          : ''
+        const lines = runs
+          .map((run) => {
+            const d = run.map((i, k) => `${k === 0 ? 'M' : 'L'}${xOf(i)} ${yOf(series.points[i] as number)}`).join(' ')
+            return `<path d="${d}" fill="none" stroke="${series.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`
+          })
+          .join('')
+        const dots = series.points
+          .map((v, i) =>
+            v === null
+              ? ''
+              : `<circle cx="${xOf(i)}" cy="${yOf(v)}" r="3" fill="${PALETTE.card}" stroke="${series.color}" stroke-width="2"/>`,
+          )
+          .join('')
+        return areas + lines + dots + latestLabel(series, spec, xOf, yOf)
+      })
+      .join('')
 
-  const grid = ticks
-    .map((value) => {
-      const y = yOf(value)
-      return (
-        `<line x1="${left}" x2="${right}" y1="${y}" y2="${y}" stroke="${PALETTE.line}"/>` +
-        `<text x="${left - 10}" y="${y + 4}" text-anchor="end" font-size="11" fill="${PALETTE.muted}" font-family="${SANS}">${escapeXml(spec.format(value))}</text>`
-      )
+  return frame(spec, AXIS.height, body, spec.series)
+}
+
+export function renderColumnChart(spec: ColumnChartSpec): string {
+  const values = spec.series.flatMap((s) => s.points).filter(isNumber)
+  if (values.length === 0 || spec.labels.length === 0) {
+    return frame(spec, AXIS.height, emptyBody(AXIS.height), spec.series)
+  }
+
+  const { ticks, yOf } = axes(spec, values)
+  const groupWidth = (AXIS.right - AXIS.left) / spec.labels.length
+  const n = spec.series.length
+  const barWidth = Math.min(36, (groupWidth * 0.7 - (n - 1) * 2) / n)
+  const showValues = spec.showValues && spec.labels.length <= MAX_VALUE_LABELS
+  const xLabelEvery = Math.ceil(spec.labels.length / MAX_X_LABELS)
+
+  const bars = spec.labels
+    .map((_, i) => {
+      const groupCentre = AXIS.left + (i + 0.5) * groupWidth
+      const totalWidth = n * barWidth + (n - 1) * 2
+      return spec.series
+        .map((series, k) => {
+          const v = series.points[i]
+          if (v === null || v <= 0) return ''
+          const x = groupCentre - totalWidth / 2 + k * (barWidth + 2)
+          const y = yOf(v)
+          const h = AXIS.bottom - y
+          const label = showValues
+            ? `<text x="${x + barWidth / 2}" y="${y - 6}" text-anchor="middle" font-size="11" font-weight="600" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(spec.format(v))}</text>`
+            : ''
+          return `<path d="${roundedTopBar(x, y, barWidth, h)}" fill="${series.color}"/>${label}`
+        })
+        .join('')
     })
     .join('')
 
-  const xLabelEvery = Math.ceil(spec.labels.length / MAX_X_LABELS)
   const xLabels = spec.labels
     .map((label, i) =>
       i % xLabelEvery === 0
-        ? `<text x="${xOf(i)}" y="${bottom + 20}" text-anchor="middle" font-size="11" fill="${PALETTE.muted}" font-family="${SANS}">${escapeXml(label)}</text>`
+        ? `<text x="${AXIS.left + (i + 0.5) * groupWidth}" y="${AXIS.bottom + 20}" text-anchor="middle" font-size="11" fill="${PALETTE.secondary}" font-family="${SANS}">${escapeXml(label)}</text>`
         : '',
     )
     .join('')
 
-  const lines = spec.series
-    .map((series) => {
-      const path = linePath(series.points, xOf, yOf)
-      const dots = series.points
-        .map((v, i) => (v === null ? '' : `<circle cx="${xOf(i)}" cy="${yOf(v)}" r="2.5" fill="${series.color}"/>`))
-        .join('')
-      const last = lastValue(series.points)
-      const highlight = last
-        ? `<circle cx="${xOf(last.index)}" cy="${yOf(last.value)}" r="5" fill="${PALETTE.gold}" stroke="${PALETTE.card}" stroke-width="2"/>` +
-          `<text x="${xOf(last.index)}" y="${yOf(last.value) - 12}" text-anchor="middle" font-size="12" font-weight="600" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(spec.format(last.value))}</text>`
-        : ''
-      return `<path d="${path}" fill="none" stroke="${series.color}" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"/>${dots}${highlight}`
-    })
-    .join('')
-
-  const body = `${grid}${xLabels}${lines}`
-  return frame(spec, height, body, legend(spec.series))
+  return frame(spec, AXIS.height, gridLines(ticks, yOf, spec.format) + xLabels + bars, spec.series)
 }
 
-export function renderBarChart(spec: BarChartSpec): string {
-  const rowHeight = 36
-  const top = 118
-  const labelWidth = 150
+/** Ranked horizontal bars: one hue, largest first, each row with its own detail text. */
+export function renderRankedBars(spec: RankedBarSpec): string {
+  const rowHeight = 38
+  const top = 120
+  const labelWidth = 170
   const barLeft = 24 + labelWidth
-  const barRight = WIDTH - 110
-  const height = Math.max(200, top + spec.bars.length * rowHeight + 24)
+  const barRight = WIDTH - 230
+  const height = Math.max(200, top + spec.bars.length * rowHeight + 20)
 
   if (spec.bars.length === 0) {
     return frame(spec, height, emptyBody(height))
@@ -135,12 +210,12 @@ export function renderBarChart(spec: BarChartSpec): string {
   const rows = spec.bars
     .map((bar, i) => {
       const y = top + i * rowHeight
-      const barWidth = Math.max(0, (bar.value / max) * (barRight - barLeft))
-      const isMax = bar.value === max && max > 0
+      const width = Math.max(0, (bar.value / max) * (barRight - barLeft))
       return (
-        `<text x="24" y="${y + 18}" font-size="13" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(bar.label)}</text>` +
-        `<rect x="${barLeft}" y="${y + 4}" width="${barWidth}" height="18" rx="4" fill="${isMax ? PALETTE.gold : PALETTE.navy}"/>` +
-        `<text x="${barLeft + barWidth + 8}" y="${y + 18}" font-size="12" font-weight="600" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(spec.format(bar.value))}</text>`
+        `<text x="24" y="${y + 19}" font-size="13" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(bar.label)}</text>` +
+        `<rect x="${barLeft}" y="${y + 6}" width="${barRight - barLeft}" height="16" rx="5" fill="${PALETTE.track}"/>` +
+        `<rect x="${barLeft}" y="${y + 6}" width="${width}" height="16" rx="5" fill="${spec.color}"/>` +
+        `<text x="${WIDTH - 24}" y="${y + 19}" text-anchor="end" font-size="12" font-weight="600" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(bar.detail)}</text>`
       )
     })
     .join('')
@@ -148,57 +223,176 @@ export function renderBarChart(spec: BarChartSpec): string {
   return frame(spec, height, rows)
 }
 
-/** Wraps the body in a card with the title, subtitle, and an accessible name and description. */
-function frame(spec: { title: string; subtitle: string }, height: number, body: string, extra = ''): string {
+/** One row per category: a track showing a share from 0 to 100%, filled in the category's colour. */
+export function renderMeter(spec: MeterSpec): string {
+  const rowHeight = 46
+  const top = 120
+  const labelWidth = 170
+  const barLeft = 24 + labelWidth
+  const barRight = WIDTH - 230
+  const height = Math.max(200, top + spec.rows.length * rowHeight + 20)
+
+  if (spec.rows.length === 0) {
+    return frame(spec, height, emptyBody(height))
+  }
+
+  const rows = spec.rows
+    .map((row, i) => {
+      const y = top + i * rowHeight
+      const label = `<text x="24" y="${y + 19}" font-size="13" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(row.label)}</text>`
+      if (row.fraction === null) {
+        return (
+          label +
+          `<text x="${barLeft}" y="${y + 19}" font-size="12" fill="${PALETTE.secondary}" font-family="${SANS}">No departed flights</text>`
+        )
+      }
+      const fraction = Math.min(1, Math.max(0, row.fraction))
+      const detail =
+        `<text x="${WIDTH - 24}" y="${y + 19}" text-anchor="end" font-size="12" fill="${PALETTE.secondary}" font-family="${SANS}">` +
+        `<tspan font-weight="700" fill="${PALETTE.ink}">${escapeXml(formatPercent(row.fraction))}</tspan> · ${escapeXml(row.detail)}</text>`
+      return (
+        label +
+        `<rect x="${barLeft}" y="${y + 8}" width="${barRight - barLeft}" height="14" rx="7" fill="${PALETTE.track}"/>` +
+        `<rect x="${barLeft}" y="${y + 8}" width="${(barRight - barLeft) * fraction}" height="14" rx="7" fill="${row.color}"/>` +
+        detail
+      )
+    })
+    .join('')
+
+  return frame(spec, height, rows)
+}
+
+/** Wraps the body in a card: title, subtitle, headline figure and legend, with an accessible name and description. */
+function frame(card: CardSpec, height: number, body: string, series: Series[] = []): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}" role="img" aria-labelledby="chart-title chart-desc">` +
-    `<title id="chart-title">${escapeXml(spec.title)}</title>` +
-    `<desc id="chart-desc">${escapeXml(spec.subtitle)}</desc>` +
-    `<rect x="0.5" y="0.5" width="${WIDTH - 1}" height="${height - 1}" rx="12" fill="${PALETTE.card}" stroke="${PALETTE.border}"/>` +
-    `<text x="24" y="38" font-size="18" font-weight="700" fill="${PALETTE.navy}" font-family="${HEADING}">${escapeXml(spec.title)}</text>` +
-    `<text x="24" y="60" font-size="13" fill="${PALETTE.muted}" font-family="${SANS}">${escapeXml(spec.subtitle)}</text>` +
-    extra +
+    `<title id="chart-title">${escapeXml(card.title)}</title>` +
+    `<desc id="chart-desc">${escapeXml(card.subtitle)}</desc>` +
+    `<rect x="0.5" y="0.5" width="${WIDTH - 1}" height="${height - 1}" rx="14" fill="${PALETTE.card}" stroke="${PALETTE.border}"/>` +
+    `<text x="24" y="38" font-size="18" font-weight="700" fill="${PALETTE.navy}" font-family="${HEADING}">${escapeXml(card.title)}</text>` +
+    `<text x="24" y="60" font-size="13" fill="${PALETTE.secondary}" font-family="${SANS}">${escapeXml(card.subtitle)}</text>` +
+    `<line x1="24" x2="${WIDTH - 24}" y1="74" y2="74" stroke="${PALETTE.grid}"/>` +
+    legend(series) +
+    headline(card.headline) +
     body +
     `</svg>`
   )
 }
 
-function legend(series: LineSeries[]): string {
+/** Series names with a colour swatch. Only shown for two or more series, so one-series cards stay quiet. */
+function legend(series: Series[]): string {
+  if (series.length < 2) return ''
+  let x = 24
   return series
-    .map((s, i) => {
-      const x = 24 + i * 180
+    .map((s) => {
+      const item =
+        `<rect x="${x}" y="90" width="12" height="12" rx="3" fill="${s.color}"/>` +
+        `<text x="${x + 18}" y="101" font-size="12" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(s.name)}</text>`
+      x += 30 + s.name.length * 7
+      return item
+    })
+    .join('')
+}
+
+/** The headline figure sits on the legend row, on the right, so it never collides with the title or the subtitle. */
+function headline(figure: Headline | undefined): string {
+  if (!figure) return ''
+  return (
+    `<text x="${WIDTH - 24}" y="101" text-anchor="end" font-size="20" font-weight="700" fill="${PALETTE.navy}" font-family="${HEADING}">${escapeXml(figure.value)}</text>` +
+    `<text x="${WIDTH - 24 - figure.value.length * 13 - 12}" y="101" text-anchor="end" font-size="12" fill="${PALETTE.secondary}" font-family="${SANS}">${escapeXml(figure.caption)}</text>`
+  )
+}
+
+function emptyBody(height: number): string {
+  return `<text x="${WIDTH / 2}" y="${height / 2 + 20}" text-anchor="middle" font-size="14" fill="${PALETTE.secondary}" font-family="${SANS}">No data for this period</text>`
+}
+
+/** Scale and mapping shared by the axis charts. */
+function axes(spec: AxisChartSpec, values: number[]) {
+  const ticks = niceTicks(values)
+  const min = ticks[0]
+  const max = ticks[ticks.length - 1]
+  const yOf = (v: number) => AXIS.bottom - ((v - min) / (max - min)) * (AXIS.bottom - AXIS.top)
+  const xOf = (i: number) =>
+    spec.labels.length === 1 ? (AXIS.left + AXIS.right) / 2 : AXIS.left + (i * (AXIS.right - AXIS.left)) / (spec.labels.length - 1)
+  return { ticks, yOf, xOf }
+}
+
+function gridLines(ticks: number[], yOf: (v: number) => number, format: (v: number) => string): string {
+  return ticks
+    .map((value) => {
+      const y = yOf(value)
       return (
-        `<rect x="${x}" y="82" width="12" height="12" rx="3" fill="${s.color}"/>` +
-        `<text x="${x + 18}" y="93" font-size="12" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(s.name)}</text>`
+        `<line x1="${AXIS.left}" x2="${AXIS.right}" y1="${y}" y2="${y}" stroke="${PALETTE.grid}"/>` +
+        `<text x="${AXIS.left - 10}" y="${y + 4}" text-anchor="end" font-size="11" fill="${PALETTE.secondary}" font-family="${SANS}">${escapeXml(format(value))}</text>`
       )
     })
     .join('')
 }
 
-function emptyBody(height: number): string {
-  return `<text x="${WIDTH / 2}" y="${height / 2 + 20}" text-anchor="middle" font-size="14" fill="${PALETTE.muted}" font-family="${SANS}">No data for this period</text>`
+function gridAndLabels(spec: AxisChartSpec, ticks: number[], yOf: (v: number) => number, xOf: (i: number) => number): string {
+  const xLabelEvery = Math.ceil(spec.labels.length / MAX_X_LABELS)
+  const xLabels = spec.labels
+    .map((label, i) =>
+      i % xLabelEvery === 0
+        ? `<text x="${xOf(i)}" y="${AXIS.bottom + 20}" text-anchor="middle" font-size="11" fill="${PALETTE.secondary}" font-family="${SANS}">${escapeXml(label)}</text>`
+        : '',
+    )
+    .join('')
+  return gridLines(ticks, yOf, spec.format) + xLabels
 }
 
-function linePath(points: (number | null)[], xOf: (i: number) => number, yOf: (v: number) => number): string {
-  let path = ''
-  let drawing = false
+/** The latest value of a series, highlighted with its value printed above it. */
+function latestLabel(series: Series, spec: AxisChartSpec, xOf: (i: number) => number, yOf: (v: number) => number): string {
+  const last = lastIndex(series.points)
+  if (last === null) return ''
+  const value = series.points[last] as number
+  const x = xOf(last)
+  // Near the right edge the label is anchored to its end, so it stays inside the card.
+  const nearRight = x > AXIS.right - 40
+  const labelX = nearRight ? x + 6 : x
+  const anchor = nearRight ? 'end' : 'middle'
+  const labelY = nearRight ? yOf(value) - 10 : yOf(value) - 12
+  return (
+    `<circle cx="${x}" cy="${yOf(value)}" r="5" fill="${series.color}" stroke="${PALETTE.card}" stroke-width="2"/>` +
+    `<text x="${labelX}" y="${labelY}" text-anchor="${anchor}" font-size="12" font-weight="700" fill="${PALETTE.ink}" font-family="${SANS}">${escapeXml(spec.format(value))}</text>`
+  )
+}
+
+/** Runs of consecutive non-null indexes, so a gap breaks the line and the area. */
+function segments(points: (number | null)[]): number[][] {
+  const runs: number[][] = []
+  let current: number[] = []
   points.forEach((v, i) => {
     if (v === null) {
-      drawing = false
-      return
+      if (current.length > 0) runs.push(current)
+      current = []
+    } else {
+      current.push(i)
     }
-    path += `${drawing ? 'L' : 'M'}${xOf(i)} ${yOf(v)} `
-    drawing = true
   })
-  return path.trim()
+  if (current.length > 0) runs.push(current)
+  return runs
 }
 
-function lastValue(points: (number | null)[]): { index: number; value: number } | null {
+/** A column with rounded top corners and a flat base on the axis. */
+function roundedTopBar(x: number, y: number, width: number, height: number): string {
+  const r = Math.min(4, width / 2, height)
+  return (
+    `M${x} ${y + height} L${x} ${y + r} Q${x} ${y} ${x + r} ${y} L${x + width - r} ${y} Q${x + width} ${y} ${x + width} ${y + r} ` +
+    `L${x + width} ${y + height} Z`
+  )
+}
+
+function lastIndex(points: (number | null)[]): number | null {
   for (let i = points.length - 1; i >= 0; i--) {
-    const value = points[i]
-    if (value !== null) return { index: i, value }
+    if (points[i] !== null) return i
   }
   return null
+}
+
+function isNumber(value: number | null): value is number {
+  return value !== null
 }
 
 /**

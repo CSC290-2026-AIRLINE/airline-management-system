@@ -73,4 +73,24 @@ describe('BiEtlService', () => {
 
     await expect(service.staffIdForUser('user-1')).resolves.toBeNull()
   })
+  it('refuses to publish an empty source over a non-empty copy, and records why', async () => {
+    const db = makeDb()
+    db.$queryRaw.mockResolvedValueOnce([{ id: RUN_ID }])
+    db.tx.$queryRaw.mockResolvedValueOnce([{ count: 5 }]).mockResolvedValueOnce([{ count: 0 }])
+    const service = new BiEtlService(db as never, clock as never)
+
+    await expect(service.refresh('manual', 'staff-1')).rejects.toThrow('REFRESH_FAILED')
+    expect(db.$executeRaw).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('SOURCE_EMPTY'), expect.anything())
+  })
+
+  it('allows an empty copy to be rebuilt as empty (nothing to protect)', async () => {
+    const db = makeDb()
+    db.$queryRaw
+      .mockResolvedValueOnce([{ id: RUN_ID }])
+      .mockResolvedValueOnce([{ id: RUN_ID, trigger: 'manual', status: 'success', row_count: 0 }])
+    db.tx.$queryRaw.mockResolvedValueOnce([{ count: 0 }]).mockResolvedValueOnce([{ count: 0 }])
+    const service = new BiEtlService(db as never, clock as never)
+
+    await expect(service.refresh('manual', 'staff-1')).resolves.toEqual(expect.objectContaining({ status: 'success', row_count: 0 }))
+  })
 })

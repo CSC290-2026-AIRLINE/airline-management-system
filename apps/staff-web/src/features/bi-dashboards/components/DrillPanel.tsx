@@ -1,11 +1,15 @@
+import { useState } from 'react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { filterQuery, useBiApi, type BiFilters } from '../api/bi'
+import { filterQuery, useBiApi, type BiFilters, type BiFlight } from '../api/bi'
 import { useBiLoad } from '../hooks/useBiLoad'
 import { formatCount, formatMoney } from '../lib-format'
+
+/** Rows shown before "Show all", so a long list does not push the rest of the page down. */
+const PREVIEW_ROWS = 5
 
 interface DrillPanelProps {
   title: string
@@ -14,10 +18,17 @@ interface DrillPanelProps {
   onClose: () => void
 }
 
-/** The flights behind one figure on the page: a period, a cabin or a delay cause. Exports the same list as CSV. */
+/**
+ * The flights behind one figure on the page: a period, a cabin or a delay cause. The longest delays come first, the list
+ * starts with a few rows, and the same list exports as CSV.
+ */
 export function DrillPanel({ title, description, filters, onClose }: DrillPanelProps) {
   const api = useBiApi()
   const flights = useBiLoad(`flights|${filterQuery(filters)}`, () => api.getFlights(filters))
+  const [showAll, setShowAll] = useState(false)
+
+  const sorted = flights.data ? sortByDelay(flights.data) : []
+  const shown = showAll ? sorted : sorted.slice(0, PREVIEW_ROWS)
 
   return (
     <Card>
@@ -45,7 +56,7 @@ export function DrillPanel({ title, description, filters, onClose }: DrillPanelP
         )}
         {!flights.error && flights.data === null && <Skeleton className="h-40 w-full" />}
         {flights.data && flights.data.length === 0 && (
-          <p className="m-0 py-6 text-center text-sm text-muted-foreground">No flights match.</p>
+          <p className="m-0 py-6 text-center text-sm text-muted-foreground">No departed flights for this route and dates.</p>
         )}
         {flights.data && flights.data.length > 0 && (
           <Table>
@@ -71,7 +82,7 @@ export function DrillPanel({ title, description, filters, onClose }: DrillPanelP
               </TableRow>
             </TableHeader>
             <TableBody>
-              {flights.data.map((f) => (
+              {shown.map((f) => (
                 <TableRow key={`${f.flight_number}-${f.flight_date}`}>
                   <TableCell className="font-medium">{f.flight_number}</TableCell>
                   <TableCell>{f.flight_date}</TableCell>
@@ -87,7 +98,19 @@ export function DrillPanel({ title, description, filters, onClose }: DrillPanelP
             </TableBody>
           </Table>
         )}
+        {flights.data && sorted.length > PREVIEW_ROWS && (
+          <div className="print:hidden mt-3 flex justify-center">
+            <Button type="button" variant="link" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? 'Show fewer' : `Show all ${formatCount(sorted.length)} flights`}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
+}
+
+/** Longest delay first. Flights without a delay figure go last. */
+function sortByDelay(rows: BiFlight[]): BiFlight[] {
+  return [...rows].sort((a, b) => (b.delay_minutes ?? -1) - (a.delay_minutes ?? -1))
 }

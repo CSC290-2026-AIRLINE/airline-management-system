@@ -12,7 +12,7 @@ export function KpiCard({ label, value, hint }: KpiCardProps) {
     <Card>
       <CardContent className="flex flex-col gap-1 px-5">
         <p className="m-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className="m-0 font-heading text-2xl font-bold text-primary">{value}</p>
+        <p className="m-0 font-heading text-2xl font-bold tabular-nums text-primary">{value}</p>
         <p className="m-0 text-xs text-muted-foreground">{hint}</p>
       </CardContent>
     </Card>

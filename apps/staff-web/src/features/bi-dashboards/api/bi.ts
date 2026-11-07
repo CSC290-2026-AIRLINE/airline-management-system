@@ -90,7 +90,8 @@ export interface BiFlight {
   cause: string | null
   seat_sold: number
   seat_available: number
-  revenue: number
+  /** Null when a cabin is chosen: revenue is per flight only. */
+  revenue: number | null
 }
 
 export interface BiFinanceMonth {
