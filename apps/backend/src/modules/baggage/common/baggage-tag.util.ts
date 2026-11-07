@@ -1,7 +1,4 @@
-/**
- * Inn confirmed baggage tags start with 0 (same as Feature 6).
- * The proposed F10 SQL allows any first digit; align it before integration.
- */
+/** Baggage tags are ten digits starting with zero, matching the checked_bag and found_bag constraints. */
 export const BAGGAGE_TAG_PATTERN = /^0\d{9}$/
 
 export function isValidBaggageTag(tag: string): boolean {
