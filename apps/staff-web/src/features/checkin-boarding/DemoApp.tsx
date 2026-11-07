@@ -5,6 +5,7 @@ import { GatePage } from './components/GatePage.tsx'
 import { IssueListPage } from './components/IssueListPage.tsx'
 import { StaffShell } from './components/StaffShell.tsx'
 import type { StaffPage } from './components/shell-nav.ts'
+import { DEMO_NOW } from './mock/fixtures.ts'
 
 /** The demo shell: the staff screens on the mock API, without Clerk and without a backend. */
 export function DemoApp() {
@@ -19,7 +20,7 @@ export function DemoApp() {
   }
 
   return (
-    <StaffShell current={page} onNavigate={setPage} agentName={agentName} clock={new Date()}>
+    <StaffShell current={page} onNavigate={setPage} agentName={agentName} clock={DEMO_NOW}>
       {page === 'gate' ? (
         <GatePage api={api} />
       ) : page === 'issues' ? (
