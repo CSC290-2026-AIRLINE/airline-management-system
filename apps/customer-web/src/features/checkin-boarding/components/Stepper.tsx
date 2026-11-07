@@ -14,6 +14,7 @@ export function Stepper({ step }: { step: number }) {
               {number < step ? '✓' : number}
             </span>
             <span className={styles.stepLabel}>{label}</span>
+            {number < STEPS.length ? <span className={styles.connector} aria-hidden="true" /> : null}
           </li>
         )
       })}

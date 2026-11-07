@@ -58,6 +58,8 @@ export interface CheckInView {
   document: TravelDocumentView | null
   seat: SeatChoice | null
   declaredBags: number | null
+  /** Excess baggage the passenger still owes. The bags are weighed at the counter, so it is 0 until then. */
+  excessFee?: number
   boardingPassId: string | null
   checkedInAt: string | null
 }

@@ -3,7 +3,7 @@ import type { CheckInApi } from '../api/client.ts'
 import type { BoardingPassView, CheckInView } from '../api/types.ts'
 import { BagsStep } from './BagsStep.tsx'
 import { BoardingPassStep } from './BoardingPassStep.tsx'
-import { ErrorBanner } from './ErrorBanner.tsx'
+import { ErrorMessage } from './Message.tsx'
 import { FindBookingStep } from './FindBookingStep.tsx'
 import { PassportStep } from './PassportStep.tsx'
 import { SeatStep } from './SeatStep.tsx'
@@ -11,10 +11,46 @@ import { Stepper } from './Stepper.tsx'
 import { Summary } from './Summary.tsx'
 import type { FlowError } from './flow-error.ts'
 import { toFlowError } from './flow-error.ts'
+import { windowStrip } from './window-strip.ts'
 import styles from './flow.module.css'
 import '../styles/tokens.css'
 
 type Step = 1 | 2 | 3 | 4 | 5
+
+const TITLES: Record<Step, string> = {
+  1: 'Online check-in',
+  2: 'Online check-in',
+  3: 'Online check-in',
+  4: 'How many bags are you checking in?',
+  5: 'Your boarding pass',
+}
+
+const PASS_SUBTITLE = 'Gate and boarding time are read from the flight, so your pass always shows the current gate.'
+
+const BEFORE_YOU_START = [
+  'Your passport, valid for 6 months after travel',
+  'A visa number, if your trip needs one',
+  'How many bags you will check in',
+]
+
+/** The static card beside the find-booking form. */
+function BeforeYouStart() {
+  return (
+    <aside className={styles.sideCard}>
+      <h2 className={styles.sideTitle}>Before you start</h2>
+      <ul className={styles.sideList}>
+        {BEFORE_YOU_START.map((text) => (
+          <li key={text}>
+            <span className={styles.sideBullet} aria-hidden="true">
+              •
+            </span>
+            <span>{text}</span>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  )
+}
 
 export function CheckInFlow({ api }: { api: CheckInApi }) {
   const [step, setStep] = useState<Step>(1)
@@ -94,23 +130,28 @@ export function CheckInFlow({ api }: { api: CheckInApi }) {
     setError(null)
   }
 
-  // Steps 1 and 5 have no summary beside them: a narrow centred card, then the full row.
-  const panelClass = step === 1 ? `${styles.panel} ${styles.panelSolo}` : step === 5 ? `${styles.panel} ${styles.panelWide}` : styles.panel
+  // The boarding pass has no summary beside it: it takes the whole row.
+  const panelClass = step === 5 ? `${styles.panel} ${styles.panelWide}` : styles.panel
+  const strip = checkIn ? windowStrip(checkIn.flight.depAt, new Date()) : null
 
   return (
     <div className={styles.flow}>
       <header className={styles.head}>
-        <h1 className={styles.title}>Online check-in</h1>
-        <p className={styles.subtitle}>Check in for your flight, choose a seat and get your boarding pass.</p>
+        {strip ? (
+          <div className={styles.strip} data-open={strip.open}>
+            {strip.open ? <strong className={styles.stripLabel}>Check-in open</strong> : null}
+            <span>{strip.text}</span>
+          </div>
+        ) : null}
+        <h1 className={styles.title}>{TITLES[step]}</h1>
+        {step === 5 ? <p className={styles.subtitle}>{PASS_SUBTITLE}</p> : null}
       </header>
 
       <Stepper step={step} />
 
-      <ErrorBanner error={error} />
+      <ErrorMessage error={error} />
 
       <div className={styles.layout}>
-        {checkIn && step < 5 ? <Summary checkIn={checkIn} /> : null}
-
         <div className={panelClass}>
           {step === 1 ? <FindBookingStep busy={busy} onSubmit={start} /> : null}
 
@@ -166,6 +207,9 @@ export function CheckInFlow({ api }: { api: CheckInApi }) {
             )
           ) : null}
         </div>
+
+        {step === 1 ? <BeforeYouStart /> : null}
+        {step > 1 && step < 5 && checkIn ? <Summary checkIn={checkIn} /> : null}
       </div>
     </div>
   )

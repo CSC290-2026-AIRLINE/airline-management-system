@@ -1,20 +1,39 @@
-/* Feature 6 design tokens: the CS26 Figma kit (navy + amber, light theme only). */
+/* Feature 6 design tokens: the final F6 Figma kit (Inter, light theme only). */
 :root {
-  --f6-navy: #14213d;
-  --f6-amber: #fca311;
-  --f6-amber-hover: #c27d0c;
-  --f6-ground: #eef0f4;
-  --f6-line: #d8dce6;
-  --f6-muted: #677287;
-  --f6-good: #1e8e4e;
-  --f6-bad: #d61313;
-
+  --f6-page: #f7f9fc;
   --f6-paper: #ffffff;
-  --f6-ink: #14213d;
-  --f6-good-bg: #e6f4ec;
-  --f6-bad-bg: #fdecec;
-  --f6-warn-bg: #fff4de;
+  --f6-line: #dbe2ea;
+  --f6-line-soft: #eef1f6;
+  --f6-ink: #0a1424;
+  --f6-navy: #102544;
+  --f6-muted: #677287;
+  --f6-blue: #1f408c;
+  --f6-amber: #ff9f00;
+
+  /* Message tones: background / border / text. */
+  --f6-success-bg: #e6f4ec;
+  --f6-success-line: #b7dfc7;
+  --f6-success-text: #1e6e42;
+  --f6-info-bg: #eaf0fb;
+  --f6-info-line: #c9d8f2;
+  --f6-info-text: #1f408c;
+  --f6-warn-bg: #fff3db;
+  --f6-warn-line: #f5dfa8;
+  --f6-warn-text: #995c05;
+  --f6-error-bg: #fde4e2;
+  --f6-error-line: #f0b2b2;
+  --f6-error-text: #b8171c;
+
+  /* The check-in window strip. */
+  --f6-open-bg: #e0faeb;
+  --f6-open-line: #b7ebcb;
+  --f6-open-text: #087338;
+
   --f6-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --f6-brand: 'Merriweather', georgia, serif;
   --f6-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Still used by the seat map and the boarding pass card until they are restyled. */
+  --f6-ground: var(--f6-line-soft);
+  --f6-amber-hover: #faa61a;
+  --f6-good: #1e8e4e;
 }

@@ -32,19 +32,31 @@ function windowText(details: Record<string, unknown> | undefined): ReactNode {
   )
 }
 
-export function ErrorBanner({ error }: { error: FlowError | null }) {
+export type MessageTone = 'success' | 'info' | 'warn' | 'error'
+
+/** The message box of the final design: one box per tone. */
+export function Message({ tone, title, children }: { tone: MessageTone; title?: string; children: ReactNode }) {
+  return (
+    <div className={styles.message} data-tone={tone} role={tone === 'error' ? 'alert' : 'status'}>
+      {title ? <strong className={styles.messageTitle}>{title}</strong> : null}
+      <div className={styles.messageBody}>{children}</div>
+    </div>
+  )
+}
+
+/** Every failure of the flow is shown as an error message. */
+export function ErrorMessage({ error }: { error: FlowError | null }) {
   if (!error) return null
 
   const title = TITLES[error.code] ?? 'Something went wrong'
   const body = error.code === 'ON_HOLD' ? 'Please see an agent at the airport.' : error.message
 
   return (
-    <div className={styles.banner} role="alert" data-code={error.code}>
-      <strong className={styles.bannerTitle}>{title}</strong>
-      <p className={styles.bannerBody}>
+    <Message tone="error" title={title}>
+      <p>
         {body}
         {error.code === 'WINDOW_CLOSED' ? windowText(error.details) : null}
       </p>
-    </div>
+    </Message>
   )
 }
