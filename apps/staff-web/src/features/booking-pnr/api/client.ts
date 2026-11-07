@@ -6,6 +6,7 @@ import type {
   BookingServiceRequest,
   HoldBookingResponse,
   ServiceRequestListQuery,
+  ServiceRequestQueueItem,
   ServiceRequestUpdate,
   StaffBookingPage,
   StaffBookingQuery,
@@ -76,12 +77,12 @@ export function useBookingPnrApi() {
     return (await response.json()) as HoldBookingResponse
   }
 
-  async function listServiceRequests(query: ServiceRequestListQuery): Promise<BookingServiceRequest[]> {
+  async function listServiceRequests(query: ServiceRequestListQuery): Promise<ServiceRequestQueueItem[]> {
     const response = await fetchWithAuth(`/api/staff/service-requests${toQueryString(query)}`)
     if (!response.ok) {
       throw await readError(response)
     }
-    return (await response.json()) as BookingServiceRequest[]
+    return (await response.json()) as ServiceRequestQueueItem[]
   }
 
   async function updateServiceRequest(id: string, input: ServiceRequestUpdate): Promise<BookingServiceRequest> {

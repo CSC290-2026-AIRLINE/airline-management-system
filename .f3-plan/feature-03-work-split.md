@@ -28,7 +28,7 @@ Use the port and stub named below until the real feature is merged into `dev`. N
 
 | Feature | Port | Stub behaviour |
 | --- | --- | --- |
-| 2 Flight scheduling | `FlightEventBus` | Seed data and a fake-event script |
+| 2 Flight scheduling | `FlightEventBus` | Seed data (`npm run db:seed:f03 -w apps/backend`) and a fake-event script (`npm run f03:event -w apps/backend -- cancelled <flightId> refund`) |
 | 4 Pricing | `PricingPort` | Fixed fare table (economy Y = 148.50), USD 100 flat cancel fee |
 | 5a Checkout | `CheckoutPort` | Dev-only Confirm button and route |
 | 5b Refunds | `RefundPort` | Only records the amount |
@@ -224,7 +224,8 @@ If you are the setup owner doing this before handoff, mark these done and remove
     - it has inventory rows
   - Call `availability()` once for all flights found. Leave out cabins with fewer seats than adults + children. Show "9+" when more than 9 seats are left.
   - Call `PricingPort.quote` for each flight, cabin and fare class. When Feature 4 rejects an option, show it as unavailable with the reason.
-  - Return the result shape from the doc. Sort by price, departure time or duration.
+  - Return the result shape in the frontend `booking-search/api/types.ts`: each fare carries `fareClassId`, `fareQuoteId` and `pricePerPassenger`, which the hold sends back unchanged. Sort by price, departure time or duration.
+  - The route is public: mark it `@Public()` (`apps/backend/src/auth/decorators/public.decorator.ts`), because the global guard otherwise needs a login.
   - Multi-city timing (each leg departs at least 60 minutes after the previous one arrives) is checked at hold (A3) and filtered in the UI.
   - Tests: leg rules, the sales cutoff, flights with no inventory hidden, "9+".
 - [ ] **A3. Hold, `POST /bookings`** (customer). Files: `booking-pnr/hold/hold.controller.ts`, `hold.service.ts`.
@@ -235,7 +236,8 @@ If you are the setup owner doing this before handoff, mark these done and remove
     - An infant who turns 2 before the last segment is refused with 422.
     - Every infant has a `lap_of_id` pointing to an adult on the booking, and an adult takes at most one infant.
   - Apply the leg rules and the sales cutoff. A flight that is not `scheduled` or `delayed` answers `409 FLIGHT_NOT_FOR_SALE`.
-  - Ask `PricingPort` again for every option, with the promo code if one was given. Lap infants pay 0. If the sum differs from `expected_total`, answer `409 PRICE_CHANGED` with `new_total` and hold nothing.
+  - Ask `PricingPort` again for every option, with the promo code if one was given. Lap infants pay 0. If the sum differs from `expected_total`, answer `409 PRICE_CHANGED` with `details: { previousTotal, newTotal, currency }` and hold nothing.
+  - The request and response shapes are `HoldBookingRequest` and `HoldBookingResponse` in the frontend `booking-pnr/api/types.ts` (with `lapOfPassengerId` for infants, and `holdExpiresAt` in the response). Write A's DTO to match.
   - In one transaction:
     1. `inventory.lock`, then `inventory.hold` (adults + children per segment).
     2. Insert `booking`:
@@ -519,7 +521,8 @@ If you are the setup owner doing this before handoff, mark these done and remove
 - [ ] **C12 (moved from B5). Feature 6's `BookingProvider`** (`booking-pnr/providers/`), the shape in `providers/providers.ts` in PR #28.
   - Methods: `findByPnrAndLastName`, `byBookingPassengerId` (also needs the flight id), `listByFlight`.
   - Returns Feature 6's `BookingPassenger` shape.
-  - Delegate to B's `BookingReadPort`; do not duplicate booking queries. Keep the adapter in `providers/` and import Feature 6 types only — never edit their folder.
+  - Delegate to B's `BookingReadPort`; do not duplicate booking queries. Keep the adapter in `providers/`. Until PR #28 merges, use the mirror types in `providers/feature6.types.ts` (copied from Feature 6); afterwards import Feature 6's own types and delete the mirror. Never edit their folder.
+  - The setup already maps `BookingDetail` and `FlightPassengerDto` to `BookingPassenger` in `providers/booking-provider.adapter.ts`; C12 finishes it with tests.
   - Tests: a PNR plus surname finds the booking; a passenger id plus flight resolves; `listByFlight` returns confirmed passengers.
 - [ ] **C5. Seat-hold sweep.** Every minute on the simulation clock, release `held` seat rows whose `hold_expires_at` has passed. This covers Feature 6's 5-minute holds and unpaid seat fees.
 - [ ] **C6. Special assistance** (`booking-pnr/assistance/`).
@@ -608,7 +611,7 @@ The backend ports and tokens below live in `booking-pnr/contracts.ts`, written o
 | `InventoryPort` | A | A, B, C | `lock`, `hold`, `sell`, `release`, `returnSold`, `createForFlight`, `setCapacity`, `setAwardSeats`, `seatsLeft`, `availability` |
 | `SeatPort` | C | A, B | `holdForBooking(tx)`, `assignHeldForBooking(tx)`, `releaseForBooking(tx)` |
 | `ServiceRequestPort` | C | A | `createForHold(tx)` |
-| `BookingReadPort` | B | A, C | `listStaffBookings`, `getBookingDetail(ref, { staff })`, `getBooking`, `findBookingByReferenceAndSurname`, `listFlightPassengers`, `listUpcomingFlights`, `countBookingsForFlight` |
+| `BookingReadPort` | B | A, C | `getBooking`, `getBookingDetail(ref, { customerId } \| { staff })`, `findBookingByReferenceAndSurname`, `getBookingForPassenger`, `listCustomerBookings`, `listStaffBookings`, `listFlightPassengers`, `listUpcomingFlights`, `countBookingsForFlight` |
 | `CancelForFlightPort` | B | C | `cancelBookingsForFlight(tx, flightId, event)` |
 | `BookingProvider` (Feature 6) | C | Feature 6 | `findByPnrAndLastName`, `byBookingPassengerId`, `listByFlight`; delegates to `BookingReadPort` |
 | Status, clock, errors, generators | B | A, B, C | `BookingStatusService.move`, `BOOKING_CLOCK.now`, `BookingError`, `newReference`, `newTicketNumber` |

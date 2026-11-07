@@ -16,12 +16,21 @@ export interface FlightSearchRequest {
   cabin?: Cabin
 }
 
+// One fare of one flight. The ids go into POST /bookings (HoldBookingSegment) unchanged.
 export interface CabinAvailability {
-  cabin: string
+  cabin: Cabin
+  fareClassId: string
+  // For display, for example "Y".
   fareClassCode: string
-  price: number
+  // Feature 4's quote; null while the pricing stub is in use.
+  fareQuoteId: string | null
+  // Price per passenger (D2); the trip total is pricePerPassenger x (adults + children).
+  pricePerPassenger: number
   currency: string
+  // Show "9+" above 9.
   seatsLeft: number
+  // Set when Feature 4 rejects the option (for example an advance-purchase window): show it as unavailable.
+  unavailableReason: string | null
   milesPrice?: number | null
 }
 

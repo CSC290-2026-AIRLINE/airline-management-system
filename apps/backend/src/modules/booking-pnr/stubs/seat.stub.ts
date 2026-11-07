@@ -7,7 +7,7 @@ export class SeatStub implements SeatPort {
     return Promise.resolve()
   }
 
-  assignForBooking(): Promise<void> {
+  assignHeldForBooking(): Promise<void> {
     return Promise.resolve()
   }
 

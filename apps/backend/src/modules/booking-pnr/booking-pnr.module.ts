@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { APP_FILTER } from '@nestjs/core'
 import { BookingProviderAdapter, BOOKING_PROVIDER } from './providers/booking-provider.adapter'
 import { BookingStatusService } from './common/booking-status.service'
 import { BookingErrorFilter } from './common/booking-error.filter'
@@ -34,7 +35,8 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
 @Module({
   providers: [
     BookingStatusService,
-    BookingErrorFilter,
+    // Global, but it only catches BookingError, so other modules' errors are untouched.
+    { provide: APP_FILTER, useClass: BookingErrorFilter },
     { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
     { provide: INVENTORY_PORT, useClass: InventoryStub },
     { provide: SEAT_PORT, useClass: SeatStub },

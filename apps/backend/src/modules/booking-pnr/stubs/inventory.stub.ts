@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import type { FlightAvailability, FlightAvailabilityRequest, InventoryPort } from '../contracts'
 
+const STUB_SEATS_LEFT = 9
+
 @Injectable()
 export class InventoryStub implements InventoryPort {
   lock(): Promise<void> {
@@ -35,11 +37,12 @@ export class InventoryStub implements InventoryPort {
     return Promise.resolve()
   }
 
+  // Stub until A1 lands: every cabin has 9 seats left, so search and the booking pages have something to show.
   seatsLeft(): Promise<number> {
-    return Promise.resolve(0)
+    return Promise.resolve(STUB_SEATS_LEFT)
   }
 
   availability(flights: FlightAvailabilityRequest[]): Promise<FlightAvailability[]> {
-    return Promise.resolve(flights.map((flight) => ({ flightId: flight.flightId, cabin: flight.cabin, seatsLeft: 0 })))
+    return Promise.resolve(flights.map((flight) => ({ flightId: flight.flightId, cabin: flight.cabin, seatsLeft: STUB_SEATS_LEFT })))
   }
 }

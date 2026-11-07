@@ -1,9 +1,23 @@
 import { Injectable } from '@nestjs/common'
-import type { BookingDetail, BookingListQuery, BookingPage, BookingReadPort, FlightPassengerDto, UpcomingFlightDto } from '../contracts'
+import type {
+  BookingDetail,
+  BookingListItem,
+  BookingListQuery,
+  BookingPage,
+  BookingReadPort,
+  FlightBookingCounts,
+  FlightPassengerDto,
+  UpcomingFlightDto,
+} from '../contracts'
 
+// Stub until B4/B5 land: nothing is found. Replace with B's real read service.
 @Injectable()
 export class BookingReadStub implements BookingReadPort {
   getBooking(): Promise<BookingDetail | null> {
+    return Promise.resolve(null)
+  }
+
+  getBookingDetail(): Promise<BookingDetail | null> {
     return Promise.resolve(null)
   }
 
@@ -11,15 +25,15 @@ export class BookingReadStub implements BookingReadPort {
     return Promise.resolve(null)
   }
 
-  listFlightPassengers(): Promise<FlightPassengerDto[]> {
+  getBookingForPassenger(): Promise<BookingDetail | null> {
+    return Promise.resolve(null)
+  }
+
+  listCustomerBookings(): Promise<BookingListItem[]> {
     return Promise.resolve([])
   }
 
-  listCustomerBookings(): Promise<UpcomingFlightDto[]> {
-    return Promise.resolve([])
-  }
-
-  searchStaffBookings(query: BookingListQuery): Promise<BookingPage> {
+  listStaffBookings(query: BookingListQuery): Promise<BookingPage> {
     return Promise.resolve({
       items: [],
       page: query.page ?? 1,
@@ -28,11 +42,15 @@ export class BookingReadStub implements BookingReadPort {
     })
   }
 
-  getStaffBookingDetail(): Promise<BookingDetail | null> {
-    return Promise.resolve(null)
+  listFlightPassengers(): Promise<FlightPassengerDto[]> {
+    return Promise.resolve([])
   }
 
-  getBookingForCustomer(): Promise<BookingDetail | null> {
-    return Promise.resolve(null)
+  listUpcomingFlights(): Promise<UpcomingFlightDto[]> {
+    return Promise.resolve([])
+  }
+
+  countBookingsForFlight(): Promise<FlightBookingCounts> {
+    return Promise.resolve({ bookings: 0, passengers: 0, openServiceRequests: 0 })
   }
 }

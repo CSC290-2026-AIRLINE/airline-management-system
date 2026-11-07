@@ -1,14 +1,14 @@
-import type { BookingServiceRequest, ServiceCode, ServiceRequestStatus } from '../api/types'
+import type { ServiceCode, ServiceRequestQueueItem, ServiceRequestStatus } from '../api/types'
 
 export interface AssistanceQueueProps {
-  requests: BookingServiceRequest[]
+  requests: ServiceRequestQueueItem[]
   statusFilter: ServiceRequestStatus | 'all'
   onStatusFilterChange: (status: ServiceRequestStatus | 'all') => void
   onSelect: (requestId: string) => void
 }
 
 export interface AssistanceRequestDetailProps {
-  request: BookingServiceRequest
+  request: ServiceRequestQueueItem
   onAccept: () => void
   onReject: (reason: string) => void
   onComplete: () => void
