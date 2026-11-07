@@ -7,6 +7,7 @@ import type { LostBagReport } from './common/report.types'
 import type { BookingVerification, CheckedBagLookup, ReportRepository, CaseNumberSequence, SimulationClock } from './common/report.ports'
 
 export interface CreateReportInput {
+  flightId: string
   bookingReference: string
   surname: string
   passengerId: string
@@ -58,6 +59,7 @@ export class ReportService {
       bookingReference: input.bookingReference,
       surname: input.surname,
       passengerId: input.passengerId,
+      flightId: input.flightId,
     })
 
     if (!passenger) {
@@ -67,8 +69,8 @@ export class ReportService {
     if (tagNumber) {
       const checkedBag = await this.checkedBags.findByTag(tagNumber)
 
-      if (!checkedBag || checkedBag.bookingPassengerId !== passenger.bookingPassengerId) {
-        throw new BaggageError(BAGGAGE_ERROR_CODES.TAG_NOT_ON_BOOKING, 'Baggage tag does not belong to this booking passenger')
+      if (!checkedBag || checkedBag.bookingPassengerId !== passenger.bookingPassengerId || checkedBag.flightId !== passenger.flightId) {
+        throw new BaggageError(BAGGAGE_ERROR_CODES.TAG_NOT_ON_BOOKING, 'Baggage tag does not belong to this passenger and flight')
       }
     }
 

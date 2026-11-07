@@ -29,12 +29,18 @@ export interface VerifiedBookingPassenger {
 }
 
 export interface BookingVerification {
-  verifyPassenger(input: { bookingReference: string; surname: string; passengerId: string }): Promise<VerifiedBookingPassenger | null>
+  verifyPassenger(input: {
+    bookingReference: string
+    surname: string
+    passengerId: string
+    flightId?: string
+  }): Promise<VerifiedBookingPassenger | null>
 }
 
 export interface CheckedBagOwnership {
   tagNumber: string
   bookingPassengerId: string
+  flightId: string
 }
 
 export interface CheckedBagLookup {

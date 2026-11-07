@@ -20,6 +20,7 @@ describe('ReportService', () => {
     bagType: 'suitcase' as const,
     colour: 'black' as const,
     contactEmail: 'passenger@example.com',
+    flightId: 'F001',
   }
 
   beforeEach(() => {
@@ -43,10 +44,12 @@ describe('ReportService', () => {
         {
           tagNumber: '0123456789',
           bookingPassengerId: 'BP001',
+          flightId: 'F001',
         },
         {
           tagNumber: '0987654321',
           bookingPassengerId: 'BP002',
+          flightId: 'F002',
         },
       ]),
       new InMemoryCaseNumberSequence(),

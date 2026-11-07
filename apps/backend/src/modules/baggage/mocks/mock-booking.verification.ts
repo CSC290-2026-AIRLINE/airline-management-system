@@ -8,12 +8,18 @@ export interface MockBookingRecord extends VerifiedBookingPassenger {
 export class MockBookingVerification implements BookingVerification {
   constructor(private readonly bookings: readonly MockBookingRecord[] = []) {}
 
-  verifyPassenger(input: { bookingReference: string; surname: string; passengerId: string }): Promise<VerifiedBookingPassenger | null> {
+  verifyPassenger(input: {
+    bookingReference: string
+    surname: string
+    passengerId: string
+    flightId?: string
+  }): Promise<VerifiedBookingPassenger | null> {
     const booking = this.bookings.find(
       (item) =>
         item.bookingReference.toUpperCase() === input.bookingReference.toUpperCase() &&
         item.surname.toLowerCase() === input.surname.toLowerCase() &&
-        item.passengerId === input.passengerId,
+        item.passengerId === input.passengerId &&
+        (!input.flightId || item.flightId === input.flightId),
     )
 
     if (!booking) return Promise.resolve(null)
