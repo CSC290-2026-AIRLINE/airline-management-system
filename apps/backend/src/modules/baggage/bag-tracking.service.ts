@@ -134,10 +134,15 @@ export class BagTrackingService {
         // case, the order every write to a case uses (see case-locks), so a move cannot interleave with a delivery step.
         const ownerCase = owner ? await lockLostReport(tx, owner.report_id) : null
 
-        // A bag on its way back to its owner is sent from Deliveries, which moves the delivery and the case with it.
-        // Sending it here would leave the case looking undispatched (and cancellable) while the bag travels.
-        if (action === 'sent' && ownerCase && RECOVERY_CASE_STATUSES.includes(ownerCase.status as ReportStatus)) {
-          throw invalidMove(`This bag belongs to lost bag case ${ownerCase.case_number}; send it from Deliveries`)
+        // A bag with a confirmed case is never sent from here. While the case is in recovery, Deliveries sends it and
+        // moves the delivery and the case with it; sending it here would leave the case looking undispatched (and
+        // cancellable) while the bag travels. Once the passenger has cancelled the case, the bag is not sent anywhere.
+        if (action === 'sent' && ownerCase) {
+          if (RECOVERY_CASE_STATUSES.includes(ownerCase.status as ReportStatus)) {
+            throw invalidMove(`This bag belongs to lost bag case ${ownerCase.case_number}; send it from Deliveries`)
+          }
+
+          throw invalidMove(`Lost bag case ${ownerCase.case_number} is ${ownerCase.status}; this bag cannot be sent`)
         }
 
         const locked = await lockFoundBag(tx, foundBagId)

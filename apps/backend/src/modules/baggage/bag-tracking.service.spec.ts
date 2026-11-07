@@ -133,7 +133,7 @@ describe('BagTrackingService.recordMove', () => {
     expect(db.bag_location_event.create).not.toHaveBeenCalled()
   })
 
-  it('still sends a bag whose case was cancelled', async () => {
+  it('refuses to send a bag whose confirmed case was cancelled', async () => {
     const { svc, db } = makeSvc({ status: 'matched' })
     db.bag_match.findFirst.mockResolvedValue({ report_id: REPORT_ID })
     db.$queryRaw.mockImplementation((sql: TemplateStringsArray) =>
@@ -142,9 +142,28 @@ describe('BagTrackingService.recordMove', () => {
       ),
     )
 
-    await svc.recordMove({ ...base, action: 'sent', toAirport: 'BKK' })
+    await expect(svc.recordMove({ ...base, action: 'sent', toAirport: 'BKK' })).rejects.toMatchObject({
+      code: 'INVALID_MOVE',
+      message: 'Lost bag case LB-2026-000120 is cancelled; this bag cannot be sent',
+    })
+    // Checked under the case lock, before the bag is touched.
+    const tables = db.$queryRaw.mock.calls.map(([sql]: [TemplateStringsArray]) => sql.join('?').match(/FROM (\w+)/)?.[1])
+    expect(tables).toEqual(['lost_bag_report'])
+    expect(db.bag_location_event.create).not.toHaveBeenCalled()
+  })
 
-    expect(db.bag_location_event.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'sent', to_airport: 'BKK' }) })
+  it('still records held for a bag whose case was cancelled', async () => {
+    const { svc, db } = makeSvc({ status: 'matched' })
+    db.bag_match.findFirst.mockResolvedValue({ report_id: REPORT_ID })
+    db.$queryRaw.mockImplementation((sql: TemplateStringsArray) =>
+      Promise.resolve(
+        sql.join('?').includes('FROM lost_bag_report') ? [{ status: 'cancelled', case_number: 'LB-2026-000120' }] : [{ status: 'matched' }],
+      ),
+    )
+
+    await svc.recordMove({ ...base, action: 'held' })
+
+    expect(db.bag_location_event.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'held' }) })
   })
 
   it('locks only the bag when it has no case', async () => {
