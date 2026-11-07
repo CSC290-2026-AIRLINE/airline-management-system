@@ -4,7 +4,6 @@ import { CounterPage } from './components/CounterPage.tsx'
 import { GatePage } from './components/GatePage.tsx'
 import { StaffShell } from './components/StaffShell.tsx'
 import type { StaffPage } from './components/shell-nav.ts'
-import './styles/tokens.css'
 
 /** The demo shell: the staff screens on the mock API, without Clerk and without a backend. */
 export function DemoApp() {

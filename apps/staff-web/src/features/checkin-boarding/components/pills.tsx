@@ -7,7 +7,7 @@ const ISSUE_LABELS: Record<IssueCode, string> = {
   NAME_MISMATCH: 'Name mismatch',
   EXCESS_UNPAID: 'Excess unpaid',
   ON_HOLD: 'On hold',
-  VISA_CHECK: 'Visa check',
+  VISA_CHECK: 'Visa to check',
   PROFILE_DIFFERS: 'Profile differs',
 }
 

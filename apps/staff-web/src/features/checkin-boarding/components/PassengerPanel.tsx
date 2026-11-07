@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { Check, Dot, TriangleAlert, X, type LucideIcon } from 'lucide-react'
+import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
 import type { StaffApi } from '../api/index.ts'
 import type { StaffCheckInView } from '../api/types.ts'
 import { BagDrop } from './BagDrop.tsx'
@@ -6,14 +9,34 @@ import { CarryOnForm } from './CarryOnForm.tsx'
 import { ErrorBanner } from './ErrorBanner.tsx'
 import { IssuePills, StatusPill } from './pills.tsx'
 import { messageOf } from './errors.ts'
-import { formatDate, formatTime } from '../domain/format.ts'
-import ui from './ui.module.css'
-import styles from './CounterPage.module.css'
+import { formatCabin, formatTime } from '../domain/format.ts'
+import { MUTED, PANEL, PANEL_TITLE, PRIMARY_BUTTON, SECONDARY_BUTTON } from './styles.ts'
 
 interface Props {
   api: StaffApi
   view: StaffCheckInView
   onUpdated: (view: StaffCheckInView) => void
+}
+
+/** The design's status tile: a muted label with a tone icon and the value under it. */
+const TILE_TONES: Record<string, { Icon: LucideIcon; color: string }> = {
+  good: { Icon: Check, color: 'text-[#1e8e4e]' },
+  warn: { Icon: TriangleAlert, color: 'text-[#995c05]' },
+  bad: { Icon: X, color: 'text-[#d61313]' },
+  neutral: { Icon: Dot, color: 'text-[#677287]' },
+}
+
+function StatusTile({ tone, label, value }: { tone: keyof typeof TILE_TONES; label: string; value: string }) {
+  const { Icon, color } = TILE_TONES[tone]
+  return (
+    <div className="flex flex-col gap-1 rounded-xl border-[#dbe2ea] px-4 py-3.5">
+      <span className="flex items-center gap-1.5 text-xs font-normal text-[#677287]">
+        <Icon className={`size-3 shrink-0 ${color}`} />
+        {label}
+      </span>
+      <span className="text-sm font-medium text-[#0a1424]">{value}</span>
+    </div>
+  )
 }
 
 export function PassengerPanel({ api, view, onUpdated }: Props) {
@@ -43,130 +66,116 @@ export function PassengerPanel({ api, view, onUpdated }: Props) {
     }
   }
 
+  const group = boardingPass?.boardingGroup
+  const cabin = formatCabin(checkIn.passenger.cabin)
+  const held = checkIn.status === 'on_hold' || checkIn.status === 'denied'
+  /** The passport must be valid for six months after the flight, so the tile is red when it is not. */
+  const sixMonthsAfter = new Date(checkIn.flight.depAt)
+  sixMonthsAfter.setMonth(sixMonthsAfter.getMonth() + 6)
+  const passportOk = document ? new Date(document.expiryDate) >= sixMonthsAfter : false
+
+  const tiles: Array<{ tone: keyof typeof TILE_TONES; label: string; value: string }> = [
+    document
+      ? {
+          tone: passportOk ? 'good' : 'bad',
+          label: 'Passport',
+          value: `•••••${document.numberLast4} · valid to ${document.expiryDate.slice(0, 4)} · ${document.issuingCountry}`,
+        }
+      : { tone: 'bad', label: 'Passport', value: 'No document on file' },
+    {
+      tone: held ? 'warn' : 'good',
+      label: 'Security (Feature 7)',
+      value: held ? 'On hold' : 'Clear',
+    },
+    {
+      tone: 'neutral',
+      label: 'Seat',
+      value: checkIn.seat ? `${checkIn.seat.code} · group ${group ?? '—'}` : 'Not chosen',
+    },
+    {
+      tone: printedAt ? 'good' : 'neutral',
+      label: 'Boarding pass',
+      value: boardingPass ? (printedAt ? 'Printed' : 'Issued online · not printed') : 'Not issued',
+    },
+  ]
+
   return (
-    <div className={styles.passenger}>
-      <section className={ui.panel}>
-        <div className={ui.row}>
-          <h2 className={ui.sectionTitle}>
+    <div className="flex flex-col gap-6">
+      <Card className={`${PANEL} print:hidden`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className={PANEL_TITLE}>
             {checkIn.passenger.firstName} {checkIn.passenger.lastName}
           </h2>
-          <StatusPill status={checkIn.status} />
-          <span className={styles.pillRow}>
+          <div className="flex items-center gap-2">
+            <StatusPill status={checkIn.status} />
             <IssuePills issues={view.issues} />
-          </span>
+          </div>
         </div>
-        <p className={ui.sub}>
-          PNR {checkIn.booking.pnr} · {checkIn.flight.flightNumber} {checkIn.flight.origin.code} → {checkIn.flight.destination.code} ·{' '}
-          {checkIn.passenger.cabin} ({checkIn.passenger.fareClass})
-          {checkIn.passenger.specialAssistance.length > 0 ? ` · ${checkIn.passenger.specialAssistance.join(', ')}` : ''}
+        <p className={MUTED}>
+          Booking {checkIn.booking.pnr} · {checkIn.flight.flightNumber} · {cabin} · Seat {checkIn.seat?.code ?? '—'} · Boarding group{' '}
+          {group ?? '—'}
         </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {tiles.map((tile) => (
+            <StatusTile key={tile.label} tone={tile.tone} label={tile.label} value={tile.value} />
+          ))}
+        </div>
+        {document?.nameMismatch ? (
+          <p className={MUTED}>
+            The name on the passport does not match the booking
+            {document.nameMismatchClearedAt ? ` · cleared at ${formatTime(document.nameMismatchClearedAt)}` : ''}
+          </p>
+        ) : null}
+        {document && document.profileDifferences.length > 0 ? (
+          <p className={MUTED}>Profile differs: {document.profileDifferences.join(', ')}</p>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {document?.nameMismatch && !document.nameMismatchClearedAt ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={SECONDARY_BUTTON}
+              onClick={() => void run(() => api.clearMismatch(document.id))}
+            >
+              Clear mismatch
+            </Button>
+          ) : null}
+          {document?.visaRequired && document.visaNumber ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={SECONDARY_BUTTON}
+              onClick={() => void run(() => api.checkVisa(document.id))}
+            >
+              Mark visa checked
+            </Button>
+          ) : null}
+        </div>
         <ErrorBanner message={error} onDismiss={() => setError(null)} />
-      </section>
-
-      <section className={ui.panel}>
-        <h2 className={ui.sectionTitle}>Travel document</h2>
-        {document ? (
-          <>
-            <div className={styles.fields}>
-              <div>
-                <span className={ui.label}>Passport</span>
-                <span className={ui.mono}>•••• {document.numberLast4}</span>
-              </div>
-              <div>
-                <span className={ui.label}>Issuing country</span>
-                {document.issuingCountry.toUpperCase()}
-              </div>
-              <div>
-                <span className={ui.label}>Nationality</span>
-                {document.nationality ?? '—'}
-              </div>
-              <div>
-                <span className={ui.label}>Expires</span>
-                {formatDate(document.expiryDate)}
-              </div>
-              <div>
-                <span className={ui.label}>Visa</span>
-                {document.visaRequired ? (document.visaNumber ?? 'Not checked yet') : 'Not needed'}
-              </div>
-            </div>
-            {document.nameMismatch ? (
-              <p className={ui.sub}>
-                The name on the passport does not match the booking
-                {document.nameMismatchClearedAt ? ` · cleared at ${formatTime(document.nameMismatchClearedAt)}` : ''}
-              </p>
-            ) : null}
-            {document.profileDifferences.length > 0 ? (
-              <p className={ui.sub}>Profile differs: {document.profileDifferences.join(', ')}</p>
-            ) : null}
-            <div className={ui.actions}>
-              {document.nameMismatch && !document.nameMismatchClearedAt ? (
-                <button type="button" className={ui.btnGhost} onClick={() => void run(() => api.clearMismatch(document.id))}>
-                  Clear name mismatch
-                </button>
-              ) : null}
-              {document.visaRequired ? (
-                <button type="button" className={ui.btnGhost} onClick={() => void run(() => api.checkVisa(document.id))}>
-                  Visa checked
-                </button>
-              ) : null}
-            </div>
-          </>
-        ) : (
-          <p className={ui.sub}>No travel document on file yet.</p>
-        )}
-      </section>
+      </Card>
 
       <BagDrop api={api} view={view} onUpdated={onUpdated} />
+
       <CarryOnForm api={api} view={view} onUpdated={onUpdated} />
 
-      <section className={ui.panel} data-print="keep">
-        <h2 className={ui.sectionTitle}>Boarding pass</h2>
+      <Card className={PANEL}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className={PANEL_TITLE}>Boarding pass</h2>
+          <Button type="button" className={PRIMARY_BUTTON} disabled={!boardingPass} onClick={() => void printPass()}>
+            Print boarding pass
+          </Button>
+        </div>
         {boardingPass ? (
-          <>
-            <div className={styles.fields}>
-              <div>
-                <span className={ui.label}>Reference</span>
-                <span className={ui.mono}>{boardingPass.reference}</span>
-              </div>
-              <div>
-                <span className={ui.label}>Seat</span>
-                {boardingPass.seat}
-              </div>
-              <div>
-                <span className={ui.label}>Gate</span>
-                {boardingPass.gate ?? '—'}
-              </div>
-              <div>
-                <span className={ui.label}>Boarding group</span>
-                {boardingPass.boardingGroup}
-              </div>
-              <div>
-                <span className={ui.label}>Departs</span>
-                {formatTime(boardingPass.depAt)}
-              </div>
-              <div>
-                <span className={ui.label}>Boarding</span>
-                {formatTime(boardingPass.boardingAt)}
-              </div>
-              <div>
-                <span className={ui.label}>Bags</span>
-                {boardingPass.bags}
-              </div>
-              <div>
-                <span className={ui.label}>Printed</span>
-                {printedAt ? formatTime(printedAt) : 'Not printed'}
-              </div>
-            </div>
-            <div className={ui.actions}>
-              <button type="button" className={ui.btn} onClick={() => void printPass()}>
-                Print boarding pass
-              </button>
-            </div>
-          </>
+          <p className={MUTED}>
+            Reference {boardingPass.reference} · Seat {boardingPass.seat} · Group {boardingPass.boardingGroup} · Gate{' '}
+            {boardingPass.gate ?? '—'} · Boarding {formatTime(boardingPass.boardingAt)} (gate and time are read from the flight)
+          </p>
         ) : (
-          <p className={ui.sub}>No boarding pass yet.</p>
+          <p className={MUTED}>No boarding pass yet.</p>
         )}
-      </section>
+      </Card>
     </div>
   )
 }

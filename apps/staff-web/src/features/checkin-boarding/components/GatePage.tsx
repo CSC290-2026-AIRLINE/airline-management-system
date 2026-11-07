@@ -10,6 +10,18 @@ import { ErrorBanner } from './ErrorBanner.tsx'
 import { Message, Pill, StatusPill } from './pills.tsx'
 import { messageOf, numberOrNull } from './errors.ts'
 import { formatTime } from '../domain/format.ts'
+import {
+  GATE_ACTIVE,
+  GATE_IDLE,
+  INPUT_LABEL,
+  MUTED,
+  PANEL,
+  PANEL_TITLE,
+  PRIMARY_BUTTON,
+  SAMPLE_CHIP,
+  SECONDARY_BUTTON,
+  TEXT_INPUT,
+} from './styles.ts'
 
 const GROUP_LABELS: Record<'1' | '2' | '3' | '4', string> = {
   '1': 'Group 1 · Special assistance',
@@ -20,23 +32,6 @@ const GROUP_LABELS: Record<'1' | '2' | '3' | '4', string> = {
 
 /** The references the demo can scan: a normal pass, the security hold, another flight and a typo. */
 const SAMPLE_REFERENCES = ['R8KD2WQN', 'Q7M4K2XR', 'H3VN8PLA', 'P6KA2CXF', 'Q7M4K2XX']
-
-/** The design's page, panel and control styles. */
-const PANEL = 'rounded-2xl border-[#dbe2ea] p-6 gap-4'
-const PANEL_TITLE = 'm-0 font-sans text-[22px] font-semibold leading-[1.2] text-[#0a1424]'
-const MUTED = 'text-sm text-[#677287]'
-const PRIMARY_BUTTON = 'h-[39px] rounded-[6px] bg-[#102544] px-[18px] text-sm font-semibold text-white hover:bg-[#0c1d38] hover:text-white'
-const SECONDARY_BUTTON =
-  'h-[41px] rounded-[6px] border-[#dbe2ea] bg-white px-[18px] text-sm font-semibold text-[#0a1424] hover:bg-[#f3f4f6] hover:text-[#0a1424]'
-const TEXT_INPUT =
-  'h-[45px] w-[460px] max-w-full rounded-[4px] border-0 bg-[#f8fafc] px-3 py-3 text-sm text-[#3b4256] placeholder:text-[#8b93a3]'
-const INPUT_LABEL = 'text-[16px] font-normal leading-[1.5] text-[#6f7482]'
-const GATE_ACTIVE =
-  'h-[39px] rounded-[10px] border-[#102544] bg-[#eaf0fb] px-4 text-sm font-medium text-[#1f408c] hover:bg-[#eaf0fb] hover:text-[#1f408c]'
-const GATE_IDLE =
-  'h-[39px] rounded-[10px] border-[#cbd5e1] bg-white px-4 text-sm font-medium text-[#0a1424] hover:border-[#9aa6b8] hover:bg-[#f3f4f6] hover:text-[#0a1424]'
-const SAMPLE_CHIP =
-  'h-auto rounded-[6px] border-dashed border-[#cbd5e1] bg-white px-[10px] py-[5px] text-xs font-normal text-[#102544] hover:border-[#1f408c] hover:bg-[#eaf0fb] hover:text-[#102544]'
 
 export function GatePage({ api }: { api: StaffApi }) {
   const [gates, setGates] = useState<GateInfo[]>([])

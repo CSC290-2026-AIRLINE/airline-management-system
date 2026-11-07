@@ -24,6 +24,12 @@ export function formatBaht(amount: number): string {
   return baht.format(amount)
 }
 
+/** 'premium_economy' reads as 'Premium economy' on the staff screens. */
+export function formatCabin(cabin: string): string {
+  const text = cabin.replace(/_/g, ' ')
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 export function formatTime(iso: string): string {
   return time.format(new Date(iso))
 }
