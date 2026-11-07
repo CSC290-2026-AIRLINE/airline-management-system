@@ -2,6 +2,7 @@ import { Link, Outlet } from '@tanstack/react-router'
 import { useUser } from '@clerk/clerk-react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { cn } from '@staff-web/lib/utils'
+import sidebarPattern from './assets/sidebar-pattern.jpg'
 import { NotificationsButton } from './components/NotificationsButton'
 import { useStaffNotifications } from './hooks/useStaffNotifications'
 
@@ -26,6 +27,15 @@ const CLOCK = new Intl.DateTimeFormat('en-GB', {
 const FIGMA_FONTS = 'https://fonts.googleapis.com/css2?family=Inter:wght@800&family=Merriweather:wght@900&display=swap'
 
 const NAV_ITEM = 'flex h-10 w-full items-center gap-2.5 rounded-lg pl-3.5 text-sm leading-normal font-medium text-white'
+
+/** The "Sidebar / Staff" background from Figma: navy with the pattern image on top (luminosity blend, 60%). */
+function SidebarBackground() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden bg-[#14213d]">
+      <img alt="" src={sidebarPattern} className="absolute inset-0 size-full max-w-none object-cover opacity-60 mix-blend-luminosity" />
+    </div>
+  )
+}
 
 function SidebarBox({ label, dot, children }: { label: string; dot: string; children: string }) {
   return (
@@ -76,7 +86,8 @@ export function BaggageShell() {
     <div className="fixed inset-0 flex overflow-y-auto bg-[#f7f9fc] text-left font-sans leading-normal tracking-normal text-[#14213d] [color-scheme:light] max-md:flex-col">
       {/* The F10 Figma uses Inter 800 and Merriweather 900, which index.html does not load. React hoists this into <head>. */}
       <link rel="stylesheet" href={FIGMA_FONTS} precedence="default" />
-      <aside className="sticky top-0 flex h-svh w-[260px] shrink-0 flex-col gap-3 overflow-y-auto bg-[#14213d] px-[22px] py-8 max-md:hidden">
+      <aside className="sticky top-0 isolate flex h-svh w-[260px] shrink-0 flex-col gap-3 overflow-y-auto px-[22px] py-8 max-md:hidden">
+        <SidebarBackground />
         <p className="font-heading text-[40px] leading-none font-black text-white uppercase">Flython</p>
         <p className="text-xs text-[#b7c1d1]">STAFF · BAGGAGE SERVICE</p>
         <NotificationsButton notifications={notifications} className="mt-4 h-10 w-full pr-3 pl-3.5" />
@@ -104,7 +115,8 @@ export function BaggageShell() {
         </div>
       </aside>
 
-      <header className="sticky top-0 z-10 flex flex-col gap-2 bg-[#14213d] px-4 py-3 md:hidden">
+      <header className="sticky top-0 z-10 isolate flex flex-col gap-2 px-4 py-3 md:hidden">
+        <SidebarBackground />
         <div className="flex items-center justify-between">
           <span className="font-heading text-xl font-black text-white uppercase">Flython</span>
           <div className="flex items-center gap-4">

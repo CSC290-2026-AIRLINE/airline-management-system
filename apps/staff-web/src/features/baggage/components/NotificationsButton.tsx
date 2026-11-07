@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Bell } from 'lucide-react'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@staff-web/components/ui/sheet'
+import { Bell, BellOff, CheckCheck, X } from 'lucide-react'
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@staff-web/components/ui/sheet'
 import { cn } from '@staff-web/lib/utils'
 import type { StaffNotification } from '../api/notifications'
 import { DELIVERY_TYPE_LABELS, NOTIFICATION_TITLES, bagRef, caseShortNumber, formatEventTime, formatFlightDate } from '../constants'
@@ -44,32 +44,37 @@ function NotificationLink({ n, seen, onOpen }: { n: StaffNotification; seen: boo
   switch (n.kind) {
     case 'strong_match':
       return (
-        <Link to="/baggage/match-review" search={{ match: n.targetId }} onClick={onOpen} className={ITEM}>
+        <Link to="/baggage/match-review" search={{ match: n.targetId }} onClick={onOpen} className={cn(ITEM, !seen && 'bg-[#fffaf0]')}>
           {body}
         </Link>
       )
     case 'new_report':
       return (
-        <Link to="/baggage/lost-bag-cases" search={{ case: n.targetId }} onClick={onOpen} className={ITEM}>
+        <Link to="/baggage/lost-bag-cases" search={{ case: n.targetId }} onClick={onOpen} className={cn(ITEM, !seen && 'bg-[#fffaf0]')}>
           {body}
         </Link>
       )
     case 'case_lost':
       return (
-        <Link to="/baggage/lost-bag-cases" search={{ case: n.targetId, status: 'lost' }} onClick={onOpen} className={ITEM}>
+        <Link
+          to="/baggage/lost-bag-cases"
+          search={{ case: n.targetId, status: 'lost' }}
+          onClick={onOpen}
+          className={cn(ITEM, !seen && 'bg-[#fffaf0]')}
+        >
           {body}
         </Link>
       )
     case 'delivery_to_send':
       return (
-        <Link to="/baggage/deliveries" search={{ case: n.targetId }} onClick={onOpen} className={ITEM}>
+        <Link to="/baggage/deliveries" search={{ case: n.targetId }} onClick={onOpen} className={cn(ITEM, !seen && 'bg-[#fffaf0]')}>
           {body}
         </Link>
       )
     case 'unclaimed_soon':
     case 'bag_unclaimed':
       return (
-        <Link to="/baggage/found-bags" search={{ bag: n.targetId }} onClick={onOpen} className={ITEM}>
+        <Link to="/baggage/found-bags" search={{ bag: n.targetId }} onClick={onOpen} className={cn(ITEM, !seen && 'bg-[#fffaf0]')}>
           {body}
         </Link>
       )
@@ -110,29 +115,58 @@ export function NotificationsButton({
           )}
         </button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-[400px] gap-0 bg-white text-[#14213d] max-sm:w-full">
-        <SheetHeader className="border-b border-[#d8dce6] px-5 py-4">
-          <SheetTitle className="font-sans text-[22px] font-semibold text-[#14213d]">Notifications</SheetTitle>
+      {/* Width is inline so the panel keeps its size whatever the shared Sheet classes resolve to. */}
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        style={{ width: 'min(420px, 100vw)', maxWidth: '100vw' }}
+        className="gap-0 border-l border-[#d8dce6] bg-white p-0 text-[#14213d]"
+      >
+        <SheetHeader className="gap-1 border-b border-[#d8dce6] px-6 pt-6 pb-4">
+          <div className="flex items-center justify-between gap-4">
+            <SheetTitle className="font-sans text-[22px] leading-tight font-semibold text-[#14213d]">Notifications</SheetTitle>
+            <SheetClose asChild>
+              <button
+                type="button"
+                aria-label="Close notifications"
+                className="-mr-2 flex size-9 shrink-0 items-center justify-center rounded-lg text-[#677287] outline-none hover:bg-[#f4f6fa] hover:text-[#14213d] focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <X className="size-5" aria-hidden />
+              </button>
+            </SheetClose>
+          </div>
           <SheetDescription className="sr-only">Baggage desk notifications, newest first</SheetDescription>
-          {unread > 0 && (
-            <button
-              type="button"
-              onClick={notifications.markAllSeen}
-              className="self-start rounded text-sm font-medium text-[#14213d] underline-offset-2 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              Mark all as read
-            </button>
+          {items.length > 0 && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-[#677287]">{unread > 0 ? `${unread} new` : 'No new notifications'}</span>
+              {unread > 0 && (
+                <button
+                  type="button"
+                  onClick={notifications.markAllSeen}
+                  className="rounded text-sm font-semibold text-[#14213d] underline-offset-2 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  Mark all as read
+                </button>
+              )}
+            </div>
           )}
         </SheetHeader>
-        <div className="flex-1 overflow-y-auto px-2 py-2">
-          {notifications.error && items.length === 0 && (
-            <p className="px-3.5 py-6 text-center text-sm text-[#677287]">Notifications could not be loaded. Try again later.</p>
-          )}
-          {!notifications.error && items.length === 0 && (
-            <p className="px-3.5 py-6 text-center text-sm text-[#677287]">You are all caught up.</p>
+        <div className="flex-1 overflow-y-auto px-3 py-3">
+          {items.length === 0 && (
+            <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+              <span className="flex size-12 items-center justify-center rounded-full bg-[#f4f6fa] text-[#677287]">
+                {notifications.error ? <BellOff className="size-6" aria-hidden /> : <CheckCheck className="size-6" aria-hidden />}
+              </span>
+              <p className="text-base font-semibold text-[#14213d]">
+                {notifications.error ? 'Notifications could not be loaded' : 'You are all caught up'}
+              </p>
+              <p className="text-sm text-[#677287]">
+                {notifications.error ? 'Try again in a minute.' : 'New matches, reports and deliveries show up here.'}
+              </p>
+            </div>
           )}
           {items.length > 0 && (
-            <ul className="flex flex-col">
+            <ul className="flex flex-col gap-1">
               {items.map((n) => (
                 <li key={n.id}>
                   <NotificationLink
