@@ -222,6 +222,7 @@ describe('FoundBagService.list', () => {
     expect(db.found_bag.findMany).toHaveBeenCalledWith({
       where: { tag_number: '0123456789', found_airport: 'BKK', status: 'held', flight_id: FLIGHT_ID },
       orderBy: [{ found_at: 'desc' }, { id: 'asc' }],
+      take: 500,
     })
   })
 

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '@staff-web/components/ui/button'
+import { Checkbox } from '@staff-web/components/ui/checkbox'
 import { Input } from '@staff-web/components/ui/input'
 import type { HandOverBody } from '../api/bag-deliveries'
 import { COLLECTORS, COLLECTOR_LABELS, ID_DOCUMENT_LABELS, ID_DOCUMENT_TYPES, type Collector, type IdDocumentType } from '../constants'
@@ -20,6 +21,7 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
   const [lastName, setLastName] = useState('')
   const [documentType, setDocumentType] = useState<IdDocumentType>('passport')
   const [documentNumber, setDocumentNumber] = useState('')
+  const [documentChecked, setDocumentChecked] = useState(false)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -39,6 +41,10 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
       setError('Enter the name of the person collecting the bag.')
       return
     }
+    if (!documentChecked) {
+      setError('Check the photo and name on the document first.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -49,6 +55,7 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
         lastName: lastName.trim(),
         documentType,
         documentNumber: documentNumber.trim(),
+        documentChecked,
         note: note.trim() || undefined,
       })
     } catch (err: unknown) {
@@ -119,6 +126,19 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
             className={FIELD_BOX}
           />
         </Field>
+      </div>
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id={id('doc-checked')}
+          checked={documentChecked}
+          onCheckedChange={(v) => setDocumentChecked(v === true)}
+          className="mt-0.5"
+        />
+        <label htmlFor={id('doc-checked')} className="text-sm leading-normal text-[#14213d]">
+          {collector === 'representative'
+            ? 'The photo and name on the document match the person collecting the bag.'
+            : 'The photo and name on the document match the passenger.'}
+        </label>
       </div>
       <Field label="Note (optional)" htmlFor={id('note')}>
         <Input id={id('note')} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} className={FIELD_BOX} />

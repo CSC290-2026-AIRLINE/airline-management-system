@@ -1,7 +1,9 @@
 import { BagMatchReviewService, SUPERSEDED_NOTE } from './bag-match-review.service'
 import type { DbService } from '@backend/db/db.service'
+import type { AuditActor, AuditService } from '@backend/modules/admin-console/audit/audit.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
+jest.mock('@backend/modules/admin-console/audit/audit.service', () => ({ AuditService: class {} }))
 
 const STAFF_ID = '11111111-1111-4111-8111-111111111111'
 const FLIGHT_ID = '22222222-2222-4222-8222-222222222222'
@@ -9,6 +11,8 @@ const BOOKING_PASSENGER_ID = '55555555-5555-4555-8555-555555555555'
 const FOUND_BAG_ID = '66666666-6666-4666-8666-666666666666'
 const REPORT_ID = '77777777-7777-4777-8777-777777777777'
 const MATCH_ID = '88888888-8888-4888-8888-888888888888'
+const OTHER_STAFF_ID = '99999999-9999-4999-8999-999999999999'
+const ACTOR: AuditActor = { type: 'staff', id: '44444444-4444-4444-8444-444444444444', role: 'baggage' }
 const SIM_NOW = new Date('2026-10-30T08:00:00Z')
 
 function prismaError(code: string) {
@@ -89,9 +93,10 @@ function makeSvc() {
     $transaction: jest.fn(),
   }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db))
-  const svc = new BagMatchReviewService(db as unknown as DbService, { now: () => SIM_NOW })
+  const audit = { write: jest.fn().mockResolvedValue({ id: 'a-1', seq: '1' }) }
+  const svc = new BagMatchReviewService(db as unknown as DbService, audit as unknown as AuditService, { now: () => SIM_NOW })
 
-  return { svc, db }
+  return { svc, db, audit }
 }
 
 describe('BagMatchReviewService.getById', () => {
@@ -202,7 +207,7 @@ describe('BagMatchReviewService.confirm', () => {
   it('confirms, rejects the other open matches, marks both matched and opens the delivery', async () => {
     const { svc, db } = makeSvc()
 
-    await svc.confirm({ staffId: STAFF_ID, matchId: MATCH_ID, note: ' Tag and strap match ' })
+    await svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: ' Tag and strap match ' })
 
     expect(db.bag_match.updateMany).toHaveBeenNthCalledWith(1, {
       where: { id: MATCH_ID, status: { in: ['suggested', 'under_review'] } },
@@ -237,7 +242,7 @@ describe('BagMatchReviewService.confirm', () => {
   it('locks the case, then the bag, before changing anything', async () => {
     const { svc, db } = makeSvc()
 
-    await svc.confirm({ staffId: STAFF_ID, matchId: MATCH_ID, note: 'Tag matches' })
+    await svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'Tag matches' })
 
     expect(
       db.$queryRaw.mock.calls.map(([sql, id]: [TemplateStringsArray, string]) => [sql.join('?').match(/FROM (\w+)/)?.[1], id]),
@@ -248,10 +253,44 @@ describe('BagMatchReviewService.confirm', () => {
     expect(db.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(db.bag_match.updateMany.mock.invocationCallOrder[0])
   })
 
+  it('writes the review to audit_log in the same transaction', async () => {
+    const { svc, db, audit } = makeSvc()
+
+    await svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'Tag matches' })
+
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: ACTOR,
+        action: 'status_change',
+        entityType: 'bag_match',
+        entityId: MATCH_ID,
+        reason: 'Tag matches',
+        after: expect.objectContaining({ status: 'confirmed', staffId: STAFF_ID }),
+      }),
+      db,
+    )
+  })
+
+  it('does not let the staff member who linked a match confirm it', async () => {
+    const { svc, db } = makeSvc()
+    db.bag_match.findUnique.mockResolvedValue(matchRow({ match_level: 'manual', linked_by: STAFF_ID }))
+
+    await expect(svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({
+      code: 'SELF_CONFIRM',
+      status: 403,
+    })
+    expect(db.$transaction).not.toHaveBeenCalled()
+
+    db.bag_match.findUnique.mockResolvedValue(matchRow({ match_level: 'manual', linked_by: OTHER_STAFF_ID }))
+    await expect(svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'ok' })).resolves.toBeDefined()
+  })
+
   it('needs a note', async () => {
     const { svc, db } = makeSvc()
 
-    await expect(svc.confirm({ staffId: STAFF_ID, matchId: MATCH_ID, note: '  ' })).rejects.toMatchObject({ code: 'INVALID_MATCH' })
+    await expect(svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: '  ' })).rejects.toMatchObject({
+      code: 'INVALID_MATCH',
+    })
     expect(db.$transaction).not.toHaveBeenCalled()
   })
 
@@ -259,14 +298,18 @@ describe('BagMatchReviewService.confirm', () => {
     const { svc, db } = makeSvc()
     db.bag_match.findUnique.mockResolvedValue({ id: MATCH_ID, status: 'rejected', report_id: REPORT_ID, found_bag_id: FOUND_BAG_ID })
 
-    await expect(svc.confirm({ staffId: STAFF_ID, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({ code: 'MATCH_CLOSED' })
+    await expect(svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({
+      code: 'MATCH_CLOSED',
+    })
   })
 
   it('rolls back when the case is no longer open', async () => {
     const { svc, db } = makeSvc()
     db.lost_bag_report.updateMany.mockResolvedValue({ count: 0 })
 
-    await expect(svc.confirm({ staffId: STAFF_ID, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({ code: 'MATCH_CLOSED' })
+    await expect(svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({
+      code: 'MATCH_CLOSED',
+    })
     expect(db.found_bag.updateMany).not.toHaveBeenCalled()
   })
 
@@ -274,7 +317,9 @@ describe('BagMatchReviewService.confirm', () => {
     const { svc, db } = makeSvc()
     db.found_bag.updateMany.mockResolvedValue({ count: 0 })
 
-    await expect(svc.confirm({ staffId: STAFF_ID, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({ code: 'MATCH_CLOSED' })
+    await expect(svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({
+      code: 'MATCH_CLOSED',
+    })
     expect(db.bag_delivery.upsert).not.toHaveBeenCalled()
   })
 
@@ -282,15 +327,17 @@ describe('BagMatchReviewService.confirm', () => {
     const { svc, db } = makeSvc()
     db.$transaction.mockRejectedValue(prismaError('P2002'))
 
-    await expect(svc.confirm({ staffId: STAFF_ID, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({ code: 'MATCH_CLOSED' })
+    await expect(svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({
+      code: 'MATCH_CLOSED',
+    })
   })
 })
 
 describe('BagMatchReviewService.reject', () => {
   it('rejects with an optional note and leaves the case and bag alone', async () => {
-    const { svc, db } = makeSvc()
+    const { svc, db, audit } = makeSvc()
 
-    await svc.reject({ staffId: STAFF_ID, matchId: MATCH_ID })
+    await svc.reject({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID })
 
     expect(db.bag_match.updateMany).toHaveBeenCalledWith({
       where: { id: MATCH_ID, status: { in: ['suggested', 'under_review'] } },
@@ -298,13 +345,14 @@ describe('BagMatchReviewService.reject', () => {
     })
     expect(db.lost_bag_report.updateMany).not.toHaveBeenCalled()
     expect(db.found_bag.updateMany).not.toHaveBeenCalled()
+    expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ after: expect.objectContaining({ status: 'rejected' }) }), db)
   })
 
   it('answers MATCH_CLOSED when someone reviewed it first', async () => {
     const { svc, db } = makeSvc()
     db.bag_match.updateMany.mockResolvedValue({ count: 0 })
 
-    await expect(svc.reject({ staffId: STAFF_ID, matchId: MATCH_ID, note: 'Different strap' })).rejects.toMatchObject({
+    await expect(svc.reject({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'Different strap' })).rejects.toMatchObject({
       code: 'MATCH_CLOSED',
     })
   })

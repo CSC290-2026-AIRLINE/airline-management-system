@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator'
+import { Equals, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator'
 import {
   COLLECTORS,
   DELIVERY_TYPES,
@@ -66,6 +66,10 @@ export class HandOverBagDto {
   @IsNotEmpty()
   @MaxLength(30)
   documentNumber: string
+
+  /** Staff confirm the photo and name on the document belong to the person collecting the bag. */
+  @Equals(true, { message: 'Check the photo and name on the document first' })
+  documentChecked: boolean
 
   @IsOptional()
   @IsString()

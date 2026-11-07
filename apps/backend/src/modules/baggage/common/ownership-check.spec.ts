@@ -33,8 +33,17 @@ describe('checkOwnership', () => {
     expect(result).toEqual({ passed: false, mismatches: ['booking_reference', 'last_name', 'document_number'] })
   })
 
-  it('does not compare a national ID with the passport on file', () => {
-    expect(checkOwnership(OWNER, presented({ documentType: 'national_id', documentNumber: '1103700012345' })).passed).toBe(true)
+  it('needs the passport on file, not another document, from the passenger', () => {
+    expect(checkOwnership(OWNER, presented({ documentType: 'national_id', documentNumber: '1103700012345' }))).toEqual({
+      passed: false,
+      mismatches: ['document_type'],
+    })
+  })
+
+  it('accepts another document from a passenger with no passport on file', () => {
+    const owner = { ...OWNER, passportNumber: null }
+
+    expect(checkOwnership(owner, presented({ documentType: 'national_id', documentNumber: '1103700012345' })).passed).toBe(true)
   })
 
   it('does not compare a document when no passport is on file', () => {

@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { found_bag } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
-import { BAG_COLOURS, BAG_TYPES, type BagColour, type BagType } from './common/baggage.constants'
+import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
+import { AUDIT_SOURCE_FEATURE, BAG_COLOURS, BAG_TYPES, type BagColour, type BagType } from './common/baggage.constants'
 import { lockFoundBag } from './common/case-locks'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
@@ -54,12 +55,14 @@ function requireStaff(staffId: string): void {
 
 /**
  * Diverted-flight bags and the unclaimed timeout. There is no scheduler or Feature 2 event consumer in the backend yet,
- * so staff trigger both through the API; a cron job or event handler can call the same methods later.
+ * so staff trigger both through the API; a cron job or event handler can call the same methods later (the audit actor
+ * is then the system). Both write what they changed to audit_log.
  */
 @Injectable()
 export class FoundBagLifecycleService {
   constructor(
     private readonly db: DbService,
+    private readonly audit: AuditService,
     @Inject(FOUND_BAG_CLOCK) private readonly clock: FoundBagClock,
   ) {}
 
@@ -68,7 +71,7 @@ export class FoundBagLifecycleService {
    * landed at, with an at_diverted_airport event written by the system. Safe to run twice: bags that already have a
    * live row are skipped.
    */
-  async recordDiversion(flightId: string): Promise<DiversionResult> {
+  async recordDiversion(flightId: string, actor: AuditActor = AuditService.systemActor()): Promise<DiversionResult> {
     if (!UUID_PATTERN.test(flightId)) {
       throw new FoundBagError(FOUND_BAG_ERROR_CODES.FLIGHT_NOT_DIVERTED, 'Flight not found')
     }
@@ -131,6 +134,22 @@ export class FoundBagLifecycleService {
           rows.push(row)
         }
 
+        if (rows.length > 0) {
+          await this.audit.write(
+            {
+              actor,
+              sourceFeature: AUDIT_SOURCE_FEATURE,
+              action: 'create',
+              entityType: 'flight',
+              entityId: flightId,
+              summary: `${rows.length} diverted-flight bag(s) recorded at ${divertedTo}`,
+              after: { divertedTo, foundBagIds: rows.map((r) => r.id) },
+              occurredAt: foundAt,
+            },
+            tx,
+          )
+        }
+
         return rows
       })
       .catch((e: unknown) => {
@@ -159,19 +178,35 @@ export class FoundBagLifecycleService {
       throw invalidStatus('Only a diverted-flight bag gets its details later')
     }
 
-    if (bag.status !== 'held') {
-      throw invalidStatus(`A ${bag.status} bag can no longer be changed`)
-    }
+    const row = await this.db.$transaction(async (tx) => {
+      // Lock the bag and check it is still held under the lock, so a match confirmed at the same time cannot have its
+      // bag's details changed underneath it.
+      const locked = await lockFoundBag(tx, foundBagId)
 
-    const row = await this.db.found_bag.update({
-      where: { id: foundBagId },
-      data: {
-        bag_type: input.bagType,
-        colour: input.colour,
-        brand: input.brand?.trim() || null,
-        description: input.description?.trim() || null,
-        updated_at: new Date(),
-      },
+      if (!locked) {
+        throw notFound()
+      }
+
+      if (locked.status !== 'held') {
+        throw invalidStatus(`A ${locked.status} bag can no longer be changed`)
+      }
+
+      const { count } = await tx.found_bag.updateMany({
+        where: { id: foundBagId, status: 'held' },
+        data: {
+          bag_type: input.bagType,
+          colour: input.colour,
+          brand: input.brand?.trim() || null,
+          description: input.description?.trim() || null,
+          updated_at: new Date(),
+        },
+      })
+
+      if (count !== 1) {
+        throw invalidStatus('This bag has changed; reload and try again')
+      }
+
+      return tx.found_bag.findUniqueOrThrow({ where: { id: foundBagId } })
     })
 
     return toFoundBag(row)
@@ -240,18 +275,47 @@ export class FoundBagLifecycleService {
    * Marks held bags with no confirmed match as unclaimed once unclaimed_after_days have passed since found_at. They stay
    * on record but can no longer be matched or delivered.
    */
-  async markUnclaimed(): Promise<UnclaimedSweepResult> {
+  async markUnclaimed(actor: AuditActor = AuditService.systemActor()): Promise<UnclaimedSweepResult> {
     const setting = await this.db.baggage_setting.findUnique({ where: { key: 'unclaimed_after_days' }, select: { value: true } })
     const parsed = Number(setting?.value)
     const unclaimedAfterDays = Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_UNCLAIMED_AFTER_DAYS
     const cutoff = new Date(this.clock.now().getTime() - unclaimedAfterDays * DAY_MS)
 
-    const { count } = await this.db.found_bag.updateMany({
-      where: { status: 'held', found_at: { lte: cutoff }, bag_match: { none: { status: 'confirmed' } } },
-      data: { status: 'unclaimed', updated_at: new Date() },
+    const due = { status: 'held', found_at: { lte: cutoff }, bag_match: { none: { status: 'confirmed' } } }
+
+    const marked = await this.db.$transaction(async (tx) => {
+      const rows = await tx.found_bag.findMany({ where: due, select: { id: true } })
+      const ids = rows.map((r) => r.id)
+
+      if (ids.length === 0) {
+        return 0
+      }
+
+      // The same conditions again, so a bag matched since the read above is left alone.
+      const { count } = await tx.found_bag.updateMany({
+        where: { id: { in: ids }, ...due },
+        data: { status: 'unclaimed', updated_at: new Date() },
+      })
+
+      if (count > 0) {
+        await this.audit.write(
+          {
+            actor,
+            sourceFeature: AUDIT_SOURCE_FEATURE,
+            action: 'status_change',
+            entityType: 'found_bag',
+            summary: `${count} held bag(s) marked unclaimed after ${unclaimedAfterDays} days`,
+            before: { status: 'held' },
+            after: { status: 'unclaimed', foundBagIds: ids, cutoff },
+          },
+          tx,
+        )
+      }
+
+      return count
     })
 
-    return { unclaimedAfterDays, cutoff, marked: count }
+    return { unclaimedAfterDays, cutoff, marked }
   }
 
   private async findBag(foundBagId: string): Promise<FoundBag> {

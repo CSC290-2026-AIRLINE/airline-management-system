@@ -22,7 +22,7 @@ import { CompleteFoundBagDetailsDto } from './dto/complete-found-bag-details.dto
 import { FoundBagLifecycleService, type DiversionResult, type UnclaimedSweepResult } from './found-bag-lifecycle.service'
 import { ListFoundBagsQuery } from './dto/list-found-bags.query'
 import { RecordFoundBagDto } from './dto/record-found-bag.dto'
-import { BaggageStaffGuard, CurrentBaggageStaff, type BaggageStaff } from './guards/baggage-staff.guard'
+import { BaggageStaffGuard, CurrentBaggageStaff, baggageAuditActor, type BaggageStaff } from './guards/baggage-staff.guard'
 import { FoundBagService } from './found-bag.service'
 import { BagMatchingService } from './bag-matching.service'
 
@@ -63,9 +63,10 @@ export class FoundBagController {
   @Post('diversions/:flightId')
   @HttpCode(201)
   async recordDiversion(
+    @CurrentBaggageStaff() staff: BaggageStaff,
     @Param('flightId', new ParseUUIDPipe({ exceptionFactory: flightNotFound })) flightId: string,
   ): Promise<DiversionResult> {
-    const result = await this.lifecycle.recordDiversion(flightId)
+    const result = await this.lifecycle.recordDiversion(flightId, baggageAuditActor(staff))
     await this.matching.suggestForFoundBags(result.created.map((bag) => bag.id))
     return result
   }
@@ -73,8 +74,8 @@ export class FoundBagController {
   /** Mark held bags past unclaimed_after_days with no confirmed match as unclaimed. */
   @Post('unclaimed-sweep')
   @HttpCode(200)
-  markUnclaimed(): Promise<UnclaimedSweepResult> {
-    return this.lifecycle.markUnclaimed()
+  markUnclaimed(@CurrentBaggageStaff() staff: BaggageStaff): Promise<UnclaimedSweepResult> {
+    return this.lifecycle.markUnclaimed(baggageAuditActor(staff))
   }
 
   @Get()

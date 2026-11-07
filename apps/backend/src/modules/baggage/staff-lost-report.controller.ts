@@ -19,7 +19,8 @@ import { AddBagCostDto } from './dto/add-bag-cost.dto'
 import { CreateStaffLostReportDto } from './dto/create-staff-lost-report.dto'
 import { ListLostReportsQuery } from './dto/list-lost-reports.query'
 import { ReportFromFoundBagDto } from './dto/report-from-found-bag.dto'
-import { BaggageStaffGuard, CurrentBaggageStaff, type BaggageStaff } from './guards/baggage-staff.guard'
+import { BookingReferenceParam } from './dto/booking-reference.param'
+import { BaggageStaffGuard, CurrentBaggageStaff, baggageAuditActor, type BaggageStaff } from './guards/baggage-staff.guard'
 import { BagCostService } from './bag-cost.service'
 import { StaffLostReportService } from './staff-lost-report.service'
 import { BagMatchingService } from './bag-matching.service'
@@ -29,6 +30,11 @@ const COST_PROPERTIES = new Set(['kind', 'amount', 'note'])
 
 function toValidationError(errors: ValidationError[]): FoundBagError {
   const messages = errors.flatMap((e) => Object.values(e.constraints ?? {})).join('; ')
+
+  // A booking reference that cannot exist is answered like one that does not.
+  if (errors.some((e) => e.target instanceof BookingReferenceParam)) {
+    return new FoundBagError(FOUND_BAG_ERROR_CODES.BOOKING_NOT_FOUND, 'Booking not found')
+  }
 
   if (errors.some((e) => e.property === 'tagNumber')) {
     return new FoundBagError(FOUND_BAG_ERROR_CODES.INVALID_TAG, messages)
@@ -63,10 +69,10 @@ export class StaffLostReportController {
     private readonly matching: BagMatchingService,
   ) {}
 
-  /** The ticketed passengers and flights on a booking, to fill the desk form. */
+  /** The ticketed passengers and flights on a booking, to fill the desk form. Each lookup is logged as a sensitive view. */
   @Get('bookings/:bookingReference')
-  lookupBooking(@Param('bookingReference') bookingReference: string): Promise<BookingLookup> {
-    return this.reports.lookupBooking(bookingReference)
+  lookupBooking(@CurrentBaggageStaff() staff: BaggageStaff, @Param() params: BookingReferenceParam): Promise<BookingLookup> {
+    return this.reports.lookupBooking(params.bookingReference, baggageAuditActor(staff))
   }
 
   @Get()
@@ -110,16 +116,17 @@ export class StaffLostReportController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: AddBagCostDto,
   ): Promise<BagCost> {
-    return this.costs.add({ ...dto, reportId: id, staffId: staff.staffId })
+    return this.costs.add({ ...dto, reportId: id, staffId: staff.staffId, actor: baggageAuditActor(staff) })
   }
 
   /** Remove a cost entered by mistake. */
   @Delete(':id/costs/:costId')
   @HttpCode(204)
   removeCost(
+    @CurrentBaggageStaff() staff: BaggageStaff,
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Param('costId', new ParseUUIDPipe({ exceptionFactory: costNotFound })) costId: string,
   ): Promise<void> {
-    return this.costs.remove(id, costId)
+    return this.costs.remove(id, costId, baggageAuditActor(staff))
   }
 }

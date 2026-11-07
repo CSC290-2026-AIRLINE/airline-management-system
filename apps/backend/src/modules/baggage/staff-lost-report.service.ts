@@ -1,7 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
-import { BAG_COLOURS, BAG_TYPES, type BagColour, type BagType, type ReportStatus } from './common/baggage.constants'
+import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
+import {
+  AUDIT_SOURCE_FEATURE,
+  BAG_COLOURS,
+  MAX_LIST_ROWS,
+  BAG_TYPES,
+  type BagColour,
+  type BagType,
+  type ReportStatus,
+} from './common/baggage.constants'
 import { isValidBaggageTag } from './common/baggage-tag.util'
 import { CASE_NUMBER_PATTERN, formatCaseNumber } from './common/case-number.util'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
@@ -130,11 +139,15 @@ function clean(value: string | null | undefined): string | null {
 export class StaffLostReportService {
   constructor(
     private readonly db: DbService,
+    private readonly audit: AuditService,
     @Inject(FOUND_BAG_CLOCK) private readonly clock: FoundBagClock,
   ) {}
 
-  /** The ticketed passengers and flights on a booking, for the desk form. */
-  async lookupBooking(bookingReference: string): Promise<BookingLookup> {
+  /**
+   * The ticketed passengers and flights on a booking, for the desk form. It returns the booking's contact details, so
+   * every lookup that finds a booking is written to audit_log as a sensitive view.
+   */
+  async lookupBooking(bookingReference: string, actor: AuditActor): Promise<BookingLookup> {
     const reference = bookingReference?.trim().toUpperCase()
 
     if (!reference || !BOOKING_REFERENCE_PATTERN.test(reference)) {
@@ -144,6 +157,7 @@ export class StaffLostReportService {
     const booking = await this.db.booking.findUnique({
       where: { booking_reference: reference },
       select: {
+        id: true,
         booking_reference: true,
         contact_email: true,
         contact_phone: true,
@@ -161,6 +175,13 @@ export class StaffLostReportService {
     if (!booking) {
       throw bookingNotFound()
     }
+
+    await this.audit.recordSensitiveView(actor, {
+      sourceFeature: AUDIT_SOURCE_FEATURE,
+      entityType: 'booking',
+      entityId: booking.id,
+      summary: `Booking ${booking.booking_reference} looked up at the baggage desk`,
+    })
 
     // booking_coupon has no Prisma relation to Feature 2's flight, so flights are read in one extra query.
     const flightIds = [...new Set(booking.booking_passenger.flatMap((bp) => bp.booking_coupon.map((coupon) => coupon.flight_id)))]
@@ -378,6 +399,7 @@ export class StaffLostReportService {
       where,
       include: REPORT_INCLUDE,
       orderBy: [{ reported_at: 'desc' }, { id: 'asc' }],
+      take: MAX_LIST_ROWS,
     })
 
     return rows.map(toLostReportCase)

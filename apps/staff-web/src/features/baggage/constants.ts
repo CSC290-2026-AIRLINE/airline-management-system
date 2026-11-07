@@ -319,11 +319,12 @@ export const COLLECTOR_LABELS: Record<Collector, string> = {
   representative: 'Someone sent by the passenger',
 }
 
-export type OwnershipMismatch = 'booking_reference' | 'last_name' | 'document_number'
+export type OwnershipMismatch = 'booking_reference' | 'last_name' | 'document_type' | 'document_number'
 
 export const OWNERSHIP_MISMATCH_LABELS: Record<OwnershipMismatch, string> = {
   booking_reference: 'Booking reference',
   last_name: 'Surname',
+  document_type: 'Document type (passport on file needed)',
   document_number: 'Passport number',
 }
 

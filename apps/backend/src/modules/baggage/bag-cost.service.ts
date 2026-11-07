@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
+import { AUDIT_SOURCE_FEATURE } from './common/baggage.constants'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import { BAG_COST_KINDS, MAX_COST_AMOUNT, type BagCost, type BagCostKind, type BagCostSummary } from './common/lost-report.types'
@@ -12,8 +14,13 @@ const KIND_LABELS: Record<BagCostKind, string> = {
   other: 'Other',
 }
 
+/** audit_log.entity_type of a recovery cost. */
+export const BAG_COST_ENTITY = 'bag_cost'
+
 export interface AddBagCostInput {
   staffId: string
+  /** Who is signed in, for the audit row. */
+  actor: AuditActor
   reportId: string
   kind: BagCostKind
   amount: number
@@ -76,6 +83,7 @@ function invalid(message: string): FoundBagError {
 export class BagCostService {
   constructor(
     private readonly db: DbService,
+    private readonly audit: AuditService,
     @Inject(FOUND_BAG_CLOCK) private readonly clock: FoundBagClock,
   ) {}
 
@@ -124,7 +132,25 @@ export class BagCostService {
           select: { id: true },
         })
 
-        return tx.bag_cost.create({ data: { report_id: report.id, expense_id: expense.id, kind: input.kind }, select: COST_SELECT })
+        const cost = await tx.bag_cost.create({
+          data: { report_id: report.id, expense_id: expense.id, kind: input.kind },
+          select: COST_SELECT,
+        })
+
+        await this.audit.write(
+          {
+            actor: input.actor,
+            sourceFeature: AUDIT_SOURCE_FEATURE,
+            action: 'create',
+            entityType: BAG_COST_ENTITY,
+            entityId: cost.id,
+            summary: `${KIND_LABELS[input.kind]} cost of ${formatCents(cents)} added to lost bag case ${report.case_number}`,
+            after: { reportId: report.id, expenseId: expense.id, kind: input.kind, amount: formatCents(cents), staffId },
+          },
+          tx,
+        )
+
+        return cost
       })
 
       return toBagCost(row)
@@ -153,13 +179,22 @@ export class BagCostService {
     return { reportId: report.id, caseNumber: report.case_number, total: formatCents(total), costs }
   }
 
-  /** A cost entered by mistake. Its expense is soft-deleted, so finance stops counting it and the row stays for audit. */
-  async remove(reportId: string, costId: string): Promise<void> {
+  /**
+   * A cost entered by mistake. Its expense is soft-deleted, so finance stops counting it and the row stays; who removed it
+   * is written to audit_log in the same transaction.
+   */
+  async remove(reportId: string, costId: string, actor: AuditActor): Promise<void> {
     const cost =
       UUID_PATTERN.test(reportId) && UUID_PATTERN.test(costId)
         ? await this.db.bag_cost.findFirst({
             where: { id: costId, report_id: reportId, expense: { deleted_at: null } },
-            select: { expense_id: true },
+            select: {
+              id: true,
+              expense_id: true,
+              kind: true,
+              expense: { select: { amount: true } },
+              lost_bag_report: { select: { case_number: true } },
+            },
           })
         : null
 
@@ -168,7 +203,32 @@ export class BagCostService {
     }
 
     const now = new Date()
-    await this.db.expense.update({ where: { id: cost.expense_id }, data: { deleted_at: now, updated_at: now } })
+    const amount = formatCents(toCents(cost.expense.amount))
+
+    await this.db.$transaction(async (tx) => {
+      // Only a cost still counted is removed, so two desks removing it at once write one audit row.
+      const { count } = await tx.expense.updateMany({
+        where: { id: cost.expense_id, deleted_at: null },
+        data: { deleted_at: now, updated_at: now },
+      })
+
+      if (count !== 1) {
+        throw new FoundBagError(FOUND_BAG_ERROR_CODES.COST_NOT_FOUND, 'Cost not found')
+      }
+
+      await this.audit.write(
+        {
+          actor,
+          sourceFeature: AUDIT_SOURCE_FEATURE,
+          action: 'delete',
+          entityType: BAG_COST_ENTITY,
+          entityId: cost.id,
+          summary: `${KIND_LABELS[cost.kind as BagCostKind] ?? cost.kind} cost of ${amount} removed from lost bag case ${cost.lost_bag_report.case_number}`,
+          before: { reportId, expenseId: cost.expense_id, kind: cost.kind, amount },
+        },
+        tx,
+      )
+    })
   }
 
   private async findReport(reportId: string): Promise<{ id: string; case_number: string; status: string }> {

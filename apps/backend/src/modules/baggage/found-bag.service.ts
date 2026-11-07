@@ -1,7 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import type { Prisma, found_bag } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
-import { BAG_TYPES, BAG_COLOURS, type BagType, type BagColour } from './common/baggage.constants'
+import { BAG_TYPES, BAG_COLOURS, MAX_LIST_ROWS, type BagType, type BagColour } from './common/baggage.constants'
 import { isValidBaggageTag } from './common/baggage-tag.util'
 import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/patterns'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
@@ -187,7 +187,7 @@ export class FoundBagService {
       where.flight_id = flightId
     }
 
-    const rows = await this.db.found_bag.findMany({ where, orderBy: [{ found_at: 'desc' }, { id: 'asc' }] })
+    const rows = await this.db.found_bag.findMany({ where, orderBy: [{ found_at: 'desc' }, { id: 'asc' }], take: MAX_LIST_ROWS })
 
     return rows.map(toFoundBag)
   }

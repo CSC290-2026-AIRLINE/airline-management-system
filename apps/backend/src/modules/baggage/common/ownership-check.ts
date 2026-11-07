@@ -42,8 +42,9 @@ export function documentLast4(documentNumber: string): string {
 
 /**
  * Checks the person collecting a bag against its case. The booking reference and the passenger's surname must always
- * agree. A passenger who shows a passport must show the one on their passenger record, when there is one; a
- * representative shows their own document, so only the booking details are compared for them.
+ * agree. A passenger with a passport on their passenger record must show that passport (another document type fails),
+ * so the document cannot be skipped by picking a type the system cannot compare. A representative shows their own
+ * document, so only the booking details are compared for them; staff confirm the name on it separately.
  */
 export function checkOwnership(owner: CaseOwner, presented: PresentedIdentity): OwnershipResult {
   const mismatches: OwnershipMismatch[] = []
@@ -56,13 +57,12 @@ export function checkOwnership(owner: CaseOwner, presented: PresentedIdentity): 
     mismatches.push('last_name')
   }
 
-  if (
-    presented.collector === 'passenger' &&
-    presented.documentType === 'passport' &&
-    owner.passportNumber &&
-    normalizeDocument(presented.documentNumber) !== normalizeDocument(owner.passportNumber)
-  ) {
-    mismatches.push('document_number')
+  if (presented.collector === 'passenger' && owner.passportNumber) {
+    if (presented.documentType !== 'passport') {
+      mismatches.push('document_type')
+    } else if (normalizeDocument(presented.documentNumber) !== normalizeDocument(owner.passportNumber)) {
+      mismatches.push('document_number')
+    }
   }
 
   return { passed: mismatches.length === 0, mismatches }

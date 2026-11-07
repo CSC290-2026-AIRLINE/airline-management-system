@@ -5,7 +5,7 @@ import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { ListBagMatchesQuery } from './dto/list-bag-matches.query'
 import { LinkBagMatchDto } from './dto/link-bag-match.dto'
 import { ConfirmBagMatchDto, RejectBagMatchDto } from './dto/review-bag-match.dto'
-import { BaggageStaffGuard, CurrentBaggageStaff, type BaggageStaff } from './guards/baggage-staff.guard'
+import { BaggageStaffGuard, CurrentBaggageStaff, baggageAuditActor, type BaggageStaff } from './guards/baggage-staff.guard'
 import { BagMatchReviewService } from './bag-match-review.service'
 
 function toValidationError(errors: ValidationError[]): FoundBagError {
@@ -41,7 +41,10 @@ export class BagMatchController {
     return this.review.link({ ...dto, staffId: staff.staffId })
   }
 
-  /** Confirm the owner: the case and the bag become matched, and the other open matches of both are rejected. */
+  /**
+   * Confirm the owner: the case and the bag become matched, and the other open matches of both are rejected. A match
+   * linked by hand is confirmed by someone other than the staff member who linked it.
+   */
   @Post(':id/confirm')
   @HttpCode(200)
   confirm(
@@ -49,7 +52,7 @@ export class BagMatchController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: ConfirmBagMatchDto,
   ): Promise<BagMatch> {
-    return this.review.confirm({ staffId: staff.staffId, matchId: id, note: dto.note })
+    return this.review.confirm({ staffId: staff.staffId, actor: baggageAuditActor(staff), matchId: id, note: dto.note })
   }
 
   /** Not the same bag. */
@@ -60,6 +63,6 @@ export class BagMatchController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: RejectBagMatchDto,
   ): Promise<BagMatch> {
-    return this.review.reject({ staffId: staff.staffId, matchId: id, note: dto.note })
+    return this.review.reject({ staffId: staff.staffId, actor: baggageAuditActor(staff), matchId: id, note: dto.note })
   }
 }

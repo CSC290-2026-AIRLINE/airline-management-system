@@ -416,7 +416,13 @@ describe('BagDeliveryService', () => {
       const { svc, db, audit, locks } = makeSvc()
 
       await expect(
-        svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, identity: { ...IDENTITY, lastName: 'Becker' } }),
+        svc.handOver({
+          staffId: STAFF_ID,
+          userId: USER_ID,
+          deliveryId: DELIVERY_ID,
+          documentChecked: true,
+          identity: { ...IDENTITY, lastName: 'Becker' },
+        }),
       ).rejects.toMatchObject({ code: 'OWNERSHIP_NOT_VERIFIED' })
 
       // The check runs under the locks, and its audit row commits with the transaction before the error is thrown.
@@ -438,7 +444,7 @@ describe('BagDeliveryService', () => {
     it('never stores the full document number', async () => {
       const { svc, audit } = makeSvc()
 
-      await svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, identity: IDENTITY })
+      await svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, documentChecked: true, identity: IDENTITY })
 
       expect(JSON.stringify(audit.write.mock.calls)).not.toContain('AB1234567')
     })
@@ -446,7 +452,14 @@ describe('BagDeliveryService', () => {
     it('hands over a delivered bag and closes the case in one transaction', async () => {
       const { svc, db, audit } = makeSvc()
 
-      await svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, identity: IDENTITY, note: 'Signed by guest' })
+      await svc.handOver({
+        staffId: STAFF_ID,
+        userId: USER_ID,
+        deliveryId: DELIVERY_ID,
+        documentChecked: true,
+        identity: IDENTITY,
+        note: 'Signed by guest',
+      })
 
       expect(db.bag_delivery.updateMany).toHaveBeenCalledWith({
         where: { id: DELIVERY_ID, status: 'in_transit' },
@@ -474,11 +487,20 @@ describe('BagDeliveryService', () => {
     it('hands a pickup bag over only once it is ready for pickup', async () => {
       const { svc } = makeSvc({ status: 'in_transit', delivery_type: 'airport_pickup', pickup_airport: 'NRT' })
 
-      await expect(svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, identity: IDENTITY })).rejects.toMatchObject(
-        {
-          code: 'INVALID_STATUS',
-        },
-      )
+      await expect(
+        svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, documentChecked: true, identity: IDENTITY }),
+      ).rejects.toMatchObject({
+        code: 'INVALID_STATUS',
+      })
+    })
+
+    it('needs staff to have checked the document', async () => {
+      const { svc, audit } = makeSvc()
+
+      await expect(
+        svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, documentChecked: false, identity: IDENTITY }),
+      ).rejects.toMatchObject({ code: 'INVALID_DELIVERY' })
+      expect(audit.write).not.toHaveBeenCalled()
     })
 
     it("needs the representative's name", async () => {
@@ -489,6 +511,7 @@ describe('BagDeliveryService', () => {
           staffId: STAFF_ID,
           userId: USER_ID,
           deliveryId: DELIVERY_ID,
+          documentChecked: true,
           identity: { ...IDENTITY, collector: 'representative' },
         }),
       ).rejects.toMatchObject({ code: 'INVALID_DELIVERY' })
@@ -500,7 +523,7 @@ describe('BagDeliveryService', () => {
         db[table].updateMany.mockResolvedValue({ count: 0 })
 
         await expect(
-          svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, identity: IDENTITY }),
+          svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, documentChecked: true, identity: IDENTITY }),
         ).rejects.toMatchObject({ code: 'INVALID_STATUS' })
         // Thrown inside the transaction, so the passed check's audit row rolls back with everything else.
         expect(audit.write.mock.calls[0][1]).toBe(db)
@@ -511,11 +534,11 @@ describe('BagDeliveryService', () => {
       const { svc, db } = makeSvc()
       db.bag_delivery.updateMany.mockResolvedValue({ count: 0 })
 
-      await expect(svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, identity: IDENTITY })).rejects.toMatchObject(
-        {
-          code: 'INVALID_STATUS',
-        },
-      )
+      await expect(
+        svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, documentChecked: true, identity: IDENTITY }),
+      ).rejects.toMatchObject({
+        code: 'INVALID_STATUS',
+      })
     })
   })
 })

@@ -23,8 +23,11 @@ export type IdDocumentType = (typeof ID_DOCUMENT_TYPES)[number]
 export const COLLECTORS = ['passenger', 'representative'] as const
 export type Collector = (typeof COLLECTORS)[number]
 
-/** What did not agree with the case in a failed ownership check. */
-export const OWNERSHIP_MISMATCHES = ['booking_reference', 'last_name', 'document_number'] as const
+/**
+ * What did not agree with the case in a failed ownership check. document_type: the passenger has a passport on file but
+ * showed another document.
+ */
+export const OWNERSHIP_MISMATCHES = ['booking_reference', 'last_name', 'document_type', 'document_number'] as const
 export type OwnershipMismatch = (typeof OWNERSHIP_MISMATCHES)[number]
 
 /** One ownership check at handover, read back from audit_log. Only the last 4 characters of the document are kept. */

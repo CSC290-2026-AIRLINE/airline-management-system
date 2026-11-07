@@ -79,7 +79,15 @@ export class BagDeliveryController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: HandOverBagDto,
   ): Promise<BagDeliveryDetail> {
-    const { representativeName, note, ...identity } = dto
-    return this.deliveries.handOver({ staffId: staff.staffId, userId: staff.id, deliveryId: id, identity, representativeName, note })
+    const { representativeName, note, documentChecked, ...identity } = dto
+    return this.deliveries.handOver({
+      staffId: staff.staffId,
+      userId: staff.id,
+      deliveryId: id,
+      identity,
+      documentChecked,
+      representativeName,
+      note,
+    })
   }
 }

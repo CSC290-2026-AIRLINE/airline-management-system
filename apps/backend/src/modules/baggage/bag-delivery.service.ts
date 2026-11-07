@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
-import type { ReportStatus } from './common/baggage.constants'
+import { AUDIT_SOURCE_FEATURE, MAX_LIST_ROWS, type ReportStatus } from './common/baggage.constants'
 import {
   CHOICE_OPEN_STATUSES,
   COLLECTORS,
@@ -24,8 +24,9 @@ import { RECOVERY_CASE_STATUSES, lockFoundBag, lockLostReport } from './common/c
 import { checkOwnership, documentLast4, type PresentedIdentity } from './common/ownership-check'
 import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/patterns'
 
-/** audit_log.source_feature and entity_type of the ownership checks at handover. */
-export const AUDIT_SOURCE_FEATURE = '10'
+export { AUDIT_SOURCE_FEATURE }
+
+/** audit_log.entity_type of the ownership checks at handover. */
 export const OWNERSHIP_CHECK_ENTITY = 'bag_ownership_check'
 /** audit_log.entity_type of a recorded delivery choice. */
 export const DELIVERY_ENTITY = 'bag_delivery'
@@ -39,6 +40,7 @@ const STATUS_ORDER: DeliveryStatus[] = ['preparing', 'ready_for_pickup', 'in_tra
 const MISMATCH_LABELS: Record<OwnershipMismatch, string> = {
   booking_reference: 'booking reference',
   last_name: 'surname',
+  document_type: 'document type (the passport on file is needed)',
   document_number: 'passport number',
 }
 
@@ -95,6 +97,8 @@ export interface HandOverInput {
   userId: string
   deliveryId: string
   identity: PresentedIdentity
+  /** Staff saw the document and its photo and name belong to the person collecting the bag. */
+  documentChecked: boolean
   representativeName?: string | null
   note?: string | null
 }
@@ -246,6 +250,9 @@ export class BagDeliveryService {
     const rows = await this.db.bag_delivery.findMany({
       where: filter.status ? { status: filter.status } : {},
       include: DELIVERY_INCLUDE,
+      // The newest rows; deliveryOrder then puts the ones to act on first.
+      orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+      take: MAX_LIST_ROWS,
     })
 
     return rows.map(toBagDelivery).sort(deliveryOrder)
@@ -500,6 +507,10 @@ export class BagDeliveryService {
       throw invalid('Invalid collector or document type')
     }
 
+    if (input.documentChecked !== true) {
+      throw invalid('Check the photo and name on the document first')
+    }
+
     if (documentLast4(identity.documentNumber).length < 4) {
       throw invalid('Enter the document number shown')
     }
@@ -557,6 +568,7 @@ export class BagDeliveryService {
             representativeName,
             documentType: identity.documentType,
             documentLast4: last4,
+            documentChecked: true,
             staffId: input.staffId,
             reportId,
             foundBagId: bagId,

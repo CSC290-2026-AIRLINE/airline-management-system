@@ -1,12 +1,22 @@
 import { FoundBagLifecycleService } from './found-bag-lifecycle.service'
 import type { DbService } from '@backend/db/db.service'
+import type { AuditActor, AuditService } from '@backend/modules/admin-console/audit/audit.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
+jest.mock('@backend/modules/admin-console/audit/audit.service', () => ({
+  AuditService: class {
+    static systemActor() {
+      return { type: 'system', id: null, role: null }
+    }
+  },
+}))
 
 const STAFF_ID = '11111111-1111-4111-8111-111111111111'
 const FLIGHT_ID = '22222222-2222-4222-8222-222222222222'
 const BAG_ID = '66666666-6666-4666-8666-666666666666'
 const SIM_NOW = new Date('2026-11-07T00:00:00Z')
+const ACTOR: AuditActor = { type: 'staff', id: '44444444-4444-4444-8444-444444444444', role: 'baggage' }
+const SWEPT_IDS = ['fb-1', 'fb-2', 'fb-3', 'fb-4']
 
 function foundBagRow(o: Record<string, unknown> = {}) {
   return {
@@ -43,6 +53,7 @@ function makeSvc() {
     found_bag: {
       create: jest.fn((args: { data: Record<string, unknown> }) => Promise.resolve(foundBagRow({ id: `fb-${++created}`, ...args.data }))),
       findUnique: jest.fn().mockResolvedValue(foundBagRow()),
+      findMany: jest.fn().mockResolvedValue(SWEPT_IDS.map((id) => ({ id }))),
       update: jest.fn((args: { data: Record<string, unknown> }) => Promise.resolve(foundBagRow(args.data))),
       updateMany: jest.fn().mockResolvedValue({ count: 4 }),
       findUniqueOrThrow: jest.fn().mockResolvedValue(foundBagRow({ status: 'continued_with_flight' })),
@@ -54,14 +65,20 @@ function makeSvc() {
   }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => Promise.resolve(cb(db)))
 
-  return { svc: new FoundBagLifecycleService(db as unknown as DbService, { now: () => SIM_NOW }), db }
+  const audit = { write: jest.fn().mockResolvedValue({ id: 'a-1', seq: '1' }) }
+
+  return {
+    svc: new FoundBagLifecycleService(db as unknown as DbService, audit as unknown as AuditService, { now: () => SIM_NOW }),
+    db,
+    audit,
+  }
 }
 
 describe('FoundBagLifecycleService.recordDiversion', () => {
   it('adds a held diverted-flight row and a system event for each bag without a live row', async () => {
-    const { svc, db } = makeSvc()
+    const { svc, db, audit } = makeSvc()
 
-    const result = await svc.recordDiversion(FLIGHT_ID)
+    const result = await svc.recordDiversion(FLIGHT_ID, ACTOR)
 
     expect(result).toMatchObject({ flightId: FLIGHT_ID, divertedTo: 'CNX', skipped: 1 })
     expect(result.created).toHaveLength(2)
@@ -87,6 +104,10 @@ describe('FoundBagLifecycleService.recordDiversion', () => {
         }),
       }),
     )
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: ACTOR, action: 'create', entityType: 'flight', entityId: FLIGHT_ID }),
+      db,
+    )
   })
 
   it('refuses a flight that is not diverted', async () => {
@@ -106,13 +127,17 @@ describe('FoundBagLifecycleService.recordDiversion', () => {
 })
 
 describe('FoundBagLifecycleService.completeDetails', () => {
-  it('adds type and colour to a held diverted-flight bag', async () => {
+  it('adds type and colour to a held diverted-flight bag, with the bag locked', async () => {
     const { svc, db } = makeSvc()
+    db.found_bag.updateMany.mockResolvedValueOnce({ count: 1 })
+    db.found_bag.findUniqueOrThrow.mockResolvedValueOnce(foundBagRow({ bag_type: 'suitcase', colour: 'red', brand: 'Rimowa' }))
 
     const bag = await svc.completeDetails(STAFF_ID, BAG_ID, { bagType: 'suitcase', colour: 'red', brand: ' Rimowa ' })
 
-    expect(db.found_bag.update).toHaveBeenCalledWith({
-      where: { id: BAG_ID },
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.found_bag.updateMany.mock.invocationCallOrder[0])
+    expect(db.found_bag.updateMany).toHaveBeenCalledWith({
+      where: { id: BAG_ID, status: 'held' },
       data: expect.objectContaining({ bag_type: 'suitcase', colour: 'red', brand: 'Rimowa', description: null }),
     })
     expect(bag).toMatchObject({ bagType: 'suitcase', colour: 'red' })
@@ -126,12 +151,13 @@ describe('FoundBagLifecycleService.completeDetails', () => {
       code: 'INVALID_STATUS',
     })
 
-    db.found_bag.findUnique.mockResolvedValueOnce(foundBagRow({ status: 'unclaimed' }))
+    // The status is read under the lock, so a bag matched a moment ago is seen as matched.
+    db.$queryRaw.mockResolvedValueOnce([{ id: BAG_ID, status: 'matched' }])
     await expect(svc.completeDetails(STAFF_ID, BAG_ID, { bagType: 'suitcase', colour: 'red' })).rejects.toMatchObject({
       code: 'INVALID_STATUS',
     })
 
-    expect(db.found_bag.update).not.toHaveBeenCalled()
+    expect(db.found_bag.updateMany).not.toHaveBeenCalled()
   })
 
   it('rejects a colour outside the fixed list', async () => {
@@ -194,17 +220,31 @@ describe('FoundBagLifecycleService.continueWithFlight', () => {
 })
 
 describe('FoundBagLifecycleService.markUnclaimed', () => {
-  it('marks held bags past the setting with no confirmed match', async () => {
-    const { svc, db } = makeSvc()
+  it('marks held bags past the setting with no confirmed match, and logs which', async () => {
+    const { svc, db, audit } = makeSvc()
 
-    const result = await svc.markUnclaimed()
+    const result = await svc.markUnclaimed(ACTOR)
 
     const cutoff = new Date('2026-08-09T00:00:00Z')
+    const due = { status: 'held', found_at: { lte: cutoff }, bag_match: { none: { status: 'confirmed' } } }
     expect(result).toEqual({ unclaimedAfterDays: 90, cutoff, marked: 4 })
     expect(db.found_bag.updateMany).toHaveBeenCalledWith({
-      where: { status: 'held', found_at: { lte: cutoff }, bag_match: { none: { status: 'confirmed' } } },
+      where: { id: { in: SWEPT_IDS }, ...due },
       data: { status: 'unclaimed', updated_at: expect.any(Date) },
     })
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: ACTOR, action: 'status_change', after: expect.objectContaining({ foundBagIds: SWEPT_IDS }) }),
+      db,
+    )
+  })
+
+  it('writes nothing when no bag is due', async () => {
+    const { svc, db, audit } = makeSvc()
+    db.found_bag.findMany.mockResolvedValue([])
+
+    await expect(svc.markUnclaimed(ACTOR)).resolves.toMatchObject({ marked: 0 })
+    expect(db.found_bag.updateMany).not.toHaveBeenCalled()
+    expect(audit.write).not.toHaveBeenCalled()
   })
 
   it('falls back to 90 days when the setting is missing or invalid', async () => {

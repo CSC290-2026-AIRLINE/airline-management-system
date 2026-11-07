@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
-import type { BagColour, BagType, ReportStatus } from './common/baggage.constants'
+import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
+import { AUDIT_SOURCE_FEATURE, MAX_LIST_ROWS, type BagColour, type BagType, type ReportStatus } from './common/baggage.constants'
 import {
   MATCHABLE_REPORT_STATUSES,
   MATCH_LEVELS,
@@ -21,6 +22,9 @@ import { UUID_PATTERN, prismaErrorCode } from './common/patterns'
 /** Written on the other open matches of a report and a bag when one of their matches is confirmed. */
 export const SUPERSEDED_NOTE = 'Another match was confirmed'
 
+/** audit_log.entity_type of a reviewed match. */
+export const BAG_MATCH_ENTITY = 'bag_match'
+
 export interface MatchFilter {
   status?: MatchStatus
   reportId?: string
@@ -35,6 +39,8 @@ export interface LinkInput {
 
 export interface ReviewInput {
   staffId: string
+  /** Who is signed in, for the audit row. */
+  actor: AuditActor
   matchId: string
   note?: string | null
 }
@@ -172,6 +178,7 @@ function requireStaff(staffId: string): void {
 export class BagMatchReviewService {
   constructor(
     private readonly db: DbService,
+    private readonly audit: AuditService,
     @Inject(FOUND_BAG_CLOCK) private readonly clock: FoundBagClock,
   ) {}
 
@@ -190,7 +197,13 @@ export class BagMatchReviewService {
       where.found_bag_id = foundBagId
     }
 
-    const rows = await this.db.bag_match.findMany({ where, include: MATCH_INCLUDE })
+    // The newest rows; reviewOrder then puts open and strong matches first.
+    const rows = await this.db.bag_match.findMany({
+      where,
+      include: MATCH_INCLUDE,
+      orderBy: [{ updated_at: 'desc' }, { id: 'asc' }],
+      take: MAX_LIST_ROWS,
+    })
 
     return rows.map(toBagMatch).sort(reviewOrder)
   }
@@ -263,8 +276,9 @@ export class BagMatchReviewService {
 
   /**
    * Staff confirm the owner. In one transaction: the match becomes confirmed with the reviewer's note, every other open
-   * match of the case and of the bag is rejected, the case and the bag become matched, and the case gets its delivery
-   * row (waiting for the passenger's choice).
+   * match of the case and of the bag is rejected, the case and the bag become matched, the case gets its delivery row
+   * (waiting for the passenger's choice), and the review is written to audit_log. A match linked by hand needs a second
+   * staff member: the one who linked it cannot confirm it.
    */
   async confirm(input: ReviewInput): Promise<BagMatch> {
     const staffId = input.staffId?.trim()
@@ -277,6 +291,11 @@ export class BagMatchReviewService {
     }
 
     const match = await this.findOpen(input.matchId)
+
+    if (match.linked_by === staffId) {
+      throw new FoundBagError(FOUND_BAG_ERROR_CODES.SELF_CONFIRM, 'Another staff member must confirm a match you linked')
+    }
+
     const reviewedAt = this.clock.now()
     const now = new Date()
 
@@ -330,6 +349,8 @@ export class BagMatchReviewService {
           create: { report_id: match.report_id, status: 'waiting_choice', created_at: now, updated_at: now },
           update: {},
         })
+
+        await this.writeReview(tx, input.actor, match, 'confirmed', note, staffId, reviewedAt)
       })
     } catch (e) {
       // bag_match_report_confirmed_uq or bag_match_bag_confirmed_uq: another match was confirmed at the same time.
@@ -350,29 +371,57 @@ export class BagMatchReviewService {
     requireStaff(staffId)
 
     const match = await this.findOpen(input.matchId)
-    const { count } = await this.db.bag_match.updateMany({
-      where: { id: match.id, status: { in: OPEN_MATCH_STATUSES } },
-      data: {
-        status: 'rejected',
-        reviewed_by: staffId,
-        reviewed_at: this.clock.now(),
-        review_note: input.note?.trim() || null,
-        updated_at: new Date(),
-      },
+    const note = input.note?.trim() || null
+    const reviewedAt = this.clock.now()
+
+    await this.db.$transaction(async (tx) => {
+      const { count } = await tx.bag_match.updateMany({
+        where: { id: match.id, status: { in: OPEN_MATCH_STATUSES } },
+        data: { status: 'rejected', reviewed_by: staffId, reviewed_at: reviewedAt, review_note: note, updated_at: new Date() },
+      })
+
+      if (count !== 1) {
+        throw closed('This match has already been reviewed')
+      }
+
+      await this.writeReview(tx, input.actor, match, 'rejected', note, staffId, reviewedAt)
     })
 
-    if (count !== 1) {
-      throw closed('This match has already been reviewed')
-    }
-
     return this.getById(match.id)
+  }
+
+  /** One audit_log row per review, written in the review's transaction so they commit together. */
+  private async writeReview(
+    tx: Prisma.TransactionClient,
+    actor: AuditActor,
+    match: { id: string; status: string; report_id: string; found_bag_id: string },
+    status: 'confirmed' | 'rejected',
+    note: string | null,
+    staffId: string,
+    reviewedAt: Date,
+  ): Promise<void> {
+    await this.audit.write(
+      {
+        actor,
+        sourceFeature: AUDIT_SOURCE_FEATURE,
+        action: 'status_change',
+        entityType: BAG_MATCH_ENTITY,
+        entityId: match.id,
+        summary: `Match ${status} for lost bag report ${match.report_id}`,
+        reason: note,
+        before: { status: match.status },
+        after: { status, reportId: match.report_id, foundBagId: match.found_bag_id, staffId },
+        occurredAt: reviewedAt,
+      },
+      tx,
+    )
   }
 
   private async findOpen(matchId: string) {
     const match = UUID_PATTERN.test(matchId)
       ? await this.db.bag_match.findUnique({
           where: { id: matchId },
-          select: { id: true, status: true, report_id: true, found_bag_id: true },
+          select: { id: true, status: true, report_id: true, found_bag_id: true, linked_by: true },
         })
       : null
 

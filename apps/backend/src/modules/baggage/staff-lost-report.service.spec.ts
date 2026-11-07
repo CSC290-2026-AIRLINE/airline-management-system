@@ -1,7 +1,11 @@
 import { StaffLostReportService } from './staff-lost-report.service'
 import type { DbService } from '@backend/db/db.service'
+import type { AuditActor, AuditService } from '@backend/modules/admin-console/audit/audit.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
+jest.mock('@backend/modules/admin-console/audit/audit.service', () => ({ AuditService: class {} }))
+
+const ACTOR: AuditActor = { type: 'staff', id: '99999999-9999-4999-8999-999999999999', role: 'baggage' }
 
 const STAFF_ID = '11111111-1111-4111-8111-111111111111'
 const FLIGHT_ID = '22222222-2222-4222-8222-222222222222'
@@ -59,7 +63,13 @@ function makeSvc() {
   }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db))
 
-  return { svc: new StaffLostReportService(db as unknown as DbService, { now: () => SIM_NOW }), db }
+  const audit = { recordSensitiveView: jest.fn().mockResolvedValue({ id: 'a-1', seq: '1' }) }
+
+  return {
+    svc: new StaffLostReportService(db as unknown as DbService, audit as unknown as AuditService, { now: () => SIM_NOW }),
+    db,
+    audit,
+  }
 }
 
 const deskInput = {
@@ -249,8 +259,9 @@ describe('StaffLostReportService.createFromFoundBag', () => {
 
 describe('StaffLostReportService reads', () => {
   it('looks up the coupons on a booking with their flights', async () => {
-    const { svc, db } = makeSvc()
+    const { svc, db, audit } = makeSvc()
     db.booking.findUnique.mockResolvedValue({
+      id: 'booking-1',
       booking_reference: 'ABC234',
       ...booking,
       booking_passenger: [
@@ -261,7 +272,7 @@ describe('StaffLostReportService reads', () => {
       ],
     })
 
-    await expect(svc.lookupBooking('abc234')).resolves.toEqual({
+    await expect(svc.lookupBooking('abc234', ACTOR)).resolves.toEqual({
       bookingReference: 'ABC234',
       contactEmail: 'somchai@example.com',
       contactPhone: '+66 81 234 5678',
@@ -279,14 +290,17 @@ describe('StaffLostReportService reads', () => {
       ],
     })
     expect(db.booking.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { booking_reference: 'ABC234' } }))
+    // The contact details it returns make every lookup a sensitive view.
+    expect(audit.recordSensitiveView).toHaveBeenCalledWith(ACTOR, expect.objectContaining({ entityType: 'booking', entityId: 'booking-1' }))
   })
 
   it('reports an unknown or malformed booking reference', async () => {
-    const { svc, db } = makeSvc()
+    const { svc, db, audit } = makeSvc()
 
-    await expect(svc.lookupBooking('ABC234')).rejects.toMatchObject({ code: 'BOOKING_NOT_FOUND' })
-    await expect(svc.lookupBooking('ABC10')).rejects.toMatchObject({ code: 'BOOKING_NOT_FOUND' })
+    await expect(svc.lookupBooking('ABC234', ACTOR)).rejects.toMatchObject({ code: 'BOOKING_NOT_FOUND' })
+    await expect(svc.lookupBooking('ABC10', ACTOR)).rejects.toMatchObject({ code: 'BOOKING_NOT_FOUND' })
     expect(db.booking.findUnique).toHaveBeenCalledTimes(1)
+    expect(audit.recordSensitiveView).not.toHaveBeenCalled()
   })
 
   it('gets a report by id, and 404s a missing or malformed id', async () => {
@@ -306,6 +320,7 @@ describe('StaffLostReportService reads', () => {
       expect.objectContaining({
         where: { status: 'open', flight_id: FLIGHT_ID, case_number: 'LB-2026-000042' },
         orderBy: [{ reported_at: 'desc' }, { id: 'asc' }],
+        take: 500,
       }),
     )
 

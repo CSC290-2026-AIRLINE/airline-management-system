@@ -60,6 +60,7 @@ export interface HandOverBody {
   representativeName?: string
   documentType: IdDocumentType
   documentNumber: string
+  documentChecked: boolean
   note?: string
 }
 
