@@ -2,6 +2,8 @@ import { Link, Outlet } from '@tanstack/react-router'
 import { useUser } from '@clerk/clerk-react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { cn } from '@staff-web/lib/utils'
+import { NotificationsButton } from './components/NotificationsButton'
+import { useStaffNotifications } from './hooks/useStaffNotifications'
 
 /** Pages in the "Lost and found" nav, in Figma order. An item without a route shows as not ready. */
 const NAV: { label: string; to?: '/baggage/lost-bag-cases' | '/baggage/found-bags' | '/baggage/match-review' | '/baggage/deliveries' }[] = [
@@ -45,6 +47,7 @@ export function BaggageShell() {
   const { user: clerkUser } = useUser()
   const { user, logout } = useAppAuth()
   const name = clerkUser?.fullName || user?.email || 'Staff member'
+  const notifications = useStaffNotifications()
 
   const links = NAV.map((item) =>
     item.to ? (
@@ -76,7 +79,8 @@ export function BaggageShell() {
       <aside className="sticky top-0 flex h-svh w-[260px] shrink-0 flex-col gap-3 overflow-y-auto bg-[#14213d] px-[22px] py-8 max-md:hidden">
         <p className="font-heading text-[40px] leading-none font-black text-white uppercase">Flython</p>
         <p className="text-xs text-[#b7c1d1]">STAFF · BAGGAGE SERVICE</p>
-        <nav aria-label="Lost and found" className="flex flex-col gap-1 pt-6">
+        <NotificationsButton notifications={notifications} className="mt-4 h-10 w-full pr-3 pl-3.5" />
+        <nav aria-label="Lost and found" className="flex flex-col gap-1 pt-4">
           <p className="text-xs text-[#b7c1d1]">LOST AND FOUND</p>
           {links}
         </nav>
@@ -103,9 +107,12 @@ export function BaggageShell() {
       <header className="sticky top-0 z-10 flex flex-col gap-2 bg-[#14213d] px-4 py-3 md:hidden">
         <div className="flex items-center justify-between">
           <span className="font-heading text-xl font-black text-white uppercase">Flython</span>
-          <button type="button" onClick={() => void logout()} className="text-sm font-medium text-white">
-            Sign out
-          </button>
+          <div className="flex items-center gap-4">
+            <NotificationsButton notifications={notifications} className="p-1" />
+            <button type="button" onClick={() => void logout()} className="text-sm font-medium text-white">
+              Sign out
+            </button>
+          </div>
         </div>
         <nav aria-label="Lost and found" className="flex gap-1 overflow-x-auto [&>*]:w-auto [&>*]:shrink-0 [&>*]:pr-3.5">
           {links}

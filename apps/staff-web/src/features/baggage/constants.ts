@@ -244,3 +244,92 @@ export function matchLevelText(level: MatchLevel, reasons: readonly MatchReason[
 export function matchRef(id: string): string {
   return `M-${id.slice(0, 4).toUpperCase()}`
 }
+
+/** Same lists as the CHECKs on bag_delivery. */
+export const DELIVERY_TYPES = ['home', 'hotel', 'other_address', 'airport_pickup'] as const
+export type DeliveryType = (typeof DELIVERY_TYPES)[number]
+
+export const DELIVERY_STATUSES = ['waiting_choice', 'preparing', 'in_transit', 'ready_for_pickup', 'delivered'] as const
+export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number]
+
+export const DELIVERY_TYPE_LABELS: Record<DeliveryType, string> = {
+  home: 'Home',
+  hotel: 'Hotel',
+  other_address: 'Other address',
+  airport_pickup: 'Airport pickup',
+}
+
+export const DELIVERY_STATUS_LABELS: Record<DeliveryStatus, string> = {
+  waiting_choice: 'Waiting for passenger',
+  preparing: 'Preparing',
+  in_transit: 'In transit',
+  ready_for_pickup: 'Ready for pickup',
+  delivered: 'Delivered',
+}
+
+export const DELIVERY_STATUS_TONES: Record<DeliveryStatus, PillTone> = {
+  waiting_choice: 'amber',
+  preparing: 'amber',
+  in_transit: 'grey',
+  ready_for_pickup: 'green',
+  delivered: 'green',
+}
+
+/** The "Status" chips on Deliveries. Active is every delivery not handed over yet. */
+export const DELIVERY_FILTERS = ['active', 'delivered', 'all'] as const
+export type DeliveryFilter = (typeof DELIVERY_FILTERS)[number]
+
+export const DELIVERY_FILTER_LABELS: Record<DeliveryFilter, string> = {
+  active: 'Active',
+  delivered: 'Delivered',
+  all: 'All',
+}
+
+/** "Hotel: Hotel Gracery Shinjuku, Tokyo", "Pickup at NRT", or null while the passenger has not chosen. */
+export function deliveryDestination(d: {
+  deliveryType: DeliveryType | null
+  address: string | null
+  pickupAirport: string | null
+}): string | null {
+  if (!d.deliveryType) return null
+  if (d.deliveryType === 'airport_pickup') return `Pickup at ${d.pickupAirport ?? '–'}`
+  return `${DELIVERY_TYPE_LABELS[d.deliveryType]}: ${d.address ?? '–'}`
+}
+
+/** Identity documents accepted at handover, and who can collect a bag. Same lists as the backend's. */
+export const ID_DOCUMENT_TYPES = ['passport', 'national_id', 'driving_licence'] as const
+export type IdDocumentType = (typeof ID_DOCUMENT_TYPES)[number]
+
+export const ID_DOCUMENT_LABELS: Record<IdDocumentType, string> = {
+  passport: 'Passport',
+  national_id: 'National ID card',
+  driving_licence: 'Driving licence',
+}
+
+export const COLLECTORS = ['passenger', 'representative'] as const
+export type Collector = (typeof COLLECTORS)[number]
+
+export const COLLECTOR_LABELS: Record<Collector, string> = {
+  passenger: 'Passenger',
+  representative: 'Someone sent by the passenger',
+}
+
+export type OwnershipMismatch = 'booking_reference' | 'last_name' | 'document_number'
+
+export const OWNERSHIP_MISMATCH_LABELS: Record<OwnershipMismatch, string> = {
+  booking_reference: 'Booking reference',
+  last_name: 'Surname',
+  document_number: 'Passport number',
+}
+
+/** What the baggage desk is told about (the backend's StaffNotificationKind). */
+export type StaffNotificationKind = 'strong_match' | 'new_report' | 'delivery_to_send' | 'unclaimed_soon' | 'bag_unclaimed' | 'case_lost'
+
+export const NOTIFICATION_TITLES: Record<StaffNotificationKind, string> = {
+  strong_match: 'Strong match to review',
+  new_report: 'New lost bag report',
+  delivery_to_send: 'Bag ready to send',
+  unclaimed_soon: 'Bag turns unclaimed soon',
+  bag_unclaimed: 'Bag marked unclaimed',
+  case_lost: 'Case declared lost',
+}

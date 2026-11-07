@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus } from '@nestjs/common'
 
 /**
- * Service-level codes for found bags, station contacts, staff lost reports, recovery costs and matches, sent as
+ * Service-level codes for found bags, station contacts, staff lost reports, recovery costs, matches and deliveries, sent as
  * `{ code, message }` in the error body. The report codes use the same names as baggage.errors.ts on
  * feat-10-lost-baggage-report.
  * Fold into baggage.errors.ts once feat-10-lost-baggage-report is in dev.
@@ -28,6 +28,10 @@ export const FOUND_BAG_ERROR_CODES = {
   MATCH_NOT_FOUND: 'MATCH_NOT_FOUND',
   MATCH_EXISTS: 'MATCH_EXISTS',
   MATCH_CLOSED: 'MATCH_CLOSED',
+  INVALID_DELIVERY: 'INVALID_DELIVERY',
+  DELIVERY_NOT_FOUND: 'DELIVERY_NOT_FOUND',
+  ALREADY_SENT: 'ALREADY_SENT',
+  OWNERSHIP_NOT_VERIFIED: 'OWNERSHIP_NOT_VERIFIED',
 } as const
 
 export type FoundBagErrorCode = (typeof FOUND_BAG_ERROR_CODES)[keyof typeof FOUND_BAG_ERROR_CODES]
@@ -54,6 +58,10 @@ const STATUS_BY_CODE: Record<FoundBagErrorCode, HttpStatus> = {
   MATCH_NOT_FOUND: HttpStatus.NOT_FOUND,
   MATCH_EXISTS: HttpStatus.CONFLICT,
   MATCH_CLOSED: HttpStatus.CONFLICT,
+  INVALID_DELIVERY: HttpStatus.BAD_REQUEST,
+  DELIVERY_NOT_FOUND: HttpStatus.NOT_FOUND,
+  ALREADY_SENT: HttpStatus.CONFLICT,
+  OWNERSHIP_NOT_VERIFIED: HttpStatus.CONFLICT,
 }
 
 export class FoundBagError extends HttpException {

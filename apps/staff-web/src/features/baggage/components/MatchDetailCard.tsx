@@ -256,7 +256,9 @@ export function MatchDetailCard({
               asChild
               className="h-auto rounded-lg bg-[#14213d] px-3.5 py-2 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90"
             >
-              <Link to="/baggage/deliveries">Go to Deliveries</Link>
+              <Link to="/baggage/deliveries" search={{ case: match.report.id, status: 'all' }}>
+                Go to Deliveries
+              </Link>
             </Button>
           )}
         </div>
