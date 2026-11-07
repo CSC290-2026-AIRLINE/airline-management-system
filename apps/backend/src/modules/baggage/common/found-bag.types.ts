@@ -1,7 +1,7 @@
 import type { BagType, BagColour } from './baggage.constants'
 
 /**
- * Found-bag statuses and sources follow the reviewed F10 schema (25 Oct).
+ * Found-bag statuses and sources follow the CHECKs on found_bag.
  */
 export const FOUND_BAG_STATUSES = ['held', 'matched', 'sent', 'delivered', 'unclaimed', 'continued_with_flight'] as const
 

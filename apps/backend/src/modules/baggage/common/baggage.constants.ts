@@ -1,6 +1,6 @@
 /**
- * Bag types and colours follow the proposed Feature 10 schema.
- * Source: feature-10-schema-review.md
+ * Bag types and colours follow the Feature 10 schema.
+ * Same lists as the CHECKs on lost_bag_report and found_bag (migration 20261106120100_feature10_lost_and_found).
  */
 export const BAG_TYPES = ['suitcase', 'backpack', 'duffel', 'box', 'garment_bag', 'sports_equipment', 'stroller', 'other'] as const
 

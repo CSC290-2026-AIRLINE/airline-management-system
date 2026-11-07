@@ -1,5 +1,5 @@
 /**
- * The proposed F10 SQL allows any first digit; align it before integration.
+ * Same rule as the CHECK on checked_bag.tag_number and found_bag.tag_number: 10 digits starting with 0.
  */
 export const BAGGAGE_TAG_PATTERN = /^0\d{9}$/
 
