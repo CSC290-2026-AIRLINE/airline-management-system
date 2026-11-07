@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { CheckInApi } from '../api/client.ts'
-import type { CheckInView, SeatLock, SeatMap as SeatMapModel } from '../api/types.ts'
+import type { CheckInView, SeatLock, SeatMap as SeatMapModel, SeatType } from '../api/types.ts'
 import { formatBaht } from '../format.ts'
+import { Message } from './Message.tsx'
 import { SeatMap } from './SeatMap.tsx'
 import type { FlowError } from './flow-error.ts'
 import { toFlowError } from './flow-error.ts'
@@ -13,6 +14,15 @@ const HOLD_MS = 5 * 60 * 1000
 function clock(ms: number): string {
   const seconds = Math.max(0, Math.ceil(ms / 1000))
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+}
+
+/** The price of one seat type, as the legend and the note show it. */
+function feeOf(map: SeatMapModel | null, type: SeatType): number {
+  for (const row of map?.rows ?? []) {
+    const seat = row.seats.find((candidate) => candidate.type === type)
+    if (seat) return seat.fee
+  }
+  return 0
 }
 
 export function SeatStep({
@@ -95,13 +105,19 @@ export function SeatStep({
   const chosen = checkIn.seat?.code ?? null
   const expired = lock !== null && remaining <= 0
   const activeLock = expired ? null : lock
+  const frontFee = feeOf(map, 'front')
+  const exitFee = feeOf(map, 'exit')
 
   return (
     <div className={styles.form}>
-      <h2 className={styles.panelTitle}>Choose your seat</h2>
-      <p className={styles.panelHint}>
-        A seat is held for you for 5 minutes. Paid seats cost extra and the fee is collected with your baggage payment.
-      </p>
+      <div className={styles.stepHead}>
+        <h2 className={styles.panelTitle}>Choose your seat</h2>
+        {activeLock ? (
+          <p className={styles.stepNote}>
+            Seat {activeLock.seatCode} held for you: <strong>{clock(remaining)}</strong>
+          </p>
+        ) : null}
+      </div>
 
       {loading ? (
         <p className={styles.state} role="status">
@@ -115,13 +131,15 @@ export function SeatStep({
         </p>
       ) : null}
 
-      {map ? <SeatMap map={map} selected={activeLock?.seatCode ?? chosen} onPick={pick} disabled={holding || busy} /> : null}
-
-      {activeLock ? (
-        <p className={styles.timer} role="status">
-          Seat {activeLock.seatCode} held for you · {clock(remaining)} left
-          {activeLock.fee > 0 ? ` · ${formatBaht(activeLock.fee)} extra` : ''}
-        </p>
+      {map ? (
+        <SeatMap
+          map={map}
+          selected={activeLock?.seatCode ?? chosen}
+          onPick={pick}
+          frontFee={frontFee}
+          exitFee={exitFee}
+          disabled={holding || busy}
+        />
       ) : null}
 
       {expired ? (
@@ -130,21 +148,29 @@ export function SeatStep({
         </p>
       ) : null}
 
-      <div className={styles.actions}>
+      {map ? (
+        <Message tone="info">
+          Front-row seats cost {formatBaht(frontFee)} (Feature 4). Your seat is confirmed once payment is captured (Feature 5).
+        </Message>
+      ) : null}
+
+      <div className={`${styles.actions} ${styles.actionsSplit}`}>
         <button className={styles.ghostButton} type="button" onClick={onBack} disabled={busy || holding}>
           Back
         </button>
-        <button className={styles.ghostButton} type="button" onClick={onSkip} disabled={busy || holding}>
-          No seat, assign me one
-        </button>
-        <button
-          className={styles.button}
-          type="button"
-          onClick={() => activeLock && onConfirm(activeLock.id)}
-          disabled={busy || !activeLock}
-        >
-          {activeLock && activeLock.fee > 0 ? `Keep this seat · ${formatBaht(activeLock.fee)}` : 'Keep this seat'}
-        </button>
+        <div className={styles.actionGroup}>
+          <button className={styles.ghostButton} type="button" onClick={onSkip} disabled={busy || holding}>
+            Skip, give me a free seat
+          </button>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => activeLock && onConfirm(activeLock.id)}
+            disabled={busy || !activeLock}
+          >
+            {activeLock && activeLock.fee > 0 ? `Pay ${formatBaht(activeLock.fee)} and continue` : 'Keep this seat'}
+          </button>
+        </div>
       </div>
     </div>
   )

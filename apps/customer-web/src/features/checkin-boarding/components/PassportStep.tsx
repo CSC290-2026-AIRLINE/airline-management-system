@@ -3,12 +3,23 @@ import { F6_MOCK } from '../api/index.ts'
 import type { FlowError } from './flow-error.ts'
 import { buildLine2, buildSpecimenLine2, SPECIMEN_LINE1 } from '../domain/mrz.ts'
 import { MRZ_CHECKS, MRZ_LENGTH, inlineMrzChecks, mrzLineReady } from './mrz-input.ts'
+import { Message } from './Message.tsx'
 import styles from './flow.module.css'
 
 /** A valid MRZ whose passport number ends in 0000: the screening fixture holds that document. */
 const HOLD_LINE2 = buildLine2({
   number: 'L89890000',
   nationality3: 'UTO',
+  dob: '740812',
+  sex: 'F',
+  expiry: '300415',
+  personal: 'ZE184226B<<<<<',
+})
+
+/** The fixtures ask a visa from China for Japan, which is where the demo flight goes. */
+const VISA_LINE2 = buildLine2({
+  number: 'L898902C3',
+  nationality3: 'CHN',
   dob: '740812',
   sex: 'F',
   expiry: '300415',
@@ -35,6 +46,7 @@ export function PassportStep({
   const failedCheck = typeof error?.details?.failedCheck === 'string' ? error.details.failedCheck : null
   const ready = mrzLineReady(line1) && mrzLineReady(line2)
   const results = new Map(inlineMrzChecks(line2).map((check) => [check.name, check.ok]))
+  const allDigitsPass = results.size === MRZ_CHECKS.length && [...results.values()].every(Boolean)
 
   return (
     <form
@@ -45,12 +57,10 @@ export function PassportStep({
       }}
     >
       <h2 className={styles.panelTitle}>Passport details</h2>
-      <p className={styles.panelHint}>
-        Type the two machine readable lines from the passport data page. We only keep the last four characters of the passport number.
-      </p>
+      <p className={styles.panelHint}>Type or paste the 2 lines at the bottom of your passport photo page.</p>
 
       <label className={styles.field}>
-        <span className={styles.label}>MRZ line 1</span>
+        <span className={styles.label}>Line 1</span>
         <input
           className={`${styles.input} ${styles.mrz}`}
           value={line1}
@@ -59,13 +69,10 @@ export function PassportStep({
           spellCheck={false}
           required
         />
-        <span className={styles.counter}>
-          {line1.trim().length} / {MRZ_LENGTH}
-        </span>
       </label>
 
       <label className={styles.field}>
-        <span className={styles.label}>MRZ line 2</span>
+        <span className={styles.label}>Line 2</span>
         <input
           className={`${styles.input} ${styles.mrz}`}
           value={line2}
@@ -74,9 +81,6 @@ export function PassportStep({
           spellCheck={false}
           required
         />
-        <span className={styles.counter}>
-          {line2.trim().length} / {MRZ_LENGTH}
-        </span>
       </label>
 
       {needsVisa ? (
@@ -99,15 +103,20 @@ export function PassportStep({
           const failed = failedCheck === check.name && !ok
           return (
             <li key={check.name} className={styles.check} data-ok={ok} data-failed={failed}>
-              <span aria-hidden="true">{ok ? '✓' : '✕'}</span> {check.label}
+              <span className={styles.checkMark} aria-hidden="true">
+                {ok ? '✓' : '✕'}
+              </span>
+              <span className={styles.checkLabel}>{check.label}</span>
             </li>
           )
         })}
       </ul>
 
+      {allDigitsPass ? <Message tone="success">All four check digits pass. Press Check passport to verify the document.</Message> : null}
+
       {F6_MOCK ? (
         <div className={styles.helpers}>
-          <span className={styles.helpersLabel}>Demo helpers</span>
+          <span className={styles.helpersLabel}>Demo</span>
           <button
             type="button"
             className={styles.ghostButton}
@@ -118,6 +127,9 @@ export function PassportStep({
             }
           >
             Try a typo
+          </button>
+          <button type="button" className={styles.ghostButton} onClick={() => setLine2(VISA_LINE2)}>
+            Try visa needed
           </button>
           <button type="button" className={styles.ghostButton} onClick={() => setLine2(HOLD_LINE2)}>
             Try security hold
@@ -130,7 +142,7 @@ export function PassportStep({
           Back
         </button>
         <button className={styles.button} type="submit" disabled={busy || !ready}>
-          {busy ? 'Checking…' : 'Continue'}
+          {busy ? 'Checking…' : 'Check passport'}
         </button>
       </div>
     </form>

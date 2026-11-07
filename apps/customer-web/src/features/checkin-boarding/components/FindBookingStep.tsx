@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { F6_MOCK } from '../api/index.ts'
+import { Message } from './Message.tsx'
 import styles from './flow.module.css'
 
 export function FindBookingStep({ busy, onSubmit }: { busy: boolean; onSubmit: (pnr: string, lastName: string) => void }) {
@@ -15,10 +16,10 @@ export function FindBookingStep({ busy, onSubmit }: { busy: boolean; onSubmit: (
       }}
     >
       <h2 className={styles.panelTitle}>Find your booking</h2>
-      <p className={styles.panelHint}>Enter the 6-character booking reference and the surname exactly as on the booking.</p>
+      <p className={styles.panelHint}>Enter the booking reference from your confirmation email and the surname on your passport.</p>
 
       <label className={styles.field}>
-        <span className={styles.label}>Booking reference (PNR)</span>
+        <span className={styles.label}>Booking reference</span>
         <input
           className={styles.input}
           value={pnr}
@@ -39,6 +40,8 @@ export function FindBookingStep({ busy, onSubmit }: { busy: boolean; onSubmit: (
           required
         />
       </label>
+
+      <Message tone="info">Only paid bookings on flights that are not cancelled can be checked in.</Message>
 
       <button className={styles.button} type="submit" disabled={busy || !pnr.trim() || !lastName.trim()}>
         {busy ? 'Searching…' : 'Find booking'}

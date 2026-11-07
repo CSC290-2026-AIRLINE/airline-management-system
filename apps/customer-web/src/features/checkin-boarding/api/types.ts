@@ -58,6 +58,9 @@ export interface CheckInView {
   document: TravelDocumentView | null
   seat: SeatChoice | null
   declaredBags: number | null
+  /** Feature 4's checked allowance and the cabin's carry-on rule. The customer API does not send them yet. */
+  allowance?: BagAllowance
+  carryOn?: CarryOnAllowance
   /** Excess baggage the passenger still owes. The bags are weighed at the counter, so it is 0 until then. */
   excessFee?: number
   boardingPassId: string | null

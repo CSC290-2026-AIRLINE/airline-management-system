@@ -208,9 +208,12 @@
   border-radius: 16px;
 }
 
-/* The boarding pass takes the whole row: it has no summary beside it. */
-.panelWide {
-  grid-column: 1 / -1;
+/* The boarding pass has no card around it: the message and the pass fill the content column. */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
 }
 
 /* The trip summary: a navy card with the flight on top. */
@@ -343,13 +346,17 @@
   font-size: 14px;
   line-height: 1.5;
   color: #3b4256;
-  width: 460px;
   max-width: 100%;
   padding: 12px;
   box-sizing: border-box;
   border: 0;
   border-radius: 4px;
   background: #f8fafc;
+}
+
+/* The form boxes are 460 px wide, as in the design. */
+.field .input {
+  width: 460px;
 }
 
 .input:focus-visible {
@@ -367,29 +374,43 @@
   color: var(--f6-muted);
 }
 
+/* The four MRZ check digits: a tick or a cross in front of every label. */
 .checks {
   list-style: none;
   margin: 0;
-  padding: 12px 14px;
-  background: var(--f6-line-soft);
-  border-radius: 10px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   font-size: 14px;
 }
 
-.check[data-ok='true'] {
-  color: var(--f6-success-text);
+.check {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--f6-ink);
 }
 
-.check[data-ok='false'] {
-  color: var(--f6-muted);
-}
-
-.check[data-failed='true'] {
-  color: var(--f6-error-text);
+.checkMark {
   font-weight: 600;
+}
+
+.check[data-ok='true'] .checkMark {
+  color: var(--f6-good);
+}
+
+.check[data-ok='false'] .checkMark {
+  color: var(--f6-bad);
+}
+
+.checkLabel {
+  font-weight: 500;
+}
+
+/* The check the server refused is the one that is called out. */
+.check[data-failed='true'] .checkMark {
+  color: var(--f6-bad);
 }
 
 .helpers {
@@ -402,14 +423,23 @@
 .helpersLabel {
   font-size: 12px;
   color: var(--f6-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .actions {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* The seat step keeps Back on the left and the other two buttons on the right. */
+.actionsSplit {
+  justify-content: space-between;
+}
+
+.actionGroup {
+  display: flex;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -462,32 +492,109 @@
   outline-offset: 2px;
 }
 
-.allowance {
-  margin: 0;
-  padding: 12px 14px;
-  background: var(--f6-line-soft);
-  border-radius: 10px;
-  font-size: 14px;
+/* The two allowance tiles of the baggage step. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
 }
 
-.counterBox {
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 20px;
+  box-sizing: border-box;
+  background: var(--f6-paper);
+  border: 1px solid var(--f6-line);
+  border-radius: 16px;
+}
+
+.tileLabel {
+  font-size: 12px;
+  color: var(--f6-muted);
+}
+
+.tileValue {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  color: var(--f6-ink);
+}
+
+.tileNote {
+  font-size: 14px;
+  color: var(--f6-muted);
+}
+
+/* The bag counter: a 40 px button on each side of the number. */
+.countRow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.countGroup {
   display: flex;
   align-items: center;
+  gap: 12px;
+}
+
+.countButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-family: var(--f6-ui);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--f6-navy);
+  background: var(--f6-paper);
+  border: 1px solid var(--f6-line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.countButton:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.countButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.countButton:focus-visible {
+  outline: 2px solid var(--f6-navy);
+  outline-offset: 2px;
+}
+
+.countValue {
+  min-width: 32px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--f6-ink);
+}
+
+/* The step title with a note on the right, as the seat step shows it. */
+.stepHead {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 16px;
 }
 
-.stepper {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.stepNote {
+  font-size: 14px;
+  color: var(--f6-muted);
+  white-space: nowrap;
 }
 
-.count {
-  min-width: 44px;
-  text-align: center;
-  font-size: 20px;
-  font-weight: 700;
+.stepNote strong {
+  color: var(--f6-ink);
 }
 
 .state {

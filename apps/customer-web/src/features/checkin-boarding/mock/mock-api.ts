@@ -207,6 +207,7 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
     const seat =
       record.seat ??
       (assigned ? { code: assigned.seatCode, type: assigned.type, fee: PRICING.seatFee[assigned.type], paymentId: null } : null)
+    const baggage = PRICING.baggage[booking.cabin]
     return {
       id: record.id,
       status: record.status,
@@ -245,6 +246,19 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
       document: record.document,
       seat,
       declaredBags: record.declaredBags,
+      allowance: {
+        freeKg: baggage.freeKg,
+        tierBonusKg: 0,
+        ratePerKg: baggage.ratePerKg,
+        maxBagKg: baggage.maxBagKg,
+        maxLinearCm: SETTINGS.checkedBagMaxLinearCm,
+      },
+      carryOn: {
+        maxKg: SETTINGS.carryOn.maxKg,
+        maxLengthCm: SETTINGS.carryOn.maxLengthCm,
+        maxWidthCm: SETTINGS.carryOn.maxWidthCm,
+        maxHeightCm: SETTINGS.carryOn.maxHeightCm,
+      },
       boardingPassId: pass?.id ?? null,
       checkedInAt: record.checkedInAt,
     }

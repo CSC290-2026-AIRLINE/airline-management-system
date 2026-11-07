@@ -1,11 +1,20 @@
 import { useState } from 'react'
-import type { CheckInView } from '../api/types.ts'
+import type { BagAllowance, Cabin, CarryOnAllowance, CheckInView } from '../api/types.ts'
+import { Message } from './Message.tsx'
 import styles from './flow.module.css'
 
 const MAX_BAGS = 10
 
-/** Carry-on is the same in every cabin: 7 kg and 56 x 36 x 23 cm. */
-const CARRY_ON = { maxKg: 7, length: 56, width: 36, height: 23 }
+/** The customer API does not send the allowance yet, so the airline's published rules stand in for it. */
+const FALLBACK_ALLOWANCE: BagAllowance = { freeKg: 20, tierBonusKg: 0, ratePerKg: 500, maxBagKg: 32, maxLinearCm: 158 }
+const FALLBACK_CARRY_ON: CarryOnAllowance = { maxKg: 7, maxLengthCm: 56, maxWidthCm: 36, maxHeightCm: 23 }
+
+const FARE_LABEL: Record<Cabin, string> = {
+  economy: 'Economy',
+  premium_economy: 'Premium Economy',
+  business: 'Business',
+  first: 'First',
+}
 
 export function BagsStep({
   checkIn,
@@ -19,6 +28,8 @@ export function BagsStep({
   onBack: () => void
 }) {
   const [count, setCount] = useState(checkIn.declaredBags ?? 0)
+  const allowance = checkIn.allowance ?? FALLBACK_ALLOWANCE
+  const carryOn = checkIn.carryOn ?? FALLBACK_CARRY_ON
 
   return (
     <form
@@ -28,35 +39,41 @@ export function BagsStep({
         onSubmit(count)
       }}
     >
-      <h2 className={styles.panelTitle}>How many bags are you checking?</h2>
-      <p className={styles.panelHint}>
-        We weigh your checked bags at the counter and print a tag there. Excess fees are paid before the tag is printed.
-      </p>
+      <h2 className={styles.panelTitle}>Baggage</h2>
 
-      <p className={styles.allowance}>
-        <strong>Carry-on allowance</strong>
-        <br />
-        {CARRY_ON.maxKg} kg, up to {CARRY_ON.length} × {CARRY_ON.width} × {CARRY_ON.height} cm
-      </p>
+      <div className={styles.tiles}>
+        <div className={styles.tile}>
+          <span className={styles.tileLabel}>Checked baggage allowance</span>
+          <span className={styles.tileValue}>{allowance.freeKg} kg</span>
+          <span className={styles.tileNote}>{FARE_LABEL[checkIn.passenger.cabin]} fare</span>
+        </div>
+        <div className={styles.tile}>
+          <span className={styles.tileLabel}>Carry-on allowance</span>
+          <span className={styles.tileValue}>{carryOn.maxKg} kg</span>
+          <span className={styles.tileNote}>
+            1 bag, up to {carryOn.maxLengthCm} × {carryOn.maxWidthCm} × {carryOn.maxHeightCm} cm, checked at the counter or gate
+          </span>
+        </div>
+      </div>
 
-      <div className={styles.counterBox}>
-        <span className={styles.label}>Checked bags</span>
-        <div className={styles.stepper}>
+      <div className={styles.countRow}>
+        <span className={styles.label}>How many bags will you check in?</span>
+        <div className={styles.countGroup}>
           <button
             type="button"
-            className={styles.ghostButton}
+            className={styles.countButton}
             onClick={() => setCount((value) => Math.max(0, value - 1))}
             disabled={count <= 0 || busy}
             aria-label="One bag less"
           >
             −
           </button>
-          <output className={styles.count} aria-live="polite">
+          <output className={styles.countValue} aria-live="polite">
             {count}
           </output>
           <button
             type="button"
-            className={styles.ghostButton}
+            className={styles.countButton}
             onClick={() => setCount((value) => Math.min(MAX_BAGS, value + 1))}
             disabled={count >= MAX_BAGS || busy}
             aria-label="One bag more"
@@ -65,6 +82,11 @@ export function BagsStep({
           </button>
         </div>
       </div>
+
+      <Message tone="warn">
+        Bags are weighed at bag drop. If they weigh more than {allowance.freeKg} kg in total, you pay the extra fee there before your bag
+        tag is printed. A bag over the max weight for your fare or over {allowance.maxLinearCm} cm (length + width + height) is refused.
+      </Message>
 
       <div className={styles.actions}>
         <button className={styles.ghostButton} type="button" onClick={onBack} disabled={busy}>

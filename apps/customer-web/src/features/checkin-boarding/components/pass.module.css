@@ -1,137 +1,184 @@
-/* The boarding pass card. */
-/* Centred block; the alignment is set here so it does not depend on the shell around it. */
+/* The boarding pass card: the white part with the flight, the navy panel with the QR. */
 .wrap {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 560px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.title {
-  font-family: var(--f6-brand);
-  font-size: 22px;
-  margin: 0;
-}
-
-.hint {
-  margin: -8px 0 0;
-  color: var(--f6-muted);
-  font-size: 14px;
+  min-width: 0;
+  text-align: left;
 }
 
 .card {
+  display: flex;
+  align-items: stretch;
   border: 1px solid var(--f6-line);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--f6-paper);
   overflow: hidden;
 }
 
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: 28px;
+  box-sizing: border-box;
+}
+
 .cardHead {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  background: var(--f6-navy);
-  color: #fff;
-  padding: 12px 18px;
+  gap: 16px;
 }
 
 .brand {
-  font-family: var(--f6-brand);
-  font-size: 18px;
-  color: var(--f6-amber);
-}
-
-.reference {
-  font-family: var(--f6-mono);
-  letter-spacing: 0.12em;
-}
-
-.cardBody {
   display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  align-items: flex-start;
-  padding: 18px;
+  flex-direction: column;
+  font-family: var(--f6-ui);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--f6-navy);
 }
 
-/* Keeps the route and the field grid readable; the QR wraps under them when the card is narrow. */
-.fields {
-  flex: 1 1 200px;
-  min-width: 0;
+.brandSub {
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  color: var(--f6-muted);
 }
 
-.name {
-  font-family: var(--f6-brand);
-  font-size: 20px;
-  margin: 0 0 6px;
+.pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--f6-line-soft);
+  color: var(--f6-muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
+/* BKK — plane — NRT, with the city under each code. */
 .route {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  white-space: nowrap;
-  font-size: 22px;
-  margin-bottom: 14px;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.city {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .code {
-  font-family: var(--f6-brand);
-  font-size: 20px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--f6-ink);
 }
 
-.arrow {
+.cityName {
+  font-size: 14px;
+  color: var(--f6-muted);
+}
+
+.planeLine {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.planeLine::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--f6-line);
+}
+
+.plane {
+  position: relative;
+  padding: 0 10px;
+  background: var(--f6-paper);
   color: var(--f6-amber);
+  font-size: 18px;
+  line-height: 1;
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 10px 18px;
-  margin: 0;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px 20px;
+  margin: 28px 0 0;
 }
 
 .grid dt {
   font-size: 12px;
-  color: var(--f6-muted);
+  font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  color: var(--f6-muted);
 }
 
 .grid dd {
-  margin: 2px 0 0;
-  font-size: 16px;
+  margin: 4px 0 0;
+  font-size: 14px;
   font-weight: 600;
+  color: var(--f6-ink);
+}
+
+/* The navy panel with the QR. */
+.qrPanel {
+  flex: 0 0 213px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 40px 24px;
+  box-sizing: border-box;
+  background: var(--f6-navy);
 }
 
 .qr {
-  width: 132px;
-  height: 132px;
-  flex: 0 0 auto;
-  border: 1px solid var(--f6-line);
+  width: 130px;
+  height: 130px;
   border-radius: 8px;
   background: #fff;
+}
+
+.qrCaption {
+  font-size: 12px;
+  color: #b7c1d1;
+  text-align: center;
 }
 
 .actions {
   display: flex;
   gap: 12px;
-  justify-content: center;
   flex-wrap: wrap;
 }
 
 @media (max-width: 720px) {
-  .cardBody {
+  .card {
     flex-direction: column;
-    align-items: center;
   }
 
-  /* Full width, so the field grid keeps two columns instead of shrink-wrapping to one. */
-  .fields {
-    width: 100%;
+  .main {
+    padding: 20px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .qrPanel {
+    flex: 0 0 auto;
+    padding: 24px;
   }
 }

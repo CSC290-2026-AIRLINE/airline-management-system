@@ -32,8 +32,24 @@
   --f6-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --f6-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Still used by the seat map and the boarding pass card until they are restyled. */
-  --f6-ground: var(--f6-line-soft);
-  --f6-amber-hover: #faa61a;
+  /* The tick and the cross of the check list. */
   --f6-good: #1e8e4e;
+  --f6-bad: #d61313;
+
+  /* The seat map states. */
+  --f6-seat-free-line: #5b93f0;
+  --f6-seat-free-hover: #dce8ff;
+  --f6-seat-paid-bg: #ffe9d6;
+  --f6-seat-paid-line: #e86a0c;
+  --f6-seat-paid-hover: #ffd4ad;
+  --f6-seat-paid-text: #b4530a;
+  --f6-seat-taken-bg: #e3e9f4;
+  --f6-seat-taken-text: #5b6b86;
+  --f6-seat-blocked-bg: #f1f3f7;
+  --f6-seat-blocked-line: #cbd5e1;
+  --f6-seat-mine-bg: #0a1f44;
+  --f6-seat-mine-line: #ff7f1f;
+  --f6-seat-business-bg: #eaf0fb;
+  --f6-seat-business-line: #c9d8f2;
+  --f6-seat-business-text: #8c94a3;
 }

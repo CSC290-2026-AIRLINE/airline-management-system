@@ -130,9 +130,56 @@ export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; 
     setError(null)
   }
 
-  // The boarding pass has no summary beside it: it takes the whole row.
-  const panelClass = step === 5 ? `${styles.panel} ${styles.panelWide}` : styles.panel
+  // The window strip follows the API clock, so a delay moves it with the flight.
   const strip = checkIn ? windowStrip(checkIn.flight.depAt, now()) : null
+
+  const steps = (
+    <>
+      {step === 1 ? <FindBookingStep busy={busy} onSubmit={start} /> : null}
+
+      {step === 2 && checkIn ? (
+        <PassportStep
+          busy={busy}
+          error={error}
+          onSubmit={submitDocument}
+          onBack={() => {
+            setError(null)
+            setStep(1)
+          }}
+        />
+      ) : null}
+
+      {step === 3 && checkIn ? (
+        <SeatStep
+          api={api}
+          checkIn={checkIn}
+          busy={busy}
+          onConfirm={confirmSeat}
+          onSkip={() => {
+            setError(null)
+            setStep(4)
+          }}
+          onBack={() => {
+            setError(null)
+            setStep(2)
+          }}
+          onError={setError}
+        />
+      ) : null}
+
+      {step === 4 && checkIn ? (
+        <BagsStep
+          checkIn={checkIn}
+          busy={busy}
+          onSubmit={declareBags}
+          onBack={() => {
+            setError(null)
+            setStep(3)
+          }}
+        />
+      ) : null}
+    </>
+  )
 
   return (
     <div className={styles.flow}>
@@ -152,64 +199,22 @@ export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; 
       <ErrorMessage error={error} />
 
       <div className={styles.layout}>
-        <div className={panelClass}>
-          {step === 1 ? <FindBookingStep busy={busy} onSubmit={start} /> : null}
-
-          {step === 2 && checkIn ? (
-            <PassportStep
-              busy={busy}
-              error={error}
-              onSubmit={submitDocument}
-              onBack={() => {
-                setError(null)
-                setStep(1)
-              }}
-            />
-          ) : null}
-
-          {step === 3 && checkIn ? (
-            <SeatStep
-              api={api}
-              checkIn={checkIn}
-              busy={busy}
-              onConfirm={confirmSeat}
-              onSkip={() => {
-                setError(null)
-                setStep(4)
-              }}
-              onBack={() => {
-                setError(null)
-                setStep(2)
-              }}
-              onError={setError}
-            />
-          ) : null}
-
-          {step === 4 && checkIn ? (
-            <BagsStep
-              checkIn={checkIn}
-              busy={busy}
-              onSubmit={declareBags}
-              onBack={() => {
-                setError(null)
-                setStep(3)
-              }}
-            />
-          ) : null}
-
-          {step === 5 ? (
-            pass ? (
+        {step === 5 ? (
+          <div className={styles.content}>
+            {pass ? (
               <BoardingPassStep pass={pass} onStartOver={startOver} />
             ) : (
               <p className={styles.state} role="status">
                 Your boarding pass is being issued…
               </p>
-            )
-          ) : null}
-        </div>
+            )}
+          </div>
+        ) : (
+          <div className={styles.panel}>{steps}</div>
+        )}
 
         {step === 1 ? <BeforeYouStart /> : null}
-        {step > 1 && step < 5 && checkIn ? <Summary checkIn={checkIn} /> : null}
+        {step > 1 && checkIn ? <Summary checkIn={checkIn} /> : null}
       </div>
     </div>
   )
