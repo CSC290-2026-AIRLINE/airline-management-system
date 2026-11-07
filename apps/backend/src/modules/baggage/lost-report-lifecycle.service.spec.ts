@@ -153,6 +153,20 @@ describe('LostReportLifecycleService', () => {
     expect(reports[0].lost_at).toEqual(originalLostAt)
   })
 
+  it('catches up when simulation time jumps well beyond the timeout in one advance', async () => {
+    const reports = [report('large-time-jump')]
+    const { service, clock } = makeService(reports, reportedAt)
+
+    expect((await service.markTimedOutReports()).marked).toBe(0)
+    clock.setTime(new Date(reportedAt.getTime() + 365 * DAY_MS))
+
+    const result = await service.markTimedOutReports()
+
+    expect(result.cutoff).toEqual(new Date(reportedAt.getTime() + (365 - TIMEOUT_DAYS) * DAY_MS))
+    expect(result.marked).toBe(1)
+    expect(reports[0]).toMatchObject({ status: 'lost', lost_at: new Date(reportedAt.getTime() + 365 * DAY_MS) })
+  })
+
   it('locks due open report rows before updating and rechecks confirmed matches in the database update', async () => {
     const reports = [report('locking')]
     const { service, queryRaw, updateMany, transaction } = makeService(reports, threshold)
