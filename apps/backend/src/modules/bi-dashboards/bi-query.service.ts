@@ -12,18 +12,26 @@ import type { BiBookingDay, BiDailyMetric, BiDelayCause, BiRouteMetric, BiRunSum
 export class BiQueryService {
   constructor(private readonly db: DbService) {}
 
-  /** The latest successful run, plus whether a run is in progress right now (the page shows "refreshing"). */
-  async status(): Promise<{ latest_success: BiRunSummary | null; refreshing: boolean }> {
-    const [latest, running] = await Promise.all([
+  /**
+   * The latest successful run, the most recent run of any outcome (so a failed refresh can be shown), and whether a
+   * run is in progress right now.
+   */
+  async status(): Promise<{ latest_success: BiRunSummary | null; last_run: BiRunSummary | null; refreshing: boolean }> {
+    const [latest, last, running] = await Promise.all([
       this.db.$queryRaw<BiRunSummary[]>`
-        SELECT id, trigger, status, to_char(data_as_of AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS data_as_of, to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS started_at, to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS finished_at, row_count, error_message
+        SELECT ${RUN_COLUMNS}
         FROM bi_etl_run
         WHERE status = 'success'
         ORDER BY started_at DESC
         LIMIT 1`,
+      this.db.$queryRaw<BiRunSummary[]>`
+        SELECT ${RUN_COLUMNS}
+        FROM bi_etl_run
+        ORDER BY started_at DESC
+        LIMIT 1`,
       this.db.$queryRaw<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM bi_etl_run WHERE status = 'running'`,
     ])
-    return { latest_success: latest[0] ?? null, refreshing: running[0].count > 0 }
+    return { latest_success: latest[0] ?? null, last_run: last[0] ?? null, refreshing: running[0].count > 0 }
   }
 
   /** Metric sums per flight date, across the selected routes. */
@@ -95,7 +103,109 @@ export class BiQueryService {
       GROUP BY booking_date
       ORDER BY booking_date`
   }
+
+  /** Seats sold and available per cabin, over departed flights. Feeds the load-factor-by-cabin chart. */
+  cabins(filter: BiFilterDto): Promise<{ cabin: string; seat_sold: number; seat_available: number }[]> {
+    return this.db.$queryRaw<{ cabin: string; seat_sold: number; seat_available: number }[]>`
+      SELECT c.cabin, SUM(c.seat_sold)::int AS seat_sold, SUM(c.seat_available)::int AS seat_available
+      FROM bi_flight_cabin c
+      JOIN bi_flight f ON f.flight_id = c.flight_id
+      ${flightWhere(filter, 'f')}
+        AND f.actual_departure_at IS NOT NULL
+        ${filter.cabin ? Prisma.sql`AND c.cabin = ${filter.cabin}` : Prisma.empty}
+      GROUP BY c.cabin
+      ORDER BY c.cabin`
+  }
+
+  /**
+   * One row per flight, for the drill-down lists and the flights CSV. `cause` is the reason category of the flight's
+   * largest delay. Seats and revenue are for the chosen cabin when one is given.
+   */
+  flights(filter: BiFilterDto): Promise<BiFlightRow[]> {
+    const departedOnly = filter.departed_only !== 'false'
+    return this.db.$queryRaw<BiFlightRow[]>`
+      SELECT
+        f.flight_id::text AS flight_id,
+        f.flight_number,
+        f.flight_date::text AS flight_date,
+        r.origin,
+        r.destination,
+        f.status,
+        f.delay_minutes,
+        cause.category AS cause,
+        COALESCE(seats.seat_sold, 0)::int AS seat_sold,
+        COALESCE(seats.seat_available, 0)::int AS seat_available,
+        f.revenue_amount::float8 AS revenue_amount,
+        f.refund_amount::float8 AS refund_amount
+      FROM bi_flight f
+      JOIN bi_route r ON r.route_id = f.route_id
+      LEFT JOIN LATERAL (
+        SELECT d.category FROM bi_flight_delay d
+        WHERE d.flight_id = f.flight_id
+        ORDER BY d.delay_minutes DESC
+        LIMIT 1
+      ) cause ON true
+      LEFT JOIN (
+        SELECT c.flight_id, SUM(c.seat_sold) AS seat_sold, SUM(c.seat_available) AS seat_available
+        FROM bi_flight_cabin c
+        ${filter.cabin ? Prisma.sql`WHERE c.cabin = ${filter.cabin}` : Prisma.empty}
+        GROUP BY c.flight_id
+      ) seats ON seats.flight_id = f.flight_id
+      ${flightWhere(filter, 'f')}
+        ${departedOnly ? Prisma.sql`AND f.actual_departure_at IS NOT NULL` : Prisma.empty}
+        ${filter.cause ? Prisma.sql`AND cause.category = ${filter.cause}` : Prisma.empty}
+        ${filter.cabin ? Prisma.sql`AND seats.seat_sold IS NOT NULL` : Prisma.empty}
+      ORDER BY f.flight_date, f.flight_number`
+  }
+
+  /** Bookings and cancellations per route and booking date, for the bookings drill-down. */
+  bookingsByRoute(filter: BiFilterDto): Promise<BiBookingRouteRow[]> {
+    return this.db.$queryRaw<BiBookingRouteRow[]>`
+      SELECT
+        b.booking_date::text AS booking_date,
+        r.origin,
+        r.destination,
+        b.booking_count,
+        b.cancellation_count
+      FROM bi_booking_day b
+      JOIN bi_route r ON r.route_id = b.route_id
+      WHERE TRUE
+        ${filter.from ? Prisma.sql`AND b.booking_date >= ${filter.from}::date` : Prisma.empty}
+        ${filter.to ? Prisma.sql`AND b.booking_date <= ${filter.to}::date` : Prisma.empty}
+        ${filter.route_id ? Prisma.sql`AND b.route_id = ${filter.route_id}::uuid` : Prisma.empty}
+      ORDER BY b.booking_date, r.origin, r.destination`
+  }
 }
+
+export interface BiFlightRow {
+  flight_id: string
+  flight_number: string
+  flight_date: string
+  origin: string
+  destination: string
+  status: string
+  delay_minutes: number | null
+  cause: string | null
+  seat_sold: number
+  seat_available: number
+  revenue_amount: number
+  refund_amount: number
+}
+
+export interface BiBookingRouteRow {
+  booking_date: string
+  origin: string
+  destination: string
+  booking_count: number
+  cancellation_count: number
+}
+
+/** Run columns with timestamps as explicit UTC text, so the driver's timezone cannot shift them. */
+const RUN_COLUMNS = Prisma.sql`id, trigger, status,
+  to_char(data_as_of AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS data_as_of,
+  to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS started_at,
+  to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS finished_at,
+  row_count, error_message`
 
 /** WHERE clause for a table with `flight_date` and `route_id`. The alias is optional for joined queries. */
 function metricWhere(filter: BiFilterDto, alias?: string): Prisma.Sql {

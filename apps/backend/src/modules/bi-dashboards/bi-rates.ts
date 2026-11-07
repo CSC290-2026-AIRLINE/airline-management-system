@@ -1,16 +1,18 @@
 import type { BiKpis, BiMetricSums } from './dto/bi-dashboards.types'
+import type { RevenueMode } from './dto/bi-options'
 
 /**
  * Rates are computed from sums, never averaged across days or routes (the F14 migration's rule). A rate with no
  * denominator is null, never NaN or zero.
  */
-export function computeKpis(sums: BiMetricSums): BiKpis {
+export function computeKpis(sums: BiMetricSums, revenueMode: RevenueMode = 'after_refunds'): BiKpis {
   const { departed_count, on_time_count, seat_available, seat_sold, revenue_amount, refund_amount } = sums
+  const revenue = revenueMode === 'after_refunds' ? revenue_amount - refund_amount : revenue_amount
   return {
     ...sums,
     on_time_pct: departed_count > 0 ? on_time_count / departed_count : null,
     load_factor: seat_available > 0 ? seat_sold / seat_available : null,
-    revenue_per_seat: seat_available > 0 ? (revenue_amount - refund_amount) / seat_available : null,
+    revenue_per_seat: seat_available > 0 ? revenue / seat_available : null,
   }
 }
 
