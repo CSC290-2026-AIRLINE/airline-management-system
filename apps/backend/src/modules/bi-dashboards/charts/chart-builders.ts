@@ -1,39 +1,44 @@
-import { computeKpis } from '../bi-rates'
-import type { BiBookingDay, BiDailyMetric, BiDelayCause, BiRouteMetric } from '../dto/bi-dashboards.types'
 import { PALETTE, formatCount, formatMoney, formatPercent, renderBarChart, renderLineChart } from './svg-chart'
+import { computeKpis } from '../bi-rates'
+import type { BiDelayCause, BiRouteMetric } from '../dto/bi-dashboards.types'
 
-/** The five BI charts. Each takes the query results and returns an SVG string. */
-export const BI_CHART_NAMES = ['on-time', 'load-factor', 'revenue-per-seat', 'bookings', 'delay-causes'] as const
+/** The BI charts. Each takes already-computed rows and returns an SVG string. */
+export const BI_CHART_NAMES = ['on-time', 'load-factor', 'revenue-per-seat', 'bookings', 'delay-causes', 'cabins'] as const
 export type BiChartName = (typeof BI_CHART_NAMES)[number]
 
-export function buildOnTimeChart(daily: BiDailyMetric[]): string {
+export interface PeriodRate {
+  period: string
+  on_time_pct: number | null
+  load_factor: number | null
+}
+
+export interface PeriodBookings {
+  period: string
+  bookings: number
+  cancellations: number
+}
+
+export interface CabinRate {
+  label: string
+  load_factor: number | null
+}
+
+export function buildOnTimeChart(series: PeriodRate[], group: string = 'day'): string {
   return renderLineChart({
     title: 'On-time performance',
-    subtitle: 'Share of departed flights within the on-time limit, per day',
-    labels: daily.map((d) => d.flight_date),
-    series: [
-      {
-        name: 'On-time %',
-        color: PALETTE.navy,
-        points: daily.map((d) => computeKpis(d).on_time_pct),
-      },
-    ],
+    subtitle: `Share of departed flights within the on-time limit, per ${group}`,
+    labels: series.map((s) => s.period),
+    series: [{ name: 'On-time %', color: PALETTE.navy, points: series.map((s) => s.on_time_pct) }],
     format: formatPercent,
   })
 }
 
-export function buildLoadFactorChart(daily: BiDailyMetric[]): string {
+export function buildLoadFactorChart(series: PeriodRate[], group: string = 'day'): string {
   return renderLineChart({
     title: 'Load factor',
-    subtitle: 'Seats sold as a share of seats available on departed flights, per day',
-    labels: daily.map((d) => d.flight_date),
-    series: [
-      {
-        name: 'Load factor',
-        color: PALETTE.navyActive,
-        points: daily.map((d) => computeKpis(d).load_factor),
-      },
-    ],
+    subtitle: `Seats sold as a share of seats available on departed flights, per ${group}`,
+    labels: series.map((s) => s.period),
+    series: [{ name: 'Load factor', color: PALETTE.navyActive, points: series.map((s) => s.load_factor) }],
     format: formatPercent,
   })
 }
@@ -52,14 +57,14 @@ export function buildRevenuePerSeatChart(routes: BiRouteMetric[]): string {
   })
 }
 
-export function buildBookingsChart(days: BiBookingDay[]): string {
+export function buildBookingsChart(series: PeriodBookings[], group: string = 'day'): string {
   return renderLineChart({
     title: 'Bookings and cancellations',
-    subtitle: 'Coupons booked and cancelled per day, at the route origin',
-    labels: days.map((d) => d.booking_date),
+    subtitle: `Coupons booked and cancelled per ${group}, at the route origin`,
+    labels: series.map((s) => s.period),
     series: [
-      { name: 'Bookings', color: PALETTE.navy, points: days.map((d) => d.booking_count) },
-      { name: 'Cancellations', color: PALETTE.danger, points: days.map((d) => d.cancellation_count) },
+      { name: 'Bookings', color: PALETTE.navy, points: series.map((s) => s.bookings) },
+      { name: 'Cancellations', color: PALETTE.danger, points: series.map((s) => s.cancellations) },
     ],
     format: formatCount,
   })
@@ -71,6 +76,15 @@ export function buildDelayCausesChart(causes: BiDelayCause[]): string {
     subtitle: 'Delay minutes by reason category',
     bars: causes.map((c) => ({ label: categoryLabel(c.category), value: c.delay_minutes })),
     format: (minutes) => `${formatCount(minutes)} min`,
+  })
+}
+
+export function buildCabinsChart(cabins: CabinRate[]): string {
+  return renderBarChart({
+    title: 'Load factor by cabin',
+    subtitle: 'Seats sold as a share of seats available on departed flights',
+    bars: cabins.flatMap((c) => (c.load_factor === null ? [] : [{ label: c.label, value: c.load_factor }])),
+    format: formatPercent,
   })
 }
 

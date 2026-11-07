@@ -1,5 +1,5 @@
 import { emptySums } from '../bi-rates'
-import { buildRevenuePerSeatChart } from './chart-builders'
+import { buildCabinsChart, buildOnTimeChart, buildRevenuePerSeatChart } from './chart-builders'
 
 describe('buildRevenuePerSeatChart', () => {
   const route = (origin: string, destination: string, departed: number, seats: number, revenue: number) => ({
@@ -24,5 +24,33 @@ describe('buildRevenuePerSeatChart', () => {
     const svg = buildRevenuePerSeatChart([route('BKK', 'HKT', 0, 0, 0)])
 
     expect(svg).toContain('No data for this period')
+  })
+})
+
+describe('period and cabin charts', () => {
+  it('labels the on-time chart with each period and leaves a gap for a period with no departures', () => {
+    const svg = buildOnTimeChart(
+      [
+        { period: '2026-11-02', on_time_pct: 0.5, load_factor: null },
+        { period: '2026-11-03', on_time_pct: null, load_factor: null },
+        { period: '2026-11-04', on_time_pct: 1, load_factor: null },
+      ],
+      'day',
+    )
+
+    expect(svg).toContain('2026-11-02')
+    expect(svg).toContain('2026-11-04')
+    expect(svg).toContain('per day')
+  })
+
+  it('shows each cabin with its load factor and leaves out cabins with no seats', () => {
+    const svg = buildCabinsChart([
+      { label: 'Economy', load_factor: 0.5 },
+      { label: 'First', load_factor: null },
+    ])
+
+    expect(svg).toContain('Economy')
+    expect(svg).not.toContain('>First<')
+    expect(svg).toContain('50%')
   })
 })

@@ -1,9 +1,20 @@
 import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
-import type { BiFilters as Filters, BiRouteRow } from '../api/bi'
+import type { BiFilters as Filters, BiGroup, BiRevenueMode, BiRouteRow } from '../api/bi'
 
 const ALL_ROUTES = 'all'
+
+const GROUPS: { value: BiGroup; label: string }[] = [
+  { value: 'day', label: 'Day' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+]
+
+const REVENUE_MODES: { value: BiRevenueMode; label: string }[] = [
+  { value: 'after_refunds', label: 'After refunds' },
+  { value: 'before_refunds', label: 'Before refunds' },
+]
 
 interface BiFiltersProps {
   filters: Filters
@@ -13,7 +24,7 @@ interface BiFiltersProps {
 
 export function BiFilters({ filters, routes, onChange }: BiFiltersProps) {
   return (
-    <div className="flex flex-wrap items-end gap-4">
+    <div className="print:hidden flex flex-wrap items-end gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="bi-from">From</Label>
         <Input id="bi-from" type="date" value={filters.from} onChange={(e) => onChange({ ...filters, from: e.target.value })} />
@@ -36,6 +47,36 @@ export function BiFilters({ filters, routes, onChange }: BiFiltersProps) {
             {routes.map((route) => (
               <SelectItem key={route.route_id} value={route.route_id}>
                 {`${route.origin} – ${route.destination}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="bi-group">Group by</Label>
+        <Select value={filters.group} onValueChange={(value) => onChange({ ...filters, group: value as BiGroup })}>
+          <SelectTrigger id="bi-group" className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GROUPS.map((g) => (
+              <SelectItem key={g.value} value={g.value}>
+                {g.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="bi-revenue">Revenue</Label>
+        <Select value={filters.revenueMode} onValueChange={(value) => onChange({ ...filters, revenueMode: value as BiRevenueMode })}>
+          <SelectTrigger id="bi-revenue" className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {REVENUE_MODES.map((m) => (
+              <SelectItem key={m.value} value={m.value}>
+                {m.label}
               </SelectItem>
             ))}
           </SelectContent>

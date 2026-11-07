@@ -25,6 +25,7 @@ import { toCsv } from './bi-csv'
 import {
   BI_CHART_NAMES,
   buildBookingsChart,
+  buildCabinsChart,
   buildDelayCausesChart,
   buildLoadFactorChart,
   buildOnTimeChart,
@@ -80,38 +81,20 @@ export class BiDashboardsController {
 
   /** On-time %, load factor and revenue per seat for each period (day, week or month). */
   @Get('series')
-  async series(@Query() filter: BiFilterDto): Promise<(BiKpis & { period: string })[]> {
-    const daily = await this.query.dailyMetrics(filter)
-    return seriesByPeriod(daily, filter.group ?? 'day', filter.revenue_mode ?? 'after_refunds')
+  series(@Query() filter: BiFilterDto): Promise<(BiKpis & { period: string })[]> {
+    return this.seriesRows(filter)
   }
 
   /** Load factor per cabin over departed flights, for the cabin chart. */
   @Get('cabins')
-  async cabins(
-    @Query() filter: BiFilterDto,
-  ): Promise<{ cabin: string; label: string; seat_sold: number; seat_available: number; load_factor: number | null }[]> {
-    const rows = await this.query.cabins(filter)
-    return rows.map((r) => ({
-      ...r,
-      label: CABIN_LABELS[r.cabin as keyof typeof CABIN_LABELS] ?? r.cabin,
-      load_factor: r.seat_available > 0 ? r.seat_sold / r.seat_available : null,
-    }))
+  cabins(@Query() filter: BiFilterDto): Promise<CabinRowDto[]> {
+    return this.cabinRows(filter)
   }
 
   /** Bookings and cancellations per period (day, week or month), for the bookings chart. */
   @Get('bookings-series')
-  async bookingsSeries(@Query() filter: BiFilterDto): Promise<{ period: string; bookings: number; cancellations: number }[]> {
-    const days = await this.query.bookingDays(filter)
-    const group = filter.group ?? 'day'
-    const byPeriod = new Map<string, { bookings: number; cancellations: number }>()
-    for (const d of days) {
-      const key = periodOf(d.booking_date, group)
-      const t = byPeriod.get(key) ?? { bookings: 0, cancellations: 0 }
-      t.bookings += d.booking_count
-      t.cancellations += d.cancellation_count
-      byPeriod.set(key, t)
-    }
-    return [...byPeriod.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([period, t]) => ({ period, ...t }))
+  bookingsSeries(@Query() filter: BiFilterDto): Promise<PeriodBookingsDto[]> {
+    return this.bookingsSeriesRows(filter)
   }
 
   /** Bookings and cancellations per route and booking date, for the bookings drill-down. */
@@ -194,6 +177,34 @@ export class BiDashboardsController {
     )
   }
 
+  private async seriesRows(filter: BiFilterDto): Promise<(BiKpis & { period: string })[]> {
+    const daily = await this.query.dailyMetrics(filter)
+    return seriesByPeriod(daily, filter.group ?? 'day', filter.revenue_mode ?? 'after_refunds')
+  }
+
+  private async cabinRows(filter: BiFilterDto): Promise<CabinRowDto[]> {
+    const rows = await this.query.cabins(filter)
+    return rows.map((r) => ({
+      ...r,
+      label: CABIN_LABELS[r.cabin as keyof typeof CABIN_LABELS] ?? r.cabin,
+      load_factor: r.seat_available > 0 ? r.seat_sold / r.seat_available : null,
+    }))
+  }
+
+  private async bookingsSeriesRows(filter: BiFilterDto): Promise<PeriodBookingsDto[]> {
+    const days = await this.query.bookingDays(filter)
+    const group = filter.group ?? 'day'
+    const byPeriod = new Map<string, { bookings: number; cancellations: number }>()
+    for (const d of days) {
+      const key = periodOf(d.booking_date, group)
+      const t = byPeriod.get(key) ?? { bookings: 0, cancellations: 0 }
+      t.bookings += d.booking_count
+      t.cancellations += d.cancellation_count
+      byPeriod.set(key, t)
+    }
+    return [...byPeriod.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([period, t]) => ({ period, ...t }))
+  }
+
   /** One chart as SVG. `:chart` is one of BI_CHART_NAMES. */
   @Get('charts/:chart')
   @Header('Content-Type', 'image/svg+xml; charset=utf-8')
@@ -202,17 +213,33 @@ export class BiDashboardsController {
     if (!isChartName(chart)) throw new NotFoundException(`Unknown chart: ${chart}`)
     switch (chart) {
       case 'on-time':
-        return buildOnTimeChart(await this.query.dailyMetrics(filter))
+        return buildOnTimeChart(await this.seriesRows(filter), filter.group)
       case 'load-factor':
-        return buildLoadFactorChart(await this.query.dailyMetrics(filter))
+        return buildLoadFactorChart(await this.seriesRows(filter), filter.group)
       case 'revenue-per-seat':
         return buildRevenuePerSeatChart(await this.query.routeMetrics(filter))
       case 'bookings':
-        return buildBookingsChart(await this.query.bookingDays(filter))
+        return buildBookingsChart(await this.bookingsSeriesRows(filter), filter.group)
       case 'delay-causes':
         return buildDelayCausesChart(await this.query.delayCauses(filter))
+      case 'cabins':
+        return buildCabinsChart(await this.cabinRows(filter))
     }
   }
+}
+
+export interface CabinRowDto {
+  cabin: string
+  label: string
+  seat_sold: number
+  seat_available: number
+  load_factor: number | null
+}
+
+export interface PeriodBookingsDto {
+  period: string
+  bookings: number
+  cancellations: number
 }
 
 export interface FlightDto {

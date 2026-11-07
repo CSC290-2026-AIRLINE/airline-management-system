@@ -5,12 +5,19 @@ import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
-import type { BiChartName, BiFilters as Filters } from '../api/bi'
-import { BiFilters } from '../components/BiFilters'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { filterQuery, NO_FILTERS, useBiApi, type BiCabin, type BiChartName, type BiFilters } from '../api/bi'
+import { BiFilters as FilterBar } from '../components/BiFilters'
 import { ChartCard } from '../components/ChartCard'
+import { DrillPanel } from '../components/DrillPanel'
 import { KpiCard } from '../components/KpiCard'
 import { DailyTable, RouteTable } from '../components/MetricTables'
+import { PeriodTable } from '../components/PeriodTable'
 import { useBiDashboard } from '../hooks/useBiDashboard'
+import { useBiLoad } from '../hooks/useBiLoad'
+import { periodEnd } from '../lib-period'
+import { FinancePage } from './FinancePage'
 import { formatCount, formatDateTime, formatMoney, formatPercent } from '../lib-format'
 
 const CHARTS: { name: BiChartName; label: string }[] = [
@@ -19,22 +26,66 @@ const CHARTS: { name: BiChartName; label: string }[] = [
   { name: 'revenue-per-seat', label: 'Revenue per seat by route' },
   { name: 'bookings', label: 'Bookings and cancellations' },
   { name: 'delay-causes', label: 'Delay causes' },
+  { name: 'cabins', label: 'Load factor by cabin' },
 ]
 
-/** Default range: none, so the page shows everything in the copy until staff narrow it. */
-const NO_FILTERS: Filters = { from: '', to: '', routeId: '' }
+const CABIN_OPTIONS: { value: BiCabin; label: string }[] = [
+  { value: 'first', label: 'First' },
+  { value: 'business', label: 'Business' },
+  { value: 'premium_economy', label: 'Premium Economy' },
+  { value: 'economy', label: 'Economy' },
+]
+
+/** What the drill-down panel shows: the flights for a period, a cabin, or a delay cause. */
+type Drill = { title: string; description: string; filters: BiFilters } | null
 
 export function BiDashboardPage() {
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS)
+  const [filters, setFilters] = useState<BiFilters>(NO_FILTERS)
+  const [drill, setDrill] = useState<Drill>(null)
+  const api = useBiApi()
   const { data, loading, error, refresh, refreshing, refreshError } = useBiDashboard(filters)
 
   const latest = data?.status.latest_success ?? null
+  const lastRun = data?.status.last_run ?? null
   const kpis = data?.kpis.kpis ?? null
   const isRefreshing = refreshing || data?.status.refreshing === true
+  // Every dataset below reloads when the latest run changes, so a refresh updates the whole page.
+  const runKey = latest?.id ?? 'none'
+  const key = (name: string) => `${name}|${filterQuery(filters)}|${runKey}`
+
+  const series = useBiLoad(key('series'), () => api.getSeries(filters))
+  const cabins = useBiLoad(key('cabins'), () => api.getCabins(filters))
+  const causes = useBiLoad(key('causes'), () => api.getDelayCauses(filters))
+  const bookings = useBiLoad(key('bookings'), () => api.getBookingsByRoute(filters))
+
+  function drillPeriod(period: string) {
+    const to = periodEnd(period, filters.group)
+    setDrill({
+      title: `Flights · ${period}`,
+      description: filters.group === 'day' ? 'Flights on this date.' : `Flights from ${period} to ${to}.`,
+      filters: { ...filters, from: period, to },
+    })
+  }
+
+  function drillCabin(cabin: BiCabin, label: string) {
+    setDrill({
+      title: `Flights that sold ${label}`,
+      description: `Departed flights that sold ${label} seats.`,
+      filters: { ...filters, cabin },
+    })
+  }
+
+  function drillCause(cause: string) {
+    setDrill({
+      title: `Flights delayed by ${cause.replace(/_/g, ' ')}`,
+      description: 'Departed flights whose largest delay has this cause.',
+      filters: { ...filters, cause: cause as BiFilters['cause'] },
+    })
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 py-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header className="print:hidden flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="m-0 font-heading text-3xl font-bold text-primary">Business intelligence</h1>
           <p className="m-0 text-sm text-muted-foreground">
@@ -45,6 +96,9 @@ export function BiDashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           {isRefreshing && <Badge variant="secondary">Refreshing</Badge>}
+          <Button type="button" variant="outline" onClick={() => window.print()}>
+            Print PDF
+          </Button>
           <Button type="button" onClick={() => void refresh()} disabled={isRefreshing}>
             <RefreshCw aria-hidden="true" />
             Refresh data
@@ -52,87 +106,248 @@ export function BiDashboardPage() {
         </div>
       </header>
 
+      {lastRun?.status === 'failed' && (
+        <Alert variant="destructive" className="print:hidden">
+          <AlertCircle aria-hidden="true" />
+          <AlertDescription>
+            The last refresh failed on {formatDateTime(lastRun.started_at)}. The figures shown are from the last good refresh.
+          </AlertDescription>
+        </Alert>
+      )}
       {refreshError && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="print:hidden">
           <AlertCircle aria-hidden="true" />
           <AlertDescription>{refreshError}</AlertDescription>
         </Alert>
       )}
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="print:hidden">
           <AlertCircle aria-hidden="true" />
           <AlertDescription>Could not load the dashboard ({error}).</AlertDescription>
         </Alert>
       )}
 
-      <BiFilters filters={filters} routes={data?.routes ?? []} onChange={setFilters} />
+      <Tabs defaultValue="operations" className="flex flex-col gap-6">
+        <TabsList className="print:hidden">
+          <TabsTrigger value="operations">Operations</TabsTrigger>
+          <TabsTrigger value="finance">Finance</TabsTrigger>
+        </TabsList>
 
-      <section aria-labelledby="bi-kpis" className="flex flex-col gap-3">
-        <h2 id="bi-kpis" className="m-0 text-lg font-semibold text-foreground">
-          Headline figures
-        </h2>
-        {kpis ? (
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-            <KpiCard label="Flights" value={formatCount(kpis.flight_count)} hint={`${formatCount(kpis.cancelled_count)} cancelled`} />
-            <KpiCard
-              label="On-time"
-              value={formatPercent(kpis.on_time_pct)}
-              hint={`${formatCount(kpis.on_time_count)} of ${formatCount(kpis.departed_count)} departed`}
-            />
-            <KpiCard
-              label="Load factor"
-              value={formatPercent(kpis.load_factor)}
-              hint={`${formatCount(kpis.seat_sold)} of ${formatCount(kpis.seat_available)} seats`}
-            />
-            <KpiCard label="Revenue per seat" value={formatMoney(kpis.revenue_per_seat)} hint="Revenue minus refunds, per seat" />
-            <KpiCard label="Revenue" value={formatMoney(kpis.revenue_amount)} hint="Captured fares and seat fees" />
-            <KpiCard label="Refunds" value={formatMoney(kpis.refund_amount)} hint="Succeeded refunds on these flights" />
+        <TabsContent value="operations" className="flex flex-col gap-6">
+          <FilterBar filters={filters} routes={data?.routes ?? []} onChange={setFilters} />
+
+          <section aria-labelledby="bi-kpis" className="flex flex-col gap-3">
+            <h2 id="bi-kpis" className="m-0 text-lg font-semibold text-foreground">
+              Headline figures
+            </h2>
+            {kpis ? (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+                <KpiCard label="Flights" value={formatCount(kpis.flight_count)} hint={`${formatCount(kpis.cancelled_count)} cancelled`} />
+                <KpiCard
+                  label="On-time"
+                  value={formatPercent(kpis.on_time_pct)}
+                  hint={`${formatCount(kpis.on_time_count)} of ${formatCount(kpis.departed_count)} departed`}
+                />
+                <KpiCard
+                  label="Load factor"
+                  value={formatPercent(kpis.load_factor)}
+                  hint={`${formatCount(kpis.seat_sold)} of ${formatCount(kpis.seat_available)} seats`}
+                />
+                <KpiCard
+                  label="Revenue per seat"
+                  value={formatMoney(kpis.revenue_per_seat)}
+                  hint={filters.revenueMode === 'after_refunds' ? 'Revenue minus refunds, per seat' : 'Revenue before refunds, per seat'}
+                />
+                <KpiCard label="Revenue" value={formatMoney(kpis.revenue_amount)} hint="Captured fares and seat fees" />
+                <KpiCard label="Refunds" value={formatMoney(kpis.refund_amount)} hint="Succeeded refunds on these flights" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3" aria-busy="true">
+                {Array.from({ length: 6 }, (_, i) => (
+                  <Skeleton key={i} className="h-[104px] rounded-xl" />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section aria-labelledby="bi-charts" className="flex flex-col gap-3">
+            <h2 id="bi-charts" className="m-0 text-lg font-semibold text-foreground">
+              Charts
+            </h2>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {CHARTS.map((chart) => (
+                <ChartCard key={chart.name} name={chart.name} label={chart.label} filters={filters} />
+              ))}
+            </div>
+          </section>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>By period</CardTitle>
+              <CardDescription>Press a period to see the flights behind it.</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              {series.data ? (
+                <PeriodTable
+                  rows={series.data}
+                  periodLabel={filters.group === 'month' ? 'Month' : filters.group === 'week' ? 'Week starting' : 'Date'}
+                  onPick={drillPeriod}
+                />
+              ) : (
+                <Skeleton className="h-40 w-full" />
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>By cabin</CardTitle>
+                <CardDescription>Press a cabin to see the flights that sold it.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {cabins.data ? (
+                  <ul className="m-0 flex list-none flex-col gap-2 p-0">
+                    {CABIN_OPTIONS.map((c) => {
+                      const row = cabins.data?.find((r) => r.cabin === c.value)
+                      return (
+                        <li key={c.value} className="flex items-center justify-between gap-3 text-sm">
+                          <Button type="button" variant="link" className="h-auto p-0" onClick={() => drillCabin(c.value, c.label)}>
+                            {c.label}
+                          </Button>
+                          <span>
+                            {formatPercent(row?.load_factor ?? null)} · {formatCount(row?.seat_sold ?? 0)} of{' '}
+                            {formatCount(row?.seat_available ?? 0)} seats
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <Skeleton className="h-32 w-full" />
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Top delay causes</CardTitle>
+                <CardDescription>Ranked by delay minutes. Press a cause to see its flights.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {causes.data ? (
+                  causes.data.length === 0 ? (
+                    <p className="m-0 text-sm text-muted-foreground">No delays for these dates.</p>
+                  ) : (
+                    <ol className="m-0 flex list-none flex-col gap-2 p-0">
+                      {causes.data.map((c, i) => (
+                        <li key={c.category} className="flex items-center justify-between gap-3 text-sm">
+                          <span>
+                            {i + 1}.{' '}
+                            <Button type="button" variant="link" className="h-auto p-0" onClick={() => drillCause(c.category)}>
+                              {c.category.replace(/_/g, ' ')}
+                            </Button>
+                          </span>
+                          <span>
+                            {formatCount(c.delay_minutes)} min · {formatCount(c.events)} delays
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )
+                ) : (
+                  <Skeleton className="h-32 w-full" />
+                )}
+              </CardContent>
+            </Card>
           </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3" aria-busy="true">
-            {Array.from({ length: 6 }, (_, i) => (
-              <Skeleton key={i} className="h-[104px] rounded-xl" />
-            ))}
+
+          {drill && (
+            <DrillPanel title={drill.title} description={drill.description} filters={drill.filters} onClose={() => setDrill(null)} />
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Bookings and cancellations by route and date</CardTitle>
+              <CardDescription>Counts per route for the booking date, at the route origin.</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              {bookings.data ? (
+                bookings.data.length === 0 ? (
+                  <p className="m-0 py-6 text-center text-sm text-muted-foreground">No bookings for these dates.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead scope="col">Booking date</TableHead>
+                        <TableHead scope="col">Route</TableHead>
+                        <TableHead scope="col" className="text-right">
+                          Bookings
+                        </TableHead>
+                        <TableHead scope="col" className="text-right">
+                          Cancellations
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bookings.data.map((b) => (
+                        <TableRow key={`${b.booking_date}-${b.origin}-${b.destination}`}>
+                          <TableCell>{b.booking_date}</TableCell>
+                          <TableCell>{`${b.origin} – ${b.destination}`}</TableCell>
+                          <TableCell className="text-right">{formatCount(b.booking_count)}</TableCell>
+                          <TableCell className="text-right">{formatCount(b.cancellation_count)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )
+              ) : (
+                <Skeleton className="h-40 w-full" />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Routes</CardTitle>
+              <CardDescription>Every route for the selected dates, with its rates.</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              {data ? <RouteTable rows={data.routes} /> : <Skeleton className="h-40 w-full" />}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Daily figures</CardTitle>
+              <CardDescription>One row per flight date for the selected route and dates.</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              {kpis && data ? <DailyTable rows={data.kpis.daily} /> : <Skeleton className="h-40 w-full" />}
+            </CardContent>
+          </Card>
+
+          <div className="print:hidden flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void api.downloadCsv(`/api/bi/export/flights.csv?${filterQuery(filters)}`, 'flights.csv')}
+            >
+              Export flights CSV
+            </Button>
           </div>
-        )}
-      </section>
 
-      <section aria-labelledby="bi-charts" className="flex flex-col gap-3">
-        <h2 id="bi-charts" className="m-0 text-lg font-semibold text-foreground">
-          Charts
-        </h2>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {CHARTS.map((chart) => (
-            <ChartCard key={chart.name} name={chart.name} label={chart.label} filters={filters} />
-          ))}
-        </div>
-      </section>
+          {loading && data && (
+            <span className="sr-only" role="status">
+              Updating figures
+            </span>
+          )}
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Routes</CardTitle>
-          <CardDescription>Every route for the selected dates, with its rates.</CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          {data ? <RouteTable rows={data.routes} /> : <Skeleton className="h-40 w-full" />}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Daily figures</CardTitle>
-          <CardDescription>One row per flight date for the selected route and dates.</CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          {kpis && data ? <DailyTable rows={data.kpis.daily} /> : <Skeleton className="h-40 w-full" />}
-        </CardContent>
-      </Card>
-
-      {loading && data && (
-        <span className="sr-only" role="status">
-          Updating figures
-        </span>
-      )}
+        <TabsContent value="finance">
+          <FinancePage />
+        </TabsContent>
+      </Tabs>
     </main>
   )
 }
