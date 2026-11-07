@@ -14,12 +14,20 @@ describe('PassengerDeliveryChoiceService', () => {
   const actor = { customerId: 'customer-id', userId: 'user-id' }
   const deliveryId = 'delivery-id'
   const choice: PassengerDeliveryChoiceDto = { deliveryType: 'hotel', address: ' Marina Bay Sands ' }
-  let reports: { getDeliveryIdForCaseNumber: jest.Mock }
+  let reports: { getDeliveryIdForCaseNumber: jest.Mock; getDeliveryChoiceForCaseNumber: jest.Mock }
   let deliveries: { applyChoice: jest.Mock }
   let service: PassengerDeliveryChoiceService
 
   beforeEach(() => {
-    reports = { getDeliveryIdForCaseNumber: jest.fn().mockResolvedValue(deliveryId) }
+    reports = {
+      getDeliveryIdForCaseNumber: jest.fn().mockResolvedValue(deliveryId),
+      getDeliveryChoiceForCaseNumber: jest.fn().mockResolvedValue({
+        deliveryType: 'hotel',
+        address: 'Hotel Gracery',
+        pickupAirport: null,
+        status: 'preparing',
+      }),
+    }
     deliveries = {
       applyChoice: jest.fn().mockResolvedValue({
         id: deliveryId,
@@ -32,6 +40,73 @@ describe('PassengerDeliveryChoiceService', () => {
       } satisfies DeliveryChoiceResult),
     }
     service = new PassengerDeliveryChoiceService(reports as unknown as ReportService, deliveries as unknown as BagDeliveryService)
+  })
+
+  it('reads the saved address choice for an authorized case', async () => {
+    await expect(service.getChoice(caseNumber, access)).resolves.toEqual({
+      deliveryType: 'hotel',
+      address: 'Hotel Gracery',
+      pickupAirport: null,
+      status: 'preparing',
+    })
+    expect(reports.getDeliveryChoiceForCaseNumber).toHaveBeenCalledWith(caseNumber, access)
+    expect(deliveries.applyChoice).not.toHaveBeenCalled()
+  })
+
+  it('reads the saved airport pickup choice', async () => {
+    reports.getDeliveryChoiceForCaseNumber.mockResolvedValue({
+      deliveryType: 'airport_pickup',
+      address: null,
+      pickupAirport: 'YYZ',
+      status: 'preparing',
+    })
+
+    await expect(service.getChoice(caseNumber, access)).resolves.toEqual({
+      deliveryType: 'airport_pickup',
+      address: null,
+      pickupAirport: 'YYZ',
+      status: 'preparing',
+    })
+  })
+
+  it('preserves locked delivery status when reading a saved choice', async () => {
+    reports.getDeliveryChoiceForCaseNumber.mockResolvedValue({
+      deliveryType: 'hotel',
+      address: 'Hotel Gracery',
+      pickupAirport: null,
+      status: 'in_transit',
+    })
+
+    await expect(service.getChoice(caseNumber, access)).resolves.toMatchObject({ status: 'in_transit', deliveryType: 'hotel' })
+    expect(deliveries.applyChoice).not.toHaveBeenCalled()
+  })
+
+  it('rejects a passenger who does not own the case', async () => {
+    reports.getDeliveryChoiceForCaseNumber.mockRejectedValue(new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Not found'))
+
+    await expect(service.getChoice(caseNumber, access)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+  })
+
+  it('returns 404 behavior when the authorized case has no delivery', async () => {
+    reports.getDeliveryChoiceForCaseNumber.mockResolvedValue(null)
+
+    await expect(service.getChoice(caseNumber, access)).rejects.toMatchObject({ code: 'DELIVERY_NOT_FOUND' })
+  })
+
+  it('returns null choice fields when no delivery choice has been saved', async () => {
+    reports.getDeliveryChoiceForCaseNumber.mockResolvedValue({
+      deliveryType: null,
+      address: 'stale address',
+      pickupAirport: 'YYZ',
+      status: 'waiting_choice',
+    })
+
+    await expect(service.getChoice(caseNumber, access)).resolves.toEqual({
+      deliveryType: null,
+      address: null,
+      pickupAirport: null,
+      status: 'waiting_choice',
+    })
   })
 
   it('uses the owned case delivery and authenticated passenger actor', async () => {

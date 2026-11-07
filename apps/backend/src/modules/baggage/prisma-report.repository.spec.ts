@@ -50,6 +50,12 @@ function makeRepository(
   })
   const findDispatchEvent = jest.fn().mockResolvedValue(options.eventHistory ?? null)
   const findDeliveryUnique = jest.fn().mockResolvedValue({ id: '00000000-0000-4000-8000-000000000006' })
+  const findDeliveryChoiceUnique = jest.fn().mockResolvedValue({
+    delivery_type: 'hotel',
+    address: 'Hotel Gracery',
+    pickup_airport: null,
+    status: 'preparing',
+  })
   const queryRaw = jest.fn().mockResolvedValue(options.lockedRows ?? [{ id: reportRow().id }])
   const tx = {
     $queryRaw: queryRaw,
@@ -59,10 +65,15 @@ function makeRepository(
   const transaction = jest.fn((callback: (transactionClient: typeof tx) => Promise<unknown>) => callback(tx))
   const repository = new PrismaReportRepository({
     $transaction: transaction,
-    bag_delivery: { findUnique: findDeliveryUnique },
+    bag_delivery: {
+      findUnique: findDeliveryUnique.mockImplementation(({ select }: { select?: Record<string, boolean> }) => {
+        if (select?.delivery_type) return findDeliveryChoiceUnique()
+        return Promise.resolve({ id: '00000000-0000-4000-8000-000000000006' })
+      }),
+    },
   } as unknown as DbService)
 
-  return { repository, transaction, queryRaw, findFirst, findDispatchEvent, findDeliveryUnique, update }
+  return { repository, transaction, queryRaw, findFirst, findDispatchEvent, findDeliveryUnique, findDeliveryChoiceUnique, update }
 }
 
 describe('PrismaReportRepository delivery lookup', () => {
@@ -79,6 +90,29 @@ describe('PrismaReportRepository delivery lookup', () => {
     harness.findDeliveryUnique.mockResolvedValue(null)
 
     await expect(harness.repository.findDeliveryIdByReportId(reportRow().id)).resolves.toBeNull()
+  })
+
+  it('reads only the passenger-safe choice fields and delivery status by verified report id', async () => {
+    const harness = makeRepository()
+    const reportId = reportRow().id
+
+    await expect(harness.repository.findDeliveryChoiceByReportId(reportId)).resolves.toEqual({
+      deliveryType: 'hotel',
+      address: 'Hotel Gracery',
+      pickupAirport: null,
+      status: 'preparing',
+    })
+    expect(harness.findDeliveryUnique).toHaveBeenCalledWith({
+      where: { report_id: reportId },
+      select: { delivery_type: true, address: true, pickup_airport: true, status: true },
+    })
+  })
+
+  it('returns null when a verified report has no delivery choice record', async () => {
+    const harness = makeRepository()
+    harness.findDeliveryUnique.mockImplementation(() => Promise.resolve(null))
+
+    await expect(harness.repository.findDeliveryChoiceByReportId(reportRow().id)).resolves.toBeNull()
   })
 })
 

@@ -158,6 +158,36 @@ describe('ReportService', () => {
     await expect(service.getDeliveryIdForCaseNumber(report.caseNumber, access)).resolves.toBeNull()
   })
 
+  it('reads delivery choice only after verifying the passenger owns the report', async () => {
+    const report = await service.create(validInput)
+    const findChoice = jest.spyOn(repository, 'findDeliveryChoiceByReportId').mockResolvedValue({
+      deliveryType: 'hotel',
+      address: 'Hotel Gracery',
+      pickupAirport: null,
+      status: 'preparing',
+    })
+
+    await expect(service.getDeliveryChoiceForCaseNumber(report.caseNumber, access)).resolves.toMatchObject({
+      deliveryType: 'hotel',
+      status: 'preparing',
+    })
+    expect(findChoice).toHaveBeenCalledWith(report.id)
+  })
+
+  it('does not read delivery choice for another passenger case', async () => {
+    const report = await service.create(validInput)
+    const findChoice = jest.spyOn(repository, 'findDeliveryChoiceByReportId')
+
+    await expect(
+      service.getDeliveryChoiceForCaseNumber(report.caseNumber, {
+        bookingReference: 'XYZ789',
+        surname: 'Jones',
+        passengerId: 'P002',
+      }),
+    ).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+    expect(findChoice).not.toHaveBeenCalled()
+  })
+
   it('prevents another passenger from accessing a report', async () => {
     const created = await service.create(validInput)
 

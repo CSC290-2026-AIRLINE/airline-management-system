@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, Query, UseFilters, UseGua
 import type { DeliveryChoiceResult } from './bag-delivery.service'
 import { ReportService } from './report.service'
 import type { LostBagReport } from './common/report.types'
+import type { DeliveryChoiceSnapshot } from './common/report.ports'
 import { BaggageCustomerGuard, CurrentBaggageCustomer, type BaggageCustomer } from './guards/baggage-customer.guard'
 import { CreatePassengerLostReportDto, PassengerReportAccessQuery } from './dto/passenger-lost-report.dto'
 import { PassengerDeliveryChoiceDto } from './dto/passenger-delivery-choice.dto'
@@ -49,6 +50,18 @@ export class PassengerLostReportController {
     @Query() query: PassengerReportAccessQuery,
   ): Promise<LostBagReport> {
     return this.reports.getByCaseNumber(caseNumber, {
+      ...query,
+      passengerId: customer.passengerId,
+    })
+  }
+
+  @Get(':caseNumber/delivery-choice')
+  getDeliveryChoice(
+    @CurrentBaggageCustomer() customer: BaggageCustomer,
+    @Param('caseNumber') caseNumber: string,
+    @Query() query: PassengerReportAccessQuery,
+  ): Promise<DeliveryChoiceSnapshot> {
+    return this.deliveryChoices.getChoice(caseNumber, {
       ...query,
       passengerId: customer.passengerId,
     })

@@ -1,4 +1,12 @@
 import type { LostBagReport } from './report.types'
+import type { DeliveryStatus, DeliveryType } from './bag-delivery.types'
+
+export interface DeliveryChoiceSnapshot {
+  deliveryType: DeliveryType | null
+  address: string | null
+  pickupAirport: string | null
+  status: DeliveryStatus
+}
 
 export interface ReportRepository {
   create(report: LostBagReport): Promise<LostBagReport>
@@ -6,6 +14,8 @@ export interface ReportRepository {
   findByCaseNumber(caseNumber: string): Promise<LostBagReport | null>
 
   findDeliveryIdByReportId(reportId: string): Promise<string | null>
+
+  findDeliveryChoiceByReportId(reportId: string): Promise<DeliveryChoiceSnapshot | null>
 
   findLiveByTag(tagNumber: string): Promise<LostBagReport | null>
 

@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common'
 import type { lost_bag_report } from '@backend/db/generated/prisma/client'
 import type { DbService } from '@backend/db/db.service'
 import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
-import type { ReportRepository } from './common/report.ports'
+import type { DeliveryChoiceSnapshot, ReportRepository } from './common/report.ports'
 import type { LostBagReport } from './common/report.types'
 import type { BagType, BagColour, ReportStatus } from './common/baggage.constants'
+import type { DeliveryStatus, DeliveryType } from './common/bag-delivery.types'
 
 const LIVE_STATUSES = ['open', 'matched', 'delivering', 'lost']
 
@@ -104,6 +105,22 @@ export class PrismaReportRepository implements ReportRepository {
     })
 
     return delivery?.id ?? null
+  }
+
+  async findDeliveryChoiceByReportId(reportId: string): Promise<DeliveryChoiceSnapshot | null> {
+    const delivery = await this.db.bag_delivery.findUnique({
+      where: { report_id: reportId },
+      select: { delivery_type: true, address: true, pickup_airport: true, status: true },
+    })
+
+    if (!delivery) return null
+
+    return {
+      deliveryType: delivery.delivery_type as DeliveryType | null,
+      address: delivery.address,
+      pickupAirport: delivery.pickup_airport,
+      status: delivery.status as DeliveryStatus,
+    }
   }
 
   async findLiveByTag(tagNumber: string): Promise<LostBagReport | null> {

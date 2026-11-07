@@ -4,7 +4,14 @@ import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import { isValidBaggageTag } from './common/baggage-tag.util'
 import { formatCaseNumber } from './common/case-number.util'
 import type { LostBagReport } from './common/report.types'
-import type { BookingVerification, CheckedBagLookup, ReportRepository, CaseNumberSequence, SimulationClock } from './common/report.ports'
+import type {
+  BookingVerification,
+  CheckedBagLookup,
+  DeliveryChoiceSnapshot,
+  ReportRepository,
+  CaseNumberSequence,
+  SimulationClock,
+} from './common/report.ports'
 
 export interface CreateReportInput {
   reportedByCustomerId?: string
@@ -125,6 +132,12 @@ export class ReportService {
     const report = await this.getByCaseNumber(caseNumber, access)
 
     return this.repository.findDeliveryIdByReportId(report.id)
+  }
+
+  async getDeliveryChoiceForCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<DeliveryChoiceSnapshot | null> {
+    const report = await this.getByCaseNumber(caseNumber, access)
+
+    return this.repository.findDeliveryChoiceByReportId(report.id)
   }
 
   async listMine(access: ReportAccessInput): Promise<LostBagReport[]> {
