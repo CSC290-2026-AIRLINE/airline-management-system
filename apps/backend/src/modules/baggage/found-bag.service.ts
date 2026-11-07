@@ -3,6 +3,7 @@ import type { Prisma, found_bag } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { BAG_TYPES, BAG_COLOURS, type BagType, type BagColour } from './common/baggage.constants'
 import { isValidBaggageTag } from './common/baggage-tag.util'
+import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/patterns'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import type { FoundBag, FoundBagSource, FoundBagStatus } from './common/found-bag.types'
 import {
@@ -14,10 +15,6 @@ import {
   type FoundBagRecordedListener,
 } from './common/found-bag.ports'
 
-export const AIRPORT_CODE_PATTERN = /^[A-Z]{3}$/
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
 export interface RecordFoundBagInput {
   staffId: string
   foundAirport: string
@@ -27,12 +24,6 @@ export interface RecordFoundBagInput {
   flightId?: string | null
   brand?: string | null
   description?: string | null
-}
-
-/** Prisma error codes, checked by value so this file never needs the generated client at runtime. */
-function prismaErrorCode(e: unknown): string | undefined {
-  const code = typeof e === 'object' && e !== null ? (e as { code?: unknown }).code : undefined
-  return typeof code === 'string' ? code : undefined
 }
 
 function toFoundBag(row: found_bag): FoundBag {
@@ -115,23 +106,38 @@ export class FoundBagService {
     let row: found_bag
 
     try {
-      row = await this.db.found_bag.create({
-        data: {
-          checked_bag_id: checkedBag?.checkedBagId ?? null,
-          tag_number: tagNumber,
-          flight_id: flightId,
-          bag_type: input.bagType,
-          colour: input.colour,
-          brand: input.brand?.trim() || null,
-          description: input.description?.trim() || null,
-          found_airport: foundAirport,
-          found_at: this.clock.now(),
-          source: 'staff',
-          status: 'held',
-          recorded_by: staffId,
-          created_at: now,
-          updated_at: now,
-        },
+      // The bag and its first tracking event are written together, so a found bag always has a location.
+      row = await this.db.$transaction(async (tx) => {
+        const created = await tx.found_bag.create({
+          data: {
+            checked_bag_id: checkedBag?.checkedBagId ?? null,
+            tag_number: tagNumber,
+            flight_id: flightId,
+            bag_type: input.bagType,
+            colour: input.colour,
+            brand: input.brand?.trim() || null,
+            description: input.description?.trim() || null,
+            found_airport: foundAirport,
+            found_at: this.clock.now(),
+            source: 'staff',
+            status: 'held',
+            recorded_by: staffId,
+            created_at: now,
+            updated_at: now,
+          },
+        })
+
+        await tx.bag_location_event.create({
+          data: {
+            found_bag_id: created.id,
+            airport_code: foundAirport,
+            action: 'found',
+            staff_id: staffId,
+            occurred_at: created.found_at,
+          },
+        })
+
+        return created
       })
     } catch (e) {
       const code = prismaErrorCode(e)

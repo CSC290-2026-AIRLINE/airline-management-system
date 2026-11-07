@@ -9,6 +9,8 @@ export const FOUND_BAG_ERROR_CODES = {
   INVALID_TAG: 'INVALID_TAG',
   FOUND_BAG_EXISTS: 'FOUND_BAG_EXISTS',
   FOUND_BAG_NOT_FOUND: 'FOUND_BAG_NOT_FOUND',
+  INVALID_MOVE: 'INVALID_MOVE',
+  BAG_CLOSED: 'BAG_CLOSED',
 } as const
 
 export type FoundBagErrorCode = (typeof FOUND_BAG_ERROR_CODES)[keyof typeof FOUND_BAG_ERROR_CODES]
@@ -18,6 +20,8 @@ const STATUS_BY_CODE: Record<FoundBagErrorCode, HttpStatus> = {
   INVALID_TAG: HttpStatus.BAD_REQUEST,
   FOUND_BAG_EXISTS: HttpStatus.CONFLICT,
   FOUND_BAG_NOT_FOUND: HttpStatus.NOT_FOUND,
+  INVALID_MOVE: HttpStatus.CONFLICT,
+  BAG_CLOSED: HttpStatus.CONFLICT,
 }
 
 export class FoundBagError extends HttpException {

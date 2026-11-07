@@ -29,7 +29,12 @@ function makeSvc() {
     checked_bag: {
       findFirst: jest.fn().mockResolvedValue(null),
     },
+    bag_location_event: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+    $transaction: jest.fn(),
   }
+  db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db))
   const recorded: { bag: FoundBag; checkedBag: CheckedBagRecord | null }[] = []
   const listener: FoundBagRecordedListener = {
     onFoundBagRecorded: (bag, checkedBag) => {
@@ -73,6 +78,17 @@ describe('FoundBagService.record', () => {
       }),
     })
     expect(bag).toMatchObject({ id: FOUND_BAG_ID, status: 'held', source: 'staff', recordedBy: STAFF_ID, foundAt: SIM_NOW })
+  })
+
+  it('writes the first tracking event in the same transaction', async () => {
+    const { svc, db } = makeSvc()
+
+    await svc.record(validInput)
+
+    expect(db.$transaction).toHaveBeenCalledTimes(1)
+    expect(db.bag_location_event.create).toHaveBeenCalledWith({
+      data: { found_bag_id: FOUND_BAG_ID, airport_code: 'NRT', action: 'found', staff_id: STAFF_ID, occurred_at: SIM_NOW },
+    })
   })
 
   it('links a tagged bag to its Feature 6 checked bag', async () => {
