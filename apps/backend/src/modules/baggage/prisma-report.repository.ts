@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import type { lost_bag_report } from '@backend/db/generated/prisma/client'
-import { DbService } from '@backend/db/db.service'
+import type { DbService } from '@backend/db/db.service'
 import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import type { ReportRepository } from './common/report.ports'
 import type { LostBagReport } from './common/report.types'
@@ -138,7 +138,7 @@ export class PrismaReportRepository implements ReportRepository {
           bag_delivery: true,
           bag_match: {
             where: { status: 'confirmed' },
-            select: { found_bag_id: true },
+            select: { found_bag_id: true, reviewed_at: true },
           },
         },
       })
@@ -150,14 +150,18 @@ export class PrismaReportRepository implements ReportRepository {
         return null
       }
 
-      const matchedBagIds = report.bag_match.map((match) => match.found_bag_id)
+      // Location history can predate the passenger's case; only dispatch after the confirmed match blocks cancellation.
+      if (report.bag_match.some((match) => !match.reviewed_at)) return null
 
-      if (matchedBagIds.length > 0) {
+      const dispatchEvidence = report.bag_match.map((match) => ({
+        found_bag_id: match.found_bag_id,
+        action: { in: ['sent', 'out_for_delivery', 'delivered'] },
+        occurred_at: { gte: match.reviewed_at as Date },
+      }))
+
+      if (dispatchEvidence.length > 0) {
         const dispatched = await tx.bag_location_event.findFirst({
-          where: {
-            found_bag_id: { in: matchedBagIds },
-            action: { in: ['sent', 'out_for_delivery'] },
-          },
+          where: { OR: dispatchEvidence },
         })
 
         if (dispatched) return null
