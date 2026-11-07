@@ -16,11 +16,13 @@ import {
   bagRef,
   bagSummary,
   colourLabel,
+  flightLabel,
   formatEventTime,
   type BagColour,
   type BagType,
   type StaffMoveAction,
 } from '../constants'
+import { useDepartures, useFlight } from '../hooks/useBaggageFlights'
 import { errorMessage, type Airport } from '../hooks/useFoundBags'
 import { F10Card, FIELD_BOX, Field, FormError, Pill, SelectBox } from './primitives'
 
@@ -35,17 +37,24 @@ function Fact({ label, children }: { label: string; children: string }) {
   )
 }
 
-function eventText(e: BagLocationEvent): string {
+function eventText(e: BagLocationEvent, flightNumber?: string): string {
+  const sent = e.toAirport ? `Sent to ${e.toAirport}` : 'Sent'
   const what = {
     found: 'Found',
     held: 'Held',
-    sent: e.toAirport ? `Sent to ${e.toAirport}` : 'Sent',
+    sent: flightNumber ? `${sent} on ${flightNumber}` : sent,
     arrived: 'Arrived',
     at_diverted_airport: 'At diverted airport',
     out_for_delivery: 'Out for delivery',
     delivered: 'Delivered',
   }[e.action]
   return e.note ? `${what}: ${e.note}` : what
+}
+
+/** One timeline line. A sent event names its flight once the lookup answers. */
+function EventText({ event }: { event: BagLocationEvent }) {
+  const { flight } = useFlight(event.action === 'sent' ? event.sentOnFlightId : null)
+  return <p className="min-w-0 flex-1 text-base text-[#14213d]">{eventText(event, flight?.flightNumber)}</p>
 }
 
 /** "Timeline": oldest first, the latest event marked in gold. */
@@ -67,7 +76,7 @@ function Timeline({ events }: { events: BagLocationEvent[] }) {
               </p>
               <div className="flex items-center gap-2">
                 <Pill tone="grey">{e.airportCode}</Pill>
-                <p className="min-w-0 flex-1 text-base text-[#14213d]">{eventText(e)}</p>
+                <EventText event={e} />
               </div>
             </div>
           </li>
@@ -159,6 +168,8 @@ function AddLocation({
 }) {
   const [action, setAction] = useState<StaffMoveAction>('held')
   const [toAirport, setToAirport] = useState('')
+  // A pick only counts for the route it was made for, so changing "Sent to" clears it.
+  const [pickedFlight, setPickedFlight] = useState<{ to: string; id: string } | null>(null)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -166,6 +177,13 @@ function AddLocation({
   const current = history.current
   const eventAirport = action === 'arrived' && current?.inTransit && current.toAirport ? current.toAirport : (current?.airportCode ?? '')
   const destinations = airports.filter((a) => a.code !== current?.airportCode)
+  const sending = action === 'sent' && !!toAirport
+  const departures = useDepartures(sending ? (current?.airportCode ?? '') : '', sending ? toAirport : '')
+  const flightId = sending
+    ? pickedFlight?.to === toAirport && departures.some((f) => f.id === pickedFlight.id)
+      ? pickedFlight.id
+      : 'none'
+    : ''
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -176,9 +194,15 @@ function AddLocation({
     setSaving(true)
     setError(null)
     try {
-      await onAdd({ action, toAirport: action === 'sent' ? toAirport : undefined, note: note.trim() || undefined })
+      await onAdd({
+        action,
+        toAirport: action === 'sent' ? toAirport : undefined,
+        sentOnFlightId: sending && flightId !== 'none' ? flightId : undefined,
+        note: note.trim() || undefined,
+      })
       setNote('')
       setToAirport('')
+      setPickedFlight(null)
     } catch (err: unknown) {
       setError(errorMessage(err))
     } finally {
@@ -215,8 +239,17 @@ function AddLocation({
             />
           </Field>
           <Field label="On flight" htmlFor="loc-flight">
-            {/* The API takes a flight id; there is no flight lookup yet, so this stays empty. */}
-            <Input id="loc-flight" placeholder="e.g. FY 206" disabled className={FIELD_BOX} />
+            <SelectBox
+              id="loc-flight"
+              value={flightId}
+              onValueChange={(id) => setPickedFlight(id === 'none' ? null : { to: toAirport, id })}
+              placeholder="Only for Sent"
+              disabled={!sending}
+              options={[
+                { value: 'none', label: 'No flight' },
+                ...departures.map((f) => ({ value: f.id, label: `${f.flightNumber} · ${formatEventTime(f.departsAt)}` })),
+              ]}
+            />
           </Field>
         </div>
         <Field label="Note" htmlFor="loc-note">
@@ -264,6 +297,8 @@ export function FoundBagDetailCard({
   onCompleteDetails: (bagType: BagType, colour: BagColour) => Promise<void>
   onContinueWithFlight: () => Promise<void>
 }) {
+  const cameOff = useFlight(bag?.flightId)
+
   if (loading) {
     return (
       <F10Card aria-busy="true">
@@ -310,7 +345,7 @@ export function FoundBagDetailCard({
       <dl className="flex flex-col gap-2.5">
         <Fact label="Bag">{bagSummary(bag)}</Fact>
         <Fact label="Tag">{bag.tagNumber ?? 'No tag'}</Fact>
-        <Fact label="Came off">{bag.flightId ? 'Flight on record' : 'Not known'}</Fact>
+        <Fact label="Came off">{cameOff.flight ? flightLabel(cameOff.flight) : bag.flightId && cameOff.loading ? '…' : 'Not known'}</Fact>
         <Fact label="Now at">{nowAtName ? `${nowAt} · ${nowAtName}` : nowAt}</Fact>
         <Fact label="Checked bag">{bag.checkedBagId ? 'Linked' : 'Not linked'}</Fact>
         <Fact label="Source">{diverted ? 'Diverted flight (system)' : 'Staff'}</Fact>

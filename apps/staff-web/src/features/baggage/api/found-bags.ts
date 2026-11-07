@@ -70,6 +70,8 @@ export interface RecordFoundBagBody {
   bagType: BagType
   colour: BagColour
   tagNumber?: string
+  /** The flight the bag came off, from `flightsInto`. Left out when nobody knows. */
+  flightId?: string
   brand?: string
   description?: string
 }
@@ -77,12 +79,26 @@ export interface RecordFoundBagBody {
 export interface RecordMoveBody {
   action: StaffMoveAction
   toAirport?: string
+  /** Only with `sent`: the flight the bag goes on, from `departures`. */
+  sentOnFlightId?: string
   note?: string
 }
 
 export interface CompleteDetailsBody {
   bagType: BagType
   colour: BagColour
+}
+
+/** Same shape as the backend's `BaggageFlight` (`baggage-flight.service.ts`), dates as ISO strings. */
+export interface BaggageFlight {
+  id: string
+  flightNumber: string
+  serviceDate: string
+  origin: string
+  /** Where the flight landed: the diversion airport when it was diverted. */
+  destination: string
+  arrivedAt: string
+  departsAt: string
 }
 
 /** Any non-2xx answer from `/api/staff/*`. The baggage endpoints answer `{ code, message }`. */
@@ -145,6 +161,10 @@ export function useFoundBagApi() {
     completeDetails: (id: string, body: CompleteDetailsBody) =>
       send<FoundBag>(`/api/staff/found-bags/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     continueWithFlight: (id: string) => send<FoundBag>(`/api/staff/found-bags/${id}/continue-with-flight`, { method: 'POST' }),
+    flightsInto: (airportCode: string) => send<BaggageFlight[]>(`/api/staff/baggage-flights?airport=${encodeURIComponent(airportCode)}`),
+    departures: (from: string, to: string) =>
+      send<BaggageFlight[]>(`/api/staff/baggage-flights/departures?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+    flight: (id: string) => send<BaggageFlight>(`/api/staff/baggage-flights/${id}`),
     stations: () => send<StationContact[]>('/api/staff/station-contacts'),
     saveStation: (airportCode: string, body: SaveStationContactBody) =>
       send<StationContact>(`/api/staff/station-contacts/${encodeURIComponent(airportCode)}`, { method: 'PUT', body: JSON.stringify(body) }),

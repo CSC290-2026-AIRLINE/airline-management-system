@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common'
 import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { FOUND_BAG_CLOCK, FOUND_BAG_RECORDED_LISTENERS, type FoundBagRecordedListener } from './common/found-bag.ports'
+import { BaggageFlightController } from './baggage-flight.controller'
+import { BaggageFlightService } from './baggage-flight.service'
 import { BagMatchController } from './bag-match.controller'
 import { BagMatchReviewService } from './bag-match-review.service'
 import { BagMatchingService } from './bag-matching.service'
@@ -34,6 +36,7 @@ import { StaffNotificationService } from './staff-notification.service'
     BagMatchController,
     BagDeliveryController,
     StaffNotificationController,
+    BaggageFlightController,
   ],
   providers: [
     FoundBagService,
@@ -46,6 +49,7 @@ import { StaffNotificationService } from './staff-notification.service'
     BagMatchReviewService,
     BagDeliveryService,
     StaffNotificationService,
+    BaggageFlightService,
     BaggageStaffGuard,
     // Every saved found bag is matched against open and lost reports.
     {

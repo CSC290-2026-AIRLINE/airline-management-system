@@ -180,6 +180,11 @@ export function formatFlightDate(iso: string): string {
   return FLIGHT_DAY.format(new Date(iso))
 }
 
+/** "FY 204 · BKK to HKT · 20 Oct" */
+export function flightLabel(flight: { flightNumber: string; origin: string; destination: string; serviceDate: string }): string {
+  return `${flight.flightNumber} · ${flight.origin} to ${flight.destination} · ${formatFlightDate(flight.serviceDate)}`
+}
+
 const BAHT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
 
 /** "฿1,850", or "฿12.50" when there are satang. */

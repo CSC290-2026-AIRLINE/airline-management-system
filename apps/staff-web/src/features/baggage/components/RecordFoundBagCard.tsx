@@ -2,7 +2,17 @@ import { useState, type FormEvent } from 'react'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
 import type { FoundBag, RecordFoundBagBody } from '../api/found-bags'
-import { BAG_COLOURS, BAG_TYPES, BAG_TYPE_LABELS, BAGGAGE_TAG_PATTERN, colourLabel, type BagColour, type BagType } from '../constants'
+import {
+  BAG_COLOURS,
+  BAG_TYPES,
+  BAG_TYPE_LABELS,
+  BAGGAGE_TAG_PATTERN,
+  colourLabel,
+  flightLabel,
+  type BagColour,
+  type BagType,
+} from '../constants'
+import { useFlightsInto } from '../hooks/useBaggageFlights'
 import { errorMessage, type Airport } from '../hooks/useFoundBags'
 import { F10Card, FIELD_BOX, Field, FormError, SelectBox } from './primitives'
 
@@ -28,6 +38,10 @@ export function RecordFoundBagCard({
   const [tagError, setTagError] = useState<string | null>(null)
 
   const airport = foundAirport || airports[0]?.code || ''
+  const flights = useFlightsInto(airport)
+  // A pick only counts for the airport it was made at, so changing "Found at" falls back to "Not known".
+  const [pickedFlight, setPickedFlight] = useState<{ airport: string; id: string } | null>(null)
+  const flightId = pickedFlight?.airport === airport && flights.some((f) => f.id === pickedFlight.id) ? pickedFlight.id : 'unknown'
 
   function checkTag(value: string): boolean {
     const ok = value.trim() === '' || BAGGAGE_TAG_PATTERN.test(value.trim())
@@ -46,10 +60,12 @@ export function RecordFoundBagCard({
         bagType,
         colour,
         tagNumber: tagNumber.trim() || undefined,
+        flightId: flightId === 'unknown' ? undefined : flightId,
         brand: brand.trim() || undefined,
         description: description.trim() || undefined,
       })
       setTagNumber('')
+      setPickedFlight(null)
       setBrand('')
       setDescription('')
     } catch (err: unknown) {
@@ -113,12 +129,11 @@ export function RecordFoundBagCard({
               />
             </Field>
             <Field label="Came off flight" htmlFor="fb-flight">
-              {/* No flight lookup API yet, so the only choice is the Figma default. */}
               <SelectBox
                 id="fb-flight"
-                value="unknown"
-                onValueChange={() => undefined}
-                options={[{ value: 'unknown', label: 'Not known' }]}
+                value={flightId}
+                onValueChange={(id) => setPickedFlight(id === 'unknown' ? null : { airport, id })}
+                options={[{ value: 'unknown', label: 'Not known' }, ...flights.map((f) => ({ value: f.id, label: flightLabel(f) }))]}
               />
             </Field>
           </div>
