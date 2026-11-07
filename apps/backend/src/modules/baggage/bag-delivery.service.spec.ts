@@ -311,6 +311,27 @@ describe('BagDeliveryService', () => {
       expect(db.bag_location_event.create).not.toHaveBeenCalled()
     })
 
+    it('rolls back when the bag was not matched any more', async () => {
+      const { svc, db } = makeSvc({ status: 'preparing' })
+      db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'NRT', action: 'arrived', to_airport: null })
+      db.found_bag.updateMany.mockResolvedValue({ count: 0 })
+
+      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })).rejects.toMatchObject({
+        code: 'INVALID_STATUS',
+      })
+      expect(db.bag_delivery.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('rolls back when the case could not be set delivering', async () => {
+      const { svc, db } = makeSvc({ status: 'preparing' })
+      db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'NRT', action: 'arrived', to_airport: null })
+      db.lost_bag_report.updateMany.mockResolvedValue({ count: 0 })
+
+      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })).rejects.toMatchObject({
+        code: 'INVALID_STATUS',
+      })
+    })
+
     it('refuses to send the bag of a closed case', async () => {
       const { svc, db, locks } = makeSvc({ status: 'preparing' }, 'closed')
 
@@ -332,7 +353,7 @@ describe('BagDeliveryService', () => {
       })
       expect(db.found_bag.updateMany).toHaveBeenCalledWith({ where: { id: FOUND_BAG_ID, status: 'matched' }, data: expect.anything() })
       expect(db.lost_bag_report.updateMany).toHaveBeenCalledWith({
-        where: { id: REPORT_ID, status: 'matched' },
+        where: { id: REPORT_ID, status: { in: ['matched', 'delivering', 'lost'] } },
         data: expect.objectContaining({ status: 'delivering' }),
       })
     })
@@ -471,6 +492,19 @@ describe('BagDeliveryService', () => {
           identity: { ...IDENTITY, collector: 'representative' },
         }),
       ).rejects.toMatchObject({ code: 'INVALID_DELIVERY' })
+    })
+
+    it('rolls back when the bag or the case did not update', async () => {
+      for (const table of ['found_bag', 'lost_bag_report'] as const) {
+        const { svc, db, audit } = makeSvc()
+        db[table].updateMany.mockResolvedValue({ count: 0 })
+
+        await expect(
+          svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, identity: IDENTITY }),
+        ).rejects.toMatchObject({ code: 'INVALID_STATUS' })
+        // Thrown inside the transaction, so the passed check's audit row rolls back with everything else.
+        expect(audit.write.mock.calls[0][1]).toBe(db)
+      }
     })
 
     it('answers INVALID_STATUS when the delivery changed in the meantime', async () => {

@@ -3,7 +3,8 @@ import type { bag_location_event } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import type { BagLocation, BagLocationAction, BagLocationEvent, BagTrackingHistory, StaffMoveAction } from './common/bag-location.types'
 import { STAFF_MOVE_ACTIONS } from './common/bag-location.types'
-import { lockFoundBag, lockLostReport } from './common/case-locks'
+import { RECOVERY_CASE_STATUSES, lockFoundBag, lockLostReport } from './common/case-locks'
+import type { ReportStatus } from './common/baggage.constants'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { FoundBagStatus } from './common/found-bag.types'
@@ -131,8 +132,12 @@ export class BagTrackingService {
       await this.db.$transaction(async (tx) => {
         // Lock the bag so two desks cannot move it at the same time. A bag that belongs to a case is locked after its
         // case, the order every write to a case uses (see case-locks), so a move cannot interleave with a delivery step.
-        if (owner) {
-          await lockLostReport(tx, owner.report_id)
+        const ownerCase = owner ? await lockLostReport(tx, owner.report_id) : null
+
+        // A bag on its way back to its owner is sent from Deliveries, which moves the delivery and the case with it.
+        // Sending it here would leave the case looking undispatched (and cancellable) while the bag travels.
+        if (action === 'sent' && ownerCase && RECOVERY_CASE_STATUSES.includes(ownerCase.status as ReportStatus)) {
+          throw invalidMove(`This bag belongs to lost bag case ${ownerCase.case_number}; send it from Deliveries`)
         }
 
         const locked = await lockFoundBag(tx, foundBagId)

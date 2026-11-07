@@ -45,9 +45,11 @@ function makeSvc() {
       findUnique: jest.fn().mockResolvedValue(foundBagRow()),
       update: jest.fn((args: { data: Record<string, unknown> }) => Promise.resolve(foundBagRow(args.data))),
       updateMany: jest.fn().mockResolvedValue({ count: 4 }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue(foundBagRow({ status: 'continued_with_flight' })),
     },
     bag_location_event: { create: jest.fn().mockResolvedValue({}) },
     baggage_setting: { findUnique: jest.fn().mockResolvedValue({ value: '90' }) },
+    $queryRaw: jest.fn().mockResolvedValue([{ id: BAG_ID, status: 'held' }]),
     $transaction: jest.fn(),
   }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => Promise.resolve(cb(db)))
@@ -144,10 +146,17 @@ describe('FoundBagLifecycleService.completeDetails', () => {
 describe('FoundBagLifecycleService.continueWithFlight', () => {
   it('closes the row and records that the bag flew on to the route destination', async () => {
     const { svc, db } = makeSvc()
+    db.found_bag.updateMany.mockResolvedValueOnce({ count: 1 })
 
     const bag = await svc.continueWithFlight(STAFF_ID, BAG_ID)
 
     expect(bag.status).toBe('continued_with_flight')
+    expect(db.$queryRaw.mock.calls[0][0].join('?')).toContain('FROM found_bag')
+    expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.found_bag.updateMany.mock.invocationCallOrder[0])
+    expect(db.found_bag.updateMany).toHaveBeenCalledWith({
+      where: { id: BAG_ID, status: 'held' },
+      data: expect.objectContaining({ status: 'continued_with_flight' }),
+    })
     expect(db.bag_location_event.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         airport_code: 'CNX',
@@ -157,6 +166,23 @@ describe('FoundBagLifecycleService.continueWithFlight', () => {
         staff_id: STAFF_ID,
       }),
     })
+  })
+
+  it('checks held again under the lock, after a match was confirmed at the same time', async () => {
+    const { svc, db } = makeSvc()
+    db.$queryRaw.mockResolvedValue([{ id: BAG_ID, status: 'matched' }])
+
+    await expect(svc.continueWithFlight(STAFF_ID, BAG_ID)).rejects.toMatchObject({ code: 'INVALID_STATUS', status: 409 })
+    expect(db.found_bag.updateMany).not.toHaveBeenCalled()
+    expect(db.bag_location_event.create).not.toHaveBeenCalled()
+  })
+
+  it('rolls back when the conditional update finds the bag no longer held', async () => {
+    const { svc, db } = makeSvc()
+    db.found_bag.updateMany.mockResolvedValueOnce({ count: 0 })
+
+    await expect(svc.continueWithFlight(STAFF_ID, BAG_ID)).rejects.toMatchObject({ code: 'INVALID_STATUS' })
+    expect(db.bag_location_event.create).not.toHaveBeenCalled()
   })
 
   it('refuses a bag that is not a held diverted-flight bag', async () => {

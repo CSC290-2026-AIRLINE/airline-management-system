@@ -20,7 +20,7 @@ import {
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { FoundBagStatus } from './common/found-bag.types'
-import { lockFoundBag, lockLostReport } from './common/case-locks'
+import { RECOVERY_CASE_STATUSES, lockFoundBag, lockLostReport } from './common/case-locks'
 import { checkOwnership, documentLast4, type PresentedIdentity } from './common/ownership-check'
 import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/patterns'
 
@@ -35,9 +35,6 @@ const MAX_CHECKS = 20
 
 /** Deliveries that need the desk first: bags to send, then bags on their way, then waiting for the passenger, then done. */
 const STATUS_ORDER: DeliveryStatus[] = ['preparing', 'ready_for_pickup', 'in_transit', 'waiting_choice', 'delivered']
-
-/** Cases whose bag is still on its way back. A closed or cancelled case takes no more delivery steps. */
-const ACTIVE_CASE_STATUSES: ReportStatus[] = ['matched', 'delivering', 'lost']
 
 const MISMATCH_LABELS: Record<OwnershipMismatch, string> = {
   booking_reference: 'booking reference',
@@ -434,7 +431,11 @@ export class BagDeliveryService {
               },
         })
 
-        await tx.found_bag.updateMany({ where: { id: bagId, status: 'matched' }, data: { status: 'sent', updated_at: now } })
+        const sent = await tx.found_bag.updateMany({ where: { id: bagId, status: 'matched' }, data: { status: 'sent', updated_at: now } })
+
+        if (sent.count !== 1) {
+          throw wrongStatus('This bag has changed; reload and try again')
+        }
       } else {
         from = ['preparing', 'in_transit']
 
@@ -468,10 +469,15 @@ export class BagDeliveryService {
         throw wrongStatus('This delivery has changed; reload and try again')
       }
 
-      await tx.lost_bag_report.updateMany({
-        where: { id: reportId, status: 'matched' },
+      // matched → delivering on the first step; a case already delivering (or lost) is set delivering again.
+      const report = await tx.lost_bag_report.updateMany({
+        where: { id: reportId, status: { in: [...RECOVERY_CASE_STATUSES] } },
         data: { status: 'delivering', updated_at: now },
       })
+
+      if (report.count !== 1) {
+        throw wrongStatus('This case has changed; reload and try again')
+      }
     })
 
     return this.getById(input.deliveryId)
@@ -600,15 +606,23 @@ export class BagDeliveryService {
         },
       })
 
-      await tx.found_bag.updateMany({
+      const bag = await tx.found_bag.updateMany({
         where: { id: bagId, status: { in: ['matched', 'sent'] } },
         data: { status: 'delivered', updated_at: now },
       })
 
-      await tx.lost_bag_report.updateMany({
-        where: { id: reportId, status: { in: ACTIVE_CASE_STATUSES } },
+      if (bag.count !== 1) {
+        throw wrongStatus('This bag has changed; reload and try again')
+      }
+
+      const closed = await tx.lost_bag_report.updateMany({
+        where: { id: reportId, status: { in: [...RECOVERY_CASE_STATUSES] } },
         data: { status: 'closed', closed_at: at, updated_at: now },
       })
+
+      if (closed.count !== 1) {
+        throw wrongStatus('This case has changed; reload and try again')
+      }
 
       return null
     })
@@ -632,7 +646,7 @@ export class BagDeliveryService {
       throw notFound()
     }
 
-    if (!ACTIVE_CASE_STATUSES.includes(locked.status as ReportStatus)) {
+    if (!RECOVERY_CASE_STATUSES.includes(locked.status as ReportStatus)) {
       throw wrongStatus(`This case is ${locked.status}`)
     }
 

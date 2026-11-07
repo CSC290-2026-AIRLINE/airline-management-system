@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { found_bag } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { BAG_COLOURS, BAG_TYPES, type BagColour, type BagType } from './common/baggage.constants'
+import { lockFoundBag } from './common/case-locks'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { FoundBag } from './common/found-bag.types'
@@ -189,18 +190,30 @@ export class FoundBagLifecycleService {
       throw invalidStatus('Only a diverted-flight bag can continue with its flight')
     }
 
-    if (bag.status !== 'held') {
-      throw invalidStatus(`A ${bag.status} bag cannot continue with its flight`)
-    }
-
     const flight = await this.db.flight.findUnique({ where: { id: bag.flightId }, select: { route: { select: { destination: true } } } })
     const destination = flight?.route.destination ?? null
 
     const row = await this.db.$transaction(async (tx) => {
-      const updated = await tx.found_bag.update({
-        where: { id: foundBagId },
+      // Lock the bag, then check it is still held: a match confirmed or a move recorded at the same time either waits
+      // for this or is seen here. A held bag has no confirmed case, so there is no case to lock first.
+      const locked = await lockFoundBag(tx, foundBagId)
+
+      if (!locked) {
+        throw notFound()
+      }
+
+      if (locked.status !== 'held') {
+        throw invalidStatus(`A ${locked.status} bag cannot continue with its flight`)
+      }
+
+      const { count } = await tx.found_bag.updateMany({
+        where: { id: foundBagId, status: 'held' },
         data: { status: 'continued_with_flight', updated_at: new Date() },
       })
+
+      if (count !== 1) {
+        throw invalidStatus('This bag has changed; reload and try again')
+      }
 
       if (destination && destination !== bag.foundAirport) {
         await tx.bag_location_event.create({
@@ -217,7 +230,7 @@ export class FoundBagLifecycleService {
         })
       }
 
-      return updated
+      return tx.found_bag.findUniqueOrThrow({ where: { id: foundBagId } })
     })
 
     return toFoundBag(row)

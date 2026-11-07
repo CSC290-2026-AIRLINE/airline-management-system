@@ -1,4 +1,11 @@
 import type { Prisma } from '@backend/db/generated/prisma/client'
+import type { ReportStatus } from './baggage.constants'
+
+/**
+ * Cases in recovery: a bag is confirmed and on its way back. While a case is in one of these, its bag moves only through
+ * the delivery steps, which keep the delivery, the case and the bag in step.
+ */
+export const RECOVERY_CASE_STATUSES: readonly ReportStatus[] = ['matched', 'delivering', 'lost']
 
 export interface LockedReport {
   id: string
