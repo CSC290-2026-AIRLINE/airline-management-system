@@ -1,7 +1,10 @@
 import { Separator } from '@staff-web/components/ui/separator'
+import type { BagMatch } from '../api/bag-matches'
+import type { FoundBag } from '../api/found-bags'
 import type { AddBagCostBody, BagCostSummary, LostReportCase } from '../api/lost-reports'
 import { REPORT_STATUS_LABELS, REPORT_STATUS_TONES, bagSummary, formatEventTime, formatFlightDate } from '../constants'
 import { CaseCosts } from './CaseCosts'
+import { CaseMatches } from './CaseMatches'
 import { F10Card, Pill } from './primitives'
 
 function Fact({ label, children }: { label: string; children: string }) {
@@ -14,15 +17,20 @@ function Fact({ label, children }: { label: string; children: string }) {
 }
 
 /**
- * "Card / Case detail" (frame 01b). Matching is not built on the backend yet, so the Matches section says so instead
- * of showing the match rows and the "Link a found bag by hand" picker. The costs section is frame 06's; it lives here
- * until the Deliveries list exists.
+ * "Card / Case detail" (frame 01b), with the case's matches and the "Link a found bag by hand" picker. The costs
+ * section is frame 06's; it lives here until the Deliveries list exists.
  */
 export function CaseDetailCard({
   report,
+  matches,
+  heldBags,
+  onLink,
   costs,
 }: {
   report: LostReportCase
+  matches: BagMatch[]
+  heldBags: FoundBag[]
+  onLink: (foundBagId: string) => Promise<unknown>
   costs: {
     summary: BagCostSummary | null
     loading: boolean
@@ -56,8 +64,13 @@ export function CaseDetailCard({
         <p className="rounded-lg bg-[#eef0f4] px-3.5 py-3 text-base break-words text-[#14213d]">“{report.description}”</p>
       )}
 
-      <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Matches</h3>
-      <p className="text-sm text-[#677287]">No matches yet.</p>
+      <CaseMatches
+        key={`matches-${report.id}`}
+        matches={matches}
+        heldBags={heldBags}
+        canLink={report.status === 'open' || report.status === 'lost'}
+        onLink={onLink}
+      />
 
       <Separator className="bg-[#d8dce6]" />
 

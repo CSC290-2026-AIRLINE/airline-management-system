@@ -187,3 +187,60 @@ export function formatBaht(amount: string | number): string {
   const n = Number(amount)
   return `฿${Number.isInteger(n) ? BAHT.format(n) : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
+
+/** Same lists as the CHECKs on bag_match, and the backend's match reasons. */
+export const MATCH_LEVELS = ['strong', 'possible', 'manual'] as const
+export type MatchLevel = (typeof MATCH_LEVELS)[number]
+
+export const MATCH_STATUSES = ['suggested', 'under_review', 'confirmed', 'rejected'] as const
+export type MatchStatus = (typeof MATCH_STATUSES)[number]
+
+export type MatchReason = 'same_tag' | 'owner_tag' | 'same_flight' | 'same_type' | 'same_colour' | 'same_brand' | 'similar_description'
+
+export const MATCH_LEVEL_LABELS: Record<MatchLevel, string> = {
+  strong: 'Strong',
+  possible: 'Possible',
+  manual: 'Linked by staff',
+}
+
+export const MATCH_LEVEL_TONES: Record<MatchLevel, PillTone> = {
+  strong: 'green',
+  possible: 'amber',
+  manual: 'grey',
+}
+
+export const MATCH_STATUS_LABELS: Record<MatchStatus, string> = {
+  suggested: 'Suggested',
+  under_review: 'Under review',
+  confirmed: 'Confirmed',
+  rejected: 'Rejected',
+}
+
+export const MATCH_STATUS_TONES: Record<MatchStatus, PillTone> = {
+  suggested: 'amber',
+  under_review: 'amber',
+  confirmed: 'green',
+  rejected: 'red',
+}
+
+/** A match that staff can still confirm or reject. */
+export function isOpenMatch(status: MatchStatus): boolean {
+  return status === 'suggested' || status === 'under_review'
+}
+
+/** "Strong · same tag", "Possible · same flight": the level with the strongest reason behind it. */
+export function matchLevelText(level: MatchLevel, reasons: readonly MatchReason[]): string {
+  const why = reasons.includes('same_tag')
+    ? 'same tag'
+    : reasons.includes('owner_tag')
+      ? 'tag on booking'
+      : reasons.includes('same_flight')
+        ? 'same flight'
+        : null
+  return level !== 'manual' && why ? `${MATCH_LEVEL_LABELS[level]} · ${why}` : MATCH_LEVEL_LABELS[level]
+}
+
+/** Short reference for a match. bag_match has no number column, so this is the start of the UUID, like `bagRef`. */
+export function matchRef(id: string): string {
+  return `M-${id.slice(0, 4).toUpperCase()}`
+}

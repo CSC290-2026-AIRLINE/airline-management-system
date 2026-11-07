@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus } from '@nestjs/common'
 
 /**
- * Service-level codes for found bags, station contacts, staff lost reports and recovery costs, sent as
+ * Service-level codes for found bags, station contacts, staff lost reports, recovery costs and matches, sent as
  * `{ code, message }` in the error body. The report codes use the same names as baggage.errors.ts on
  * feat-10-lost-baggage-report.
  * Fold into baggage.errors.ts once feat-10-lost-baggage-report is in dev.
@@ -24,6 +24,10 @@ export const FOUND_BAG_ERROR_CODES = {
   BOOKING_NOT_FOUND: 'BOOKING_NOT_FOUND',
   INVALID_COST: 'INVALID_COST',
   COST_NOT_FOUND: 'COST_NOT_FOUND',
+  INVALID_MATCH: 'INVALID_MATCH',
+  MATCH_NOT_FOUND: 'MATCH_NOT_FOUND',
+  MATCH_EXISTS: 'MATCH_EXISTS',
+  MATCH_CLOSED: 'MATCH_CLOSED',
 } as const
 
 export type FoundBagErrorCode = (typeof FOUND_BAG_ERROR_CODES)[keyof typeof FOUND_BAG_ERROR_CODES]
@@ -46,6 +50,10 @@ const STATUS_BY_CODE: Record<FoundBagErrorCode, HttpStatus> = {
   BOOKING_NOT_FOUND: HttpStatus.NOT_FOUND,
   INVALID_COST: HttpStatus.BAD_REQUEST,
   COST_NOT_FOUND: HttpStatus.NOT_FOUND,
+  INVALID_MATCH: HttpStatus.BAD_REQUEST,
+  MATCH_NOT_FOUND: HttpStatus.NOT_FOUND,
+  MATCH_EXISTS: HttpStatus.CONFLICT,
+  MATCH_CLOSED: HttpStatus.CONFLICT,
 }
 
 export class FoundBagError extends HttpException {

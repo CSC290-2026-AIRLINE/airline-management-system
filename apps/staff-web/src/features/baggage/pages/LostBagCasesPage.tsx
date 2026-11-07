@@ -1,7 +1,8 @@
 import { F10Card, Chip } from '../components/primitives'
 import { CaseDetailCard } from '../components/CaseDetailCard'
 import { CasesListCard } from '../components/CasesListCard'
-import { CASE_FILTERS, CASE_FILTER_LABELS, CASE_FILTER_STATUSES, type CaseFilter } from '../constants'
+import { CASE_FILTERS, CASE_FILTER_LABELS, CASE_FILTER_STATUSES, isOpenMatch, type CaseFilter } from '../constants'
+import { useBagMatches, useHeldBags } from '../hooks/useBagMatches'
 import { useCaseCosts, useLostReports } from '../hooks/useLostReports'
 
 function Kpi({ value, label }: { value: number | null; label: string }) {
@@ -31,10 +32,16 @@ export function LostBagCasesPage({
   const list = useLostReports()
   const selected = list.cases.find((c) => c.id === selectedId)
   const costs = useCaseCosts(selected?.id)
+  const matches = useBagMatches()
+  const heldBags = useHeldBags(!!selected)
+  const caseMatches = selected ? matches.matches.filter((m) => m.report.id === selected.id) : []
 
   const statuses = CASE_FILTER_STATUSES[filter]
   const shown = list.cases.filter((c) => statuses.includes(c.status))
   const count = (status: string) => (list.loading ? null : list.cases.filter((c) => c.status === status).length)
+  const withMatch = new Set(matches.matches.filter((m) => m.status !== 'rejected').map((m) => m.report.id))
+  const openNoMatch = list.loading || matches.loading ? null : list.cases.filter((c) => c.status === 'open' && !withMatch.has(c.id)).length
+  const toReview = matches.loading ? null : matches.matches.filter((m) => isOpenMatch(m.status)).length
   const meta = `${shown.length} ${filter === 'all' ? (shown.length === 1 ? 'case' : 'cases') : CASE_FILTER_LABELS[filter].toLowerCase()} · newest first`
 
   return (
@@ -49,9 +56,8 @@ export function LostBagCasesPage({
       </header>
 
       <div className="flex gap-4 max-lg:grid max-lg:grid-cols-2">
-        {/* Matching is not built yet, so every open case has no match and there are no matches to review. */}
-        <Kpi value={count('open')} label="Open, no match yet" />
-        <Kpi value={null} label="Matches to review" />
+        <Kpi value={openNoMatch} label="Open, no match yet" />
+        <Kpi value={toReview} label="Matches to review" />
         <Kpi value={count('delivering')} label="Being delivered" />
         <Kpi value={count('lost')} label="Lost" />
       </div>
@@ -81,7 +87,15 @@ export function LostBagCasesPage({
         </div>
         {selected && (
           <div className="w-[420px] shrink-0 max-xl:w-full">
-            <CaseDetailCard report={selected} costs={costs} />
+            <CaseDetailCard
+              report={selected}
+              matches={caseMatches}
+              heldBags={heldBags}
+              onLink={async (foundBagId) => {
+                await matches.link(selected.id, foundBagId)
+              }}
+              costs={costs}
+            />
           </div>
         )}
       </div>

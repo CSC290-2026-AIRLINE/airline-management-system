@@ -22,6 +22,7 @@ import { ReportFromFoundBagDto } from './dto/report-from-found-bag.dto'
 import { BaggageStaffGuard, CurrentBaggageStaff, type BaggageStaff } from './guards/baggage-staff.guard'
 import { BagCostService } from './bag-cost.service'
 import { StaffLostReportService } from './staff-lost-report.service'
+import { BagMatchingService } from './bag-matching.service'
 
 /** Properties that only the cost body has, so their errors read as INVALID_COST. */
 const COST_PROPERTIES = new Set(['kind', 'amount', 'note'])
@@ -59,6 +60,7 @@ export class StaffLostReportController {
   constructor(
     private readonly reports: StaffLostReportService,
     private readonly costs: BagCostService,
+    private readonly matching: BagMatchingService,
   ) {}
 
   /** The ticketed passengers and flights on a booking, to fill the desk form. */
@@ -75,15 +77,20 @@ export class StaffLostReportController {
   /** A passenger at the desk reports a missing bag. */
   @Post()
   @HttpCode(201)
-  create(@CurrentBaggageStaff() staff: BaggageStaff, @Body() dto: CreateStaffLostReportDto): Promise<LostReportCase> {
-    return this.reports.createAtDesk({ ...dto, staffId: staff.staffId })
+  async create(@CurrentBaggageStaff() staff: BaggageStaff, @Body() dto: CreateStaffLostReportDto): Promise<LostReportCase> {
+    const report = await this.reports.createAtDesk({ ...dto, staffId: staff.staffId })
+    await this.matching.suggestForReport(report.id)
+    return report
   }
 
   /** Open a case for the owner of a tagged found bag who has not reported it yet. */
   @Post('from-found-bag')
   @HttpCode(201)
-  createFromFoundBag(@CurrentBaggageStaff() staff: BaggageStaff, @Body() dto: ReportFromFoundBagDto): Promise<LostReportCase> {
-    return this.reports.createFromFoundBag({ ...dto, staffId: staff.staffId })
+  async createFromFoundBag(@CurrentBaggageStaff() staff: BaggageStaff, @Body() dto: ReportFromFoundBagDto): Promise<LostReportCase> {
+    const report = await this.reports.createFromFoundBag({ ...dto, staffId: staff.staffId })
+    // Suggests the bag the case came from as a strong match, ready for Match review.
+    await this.matching.suggestForReport(report.id)
+    return report
   }
 
   @Get(':id')

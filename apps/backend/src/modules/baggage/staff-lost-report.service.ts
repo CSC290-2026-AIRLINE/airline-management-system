@@ -124,7 +124,7 @@ function clean(value: string | null | undefined): string | null {
 /**
  * Lost bag reports filed by baggage staff: at an airport desk for a passenger who shows their booking, or for the
  * owner of a tagged found bag who has not reported yet. Both set reported_by_staff_id. Passenger self-service reports
- * are on feat-10-lost-baggage-report. Matching a new report to found bags is not done here yet.
+ * are on feat-10-lost-baggage-report. The controller runs matching on every new report.
  */
 @Injectable()
 export class StaffLostReportService {

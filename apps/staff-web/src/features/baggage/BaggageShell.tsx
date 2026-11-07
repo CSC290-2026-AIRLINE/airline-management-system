@@ -3,14 +3,11 @@ import { useUser } from '@clerk/clerk-react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { cn } from '@staff-web/lib/utils'
 
-/**
- * Pages in the "Lost and found" nav, in Figma order. Match review is not built yet, so it shows as not ready instead of
- * linking to a route that does not exist.
- */
-const NAV: { label: string; to?: '/baggage/lost-bag-cases' | '/baggage/found-bags' | '/baggage/deliveries' }[] = [
+/** Pages in the "Lost and found" nav, in Figma order. An item without a route shows as not ready. */
+const NAV: { label: string; to?: '/baggage/lost-bag-cases' | '/baggage/found-bags' | '/baggage/match-review' | '/baggage/deliveries' }[] = [
   { label: 'Lost bag cases', to: '/baggage/lost-bag-cases' },
   { label: 'Found bags', to: '/baggage/found-bags' },
-  { label: 'Match review' },
+  { label: 'Match review', to: '/baggage/match-review' },
   { label: 'Deliveries', to: '/baggage/deliveries' },
 ]
 

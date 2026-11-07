@@ -24,6 +24,7 @@ import { ListFoundBagsQuery } from './dto/list-found-bags.query'
 import { RecordFoundBagDto } from './dto/record-found-bag.dto'
 import { BaggageStaffGuard, CurrentBaggageStaff, type BaggageStaff } from './guards/baggage-staff.guard'
 import { FoundBagService } from './found-bag.service'
+import { BagMatchingService } from './bag-matching.service'
 
 function toValidationError(errors: ValidationError[]): FoundBagError {
   const tagError = errors.some((e) => e.property === 'tagNumber')
@@ -49,6 +50,7 @@ export class FoundBagController {
     private readonly service: FoundBagService,
     private readonly tracking: BagTrackingService,
     private readonly lifecycle: FoundBagLifecycleService,
+    private readonly matching: BagMatchingService,
   ) {}
 
   @Post()
@@ -60,8 +62,12 @@ export class FoundBagController {
   /** Add a held found bag for every tagged bag in the hold of a diverted flight. Safe to call again. */
   @Post('diversions/:flightId')
   @HttpCode(201)
-  recordDiversion(@Param('flightId', new ParseUUIDPipe({ exceptionFactory: flightNotFound })) flightId: string): Promise<DiversionResult> {
-    return this.lifecycle.recordDiversion(flightId)
+  async recordDiversion(
+    @Param('flightId', new ParseUUIDPipe({ exceptionFactory: flightNotFound })) flightId: string,
+  ): Promise<DiversionResult> {
+    const result = await this.lifecycle.recordDiversion(flightId)
+    await this.matching.suggestForFoundBags(result.created.map((bag) => bag.id))
+    return result
   }
 
   /** Mark held bags past unclaimed_after_days with no confirmed match as unclaimed. */
@@ -100,12 +106,15 @@ export class FoundBagController {
 
   /** Add the type and colour of a diverted-flight bag after staff check it. */
   @Patch(':id')
-  completeDetails(
+  async completeDetails(
     @CurrentBaggageStaff() staff: BaggageStaff,
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: CompleteFoundBagDetailsDto,
   ): Promise<FoundBag> {
-    return this.lifecycle.completeDetails(staff.staffId, id, dto)
+    const bag = await this.lifecycle.completeDetails(staff.staffId, id, dto)
+    // The type and colour can now give possible matches.
+    await this.matching.suggestForFoundBags([bag.id])
+    return bag
   }
 
   /** The diverted-flight bag stayed on board and flew on to its destination. */
