@@ -1,0 +1,174 @@
+/* Seat map: 6 seats per row, the aisle between C and D. The well scrolls sideways on a phone. */
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+/* The legend sits above the map, as the design shows it. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--f6-muted);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 3px;
+  border: 1.5px solid var(--f6-seat-free-line);
+  background: var(--f6-paper);
+  display: inline-block;
+}
+
+.swatch[data-status='paid'] {
+  border-color: var(--f6-seat-paid-line);
+  background: var(--f6-seat-paid-bg);
+}
+
+.swatch[data-status='taken'] {
+  border-color: transparent;
+  background: var(--f6-seat-taken-bg);
+}
+
+.swatch[data-status='mine'] {
+  border-color: var(--f6-seat-mine-line);
+  background: var(--f6-seat-mine-bg);
+}
+
+.swatch[data-status='business'] {
+  border-color: var(--f6-seat-business-line);
+  background: var(--f6-seat-business-bg);
+}
+
+/* The pale well the map sits in. */
+.well {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--f6-page);
+}
+
+.map {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+}
+
+/* The column letters and every seat row share this grid: a number, A B C, a number, D E F. */
+.letters,
+.row {
+  display: grid;
+  grid-template-columns: 18px 32px 32px 32px 18px 32px 32px 32px;
+  align-items: center;
+  gap: 6px;
+}
+
+.letter {
+  font-size: 12px;
+  color: var(--f6-muted);
+  text-align: center;
+}
+
+.rowNumber {
+  font-size: 12px;
+  color: var(--f6-muted);
+  text-align: center;
+}
+
+.exit {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--f6-amber);
+  text-align: center;
+  padding: 2px 0 4px;
+}
+
+.blank {
+  width: 32px;
+  height: 32px;
+}
+
+.seat {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px 9px 5px 5px;
+  border: 1.5px solid var(--f6-seat-free-line);
+  background: var(--f6-paper);
+  color: var(--f6-blue);
+  font-family: var(--f6-ui);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 0;
+}
+
+.seat:hover:not(:disabled) {
+  background: var(--f6-seat-free-hover);
+  border-color: var(--f6-blue);
+  border-width: 2px;
+}
+
+.seat[data-paid='true'] {
+  background: var(--f6-seat-paid-bg);
+  border-color: var(--f6-seat-paid-line);
+  color: var(--f6-seat-paid-text);
+}
+
+.seat[data-paid='true']:hover:not(:disabled) {
+  background: var(--f6-seat-paid-hover);
+  border-color: var(--f6-seat-paid-text);
+}
+
+.seat[data-status='taken'],
+.seat[data-status='held'] {
+  background: var(--f6-seat-taken-bg);
+  border-color: transparent;
+  color: var(--f6-seat-taken-text);
+  cursor: not-allowed;
+}
+
+.seat[data-status='blocked'] {
+  background: var(--f6-seat-blocked-bg);
+  border-color: var(--f6-seat-blocked-line);
+  color: transparent;
+  cursor: not-allowed;
+}
+
+/* The seats of another cabin are drawn like the design's business seats. */
+.seat[data-business='true'] {
+  background: var(--f6-seat-business-bg);
+  border-color: var(--f6-seat-business-line);
+  color: var(--f6-seat-business-text);
+  height: 38px;
+}
+
+.seat[data-status='mine'],
+.seat[aria-pressed='true'] {
+  background: var(--f6-seat-mine-bg);
+  border-color: var(--f6-seat-mine-line);
+  border-width: 2px;
+  color: #fff;
+}
+
+.seat:focus-visible {
+  outline: 2px solid var(--f6-navy);
+  outline-offset: 2px;
+}

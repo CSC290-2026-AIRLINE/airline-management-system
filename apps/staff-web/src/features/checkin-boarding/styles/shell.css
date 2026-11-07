@@ -1,0 +1,14 @@
+/* The starter page centres #root at 1126px with a border and centred text. The staff shell fills the window instead. */
+#root:has(.f6-shell) {
+  width: 100%;
+  max-width: none;
+  border: 0;
+  text-align: left;
+}
+
+/* Printing a pass or a bag tag: the sidebar is hidden, so the space it holds open must go too. */
+@media print {
+  .f6-shell [data-slot='sidebar-gap'] {
+    display: none;
+  }
+}

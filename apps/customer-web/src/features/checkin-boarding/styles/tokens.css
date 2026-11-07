@@ -1,0 +1,55 @@
+/* Feature 6 design tokens: the final F6 Figma kit (Inter, light theme only). */
+:root {
+  --f6-page: #f7f9fc;
+  --f6-paper: #ffffff;
+  --f6-line: #dbe2ea;
+  --f6-line-soft: #eef1f6;
+  --f6-ink: #0a1424;
+  --f6-navy: #102544;
+  --f6-muted: #677287;
+  --f6-blue: #1f408c;
+  --f6-amber: #ff9f00;
+
+  /* Message tones: background / border / text. */
+  --f6-success-bg: #e6f4ec;
+  --f6-success-line: #b7dfc7;
+  --f6-success-text: #1e6e42;
+  --f6-info-bg: #eaf0fb;
+  --f6-info-line: #c9d8f2;
+  --f6-info-text: #1f408c;
+  --f6-warn-bg: #fff3db;
+  --f6-warn-line: #f5dfa8;
+  --f6-warn-text: #995c05;
+  --f6-error-bg: #fde4e2;
+  --f6-error-line: #f0b2b2;
+  --f6-error-text: #b8171c;
+
+  /* The check-in window strip. */
+  --f6-open-bg: #e0faeb;
+  --f6-open-line: #b7ebcb;
+  --f6-open-text: #087338;
+
+  --f6-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f6-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* The tick and the cross of the check list. */
+  --f6-good: #1e8e4e;
+  --f6-bad: #d61313;
+
+  /* The seat map states. */
+  --f6-seat-free-line: #5b93f0;
+  --f6-seat-free-hover: #dce8ff;
+  --f6-seat-paid-bg: #ffe9d6;
+  --f6-seat-paid-line: #e86a0c;
+  --f6-seat-paid-hover: #ffd4ad;
+  --f6-seat-paid-text: #b4530a;
+  --f6-seat-taken-bg: #e3e9f4;
+  --f6-seat-taken-text: #5b6b86;
+  --f6-seat-blocked-bg: #f1f3f7;
+  --f6-seat-blocked-line: #cbd5e1;
+  --f6-seat-mine-bg: #0a1f44;
+  --f6-seat-mine-line: #ff7f1f;
+  --f6-seat-business-bg: #eaf0fb;
+  --f6-seat-business-line: #c9d8f2;
+  --f6-seat-business-text: #8c94a3;
+}

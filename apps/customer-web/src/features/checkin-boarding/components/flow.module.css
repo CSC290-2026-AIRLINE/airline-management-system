@@ -1,0 +1,747 @@
+/* Feature 6 customer check-in on the final F6 design. Desktop first (1440), one column from 720 px. */
+
+/* The demo shell owns the whole viewport; the app shell keeps #root at 1126 px with side borders. */
+:global(#root):has(.demoShell) {
+  width: 100%;
+  max-width: none;
+  border: 0;
+  text-align: left;
+  background: var(--f6-page);
+}
+
+.flow {
+  font-family: var(--f6-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--f6-ink);
+  /* 1200 px column + 45 px of page padding on each side. */
+  max-width: 1290px;
+  margin: 0 auto;
+  padding: 24px 45px 64px;
+  box-sizing: border-box;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.title {
+  font-family: var(--f6-ui);
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--f6-ink);
+  margin: 0;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--f6-muted);
+  font-size: 16px;
+}
+
+/* The window strip: green while check-in is open, amber once it is not. */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border: 1px solid var(--f6-open-line);
+  border-radius: 10px;
+  background: var(--f6-open-bg);
+  color: var(--f6-open-text);
+  font-size: 14px;
+}
+
+.strip[data-open='false'] {
+  border-color: var(--f6-warn-line);
+  background: var(--f6-warn-bg);
+  color: var(--f6-warn-text);
+}
+
+.stripLabel {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The progress stepper: a white card with the five steps in a row. */
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 13px 20px;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  box-sizing: border-box;
+  background: var(--f6-paper);
+  border: 1px solid var(--f6-line);
+  border-radius: 16px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--f6-muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.step[data-state='current'],
+.step[data-state='done'] {
+  color: var(--f6-ink);
+}
+
+.step[data-state='current'] {
+  font-weight: 600;
+}
+
+.dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--f6-line);
+  background: var(--f6-paper);
+  color: var(--f6-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.step[data-state='current'] .dot {
+  background: var(--f6-amber);
+  border-color: var(--f6-amber);
+  color: var(--f6-navy);
+}
+
+.step[data-state='done'] .dot {
+  background: var(--f6-navy);
+  border-color: var(--f6-navy);
+  color: #fff;
+}
+
+.connector {
+  flex: none;
+  width: 40px;
+  height: 2px;
+  margin-left: 5px;
+  background: var(--f6-line);
+}
+
+.stepLabel {
+  white-space: nowrap;
+}
+
+/* Messages: success, info, warn and error. */
+.message {
+  padding: 12px 16px;
+  border: 1px solid var(--f6-line);
+  border-radius: 10px;
+  background: var(--f6-info-bg);
+  color: var(--f6-ink);
+  font-size: 16px;
+}
+
+.message[data-tone='success'] {
+  background: var(--f6-success-bg);
+  border-color: var(--f6-success-line);
+  color: var(--f6-success-text);
+}
+
+.message[data-tone='info'] {
+  background: var(--f6-info-bg);
+  border-color: var(--f6-info-line);
+  color: var(--f6-info-text);
+}
+
+.message[data-tone='warn'] {
+  background: var(--f6-warn-bg);
+  border-color: var(--f6-warn-line);
+  color: var(--f6-warn-text);
+}
+
+.message[data-tone='error'] {
+  background: var(--f6-error-bg);
+  border-color: var(--f6-error-line);
+  color: var(--f6-error-text);
+}
+
+.messageTitle {
+  display: block;
+  font-weight: 600;
+}
+
+.messageBody {
+  font-weight: 400;
+}
+
+/* The body row: the step card on the left, the trip summary on the right. */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 24px;
+  align-items: start;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  padding: 28px;
+  box-sizing: border-box;
+  background: var(--f6-paper);
+  border: 1px solid var(--f6-line);
+  border-radius: 16px;
+}
+
+/* The boarding pass has no card around it: the message and the pass fill the content column. */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* The trip summary: a navy card with the flight on top. */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  background: var(--f6-navy);
+  color: #fff;
+}
+
+.summaryTitle {
+  font-family: var(--f6-ui);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #fff;
+  margin: 0;
+}
+
+.summaryRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.summaryLabel {
+  margin: 0;
+  color: #b0b7c3;
+  font-size: 12px;
+}
+
+.summaryValue {
+  margin: 0;
+  color: #fff;
+  font-weight: 500;
+  text-align: right;
+}
+
+/* "Before you start": the static card beside the find-booking form. */
+.sideCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  background: var(--f6-paper);
+  border: 1px solid var(--f6-line);
+}
+
+.sideTitle {
+  font-family: var(--f6-ui);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--f6-ink);
+  margin: 0;
+}
+
+.sideList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+}
+
+.sideList li {
+  display: flex;
+  gap: 8px;
+}
+
+.sideBullet {
+  color: var(--f6-amber);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* The form's own button sits at the right of the card; the button rows use .actions. */
+.form > .button {
+  align-self: flex-end;
+}
+
+.panelTitle {
+  font-family: var(--f6-ui);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--f6-ink);
+  margin: 0;
+}
+
+.panelHint {
+  margin: -12px 0 0;
+  color: var(--f6-muted);
+  font-size: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.label {
+  font-size: 16px;
+  font-weight: 400;
+  color: #6f7482;
+}
+
+.input {
+  font-family: var(--f6-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  color: #3b4256;
+  max-width: 100%;
+  padding: 12px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+/* The form boxes are 460 px wide, as in the design. */
+.field .input {
+  width: 460px;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--f6-blue);
+  outline-offset: 1px;
+}
+
+.mrz {
+  font-family: var(--f6-mono);
+  letter-spacing: 0.08em;
+}
+
+.counter {
+  font-size: 12px;
+  color: var(--f6-muted);
+}
+
+/* The four MRZ check digits: a tick or a cross in front of every label. */
+.checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.check {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--f6-ink);
+}
+
+.checkMark {
+  font-weight: 600;
+}
+
+.check[data-ok='true'] .checkMark {
+  color: var(--f6-good);
+}
+
+.check[data-ok='false'] .checkMark {
+  color: var(--f6-bad);
+}
+
+.checkLabel {
+  font-weight: 500;
+}
+
+/* The check the server refused is the one that is called out. */
+.check[data-failed='true'] .checkMark {
+  color: var(--f6-bad);
+}
+
+.helpers {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.helpersLabel {
+  font-size: 12px;
+  color: var(--f6-muted);
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* The seat step keeps Back on the left and the other two buttons on the right. */
+.actionsSplit {
+  justify-content: space-between;
+}
+
+.actionGroup {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.button {
+  font-family: var(--f6-ui);
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--f6-navy);
+  border: 1px solid var(--f6-navy);
+  border-radius: 6px;
+  padding: 11px 18px;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: #0a1f44;
+  border-color: #0a1f44;
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ghostButton {
+  font-family: var(--f6-ui);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--f6-ink);
+  background: var(--f6-paper);
+  border: 1px solid var(--f6-line);
+  border-radius: 6px;
+  padding: 11px 18px;
+  cursor: pointer;
+}
+
+.ghostButton:hover:not(:disabled) {
+  border-color: var(--f6-navy);
+}
+
+.ghostButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.button:focus-visible,
+.ghostButton:focus-visible {
+  outline: 2px solid var(--f6-navy);
+  outline-offset: 2px;
+}
+
+/* The two allowance tiles of the baggage step. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 20px;
+  box-sizing: border-box;
+  background: var(--f6-paper);
+  border: 1px solid var(--f6-line);
+  border-radius: 16px;
+}
+
+.tileLabel {
+  font-size: 12px;
+  color: var(--f6-muted);
+}
+
+.tileValue {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  color: var(--f6-ink);
+}
+
+.tileNote {
+  font-size: 14px;
+  color: var(--f6-muted);
+}
+
+/* The bag counter: a 40 px button on each side of the number. */
+.countRow {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.countGroup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.countButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-family: var(--f6-ui);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--f6-navy);
+  background: var(--f6-paper);
+  border: 1px solid var(--f6-line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.countButton:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.countButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.countButton:focus-visible {
+  outline: 2px solid var(--f6-navy);
+  outline-offset: 2px;
+}
+
+.countValue {
+  min-width: 32px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--f6-ink);
+}
+
+/* The step title with a note on the right, as the seat step shows it. */
+.stepHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.stepNote {
+  font-size: 14px;
+  color: var(--f6-muted);
+  white-space: nowrap;
+}
+
+.stepNote strong {
+  color: var(--f6-ink);
+}
+
+.state {
+  margin: 0;
+  padding: 20px;
+  background: var(--f6-line-soft);
+  border-radius: 10px;
+  color: var(--f6-muted);
+  font-size: 14px;
+}
+
+.timer {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--f6-ink);
+}
+
+/* Demo shell, used by DemoApp only. */
+.demoShell {
+  min-height: 100vh;
+  background: var(--f6-page);
+  padding-bottom: 64px;
+}
+
+.demoNav {
+  display: flex;
+  align-items: center;
+  gap: 56px;
+  max-width: 1350px;
+  height: 67px;
+  margin: 24px auto 21px;
+  padding: 0 32px 0 48px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: #f3f4f6;
+  text-align: left;
+}
+
+.demoBrand {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--f6-ui);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--f6-navy);
+}
+
+.demoBrandSub {
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  color: var(--f6-muted);
+}
+
+.demoLinks {
+  display: flex;
+  align-items: center;
+  gap: 56px;
+  margin-left: auto;
+}
+
+.demoLink {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--f6-ink);
+}
+
+.demoProfile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px 6px 6px;
+  border-radius: 20px;
+  background: var(--f6-navy);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.demoAvatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--f6-paper);
+  color: var(--f6-blue);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .flow {
+    max-width: 100%;
+    padding: 20px 16px 48px;
+  }
+
+  .title {
+    font-size: 28px;
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    padding: 20px;
+  }
+
+  .strip {
+    padding: 12px 16px;
+  }
+
+  .actions {
+    justify-content: stretch;
+  }
+
+  .button,
+  .ghostButton {
+    flex: 1 1 auto;
+  }
+
+  .demoNav {
+    gap: 16px;
+    height: auto;
+    padding: 12px 16px;
+  }
+
+  .demoNav {
+    margin: 16px 16px 16px;
+  }
+
+  .demoLinks {
+    display: none;
+  }
+
+  .demoProfile {
+    margin-left: auto;
+  }
+
+  .steps {
+    flex-wrap: wrap;
+    overflow: visible;
+    padding: 12px 16px;
+  }
+}
