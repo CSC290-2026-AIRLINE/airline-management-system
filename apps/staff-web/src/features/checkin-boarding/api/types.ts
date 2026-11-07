@@ -38,6 +38,8 @@ export interface TravelDocumentView {
   expiryDate: string
   visaNumber: string | null
   visaRequired: boolean
+  /** The backend does not expose it yet; the mock does, so the counter can show a checked visa. */
+  visaCheckedAt: string | null
   nameMismatch: boolean
   nameMismatchClearedAt: string | null
   profileDifferences: string[]

@@ -33,3 +33,12 @@ export function applyFilter(rows: StaffCheckInRow[], filter: CounterFilter): Sta
       return rows
   }
 }
+
+/**
+ * A six-letter surname reads as a booking ref, so a search for "Becker" finds nobody. When that happens the
+ * counter searches the same text as a name.
+ */
+export function fallbackQuery(parsed: CounterSearch, text: string): CounterSearch | null {
+  if (!parsed.pnr) return null
+  return { name: text.trim() }
+}

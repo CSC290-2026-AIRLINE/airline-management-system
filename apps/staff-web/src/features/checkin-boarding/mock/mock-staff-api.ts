@@ -255,6 +255,7 @@ export function createMockStaffApi(opts?: { now?: Date }): StaffApi {
       expiryDate: document.expiryDate,
       visaNumber: document.visaNumber,
       visaRequired: document.visaRequired,
+      visaCheckedAt: document.visaCheckedAt,
       nameMismatch: document.nameMismatch,
       nameMismatchClearedAt: document.nameMismatchClearedAt,
       profileDifferences: document.profileDifferences,

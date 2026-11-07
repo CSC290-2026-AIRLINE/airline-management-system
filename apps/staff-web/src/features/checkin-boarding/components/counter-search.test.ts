@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { FlightSummary, StaffCheckInRow } from '../api/types.ts'
-import { applyFilter, parseSearch } from './counter-search.ts'
+import { applyFilter, fallbackQuery, parseSearch } from './counter-search.ts'
 
 const flights = [
   { id: 'f1', flightNumber: 'FY 204' },
@@ -57,4 +57,9 @@ test('applyFilter: not_started keeps status started only', () => {
     applyFilter(rows, 'not_started').map((item) => item.id),
     ['a'],
   )
+})
+
+test('fallbackQuery: a booking ref that finds nobody is searched as a surname', () => {
+  assert.deepEqual(fallbackQuery({ pnr: 'BECKER' }, 'Becker'), { name: 'Becker' })
+  assert.equal(fallbackQuery({ name: 'Eriksson' }, 'Eriksson'), null)
 })

@@ -136,10 +136,11 @@ export function StaffShell({ current, onNavigate, agentName, clock, onSignOut, c
           <span className="font-heading font-bold">Flython</span>
         </header>
 
-        {/* The design's content column is 1054 wide; the page padding sits outside it, so the max width
-            is the column plus the padding on both sides. Printing a pass or a bag tag: no page padding,
-            so the sheet starts at the paper's edge. */}
-        <div className="mx-auto flex w-full max-w-[1118px] flex-col gap-6 p-8 print:p-0">{children}</div>
+        {/* The design's content column is 1054 wide; the page padding sits outside it, so the padded box is
+            1054 + 2 × 32. Printing a pass or a bag tag: no page padding, so the sheet starts at the paper's edge. */}
+        <div className="mx-auto w-full max-w-[1118px] p-8 print:p-0">
+          <div className="flex w-full max-w-[1054px] flex-col gap-6">{children}</div>
+        </div>
       </SidebarInset>
     </SidebarProvider>
   )

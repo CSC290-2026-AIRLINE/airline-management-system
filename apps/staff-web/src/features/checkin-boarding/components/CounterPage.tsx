@@ -10,7 +10,7 @@ import { ErrorBanner } from './ErrorBanner.tsx'
 import { PassengerPanel } from './PassengerPanel.tsx'
 import { IssuePills, StatusPill } from './pills.tsx'
 import { messageOf } from './errors.ts'
-import { applyFilter, parseSearch, type CounterFilter } from './counter-search.ts'
+import { applyFilter, fallbackQuery, parseSearch, type CounterFilter } from './counter-search.ts'
 import { formatTime } from '../domain/format.ts'
 import { computeWindow, DEFAULT_WINDOW_SETTINGS } from '../domain/window.ts'
 import { INPUT_LABEL, MUTED, PANEL, PANEL_TITLE, PRIMARY_BUTTON, SECONDARY_BUTTON, TEXT_INPUT } from './styles.ts'
@@ -30,19 +30,22 @@ export function CounterPage({ api }: { api: StaffApi }) {
   const [searched, setSearched] = useState(false)
   const [view, setView] = useState<StaffCheckInView | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** The flight list failed; the searches still work, so this error has its own place in the banner. */
+  const [flightsError, setFlightsError] = useState<string | null>(null)
   /** The flight list is needed to read a flight number from the search box, so the search waits for it. */
   const flightsReady = useRef<Promise<FlightSummary[]>>(Promise.resolve([]))
 
   useEffect(() => {
     let cancelled = false
     const promise = api.flights()
-    flightsReady.current = promise
+    // The flights only resolve a flight number, so a failure must not break a search by name or booking ref.
+    flightsReady.current = promise.catch(() => [])
     promise
       .then((list) => {
         if (!cancelled) setFlights(list)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(messageOf(err))
+        if (!cancelled) setFlightsError(messageOf(err))
       })
     return () => {
       cancelled = true
@@ -52,7 +55,12 @@ export function CounterPage({ api }: { api: StaffApi }) {
   const search = useCallback(
     async (query: string) => {
       const list = await flightsReady.current
-      return api.search(parseSearch(query, list))
+      const parsed = parseSearch(query, list)
+      const found = await api.search(parsed)
+      // A six-letter surname reads as a booking ref, so when that finds nobody the same text is searched as a name.
+      const fallback = fallbackQuery(parsed, query)
+      if (found.length === 0 && fallback) return api.search(fallback)
+      return found
     },
     [api],
   )
@@ -160,7 +168,13 @@ export function CounterPage({ api }: { api: StaffApi }) {
         ) : null}
       </div>
 
-      <ErrorBanner message={error} onDismiss={() => setError(null)} />
+      <ErrorBanner
+        message={error ?? flightsError}
+        onDismiss={() => {
+          setError(null)
+          setFlightsError(null)
+        }}
+      />
 
       {view ? (
         <PassengerPanel key={view.checkIn.id} api={api} view={view} onUpdated={onUpdated} />
@@ -219,8 +233,8 @@ export function CounterPage({ api }: { api: StaffApi }) {
             <h2 className={PANEL_TITLE}>{heading}</h2>
             <p className={MUTED}>
               {closesAt
-                ? `Check-in closes ${closesAt} (1 hour before departure, simulation clock). ${rows.length} booked passengers.`
-                : `${rows.length} booked passengers.`}
+                ? `Check-in closes ${closesAt} (1 hour before departure, simulation clock). ${rows.length} booked ${rows.length === 1 ? 'passenger' : 'passengers'}.`
+                : `${rows.length} booked ${rows.length === 1 ? 'passenger' : 'passengers'}.`}
             </p>
             {visible.length === 0 ? (
               <p className={MUTED}>{searched ? 'No passenger matches the search.' : 'Search by flight, name or booking ref.'}</p>

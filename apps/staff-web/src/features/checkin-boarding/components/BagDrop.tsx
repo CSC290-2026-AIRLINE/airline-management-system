@@ -25,7 +25,7 @@ const DISABLED_BUTTON = 'h-[39px] rounded-[6px] bg-[#eef1f6] px-[18px] text-sm f
 
 function Kpi({ value, label }: { value: string; label: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-2xl border-[#dbe2ea] px-5 py-4">
+    <div className="flex flex-col gap-1 rounded-2xl border border-[#dbe2ea] bg-white px-5 py-4">
       <span className={KPI_NUMBER}>{value}</span>
       <span className={MUTED}>{label}</span>
     </div>
@@ -56,6 +56,8 @@ export function BagDrop({ api, view, onUpdated }: Props) {
   const unpaid = bags.find((bag) => bag.excessFee > 0 && !bag.excessPaymentId) ?? null
   const unpaidIndex = unpaid ? bags.indexOf(unpaid) + 1 : 0
   const unpaidRate = unpaid?.ratePerKg ?? allowance.ratePerKg
+  /** Only the bags that still owe a fee count, so the kilos always match the fee shown next to them. */
+  const unpaidExcessKg = bags.filter((bag) => bag.excessFee > 0 && !bag.excessPaymentId).reduce((sum, bag) => sum + bag.excessKg, 0)
 
   const weigh = async () => {
     const weightKg = numberOrNull(weight)
@@ -231,7 +233,7 @@ export function BagDrop({ api, view, onUpdated }: Props) {
                       >
                         Remove
                       </Button>
-                      {feeDue ? (
+                      {feeDue || bag.status !== 'weighed' ? (
                         <Button type="button" size="sm" className={DISABLED_BUTTON} disabled>
                           Print tag
                         </Button>
@@ -253,7 +255,7 @@ export function BagDrop({ api, view, onUpdated }: Props) {
         <Message tone="warn">
           <span className="flex flex-wrap items-center justify-between gap-3">
             <span>
-              Excess to pay: {formatBaht(totals.unpaidFee)} · {totals.excessKg} kg × {formatBaht(unpaidRate)} per kg (Feature 4 rate, copied
+              Excess to pay: {formatBaht(totals.unpaidFee)} · {unpaidExcessKg} kg × {formatBaht(unpaidRate)} per kg (Feature 4 rate, copied
               at weighing)
             </span>
             <Button type="button" className={PRIMARY_BUTTON} disabled={busy} onClick={() => void tag(unpaid.id)}>
