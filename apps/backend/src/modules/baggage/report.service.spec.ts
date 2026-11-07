@@ -140,6 +140,23 @@ describe('ReportService', () => {
     })
   })
 
+  it('rejects report access when the booking reference or surname does not verify', async () => {
+    const created = await service.create(validInput)
+
+    await expect(service.getByCaseNumber(created.caseNumber, { ...access, bookingReference: 'WRONG1' })).rejects.toMatchObject({
+      code: 'INVALID_REPORT',
+    })
+    await expect(service.getByCaseNumber(created.caseNumber, { ...access, surname: 'Wrong' })).rejects.toMatchObject({
+      code: 'INVALID_REPORT',
+    })
+  })
+
+  it('returns not found for an invalid case identifier after valid booking verification', async () => {
+    await expect(service.getByCaseNumber('not-a-case-number', access)).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+  })
+
   it('lists reports for the verified passenger', async () => {
     await service.create(validInput)
 
