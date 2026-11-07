@@ -97,6 +97,15 @@ export class PrismaReportRepository implements ReportRepository {
     return row ? toReport(row) : null
   }
 
+  async findDeliveryIdByReportId(reportId: string): Promise<string | null> {
+    const delivery = await this.db.bag_delivery.findUnique({
+      where: { report_id: reportId },
+      select: { id: true },
+    })
+
+    return delivery?.id ?? null
+  }
+
   async findLiveByTag(tagNumber: string): Promise<LostBagReport | null> {
     const row = await this.db.lost_bag_report.findFirst({
       where: {

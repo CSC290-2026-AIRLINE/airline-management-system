@@ -49,6 +49,7 @@ function makeRepository(
     return Promise.resolve(report && where.status.in.includes(report.status) ? report : null)
   })
   const findDispatchEvent = jest.fn().mockResolvedValue(options.eventHistory ?? null)
+  const findDeliveryUnique = jest.fn().mockResolvedValue({ id: '00000000-0000-4000-8000-000000000006' })
   const queryRaw = jest.fn().mockResolvedValue(options.lockedRows ?? [{ id: reportRow().id }])
   const tx = {
     $queryRaw: queryRaw,
@@ -56,10 +57,30 @@ function makeRepository(
     bag_location_event: { findFirst: findDispatchEvent },
   }
   const transaction = jest.fn((callback: (transactionClient: typeof tx) => Promise<unknown>) => callback(tx))
-  const repository = new PrismaReportRepository({ $transaction: transaction } as unknown as DbService)
+  const repository = new PrismaReportRepository({
+    $transaction: transaction,
+    bag_delivery: { findUnique: findDeliveryUnique },
+  } as unknown as DbService)
 
-  return { repository, transaction, queryRaw, findFirst, findDispatchEvent, update }
+  return { repository, transaction, queryRaw, findFirst, findDispatchEvent, findDeliveryUnique, update }
 }
+
+describe('PrismaReportRepository delivery lookup', () => {
+  it('looks up the delivery by the verified report id', async () => {
+    const harness = makeRepository()
+    const reportId = reportRow().id
+
+    await expect(harness.repository.findDeliveryIdByReportId(reportId)).resolves.toBe('00000000-0000-4000-8000-000000000006')
+    expect(harness.findDeliveryUnique).toHaveBeenCalledWith({ where: { report_id: reportId }, select: { id: true } })
+  })
+
+  it('returns null when the report has no delivery', async () => {
+    const harness = makeRepository()
+    harness.findDeliveryUnique.mockResolvedValue(null)
+
+    await expect(harness.repository.findDeliveryIdByReportId(reportRow().id)).resolves.toBeNull()
+  })
+})
 
 describe('PrismaReportRepository cancellation', () => {
   const reportId = reportRow().id

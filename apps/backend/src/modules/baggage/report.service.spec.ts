@@ -7,6 +7,7 @@ import { MockCheckedBagLookup } from './mocks/mock-checked-bag.lookup'
 
 describe('ReportService', () => {
   let service: ReportService
+  let repository: InMemoryReportRepository
 
   const access = {
     bookingReference: 'ABC123',
@@ -24,8 +25,9 @@ describe('ReportService', () => {
   }
 
   beforeEach(() => {
+    repository = new InMemoryReportRepository()
     service = new ReportService(
-      new InMemoryReportRepository(),
+      repository,
       new MockBookingVerification([
         {
           ...access,
@@ -124,6 +126,36 @@ describe('ReportService', () => {
     const found = await service.getByCaseNumber(created.caseNumber, access)
 
     expect(found.id).toBe(created.id)
+  })
+
+  it('resolves a delivery only after verifying the passenger owns the case', async () => {
+    const report = await service.create(validInput)
+    const findDelivery = jest.spyOn(repository, 'findDeliveryIdByReportId').mockResolvedValue('delivery-123')
+
+    await expect(service.getDeliveryIdForCaseNumber(report.caseNumber, access)).resolves.toBe('delivery-123')
+
+    expect(findDelivery).toHaveBeenCalledWith(report.id)
+  })
+
+  it('does not resolve a delivery for an unauthorized case request', async () => {
+    const report = await service.create(validInput)
+    const findDelivery = jest.spyOn(repository, 'findDeliveryIdByReportId')
+
+    await expect(
+      service.getDeliveryIdForCaseNumber(report.caseNumber, {
+        bookingReference: 'XYZ789',
+        surname: 'Jones',
+        passengerId: 'P002',
+      }),
+    ).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+
+    expect(findDelivery).not.toHaveBeenCalled()
+  })
+
+  it('returns null when an authorized report has no delivery record', async () => {
+    const report = await service.create(validInput)
+
+    await expect(service.getDeliveryIdForCaseNumber(report.caseNumber, access)).resolves.toBeNull()
   })
 
   it('prevents another passenger from accessing a report', async () => {

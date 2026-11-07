@@ -1,5 +1,6 @@
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
+import { ValidationPipe } from '@nestjs/common'
 import { PASSENGER_DELIVERY_TYPES, PassengerDeliveryChoiceDto } from './passenger-delivery-choice.dto'
 
 async function errors(input: Record<string, unknown>): Promise<string[]> {
@@ -39,5 +40,22 @@ describe('PassengerDeliveryChoiceDto', () => {
     [{ deliveryType: 'airport_pickup', pickupAirport: 'YYZZ' }, 'pickupAirport'],
   ])('rejects invalid choice input %j', async (input, property) => {
     expect(await errors(input)).toContain(property)
+  })
+
+  it('rejects client-supplied delivery and actor identifiers', async () => {
+    const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
+
+    await expect(
+      pipe.transform(
+        {
+          deliveryType: 'hotel',
+          address: '12 Main Street',
+          deliveryId: 'client-delivery-id',
+          customerId: 'client-customer-id',
+          userId: 'client-user-id',
+        },
+        { type: 'body', metatype: PassengerDeliveryChoiceDto },
+      ),
+    ).rejects.toThrow()
   })
 })

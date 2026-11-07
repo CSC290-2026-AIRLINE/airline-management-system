@@ -5,6 +5,8 @@ export interface ReportRepository {
 
   findByCaseNumber(caseNumber: string): Promise<LostBagReport | null>
 
+  findDeliveryIdByReportId(reportId: string): Promise<string | null>
+
   findLiveByTag(tagNumber: string): Promise<LostBagReport | null>
 
   listByBookingPassengerId(bookingPassengerId: string): Promise<LostBagReport[]>

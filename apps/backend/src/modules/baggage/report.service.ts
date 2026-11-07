@@ -121,6 +121,12 @@ export class ReportService {
     return report
   }
 
+  async getDeliveryIdForCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<string | null> {
+    const report = await this.getByCaseNumber(caseNumber, access)
+
+    return this.repository.findDeliveryIdByReportId(report.id)
+  }
+
   async listMine(access: ReportAccessInput): Promise<LostBagReport[]> {
     const passenger = await this.bookings.verifyPassenger(access)
 

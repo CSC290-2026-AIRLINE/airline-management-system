@@ -24,6 +24,10 @@ export class InMemoryReportRepository implements ReportRepository {
     return Promise.resolve(report ? { ...report } : null)
   }
 
+  findDeliveryIdByReportId(): Promise<string | null> {
+    return Promise.resolve(null)
+  }
+
   findLiveByTag(tagNumber: string): Promise<LostBagReport | null> {
     const report = this.reports.find(
       (item) => item.tagNumber === tagNumber && ['open', 'matched', 'delivering', 'lost'].includes(item.status),

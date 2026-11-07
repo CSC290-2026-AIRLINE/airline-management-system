@@ -1,9 +1,12 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, UseFilters, UseGuards, UsePipes, ValidationPipe, Patch } from '@nestjs/common'
+import type { DeliveryChoiceResult } from './bag-delivery.service'
 import { ReportService } from './report.service'
 import type { LostBagReport } from './common/report.types'
 import { BaggageCustomerGuard, CurrentBaggageCustomer, type BaggageCustomer } from './guards/baggage-customer.guard'
 import { CreatePassengerLostReportDto, PassengerReportAccessQuery } from './dto/passenger-lost-report.dto'
+import { PassengerDeliveryChoiceDto } from './dto/passenger-delivery-choice.dto'
 import { BaggageErrorFilter } from './common/baggage-error.filter'
+import { PassengerDeliveryChoiceService } from './passenger-delivery-choice.service'
 
 @Controller('customer/lost-reports')
 @UseGuards(BaggageCustomerGuard)
@@ -16,7 +19,10 @@ import { BaggageErrorFilter } from './common/baggage-error.filter'
   }),
 )
 export class PassengerLostReportController {
-  constructor(private readonly reports: ReportService) {}
+  constructor(
+    private readonly reports: ReportService,
+    private readonly deliveryChoices: PassengerDeliveryChoiceService,
+  ) {}
 
   @Post()
   @HttpCode(201)
@@ -46,6 +52,27 @@ export class PassengerLostReportController {
       ...query,
       passengerId: customer.passengerId,
     })
+  }
+
+  @Patch(':caseNumber/delivery-choice')
+  saveDeliveryChoice(
+    @CurrentBaggageCustomer() customer: BaggageCustomer,
+    @Param('caseNumber') caseNumber: string,
+    @Query() query: PassengerReportAccessQuery,
+    @Body() dto: PassengerDeliveryChoiceDto,
+  ): Promise<DeliveryChoiceResult> {
+    return this.deliveryChoices.saveChoice(
+      caseNumber,
+      {
+        ...query,
+        passengerId: customer.passengerId,
+      },
+      {
+        customerId: customer.customerId,
+        userId: customer.id,
+      },
+      dto,
+    )
   }
 
   @Patch(':caseNumber/cancel')
