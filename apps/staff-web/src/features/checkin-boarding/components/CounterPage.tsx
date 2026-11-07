@@ -136,6 +136,12 @@ export function CounterPage({ api }: { api: StaffApi }) {
     void runSearch(text)
   }
 
+  /** Clears ?checkIn so a reload does not reopen the passenger. */
+  const back = () => {
+    setView(null)
+    window.history.replaceState(null, '', window.location.pathname)
+  }
+
   const visible = applyFilter(rows, filter)
   const counts = {
     all: rows.length,
@@ -160,13 +166,13 @@ export function CounterPage({ api }: { api: StaffApi }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4 print:hidden">
         <div className="min-w-0">
           <h1 className="m-0 font-sans text-[36px] font-extrabold leading-[1.1] tracking-tight text-[#0a1424]">Check-in counter</h1>
           <p className={`mt-1 ${MUTED}`}>{subtitle}</p>
         </div>
         {view ? (
-          <Button type="button" variant="outline" size="sm" className={SECONDARY_BUTTON} onClick={() => setView(null)}>
+          <Button type="button" variant="outline" size="sm" className={SECONDARY_BUTTON} onClick={back}>
             Back to search
           </Button>
         ) : null}
@@ -183,7 +189,7 @@ export function CounterPage({ api }: { api: StaffApi }) {
       {view ? (
         <PassengerPanel key={view.checkIn.id} api={api} view={view} onUpdated={onUpdated} />
       ) : (
-        <>
+        <div className="flex flex-col gap-6 print:hidden">
           <Card className={PANEL}>
             <form
               className="flex flex-col gap-2"
@@ -289,7 +295,7 @@ export function CounterPage({ api }: { api: StaffApi }) {
               </Table>
             )}
           </Card>
-        </>
+        </div>
       )}
     </div>
   )

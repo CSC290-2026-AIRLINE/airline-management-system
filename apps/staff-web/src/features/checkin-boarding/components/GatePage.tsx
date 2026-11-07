@@ -9,6 +9,7 @@ import type { FlightSummary, GateInfo, GateList, GateListEntry, Headcount, ScanR
 import { ErrorBanner } from './ErrorBanner.tsx'
 import { Message, Pill, StatusPill } from './pills.tsx'
 import { messageOf, numberOrNull } from './errors.ts'
+import { swapPlan } from './gate-swap.ts'
 import { formatTime } from '../domain/format.ts'
 import {
   GATE_ACTIVE,
@@ -113,8 +114,7 @@ export function GatePage({ api }: { api: StaffApi }) {
     ? [...list.police, ...list.groups['1'], ...list.groups['2'], ...list.groups['3'], ...list.groups['4']]
     : []
   const noShows = entries.filter((entry) => entry.status === 'no_show')
-  /** The flights that are at a gate, so their gates can be swapped. */
-  const swappable = flights.flatMap((item) => (item.gate ? [{ flight: item, gate: item.gate }] : []))
+  const plan = swapPlan(flights, gateId)
 
   const chooseGate = (id: string) => {
     setGateId(id)
@@ -140,16 +140,12 @@ export function GatePage({ api }: { api: StaffApi }) {
     }
   }
 
-  /** Feature 6 owns the gate of each flight, so the two flights trade gates. */
-  const swapGates = async () => {
-    if (swappable.length < 2) return
+  /** Feature 6 owns the gate of each flight: apply the moves, then drop the state of the old gate. */
+  const moveGates = async (moves: { flightId: string; gateId: string }[], message: string) => {
     setBusy(true)
     setError(null)
     try {
-      for (const [index, item] of swappable.entries()) {
-        const other = swappable[(index + 1) % swappable.length]
-        await api.setGate(item.flight.id, { gateId: other.gate.id })
-      }
+      for (const move of moves) await api.setGate(move.flightId, { gateId: move.gateId })
       // Another flight is at this gate now, so the old flight's state must not carry over.
       setScan(null)
       setMismatch(null)
@@ -158,7 +154,7 @@ export function GatePage({ api }: { api: StaffApi }) {
       setCalled(2)
       setHeadcount(null)
       await load()
-      setGateMessage('Gates swapped. Passengers told (Feature 13), change audited.')
+      setGateMessage(message)
     } catch (err) {
       setError(messageOf(err))
     } finally {
@@ -188,10 +184,11 @@ export function GatePage({ api }: { api: StaffApi }) {
   }
 
   /** The mismatch sentence of the design, with the counts the gate compared. */
-  const mismatchMessage = (counted: Headcount | null): string => {
+  const mismatchMessage = (counted: Headcount | null, manual: boolean): string => {
     const boarded = counted?.boardedCount ?? headcount?.boardedCount ?? list?.boardedCount ?? 0
-    const by = counted?.manualCount ?? counted?.sensorCount ?? headcount?.manualCount ?? headcount?.sensorCount ?? 0
-    return `Head-count mismatch: ${boarded} marked boarded, sensor counted ${by}. Check the aircraft, then press Close gate again to confirm.`
+    const by = manual ? counted?.manualCount : counted?.sensorCount
+    const source = manual ? 'manual count' : 'sensor counted'
+    return `Head-count mismatch: ${boarded} marked boarded, ${source}${by == null ? '' : ` ${by}`}. Check the aircraft, then press Close gate again to confirm.`
   }
 
   const closeGate = async () => {
@@ -199,9 +196,10 @@ export function GatePage({ api }: { api: StaffApi }) {
     setBusy(true)
     setError(null)
     let counted: Headcount | null = null
+    const manual = manualCount.trim() !== ''
     try {
       // An empty manual count closes on the gate sensor's reading instead.
-      counted = manualCount.trim() === '' ? await readSensor() : await saveManualCount()
+      counted = manual ? await saveManualCount() : await readSensor()
       if (!counted) return
       const savedCount = counted.manualCount ?? counted.sensorCount ?? null
       // Only the count that produced the mismatch can be confirmed.
@@ -213,7 +211,7 @@ export function GatePage({ api }: { api: StaffApi }) {
       await load()
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'HEADCOUNT_MISMATCH') {
-        setMismatch(mismatchMessage(counted))
+        setMismatch(mismatchMessage(counted, manual))
         setMismatchCount(counted?.manualCount ?? counted?.sensorCount ?? null)
         setConfirmClose(true)
       } else {
@@ -230,12 +228,10 @@ export function GatePage({ api }: { api: StaffApi }) {
         flight.depAt,
       )} · boarding from ${boardingMinutes} min before`
     : `Gate ${gate?.code ?? ''} · no flight at this gate`
-  const swapLabel =
-    swappable.length >= 2
-      ? `Swap gates: ${swappable
-          .map((item, index) => `${item.flight.flightNumber} to ${swappable[(index + 1) % swappable.length].gate.code}`)
-          .join(', ')}`
-      : 'Swap gates'
+  const gateCode = (id: string) => gates.find((item) => item.id === id)?.code ?? ''
+  const swapLabel = `Swap gates: ${plan
+    .map((move) => `${flights.find((item) => item.id === move.flightId)?.flightNumber ?? ''} to ${gateCode(move.gateId)}`)
+    .join(', ')}`
 
   const passengerRow = (entry: GateListEntry, group: '1' | '2' | '3' | '4' | null) => (
     <TableRow key={entry.checkInId} className="border-[#eef1f6] hover:bg-[#f7f9fc]">
@@ -303,24 +299,51 @@ export function GatePage({ api }: { api: StaffApi }) {
           <div className={MUTED}>Not yet boarded</div>
         </Card>
         <Card className="gap-2 rounded-2xl border-[#dbe2ea] px-5 py-4">
-          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]">{headcount?.sensorCount ?? 0}</div>
+          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]">{headcount?.sensorCount ?? '—'}</div>
           <div className={MUTED}>Gate sensor count (Feature 16)</div>
         </Card>
       </div>
 
       <Card className={PANEL}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <h2 className={PANEL_TITLE}>Flight gate</h2>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className={`${SECONDARY_BUTTON} h-auto max-w-full whitespace-normal text-left`}
-            disabled={busy || swappable.length < 2 || Boolean(list?.closedAt)}
-            onClick={() => void swapGates()}
-          >
-            {swapLabel}
-          </Button>
+        <h2 className={PANEL_TITLE}>Flight gate</h2>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          {flight ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="gate-move" className={INPUT_LABEL}>
+                Move {flight.flightNumber} to
+              </Label>
+              <select
+                id="gate-move"
+                className={`${TEXT_INPUT} w-[220px]`}
+                value={gateId}
+                disabled={busy || Boolean(list?.closedAt)}
+                onChange={(event) =>
+                  void moveGates(
+                    [{ flightId: flight.id, gateId: event.target.value }],
+                    'Gate changed. Passengers told (Feature 13), change audited.',
+                  )
+                }
+              >
+                {gates.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    Gate {item.code}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {plan.length > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={`${SECONDARY_BUTTON} h-auto max-w-full whitespace-normal text-left`}
+              disabled={busy || Boolean(list?.closedAt)}
+              onClick={() => void moveGates(plan, 'Gates swapped. Passengers told (Feature 13), change audited.')}
+            >
+              {swapLabel}
+            </Button>
+          ) : null}
         </div>
         <p className={MUTED}>Feature 6 sets each flight’s gate. Passes always show the current gate.</p>
         {gateMessage ? <Message tone="success">{gateMessage}</Message> : null}
@@ -365,7 +388,10 @@ export function GatePage({ api }: { api: StaffApi }) {
         {scan ? (
           <Message tone={scan.event === 'boarded' ? 'success' : 'error'}>{scan.message}</Message>
         ) : (
-          <Message tone="info">Police and boarding groups 1 and {called} called. Scan a pass to board.</Message>
+          <Message tone="info">
+            {called >= 2 ? `Police and boarding groups 1 to ${called} called.` : 'Police and boarding group 1 called.'} Scan a pass to
+            board.
+          </Message>
         )}
       </Card>
 

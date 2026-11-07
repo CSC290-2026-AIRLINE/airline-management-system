@@ -11,7 +11,7 @@ import { CarryOnForm } from './CarryOnForm.tsx'
 import { ErrorBanner } from './ErrorBanner.tsx'
 import { IssuePills, Pill, StatusPill } from './pills.tsx'
 import { messageOf } from './errors.ts'
-import { formatCabin, formatTime } from '../domain/format.ts'
+import { formatCabin, formatDate, formatTime } from '../domain/format.ts'
 import { INPUT_LABEL, MUTED, PANEL, PANEL_TITLE, PRIMARY_BUTTON, SECONDARY_BUTTON, TEXT_INPUT } from './styles.ts'
 
 interface Props {
@@ -97,9 +97,9 @@ export function PassengerPanel({ api, view, onUpdated }: Props) {
         }
       : { tone: 'neutral', label: 'Visa', value: 'Not needed' },
     {
-      tone: held ? 'warn' : 'good',
+      tone: checkIn.status === 'denied' ? 'bad' : held ? 'warn' : 'good',
       label: 'Security (Feature 7)',
-      value: held ? 'On hold' : 'Clear',
+      value: checkIn.status === 'denied' ? 'Denied' : held ? 'On hold' : 'Clear',
     },
     {
       tone: 'neutral',
@@ -191,25 +191,47 @@ export function PassengerPanel({ api, view, onUpdated }: Props) {
         </Card>
       ) : null}
 
-      <BagDrop api={api} view={view} onUpdated={onUpdated} />
-
-      <CarryOnForm api={api} view={view} onUpdated={onUpdated} />
+      <div className="flex flex-col gap-6 print:hidden">
+        <BagDrop api={api} view={view} onUpdated={onUpdated} />
+        <CarryOnForm api={api} view={view} onUpdated={onUpdated} />
+      </div>
 
       <Card className={PANEL}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h2 className={PANEL_TITLE}>Boarding pass</h2>
-          <Button type="button" className={PRIMARY_BUTTON} disabled={!boardingPass} onClick={() => void printPass()}>
+          <Button type="button" className={`${PRIMARY_BUTTON} print:hidden`} disabled={!boardingPass} onClick={() => void printPass()}>
             Print boarding pass
           </Button>
         </div>
         {boardingPass ? (
-          <p className={MUTED}>
+          <p className={`${MUTED} print:hidden`}>
             Reference {boardingPass.reference} · Seat {boardingPass.seat} · Group {boardingPass.boardingGroup} · Gate{' '}
             {boardingPass.gate ?? '—'} · Boarding {formatTime(boardingPass.boardingAt)} (gate and time are read from the flight)
           </p>
         ) : (
-          <p className={MUTED}>No boarding pass yet.</p>
+          <p className={`${MUTED} print:hidden`}>No boarding pass yet.</p>
         )}
+        {boardingPass ? (
+          <dl className="m-0 hidden grid-cols-2 gap-x-6 gap-y-3 print:grid">
+            {(
+              [
+                ['Passenger name', `${checkIn.passenger.firstName} ${checkIn.passenger.lastName}`],
+                ['Flight', checkIn.flight.flightNumber],
+                ['Date', formatDate(checkIn.flight.depAt)],
+                ['Seat', boardingPass.seat],
+                ['Gate', boardingPass.gate ?? '—'],
+                ['Boarding time', formatTime(boardingPass.boardingAt)],
+                ['Group', String(boardingPass.boardingGroup)],
+                ['Reference', boardingPass.reference],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label} className="flex flex-col gap-1">
+                <dt className="text-xs font-normal uppercase tracking-wide text-[#677287]">{label}</dt>
+                <dd className="m-0 text-sm font-medium text-[#0a1424]">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
       </Card>
     </div>
   )
