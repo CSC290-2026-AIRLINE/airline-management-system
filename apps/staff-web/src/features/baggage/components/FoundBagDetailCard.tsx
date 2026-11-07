@@ -240,7 +240,6 @@ function AddLocation({
           {saving ? 'Adding…' : 'Add location'}
         </Button>
       </div>
-      <p className="text-xs text-[#677287]">Events are never edited. A bag’s current place is its latest event.</p>
     </form>
   )
 }
@@ -298,7 +297,7 @@ export function FoundBagDetailCard({
     <F10Card aria-labelledby="bag-detail-title">
       {needsCheck && (
         <p className="rounded-lg bg-[#fff4de] px-3.5 py-3 text-base text-[#94651c]">
-          This bag came off a diverted flight. The system added it from Feature 6. Check it, then add the type and colour.
+          This bag came off a diverted flight. Check it, then add the type and colour.
         </p>
       )}
       <div className="flex flex-wrap items-center gap-3">
@@ -313,7 +312,7 @@ export function FoundBagDetailCard({
         <Fact label="Tag">{bag.tagNumber ?? 'No tag'}</Fact>
         <Fact label="Came off">{bag.flightId ? 'Flight on record' : 'Not known'}</Fact>
         <Fact label="Now at">{nowAtName ? `${nowAt} · ${nowAtName}` : nowAt}</Fact>
-        <Fact label="Feature 6 bag">{bag.checkedBagId ? 'Linked' : 'Not linked'}</Fact>
+        <Fact label="Checked bag">{bag.checkedBagId ? 'Linked' : 'Not linked'}</Fact>
         <Fact label="Source">{diverted ? 'Diverted flight (system)' : 'Staff'}</Fact>
       </dl>
 

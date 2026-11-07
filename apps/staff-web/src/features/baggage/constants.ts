@@ -106,3 +106,84 @@ const EVENT_TIME = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'sh
 export function formatEventTime(iso: string): string {
   return EVENT_TIME.format(new Date(iso)).replace(',', '')
 }
+
+/** Same list as the CHECK on lost_bag_report.status. */
+export const REPORT_STATUSES = ['open', 'matched', 'delivering', 'lost', 'closed', 'cancelled'] as const
+export type ReportStatus = (typeof REPORT_STATUSES)[number]
+
+export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
+  open: 'Open',
+  matched: 'Matched',
+  delivering: 'Being delivered',
+  lost: 'Lost',
+  closed: 'Closed',
+  cancelled: 'Cancelled',
+}
+
+export const REPORT_STATUS_TONES: Record<ReportStatus, PillTone> = {
+  open: 'amber',
+  matched: 'green',
+  delivering: 'grey',
+  lost: 'red',
+  closed: 'grey',
+  cancelled: 'grey',
+}
+
+/** The "Status" chips on Lost bag cases. Active is every case still being worked on. */
+export const CASE_FILTERS = ['active', 'open', 'lost', 'closed', 'all'] as const
+export type CaseFilter = (typeof CASE_FILTERS)[number]
+
+export const CASE_FILTER_LABELS: Record<CaseFilter, string> = {
+  active: 'Active',
+  open: 'Open',
+  lost: 'Lost',
+  closed: 'Closed',
+  all: 'All',
+}
+
+export const CASE_FILTER_STATUSES: Record<CaseFilter, readonly ReportStatus[]> = {
+  active: ['open', 'matched', 'delivering'],
+  open: ['open'],
+  lost: ['lost'],
+  closed: ['closed', 'cancelled'],
+  all: REPORT_STATUSES,
+}
+
+/** Same list as the CHECK on bag_cost.kind. */
+export const BAG_COST_KINDS = ['forwarding', 'delivery', 'storage', 'other'] as const
+export type BagCostKind = (typeof BAG_COST_KINDS)[number]
+
+export const BAG_COST_KIND_LABELS: Record<BagCostKind, string> = {
+  forwarding: 'Forwarding',
+  delivery: 'Delivery',
+  storage: 'Storage',
+  other: 'Other',
+}
+
+/** "LB-2026-000118" → "000118", the short number the Cases table shows. */
+export function caseShortNumber(caseNumber: string): string {
+  return caseNumber.split('-').pop() ?? caseNumber
+}
+
+/** How long ago a case was reported, as the Cases table shows it: "2 d", "5 h", "12 min". */
+export function caseAge(iso: string, now = Date.now()): string {
+  const minutes = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000))
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} d`
+}
+
+const FLIGHT_DAY = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+
+/** "18 Oct". Flight dates are calendar dates, so they are read in UTC to keep the day the same in every time zone. */
+export function formatFlightDate(iso: string): string {
+  return FLIGHT_DAY.format(new Date(iso))
+}
+
+const BAHT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
+
+/** "฿1,850", or "฿12.50" when there are satang. */
+export function formatBaht(amount: string | number): string {
+  const n = Number(amount)
+  return `฿${Number.isInteger(n) ? BAHT.format(n) : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}

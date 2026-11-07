@@ -47,10 +47,22 @@ export interface BagTrackingHistory {
   events: BagLocationEvent[]
 }
 
+/** Same shape as the backend's `StationContact` (`station-contact.service.ts`). */
 export interface StationContact {
   airportCode: string
   airportName: string
   city: string
+  deskName: string
+  phone: string
+  email: string | null
+  updatedAt: string
+  updatedBy: string | null
+}
+
+export interface SaveStationContactBody {
+  deskName: string
+  phone: string
+  email?: string
 }
 
 export interface RecordFoundBagBody {
@@ -100,20 +112,28 @@ async function readError(res: Response): Promise<BaggageApiError> {
 }
 
 /**
- * Staff baggage endpoints. The functions close over `fetchWithAuth`, which is recreated every render, so call them from
- * event handlers or a mount effect and never list them as effect dependencies.
+ * Sends a JSON request to a staff baggage endpoint and reads the answer, or throws a `BaggageApiError`. A 204 answer
+ * resolves to `undefined`.
  */
-export function useFoundBagApi() {
+export function useBaggageSend() {
   const { fetchWithAuth } = useAppAuth()
 
-  async function send<T>(path: string, init?: RequestInit): Promise<T> {
+  return async function send<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetchWithAuth(path, {
       ...init,
       headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
     })
     if (!res.ok) throw await readError(res)
-    return (await res.json()) as T
+    return (res.status === 204 ? undefined : await res.json()) as T
   }
+}
+
+/**
+ * Staff baggage endpoints. The functions close over `fetchWithAuth`, which is recreated every render, so call them from
+ * event handlers or a mount effect and never list them as effect dependencies.
+ */
+export function useFoundBagApi() {
+  const send = useBaggageSend()
 
   return {
     list: (status?: FoundBagStatus) => send<FoundBag[]>(`/api/staff/found-bags${status ? `?status=${status}` : ''}`),
@@ -126,5 +146,7 @@ export function useFoundBagApi() {
       send<FoundBag>(`/api/staff/found-bags/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     continueWithFlight: (id: string) => send<FoundBag>(`/api/staff/found-bags/${id}/continue-with-flight`, { method: 'POST' }),
     stations: () => send<StationContact[]>('/api/staff/station-contacts'),
+    saveStation: (airportCode: string, body: SaveStationContactBody) =>
+      send<StationContact>(`/api/staff/station-contacts/${encodeURIComponent(airportCode)}`, { method: 'PUT', body: JSON.stringify(body) }),
   }
 }

@@ -4,14 +4,14 @@ import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { cn } from '@staff-web/lib/utils'
 
 /**
- * Pages in the "Lost and found" nav, in Figma order. Only Found bags is built so far; the others show as not ready
- * instead of linking to a route that does not exist.
+ * Pages in the "Lost and found" nav, in Figma order. Match review is not built yet, so it shows as not ready instead of
+ * linking to a route that does not exist.
  */
-const NAV: { label: string; to?: '/baggage/found-bags' }[] = [
-  { label: 'Lost bag cases' },
+const NAV: { label: string; to?: '/baggage/lost-bag-cases' | '/baggage/found-bags' | '/baggage/deliveries' }[] = [
+  { label: 'Lost bag cases', to: '/baggage/lost-bag-cases' },
   { label: 'Found bags', to: '/baggage/found-bags' },
   { label: 'Match review' },
-  { label: 'Deliveries' },
+  { label: 'Deliveries', to: '/baggage/deliveries' },
 ]
 
 const CLOCK = new Intl.DateTimeFormat('en-GB', {

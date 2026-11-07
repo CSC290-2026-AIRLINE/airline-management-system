@@ -134,8 +134,7 @@ export function RecordFoundBagCard({
           </Field>
         </div>
         <FormError message={error} />
-        <div className="flex items-center gap-3 max-md:flex-col max-md:items-stretch">
-          <p className="flex-1 text-xs text-[#677287]">Tag numbers: 0, the airline code 789, then 6 digits (Feature 6).</p>
+        <div className="flex justify-end max-md:flex-col max-md:items-stretch">
           <Button
             type="submit"
             disabled={saving || !airport}

@@ -67,10 +67,6 @@ export function FoundBagsPage({
           />
         </div>
       </div>
-
-      <p className="text-xs text-[#677287]">
-        Tag numbers follow the Feature 6 format: 0, the airline’s 3-digit code (789 in this demo), then 6 digits.
-      </p>
     </>
   )
 }
