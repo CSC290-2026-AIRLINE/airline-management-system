@@ -69,6 +69,7 @@ export function PassportStep({
           spellCheck={false}
           required
         />
+        {mrzLineReady(line1) ? null : <span className={styles.counter}>Line 1: {line1.length} of 44 characters</span>}
       </label>
 
       <label className={styles.field}>
@@ -81,6 +82,7 @@ export function PassportStep({
           spellCheck={false}
           required
         />
+        {mrzLineReady(line2) ? null : <span className={styles.counter}>Line 2: {line2.length} of 44 characters</span>}
       </label>
 
       {needsVisa ? (
@@ -112,7 +114,9 @@ export function PassportStep({
         })}
       </ul>
 
-      {allDigitsPass ? <Message tone="success">All four check digits pass. Press Check passport to verify the document.</Message> : null}
+      {ready && allDigitsPass ? (
+        <Message tone="success">All four check digits pass. Press Check passport to verify the document.</Message>
+      ) : null}
 
       {F6_MOCK ? (
         <div className={styles.helpers}>

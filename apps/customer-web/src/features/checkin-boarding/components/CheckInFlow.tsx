@@ -131,7 +131,7 @@ export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; 
   }
 
   // The window strip follows the API clock, so a delay moves it with the flight.
-  const strip = checkIn ? windowStrip(checkIn.flight.depAt, now()) : null
+  const strip = checkIn ? windowStrip(checkIn.window, now()) : null
 
   const steps = (
     <>
