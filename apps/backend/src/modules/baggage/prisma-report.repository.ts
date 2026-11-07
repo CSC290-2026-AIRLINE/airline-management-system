@@ -138,7 +138,7 @@ export class PrismaReportRepository implements ReportRepository {
           bag_delivery: true,
           bag_match: {
             where: { status: 'confirmed' },
-            select: { found_bag_id: true, reviewed_at: true },
+            select: { found_bag_id: true, found_bag: { select: { status: true } } },
           },
         },
       })
@@ -150,22 +150,9 @@ export class PrismaReportRepository implements ReportRepository {
         return null
       }
 
-      // Location history can predate the passenger's case; only dispatch after the confirmed match blocks cancellation.
-      if (report.bag_match.some((match) => !match.reviewed_at)) return null
-
-      const dispatchEvidence = report.bag_match.map((match) => ({
-        found_bag_id: match.found_bag_id,
-        action: { in: ['sent', 'out_for_delivery', 'delivered'] },
-        occurred_at: { gte: match.reviewed_at as Date },
-      }))
-
-      if (dispatchEvidence.length > 0) {
-        const dispatched = await tx.bag_location_event.findFirst({
-          where: { OR: dispatchEvidence },
-        })
-
-        if (dispatched) return null
-      }
+      // The delivery flow records matched-bag dispatch in both delivery and found-bag state.
+      // Do not order append-only movement history by occurred_at: it uses the rewindable simulation clock.
+      if (report.bag_match.some((match) => ['sent', 'delivered'].includes(match.found_bag.status))) return null
 
       const updated = await tx.lost_bag_report.update({
         where: { id: report.id },

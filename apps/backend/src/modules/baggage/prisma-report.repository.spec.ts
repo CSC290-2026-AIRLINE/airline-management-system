@@ -28,6 +28,7 @@ const reportRow = (overrides: Record<string, unknown> = {}) => ({
     {
       found_bag_id: '00000000-0000-4000-8000-000000000005',
       reviewed_at: new Date('2026-10-29T11:00:00Z'),
+      found_bag: { status: 'matched' },
     },
   ],
   ...overrides,
@@ -37,7 +38,7 @@ function makeRepository(
   options: {
     lockedRows?: { id: string }[]
     report?: ReturnType<typeof reportRow> | null
-    locationEvents?: { id: string; found_bag_id: string; action: string; occurred_at: Date }[]
+    eventHistory?: { action: string; occurred_at: Date } | null
   } = {},
 ) {
   const update = jest
@@ -47,17 +48,7 @@ function makeRepository(
     const report = options.report === undefined ? reportRow() : options.report
     return Promise.resolve(report && where.status.in.includes(report.status) ? report : null)
   })
-  const findDispatchEvent = jest.fn().mockImplementation(({ where }: { where: { OR: Record<string, unknown>[] } }) => {
-    const events = options.locationEvents ?? []
-    const match = events.find((event) =>
-      where.OR.some((condition) => {
-        const eventTime = condition.occurred_at as { gte: Date }
-        const actions = (condition.action as { in: string[] }).in
-        return event.found_bag_id === condition.found_bag_id && actions.includes(event.action) && event.occurred_at >= eventTime.gte
-      }),
-    )
-    return Promise.resolve(match ?? null)
-  })
+  const findDispatchEvent = jest.fn().mockResolvedValue(options.eventHistory ?? null)
   const queryRaw = jest.fn().mockResolvedValue(options.lockedRows ?? [{ id: reportRow().id }])
   const tx = {
     $queryRaw: queryRaw,
@@ -82,17 +73,21 @@ describe('PrismaReportRepository cancellation', () => {
 
     expect(cancelled).toMatchObject({ status: 'cancelled', closedAt })
     expect(harness.queryRaw).toHaveBeenCalledTimes(1)
-    expect(harness.findDispatchEvent).toHaveBeenCalledWith({
+    expect(harness.findFirst).toHaveBeenCalledWith({
       where: {
-        OR: [
-          {
-            found_bag_id: '00000000-0000-4000-8000-000000000005',
-            action: { in: ['sent', 'out_for_delivery', 'delivered'] },
-            occurred_at: { gte: new Date('2026-10-29T11:00:00Z') },
-          },
-        ],
+        id: reportId,
+        booking_passenger_id: bookingPassengerId,
+        status: { in: ['open', 'matched', 'lost'] },
+      },
+      include: {
+        bag_delivery: true,
+        bag_match: {
+          where: { status: 'confirmed' },
+          select: { found_bag_id: true, found_bag: { select: { status: true } } },
+        },
       },
     })
+    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
     expect(harness.update).toHaveBeenCalledWith({
       where: { id: reportId },
       data: { status: 'cancelled', closed_at: closedAt, updated_at: closedAt },
@@ -117,69 +112,84 @@ describe('PrismaReportRepository cancellation', () => {
     expect(harness.update).not.toHaveBeenCalled()
   })
 
-  it.each(['sent', 'out_for_delivery', 'delivered'])('rejects cancellation after a confirmed match has a %s event', async (action) => {
+  it.each(['sent', 'delivered'])('rejects cancellation when the matched found bag status is %s', async (status) => {
     const harness = makeRepository({
-      locationEvents: [
-        {
-          id: 'dispatch-event',
-          found_bag_id: '00000000-0000-4000-8000-000000000005',
-          action,
-          occurred_at: new Date('2026-10-29T11:01:00Z'),
-        },
-      ],
+      report: reportRow({
+        bag_match: [
+          {
+            found_bag_id: '00000000-0000-4000-8000-000000000005',
+            reviewed_at: new Date('2026-10-29T11:00:00Z'),
+            found_bag: { status },
+          },
+        ],
+      }),
     })
 
     await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
 
     expect(harness.update).not.toHaveBeenCalled()
+    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
   })
 
-  it.each(['arrived', 'at_diverted_airport'])('allows cancellation when %s movement is not recovery dispatch', async (action) => {
-    const harness = makeRepository({
-      locationEvents: [
-        {
-          id: 'movement-event',
-          found_bag_id: '00000000-0000-4000-8000-000000000005',
-          action,
-          occurred_at: new Date('2026-10-29T11:01:00Z'),
-        },
-      ],
-    })
+  it.each(['waiting_choice', 'preparing'])('allows cancellation while delivery is %s', async (status) => {
+    const harness = makeRepository({ report: reportRow({ bag_delivery: { status } }) })
 
     await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toMatchObject({
       status: 'cancelled',
     })
     expect(harness.update).toHaveBeenCalledTimes(1)
+    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
   })
 
-  it('allows cancellation despite sent and arrived movements recorded before the report', async () => {
-    const harness = makeRepository({
-      locationEvents: [
+  it('rejects when delivery is in transit even if dispatch occurred_at predates reviewed_at after a clock rewind', async () => {
+    const report = reportRow({
+      bag_delivery: { status: 'in_transit' },
+      bag_match: [
         {
-          id: 'historical-sent',
           found_bag_id: '00000000-0000-4000-8000-000000000005',
-          action: 'sent',
-          occurred_at: new Date('2026-10-29T09:00:00Z'),
-        },
-        {
-          id: 'historical-arrival',
-          found_bag_id: '00000000-0000-4000-8000-000000000005',
-          action: 'arrived',
-          occurred_at: new Date('2026-10-29T09:30:00Z'),
+          reviewed_at: new Date('2026-10-29T11:00:00Z'),
+          found_bag: { status: 'sent' },
         },
       ],
+    })
+    const harness = makeRepository({
+      report,
+      eventHistory: { action: 'sent', occurred_at: new Date('2026-10-29T10:59:00Z') },
+    })
+
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+
+    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
+    expect(harness.update).not.toHaveBeenCalled()
+  })
+
+  it('allows historical sent movement when report and delivery remain pre-dispatch', async () => {
+    const harness = makeRepository({
+      report: reportRow({ bag_delivery: { status: 'preparing' } }),
+      eventHistory: { action: 'sent', occurred_at: new Date('2026-10-29T09:00:00Z') },
     })
 
     await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toMatchObject({
       status: 'cancelled',
     })
+
+    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
     expect(harness.update).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects cancellation when delivery is already in transit', async () => {
+  it('rejects when the report is delivering even if delivery state has not caught up', async () => {
     const harness = makeRepository({
-      report: reportRow({ bag_delivery: { status: 'in_transit' } }),
+      report: reportRow({ status: 'delivering', bag_delivery: { status: 'preparing' } }),
     })
+
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+
+    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
+    expect(harness.update).not.toHaveBeenCalled()
+  })
+
+  it.each(['in_transit', 'ready_for_pickup', 'delivered'])('rejects cancellation when delivery status is %s', async (status) => {
+    const harness = makeRepository({ report: reportRow({ bag_delivery: { status } }) })
 
     await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
 
