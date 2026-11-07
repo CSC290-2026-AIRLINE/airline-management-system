@@ -6,6 +6,7 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { validateEnv } from './config/env.validation'
+import { BaggageLifecycleModule } from './modules/baggage/baggage-lifecycle.module'
 import { PassengerLostReportModule } from './modules/baggage/passenger-lost-report.module'
 
 @Module({
@@ -17,6 +18,7 @@ import { PassengerLostReportModule } from './modules/baggage/passenger-lost-repo
     DbModule,
     AuthModule,
     AdminConsoleModule,
+    BaggageLifecycleModule,
     PassengerLostReportModule,
   ],
   controllers: [AppController],

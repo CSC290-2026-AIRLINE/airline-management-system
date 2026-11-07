@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common'
+import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { ReportService } from './report.service'
 import { PrismaReportRepository } from './prisma-report.repository'
 import { PrismaBookingVerification } from './prisma-booking.verification'
@@ -8,6 +10,7 @@ import { PassengerLostReportController } from './passenger-lost-report.controlle
 import { BaggageCustomerGuard } from './guards/baggage-customer.guard'
 
 @Module({
+  imports: [AuditModule],
   controllers: [PassengerLostReportController],
   providers: [
     BaggageCustomerGuard,
@@ -22,8 +25,9 @@ import { BaggageCustomerGuard } from './guards/baggage-customer.guard'
         bookings: PrismaBookingVerification,
         checkedBags: PrismaCheckedBagLookup,
         sequence: PrismaCaseNumberSequence,
-      ) => new ReportService(repository, bookings, checkedBags, sequence, { now: () => new Date() }),
-      inject: [PrismaReportRepository, PrismaBookingVerification, PrismaCheckedBagLookup, PrismaCaseNumberSequence],
+        clock: SimulationClock,
+      ) => new ReportService(repository, bookings, checkedBags, sequence, clock),
+      inject: [PrismaReportRepository, PrismaBookingVerification, PrismaCheckedBagLookup, PrismaCaseNumberSequence, SimulationClock],
     },
   ],
   exports: [ReportService],
