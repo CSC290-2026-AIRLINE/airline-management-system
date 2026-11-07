@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import type { BagAllowance, Cabin, CarryOnAllowance, CheckInView } from '../api/types.ts'
+import type { Cabin, CarryOnAllowance, CheckInView } from '../api/types.ts'
 import { Message } from './Message.tsx'
 import styles from './flow.module.css'
 
 const MAX_BAGS = 10
 
-/** The customer API does not send the allowance yet, so the airline's published rules stand in for it. */
-const FALLBACK_ALLOWANCE: BagAllowance = { freeKg: 20, tierBonusKg: 0, ratePerKg: 500, maxBagKg: 32, maxLinearCm: 158 }
-const FALLBACK_CARRY_ON: CarryOnAllowance = { maxKg: 7, maxLengthCm: 56, maxWidthCm: 36, maxHeightCm: 23 }
+// shortcut: carry-on rule is constant for every cabin per spec; upgrade when the customer API sends carryOn
+const CARRY_ON: CarryOnAllowance = { maxKg: 7, maxLengthCm: 56, maxWidthCm: 36, maxHeightCm: 23 }
 
 const FARE_LABEL: Record<Cabin, string> = {
   economy: 'Economy',
@@ -28,8 +27,12 @@ export function BagsStep({
   onBack: () => void
 }) {
   const [count, setCount] = useState(checkIn.declaredBags ?? 0)
-  const allowance = checkIn.allowance ?? FALLBACK_ALLOWANCE
-  const carryOn = checkIn.carryOn ?? FALLBACK_CARRY_ON
+  const allowance = checkIn.allowance
+  const carryOn = checkIn.carryOn ?? CARRY_ON
+  // Without the allowance there is no honest number to show, so the copy stays general.
+  const warning = allowance
+    ? `Bags are weighed at bag drop. If they weigh more than ${allowance.freeKg} kg in total, you pay the extra fee there before your bag tag is printed. A bag over the max weight for your fare or over ${allowance.maxLinearCm} cm (length + width + height) is refused.`
+    : 'Bags are weighed at bag drop. If they weigh more than your allowance, you pay the extra fee there before your bag tag is printed. A bag over the max weight for your fare is refused.'
 
   return (
     <form
@@ -42,11 +45,13 @@ export function BagsStep({
       <h2 className={styles.panelTitle}>Baggage</h2>
 
       <div className={styles.tiles}>
-        <div className={styles.tile}>
-          <span className={styles.tileLabel}>Checked baggage allowance</span>
-          <span className={styles.tileValue}>{allowance.freeKg} kg</span>
-          <span className={styles.tileNote}>{FARE_LABEL[checkIn.passenger.cabin]} fare</span>
-        </div>
+        {allowance ? (
+          <div className={styles.tile}>
+            <span className={styles.tileLabel}>Checked baggage allowance</span>
+            <span className={styles.tileValue}>{allowance.freeKg} kg</span>
+            <span className={styles.tileNote}>{FARE_LABEL[checkIn.passenger.cabin]} fare</span>
+          </div>
+        ) : null}
         <div className={styles.tile}>
           <span className={styles.tileLabel}>Carry-on allowance</span>
           <span className={styles.tileValue}>{carryOn.maxKg} kg</span>
@@ -83,10 +88,7 @@ export function BagsStep({
         </div>
       </div>
 
-      <Message tone="warn">
-        Bags are weighed at bag drop. If they weigh more than {allowance.freeKg} kg in total, you pay the extra fee there before your bag
-        tag is printed. A bag over the max weight for your fare or over {allowance.maxLinearCm} cm (length + width + height) is refused.
-      </Message>
+      <Message tone="warn">{warning}</Message>
 
       <div className={styles.actions}>
         <button className={styles.ghostButton} type="button" onClick={onBack} disabled={busy}>
