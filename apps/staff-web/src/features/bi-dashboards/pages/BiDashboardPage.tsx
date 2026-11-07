@@ -106,6 +106,13 @@ export function BiDashboardPage() {
         </div>
       </header>
 
+      <div className="hidden print:block">
+        <h1 className="m-0 font-heading text-2xl font-bold text-primary">Business intelligence report</h1>
+        <p className="m-0 text-sm text-muted-foreground">
+          {latest ? `Data as of ${formatDateTime(latest.data_as_of)}` : 'No data yet'} · printed {new Date().toISOString().slice(0, 10)}
+        </p>
+      </div>
+
       {lastRun?.status === 'failed' && (
         <Alert variant="destructive" className="print:hidden">
           <AlertCircle aria-hidden="true" />
@@ -216,8 +223,9 @@ export function BiDashboardPage() {
                             {c.label}
                           </Button>
                           <span>
-                            {formatPercent(row?.load_factor ?? null)} · {formatCount(row?.seat_sold ?? 0)} of{' '}
-                            {formatCount(row?.seat_available ?? 0)} seats
+                            {row && row.seat_available > 0
+                              ? `${formatPercent(row.load_factor)} · ${formatCount(row.seat_sold)} of ${formatCount(row.seat_available)} seats`
+                              : 'No departed flights'}
                           </span>
                         </li>
                       )

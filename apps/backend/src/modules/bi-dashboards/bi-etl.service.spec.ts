@@ -53,7 +53,7 @@ describe('BiEtlService', () => {
     db.tx.$executeRaw.mockRejectedValueOnce(new Error('boom'))
     const service = new BiEtlService(db as never, clock as never)
 
-    await expect(service.refresh('scheduled', null)).rejects.toThrow('boom')
+    await expect(service.refresh('scheduled', null)).rejects.toThrow('REFRESH_FAILED')
     expect(db.$executeRaw).toHaveBeenLastCalledWith(expect.anything(), 'boom', RUN_ID)
   })
 

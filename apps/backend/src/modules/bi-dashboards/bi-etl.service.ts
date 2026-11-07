@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { ConflictException, Injectable, InternalServerErrorException, Logger, OnModuleInit } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
@@ -50,7 +50,7 @@ export class BiEtlService implements OnModuleInit {
       return await this.finishRun(runId, rowCount)
     } catch (error) {
       await this.failRun(runId, error)
-      throw error
+      throw new InternalServerErrorException('REFRESH_FAILED')
     }
   }
 
@@ -207,7 +207,9 @@ export class BiEtlService implements OnModuleInit {
   }
 
   private async failRun(runId: string, error: unknown): Promise<void> {
-    const message = (error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR_LENGTH)
+    // The driver's message runs over several lines and repeats the SQL; the readable part is the last line that names the cause.
+    const raw = error instanceof Error ? error.message : String(error)
+    const message = raw.replace(/\s+/g, ' ').trim().slice(-MAX_ERROR_LENGTH)
     this.logger.error(`BI refresh ${runId} failed: ${message}`)
     await this.db.$executeRaw`
       UPDATE bi_etl_run

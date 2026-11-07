@@ -89,6 +89,11 @@ export function FinancePage() {
         </div>
       </div>
 
+      <div className="hidden print:block">
+        <h2 className="m-0 font-heading text-2xl font-bold text-primary">Financial report · {month}</h2>
+        <p className="m-0 text-sm text-muted-foreground">Flython Airlines · printed {new Date().toISOString().slice(0, 10)}</p>
+      </div>
+
       {finance.error && (
         <Alert variant="destructive">
           <AlertDescription>Could not load the finance figures ({finance.error}).</AlertDescription>
