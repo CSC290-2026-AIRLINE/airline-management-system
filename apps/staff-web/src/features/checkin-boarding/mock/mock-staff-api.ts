@@ -58,6 +58,8 @@ interface MockDocument {
   visaRequired: boolean
   nameMismatch: boolean
   nameMismatchClearedAt: string | null
+  /** The name as the passport shows it; the booking name is the passenger's name. */
+  nameOnPassport: string | null
   visaCheckedAt: string | null
   profileDifferences: string[]
 }
@@ -161,6 +163,7 @@ export function createMockStaffApi(opts?: { now?: Date }): StaffApi {
       visaRequired: visaRequired(nationality, flight?.destination.country ?? ''),
       nameMismatch: false,
       nameMismatchClearedAt: null,
+      nameOnPassport: null,
       visaCheckedAt: null,
       profileDifferences: [],
     }
@@ -189,6 +192,40 @@ export function createMockStaffApi(opts?: { now?: Date }): StaffApi {
   const checkInsOfFlight = (flightId: string) => [...checkIns.values()].filter((c) => c.flightId === flightId)
   const hasFinalEvent = (passId: string) => events.some((e) => e.passId === passId && (e.event === 'boarded' || e.event === 'no_show'))
   const gateCodeOf = (gateId: string | null) => (gateId ? (GATES.find((g) => g.id === gateId)?.code ?? null) : null)
+
+  // The demo shows the issue list the design frames show: two passports whose name differs from the booking
+  // and one passenger who still owes an excess fee.
+  for (const { pnr, passportName } of [
+    { pnr: 'EC204G', passportName: 'SAETANG/PIMCHANOK' },
+    { pnr: 'EC318E', passportName: 'CHEN/WEI' },
+  ]) {
+    const checkIn = [...checkIns.values()].find((c) => c.pnr === pnr)
+    const document = checkIn ? documentOf(checkIn.id) : null
+    if (!document) continue
+    document.nameMismatch = true
+    document.nameOnPassport = passportName
+  }
+  // Tom Becker's two bags: 18.5 kg and then 12 kg on a 20 kg allowance, so the second one carries 10.5 kg
+  // of excess and its fee is still due.
+  const tom = [...checkIns.values()].find((c) => c.pnr === 'EC204J')
+  if (tom) {
+    for (const weightKg of [18.5, 12]) {
+      const bag: MockBag = {
+        id: `bag-${(seq += 1)}`,
+        checkInId: tom.id,
+        weightKg,
+        excessKg: 0,
+        ratePerKg: allowanceOf(tom).ratePerKg,
+        excessFee: 0,
+        excessPaymentId: null,
+        tagNumber: null,
+        status: 'weighed',
+        weighedAt: nowIso(),
+      }
+      bags.set(bag.id, bag)
+    }
+    reallocate(tom.id)
+  }
 
   function mustCheckIn(id: string): MockCheckIn {
     const checkIn = checkIns.get(id)
@@ -258,6 +295,7 @@ export function createMockStaffApi(opts?: { now?: Date }): StaffApi {
       visaCheckedAt: document.visaCheckedAt,
       nameMismatch: document.nameMismatch,
       nameMismatchClearedAt: document.nameMismatchClearedAt,
+      nameOnPassport: document.nameOnPassport,
       profileDifferences: document.profileDifferences,
     }
   }

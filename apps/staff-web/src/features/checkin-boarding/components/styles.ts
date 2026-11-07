@@ -15,3 +15,9 @@ export const GATE_IDLE =
   'h-[39px] rounded-[10px] border-[#cbd5e1] bg-white px-4 text-sm font-medium text-[#0a1424] hover:border-[#9aa6b8] hover:bg-[#f3f4f6] hover:text-[#0a1424]'
 export const SAMPLE_CHIP =
   'h-auto rounded-[6px] border-dashed border-[#cbd5e1] bg-white px-[10px] py-[5px] text-xs font-normal text-[#102544] hover:border-[#1f408c] hover:bg-[#eaf0fb] hover:text-[#102544]'
+/** The filter chips above a table and the tabs of the issue list: the active one is the design's blue chip. */
+export const CHIP_ACTIVE = 'border-[#102544] bg-[#eaf0fb] text-[#1f408c] hover:bg-[#eaf0fb] hover:text-[#1f408c]'
+export const CHIP_IDLE = 'border-[#cbd5e1] bg-white text-[#0a1424] hover:border-[#9aa6b8] hover:bg-[#f3f4f6] hover:text-[#0a1424]'
+/** A row action: the design's small white button with a border. */
+export const ROW_BUTTON =
+  'h-[34px] rounded-[6px] border-[#dbe2ea] bg-white px-3 text-sm font-semibold text-[#0a1424] hover:bg-[#f3f4f6] hover:text-[#0a1424]'

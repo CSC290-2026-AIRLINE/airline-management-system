@@ -13,14 +13,18 @@ import { messageOf } from './errors.ts'
 import { applyFilter, fallbackQuery, parseSearch, type CounterFilter } from './counter-search.ts'
 import { formatTime } from '../domain/format.ts'
 import { computeWindow, DEFAULT_WINDOW_SETTINGS } from '../domain/window.ts'
-import { INPUT_LABEL, MUTED, PANEL, PANEL_TITLE, PRIMARY_BUTTON, SECONDARY_BUTTON, TEXT_INPUT } from './styles.ts'
-
-/** The filter chips above the table: the active one is the design's blue chip. */
-const CHIP_ACTIVE = 'border-[#102544] bg-[#eaf0fb] text-[#1f408c] hover:bg-[#eaf0fb] hover:text-[#1f408c]'
-const CHIP_IDLE = 'border-[#cbd5e1] bg-white text-[#0a1424] hover:border-[#9aa6b8] hover:bg-[#f3f4f6] hover:text-[#0a1424]'
-/** The row action: the design's small white button with a border. */
-const ROW_BUTTON =
-  'h-[34px] rounded-[6px] border-[#dbe2ea] bg-white px-3 text-sm font-semibold text-[#0a1424] hover:bg-[#f3f4f6] hover:text-[#0a1424]'
+import {
+  CHIP_ACTIVE,
+  CHIP_IDLE,
+  INPUT_LABEL,
+  MUTED,
+  PANEL,
+  PANEL_TITLE,
+  PRIMARY_BUTTON,
+  ROW_BUTTON,
+  SECONDARY_BUTTON,
+  TEXT_INPUT,
+} from './styles.ts'
 
 export function CounterPage({ api }: { api: StaffApi }) {
   const [flights, setFlights] = useState<FlightSummary[]>([])
