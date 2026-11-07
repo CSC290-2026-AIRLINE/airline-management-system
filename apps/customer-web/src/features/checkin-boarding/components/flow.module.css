@@ -727,7 +727,21 @@
     padding: 12px 16px;
   }
 
+  .demoNav {
+    margin: 16px 16px 16px;
+  }
+
   .demoLinks {
     display: none;
+  }
+
+  .demoProfile {
+    margin-left: auto;
+  }
+
+  .steps {
+    flex-wrap: wrap;
+    overflow: visible;
+    padding: 12px 16px;
   }
 }

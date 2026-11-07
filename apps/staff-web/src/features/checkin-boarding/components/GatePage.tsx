@@ -315,7 +315,7 @@ export function GatePage({ api }: { api: StaffApi }) {
             type="button"
             variant="outline"
             size="sm"
-            className={SECONDARY_BUTTON}
+            className={`${SECONDARY_BUTTON} h-auto max-w-full whitespace-normal text-left`}
             disabled={busy || swappable.length < 2 || Boolean(list?.closedAt)}
             onClick={() => void swapGates()}
           >
