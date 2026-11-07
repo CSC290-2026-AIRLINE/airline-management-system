@@ -26,7 +26,7 @@ export interface RecordFoundBagInput {
   description?: string | null
 }
 
-function toFoundBag(row: found_bag): FoundBag {
+export function toFoundBag(row: found_bag): FoundBag {
   return {
     id: row.id,
     checkedBagId: row.checked_bag_id,

@@ -2,6 +2,7 @@ import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 import { RecordFoundBagDto } from './record-found-bag.dto'
 import { ListFoundBagsQuery } from './list-found-bags.query'
+import { SaveStationContactDto } from './save-station-contact.dto'
 
 async function errorsFor<T extends object>(cls: new () => T, body: object): Promise<string[]> {
   const errors = await validate(plainToInstance(cls, body), { whitelist: true, forbidNonWhitelisted: true })
@@ -37,5 +38,13 @@ describe('ListFoundBagsQuery', () => {
   it('accepts known filters and rejects an unknown status', async () => {
     expect(await errorsFor(ListFoundBagsQuery, { status: 'held', foundAirport: 'bkk' })).toEqual([])
     expect(await errorsFor(ListFoundBagsQuery, { status: 'lost' })).toEqual(['status'])
+  })
+})
+
+describe('SaveStationContactDto', () => {
+  it('accepts a desk with phone and optional email, and rejects a bad phone or email', async () => {
+    expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: '+66 2 134 0000' })).toEqual([])
+    expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: 'call me' })).toEqual(['phone'])
+    expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: '021340000', email: 'nope' })).toEqual(['email'])
   })
 })

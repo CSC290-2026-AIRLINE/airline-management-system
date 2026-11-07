@@ -1,10 +1,25 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common'
 import type { ValidationError } from '@nestjs/common'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import type { FoundBag } from './common/found-bag.types'
 import type { BagTrackingHistory } from './common/bag-location.types'
 import { BagTrackingService } from './bag-tracking.service'
 import { RecordMoveDto } from './dto/record-move.dto'
+import { CompleteFoundBagDetailsDto } from './dto/complete-found-bag-details.dto'
+import { FoundBagLifecycleService, type DiversionResult, type UnclaimedSweepResult } from './found-bag-lifecycle.service'
 import { ListFoundBagsQuery } from './dto/list-found-bags.query'
 import { RecordFoundBagDto } from './dto/record-found-bag.dto'
 import { BaggageStaffGuard, CurrentBaggageStaff, type BaggageStaff } from './guards/baggage-staff.guard'
@@ -15,6 +30,10 @@ function toValidationError(errors: ValidationError[]): FoundBagError {
   const messages = errors.flatMap((e) => Object.values(e.constraints ?? {}))
 
   return new FoundBagError(tagError ? FOUND_BAG_ERROR_CODES.INVALID_TAG : FOUND_BAG_ERROR_CODES.INVALID_FOUND_BAG, messages.join('; '))
+}
+
+function flightNotFound(): FoundBagError {
+  return new FoundBagError(FOUND_BAG_ERROR_CODES.FLIGHT_NOT_DIVERTED, 'Flight not found')
 }
 
 function notFound(): FoundBagError {
@@ -29,12 +48,27 @@ export class FoundBagController {
   constructor(
     private readonly service: FoundBagService,
     private readonly tracking: BagTrackingService,
+    private readonly lifecycle: FoundBagLifecycleService,
   ) {}
 
   @Post()
   @HttpCode(201)
   record(@CurrentBaggageStaff() staff: BaggageStaff, @Body() dto: RecordFoundBagDto): Promise<FoundBag> {
     return this.service.record({ ...dto, staffId: staff.staffId })
+  }
+
+  /** Add a held found bag for every tagged bag in the hold of a diverted flight. Safe to call again. */
+  @Post('diversions/:flightId')
+  @HttpCode(201)
+  recordDiversion(@Param('flightId', new ParseUUIDPipe({ exceptionFactory: flightNotFound })) flightId: string): Promise<DiversionResult> {
+    return this.lifecycle.recordDiversion(flightId)
+  }
+
+  /** Mark held bags past unclaimed_after_days with no confirmed match as unclaimed. */
+  @Post('unclaimed-sweep')
+  @HttpCode(200)
+  markUnclaimed(): Promise<UnclaimedSweepResult> {
+    return this.lifecycle.markUnclaimed()
   }
 
   @Get()
@@ -62,5 +96,25 @@ export class FoundBagController {
     @Body() dto: RecordMoveDto,
   ): Promise<BagTrackingHistory> {
     return this.tracking.recordMove({ ...dto, foundBagId: id, staffId: staff.staffId })
+  }
+
+  /** Add the type and colour of a diverted-flight bag after staff check it. */
+  @Patch(':id')
+  completeDetails(
+    @CurrentBaggageStaff() staff: BaggageStaff,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
+    @Body() dto: CompleteFoundBagDetailsDto,
+  ): Promise<FoundBag> {
+    return this.lifecycle.completeDetails(staff.staffId, id, dto)
+  }
+
+  /** The diverted-flight bag stayed on board and flew on to its destination. */
+  @Post(':id/continue-with-flight')
+  @HttpCode(200)
+  continueWithFlight(
+    @CurrentBaggageStaff() staff: BaggageStaff,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
+  ): Promise<FoundBag> {
+    return this.lifecycle.continueWithFlight(staff.staffId, id)
   }
 }
