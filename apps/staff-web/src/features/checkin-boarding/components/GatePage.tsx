@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { ApiRequestError, F6_MOCK, type StaffApi } from '../api/index.ts'
 import type { FlightSummary, GateInfo, GateList, GateListEntry, Headcount, ScanResult } from '../api/types.ts'
 import { ErrorBanner } from './ErrorBanner.tsx'
-import { StatusPill } from './pills.tsx'
+import { Message, Pill, StatusPill } from './pills.tsx'
 import { messageOf, numberOrNull } from './errors.ts'
 import { formatTime } from '../domain/format.ts'
-import ui from './ui.module.css'
-import styles from './GatePage.module.css'
-import '../styles/tokens.css'
 
 const GROUP_LABELS: Record<'1' | '2' | '3' | '4', string> = {
   '1': 'Group 1 · Special assistance',
@@ -18,6 +20,23 @@ const GROUP_LABELS: Record<'1' | '2' | '3' | '4', string> = {
 
 /** The references the demo can scan: a normal pass, the security hold, another flight and a typo. */
 const SAMPLE_REFERENCES = ['R8KD2WQN', 'Q7M4K2XR', 'H3VN8PLA', 'P6KA2CXF', 'Q7M4K2XX']
+
+/** The design's page, panel and control styles. */
+const PANEL = 'rounded-2xl border-[#dbe2ea] p-6 gap-4'
+const PANEL_TITLE = 'm-0 font-sans text-[22px] font-semibold leading-[1.2] text-[#0a1424]'
+const MUTED = 'text-sm text-[#677287]'
+const PRIMARY_BUTTON = 'h-[39px] rounded-[6px] bg-[#102544] px-[18px] text-sm font-semibold text-white hover:bg-[#0c1d38] hover:text-white'
+const SECONDARY_BUTTON =
+  'h-[41px] rounded-[6px] border-[#dbe2ea] bg-white px-[18px] text-sm font-semibold text-[#0a1424] hover:bg-[#f3f4f6] hover:text-[#0a1424]'
+const TEXT_INPUT =
+  'h-[45px] w-[460px] max-w-full rounded-[4px] border-0 bg-[#f8fafc] px-3 py-3 text-sm text-[#3b4256] placeholder:text-[#8b93a3]'
+const INPUT_LABEL = 'text-[16px] font-normal leading-[1.5] text-[#6f7482]'
+const GATE_ACTIVE =
+  'h-[39px] rounded-[10px] border-[#102544] bg-[#eaf0fb] px-4 text-sm font-medium text-[#1f408c] hover:bg-[#eaf0fb] hover:text-[#1f408c]'
+const GATE_IDLE =
+  'h-[39px] rounded-[10px] border-[#cbd5e1] bg-white px-4 text-sm font-medium text-[#0a1424] hover:border-[#9aa6b8] hover:bg-[#f3f4f6] hover:text-[#0a1424]'
+const SAMPLE_CHIP =
+  'h-auto rounded-[6px] border-dashed border-[#cbd5e1] bg-white px-[10px] py-[5px] text-xs font-normal text-[#102544] hover:border-[#1f408c] hover:bg-[#eaf0fb] hover:text-[#102544]'
 
 export function GatePage({ api }: { api: StaffApi }) {
   const [gates, setGates] = useState<GateInfo[]>([])
@@ -97,6 +116,8 @@ export function GatePage({ api }: { api: StaffApi }) {
     ? [...list.police, ...list.groups['1'], ...list.groups['2'], ...list.groups['3'], ...list.groups['4']]
     : []
   const noShows = entries.filter((entry) => entry.status === 'no_show')
+  /** The flights that are at a gate, so their gates can be swapped. */
+  const swappable = flights.flatMap((item) => (item.gate ? [{ flight: item, gate: item.gate }] : []))
 
   const chooseGate = (id: string) => {
     setGateId(id)
@@ -121,17 +142,18 @@ export function GatePage({ api }: { api: StaffApi }) {
     }
   }
 
-  const changeGate = async (targetId: string) => {
-    if (!flight) return
+  /** Feature 6 owns the gate of each flight, so the two flights trade gates. */
+  const swapGates = async () => {
+    if (swappable.length < 2) return
     setBusy(true)
     setError(null)
     try {
-      await api.setGate(flight.id, { gateId: targetId })
-      const target = gates.find((item) => item.id === targetId)
-      setGateMessage(
-        `Gate changed: ${flight.flightNumber} now at gate ${target?.code ?? targetId}. Passengers told (Feature 13), change audited.`,
-      )
-      chooseGate(targetId)
+      for (const [index, item] of swappable.entries()) {
+        const other = swappable[(index + 1) % swappable.length]
+        await api.setGate(item.flight.id, { gateId: other.gate.id })
+      }
+      await load()
+      setGateMessage('Gates swapped. Passengers told (Feature 13), change audited.')
     } catch (err) {
       setError(messageOf(err))
     } finally {
@@ -139,55 +161,51 @@ export function GatePage({ api }: { api: StaffApi }) {
     }
   }
 
-  const readSensor = async () => {
-    if (!flight) return
-    setBusy(true)
-    setError(null)
-    try {
-      setHeadcount(await api.setHeadcount(flight.id, { source: 'sensor' }))
-      // The count changed, so a mismatch that is no longer true must not stay armed.
-      setConfirmClose(false)
-      setMismatch(null)
-    } catch (err) {
-      setError(messageOf(err))
-    } finally {
-      setBusy(false)
-    }
+  /** The gate sensor's reading (Feature 16). */
+  const readSensor = async (): Promise<Headcount | null> => {
+    if (!flight) return null
+    const counted = await api.setHeadcount(flight.id, { source: 'sensor' })
+    setHeadcount(counted)
+    return counted
   }
 
-  const saveManualCount = async () => {
-    if (!flight) return
+  /** The count the agent typed, used when the sensor is down. */
+  const saveManualCount = async (): Promise<Headcount | null> => {
+    if (!flight) return null
     const count = numberOrNull(manualCount)
     if (count === null || !Number.isInteger(count) || count < 0) {
       setError('The manual count must be a whole number.')
-      return
+      return null
     }
-    setBusy(true)
-    setError(null)
-    try {
-      setHeadcount(await api.setHeadcount(flight.id, { source: 'manual', count }))
-      // The count changed, so a mismatch that is no longer true must not stay armed.
-      setConfirmClose(false)
-      setMismatch(null)
-    } catch (err) {
-      setError(messageOf(err))
-    } finally {
-      setBusy(false)
-    }
+    const counted = await api.setHeadcount(flight.id, { source: 'manual', count })
+    setHeadcount(counted)
+    return counted
+  }
+
+  /** The mismatch sentence of the design, with the counts the gate compared. */
+  const mismatchMessage = (counted: Headcount | null): string => {
+    const boarded = counted?.boardedCount ?? headcount?.boardedCount ?? list?.boardedCount ?? 0
+    const by = counted?.sensorCount ?? counted?.manualCount ?? headcount?.sensorCount ?? headcount?.manualCount ?? 0
+    return `Head-count mismatch: ${boarded} marked boarded, sensor counted ${by}. Check the aircraft, then press Close gate again to confirm.`
   }
 
   const closeGate = async () => {
     if (!flight) return
     setBusy(true)
     setError(null)
+    const confirm = confirmClose
+    let counted: Headcount | null = null
     try {
-      setHeadcount(await api.closeGate(flight.id, { confirmMismatch: confirmClose }))
+      // An empty manual count closes on the gate sensor's reading instead.
+      counted = manualCount.trim() === '' ? await readSensor() : await saveManualCount()
+      if (!counted) return
+      await api.closeGate(flight.id, { confirmMismatch: confirm })
       setConfirmClose(false)
       setMismatch(null)
       await load()
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'HEADCOUNT_MISMATCH') {
-        setMismatch(err.message)
+        setMismatch(mismatchMessage(counted))
         setConfirmClose(true)
       } else {
         setError(messageOf(err))
@@ -197,245 +215,233 @@ export function GatePage({ api }: { api: StaffApi }) {
     }
   }
 
+  const boardingMinutes = flight ? Math.round((new Date(flight.depAt).getTime() - new Date(flight.boardingAt).getTime()) / 60000) : 0
+  const subtitle = flight
+    ? `Gate ${gate?.code ?? ''} · ${flight.flightNumber} · ${flight.origin.city} to ${flight.destination.city} · departs ${formatTime(
+        flight.depAt,
+      )} · boarding from ${boardingMinutes} min before`
+    : `Gate ${gate?.code ?? ''} · no flight at this gate`
+  const swapLabel =
+    swappable.length >= 2
+      ? `Swap gates: ${swappable
+          .map((item, index) => `${item.flight.flightNumber} to ${swappable[(index + 1) % swappable.length].gate.code}`)
+          .join(', ')}`
+      : 'Swap gates'
+
+  const passengerRow = (entry: GateListEntry, group: '1' | '2' | '3' | '4' | null) => (
+    <TableRow key={entry.checkInId} className="border-[#eef1f6] hover:bg-[#f7f9fc]">
+      <TableCell className="px-3 py-3">
+        {group === null ? (
+          <Pill tone="warn">Police</Pill>
+        ) : (
+          <span className="flex items-center gap-2">
+            <span className="text-sm font-medium text-[#0a1424]" title={GROUP_LABELS[group]}>
+              {group}
+            </span>
+            {entry.boardingGroup > called ? <Pill tone="neutral">waiting</Pill> : null}
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="px-3 py-3">
+        <span className="flex items-center gap-2">
+          <span className="text-sm text-[#0a1424]">{entry.passengerName}</span>
+          {entry.specialAssistance.length > 0 ? <Pill tone="warn">{entry.specialAssistance.join(', ')}</Pill> : null}
+        </span>
+      </TableCell>
+      <TableCell className="px-3 py-3 text-sm text-[#0a1424]">{entry.seat}</TableCell>
+      <TableCell className="px-3 py-3 font-mono text-[13px] tracking-[0.5px] text-[#3b4256]">{entry.reference}</TableCell>
+      <TableCell className="px-3 py-3">
+        <StatusPill status={entry.status} />
+      </TableCell>
+    </TableRow>
+  )
+
   return (
-    <div className={styles.page}>
-      <div className={styles.header}>
-        <div>
-          <h1 className={ui.title}>Gate screen</h1>
-          <p className={ui.sub}>
-            {flight
-              ? `Gate ${gate?.code ?? ''} · ${flight.flightNumber} · ${flight.origin.city} to ${flight.destination.city} · departs ${formatTime(
-                  flight.depAt,
-                )} · boarding from ${formatTime(flight.boardingAt)}`
-              : `Gate ${gate?.code ?? ''} · no flight at this gate`}
-          </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="m-0 font-sans text-[36px] font-extrabold leading-[1.1] tracking-tight text-[#0a1424]">Gate screen</h1>
+          <p className={`mt-1 ${MUTED}`}>{subtitle}</p>
         </div>
-        <div className={styles.gates} role="group" aria-label="Choose gate">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Choose gate">
           {gates.map((item) => (
-            <button
+            <Button
               key={item.id}
               type="button"
-              className={styles.gateBtn}
+              variant="outline"
+              size="sm"
               aria-pressed={item.id === gateId}
               onClick={() => chooseGate(item.id)}
+              className={item.id === gateId ? GATE_ACTIVE : GATE_IDLE}
             >
               Gate {item.code}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
       <ErrorBanner message={error} onDismiss={() => setError(null)} />
 
-      <div className={styles.kpis}>
-        <div className={ui.kpi}>
-          <div className={ui.kpiNum}>{list?.boardedCount ?? 0}</div>
-          <div className={ui.kpiKey}>Boarded</div>
-        </div>
-        <div className={ui.kpi}>
-          <div className={ui.kpiNum}>{Math.max(0, entries.length - (list?.boardedCount ?? 0))}</div>
-          <div className={ui.kpiKey}>Not yet boarded</div>
-        </div>
-        <div className={ui.kpi}>
-          <div className={ui.kpiNum}>{headcount?.sensorCount ?? '—'}</div>
-          <div className={ui.kpiKey}>Gate sensor count</div>
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card className="gap-2 rounded-2xl border-[#dbe2ea] px-5 py-4">
+          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]">{list?.boardedCount ?? 0}</div>
+          <div className={MUTED}>Boarded</div>
+        </Card>
+        <Card className="gap-2 rounded-2xl border-[#dbe2ea] px-5 py-4">
+          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]">
+            {Math.max(0, entries.length - (list?.boardedCount ?? 0))}
+          </div>
+          <div className={MUTED}>Not yet boarded</div>
+        </Card>
+        <Card className="gap-2 rounded-2xl border-[#dbe2ea] px-5 py-4">
+          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]">{headcount?.sensorCount ?? 0}</div>
+          <div className={MUTED}>Gate sensor count (Feature 16)</div>
+        </Card>
       </div>
 
-      <section className={ui.panel}>
-        <h2 className={ui.sectionTitle}>Flight gate</h2>
-        {flight ? (
-          <div className={ui.row}>
-            <label className={ui.label} htmlFor="gate-target">
-              Move {flight.flightNumber} to
-            </label>
-            <select
-              id="gate-target"
-              className={ui.input}
-              value={gateId}
-              disabled={busy || Boolean(list?.closedAt)}
-              onChange={(event) => void changeGate(event.target.value)}
-            >
-              {gates.map((item) => (
-                <option key={item.id} value={item.id}>
-                  Gate {item.code}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : (
-          <p className={ui.sub}>No flight at this gate.</p>
-        )}
-        <p className={ui.sub}>{gateMessage ?? 'Feature 6 sets each flight’s gate. Passes always show the current gate.'}</p>
-      </section>
+      <Card className={PANEL}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className={PANEL_TITLE}>Flight gate</h2>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={SECONDARY_BUTTON}
+            disabled={busy || swappable.length < 2}
+            onClick={() => void swapGates()}
+          >
+            {swapLabel}
+          </Button>
+        </div>
+        <p className={MUTED}>Feature 6 sets each flight’s gate. Passes always show the current gate.</p>
+        {gateMessage ? <Message tone="success">{gateMessage}</Message> : null}
+      </Card>
 
-      <section className={ui.panel}>
-        <h2 className={ui.sectionTitle}>Scan boarding pass</h2>
+      <Card className={PANEL}>
+        <h2 className={PANEL_TITLE}>Scan boarding pass</h2>
         <form
-          className={styles.scanRow}
+          className="flex flex-col gap-2"
           onSubmit={(event) => {
             event.preventDefault()
             void doScan(reference)
           }}
         >
-          <input
-            className={`${ui.input} ${styles.scanInput}`}
-            value={reference}
-            onChange={(event) => setReference(event.target.value)}
-            placeholder="Boarding pass reference, e.g. Q7M4K2XR"
-            autoComplete="off"
-          />
-          <button type="submit" className={ui.btnDark} disabled={busy || !flight}>
-            Scan
-          </button>
+          <Label htmlFor="gate-scan" className={INPUT_LABEL}>
+            Boarding pass reference
+          </Label>
+          <div className="flex flex-wrap items-start gap-2">
+            <Input
+              id="gate-scan"
+              className={TEXT_INPUT}
+              value={reference}
+              onChange={(event) => setReference(event.target.value)}
+              placeholder="e.g. Q7M4K2XR"
+              autoComplete="off"
+            />
+            <Button type="submit" className={PRIMARY_BUTTON} disabled={busy || !flight}>
+              Scan
+            </Button>
+          </div>
         </form>
         {F6_MOCK ? (
-          <div className={styles.samples}>
-            <span>Try:</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-[#677287]">Try:</span>
             {SAMPLE_REFERENCES.map((sample) => (
-              <button key={sample} type="button" className={styles.sampleBtn} onClick={() => void doScan(sample)}>
+              <Button key={sample} type="button" variant="outline" size="xs" className={SAMPLE_CHIP} onClick={() => setReference(sample)}>
                 {sample}
-              </button>
+              </Button>
             ))}
           </div>
         ) : null}
         {scan ? (
-          <p className={scan.event === 'boarded' ? `${ui.msg} ${ui.msgOk}` : `${ui.msg} ${ui.msgErr}`}>{scan.message}</p>
+          <Message tone={scan.event === 'boarded' ? 'success' : 'error'}>{scan.message}</Message>
         ) : (
-          <p className={`${ui.msg} ${ui.msgInfo}`}>Police and boarding groups 1 and 2 called. Scan a pass to board.</p>
+          <Message tone="info">Police and boarding groups 1 and {called} called. Scan a pass to board.</Message>
         )}
-      </section>
+      </Card>
 
-      <section className={ui.panel}>
-        <div className={ui.row}>
-          <h2 className={ui.sectionTitle}>Passengers by boarding group</h2>
-          <p className={ui.sub}>
-            Police board first. Then 1 special assistance, 2 First, Business and top tier, 3 Premium Economy and other tiers, 4 everyone
-            else.
-          </p>
-          <button
+      <Card className={PANEL}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className={PANEL_TITLE}>Passengers by boarding group</h2>
+          <Button
             type="button"
-            className={ui.btnGhost}
+            variant="outline"
+            size="sm"
+            className={SECONDARY_BUTTON}
             disabled={called >= 4 || Boolean(list?.closedAt)}
             onClick={() => setCalled((group) => Math.min(4, group + 1))}
           >
             {called >= 4 ? 'All groups called' : `Call group ${called + 1}`}
-          </button>
+          </Button>
         </div>
+        <p className={MUTED}>
+          Police board first. Then 1 special assistance, 2 First, Business and top tier, 3 Premium Economy and other tiers, 4 everyone else.
+        </p>
         {entries.length === 0 ? (
-          <p className={ui.sub}>{flight ? 'Nobody is checked in on this flight yet.' : 'No flight at this gate.'}</p>
+          <p className={MUTED}>{flight ? 'Nobody is checked in on this flight yet.' : 'No flight at this gate.'}</p>
         ) : (
-          <div className={ui.tableWrap}>
-            <table className={ui.table}>
-              <thead>
-                <tr>
-                  <th>Group</th>
-                  <th>Passenger</th>
-                  <th>Seat</th>
-                  <th>Pass</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list?.police.map((entry) => (
-                  <tr key={entry.checkInId}>
-                    <td>
-                      <span className={ui.pillWarn}>Police</span>
-                    </td>
-                    <td>{entry.passengerName}</td>
-                    <td>{entry.seat}</td>
-                    <td className={ui.mono}>{entry.reference}</td>
-                    <td>
-                      <StatusPill status={entry.status} />
-                    </td>
-                  </tr>
-                ))}
-                {(['1', '2', '3', '4'] as const).flatMap((group) =>
-                  (list?.groups[group] ?? []).map((entry) => (
-                    <tr key={entry.checkInId}>
-                      <td>
-                        <span className={styles.pillRow}>
-                          <span className={ui.pill} title={GROUP_LABELS[group]}>
-                            {group}
-                          </span>
-                          {entry.boardingGroup > called ? <span className={ui.pill}>waiting</span> : null}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={styles.pillRow}>
-                          {entry.passengerName}
-                          {entry.specialAssistance.length > 0 ? (
-                            <span className={ui.pillWarn}>{entry.specialAssistance.join(', ')}</span>
-                          ) : null}
-                        </span>
-                      </td>
-                      <td>{entry.seat}</td>
-                      <td className={ui.mono}>{entry.reference}</td>
-                      <td>
-                        <StatusPill status={entry.status} />
-                      </td>
-                    </tr>
-                  )),
-                )}
-              </tbody>
-            </table>
-          </div>
+          <Table className="table-fixed text-sm">
+            <TableHeader>
+              <TableRow className="border-[#dbe2ea] hover:bg-transparent">
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287] w-[12%]">Group</TableHead>
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">Passenger</TableHead>
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287] w-[11%]">Seat</TableHead>
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287] w-[15%]">Pass</TableHead>
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287] w-[12%]">
+                  Status
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {list?.police.map((entry) => passengerRow(entry, null))}
+              {(['1', '2', '3', '4'] as const).flatMap((group) => (list?.groups[group] ?? []).map((entry) => passengerRow(entry, group)))}
+            </TableBody>
+          </Table>
         )}
-      </section>
+      </Card>
 
-      <section className={ui.panel}>
-        <h2 className={ui.sectionTitle}>Close gate</h2>
-        <p className={ui.sub}>
+      <Card className={PANEL}>
+        <h2 className={PANEL_TITLE}>Close gate</h2>
+        <p className={MUTED}>
           Closing needs a head-count, freezes the boarded count, marks everyone not boarded as no-show and offloads their bags (Baggage,
           Feature 10, is told).
         </p>
-        <div className={styles.countRow}>
-          <div>
-            <span className={ui.label}>Marked boarded</span>
-            <strong>{headcount?.boardedCount ?? list?.boardedCount ?? 0}</strong>
-          </div>
-          <div>
-            <span className={ui.label}>Sensor count</span>
-            <strong>{headcount?.sensorCount ?? '—'}</strong>
-          </div>
-          <div>
-            <label className={ui.label} htmlFor="gate-manual">
-              Manual count
-            </label>
-            <input
-              id="gate-manual"
-              className={ui.input}
-              inputMode="numeric"
-              value={manualCount}
-              disabled={Boolean(list?.closedAt)}
-              onChange={(event) => setManualCount(event.target.value)}
-              placeholder="Only if the sensor is down"
-            />
-          </div>
-          <div className={ui.row}>
-            <button type="button" className={ui.btnGhost} disabled={busy || !flight} onClick={() => void readSensor()}>
-              Read sensor
-            </button>
-            <button type="button" className={ui.btnGhost} disabled={busy || !flight} onClick={() => void saveManualCount()}>
-              Use manual count
-            </button>
-            <button type="button" className={ui.btn} disabled={busy || !flight || Boolean(list?.closedAt)} onClick={() => void closeGate()}>
-              {confirmClose ? 'Confirm and close gate' : 'Close gate'}
-            </button>
-          </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="gate-manual" className={INPUT_LABEL}>
+            Manual count (only if the sensor is down)
+          </Label>
+          <Input
+            id="gate-manual"
+            className={TEXT_INPUT}
+            inputMode="numeric"
+            value={manualCount}
+            disabled={Boolean(list?.closedAt)}
+            onChange={(event) => setManualCount(event.target.value)}
+            placeholder="Leave empty to use the sensor"
+          />
         </div>
-        {mismatch ? <p className={`${ui.msg} ${ui.msgErr}`}>{mismatch}</p> : null}
+        {mismatch ? <Message tone="error">{mismatch}</Message> : null}
         {list?.closedAt ? (
           <>
-            <p className={`${ui.msg} ${ui.msgOk}`}>
+            <Message tone="success">
               Gate closed. Boarded count frozen at {list.boardedCount}. No-shows marked and their bags offloaded.
-            </p>
+            </Message>
             {noShows.length > 0 ? (
-              <p className={ui.sub}>No-shows: {noShows.map((entry) => `${entry.passengerName} (${entry.seat})`).join(', ')}</p>
+              <p className={MUTED}>No-shows: {noShows.map((entry) => `${entry.passengerName} (${entry.seat})`).join(', ')}</p>
             ) : null}
           </>
         ) : null}
-      </section>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            className={PRIMARY_BUTTON}
+            disabled={busy || !flight || Boolean(list?.closedAt)}
+            onClick={() => void closeGate()}
+          >
+            {confirmClose ? 'Confirm and close gate' : 'Close gate'}
+          </Button>
+        </div>
+      </Card>
     </div>
   )
 }

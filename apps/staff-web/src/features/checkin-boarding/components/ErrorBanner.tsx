@@ -1,15 +1,17 @@
-import styles from './ErrorBanner.module.css'
+import { Message } from './pills.tsx'
 
 export function ErrorBanner({ message, onDismiss }: { message: string | null; onDismiss?: () => void }) {
   if (!message) return null
   return (
-    <div className={styles.banner} role="alert">
-      <span>{message}</span>
-      {onDismiss ? (
-        <button type="button" className={styles.close} onClick={onDismiss} aria-label="Dismiss the message">
-          ×
-        </button>
-      ) : null}
-    </div>
+    <Message tone="error">
+      <span className="flex items-start justify-between gap-3">
+        <span>{message}</span>
+        {onDismiss ? (
+          <button type="button" onClick={onDismiss} aria-label="Dismiss the message" className="shrink-0 text-xl leading-none">
+            ×
+          </button>
+        ) : null}
+      </span>
+    </Message>
   )
 }
