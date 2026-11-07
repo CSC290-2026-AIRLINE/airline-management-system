@@ -31,7 +31,7 @@ export function DemoApp() {
           Profile
         </span>
       </header>
-      <CheckInFlow api={api} />
+      <CheckInFlow api={api} now={api.now} />
     </div>
   )
 }

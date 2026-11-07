@@ -52,7 +52,7 @@ function BeforeYouStart() {
   )
 }
 
-export function CheckInFlow({ api }: { api: CheckInApi }) {
+export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; now?: () => Date }) {
   const [step, setStep] = useState<Step>(1)
   const [checkIn, setCheckIn] = useState<CheckInView | null>(null)
   const [pass, setPass] = useState<BoardingPassView | null>(null)
@@ -132,7 +132,7 @@ export function CheckInFlow({ api }: { api: CheckInApi }) {
 
   // The boarding pass has no summary beside it: it takes the whole row.
   const panelClass = step === 5 ? `${styles.panel} ${styles.panelWide}` : styles.panel
-  const strip = checkIn ? windowStrip(checkIn.flight.depAt, new Date()) : null
+  const strip = checkIn ? windowStrip(checkIn.flight.depAt, now()) : null
 
   return (
     <div className={styles.flow}>

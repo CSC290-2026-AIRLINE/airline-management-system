@@ -95,7 +95,7 @@ function visaNeeded(nationality: string, destination: string): boolean {
  * The browser twin of the backend service: same rules, same error codes, no database and no server.
  * It backs the Vercel demo (VITE_F6_MOCK=true) and must stay in step with the backend.
  */
-export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckInApi {
+export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckInApi & { now: () => Date } {
   const boot = Date.now()
   const base = opts?.now ?? DEMO_NOW
   const latencyMs = opts?.latencyMs ?? 0
@@ -550,5 +550,5 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
     return passView(pass)
   }
 
-  return { start, get, submitDocument, seatMap, holdSeat, releaseSeat, confirmSeat, declareBags, complete, boardingPass }
+  return { now, start, get, submitDocument, seatMap, holdSeat, releaseSeat, confirmSeat, declareBags, complete, boardingPass }
 }
