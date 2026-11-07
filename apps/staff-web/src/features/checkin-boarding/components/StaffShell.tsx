@@ -48,7 +48,9 @@ export function StaffShell({ current, onNavigate, agentName, clock, onSignOut, c
       /* The design's sidebar is 260 wide; the shadcn default is 14rem, which is 252px at this app's root font. */
       style={{ '--sidebar-width': '260px' } as CSSProperties}
     >
-      <Sidebar collapsible="icon" className="bg-sidebar">
+      {/* `border-r-0!` drops shadcn's 1px right border: the design's navy runs 260 wide straight into the page
+          background, and that border would otherwise take 1px off the nav items and the footer cards. */}
+      <Sidebar collapsible="icon" className="border-r-0! bg-sidebar print:hidden">
         <SidebarHeader className="gap-1 p-3">
           <div className="flex items-center gap-2">
             <img src={flythonMark} alt="" className="h-6 w-auto shrink-0" />
@@ -94,29 +96,30 @@ export function StaffShell({ current, onNavigate, agentName, clock, onSignOut, c
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter className="gap-2 p-3">
-          <div className="rounded-[10px] border border-white/14 bg-white/6 px-3.5 py-3 group-data-[collapsible=icon]:hidden">
-            <p className="text-[10.5px] font-semibold text-white/65">SIMULATION CLOCK</p>
-            <p className="mt-1 flex items-center gap-2 text-[15px] font-semibold text-white">
+        {/* The cards line up with the nav items: the same 22px gutter, 216 wide and 61 tall. */}
+        <SidebarFooter className="gap-2 px-[22px] py-3">
+          <div className="flex flex-col gap-1 rounded-[10px] border border-white/14 bg-white/6 px-3.5 py-3 group-data-[collapsible=icon]:hidden">
+            <p className="text-[10.5px] leading-[13px] font-semibold text-white/65">SIMULATION CLOCK</p>
+            <p className="flex items-center gap-2 text-[15px] leading-[18px] font-semibold text-white">
               <span className="size-[7px] shrink-0 rounded-full bg-[#faa61a]" />
               {formatClock(clock)}
             </p>
           </div>
-          <div className="rounded-[10px] border border-white/14 bg-white/6 px-3.5 py-3 group-data-[collapsible=icon]:hidden">
-            <p className="text-[10.5px] font-semibold text-white/65">SIGNED IN AS</p>
-            <p className="mt-1 flex items-center gap-2 text-[15px] font-semibold text-white">
+          <div className="flex flex-col gap-1 rounded-[10px] border border-white/14 bg-white/6 px-3.5 py-3 group-data-[collapsible=icon]:hidden">
+            <p className="text-[10.5px] leading-[13px] font-semibold text-white/65">SIGNED IN AS</p>
+            <p className="flex items-center gap-2 text-[15px] leading-[18px] font-semibold text-white">
               <span className="size-[7px] shrink-0 rounded-full bg-[#4ade80]" />
               {agentName}
             </p>
           </div>
-          <p className="px-0.5 text-xs text-white/65 group-data-[collapsible=icon]:hidden">
+          <p className="text-xs text-white/65 group-data-[collapsible=icon]:hidden">
             Gate agent · BKK. Navigation follows assigned staff permissions.
           </p>
           {onSignOut ? (
             <button
               type="button"
               onClick={onSignOut}
-              className="flex items-center gap-2 px-0.5 text-left text-sm font-medium text-white hover:text-white/80"
+              className="flex items-center gap-2 text-left text-sm font-medium text-white hover:text-white/80"
             >
               <LogOut className="size-4" />
               Sign out
@@ -127,13 +130,14 @@ export function StaffShell({ current, onNavigate, agentName, clock, onSignOut, c
 
       <SidebarInset className="min-w-0 bg-page">
         {/* Phone top bar: the sidebar is a sheet there, so this carries its trigger. */}
-        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 bg-sidebar px-4 text-sidebar-foreground md:hidden">
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 bg-sidebar px-4 text-sidebar-foreground md:hidden print:hidden">
           <SidebarTrigger aria-label="Open check-in navigation" />
           <img src={flythonMark} alt="" className="h-5 w-auto" />
           <span className="font-heading font-bold">Flython</span>
         </header>
 
-        <div className="mx-auto flex w-full max-w-[1054px] flex-col gap-6 p-8">{children}</div>
+        {/* Printing a pass or a bag tag: no page padding, so the sheet starts at the paper's edge. */}
+        <div className="mx-auto flex w-full max-w-[1054px] flex-col gap-6 p-8 print:p-0">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   )

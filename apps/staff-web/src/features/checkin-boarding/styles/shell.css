@@ -5,3 +5,10 @@
   border: 0;
   text-align: left;
 }
+
+/* Printing a pass or a bag tag: the sidebar is hidden, so the space it holds open must go too. */
+@media print {
+  .f6-shell [data-slot='sidebar-gap'] {
+    display: none;
+  }
+}
