@@ -1,7 +1,7 @@
 // Run inside apps/staff-web: node --test "src/features/checkin-boarding/**/*.test.ts"
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { formatBaht, formatDate, formatTime } from './format.ts'
+import { formatBaht, formatClock, formatDate, formatTime } from './format.ts'
 
 test('baht is shown without decimals for whole amounts', () => {
   assert.equal(formatBaht(2500), '฿2,500')
@@ -15,4 +15,8 @@ test('times are shown in Bangkok local time, whatever the browser zone is', () =
 
 test('dates are shown in Bangkok local time', () => {
   assert.equal(formatDate('2026-11-11T01:00:00.000Z'), '11 Nov 2026')
+})
+
+test('the sidebar clock reads "Mon 12 Oct 2026, 09:52" in Bangkok local time', () => {
+  assert.equal(formatClock(new Date('2026-10-12T02:52:00.000Z')), 'Mon 12 Oct 2026, 09:52')
 })

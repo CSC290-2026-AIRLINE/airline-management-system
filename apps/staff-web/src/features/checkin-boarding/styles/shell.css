@@ -1,0 +1,7 @@
+/* The starter page centres #root at 1126px with a border and centred text. The staff shell fills the window instead. */
+#root:has(.f6-shell) {
+  width: 100%;
+  max-width: none;
+  border: 0;
+  text-align: left;
+}
