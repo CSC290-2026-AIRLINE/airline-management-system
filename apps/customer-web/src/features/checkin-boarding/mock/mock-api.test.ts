@@ -114,13 +114,26 @@ test('a check-in that already has a pass refuses a new document and new bags', a
   await assert.rejects(api.declareBags(c.id, { declaredBags: 1 }), isCode('INVALID_STATE'))
 })
 
-test('an unmapped issuing country is stored as zz and flagged', async () => {
+test('an unmapped issuing country is refused', async () => {
   const api = createMockApi({ now: DEMO_NOW })
   const c = await api.start({ pnr: 'ER204F', lastName: 'Eriksson' })
+  await assert.rejects(
+    api.submitDocument(c.id, {
+      mrzLine1: `P<XYZ${SPECIMEN_LINE1.slice(5)}`,
+      mrzLine2: buildSpecimenLine2(),
+    }),
+    (e: unknown) => isCode('MRZ_INVALID')(e) && hasDetail('failedCheck', 'issuing_country')(e),
+  )
+})
+
+test('the profile differences use the column names', async () => {
+  const api = createMockApi({ now: DEMO_NOW })
+  const c = await api.start({ pnr: 'EC318D', lastName: 'Lopez' })
+  // Sara's profile is Spanish and her passport is the UTO specimen: three fields differ.
   const view = await api.submitDocument(c.id, {
-    mrzLine1: `P<XYZ${SPECIMEN_LINE1.slice(5)}`,
+    mrzLine1: SPECIMEN_LINE1,
     mrzLine2: buildSpecimenLine2(),
+    visaNumber: 'VISA-123',
   })
-  assert.equal(view.document?.issuingCountry, 'zz')
-  assert.ok(view.document?.profileDifferences.includes('issuing_country_unmapped'))
+  assert.deepEqual(view.document?.profileDifferences, ['date_of_birth', 'nationality', 'passport_number'])
 })

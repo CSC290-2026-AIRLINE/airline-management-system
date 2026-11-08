@@ -11,6 +11,7 @@ import type {
   StaffCheckInView,
 } from './api-types'
 import { CheckInService } from './checkin.service'
+import { bagAllowance } from './domain/allowance'
 import { allocateExcess, bagTagNumber, carryOnResult, checkedBagRefusal, excessFee, roundKg } from './domain/baggage'
 import { computeWindow } from './domain/window'
 import { CheckInError, invalidState, notFound, validation } from './errors'
@@ -98,8 +99,9 @@ export class CounterService {
     return toStaffCheckInView({
       checkIn,
       bags: bags.map(toBagView),
-      allowance: await this.allowanceOf(record, booking),
-      carryOn: await this.settings.carryOn(booking.cabin),
+      // The check-in view already carries the allowance and the carry-on rule of the cabin.
+      allowance: checkIn.allowance,
+      carryOn: checkIn.carryOn,
       carryOnCheck: await this.store.getCarryOnCheck(record.id),
       issues: await this.issuesOf(record, bags),
       totals: this.totalsOf(bags),
@@ -331,15 +333,14 @@ export class CounterService {
 
   private async allowanceOf(record: CheckInRecord, booking: BookingPassenger): Promise<BagAllowance> {
     const flight = await this.flightOf(record.flight_id)
-    const pricing = await this.pricing.baggage(booking.fareClass, flight.routeId)
-    const tier = await this.tiers.tier(record.passenger_id)
-    return {
-      freeKg: pricing.freeKg,
-      tierBonusKg: tier?.bagBonusKg ?? 0,
-      ratePerKg: pricing.ratePerKg,
-      maxBagKg: pricing.maxBagKg,
-      maxLinearCm: await this.settings.checkedBagMaxLinearCm(),
-    }
+    return bagAllowance({
+      pricing: this.pricing,
+      tiers: this.tiers,
+      settings: this.settings,
+      fareClass: booking.fareClass,
+      routeId: flight.routeId,
+      passengerId: record.passenger_id,
+    })
   }
 
   private totalsOf(bags: CheckedBagRecord[]): { weightKg: number; excessKg: number; unpaidFee: number } {

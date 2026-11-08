@@ -1,7 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common'
-import type { BoardingPassView, Cabin, CheckInStatus, CheckInView, SeatChoice, SeatLock, SeatMap, SeatMapSeat } from './api-types'
+import type {
+  BagAllowance,
+  BoardingPassView,
+  Cabin,
+  CheckInStatus,
+  CheckInView,
+  SeatChoice,
+  SeatLock,
+  SeatMap,
+  SeatMapSeat,
+} from './api-types'
 import type { Actor } from './actor'
 import { canCustomerAccess } from './actor'
+import { bagAllowance } from './domain/allowance'
 import { boardingGroup } from './domain/boarding'
 import { toAlpha2 } from './domain/countries'
 import type { MrzData } from './domain/mrz'
@@ -461,6 +472,8 @@ export class CheckInService {
       },
       document: document ? toDocumentView(document, await this.visaRequiredOf(document, flight)) : null,
       seat: await this.seatChoiceOf(record, booking),
+      allowance: await this.allowanceOf(record, booking, flight.routeId),
+      carryOn: await this.settings.carryOn(booking.cabin),
       boardingPassId: pass?.id ?? null,
     })
   }
@@ -485,6 +498,18 @@ export class CheckInService {
   /** Whether the destination of the flight needs a visa for the nationality of the document. */
   private async visaRequiredOf(document: TravelDocumentRecord, flight: FlightRecord): Promise<boolean> {
     return this.settings.visaRequired(document.nationality ?? '', flight.destination.country)
+  }
+
+  /** Feature 4's checked allowance, the tier bonus and the size limit: the bags step shows them. */
+  private allowanceOf(record: CheckInRecord, booking: BookingPassenger, routeId: string): Promise<BagAllowance> {
+    return bagAllowance({
+      pricing: this.pricing,
+      tiers: this.tiers,
+      settings: this.settings,
+      fareClass: booking.fareClass,
+      routeId,
+      passengerId: record.passenger_id,
+    })
   }
 
   private async seatChoiceOf(record: CheckInRecord, booking: BookingPassenger): Promise<SeatChoice | null> {

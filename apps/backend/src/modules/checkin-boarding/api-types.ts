@@ -37,6 +37,10 @@ export interface TravelDocumentView {
   expiryDate: string
   visaNumber: string | null
   visaRequired: boolean
+  /** When a member of staff checked the visa; null until they do. */
+  visaCheckedAt: string | null
+  /** The name as the passport shows it. The backend does not keep it, so it stays null. */
+  nameOnPassport: string | null
   nameMismatch: boolean
   nameMismatchClearedAt: string | null
   profileDifferences: string[]
@@ -58,6 +62,10 @@ export interface CheckInView {
   document: TravelDocumentView | null
   seat: SeatChoice | null
   declaredBags: number | null
+  /** Feature 4's checked allowance and the size limit, so the bags step can show them. */
+  allowance: BagAllowance
+  /** The carry-on rule of the cabin. */
+  carryOn: CarryOnAllowance
   boardingPassId: string | null
   checkedInAt: string | null
 }

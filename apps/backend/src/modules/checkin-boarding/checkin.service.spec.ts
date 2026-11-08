@@ -109,6 +109,13 @@ describe('CheckInService.start', () => {
     expect(view.booking).toEqual({ pnr: 'ER204F', bookingPassengerId: 'bp-er204f' })
   })
 
+  it('customer view carries the bag and carry-on allowance', async () => {
+    const { svc } = build()
+    const view = await svc.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    expect(view.allowance).toEqual({ freeKg: 20, tierBonusKg: 0, ratePerKg: 500, maxBagKg: 32, maxLinearCm: 158 })
+    expect(view.carryOn).toEqual({ maxKg: 7, maxLengthCm: 56, maxWidthCm: 36, maxHeightCm: 23 })
+  })
+
   it('start is idempotent and returns the checked-in passenger as-is', async () => {
     const { svc } = build()
     const a = await svc.start(cust, { pnr: 'EC204G', lastName: 'Saetang' })

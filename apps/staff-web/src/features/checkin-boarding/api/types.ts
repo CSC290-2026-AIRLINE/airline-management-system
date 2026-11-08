@@ -38,9 +38,9 @@ export interface TravelDocumentView {
   expiryDate: string
   visaNumber: string | null
   visaRequired: boolean
-  /** The backend does not expose it yet; the mock does, so the counter can show a checked visa. */
+  /** When staff checked the visa; the API sends null until they do. */
   visaCheckedAt?: string | null
-  /** The name as the passport shows it; the backend does not expose it yet, the mock does. */
+  /** The name as the passport shows it. The API does not keep it, so it sends null; the mock fills it. */
   nameOnPassport?: string | null
   nameMismatch: boolean
   nameMismatchClearedAt: string | null

@@ -281,6 +281,16 @@ describe('CounterService issues', () => {
     expect((await store.getDocument(documentId))!.visa_checked_at).not.toBeNull()
   })
 
+  it('the document view tells when staff checked the visa', async () => {
+    const { counter, checkins } = build()
+    const c = await checkins.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const before = await counter.detail(staff, c.id)
+    expect(before.checkIn.document!.visaCheckedAt).toBeNull()
+    const after = await counter.checkVisa(staff, before.checkIn.document!.id)
+    expect(after.checkIn.document!.visaCheckedAt).toBe('2026-11-11T01:00:00.000Z')
+  })
+
   it('a customer cannot use the counter', async () => {
     const { counter } = build()
     await expect(counter.search(cust, {})).rejects.toMatchObject({ code: 'FORBIDDEN' })

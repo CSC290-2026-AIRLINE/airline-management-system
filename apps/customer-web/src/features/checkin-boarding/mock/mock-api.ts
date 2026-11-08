@@ -353,6 +353,14 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
       fail(422, 'PASSPORT_EXPIRING', 'The passport expires less than six months after travel')
     }
 
+    // The issuing country is a NOT NULL alpha-2 column, so an unknown one is refused instead of stored.
+    const issuingCountry = toAlpha2(data.issuingCountry3)
+    if (!issuingCountry) {
+      fail(422, 'MRZ_INVALID', 'The issuing country of this passport is not a known country', {
+        failedCheck: 'issuing_country',
+      })
+    }
+
     const nationality = toAlpha2(data.nationality3)
     const visaRequired = nationality !== null && visaNeeded(nationality, flight.destination.country)
     const visaNumber = input.visaNumber?.trim() ?? ''
@@ -378,21 +386,17 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
       },
       data,
     )
-    // An issuing country we cannot map is kept as 'zz' and flagged, the way the backend stores it.
-    const issuingCountry = toAlpha2(data.issuingCountry3)
-    const differences: string[] = [...sync.differences]
-    if (!issuingCountry) differences.push('issuing_country_unmapped')
     record.document = {
       id: `td-mock-${(seq += 1)}`,
       numberLast4: data.numberLast4,
-      issuingCountry: issuingCountry ?? 'zz',
+      issuingCountry,
       nationality,
       expiryDate: data.expiryDate,
       visaNumber: visaRequired ? visaNumber : null,
       visaRequired,
       nameMismatch: compareNames(data, { firstName: booking.firstName, lastName: booking.lastName }),
       nameMismatchClearedAt: null,
-      profileDifferences: differences,
+      profileDifferences: sync.differences,
     }
 
     // Feature 7 owns the passenger profile: fill the empty fields, never overwrite one.

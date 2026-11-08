@@ -54,6 +54,8 @@ export function toDocumentView(document: TravelDocumentRecord, visaRequired: boo
     expiryDate: document.expiry_date,
     visaNumber: document.visa_number,
     visaRequired,
+    visaCheckedAt: document.visa_checked_at?.toISOString() ?? null,
+    nameOnPassport: null,
     nameMismatch: document.name_mismatch,
     nameMismatchClearedAt: document.name_mismatch_cleared_at?.toISOString() ?? null,
     profileDifferences: document.profile_differences,
@@ -68,6 +70,8 @@ export interface CheckInViewInput {
   passenger: { id: string; firstName: string; lastName: string; cabin: Cabin; fareClass: string; specialAssistance: string[] }
   document: TravelDocumentView | null
   seat: SeatChoice | null
+  allowance: BagAllowance
+  carryOn: CarryOnAllowance
   boardingPassId: string | null
 }
 
@@ -89,6 +93,8 @@ export function toCheckInView(input: CheckInViewInput): CheckInView {
     document: input.document,
     seat: input.seat,
     declaredBags: checkIn.declared_bags,
+    allowance: input.allowance,
+    carryOn: input.carryOn,
     boardingPassId: input.boardingPassId,
     checkedInAt: checkIn.checked_in_at?.toISOString() ?? null,
   }

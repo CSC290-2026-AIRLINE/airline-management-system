@@ -28,7 +28,8 @@ export interface ProfileFields {
 }
 
 export type ProfileFill = Partial<{ dateOfBirth: string; gender: string; nationality: string; passportNumber: string }>
-export type ProfileDifference = 'dateOfBirth' | 'gender' | 'nationality' | 'passportNumber' | 'nationality_unmapped'
+/** The names the travel_document.profile_differences column accepts. */
+export type ProfileDifference = 'date_of_birth' | 'gender' | 'nationality' | 'nationality_unmapped' | 'passport_number'
 
 const WEIGHTS = [7, 3, 1]
 const MRZ_LENGTH = 44
@@ -141,7 +142,7 @@ export function profileSync(profile: ProfileFields, mrz: MrzData): { fill: Profi
   if (profile.dateOfBirth === null) {
     fill.dateOfBirth = mrz.dateOfBirth
   } else if (profile.dateOfBirth !== mrz.dateOfBirth) {
-    differences.push('dateOfBirth')
+    differences.push('date_of_birth')
   }
 
   if (profile.gender === null) {
@@ -162,7 +163,7 @@ export function profileSync(profile: ProfileFields, mrz: MrzData): { fill: Profi
   if (profile.passportNumber === null) {
     fill.passportNumber = mrz.number
   } else if (profile.passportNumber !== mrz.number) {
-    differences.push('passportNumber')
+    differences.push('passport_number')
   }
 
   return { fill, differences }

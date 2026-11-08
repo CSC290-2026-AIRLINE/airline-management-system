@@ -5,7 +5,7 @@ import styles from './flow.module.css'
 
 const MAX_BAGS = 10
 
-// shortcut: carry-on rule is constant for every cabin per spec; upgrade when the customer API sends carryOn
+// shortcut: the published carry-on rule is only the fallback for a view without one; the API sends the rule of the cabin
 const CARRY_ON: CarryOnAllowance = { maxKg: 7, maxLengthCm: 56, maxWidthCm: 36, maxHeightCm: 23 }
 
 const FARE_LABEL: Record<Cabin, string> = {
