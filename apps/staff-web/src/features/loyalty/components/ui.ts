@@ -20,7 +20,8 @@ export const ui = {
     'box-border [&_*]:box-border',
     '[&_:is(h1,h2,h3)]:m-0 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:tracking-normal [&_:is(h1,h2,h3)]:text-inherit',
   ),
-  main: 'flex w-full max-w-[1120px] min-w-0 flex-col gap-4 px-4 pt-4 pb-10 sm:px-6 lg:px-16 lg:pt-[72px] lg:pb-16',
+  // Fills the space beside the sidebar with a 4% gutter, and stays centred once it reaches 1440px on very wide screens.
+  main: 'mx-auto flex w-full max-w-[1440px] min-w-0 flex-col gap-4 px-4 pt-4 pb-10 sm:px-6 lg:px-[4%] lg:pt-[72px] lg:pb-16',
   topRow: 'flex flex-wrap items-center justify-end gap-3',
   meta: 'w-full text-xs text-muted sm:w-auto sm:text-[13px]',
   title: 'text-2xl leading-tight font-extrabold text-navy sm:text-3xl lg:text-[38px] lg:text-ink',
@@ -39,7 +40,7 @@ export const ui = {
     'overflow-x-auto rounded-lg border border-field [&_table]:min-w-[560px] md:[&_table]:min-w-0 [&_th]:bg-soft [&_:is(th,td):first-child]:pl-3 [&_:is(th,td):last-child]:pr-3! [&_th]:pt-2.5 [&_tbody_tr:last-child_td]:border-b-0',
   cardTitle: 'text-base font-bold',
   cardHead: 'flex flex-wrap items-center justify-between gap-3',
-  grid: 'grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]',
+  grid: 'grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(300px,30%)_minmax(0,1fr)]',
   gridEven: 'grid grid-cols-1 items-start gap-3.5 md:grid-cols-2',
 
   muted: 'text-muted',
