@@ -13,6 +13,7 @@ import { PrismaCaseNumberSequence } from './prisma-case-number.sequence'
 import { PrismaCheckedBagLookup } from './prisma-checked-bag.lookup'
 import { PrismaReportRepository } from './prisma-report.repository'
 import { ReportService } from './report.service'
+import { BagMatchingService } from './bag-matching.service'
 
 describe('PassengerLostReportModule dependency injection', () => {
   let moduleRef: TestingModule
@@ -32,6 +33,7 @@ describe('PassengerLostReportModule dependency injection', () => {
 
   it('resolves the passenger controller and its repository/service graph', () => {
     expect(moduleRef.get(PassengerLostReportController)).toBeInstanceOf(PassengerLostReportController)
+    expect(moduleRef.get(BagMatchingService)).toBeInstanceOf(BagMatchingService)
     expect(moduleRef.get(PassengerLostReportFlightsController)).toBeInstanceOf(PassengerLostReportFlightsController)
     expect(moduleRef.get(PassengerCaseSummaryService)).toBeInstanceOf(PassengerCaseSummaryService)
     expect(moduleRef.get(PassengerDeliveryChoiceService)).toBeInstanceOf(PassengerDeliveryChoiceService)

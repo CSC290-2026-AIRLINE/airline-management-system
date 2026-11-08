@@ -10,6 +10,7 @@ import { BaggageErrorFilter } from './common/baggage-error.filter'
 import { PassengerDeliveryChoiceService } from './passenger-delivery-choice.service'
 import { PassengerCaseSummaryService } from './passenger-case-summary.service'
 import type { PassengerCaseSummary } from './common/passenger-case-summary.types'
+import { BagMatchingService } from './bag-matching.service'
 
 @Controller('customer/lost-reports')
 @UseGuards(BaggageCustomerGuard)
@@ -26,16 +27,21 @@ export class PassengerLostReportController {
     private readonly reports: ReportService,
     private readonly deliveryChoices: PassengerDeliveryChoiceService,
     private readonly caseSummaries: PassengerCaseSummaryService,
+    private readonly matching: BagMatchingService,
   ) {}
 
   @Post()
   @HttpCode(201)
-  create(@CurrentBaggageCustomer() customer: BaggageCustomer, @Body() dto: CreatePassengerLostReportDto): Promise<LostBagReport> {
-    return this.reports.create({
+  async create(@CurrentBaggageCustomer() customer: BaggageCustomer, @Body() dto: CreatePassengerLostReportDto): Promise<LostBagReport> {
+    const report = await this.reports.create({
       ...dto,
       passengerId: customer.passengerId,
       reportedByCustomerId: customer.customerId,
     })
+
+    await this.matching.suggestForReport(report.id)
+
+    return report
   }
 
   @Get()

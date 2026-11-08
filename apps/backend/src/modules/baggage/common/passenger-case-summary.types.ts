@@ -11,6 +11,7 @@ export type PassengerCaseTimelineEvent =
   | { type: 'out_for_delivery'; occurredAt: Date; airport: string }
   | { type: 'bag_delivered'; occurredAt: Date }
   | { type: 'case_closed'; occurredAt: Date }
+  | { type: 'case_cancelled'; occurredAt: Date }
 
 export interface PassengerCaseSummary {
   caseNumber: string

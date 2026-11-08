@@ -4,6 +4,7 @@ import { InMemoryCaseNumberSequence } from './mocks/in-memory-case-number.sequen
 import { MockSimulationClock } from './mocks/mock-simulation.clock'
 import { MockBookingVerification } from './mocks/mock-booking.verification'
 import { MockCheckedBagLookup } from './mocks/mock-checked-bag.lookup'
+import type { ReportRepository } from './common/report.ports'
 
 describe('ReportService', () => {
   let service: ReportService
@@ -160,7 +161,8 @@ describe('ReportService', () => {
 
   it('reads delivery choice only after verifying the passenger owns the report', async () => {
     const report = await service.create(validInput)
-    const findChoice = jest.spyOn(repository, 'findDeliveryChoiceByReportId').mockResolvedValue({
+    const reportRepository: ReportRepository = repository
+    const findChoice = jest.spyOn(reportRepository, 'findDeliveryChoiceByReportId').mockResolvedValue({
       deliveryType: 'hotel',
       address: 'Hotel Gracery',
       pickupAirport: null,

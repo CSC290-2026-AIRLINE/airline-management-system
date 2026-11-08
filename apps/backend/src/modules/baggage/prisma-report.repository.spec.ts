@@ -139,11 +139,12 @@ describe('PrismaReportRepository passenger case summary projection', () => {
       deliveredAt?: Date | null
       lostAt?: Date | null
       closedAt?: Date | null
+      status?: string
     } = {},
   ) {
     const report = {
       case_number: 'LB-2026-000001',
-      status: options.closedAt ? 'closed' : 'matched',
+      status: options.status ?? (options.closedAt ? 'closed' : 'matched'),
       bag_type: 'suitcase',
       colour: 'blue',
       brand: 'Rimowa',
@@ -234,9 +235,9 @@ describe('PrismaReportRepository passenger case summary projection', () => {
     return { repository, findUnique, auditFindMany, auditFindFirst, locationFindMany }
   }
 
-  it('projects only passenger-safe data and orders real events by insertion metadata across a clock rewind', async () => {
+  it('projects only passenger-safe data and orders lifecycle stages despite rewound simulation timestamps', async () => {
     const lostAt = new Date('2026-10-20T10:30:00.000Z')
-    const closedAt = new Date('2026-10-20T15:00:00.000Z')
+    const closedAt = new Date('2026-10-20T02:00:00.000Z')
     const harness = summaryHarness({ lostAt, closedAt })
     const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
 
@@ -296,6 +297,18 @@ describe('PrismaReportRepository passenger case summary projection', () => {
     expect(result?.timeline.map((event) => event.type)).toEqual(
       expect.arrayContaining(['report_received', 'case_marked_lost', 'match_confirmed']),
     )
+  })
+
+  it('projects a cancelled case as cancelled instead of showing a normal closure', async () => {
+    const cancelledAt = new Date('2026-10-20T02:00:00.000Z')
+    const harness = summaryHarness({ status: 'cancelled', closedAt: cancelledAt, confirmed: false, withDelivery: false })
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result?.timeline).toEqual([
+      { type: 'report_received', occurredAt: new Date('2026-10-20T09:00:00.000Z') },
+      { type: 'case_cancelled', occurredAt: cancelledAt },
+    ])
+    expect(result?.timeline.map((event) => event.type)).not.toContain('case_closed')
   })
 
   it('omits all recovery milestones when no confirmed match or delivery exists', async () => {

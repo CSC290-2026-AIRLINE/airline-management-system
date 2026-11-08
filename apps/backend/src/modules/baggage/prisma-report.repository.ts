@@ -21,6 +21,28 @@ function auditConfirmsMatch(value: unknown, foundBagId: string): boolean {
   return after.status === 'confirmed' && after.foundBagId === foundBagId
 }
 
+function timelineStage(event: PassengerCaseSummary['timeline'][number]): number {
+  switch (event.type) {
+    case 'report_received':
+      return 0
+    case 'case_marked_lost':
+      return 1
+    case 'match_confirmed':
+      return 2
+    case 'choice_saved':
+      return 3
+    case 'bag_sent':
+    case 'bag_arrived':
+    case 'out_for_delivery':
+      return 4
+    case 'bag_delivered':
+      return 5
+    case 'case_closed':
+    case 'case_cancelled':
+      return 6
+  }
+}
+
 function toRecoveryLocationEvent(location: {
   action: string
   airport_code: string
@@ -290,15 +312,24 @@ export class PrismaReportRepository implements ReportRepository {
       })
     }
 
-    if (row.closed_at) {
+    if (row.closed_at && row.status === 'closed') {
       orderedEvents.push({
         event: { type: 'case_closed', occurredAt: row.closed_at },
+        recordedAt: row.closed_at,
+        sequence: 0n,
+      })
+    } else if (row.closed_at && row.status === 'cancelled') {
+      orderedEvents.push({
+        event: { type: 'case_cancelled', occurredAt: row.closed_at },
         recordedAt: row.closed_at,
         sequence: 0n,
       })
     }
 
     orderedEvents.sort((left, right) => {
+      const byLifecycleStage = timelineStage(left.event) - timelineStage(right.event)
+      if (byLifecycleStage !== 0) return byLifecycleStage
+
       const byRecordTime = left.recordedAt.getTime() - right.recordedAt.getTime()
       if (byRecordTime !== 0) return byRecordTime
       if (left.sequence < right.sequence) return -1
