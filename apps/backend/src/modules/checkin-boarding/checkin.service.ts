@@ -9,6 +9,7 @@ import type {
   SeatLock,
   SeatMap,
   SeatMapSeat,
+  SeatType,
 } from './api-types'
 import type { Actor } from './actor'
 import { canCustomerAccess } from './actor'
@@ -260,7 +261,16 @@ export class CheckInService {
       })
       paymentId = charge.paymentId
     }
-    const confirmed = await this.seats.confirm(input.lockId, paymentId)
+    let confirmed: { seatCode: string; type: SeatType }
+    try {
+      confirmed = await this.seats.confirm(input.lockId, paymentId)
+    } catch (error) {
+      // The money went in but the seat did not: the payment is left behind on purpose, the audit says so.
+      if (paymentId) {
+        await this.record(actor, 'seat.payment_orphaned', 'payment', paymentId, `seat ${input.lockId} was paid but not confirmed`)
+      }
+      throw error
+    }
     this.holds.delete(input.lockId)
     this.seatPayments.set(record.booking_passenger_id, paymentId)
     const pass = (await this.store.passesForCheckIn(record.id))[0]

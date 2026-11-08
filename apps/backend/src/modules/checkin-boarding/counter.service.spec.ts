@@ -167,6 +167,17 @@ describe('CounterService.tagBag', () => {
     ])
   })
 
+  it('a second excess bag paid later gets the next payment of the check-in', async () => {
+    const { counter, store, payments } = build()
+    const id = await pimId(store)
+    const first = await weigh(counter, id, 25)
+    await counter.tagBag(staff, first.bags[0].id)
+    const second = await weigh(counter, id, 10)
+    await counter.tagBag(staff, second.bags[1].id)
+
+    expect(payments.charges.map((c) => c.reference)).toEqual([`check_in:${id}:bags:1`, `check_in:${id}:bags:2`])
+  })
+
   it('a bag with no excess tags without a payment', async () => {
     const { counter, store, payments } = build()
     const id = await pimId(store)
@@ -234,7 +245,7 @@ describe('CounterService.removeBag', () => {
     // The second bag was charged in the same payment, so it may not be removed.
     await expect(counter.removeBag(staff, v.bags[1].id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
     expect(payments.charges).toEqual([
-      { amount: 7500, currency: 'THB', purpose: 'excess_baggage', reference: `check_in:${id}:bags:2`, bookingId: 'bk-ec204g' },
+      { amount: 7500, currency: 'THB', purpose: 'excess_baggage', reference: `check_in:${id}:bags:1`, bookingId: 'bk-ec204g' },
     ])
     expect((await counter.detail(staff, id)).bags).toHaveLength(2)
   })

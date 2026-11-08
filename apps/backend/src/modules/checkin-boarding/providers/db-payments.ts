@@ -21,6 +21,13 @@ export class DbPayments implements PaymentProvider {
     reference: string
     bookingId: string
   }): Promise<{ paymentId: string }> {
+    // The purchase reference is unique per feature while the payment is live, so a retry finds the payment it made
+    // the first time instead of failing on the unique index.
+    const existing = await this.db.payment.findFirst({
+      where: { source_feature: 6, purchase_ref: input.reference, status: { in: ['created', 'authorised', 'captured'] } },
+    })
+    if (existing) return { paymentId: existing.id }
+
     const booking = await this.db.booking.findUniqueOrThrow({
       where: { id: input.bookingId },
       select: { id: true, customer_id: true },
@@ -40,6 +47,8 @@ export class DbPayments implements PaymentProvider {
         card_amount: input.amount,
         started_at: now,
         expires_at: new Date(now.getTime() + 15 * 60_000),
+        // A captured payment carries the moment it was authorised: the table checks the two together.
+        authorised_at: now,
         captured_at: now,
         updated_at: now,
       },

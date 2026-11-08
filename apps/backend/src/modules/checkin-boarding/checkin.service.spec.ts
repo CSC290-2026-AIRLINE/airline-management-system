@@ -3,6 +3,7 @@ import type { Actor } from './actor'
 import { canCustomerAccess } from './actor'
 import { CheckInService } from './checkin.service'
 import { SPECIMEN_LINE1, buildLine2, buildSpecimenLine2 } from './domain/mrz'
+import { CheckInError } from './errors'
 import { AIRPORTS, BOOKINGS, DEMO_NOW, FLIGHTS } from './providers/fixtures'
 import {
   FixtureBookings,
@@ -567,6 +568,18 @@ describe('CheckInService seats', () => {
     clock.set(new Date(clock.now().getTime() + 6 * 60_000))
     await expect(svc.confirmSeat(cust, c.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'LOCK_EXPIRED' })
     expect(payments.charges).toHaveLength(0)
+  })
+
+  it('a paid seat that cannot be confirmed leaves the payment behind and says so', async () => {
+    const { svc, audit, seats } = build()
+    const c = await svc.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '4A' })
+    jest.spyOn(seats, 'confirm').mockRejectedValue(new CheckInError(409, 'SEAT_TAKEN', 'the seat is gone'))
+    const spy = jest.spyOn(audit, 'record')
+
+    await expect(svc.confirmSeat(cust, c.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'SEAT_TAKEN' })
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'seat.payment_orphaned', entityType: 'payment', entityId: 'pay-1' }))
   })
 
   it('charges a paid seat, confirms, and a later change updates the pass in place', async () => {

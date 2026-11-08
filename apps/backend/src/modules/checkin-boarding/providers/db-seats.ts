@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import type { Prisma } from '@backend/db/generated/prisma/client'
 import type { Cabin, SeatLock, SeatMap, SeatStatus, SeatType } from '../api-types'
 import { CheckInError } from '../errors'
 import type { Numeric } from '../store/prisma-mappers'
@@ -72,31 +73,35 @@ export class DbSeats implements SeatProvider {
       throw new CheckInError(409, 'SEAT_TAKEN', `Seat ${seatCode} is not in your cabin`, { seatCode })
     }
 
-    const now = this.clock.now()
-    // The passenger keeps one seat: the earlier hold is given back before the new one is written.
-    await this.db.seat_assignment.updateMany({
-      where: { booking_coupon_id: coupon.id, status: { in: ['held', 'assigned'] } },
-      data: { status: 'released', released_at: now, updated_at: now },
-    })
-
     const fee = await this.feeOfRow(seat.cabin, seat.type)
+    const now = this.clock.now()
+    const expiresAt = new Date(now.getTime() + ttlMs)
     try {
-      const row = await this.db.seat_assignment.create({
-        data: {
-          booking_coupon_id: coupon.id,
-          flight_id: flightId,
-          seat_code: seatCode,
-          status: 'held',
-          hold_expires_at: new Date(now.getTime() + ttlMs),
-          fee_amount: fee,
-          payment_id: null,
-        },
+      const row = await this.db.$transaction(async (tx) => {
+        // The passenger keeps one seat: the earlier hold is given back before the new one is written.
+        await tx.seat_assignment.updateMany({
+          where: { booking_coupon_id: coupon.id, status: { in: ['held', 'assigned'] } },
+          data: { status: 'released', released_at: now, updated_at: now },
+        })
+        // An expired hold still sits in the unique index of the free seats, so it is swept away first.
+        await this.sweepExpired(tx, flightId, seatCode, now)
+        return tx.seat_assignment.create({
+          data: {
+            booking_coupon_id: coupon.id,
+            flight_id: flightId,
+            seat_code: seatCode,
+            status: 'held',
+            hold_expires_at: expiresAt,
+            fee_amount: fee,
+            payment_id: null,
+          },
+        })
       })
       return {
         id: row.id,
         flightId,
         seatCode,
-        expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+        expiresAt: expiresAt.toISOString(),
         fee,
       }
     } catch (error) {
@@ -119,17 +124,15 @@ export class DbSeats implements SeatProvider {
     const row = await this.db.seat_assignment.findUnique({ where: { id: lockId } })
     if (!row) throw new CheckInError(404, 'NOT_FOUND', `Seat hold ${lockId} not found`)
     const now = this.clock.now()
-    if (row.status !== 'assigned') {
-      const expires = row.hold_expires_at?.getTime() ?? 0
-      if (row.status !== 'held' || expires <= now.getTime()) {
-        throw new CheckInError(409, 'LOCK_EXPIRED', 'The seat hold has expired', { seatCode: row.seat_code })
-      }
-    }
-    const updated = await this.db.seat_assignment.update({
-      where: { id: lockId },
+    // Only a live hold becomes an assigned seat: a row that was taken or that ran out is not confirmed.
+    const updated = await this.db.seat_assignment.updateMany({
+      where: { id: lockId, status: 'held', hold_expires_at: { gt: now } },
       data: { status: 'assigned', assigned_at: now, payment_id: paymentId, updated_at: now },
     })
-    return { seatCode: updated.seat_code, type: seatOf(updated.seat_code)?.type ?? 'standard' }
+    if (updated.count === 0) {
+      throw new CheckInError(409, 'LOCK_EXPIRED', 'The seat hold has expired', { seatCode: row.seat_code })
+    }
+    return { seatCode: row.seat_code, type: seatOf(row.seat_code)?.type ?? 'standard' }
   }
 
   async assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType } | null> {
@@ -150,31 +153,41 @@ export class DbSeats implements SeatProvider {
     const live = await this.liveRows(flightId)
     const free = SEAT_LIST.filter((seat) => seat.cabin === cabin && !live.some((row) => row.seat_code === seat.code))
     // A standard seat first; an exit row only when the passenger may have one and nothing else is left.
-    const seat =
-      free.find((s) => s.type === 'standard' || s.type === 'business') ??
-      (opts.avoidExitRow ? undefined : free.find((s) => s.type === 'exit'))
-    if (!seat) throw new CheckInError(409, 'SEAT_TAKEN', 'No free seat left on this flight')
+    const candidates = [
+      ...free.filter((s) => s.type === 'standard' || s.type === 'business'),
+      ...(opts.avoidExitRow ? [] : free.filter((s) => s.type === 'exit')),
+    ]
+    if (candidates.length === 0) throw new CheckInError(409, 'SEAT_TAKEN', 'No free seat left on this flight')
 
     const now = this.clock.now()
-    try {
-      await this.db.seat_assignment.create({
-        data: {
-          booking_coupon_id: coupon.id,
-          flight_id: flightId,
-          seat_code: seat.code,
-          status: 'assigned',
-          assigned_at: now,
-          fee_amount: 0,
-          payment_id: null,
-        },
-      })
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new CheckInError(409, 'SEAT_TAKEN', `Seat ${seat.code} is not available`, { seatCode: seat.code })
+    for (const seat of candidates) {
+      try {
+        await this.db.$transaction(async (tx) => {
+          // The passenger keeps one seat: the earlier hold is given back before the new one is written.
+          await tx.seat_assignment.updateMany({
+            where: { booking_coupon_id: coupon.id, status: { in: ['held', 'assigned'] } },
+            data: { status: 'released', released_at: now, updated_at: now },
+          })
+          await this.sweepExpired(tx, flightId, seat.code, now)
+          await tx.seat_assignment.create({
+            data: {
+              booking_coupon_id: coupon.id,
+              flight_id: flightId,
+              seat_code: seat.code,
+              status: 'assigned',
+              assigned_at: now,
+              fee_amount: 0,
+              payment_id: null,
+            },
+          })
+        })
+        return { seatCode: seat.code, type: seat.type }
+      } catch (error) {
+        // Another passenger took the seat between the map and the write: the next free seat is tried.
+        if (!isUniqueViolation(error)) throw error
       }
-      throw error
     }
-    return { seatCode: seat.code, type: seat.type }
+    throw new CheckInError(409, 'SEAT_TAKEN', 'No free seat left on this flight')
   }
 
   async releaseAssigned(bookingPassengerId: string): Promise<void> {
@@ -189,7 +202,15 @@ export class DbSeats implements SeatProvider {
   private async liveRows(flightId: string): Promise<SeatRow[]> {
     const rows = await this.db.seat_assignment.findMany({ where: { flight_id: flightId } })
     const now = this.clock.now().getTime()
-    return rows.filter((row) => row.status === 'assigned' || (row.hold_expires_at?.getTime() ?? 0) > now)
+    return rows.filter((row) => row.status === 'assigned' || (row.status === 'held' && (row.hold_expires_at?.getTime() ?? 0) > now))
+  }
+
+  /** A hold that ran out still sits in the unique index of the free seats: it is given back there. */
+  private async sweepExpired(tx: Prisma.TransactionClient, flightId: string, seatCode: string, now: Date): Promise<void> {
+    await tx.seat_assignment.updateMany({
+      where: { flight_id: flightId, seat_code: seatCode, status: 'held', hold_expires_at: { lte: now } },
+      data: { status: 'released', released_at: now, updated_at: now },
+    })
   }
 
   private async couponOf(bookingPassengerId: string, flightId: string): Promise<CouponRow | null> {

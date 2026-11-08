@@ -10,7 +10,7 @@ const clock = new FixtureClock()
 function build() {
   const db = {
     booking: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'bk1', customer_id: 'cu1' }) },
-    payment: { create: jest.fn().mockResolvedValue({ id: 'pay-1' }) },
+    payment: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'pay-1' }) },
   }
   return { payments: new DbPayments(db as unknown as DbService, clock), db }
 }
@@ -39,6 +39,31 @@ describe('DbPayments', () => {
         amount_total: 5250,
         card_amount: 5250,
       }),
+    })
+  })
+
+  it('a captured payment carries the moment it was authorised', async () => {
+    const { payments, db } = build()
+    await payments.charge({ amount: 250, currency: 'THB', purpose: 'seat', reference: 'seat_assignment:sa-1', bookingId: 'bk1' })
+    const data = db.payment.create.mock.calls[0][0].data
+    expect(data.authorised_at).toEqual(new Date('2026-11-11T01:00:00.000Z'))
+    expect(data.captured_at).toEqual(data.authorised_at)
+  })
+
+  it('a second charge of the same purchase returns the payment of the first one', async () => {
+    const { payments, db } = build()
+    db.payment.findFirst.mockResolvedValue({ id: 'pay-existing' })
+    const result = await payments.charge({
+      amount: 250,
+      currency: 'THB',
+      purpose: 'seat',
+      reference: 'seat_assignment:sa-1',
+      bookingId: 'bk1',
+    })
+    expect(result).toEqual({ paymentId: 'pay-existing' })
+    expect(db.payment.create).not.toHaveBeenCalled()
+    expect(db.payment.findFirst).toHaveBeenCalledWith({
+      where: { source_feature: 6, purchase_ref: 'seat_assignment:sa-1', status: { in: ['created', 'authorised', 'captured'] } },
     })
   })
 
