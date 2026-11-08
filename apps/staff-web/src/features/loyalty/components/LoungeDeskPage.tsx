@@ -4,7 +4,7 @@ import { useStaffLoyaltyApi } from '../api/use-staff-loyalty-api'
 import { loungeLabel } from '../labels'
 import { errorMessage, useLoad } from '../use-load'
 import { Loaded, StaffLoyaltyLayout } from './StaffLoyaltyLayout'
-import { ui } from './ui'
+import { cx, ui } from './ui'
 
 // S10–S14 Lounge Desk: check a member in against their tier (Feature 11) and ticket (Feature 3b), and record guests.
 export function LoungeDeskPage() {
@@ -34,92 +34,93 @@ export function LoungeDeskPage() {
   }
 
   return (
-    <StaffLoyaltyLayout
-      title="Lounge Desk"
-      purpose="Check a member in to the lounge and record their guests."
-      info="A visit is checked against the tier (Feature 11) and the ticket (Feature 3b). One lounge visit per member per flight."
-    >
-      <div className={ui.gridEven}>
-        <form className={ui.card} onSubmit={(e) => void submit(e)} aria-labelledby="check-in">
-          <h2 id="check-in" className={ui.cardTitle}>
-            Check in a member
-          </h2>
-          <label className={ui.field}>
-            <span className={ui.label}>Member number or booking reference</span>
-            <input
-              className={ui.input}
-              placeholder="e.g. FL10000142 or FLY7K2"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              required
-            />
-          </label>
-          <label className={ui.field}>
-            <span className={ui.label}>Guests</span>
-            <input className={ui.input} type="number" min={0} max={9} value={guests} onChange={(e) => setGuests(e.target.value)} />
-          </label>
-          <button type="submit" className={ui.buttonPrimary} disabled={busy}>
-            {busy ? 'Checking…' : 'Check in'}
-          </button>
-        </form>
-
-        <section className={ui.card} aria-labelledby="result" aria-live="polite">
-          <h2 id="result" className={ui.cardTitle}>
-            Result
-          </h2>
-          {error ? (
-            <div className={`${ui.result} ${ui.resultNo}`}>
-              <strong>Not found</strong>
-              <span>{error}</span>
+    <StaffLoyaltyLayout title="Lounge Desk" purpose="Check a member in to the lounge and record their guests.">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(280px,1fr)]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <form className={ui.card} onSubmit={(e) => void submit(e)} aria-labelledby="check-in">
+            <h2 id="check-in" className={ui.cardTitle}>
+              Check in a member
+            </h2>
+            <div className="grid grid-cols-[minmax(0,1fr)_88px] items-end gap-3 sm:grid-cols-[minmax(0,1fr)_110px_auto]">
+              <label className={ui.field}>
+                <span className={ui.label}>Member number or booking reference</span>
+                <input
+                  className={ui.input}
+                  placeholder="e.g. FL10000142 or FLY7K2"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  required
+                />
+              </label>
+              <label className={ui.field}>
+                <span className={ui.label}>Guests</span>
+                <input className={ui.input} type="number" min={0} max={9} value={guests} onChange={(e) => setGuests(e.target.value)} />
+              </label>
+              <button type="submit" className={cx(ui.buttonPrimary, 'min-h-[42px] max-sm:col-span-2 max-sm:min-h-12')} disabled={busy}>
+                {busy ? 'Checking…' : 'Check in'}
+              </button>
             </div>
-          ) : result ? (
-            <Result result={result} />
-          ) : (
-            <div className={`${ui.result} ${ui.resultIdle}`}>Enter a member number and press Check in.</div>
-          )}
+            <p className={ui.small}>Checked against the tier (Feature 11) and the ticket (Feature 3b). One visit per member per flight.</p>
+          </form>
+
+          <section className={ui.card} aria-labelledby="result" aria-live="polite">
+            <h2 id="result" className={ui.cardTitle}>
+              Result
+            </h2>
+            {error ? (
+              <div className={`${ui.result} ${ui.resultNo}`}>
+                <strong>Not found</strong>
+                <span>{error}</span>
+              </div>
+            ) : result ? (
+              <Result result={result} />
+            ) : (
+              <div className={`${ui.result} ${ui.resultIdle}`}>Enter a member number and press Check in.</div>
+            )}
+          </section>
+        </div>
+
+        <section className={ui.card} aria-labelledby="today">
+          <h2 id="today" className={ui.cardTitle}>
+            Today at this desk
+          </h2>
+          <Loaded state={visits} retry={reloadVisits}>
+            {(rows) =>
+              rows.length === 0 ? (
+                <p className={ui.muted}>No visits yet today.</p>
+              ) : (
+                <div className={ui.tableWrap}>
+                  <table className={cx(ui.table, 'min-w-0! [&_td]:align-top')}>
+                    <thead>
+                      <tr>
+                        <th scope="col">Time</th>
+                        <th scope="col">Member</th>
+                        <th scope="col">Flight</th>
+                        <th scope="col" className={ui.num}>
+                          Guests
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((v) => (
+                        <tr key={v.id}>
+                          <td>{v.time}</td>
+                          <td>
+                            {v.memberName} · {v.tierName}
+                          </td>
+                          <td>{v.flightNumber}</td>
+                          <td className={ui.num}>{v.guests}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            }
+          </Loaded>
+          <p className={ui.small}>Admitted visits only · simulation time. Each visit is saved in the member’s benefit history.</p>
         </section>
       </div>
-
-      <section className={ui.card} aria-labelledby="today">
-        <h2 id="today" className={ui.cardTitle}>
-          Today at this desk
-        </h2>
-        <Loaded state={visits} retry={reloadVisits}>
-          {(rows) =>
-            rows.length === 0 ? (
-              <p className={ui.muted}>No visits yet today.</p>
-            ) : (
-              <div className={ui.tableWrap}>
-                <table className={ui.table}>
-                  <thead>
-                    <tr>
-                      <th scope="col">Time</th>
-                      <th scope="col">Member</th>
-                      <th scope="col">Flight</th>
-                      <th scope="col" className={ui.num}>
-                        Guests
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((v) => (
-                      <tr key={v.id}>
-                        <td>{v.time}</td>
-                        <td>
-                          {v.memberName} · {v.tierName}
-                        </td>
-                        <td>{v.flightNumber}</td>
-                        <td className={ui.num}>{v.guests}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )
-          }
-        </Loaded>
-        <p className={ui.small}>The visit is saved in the member’s benefit history.</p>
-      </section>
     </StaffLoyaltyLayout>
   )
 }
@@ -171,7 +172,14 @@ function Result({ result }: { result: LoungeResult }) {
             {m.name} · {m.memberNumber}
           </strong>
         </div>
-        <div className={ui.stat}>
+        <div
+          className={cx(
+            ui.stat,
+            m.tierName === 'Gold' && ui.statGold,
+            m.tierName === 'Silver' && ui.statSilver,
+            m.tierName === 'Platinum' && ui.statPlatinum,
+          )}
+        >
           <span>Tier</span>
           <strong>{tierText}</strong>
         </div>

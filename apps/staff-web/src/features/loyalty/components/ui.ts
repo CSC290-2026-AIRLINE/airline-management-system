@@ -15,23 +15,31 @@ export const ui = {
   // Page shell: the sidebar is a top bar on phones and small tablets, a column from md up.
   shell: cx(
     'grid min-h-svh grid-cols-1 grid-rows-[auto_1fr] bg-canvas text-left font-sans text-sm leading-[1.4] tracking-normal text-ink',
-    'flex-1 [color-scheme:light] md:grid-cols-[clamp(200px,18vw,240px)_minmax(0,1fr)] md:grid-rows-1',
+    'flex-1 [color-scheme:light] lg:grid-rows-1',
     // Preflight is off app-wide, so border-box sizing is set here: padding stays inside each element's width.
     'box-border [&_*]:box-border',
     '[&_:is(h1,h2,h3)]:m-0 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:tracking-normal [&_:is(h1,h2,h3)]:text-inherit',
   ),
-  main: 'flex w-full max-w-[1280px] min-w-0 flex-col gap-4 px-4 pt-5 pb-10 sm:px-6 lg:px-11 lg:pt-8 lg:pb-16',
+  main: 'flex w-full max-w-[1120px] min-w-0 flex-col gap-4 px-4 pt-4 pb-10 sm:px-6 lg:px-16 lg:pt-[72px] lg:pb-16',
   topRow: 'flex flex-wrap items-center justify-end gap-3',
   meta: 'w-full text-xs text-muted sm:w-auto sm:text-[13px]',
-  title: 'text-2xl leading-tight font-extrabold sm:text-3xl lg:text-[34px]',
+  title: 'text-2xl leading-tight font-extrabold text-navy sm:text-3xl lg:text-[38px] lg:text-ink',
   purpose: '-mt-2 text-sm text-muted sm:text-base',
   info: 'rounded-lg bg-[#e8eef7] px-3.5 py-2.5 text-xs text-link',
   error: 'flex flex-col items-start gap-3 rounded-md border border-danger bg-white px-4 py-3 text-danger',
 
-  card: 'flex min-w-0 flex-col gap-3 rounded-[10px] border border-field bg-white px-3.5 py-3.5 sm:px-[18px] sm:py-5',
+  card: 'flex min-w-0 flex-col gap-3 rounded-xl border border-field bg-white px-4 py-4 sm:px-5 sm:py-5',
+  cardEditing: 'border-2 border-[#1f408c] shadow-[0_0_0_3px_rgba(31,64,140,0.08)]',
+  linkButton: cx(
+    'cursor-pointer rounded border-0 bg-transparent p-0 text-sm font-semibold text-link hover:underline',
+    'disabled:cursor-not-allowed disabled:text-[#b7c2d6] disabled:no-underline',
+    focus,
+  ),
+  tableBox:
+    'overflow-x-auto rounded-lg border border-field [&_table]:min-w-[560px] md:[&_table]:min-w-0 [&_th]:bg-soft [&_:is(th,td):first-child]:pl-3 [&_:is(th,td):last-child]:pr-3! [&_th]:pt-2.5 [&_tbody_tr:last-child_td]:border-b-0',
   cardTitle: 'text-base font-bold',
   cardHead: 'flex flex-wrap items-center justify-between gap-3',
-  grid: 'grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(220px,1fr)_minmax(0,2fr)]',
+  grid: 'grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]',
   gridEven: 'grid grid-cols-1 items-start gap-3.5 md:grid-cols-2',
 
   muted: 'text-muted',
@@ -90,7 +98,10 @@ export const ui = {
     '[&_button:disabled]:cursor-not-allowed [&_button:disabled]:text-[#b7bfcc]',
   ),
   stat: 'flex min-w-0 flex-col gap-0.5 rounded-md bg-soft px-3 py-2.5 [&>span]:text-[9px] [&>span]:font-semibold [&>span]:uppercase [&>span]:tracking-[0.06em] [&>span]:text-muted [&>strong]:text-[13px]',
-  stats: 'grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3',
+  stats: 'grid grid-cols-2 gap-2 sm:grid-cols-3',
+  statGold: 'bg-[#fdf0c4]! [&>span]:text-[#6b4e00]! [&>strong]:text-[#6b4e00]',
+  statSilver: 'bg-[#e5e8ee]! [&>strong]:text-[#3b4558]',
+  statPlatinum: 'bg-[#e7e3fb]! [&>strong]:text-[#3b2f86]',
 
   memberList: cx(
     'm-0 flex list-none flex-col gap-2 p-0',

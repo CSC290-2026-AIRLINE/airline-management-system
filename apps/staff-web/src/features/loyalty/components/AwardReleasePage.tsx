@@ -1,13 +1,14 @@
-import { useCallback, useState } from 'react'
+import { Fragment, useCallback, useState } from 'react'
 import type { AwardFlight, CabinCode, FlightStatus, StaffLoyaltyApi } from '../api/types'
 import { useStaffLoyaltyApi } from '../api/use-staff-loyalty-api'
 import { formatDate, formatMiles, parseWhole } from '../format'
 import { CABINS, STATUS_LABEL } from '../labels'
+import { DESKTOP, useMediaQuery } from '../use-media-query'
 import { errorMessage, useLoad } from '../use-load'
 import { useToast } from '../use-toast'
 import { Modal, Segmented, Toast } from './parts'
 import { Loaded, StaffLoyaltyLayout } from './StaffLoyaltyLayout'
-import { ui } from './ui'
+import { cx, ui } from './ui'
 
 const STATUS_PILL: Record<FlightStatus, string> = {
   scheduled: ui.pillBlue,
@@ -15,6 +16,8 @@ const STATUS_PILL: Record<FlightStatus, string> = {
   cancelled: ui.pillRed,
   departed: ui.pillGrey,
 }
+
+type Saved = (flight: AwardFlight, firstRelease: boolean, cabinName: string, released: number) => void
 
 // S7–S9 Award Release: choose how many seats on each flight members can buy with miles, and what they cost. The seats
 // come out of feature 3b's normal inventory, so a cash sale and an award booking never take the same last seat.
@@ -36,14 +39,52 @@ export function AwardReleasePage() {
   )
 }
 
+const seatsText = (f: AwardFlight, cabin: CabinCode) => {
+  const r = f.releases[cabin]
+  return r ? `${r.redeemed} / ${r.released}` : '—'
+}
+
+function StatusPill({ flight }: { flight: AwardFlight }) {
+  return flight.returnedToCash ? (
+    <span className={`${ui.pill} ${ui.pillAmber}`}>Returned to cash</span>
+  ) : (
+    <span className={`${ui.pill} ${STATUS_PILL[flight.status]}`}>{STATUS_LABEL[flight.status]}</span>
+  )
+}
+
 function AwardFlights({ api, initial }: { api: StaffLoyaltyApi; initial: AwardFlight[] }) {
   const [flights, setFlights] = useState(initial)
-  const [open, setOpen] = useState<AwardFlight | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
   const [toast, showToast] = useToast()
+  const desktop = useMediaQuery(DESKTOP)
+  const open = flights.find((f) => f.flightId === openId) ?? null
 
-  const seats = (f: AwardFlight, cabin: CabinCode) => {
-    const r = f.releases[cabin]
-    return r ? `${r.redeemed} / ${r.released}` : '—'
+  const onSaved: Saved = (saved, firstRelease, cabinName, released) => {
+    setFlights(flights.map((f) => (f.flightId === saved.flightId ? saved : f)))
+    setOpenId(null)
+    showToast(
+      firstRelease
+        ? `${released} ${cabinName} seat${released === 1 ? '' : 's'} released on ${saved.flightNumber}`
+        : `Release updated on ${saved.flightNumber}`,
+    )
+  }
+
+  // The Edit / Release link, or why the flight can't be changed.
+  const action = (f: AwardFlight) => {
+    if (f.status === 'cancelled' || f.status === 'departed') return <span className={ui.muted}>Closed</span>
+    if (f.returnedToCash) return <span className={ui.muted}>Locked</span>
+    const released = Object.keys(f.releases).length > 0
+    return (
+      <button
+        type="button"
+        className={cx(ui.linkButton, 'text-[15px] max-lg:min-h-10')}
+        onClick={() => setOpenId(openId === f.flightId ? null : f.flightId)}
+        aria-expanded={openId === f.flightId}
+        aria-label={`${released ? 'Edit release' : 'Release seats'} on ${f.flightNumber}`}
+      >
+        {released ? 'Edit' : 'Release'}
+      </button>
+    )
   }
 
   return (
@@ -57,127 +98,151 @@ function AwardFlights({ api, initial }: { api: StaffLoyaltyApi; initial: AwardFl
           <strong>No flights open for sale.</strong>
           <span className={ui.small}>Flights appear here once Feature 2 schedules them.</span>
         </div>
-      ) : (
-        <div className={ui.tableWrap}>
-          <table className={ui.table}>
-            <thead>
-              <tr>
-                <th scope="col">Flight</th>
-                <th scope="col">Status</th>
-                <th scope="col" className={ui.num}>
-                  Economy
-                </th>
-                <th scope="col" className={ui.num}>
-                  Business
-                </th>
-                <th scope="col" className={ui.num}>
-                  Cost (economy)
-                </th>
-                <th scope="col">
-                  <span className={ui.srOnly}>Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {flights.map((f) => {
-                const closed = f.status === 'cancelled' || f.status === 'departed'
-                const released = Object.keys(f.releases).length > 0
-                const cost = f.releases.economy?.milesCost
-                return (
-                  <tr key={f.flightId}>
-                    <td>
+      ) : desktop ? (
+        <table className={cx(ui.table, ui.tableTall)}>
+          <thead>
+            <tr>
+              <th scope="col">Flight</th>
+              <th scope="col">Status</th>
+              <th scope="col" className={ui.num}>
+                Economy
+              </th>
+              <th scope="col" className={ui.num}>
+                Business
+              </th>
+              <th scope="col" className={ui.num}>
+                Cost (economy)
+              </th>
+              <th scope="col" className={ui.num}>
+                <span className={ui.srOnly}>Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {flights.map((f) => {
+              const cost = f.releases.economy?.milesCost
+              const isOpen = open?.flightId === f.flightId
+              return (
+                <Fragment key={f.flightId}>
+                  <tr className={cx(isOpen && 'bg-[#eef3fa] [&>td]:border-b-0')}>
+                    <td className={cx(isOpen && 'pl-0')}>
                       <div className={ui.strong}>{f.route}</div>
                       <div className={ui.cellSub}>
                         {f.flightNumber} · {formatDate(f.departsAt)}
                       </div>
                     </td>
                     <td>
-                      {f.returnedToCash ? (
-                        <span className={`${ui.pill} ${ui.pillAmber}`}>Returned to cash</span>
-                      ) : (
-                        <span className={`${ui.pill} ${STATUS_PILL[f.status]}`}>{STATUS_LABEL[f.status]}</span>
-                      )}
+                      <StatusPill flight={f} />
                     </td>
-                    <td className={ui.num}>{seats(f, 'economy')}</td>
-                    <td className={ui.num}>{seats(f, 'business')}</td>
+                    <td className={ui.num}>{seatsText(f, 'economy')}</td>
+                    <td className={ui.num}>{seatsText(f, 'business')}</td>
                     <td className={`${ui.num} ${ui.strong}`}>{cost ? formatMiles(cost) : '—'}</td>
-                    <td className={ui.num}>
-                      {closed ? (
-                        <span className={ui.muted}>Closed</span>
-                      ) : f.returnedToCash ? (
-                        <span className={ui.muted}>Locked</span>
-                      ) : (
-                        <button type="button" className={released ? ui.button : ui.buttonPrimary} onClick={() => setOpen(f)}>
-                          {released ? 'Edit' : 'Release'}
-                        </button>
-                      )}
-                    </td>
+                    <td className={ui.num}>{action(f)}</td>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                  {isOpen && (
+                    <tr className="bg-[#eef3fa]">
+                      <td colSpan={6} className="px-6! pt-2! pb-6!">
+                        <ReleaseEditor
+                          key={f.flightId}
+                          api={api}
+                          flight={f}
+                          layout="inline"
+                          onClose={() => setOpenId(null)}
+                          onSaved={onSaved}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      ) : (
+        <ul className="m-0 flex list-none flex-col gap-2.5 p-0" aria-label="Flights">
+          {flights.map((f) => (
+            <li key={f.flightId} className="flex flex-col gap-2.5 rounded-xl border border-field px-4 py-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[15px] font-bold">{f.route}</div>
+                  <div className={ui.cellSub}>
+                    {f.flightNumber} · {formatDate(f.departsAt)}
+                  </div>
+                </div>
+                <StatusPill flight={f} />
+              </div>
+              <dl className="m-0 grid grid-cols-3 gap-2 text-xs">
+                {(
+                  [
+                    ['Economy', seatsText(f, 'economy')],
+                    ['Business', seatsText(f, 'business')],
+                    ['Miles (eco)', f.releases.economy ? formatMiles(f.releases.economy.milesCost) : '—'],
+                  ] as const
+                ).map(([label, value]) => (
+                  <div key={label} className="rounded-md bg-soft px-2.5 py-2">
+                    <dt className="text-[10px] font-semibold uppercase tracking-[0.05em] text-muted">{label}</dt>
+                    <dd className="m-0 text-sm font-bold tabular-nums">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="flex justify-end">{action(f)}</div>
+            </li>
+          ))}
+        </ul>
       )}
       <p className={ui.small}>
         Seat columns show redeemed / released. Departed and cancelled flights are closed. Within 72 hours of departure the unredeemed seats
         go back to cash sale and the release is locked.
       </p>
 
-      {open && (
-        <ReleaseModal
-          api={api}
-          flight={open}
-          onClose={() => setOpen(null)}
-          onSaved={(saved, firstRelease, cabinName, released) => {
-            setFlights(flights.map((f) => (f.flightId === saved.flightId ? saved : f)))
-            setOpen(null)
-            showToast(
-              firstRelease
-                ? `${released} ${cabinName} seat${released === 1 ? '' : 's'} released on ${saved.flightNumber}`
-                : `Release updated on ${saved.flightNumber}`,
-            )
-          }}
-        />
+      {open && !desktop && (
+        <ReleaseEditor key={open.flightId} api={api} flight={open} layout="sheet" onClose={() => setOpenId(null)} onSaved={onSaved} />
       )}
     </section>
   )
 }
 
-// P4 Release seats, P5 Edit release, P6 below-redeemed error.
-function ReleaseModal({
+// S7a–S7m Release seats / Edit release, S7h below-redeemed error. Inline under the flight row on desktop, a bottom sheet
+// on phones.
+function ReleaseEditor({
   api,
   flight,
+  layout,
   onClose,
   onSaved,
 }: {
   api: StaffLoyaltyApi
   flight: AwardFlight
+  layout: 'inline' | 'sheet'
   onClose: () => void
-  onSaved: (flight: AwardFlight, firstRelease: boolean, cabinName: string, released: number) => void
+  onSaved: Saved
 }) {
   const firstRelease = Object.keys(flight.releases).length === 0
-  const [cabin, setCabin] = useState<CabinCode>('economy')
+  const [cabin, setCabin] = useState<CabinCode>(() => CABINS.find((c) => flight.aircraft.cabins.includes(c.code))?.code ?? 'economy')
   const current = flight.releases[cabin]
-  const [seatsText, setSeatsText] = useState(current ? String(current.released) : '')
-  const [milesText, setMilesText] = useState(current ? formatMiles(current.milesCost) : '')
+  const [seatsInput, setSeatsInput] = useState(current ? String(current.released) : '')
+  const [milesInput, setMilesInput] = useState(current ? formatMiles(current.milesCost) : '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const redeemed = current?.redeemed ?? 0
-  const seats = parseWhole(seatsText)
-  const miles = parseWhole(milesText)
+  const seats = parseWhole(seatsInput)
+  const miles = parseWhole(milesInput)
   const belowRedeemed = Number.isInteger(seats) && seats < redeemed
   const missing = CABINS.filter((c) => !flight.aircraft.cabins.includes(c.code)).map((c) => c.name)
   const cabinName = CABINS.find((c) => c.code === cabin)?.name ?? cabin
+  const title = firstRelease ? 'Release seats' : 'Edit release'
+  const sheet = layout === 'sheet'
 
   const pickCabin = (next: CabinCode) => {
     const r = flight.releases[next]
     setCabin(next)
-    setSeatsText(r ? String(r.released) : '')
-    setMilesText(r ? formatMiles(r.milesCost) : '')
+    setSeatsInput(r ? String(r.released) : '')
+    setMilesInput(r ? formatMiles(r.milesCost) : '')
     setError(null)
   }
+
+  const step = (by: number) => setSeatsInput(String(Math.max(0, (Number.isInteger(seats) ? seats : 0) + by)))
 
   const submit = async () => {
     if (belowRedeemed) return
@@ -191,77 +256,165 @@ function ReleaseModal({
     }
   }
 
-  return (
-    <Modal title={firstRelease ? 'Release seats' : 'Edit release'} onClose={onClose}>
-      <p className={ui.muted}>
-        {flight.flightNumber} · {flight.route} · {formatDate(flight.departsAt)} · {STATUS_LABEL[flight.status]}
-      </p>
-      <div className={ui.field}>
-        <span className={ui.label}>Cabin</span>
-        <Segmented
-          label="Cabin"
-          value={cabin}
-          onChange={pickCabin}
-          options={CABINS.map((c) => ({ value: c.code, label: c.name, disabled: !flight.aircraft.cabins.includes(c.code) }))}
-        />
-        {missing.length > 0 && (
-          <span className={ui.small}>
-            {missing.join(' and ')} {missing.length === 1 ? 'isn’t' : 'aren’t'} on this aircraft ({flight.aircraft.name},{' '}
-            {flight.aircraft.cabins.length} cabins).
+  const stepButton = 'grid size-11 flex-none cursor-pointer place-items-center rounded-lg border border-field bg-white text-xl text-ink'
+
+  const body = (
+    <div className={cx('flex flex-col gap-3.5', !sheet && 'text-left')}>
+      {!sheet && (
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h3 className="text-lg font-extrabold">{title}</h3>
+          <span className={ui.muted}>
+            {flight.flightNumber} · {flight.route} · {formatDate(flight.departsAt)} · {STATUS_LABEL[flight.status]}
           </span>
-        )}
-      </div>
-      <div className={ui.gridEven} style={{ gap: 10 }}>
-        <div className={ui.stat}>
-          <span>Released now</span>
-          <strong style={{ fontSize: 16 }}>{current?.released ?? 0}</strong>
         </div>
-        <div className={ui.stat}>
-          <span>Already redeemed</span>
-          <strong style={{ fontSize: 16 }}>{redeemed}</strong>
+      )}
+      {sheet && (
+        <p className={ui.muted}>
+          {flight.route} · {formatDate(flight.departsAt)} · {STATUS_LABEL[flight.status]}
+        </p>
+      )}
+
+      <div className={cx('grid gap-3.5', !sheet && 'grid-cols-[minmax(0,1fr)_auto] items-end')}>
+        <div className={ui.field}>
+          <span className={ui.label}>Cabin</span>
+          {sheet ? (
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Cabin">
+              {CABINS.map((c) => {
+                const onAircraft = flight.aircraft.cabins.includes(c.code)
+                return (
+                  <button
+                    key={c.code}
+                    type="button"
+                    aria-pressed={cabin === c.code}
+                    disabled={!onAircraft}
+                    onClick={() => pickCabin(c.code)}
+                    className={cx(
+                      'flex min-h-12 cursor-pointer flex-col items-center justify-center rounded-xl border border-field bg-soft px-2 text-sm font-semibold text-ink',
+                      'aria-pressed:border-[#7fd3dc] aria-pressed:bg-[#d6f3f5] aria-pressed:text-teal',
+                      'disabled:cursor-not-allowed disabled:bg-white disabled:text-[#b7bfcc]',
+                    )}
+                  >
+                    {c.name}
+                    {!onAircraft && <span className="text-[10px] font-normal">Not on aircraft</span>}
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <Segmented
+              label="Cabin"
+              value={cabin}
+              onChange={pickCabin}
+              options={CABINS.map((c) => ({ value: c.code, label: c.name, disabled: !flight.aircraft.cabins.includes(c.code) }))}
+            />
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-2.5 lg:w-[310px]">
+          <div className={cx(ui.stat, 'bg-white')}>
+            <span>Released now</span>
+            <strong style={{ fontSize: 16 }}>{current?.released ?? 0}</strong>
+          </div>
+          <div className={cx(ui.stat, 'bg-white')}>
+            <span>Already redeemed</span>
+            <strong style={{ fontSize: 16 }}>{redeemed}</strong>
+          </div>
         </div>
       </div>
-      <div className={ui.gridEven} style={{ gap: 10 }}>
+      {missing.length > 0 && !sheet && (
+        <span className={ui.small}>
+          {missing.join(' and ')} {missing.length === 1 ? 'isn’t' : 'aren’t'} on this aircraft ({flight.aircraft.name},{' '}
+          {flight.aircraft.cabins.length} cabins).
+        </span>
+      )}
+
+      <div className={cx('grid gap-3.5', !sheet && 'grid-cols-[200px_200px_minmax(0,1fr)_auto] items-end')}>
         <label className={ui.field}>
           <span className={ui.label}>Seats released</span>
-          <input
-            className={`${ui.input} ${belowRedeemed ? ui.inputError : ''}`}
-            inputMode="numeric"
-            value={seatsText}
-            onChange={(e) => setSeatsText(e.target.value)}
-            aria-invalid={belowRedeemed}
-          />
-          {belowRedeemed && (
-            <span className={ui.fieldError} role="alert">
-              Can’t go below the {redeemed} seats already redeemed.
-            </span>
+          {sheet ? (
+            <div className={cx('flex items-center gap-2 rounded-xl border bg-soft p-1', belowRedeemed ? 'border-danger' : 'border-field')}>
+              <button type="button" className={stepButton} onClick={() => step(-1)} aria-label="One seat fewer">
+                −
+              </button>
+              <input
+                className="min-w-0 flex-1 border-0 bg-transparent text-center text-lg font-semibold text-ink outline-none"
+                inputMode="numeric"
+                value={seatsInput}
+                onChange={(e) => setSeatsInput(e.target.value)}
+                aria-invalid={belowRedeemed}
+              />
+              <button type="button" className={stepButton} onClick={() => step(1)} aria-label="One seat more">
+                +
+              </button>
+            </div>
+          ) : (
+            <input
+              className={cx(ui.input, belowRedeemed && ui.inputError)}
+              inputMode="numeric"
+              value={seatsInput}
+              onChange={(e) => setSeatsInput(e.target.value)}
+              aria-invalid={belowRedeemed}
+            />
           )}
+          {sheet && !belowRedeemed && redeemed > 0 && <span className={ui.small}>Minimum {redeemed} seats</span>}
         </label>
         <label className={ui.field}>
           <span className={ui.label}>Miles per seat</span>
-          <input className={ui.input} inputMode="numeric" value={milesText} onChange={(e) => setMilesText(e.target.value)} />
+          <span className="relative">
+            <input
+              className={cx(ui.input, sheet && 'min-h-12 rounded-xl bg-soft pr-14')}
+              inputMode="numeric"
+              value={milesInput}
+              onChange={(e) => setMilesInput(e.target.value)}
+            />
+            {sheet && <span className="absolute top-1/2 right-4 -translate-y-1/2 text-[13px] text-muted">miles</span>}
+          </span>
         </label>
-      </div>
-      {!belowRedeemed && (
-        <p className={ui.small} style={{ fontSize: 12 }}>
-          {firstRelease
-            ? 'Seats come out of the flight’s normal inventory. Miles bookings close 72 hours before departure.'
-            : 'Seats cannot go below the number already redeemed. A new cost applies to future redemptions only.'}
+        <p className={cx(belowRedeemed ? ui.fieldError : ui.small, 'm-0 text-xs!')} role={belowRedeemed ? 'alert' : undefined}>
+          {belowRedeemed
+            ? `Can’t go below the ${redeemed} seats already redeemed.`
+            : firstRelease
+              ? 'Seats come out of the flight’s normal inventory. Miles bookings close 72 hours before departure.'
+              : 'Seats cannot go below the number already redeemed. A new cost applies to future redemptions only.'}
         </p>
-      )}
+        {!sheet && (
+          <div className="flex gap-2.5">
+            <button type="button" className={ui.button} onClick={onClose}>
+              Cancel
+            </button>
+            <button type="button" className={ui.buttonPrimary} onClick={() => void submit()} disabled={busy || belowRedeemed}>
+              {firstRelease ? 'Release seats' : 'Save release'}
+            </button>
+          </div>
+        )}
+      </div>
+
       {error && (
         <p className={ui.fieldError} role="alert">
           {error}
         </p>
       )}
-      <div className={ui.modalActions}>
-        <button type="button" className={ui.button} onClick={onClose}>
-          Cancel
-        </button>
-        <button type="button" className={ui.buttonPrimary} onClick={() => void submit()} disabled={busy || belowRedeemed}>
-          {firstRelease ? 'Release seats' : 'Save release'}
-        </button>
-      </div>
+      {sheet && (
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <button
+            type="button"
+            className={cx(ui.button, 'min-h-12 border-[#f3dca4] bg-[#fff6dc] text-warn hover:bg-[#fdefc6]')}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button type="button" className={cx(ui.buttonPrimary, 'min-h-12')} onClick={() => void submit()} disabled={busy || belowRedeemed}>
+            {firstRelease ? 'Release seats' : 'Save release'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+
+  return sheet ? (
+    <Modal title={`${title} · ${flight.flightNumber}`} onClose={onClose}>
+      {body}
     </Modal>
+  ) : (
+    body
   )
 }

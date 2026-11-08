@@ -1,12 +1,22 @@
 import { useCallback, useState, type FormEvent } from 'react'
-import type { MemberDetail, StaffLoyaltyApi } from '../api/types'
+import type { MemberDetail, StaffLoyaltyApi, TierCode } from '../api/types'
 import { useStaffLoyaltyApi } from '../api/use-staff-loyalty-api'
 import { formatDate, formatMiles, formatTableDate, parseWhole } from '../format'
 import { errorMessage, useLoad } from '../use-load'
+import { DESKTOP, useMediaQuery } from '../use-media-query'
 import { useToast } from '../use-toast'
 import { MilesCell, Modal, Segmented, TierPill, Toast, TypePill } from './parts'
 import { Loaded, StaffLoyaltyLayout } from './StaffLoyaltyLayout'
-import { ui } from './ui'
+import { cx, ui } from './ui'
+
+const TIER_STAT: Record<TierCode, string> = { silver: ui.statSilver, gold: ui.statGold, platinum: ui.statPlatinum }
+
+const initialsOf = (name: string) =>
+  name
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
 
 // S1–S3 Member Lookup: find a member, read their ledger and adjust miles. A mistake is fixed with a new adjustment,
 // never by editing a row; every adjustment needs a reason and goes to the audit log.
@@ -17,6 +27,11 @@ export function MembersPage() {
   const search = useCallback(() => api.searchMembers(query), [api, query])
   const [state, retry] = useLoad(search)
   const [toast, showToast] = useToast()
+  const desktop = useMediaQuery(DESKTOP)
+  const found = state.status === 'ready' ? state.data : []
+  const current = picked && found.some((m) => m.id === picked) ? picked : desktop ? found[0]?.id : undefined
+  // Phones show the results or the member, one at a time; desktops show both side by side.
+  const showList = desktop || !current
 
   return (
     <StaffLoyaltyLayout
@@ -26,19 +41,42 @@ export function MembersPage() {
     >
       <Toast message={toast} />
       <div className={ui.grid}>
-        <section className={ui.card} aria-labelledby="search">
-          <h2 id="search" className={ui.cardTitle} style={{ fontSize: 14 }}>
+        <section
+          className={cx(ui.card, !showList && 'hidden', 'max-lg:border-0 max-lg:bg-transparent max-lg:p-0')}
+          aria-labelledby="search"
+        >
+          <h2 id="search" className={ui.cardTitle} style={{ fontSize: 15 }}>
             Search members
           </h2>
           <div className={ui.searchRow} role="search">
-            <input
-              className={`${ui.input} ${ui.inputSmall}`}
-              placeholder="Member number, name or email"
-              aria-label="Member number, name or email"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <button type="button" className={ui.button} onClick={() => setQuery('')}>
+            <div className="relative">
+              <svg
+                viewBox="0 0 24 24"
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+                <path d="m20 20-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              <input
+                className={cx(ui.input, ui.inputSmall, 'pr-10 pl-9 max-lg:min-h-12 max-lg:rounded-xl max-lg:bg-soft max-lg:text-[15px]')}
+                placeholder="Member number, name or email"
+                aria-label="Member number, name or email"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              {query && (
+                <button
+                  type="button"
+                  className="absolute top-1/2 right-2 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-full border-0 bg-[#e5e8ee] text-muted lg:hidden"
+                  onClick={() => setQuery('')}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            <button type="button" className={cx(ui.button, 'max-lg:hidden')} onClick={() => setQuery('')}>
               Clear
             </button>
           </div>
@@ -52,17 +90,34 @@ export function MembersPage() {
               ) : (
                 <>
                   <span className={ui.small}>
-                    {members.length} member{members.length === 1 ? '' : 's'}
+                    {members.length} {desktop ? 'member' : 'result'}
+                    {members.length === 1 ? '' : 's'}
                   </span>
                   <ul className={ui.memberList} aria-label="Members found">
                     {members.map((m) => (
                       <li key={m.id}>
-                        <button type="button" aria-current={(picked ?? members[0].id) === m.id} onClick={() => setPicked(m.id)}>
-                          <strong>
-                            {m.name} <TierPill tier={m.tier} />
-                          </strong>
-                          <span className={ui.small}>
-                            {m.email} · {m.memberNumber}
+                        <button
+                          type="button"
+                          aria-current={current === m.id}
+                          onClick={() => setPicked(m.id)}
+                          className="max-lg:flex-row! max-lg:items-center max-lg:gap-3! max-lg:rounded-xl! max-lg:px-4! max-lg:py-3.5!"
+                        >
+                          <span
+                            className={cx(
+                              'grid size-11 flex-none place-items-center rounded-full text-base font-bold lg:hidden',
+                              m.tier?.code === 'gold' ? 'bg-[#fdf0c4] text-[#6b4e00]' : 'bg-[#eef0f3] text-navy',
+                            )}
+                            aria-hidden="true"
+                          >
+                            {initialsOf(m.name)}
+                          </span>
+                          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                            <strong>
+                              <span className="truncate">{m.name}</span> <TierPill tier={m.tier} />
+                            </strong>
+                            <span className={cx(ui.small, 'truncate')}>
+                              {desktop ? `${m.email} · ${m.memberNumber}` : `${m.memberNumber} · ${m.email}`}
+                            </span>
                           </span>
                         </button>
                       </li>
@@ -74,15 +129,10 @@ export function MembersPage() {
           </Loaded>
         </section>
 
-        {state.status === 'ready' && state.data.length > 0 ? (
-          <MemberPanel
-            key={picked && state.data.some((m) => m.id === picked) ? picked : state.data[0].id}
-            api={api}
-            id={picked && state.data.some((m) => m.id === picked) ? picked : state.data[0].id}
-            onAdjusted={showToast}
-          />
+        {current ? (
+          <MemberPanel key={current} api={api} id={current} onAdjusted={showToast} onBack={desktop ? undefined : () => setPicked(null)} />
         ) : (
-          <section className={ui.card}>
+          <section className={cx(ui.card, 'max-lg:hidden')}>
             <p className={ui.muted} style={{ textAlign: 'center', padding: '40px 0' }}>
               Pick a member to see their balance and ledger.
             </p>
@@ -93,7 +143,17 @@ export function MembersPage() {
   )
 }
 
-function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string; onAdjusted: (toast: string) => void }) {
+function MemberPanel({
+  api,
+  id,
+  onAdjusted,
+  onBack,
+}: {
+  api: StaffLoyaltyApi
+  id: string
+  onAdjusted: (toast: string) => void
+  onBack?: () => void
+}) {
   const load = useCallback(() => api.getMember(id), [api, id])
   const [state, retry] = useLoad(load)
   const [override, setOverride] = useState<MemberDetail | null>(null)
@@ -101,14 +161,15 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
 
   return (
     <section className={ui.card} aria-labelledby="member-name">
+      {onBack && (
+        <button type="button" className={cx(ui.linkButton, 'self-start')} onClick={onBack}>
+          ← Back to results
+        </button>
+      )}
       <Loaded state={state} retry={retry}>
         {(loaded) => {
           const member = override ?? loaded
-          const initials = member.name
-            .split(' ')
-            .map((w) => w[0])
-            .slice(0, 2)
-            .join('')
+          const initials = initialsOf(member.name)
           return (
             <>
               <div className={ui.cardHead}>
@@ -123,14 +184,14 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
                     <span className={ui.small}>{member.memberNumber}</span>
                   </div>
                 </div>
-                <button type="button" className={ui.buttonPrimary} onClick={() => setAdjusting(true)}>
+                <button type="button" className={cx(ui.buttonPrimary, 'max-sm:w-full')} onClick={() => setAdjusting(true)}>
                   Adjust balance
                 </button>
               </div>
 
               <div className={ui.stats}>
                 <Stat label="Miles balance" value={formatMiles(member.milesBalance)} />
-                <Stat label="Tier" value={member.tier?.name ?? 'No tier'} />
+                <Stat label="Tier" value={member.tier?.name ?? 'No tier'} tone={member.tier ? TIER_STAT[member.tier.code] : undefined} />
                 <Stat label="Tier valid until" value={member.tierExpiresAt ? formatDate(member.tierExpiresAt) : '—'} />
                 <Stat label="Customer" value={member.customerId} />
                 <Stat label="Email" value={member.email} />
@@ -138,8 +199,8 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
               </div>
 
               <h3 style={{ fontSize: 13, fontWeight: 700 }}>Ledger · newest first</h3>
-              <div className={ui.tableWrap}>
-                <table className={ui.table}>
+              <div className={ui.tableBox}>
+                <table className={cx(ui.table, ui.tableTall)}>
                   <thead>
                     <tr>
                       <th scope="col">Date</th>
@@ -208,9 +269,9 @@ function MemberPanel({ api, id, onAdjusted }: { api: StaffLoyaltyApi; id: string
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className={ui.stat}>
+    <div className={cx(ui.stat, tone)}>
       <span>{label}</span>
       <strong style={{ overflowWrap: 'anywhere' }}>{value}</strong>
     </div>
