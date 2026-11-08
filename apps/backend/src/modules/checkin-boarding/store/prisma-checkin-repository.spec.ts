@@ -222,10 +222,10 @@ describe('PrismaCheckInRepository', () => {
   it('searches on the pnr and the passenger name', async () => {
     const { db, repo } = build()
     db.check_in.findMany.mockResolvedValue([checkInRow])
-    await repo.searchCheckIns({ pnr: 'ER204F', name: 'Eriksson' })
+    await repo.searchCheckIns({ pnr: 'ER224F', name: 'Eriksson' })
     expect(db.check_in.findMany).toHaveBeenCalledWith({
       where: {
-        booking_coupon: { booking_passenger: { booking: { booking_reference: { contains: 'ER204F', mode: 'insensitive' } } } },
+        booking_coupon: { booking_passenger: { booking: { booking_reference: { contains: 'ER224F', mode: 'insensitive' } } } },
         AND: [
           {
             passenger: {

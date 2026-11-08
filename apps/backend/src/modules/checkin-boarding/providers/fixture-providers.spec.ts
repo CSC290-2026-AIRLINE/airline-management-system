@@ -16,16 +16,16 @@ describe('FixtureSeats', () => {
   it('seat hold is exclusive, expires after ttl and confirm fails after expiry', async () => {
     const clock = new FixtureClock()
     const seats = new FixtureSeats(clock)
-    const a = await seats.hold('flt-fy204', '17E', 'bp-er204f', 300_000)
-    await expect(seats.hold('flt-fy204', '17E', 'bp-ec204g', 300_000)).rejects.toMatchObject({ code: 'SEAT_TAKEN' })
+    const a = await seats.hold('flt-fy204', '17E', 'bp-er224f', 300_000)
+    await expect(seats.hold('flt-fy204', '17E', 'bp-ec224g', 300_000)).rejects.toMatchObject({ code: 'SEAT_TAKEN' })
     clock.set(new Date(DEMO_NOW.getTime() + 300_001))
     await expect(seats.confirm(a.id, null)).rejects.toMatchObject({ code: 'LOCK_EXPIRED' })
-    await expect(seats.hold('flt-fy204', '17E', 'bp-ec204g', 300_000)).resolves.toMatchObject({ seatCode: '17E' })
+    await expect(seats.hold('flt-fy204', '17E', 'bp-ec224g', 300_000)).resolves.toMatchObject({ seatCode: '17E' })
   })
 
   it('seat map marks taken, blocked, business rows and fees', async () => {
     const seats = new FixtureSeats(new FixtureClock())
-    const m = await seats.seatMap('flt-fy204', { bookingPassengerId: 'bp-er204f', cabin: 'economy' })
+    const m = await seats.seatMap('flt-fy204', { bookingPassengerId: 'bp-er224f', cabin: 'economy' })
     const find = (code: string) => m.rows.flatMap((r) => r.seats).find((s) => s.code === code)!
     expect(find('1A').status).toBe('taken')
     expect(find('1C').status).toBe('blocked')
@@ -37,24 +37,24 @@ describe('FixtureSeats', () => {
 
   it('a seat of another cabin cannot be held', async () => {
     const seats = new FixtureSeats(new FixtureClock())
-    await expect(seats.hold('flt-fy204', '1D', 'bp-er204f', 300_000)).rejects.toMatchObject({ code: 'SEAT_TAKEN' })
+    await expect(seats.hold('flt-fy204', '1D', 'bp-er224f', 300_000)).rejects.toMatchObject({ code: 'SEAT_TAKEN' })
   })
 
   it('assignAnyStandard skips exit rows when asked and taken seats', async () => {
     const seats = new FixtureSeats(new FixtureClock())
-    const seat = await seats.assignAnyStandard('flt-fy204', 'bp-er204f', { avoidExitRow: true })
+    const seat = await seats.assignAnyStandard('flt-fy204', 'bp-er224f', { avoidExitRow: true })
     expect(seat.seatCode).toMatch(/^(?:[6-9]|1[0-9]|20)[A-F]$/)
     expect(seat.type).toBe('standard')
-    expect(await seats.assigned('bp-er204f')).toMatchObject({ seatCode: seat.seatCode })
-    await expect(seats.assignAnyStandard('flt-fy204', 'bp-ec204g', { avoidExitRow: true })).resolves.not.toMatchObject({
+    expect(await seats.assigned('bp-er224f')).toMatchObject({ seatCode: seat.seatCode })
+    await expect(seats.assignAnyStandard('flt-fy204', 'bp-ec224g', { avoidExitRow: true })).resolves.not.toMatchObject({
       seatCode: seat.seatCode,
     })
   })
 
   it('a new hold releases the passenger previous hold', async () => {
     const seats = new FixtureSeats(new FixtureClock())
-    const first = await seats.hold('flt-fy204', '17E', 'bp-er204f', 300_000)
-    await seats.hold('flt-fy204', '19D', 'bp-er204f', 300_000)
+    const first = await seats.hold('flt-fy204', '17E', 'bp-er224f', 300_000)
+    await seats.hold('flt-fy204', '19D', 'bp-er224f', 300_000)
     await expect(seats.confirm(first.id, null)).rejects.toMatchObject({ code: 'NOT_FOUND' })
     await expect(seats.confirm('lock-2', null)).resolves.toMatchObject({ seatCode: '19D' })
   })
@@ -62,9 +62,9 @@ describe('FixtureSeats', () => {
 
 describe('FixtureBookings', () => {
   it('bookings are found by PNR + surname, case-insensitive', async () => {
-    expect(await new FixtureBookings().findByPnrAndLastName('er204f', 'ERIKSSON')).toHaveLength(1)
-    expect(await new FixtureBookings().findByPnrAndLastName('ER204F', 'eriksson')).toHaveLength(1)
-    expect(await new FixtureBookings().findByPnrAndLastName('ER204F', 'Erikson')).toHaveLength(0)
+    expect(await new FixtureBookings().findByPnrAndLastName('er224f', 'ERIKSSON')).toHaveLength(1)
+    expect(await new FixtureBookings().findByPnrAndLastName('ER224F', 'eriksson')).toHaveLength(1)
+    expect(await new FixtureBookings().findByPnrAndLastName('ER224F', 'Erikson')).toHaveLength(0)
   })
 
   it('the demo has 14 bookings, one police and two special assistance', async () => {
@@ -79,10 +79,10 @@ describe('FixtureScreening', () => {
   it('screening holds on the demo last4 and clears the specimen', async () => {
     const screening = new FixtureScreening()
     expect(
-      await screening.check({ passengerId: 'pax-hd204h', flightId: 'flt-fy204', numberLast4: '0000', lastName: 'Kowalski' }),
+      await screening.check({ passengerId: 'pax-hd224h', flightId: 'flt-fy204', numberLast4: '0000', lastName: 'Kowalski' }),
     ).toMatchObject({ outcome: 'held' })
     expect(
-      await screening.check({ passengerId: 'pax-er204f', flightId: 'flt-fy204', numberLast4: '02C3', lastName: 'Eriksson' }),
+      await screening.check({ passengerId: 'pax-er224f', flightId: 'flt-fy204', numberLast4: '02C3', lastName: 'Eriksson' }),
     ).toMatchObject({ outcome: 'clear' })
   })
 })
@@ -90,10 +90,10 @@ describe('FixtureScreening', () => {
 describe('FixturePassengers', () => {
   it('fills empty profile fields and never overwrites', async () => {
     const passengers = new FixturePassengers()
-    await passengers.fill('pax-er204f', { passportNumber: 'L898902C3', nationality: 'ut' })
-    expect(await passengers.byId('pax-er204f')).toMatchObject({ passportNumber: 'L898902C3', nationality: 'ut' })
-    await passengers.fill('pax-er204f', { passportNumber: 'OTHER' })
-    expect(await passengers.byId('pax-er204f')).toMatchObject({ passportNumber: 'L898902C3' })
+    await passengers.fill('pax-er224f', { passportNumber: 'L898902C3', nationality: 'ut' })
+    expect(await passengers.byId('pax-er224f')).toMatchObject({ passportNumber: 'L898902C3', nationality: 'ut' })
+    await passengers.fill('pax-er224f', { passportNumber: 'OTHER' })
+    expect(await passengers.byId('pax-er224f')).toMatchObject({ passportNumber: 'L898902C3' })
   })
 
   it('finds a profile by passport number', async () => {

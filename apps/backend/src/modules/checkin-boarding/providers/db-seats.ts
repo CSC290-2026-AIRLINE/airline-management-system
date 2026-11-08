@@ -5,7 +5,7 @@ import type { Cabin, SeatLock, SeatMap, SeatStatus, SeatType } from '../api-type
 import { CheckInError } from '../errors'
 import type { Numeric } from '../store/prisma-mappers'
 import { SEAT_LAYOUT, SEAT_LIST, seatOf } from './fixtures'
-import { CLOCK } from './providers'
+import { CLOCK, SEAT_FEE_TYPE } from './providers'
 import type { ClockProvider, SeatProvider } from './providers'
 
 interface SeatRow {
@@ -240,12 +240,12 @@ export class DbSeats implements SeatProvider {
   }
 
   private feeOf(rows: Array<{ cabin: string; seat_type: string; amount: Numeric }>, cabin: Cabin, type: SeatType): number {
-    const row = rows.find((r) => r.cabin === cabin && r.seat_type === type)
+    const row = rows.find((r) => r.cabin === cabin && r.seat_type === SEAT_FEE_TYPE[type])
     return row ? Number(row.amount) : 0
   }
 
   private async feeOfRow(cabin: Cabin, type: SeatType): Promise<number> {
-    const row = await this.db.seat_fee.findFirst({ where: { cabin, seat_type: type, deleted_at: null } })
+    const row = await this.db.seat_fee.findFirst({ where: { cabin, seat_type: SEAT_FEE_TYPE[type], deleted_at: null } })
     return row ? Number(row.amount) : 0
   }
 }

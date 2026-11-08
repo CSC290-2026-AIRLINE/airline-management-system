@@ -54,7 +54,7 @@ afterEach(async () => {
 
 describe('customer routes', () => {
   it('POST /check-ins starts and GET returns it; unknown id is a 404 envelope', async () => {
-    const r = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F', lastName: 'Eriksson' }).expect(201)
+    const r = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER224F', lastName: 'Eriksson' }).expect(201)
     expect(r.body.status).toBe('started')
     await req.get(`/check-ins/${r.body.id}`).set('x-test-user', CUSTOMER).expect(200)
     const e = await req.get('/check-ins/nope').set('x-test-user', CUSTOMER).expect(404)
@@ -62,12 +62,12 @@ describe('customer routes', () => {
   })
 
   it('validation errors use the envelope with the field', async () => {
-    const e = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F' }).expect(400)
+    const e = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER224F' }).expect(400)
     expect(e.body.error).toMatchObject({ code: 'VALIDATION', details: { field: 'lastName' } })
   })
 
   it('full passenger flow over HTTP: document, seat-lock, seat, baggage, complete, boarding-pass', async () => {
-    const started = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F', lastName: 'Eriksson' }).expect(201)
+    const started = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER224F', lastName: 'Eriksson' }).expect(201)
     const id = started.body.id
 
     const document = await req
@@ -97,7 +97,7 @@ describe('customer routes', () => {
   })
 
   it('an MRZ line that is too long is a validation error', async () => {
-    const started = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F', lastName: 'Eriksson' }).expect(201)
+    const started = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER224F', lastName: 'Eriksson' }).expect(201)
     const e = await req
       .put(`/check-ins/${started.body.id}/document`)
       .set('x-test-user', CUSTOMER)
@@ -107,7 +107,7 @@ describe('customer routes', () => {
   })
 
   it('the seat map shows the caller their own seat and hides the other cabin', async () => {
-    const started = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F', lastName: 'Eriksson' }).expect(201)
+    const started = await req.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER224F', lastName: 'Eriksson' }).expect(201)
     const id = started.body.id
     await req
       .put(`/check-ins/${id}/document`)
@@ -188,7 +188,7 @@ describe('staff routes', () => {
   })
 
   it('staff: the counter extras (carry-on, print, gate change, flights and gates)', async () => {
-    const search = await req.get('/staff/check-ins?pnr=PL204A').set('x-test-user', STAFF).expect(200)
+    const search = await req.get('/staff/check-ins?pnr=PL224A').set('x-test-user', STAFF).expect(200)
     const row = search.body[0]
 
     const carryOn = await req
@@ -211,7 +211,7 @@ describe('staff routes', () => {
   })
 
   it('a customer may not read the counter of another passenger', async () => {
-    const search = await req.get('/staff/check-ins?pnr=PL204A').set('x-test-user', STAFF).expect(200)
+    const search = await req.get('/staff/check-ins?pnr=PL224A').set('x-test-user', STAFF).expect(200)
     const row = search.body[0]
     const e = await req.get(`/staff/check-ins/${row.id}`).set('x-test-user', CUSTOMER).expect(403)
     expect(e.body.error).toMatchObject({ code: 'FORBIDDEN' })
@@ -221,7 +221,7 @@ describe('staff routes', () => {
     const staffApp = await startApp(() => Promise.resolve({ isStaff: true, staffId: 'staff-demo' }))
     try {
       const r = request(staffApp.getHttpServer())
-      const started = await r.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F', lastName: 'Eriksson' }).expect(201)
+      const started = await r.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER224F', lastName: 'Eriksson' }).expect(201)
       const e = await r.put(`/check-ins/${started.body.id}/baggage`).set('x-test-user', CUSTOMER).send({ declaredBags: 1 }).expect(403)
       expect(e.body.error).toMatchObject({ code: 'FORBIDDEN' })
     } finally {
@@ -243,7 +243,7 @@ describe('the staff guard', () => {
       const r = request(customerApp.getHttpServer())
       const e = await r.get('/staff/gates').set('x-test-user', CUSTOMER).expect(403)
       expect(e.body.error).toMatchObject({ code: 'FORBIDDEN' })
-      await r.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER204F', lastName: 'Eriksson' }).expect(201)
+      await r.post('/check-ins').set('x-test-user', CUSTOMER).send({ pnr: 'ER224F', lastName: 'Eriksson' }).expect(201)
     } finally {
       await customerApp.close()
     }

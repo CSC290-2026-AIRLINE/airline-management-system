@@ -17,7 +17,7 @@ const couponRow = (over: Record<string, unknown> = {}) => ({
   status: 'confirmed',
   booking_passenger: {
     id: 'bp-1',
-    booking: { id: 'bk-1', booking_reference: 'PL204A', status: 'confirmed', customer: { user_id: 'u-1' } },
+    booking: { id: 'bk-1', booking_reference: 'PL224A', status: 'confirmed', customer: { user_id: 'u-1' } },
     passenger: { first_name: 'Narong', last_name: 'Sukjai', passport_number: 'TH1234567' },
   },
   booking_segment: { cabin: 'economy', fare_class: { code: 'Y' } },
@@ -30,17 +30,17 @@ describe('DbBookings', () => {
     held.booking_passenger.booking.status = 'held'
     const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([held]), findFirst: jest.fn() } }
     const bookings = new DbBookings(db as unknown as DbService)
-    const [booking] = await bookings.findByPnrAndLastName('PL204A', 'sukjai')
+    const [booking] = await bookings.findByPnrAndLastName('PL224A', 'sukjai')
     expect(booking.paid).toBe(false)
   })
 
   it('a confirmed booking and coupon are paid', async () => {
     const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([couponRow()]), findFirst: jest.fn() } }
     const bookings = new DbBookings(db as unknown as DbService)
-    const [booking] = await bookings.findByPnrAndLastName('PL204A', 'sukjai')
+    const [booking] = await bookings.findByPnrAndLastName('PL224A', 'sukjai')
     expect(booking).toMatchObject({
       paid: true,
-      pnr: 'PL204A',
+      pnr: 'PL224A',
       flightId: 'flt-fy204',
       passengerId: 'pax-1',
       bookingPassengerId: 'bp-1',
@@ -56,12 +56,12 @@ describe('DbBookings', () => {
   it('the PNR is matched exactly and the surname case-insensitively', async () => {
     const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn() } }
     const bookings = new DbBookings(db as unknown as DbService)
-    await bookings.findByPnrAndLastName('PL204A', 'sukjai')
+    await bookings.findByPnrAndLastName('PL224A', 'sukjai')
     expect(db.booking_coupon.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           booking_passenger: {
-            booking: { booking_reference: 'PL204A' },
+            booking: { booking_reference: 'PL224A' },
             passenger: { last_name: { equals: 'sukjai', mode: 'insensitive' } },
           },
         },
@@ -72,14 +72,14 @@ describe('DbBookings', () => {
   it('the police mark comes from the passport number', async () => {
     const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([couponRow()]), findFirst: jest.fn() } }
     const bookings = new DbBookings(db as unknown as DbService)
-    const [booking] = await bookings.findByPnrAndLastName('PL204A', 'sukjai')
+    const [booking] = await bookings.findByPnrAndLastName('PL224A', 'sukjai')
     expect(booking.isPolice).toBe(true)
   })
 
   it('feature 3 has no special assistance table yet', async () => {
     const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([couponRow()]), findFirst: jest.fn() } }
     const bookings = new DbBookings(db as unknown as DbService)
-    const [booking] = await bookings.findByPnrAndLastName('PL204A', 'sukjai')
+    const [booking] = await bookings.findByPnrAndLastName('PL224A', 'sukjai')
     expect(booking.specialAssistance).toEqual([])
   })
 })
@@ -150,7 +150,7 @@ describe('DbPricing', () => {
     await expect(new DbPricing(db as unknown as DbService).seatFee('economy', 'exit')).resolves.toBe(0)
   })
 
-  it('the seat fee comes from the cabin and the seat type', async () => {
+  it('the seat fee comes from the cabin and the seat type of feature 4', async () => {
     const db = {
       overweight_baggage_rate: { findMany: jest.fn() },
       seat_fee: { findFirst: jest.fn().mockResolvedValue({ amount: 450 }) },
@@ -158,7 +158,11 @@ describe('DbPricing', () => {
     const pricing = new DbPricing(db as unknown as DbService)
     await expect(pricing.seatFee('economy', 'exit')).resolves.toBe(450)
     expect(db.seat_fee.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { cabin: 'economy', seat_type: 'exit', deleted_at: null } }),
+      expect.objectContaining({ where: { cabin: 'economy', seat_type: 'exit_row', deleted_at: null } }),
+    )
+    await pricing.seatFee('economy', 'front')
+    expect(db.seat_fee.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { cabin: 'economy', seat_type: 'extra_legroom', deleted_at: null } }),
     )
   })
 })

@@ -17,6 +17,14 @@ export const SENSOR = Symbol('SENSOR')
 export const STAFF_IDENTITY = Symbol('STAFF_IDENTITY')
 export const SETTINGS = Symbol('SETTINGS')
 
+/** Feature 4 stores the seat type in its own words; feature 6 calls them standard, front and exit. */
+export const SEAT_FEE_TYPE: Record<SeatType, string> = {
+  standard: 'normal',
+  front: 'extra_legroom',
+  exit: 'exit_row',
+  business: 'normal',
+}
+
 /** Feature 1 owns the simulation clock; every business timestamp comes from here. */
 export interface ClockProvider {
   now(): Date

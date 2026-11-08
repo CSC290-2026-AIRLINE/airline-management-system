@@ -1,12 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import type { Cabin, CarryOnAllowance } from '../api-types'
+import type { Cabin, CarryOnAllowance, SeatType } from '../api-types'
 import { DEFAULT_WINDOW_SETTINGS } from '../domain/window'
 import type { WindowSettings } from '../domain/window'
 import type { Numeric } from '../store/prisma-mappers'
 import { fromIsoDate, toIsoDate } from '../store/prisma-mappers'
 import { POLICE_PASSPORTS, SETTINGS } from './fixtures'
-import { CLOCK } from './providers'
+import { CLOCK, SEAT_FEE_TYPE } from './providers'
 import type {
   BookingPassenger,
   BookingProvider,
@@ -250,8 +250,8 @@ export class DbPricing implements PricingProvider {
     }
   }
 
-  async seatFee(cabin: Cabin, type: string): Promise<number> {
-    const row = await this.db.seat_fee.findFirst({ where: { cabin, seat_type: type, deleted_at: null } })
+  async seatFee(cabin: Cabin, type: SeatType): Promise<number> {
+    const row = await this.db.seat_fee.findFirst({ where: { cabin, seat_type: SEAT_FEE_TYPE[type], deleted_at: null } })
     return row ? Number(row.amount) : 0
   }
 }

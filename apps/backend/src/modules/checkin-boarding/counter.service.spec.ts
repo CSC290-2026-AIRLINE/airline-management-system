@@ -81,7 +81,7 @@ function build() {
 
 /** Pim Saetang is seeded checked_in on FY 204: economy, 20 kg free, 500 THB per kg, 32 kg a bag. */
 async function pimId(store: CheckInStore): Promise<string> {
-  const record = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-ec204g')
+  const record = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-ec224g')
   if (!record) throw new Error('Pim Saetang is not seeded')
   return record.id
 }
@@ -163,7 +163,7 @@ describe('CounterService.tagBag', () => {
     expect((await counter.tagBag(staff, b1.id)).bag.tagNumber).toBe('0402000002')
     expect(t.view.issues).not.toContain('EXCESS_UNPAID')
     expect(payments.charges).toEqual([
-      { amount: 1500, currency: 'THB', purpose: 'excess_baggage', reference: `check_in:${id}:bags:1`, bookingId: 'bk-ec204g' },
+      { amount: 1500, currency: 'THB', purpose: 'excess_baggage', reference: `check_in:${id}:bags:1`, bookingId: 'bk-ec224g' },
     ])
   })
 
@@ -245,7 +245,7 @@ describe('CounterService.removeBag', () => {
     // The second bag was charged in the same payment, so it may not be removed.
     await expect(counter.removeBag(staff, v.bags[1].id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
     expect(payments.charges).toEqual([
-      { amount: 7500, currency: 'THB', purpose: 'excess_baggage', reference: `check_in:${id}:bags:1`, bookingId: 'bk-ec204g' },
+      { amount: 7500, currency: 'THB', purpose: 'excess_baggage', reference: `check_in:${id}:bags:1`, bookingId: 'bk-ec224g' },
     ])
     expect((await counter.detail(staff, id)).bags).toHaveLength(2)
   })
@@ -273,7 +273,7 @@ describe('CounterService issues', () => {
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
-      passengerId: 'pax-ec318d',
+      passengerId: 'pax-ec338d',
       firstName: 'Sara',
       lastName: 'Lopez',
       cabin: 'economy',
@@ -299,7 +299,7 @@ describe('CounterService issues', () => {
 
   it('the document view tells when staff checked the visa', async () => {
     const { counter, checkins } = build()
-    const c = await checkins.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    const c = await checkins.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
     await checkins.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
     const before = await counter.detail(staff, c.id)
     expect(before.checkIn.document!.visaCheckedAt).toBeNull()
@@ -320,7 +320,7 @@ describe('CounterService issues', () => {
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
-      passengerId: 'pax-ec318d',
+      passengerId: 'pax-ec338d',
       firstName: 'Sara',
       lastName: 'Lopez',
       cabin: 'economy',
@@ -352,7 +352,7 @@ describe('CounterService issues', () => {
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
-      passengerId: 'pax-ec318d',
+      passengerId: 'pax-ec338d',
       firstName: 'Sara',
       lastName: 'Lopez',
       cabin: 'economy',
@@ -388,7 +388,7 @@ describe('CounterService issues', () => {
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
-      passengerId: 'pax-ec318d',
+      passengerId: 'pax-ec338d',
       firstName: 'Sara',
       lastName: 'Lopez',
       cabin: 'economy',
@@ -415,7 +415,7 @@ describe('CounterService issues', () => {
 
   it('a new document without differences leaves the clearance empty', async () => {
     const { counter, checkins, store } = build()
-    const c = await checkins.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    const c = await checkins.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
     // Anna's profile has no nationality yet: an unmappable one flags the document.
     await checkins.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: ANNA_UNMAPPED_LINE2 })
     const documentId = (await counter.detail(staff, c.id)).checkIn.document!.id
@@ -438,7 +438,7 @@ describe('CounterService issues', () => {
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
-      passengerId: 'pax-ec318d',
+      passengerId: 'pax-ec338d',
       firstName: 'Sara',
       lastName: 'Lopez',
       cabin: 'economy',
@@ -468,7 +468,7 @@ describe('CounterService issues', () => {
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
-      passengerId: 'pax-ec318d',
+      passengerId: 'pax-ec338d',
       firstName: 'Sara',
       lastName: 'Lopez',
       cabin: 'economy',
@@ -505,12 +505,12 @@ describe('CounterService lookups', () => {
     const v = await weigh(counter, id, 15)
     const t = await counter.tagBag(staff, v.bags[0].id)
     const found = await counter.bagByTag(staff, t.bag.tagNumber!)
-    expect(found).toMatchObject({ pnr: 'EC204G', passengerName: 'Pim Saetang' })
+    expect(found).toMatchObject({ pnr: 'EC224G', passengerName: 'Pim Saetang' })
     expect(found.flight.flightNumber).toBe('FY 204')
     await expect(counter.bagByTag(staff, '0402999999')).rejects.toMatchObject({ code: 'NOT_FOUND' })
     const all = await counter.bagsByFlight(staff, 'flt-fy204')
     expect(all).toHaveLength(1)
-    expect(all[0].pnr).toBe('EC204G')
+    expect(all[0].pnr).toBe('EC224G')
   })
 
   it('printPass stamps printed_at once and keeps it on reprint', async () => {
@@ -529,8 +529,8 @@ describe('CounterService lookups', () => {
     const byFlight = await counter.search(staff, { flightId: 'flt-fy204' })
     expect(byFlight.length).toBeGreaterThan(0)
     expect(byFlight.every((row) => row.flightNumber === 'FY 204')).toBe(true)
-    const byPnr = await counter.search(staff, { pnr: 'ec204g' })
-    expect(byPnr.map((row) => row.pnr)).toEqual(['EC204G'])
+    const byPnr = await counter.search(staff, { pnr: 'ec224g' })
+    expect(byPnr.map((row) => row.pnr)).toEqual(['EC224G'])
     const byName = await counter.search(staff, { name: 'saetang' })
     expect(byName.map((row) => row.passengerName)).toEqual(['Pim Saetang'])
   })

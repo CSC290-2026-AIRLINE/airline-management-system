@@ -114,7 +114,7 @@ describe('GateService.scan', () => {
       reason: 'ALREADY_BOARDED',
     })
     expect(await store.listEvents('flt-fy204')).toHaveLength(2)
-    expect((await store.getCheckIn(await idOf(store, 'SA204B')))?.status).toBe('boarded')
+    expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).toBe('boarded')
   })
 
   it('scan rejects wrong gate with the correct gate, not found and on hold', async () => {
@@ -195,7 +195,7 @@ describe('GateService.scan', () => {
 
   it('scan rejects the pass of a cancelled check-in with CANCELLED', async () => {
     const { gate, store } = build()
-    await store.updateCheckIn(await idOf(store, 'SA204B'), { status: 'cancelled' })
+    await store.updateCheckIn(await idOf(store, 'SA224B'), { status: 'cancelled' })
     expect(await gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'R8KD2WQN' })).toMatchObject({
       event: 'rejected',
       reason: 'CANCELLED',
@@ -224,7 +224,7 @@ describe('GateService.setGate', () => {
     expect((await gate.passengerList(staff, 'gate-a2', 'flt-fy204')).gate.code).toBe('A2')
     expect(notifySpy).toHaveBeenCalledWith('gate_changed', expect.objectContaining({ flightId: 'flt-fy204' }))
     expect(auditSpy).toHaveBeenCalledWith(expect.objectContaining({ action: 'gate.change' }))
-    expect((await checkins.boardingPass(staff, await idOf(store, 'SA204B'))).gate).toBe('A2')
+    expect((await checkins.boardingPass(staff, await idOf(store, 'SA224B'))).gate).toBe('A2')
   })
 
   it('setGate to the same gate is a no-op and an unknown gate is refused', async () => {
@@ -274,7 +274,7 @@ describe('GateService head-count and close', () => {
 
   it('a bag offloaded by the gate close is never removed', async () => {
     const { gate, counter, store } = build()
-    const pim = await idOf(store, 'EC204G')
+    const pim = await idOf(store, 'EC224G')
     const weighed = await counter.weighBag(staff, pim, { weightKg: 10, lengthCm: 60, widthCm: 40, heightCm: 20 })
     const tagged = await counter.tagBag(staff, weighed.bags[0].id)
     await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
@@ -285,7 +285,7 @@ describe('GateService head-count and close', () => {
 
   it('close needs a count, shows a mismatch, confirms, freezes, marks no-shows and offloads bags', async () => {
     const { gate, counter, store } = build()
-    const pim = await idOf(store, 'EC204G')
+    const pim = await idOf(store, 'EC224G')
     const weighed = await counter.weighBag(staff, pim, { weightKg: 10, lengthCm: 60, widthCm: 40, heightCm: 20 })
     const tagged = await counter.tagBag(staff, weighed.bags[0].id)
 
@@ -300,7 +300,7 @@ describe('GateService head-count and close', () => {
     const head = await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
     expect(head).toMatchObject({ boardedCount: 1, closedAt: '2026-11-11T01:00:00.000Z' })
     expect((await store.getCheckIn(pim))?.status).toBe('no_show')
-    expect((await store.getCheckIn(await idOf(store, 'SA204B')))?.status).toBe('boarded')
+    expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).toBe('boarded')
     expect((await store.listEvents('flt-fy204')).filter((e) => e.event === 'no_show')).toHaveLength(7)
     expect((await store.getBag(tagged.bag.id))?.status).toBe('offloaded')
   })
