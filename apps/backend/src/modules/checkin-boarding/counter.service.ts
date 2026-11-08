@@ -63,9 +63,11 @@ export class CounterService {
     this.staffIdOf(actor)
     const pnr = query.pnr?.trim().toUpperCase()
     const name = query.name?.trim().toUpperCase()
+    const records = await this.store.searchCheckIns(query)
+    const bookings = await Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id)))
     const rows: StaffCheckInRow[] = []
-    for (const record of await this.store.searchCheckIns(query)) {
-      const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
+    for (const [index, record] of records.entries()) {
+      const booking = bookings[index]
       if (!booking) continue
       const passengerName = `${booking.firstName} ${booking.lastName}`
       if (pnr && !booking.pnr.toUpperCase().includes(pnr)) continue
@@ -267,22 +269,26 @@ export class CounterService {
     return this.detail(actor, record.id)
   }
 
-  /** Clears a name mismatch from the issue list. The profile differences of the same document go with it. */
+  /** Clears the flags of a document: the name mismatch and the profile differences, one staff action. */
   async clearMismatch(actor: Actor, documentId: string): Promise<StaffCheckInView> {
     const staffId = this.staffIdOf(actor)
     const document = await this.store.getDocument(documentId)
     if (!document) throw notFound('Travel document')
-    if (!document.name_mismatch || document.name_mismatch_cleared_at) {
-      throw invalidState('There is no name mismatch to clear')
-    }
+    const nameUncleared = document.name_mismatch && !document.name_mismatch_cleared_at
+    const differencesUncleared = document.profile_differences.length > 0 && !document.profile_differences_cleared_at
+    if (!nameUncleared && !differencesUncleared) throw invalidState('There is nothing to clear on this document')
     const clearedAt = this.clock.now()
-    const patch: UpdateDocumentPatch = { name_mismatch_cleared_by: staffId, name_mismatch_cleared_at: clearedAt }
-    if (document.profile_differences.length > 0) {
+    const patch: UpdateDocumentPatch = {}
+    if (nameUncleared) {
+      patch.name_mismatch_cleared_by = staffId
+      patch.name_mismatch_cleared_at = clearedAt
+    }
+    if (differencesUncleared) {
       patch.profile_differences_cleared_by = staffId
       patch.profile_differences_cleared_at = clearedAt
     }
     await this.store.updateDocument(documentId, patch)
-    await this.record(actor, 'travel_document.clear_mismatch', 'travel_document', documentId, 'name mismatch cleared')
+    await this.record(actor, 'travel_document.clear_mismatch', 'travel_document', documentId, 'document flags cleared')
     return this.detail(actor, document.check_in_id)
   }
 

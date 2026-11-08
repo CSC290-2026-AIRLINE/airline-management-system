@@ -1,7 +1,7 @@
 import type { Actor } from './actor'
 import { CheckInService } from './checkin.service'
 import { CounterService } from './counter.service'
-import { buildLine2 } from './domain/mrz'
+import { SPECIMEN_LINE1, buildLine2, buildSpecimenLine2 } from './domain/mrz'
 import { BOOKINGS } from './providers/fixtures'
 import {
   FixtureBookings,
@@ -31,6 +31,17 @@ const SARA_LINE2 = buildLine2({ number: 'UTO123456', nationality3: 'UTO', dob: '
 /** A second passport of the same passenger: another surname, so the name flags again. */
 const SARA_OTHER_LINE1 = 'P<UTO' + 'GARCIA'.padEnd(10, '<') + 'MARIA'.padEnd(29, '<')
 const SARA_OTHER_LINE2 = buildLine2({ number: 'UTO123456', nationality3: 'UTO', dob: '910829', sex: 'F', expiry: '300415' })
+
+/** The same passport with the given names of the booking: no name flag, only the profile differences. */
+const SARA_SAME_LINE1 = 'P<UTO' + 'LOPEZ'.padEnd(10, '<') + 'SARA'.padEnd(29, '<')
+const SARA_SAME_LINE2 = buildLine2({ number: 'UTO123456', nationality3: 'UTO', dob: '910829', sex: 'F', expiry: '300415' })
+
+/** A third passport of the same passenger: another passport number, so the profile flags it again. */
+const SARA_NEW_LINE1 = 'P<UTO' + 'LOPEZ'.padEnd(10, '<') + 'MARIA'.padEnd(29, '<')
+const SARA_NEW_LINE2 = buildLine2({ number: 'UTO765432', nationality3: 'UTO', dob: '910829', sex: 'F', expiry: '300415' })
+
+/** Anna's passport with a nationality no country table has: the profile flags it as unmapped. */
+const ANNA_UNMAPPED_LINE2 = buildLine2({ number: 'L898902C3', nationality3: 'XXA', dob: '740812', sex: 'F', expiry: '300415' })
 
 function build() {
   const clock = new FixtureClock()
@@ -304,6 +315,90 @@ describe('CounterService issues', () => {
     const document = (await store.getDocument(documentId))!
     expect(document.profile_differences_cleared_by).toBe('staff-demo')
     expect(document.profile_differences_cleared_at).not.toBeNull()
+  })
+
+  it('a document with differences but no name mismatch is cleared by one call', async () => {
+    const { counter, checkins, store } = build()
+    const sara: BookingPassenger = {
+      bookingPassengerId: 'bp-test-sara',
+      pnr: 'VS318X',
+      paid: true,
+      flightId: 'flt-fy318',
+      passengerId: 'pax-ec318d',
+      firstName: 'Sara',
+      lastName: 'Lopez',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+      customerUserId: null,
+    }
+    addedBookings.push(sara)
+    BOOKINGS.push(sara)
+    const c = await checkins.start(cust, { pnr: 'VS318X', lastName: 'Lopez' })
+    // The names on the passport match the booking, so only the profile differences flag.
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SARA_SAME_LINE1, mrzLine2: SARA_SAME_LINE2, visaNumber: 'V123' })
+
+    const view = await counter.detail(staff, c.id)
+    expect(view.issues).toContain('PROFILE_DIFFERS')
+    expect(view.issues).not.toContain('NAME_MISMATCH')
+    const documentId = view.checkIn.document!.id
+    const cleared = await counter.clearMismatch(staff, documentId)
+    expect(cleared.issues).not.toContain('PROFILE_DIFFERS')
+    const document = (await store.getDocument(documentId))!
+    expect(document.profile_differences_cleared_by).toBe('staff-demo')
+    expect(document.profile_differences_cleared_at).not.toBeNull()
+    // There was no name mismatch, so the name pair stays empty: the column forbids the other way round.
+    expect(document.name_mismatch_cleared_at).toBeNull()
+  })
+
+  it('a new document after a cleared difference flags the difference again', async () => {
+    const { counter, checkins, store } = build()
+    const sara: BookingPassenger = {
+      bookingPassengerId: 'bp-test-sara',
+      pnr: 'VS318X',
+      paid: true,
+      flightId: 'flt-fy318',
+      passengerId: 'pax-ec318d',
+      firstName: 'Sara',
+      lastName: 'Lopez',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+      customerUserId: null,
+    }
+    addedBookings.push(sara)
+    BOOKINGS.push(sara)
+    const c = await checkins.start(cust, { pnr: 'VS318X', lastName: 'Lopez' })
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SARA_LINE1, mrzLine2: SARA_LINE2, visaNumber: 'V123' })
+    const documentId = (await counter.detail(staff, c.id)).checkIn.document!.id
+    await counter.clearMismatch(staff, documentId)
+    expect((await counter.detail(staff, c.id)).issues).not.toContain('PROFILE_DIFFERS')
+
+    // The clearance belongs to the first passport: the next one has to be looked at again.
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SARA_NEW_LINE1, mrzLine2: SARA_NEW_LINE2, visaNumber: 'V123' })
+    expect((await counter.detail(staff, c.id)).issues).toContain('PROFILE_DIFFERS')
+    const document = (await store.getDocument(documentId))!
+    expect(document.profile_differences_cleared_at).toBeNull()
+    expect(document.profile_differences_cleared_by).toBeNull()
+  })
+
+  it('a new document without differences leaves the clearance empty', async () => {
+    const { counter, checkins, store } = build()
+    const c = await checkins.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    // Anna's profile has no nationality yet: an unmappable one flags the document.
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: ANNA_UNMAPPED_LINE2 })
+    const documentId = (await counter.detail(staff, c.id)).checkIn.document!.id
+    expect((await counter.detail(staff, c.id)).issues).toContain('PROFILE_DIFFERS')
+    await counter.clearMismatch(staff, documentId)
+
+    // The next passport carries a known nationality: nothing differs any more.
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const document = (await store.getDocument(documentId))!
+    expect(document.profile_differences).toEqual([])
+    // The column only accepts a clearance when there are differences to clear.
+    expect(document.profile_differences_cleared_at).toBeNull()
   })
 
   it('a new document after a cleared name mismatch flags the mismatch again', async () => {

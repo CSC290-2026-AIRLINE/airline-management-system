@@ -88,7 +88,7 @@ test('no seat picked gets any free standard seat, marked as mine on the map', as
   const c = await api.start({ pnr: 'ER204F', lastName: 'Eriksson' })
   await api.submitDocument(c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
   const p = await api.complete(c.id)
-  const map = await api.seatMap(c.flight.id)
+  const map = await api.seatMap(c.flight.id, c.id)
   const mine = map.rows.flatMap((row) => row.seats).filter((seat) => seat.status === 'mine')
   assert.equal(mine.length, 1)
   assert.equal(mine[0].code, p.seat)

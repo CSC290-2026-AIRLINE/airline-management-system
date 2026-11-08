@@ -121,7 +121,7 @@ describe('customer routes', () => {
       .expect(201)
     await req.put(`/check-ins/${id}/seat`).set('x-test-user', CUSTOMER).send({ lockId: lock.body.id }).expect(200)
 
-    const map = await req.get('/flights/flt-fy204/seat-map').set('x-test-user', CUSTOMER).expect(200)
+    const map = await req.get(`/flights/flt-fy204/seat-map?checkInId=${id}`).set('x-test-user', CUSTOMER).expect(200)
     const seats = map.body.rows.flatMap((row: { seats: { code: string; status: string }[] }) => row.seats)
     expect(seats.find((seat: { code: string }) => seat.code === '18B')?.status).toBe('mine')
     expect(seats.find((seat: { code: string }) => seat.code === '1C')?.status).toBe('blocked')

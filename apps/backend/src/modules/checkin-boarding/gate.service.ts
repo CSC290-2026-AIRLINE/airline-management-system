@@ -103,10 +103,12 @@ export class GateService {
     const boarded = await this.boardedPassIds(flightId)
 
     const entries: GateListEntry[] = []
-    for (const record of await this.store.listCheckInsByFlight(flightId)) {
+    const records = await this.store.listCheckInsByFlight(flightId)
+    const bookings = await Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id)))
+    for (const [index, record] of records.entries()) {
       const pass = (await this.store.passesForCheckIn(record.id))[0]
       if (!pass) continue
-      const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
+      const booking = bookings[index]
       entries.push({
         checkInId: record.id,
         boardingPassId: pass.id,

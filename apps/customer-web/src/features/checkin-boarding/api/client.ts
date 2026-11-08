@@ -4,7 +4,7 @@ export interface CheckInApi {
   start(input: { pnr: string; lastName: string }): Promise<CheckInView>
   get(id: string): Promise<CheckInView>
   submitDocument(id: string, input: { mrzLine1: string; mrzLine2: string; visaNumber?: string }): Promise<CheckInView>
-  seatMap(flightId: string): Promise<SeatMap>
+  seatMap(flightId: string, checkInId?: string): Promise<SeatMap>
   holdSeat(flightId: string, input: { checkInId: string; seatCode: string }): Promise<SeatLock>
   releaseSeat(lockId: string): Promise<void>
   confirmSeat(id: string, input: { lockId: string }): Promise<CheckInView>
@@ -52,7 +52,8 @@ export function createHttpApi(fetchWithAuth: (path: string, init?: RequestInit) 
     start: (input) => request<CheckInView>('/api/check-ins', post(input)),
     get: (id) => request<CheckInView>(`/api/check-ins/${id}`),
     submitDocument: (id, input) => request<CheckInView>(`/api/check-ins/${id}/document`, put(input)),
-    seatMap: (flightId) => request<SeatMap>(`/api/flights/${flightId}/seat-map`),
+    seatMap: (flightId, checkInId) =>
+      request<SeatMap>(`/api/flights/${flightId}/seat-map${checkInId ? `?checkInId=${encodeURIComponent(checkInId)}` : ''}`),
     holdSeat: (flightId, input) => request<SeatLock>(`/api/flights/${flightId}/seat-locks`, post(input)),
     releaseSeat: async (lockId) => {
       await request<void>(`/api/seat-locks/${lockId}`, { method: 'DELETE' })

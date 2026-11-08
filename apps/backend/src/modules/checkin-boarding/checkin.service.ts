@@ -66,8 +66,6 @@ export class CheckInService {
   private readonly holds = new Map<string, HeldSeat>()
   /** Feature 5's payment id per booking passenger; the seat itself lives in feature 3. */
   private readonly seatPayments = new Map<string, string | null>()
-  /** The user each check-in was handed to by POST /check-ins. */
-  private readonly issuedTo = new Map<string, string>()
 
   constructor(
     @Inject(CLOCK) private readonly clock: ClockProvider,
@@ -99,11 +97,8 @@ export class CheckInService {
 
     const existing = await this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId)
     if (existing) {
-      // The PNR and the surname proved the booking: the caller takes the check-in over from a previous session.
-      const previousOwner = this.issuedTo.get(existing.id)
-      const takenOver = actor.staffId === null && previousOwner !== undefined && previousOwner !== actor.userId
-      if (actor.staffId === null) this.issuedTo.set(existing.id, actor.userId)
-      if (takenOver) await this.record(actor, 'check_in.start', 'check_in', existing.id, 'resumed')
+      // The PNR and the surname proved the booking: the caller resumes the check-in of that booking.
+      await this.record(actor, 'check_in.start', 'check_in', existing.id, 'resumed')
       if (await this.store.getDocumentByCheckIn(existing.id)) {
         await this.record(actor, 'view_sensitive', 'check_in', existing.id, 'check-in read', true)
       }
@@ -116,7 +111,6 @@ export class CheckInService {
       flight_id: booking.flightId,
       status: 'started',
     })
-    if (actor.staffId === null) this.issuedTo.set(record.id, actor.userId)
     await this.record(actor, 'check_in.start', 'check_in', record.id, 'check-in started')
     return this.viewOf(record)
   }
@@ -186,12 +180,16 @@ export class CheckInService {
     return this.viewOf(record)
   }
 
-  async seatMap(viewer: Actor | null, flightId: string): Promise<SeatMap> {
+  /**
+   * The seat map of a flight. The caller passes the check-in it is picking a seat for: the map then shows that
+   * passenger their own seat and hides the other cabins. Without it the map has no viewer.
+   */
+  async seatMap(viewer: Actor | null, flightId: string, checkInId?: string): Promise<SeatMap> {
     let bookingPassengerId: string | null = null
     let cabin: Cabin | null = null
-    if (viewer && viewer.staffId === null) {
-      const record = await this.activeCheckInOf(viewer.userId, flightId)
-      if (record) {
+    if (viewer && viewer.staffId === null && checkInId) {
+      const record = await this.store.getCheckIn(checkInId)
+      if (record && record.flight_id === flightId) {
         bookingPassengerId = record.booking_passenger_id
         cabin = (await this.bookings.byBookingPassengerId(bookingPassengerId))?.cabin ?? null
       }
@@ -222,16 +220,10 @@ export class CheckInService {
     return held
   }
 
-  async releaseSeat(actor: Actor, lockId: string): Promise<void> {
-    const held = this.holds.get(lockId)
-    if (held && actor.staffId === null) {
-      const owner = await this.store.getCheckIn(held.checkInId)
-      if (owner && !(await this.mayAccess(actor, owner))) {
-        throw new CheckInError(403, 'FORBIDDEN', 'This seat hold belongs to another passenger')
-      }
-    }
-    await this.seats.release(lockId)
+  /** Gives the seat hold back. The lock id is the secret: whoever holds it may release it. */
+  async releaseSeat(lockId: string): Promise<void> {
     this.holds.delete(lockId)
+    await this.seats.release(lockId)
   }
 
   async confirmSeat(actor: Actor, id: string, input: { lockId: string }): Promise<CheckInView> {
@@ -362,30 +354,17 @@ export class CheckInService {
 
   /**
    * The customer owns the check-in through the booking or through the passenger of their customer row. Until the
-   * database carries the owner, the id handed out by POST /check-ins is the third way in.
+   * database carries the owner, the check-in id is the third way in.
    */
   private async mayAccess(actor: Actor, record: CheckInRecord): Promise<boolean> {
-    if (actor.staffId !== null) return true
     const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
     const customer = await this.customerOf(actor)
-    if (canCustomerAccess(record, actor, booking, customer)) return true
-    // shortcut: the id was given to this user by POST /check-ins, until the check-in table carries the owner.
-    return this.issuedTo.get(record.id) === actor.userId
+    return canCustomerAccess(record, actor, booking, customer)
   }
 
   private async customerOf(actor: Actor): Promise<CustomerRef | null> {
     if (!this.passengers.customerByUserId) return null
     return this.passengers.customerByUserId(actor.userId)
-  }
-
-  /** The check-in this user started on this flight, if it is still open. */
-  private async activeCheckInOf(userId: string, flightId: string): Promise<CheckInRecord | null> {
-    for (const [checkInId, owner] of this.issuedTo) {
-      if (owner !== userId) continue
-      const record = await this.store.getCheckIn(checkInId)
-      if (record && record.flight_id === flightId && record.status !== 'cancelled') return record
-    }
-    return null
   }
 
   private assertStarted(record: CheckInRecord, message: string): void {
@@ -452,6 +431,8 @@ export class CheckInService {
         ...values,
         name_mismatch_cleared_at: null,
         name_mismatch_cleared_by: null,
+        profile_differences_cleared_at: null,
+        profile_differences_cleared_by: null,
         visa_checked_at: null,
         visa_checked_by: null,
       })

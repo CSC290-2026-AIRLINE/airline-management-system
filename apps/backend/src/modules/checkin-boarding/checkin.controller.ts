@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
 import type { BoardingPassView, CheckInView, SeatLock, SeatMap } from './api-types'
 import type { Actor } from './actor'
 import { CheckInService } from './checkin.service'
@@ -35,8 +35,12 @@ export class CheckInController {
 
   /** The seat map needs a signed-in caller: it shows that passenger their own seat. */
   @Get('flights/:flightId/seat-map')
-  async seatMap(@CurrentActor() actor: Actor | null, @Param('flightId') flightId: string): Promise<SeatMap> {
-    return this.checkins.seatMap(actor, flightId)
+  async seatMap(
+    @CurrentActor() actor: Actor | null,
+    @Param('flightId') flightId: string,
+    @Query('checkInId') checkInId?: string,
+  ): Promise<SeatMap> {
+    return this.checkins.seatMap(actor, flightId, checkInId)
   }
 
   @Post('flights/:flightId/seat-locks')
@@ -49,7 +53,8 @@ export class CheckInController {
 
   @Delete('seat-locks/:id')
   async releaseSeat(@CurrentActor() actor: Actor | null, @Param('id') id: string): Promise<void> {
-    await this.checkins.releaseSeat(requireActor(actor), id)
+    requireActor(actor)
+    await this.checkins.releaseSeat(id)
   }
 
   @Put('check-ins/:id/seat')

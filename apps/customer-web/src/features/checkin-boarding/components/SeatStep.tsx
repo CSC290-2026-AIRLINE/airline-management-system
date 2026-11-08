@@ -51,7 +51,7 @@ export function SeatStep({
   useEffect(() => {
     let cancelled = false
     api
-      .seatMap(checkIn.flight.id)
+      .seatMap(checkIn.flight.id, checkIn.id)
       .then((loaded) => {
         if (cancelled) return
         setMap(loaded)
@@ -65,7 +65,7 @@ export function SeatStep({
     return () => {
       cancelled = true
     }
-  }, [api, checkIn.flight.id, onError])
+  }, [api, checkIn.flight.id, checkIn.id, onError])
 
   useEffect(() => {
     if (!lock) return

@@ -182,8 +182,8 @@ describe('CheckInService.start', () => {
     const b = await svc.start(other, { pnr: 'ER204F', lastName: 'Eriksson' })
     expect(b.id).toBe(a.id)
     expect((await store.getCheckIn(a.id))!.status).toBe('started')
-    // The new caller owns the check-in now, the old one may not touch it any more.
-    await expect(svc.get(cust, a.id)).rejects.toMatchObject({ code: 'FORBIDDEN' })
+    // The alpha has no owner column: the check-in id is the only wall, so the old caller may still act on it.
+    await expect(svc.get(cust, a.id)).resolves.toMatchObject({ id: a.id })
     await expect(svc.submitDocument(other, a.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })).resolves.toBeTruthy()
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'check_in.start', summary: 'resumed' }))
   })
@@ -207,10 +207,12 @@ describe('CheckInService.start', () => {
 })
 
 describe('CheckInService.get', () => {
-  it('get refuses another customer but a staff member may read it', async () => {
+  it('answers NOT_FOUND for an unknown check-in and a staff member may read it', async () => {
     const { svc } = build()
     const c = await svc.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
-    await expect(svc.get({ userId: 'user-other', staffId: null }, c.id)).rejects.toMatchObject({ code: 'FORBIDDEN' })
+    // The alpha has no owner column: a customer who knows the check-in id may read it.
+    await expect(svc.get({ userId: 'user-other', staffId: null }, c.id)).resolves.toMatchObject({ id: c.id })
+    await expect(svc.get(cust, 'ci-unknown')).rejects.toMatchObject({ code: 'NOT_FOUND' })
     await expect(svc.get(staff, c.id)).resolves.toBeTruthy()
   })
 
@@ -446,10 +448,31 @@ describe('the ownership rule', () => {
     expect(canCustomerAccess(record, cust, { ...booking, customerUserId: null }, { passengerId: 'pax-1' })).toBe(true)
   })
 
-  it('refuses everybody else, staff may read every check-in', () => {
-    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: null }, null)).toBe(false)
-    expect(canCustomerAccess(record, cust, null, { passengerId: 'pax-2' })).toBe(false)
+  it('lets a customer in with the check-in id alone; the UUID is the only wall', () => {
+    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: null }, null)).toBe(true)
+    expect(canCustomerAccess(record, cust, null, { passengerId: 'pax-2' })).toBe(true)
     expect(canCustomerAccess(record, staff, null, null)).toBe(true)
+  })
+})
+
+describe('the seat map', () => {
+  it('shows the seat of the check-in the caller passes and hides the other cabin', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '18B' })
+    await svc.confirmSeat(cust, c.id, { lockId: lock.id })
+
+    const map = await svc.seatMap(cust, 'flt-fy204', c.id)
+    const seats = map.rows.flatMap((row) => row.seats)
+    expect(seats.find((seat) => seat.code === '18B')?.status).toBe('mine')
+    expect(seats.find((seat) => seat.code === '1C')?.status).toBe('blocked')
+
+    // Without the check-in there is no viewer: no seat is mine and no cabin is hidden.
+    const plain = await svc.seatMap(cust, 'flt-fy204')
+    const plainSeats = plain.rows.flatMap((row) => row.seats)
+    expect(plainSeats.some((seat) => seat.status === 'mine')).toBe(false)
+    expect(plainSeats.find((seat) => seat.code === '1C')?.status).not.toBe('blocked')
   })
 })
 

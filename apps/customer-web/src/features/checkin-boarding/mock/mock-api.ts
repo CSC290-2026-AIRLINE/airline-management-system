@@ -410,10 +410,10 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
     return view(record)
   }
 
-  async function seatMap(flightId: string): Promise<SeatMap> {
+  async function seatMap(flightId: string, checkInId?: string): Promise<SeatMap> {
     await tick()
     flightOf(flightId)
-    const viewer = [...checkIns.values()].at(-1)
+    const viewer = checkInId ? checkIns.get(checkInId) : undefined
     const viewerBooking = viewer ? bookingOf(viewer.bookingPassengerId) : null
     const mine = viewerBooking ? assignments.get(viewerBooking.bookingPassengerId)?.seatCode : undefined
     const rows: SeatMap['rows'] = []
