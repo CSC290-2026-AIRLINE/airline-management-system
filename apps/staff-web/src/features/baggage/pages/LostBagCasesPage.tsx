@@ -4,6 +4,7 @@ import { CasesListCard } from '../components/CasesListCard'
 import { CASE_FILTERS, CASE_FILTER_LABELS, CASE_FILTER_STATUSES, isOpenMatch, type CaseFilter } from '../constants'
 import { useBagMatches, useHeldBags } from '../hooks/useBagMatches'
 import { useCaseCosts, useLostReports } from '../hooks/useLostReports'
+import { filterLostReportCases, getFlightOriginOptions } from './lost-report-filters'
 
 function Kpi({ value, label }: { value: number | null; label: string }) {
   return (
@@ -21,13 +22,17 @@ function Kpi({ value, label }: { value: number | null; label: string }) {
 export function LostBagCasesPage({
   selectedId,
   filter,
+  flightFrom,
   onSelect,
   onFilterChange,
+  onFlightFromChange,
 }: {
   selectedId: string | undefined
   filter: CaseFilter
+  flightFrom: string | undefined
   onSelect: (id: string | undefined) => void
   onFilterChange: (filter: CaseFilter) => void
+  onFlightFromChange: (origin: string | undefined) => void
 }) {
   const list = useLostReports()
   const selected = list.cases.find((c) => c.id === selectedId)
@@ -37,7 +42,8 @@ export function LostBagCasesPage({
   const caseMatches = selected ? matches.matches.filter((m) => m.report.id === selected.id) : []
 
   const statuses = CASE_FILTER_STATUSES[filter]
-  const shown = list.cases.filter((c) => statuses.includes(c.status))
+  const shown = filterLostReportCases(list.cases, statuses, flightFrom)
+  const flightOrigins = getFlightOriginOptions(list.cases)
   const count = (status: string) => (list.loading ? null : list.cases.filter((c) => c.status === status).length)
   const withMatch = new Set(matches.matches.filter((m) => m.status !== 'rejected').map((m) => m.report.id))
   const openNoMatch = list.loading || matches.loading ? null : list.cases.filter((c) => c.status === 'open' && !withMatch.has(c.id)).length
@@ -62,13 +68,23 @@ export function LostBagCasesPage({
         <Kpi value={count('lost')} label="Lost" />
       </div>
 
-      {/* Figma also has a "Flight from" row; the cases API does not return the flight's airports yet. */}
       <F10Card aria-label="Filters" className="gap-3 py-4">
         <div role="group" aria-label="Status" className="flex flex-wrap items-center gap-2">
           <span className="w-[90px] text-sm font-medium text-[#677287]">Status</span>
           {CASE_FILTERS.map((f) => (
             <Chip key={f} active={filter === f} onClick={() => onFilterChange(f)}>
               {CASE_FILTER_LABELS[f]}
+            </Chip>
+          ))}
+        </div>
+        <div role="group" aria-label="Flight from" className="flex flex-wrap items-center gap-2">
+          <span className="w-[90px] text-sm font-medium text-[#677287]">Flight from</span>
+          <Chip active={!flightFrom} onClick={() => onFlightFromChange(undefined)}>
+            All
+          </Chip>
+          {flightOrigins.map((origin) => (
+            <Chip key={origin} active={flightFrom === origin} onClick={() => onFlightFromChange(origin)}>
+              {origin}
             </Chip>
           ))}
         </div>

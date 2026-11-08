@@ -32,7 +32,7 @@ function reportRow(data: Record<string, unknown>) {
     updated_at: SIM_NOW,
     ...data,
     passenger: { first_name: 'Somchai', last_name: 'Jaidee' },
-    flight: { flight_number: 'FT101', service_date: FLIGHT_DATE },
+    flight: data.flight ?? { flight_number: 'FT101', service_date: FLIGHT_DATE, route: { origin: 'BKK' } },
     booking_coupon: { booking_passenger: { booking: { booking_reference: 'ABC234' } } },
   }
 }
@@ -309,6 +309,28 @@ describe('StaffLostReportService reads', () => {
     await expect(svc.getById('not-a-uuid')).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND', status: 404 })
     await expect(svc.getById(REPORT_ID)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
     expect(db.lost_bag_report.findUnique).toHaveBeenCalledTimes(1)
+  })
+
+  it('projects the departure airport from the flight route for staff case filtering', async () => {
+    const { svc, db } = makeSvc()
+    db.lost_bag_report.findMany.mockResolvedValue([
+      reportRow({ flight: { flight_number: 'FT101', service_date: FLIGHT_DATE, route: { origin: 'BKK' } } }),
+      reportRow({
+        id: '88888888-8888-4888-8888-888888888888',
+        flight: { flight_number: 'FT202', service_date: FLIGHT_DATE, route: { origin: 'CNX' } },
+      }),
+    ])
+
+    const cases = await svc.list()
+
+    expect(db.lost_bag_report.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          flight: { select: { flight_number: true, service_date: true, route: { select: { origin: true } } } },
+        }),
+      }),
+    )
+    expect(cases.map((item) => item.flightOrigin)).toEqual(['BKK', 'CNX'])
   })
 
   it('lists with combined filters, newest first, and short-circuits malformed ones', async () => {

@@ -70,7 +70,7 @@ interface NewReport {
 
 const REPORT_INCLUDE = {
   passenger: { select: { first_name: true, last_name: true } },
-  flight: { select: { flight_number: true, service_date: true } },
+  flight: { select: { flight_number: true, service_date: true, route: { select: { origin: true } } } },
   booking_coupon: { select: { booking_passenger: { select: { booking: { select: { booking_reference: true } } } } } },
 } satisfies Prisma.lost_bag_reportInclude
 
@@ -88,6 +88,7 @@ export function toLostReportCase(row: ReportRow): LostReportCase {
     passengerLastName: row.passenger.last_name,
     flightNumber: row.flight.flight_number,
     flightDate: row.flight.service_date,
+    flightOrigin: row.flight.route.origin,
     reportedByCustomerId: row.reported_by_customer_id,
     reportedByStaffId: row.reported_by_staff_id,
     tagNumber: row.tag_number,

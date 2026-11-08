@@ -17,6 +17,7 @@ export interface LostReportCase {
   passengerLastName: string
   flightNumber: string
   flightDate: Date
+  flightOrigin: string
 
   reportedByCustomerId: string | null
   reportedByStaffId: string | null

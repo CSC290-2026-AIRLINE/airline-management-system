@@ -13,6 +13,7 @@ export interface LostReportCase {
   passengerLastName: string
   flightNumber: string
   flightDate: string
+  flightOrigin: string
   reportedByCustomerId: string | null
   reportedByStaffId: string | null
   tagNumber: string | null
