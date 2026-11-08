@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import type { lost_bag_report } from '@backend/db/generated/prisma/client'
-import type { DbService } from '@backend/db/db.service'
+import { DbService } from '@backend/db/db.service'
 import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import type { DeliveryChoiceSnapshot, ReportRepository } from './common/report.ports'
 import type { LostBagReport } from './common/report.types'

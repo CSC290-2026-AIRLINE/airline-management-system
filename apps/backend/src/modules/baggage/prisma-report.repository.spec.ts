@@ -1,3 +1,5 @@
+jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
+
 import type { DbService } from '@backend/db/db.service'
 import { PrismaReportRepository } from './prisma-report.repository'
 
