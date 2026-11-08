@@ -3,9 +3,15 @@ import { APP_FILTER } from '@nestjs/core'
 import { BookingProviderAdapter, BOOKING_PROVIDER } from './providers/booking-provider.adapter'
 import { BookingStatusService } from './common/booking-status.service'
 import { BookingErrorFilter } from './common/booking-error.filter'
+import { LocalBookingEventBus } from './common/booking-event-bus'
 import { SystemBookingClock } from './common/booking-clock'
+import { ConfirmService } from './confirm/confirm.service'
+import { DevConfirmController } from './confirm/dev-confirm.controller'
+import { HoldExpiryJob } from './confirm/hold-expiry.job'
+import { ReleaseService } from './confirm/release.service'
 import {
   BOOKING_CLOCK,
+  BOOKING_EVENT_BUS,
   BOOKING_READ_PORT,
   CANCEL_FOR_FLIGHT_PORT,
   CHECKOUT_PORT,
@@ -33,11 +39,16 @@ import { SeatStub } from './stubs/seat.stub'
 import { ServiceRequestStub } from './stubs/service-request.stub'
 
 @Module({
+  controllers: [DevConfirmController],
   providers: [
     BookingStatusService,
+    ConfirmService,
+    ReleaseService,
+    HoldExpiryJob,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },
     { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
+    { provide: BOOKING_EVENT_BUS, useClass: LocalBookingEventBus },
     { provide: INVENTORY_PORT, useClass: InventoryStub },
     { provide: SEAT_PORT, useClass: SeatStub },
     { provide: SERVICE_REQUEST_PORT, useClass: ServiceRequestStub },
@@ -54,7 +65,10 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
   ],
   exports: [
     BookingStatusService,
+    ConfirmService,
+    ReleaseService,
     BOOKING_CLOCK,
+    BOOKING_EVENT_BUS,
     INVENTORY_PORT,
     SEAT_PORT,
     SERVICE_REQUEST_PORT,
