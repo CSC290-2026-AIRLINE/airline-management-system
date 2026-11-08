@@ -83,8 +83,6 @@ describe('CheckInStore', () => {
       booking_passenger_id: 'bp-test-pass',
       passenger_id: 'pax-test-pass',
       flight_id: 'flt-fy204',
-      pnr: 'TST001',
-      passenger_name: 'Test One',
     })
     const first = await s.createPass({ check_in_id: checkIn.id, reference: 'AAAA1111', seat_code: '5A', boarding_group: 4 })
     const second = await s.createPass({ check_in_id: checkIn.id, reference: 'BBBB2222', seat_code: '5B', boarding_group: 4 })
@@ -104,12 +102,11 @@ describe('CheckInStore', () => {
     expect(updated.updated_at.getTime()).toBeGreaterThan(updated.created_at.getTime())
   })
 
-  it('searches by flight, pnr and name, case-insensitively', async () => {
+  it('searches by flight; the pnr and the name belong to the booking, the service filters those', async () => {
     const s = store()
-    expect(await s.searchCheckIns({ pnr: 'ec204g' })).toHaveLength(1)
-    expect(await s.searchCheckIns({ name: 'kowalski' })).toHaveLength(1)
     expect(await s.searchCheckIns({ flightId: 'flt-fy318' })).toHaveLength(5)
-    expect(await s.searchCheckIns({ pnr: 'ER204F' })).toHaveLength(0)
+    expect(await s.searchCheckIns({ flightId: 'flt-fy204' })).toHaveLength(8)
+    expect(await s.searchCheckIns({})).toHaveLength(13)
   })
 
   it('finds the active check-in of a booking passenger', async () => {
@@ -179,8 +176,6 @@ describe('CheckInStore', () => {
       booking_passenger_id: 'bp-repo-test',
       passenger_id: 'pax-repo-test',
       flight_id: 'flt-fy204',
-      pnr: 'RP0001',
-      passenger_name: 'Repo One',
     })
     await expect(repo.getCheckIn(created.id)).resolves.toMatchObject({ id: created.id })
   })

@@ -131,7 +131,17 @@ describe('profileSync', () => {
     expect(r.differences).toEqual(['gender'])
   })
 
-  it('profileSync reports an unmapped nationality', () => {
-    expect(profileSync(emptyProfile, { ...specimenData, nationality3: 'XXA' }).differences).toContain('nationality_unmapped')
+  it('names differences with the schema values', () => {
+    const r = profileSync(
+      { dateOfBirth: '1990-01-01', gender: 'F', nationality: 'ut', passportNumber: 'A1' },
+      { ...specimenData, dateOfBirth: '1991-01-01', number: 'B2' },
+    )
+    expect(r.differences).toEqual(['date_of_birth', 'passport_number'])
+  })
+
+  it('reports nationality_unmapped when the MRZ code has no alpha-2', () => {
+    const r = profileSync(emptyProfile, { ...specimenData, nationality3: 'XXA' })
+    expect(r.differences).toContain('nationality_unmapped')
+    expect(r.fill.nationality).toBeUndefined()
   })
 })

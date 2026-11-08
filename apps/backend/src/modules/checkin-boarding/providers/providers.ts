@@ -58,6 +58,8 @@ export interface BookingPassenger {
   fareClass: string
   specialAssistance: string[]
   isPolice: boolean
+  /** The user the booking's customer belongs to; null when the booking has no customer yet. */
+  customerUserId: string | null
 }
 
 export interface BookingProvider {
@@ -77,10 +79,17 @@ export interface PassengerProfile {
   passportNumber: string | null
 }
 
+/** The customer row of a signed-in user: the passenger behind it and nothing else. */
+export interface CustomerRef {
+  passengerId: string | null
+}
+
 export interface PassengerProfileProvider {
   byId(id: string): Promise<PassengerProfile | null>
   findByPassportNumber(n: string): Promise<PassengerProfile[]>
   fill(id: string, fields: Partial<Omit<PassengerProfile, 'id' | 'firstName' | 'lastName'>>): Promise<void>
+  /** The customer row of a user, when the provider knows one. */
+  customerByUserId?(userId: string): Promise<CustomerRef | null>
 }
 
 /** Feature 3 owns the seat map and the five minute hold. */
@@ -131,7 +140,10 @@ export interface TierProvider {
 
 /** Feature 13 owns notifications. */
 export interface NotifyProvider {
-  send(event: 'check_in_done' | 'boarding_pass' | 'gate_change' | 'boarding_call', payload: Record<string, unknown>): Promise<void>
+  send(
+    event: 'check_in_completed' | 'boarding_pass_issued' | 'gate_changed' | 'boarding_call',
+    payload: Record<string, unknown>,
+  ): Promise<void>
 }
 
 /** Feature 15 owns the audit log. */

@@ -46,4 +46,8 @@ describe('decideScan', () => {
     })
     expect(decideScan(ctx())).toEqual({ event: 'boarded', reason: null })
   })
+
+  it('rejects a cancelled pass with CANCELLED', () => {
+    expect(decideScan(ctx({ pass: { ...PASS, status: 'cancelled' } }))).toEqual({ event: 'rejected', reason: 'CANCELLED' })
+  })
 })

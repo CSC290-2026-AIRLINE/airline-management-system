@@ -35,8 +35,7 @@ export interface CheckInRepository {
   findActiveCheckInByBookingPassenger(bookingPassengerId: string): Promise<CheckInRecord | null>
   listCheckIns(): Promise<CheckInRecord[]>
   listCheckInsByFlight(flightId: string): Promise<CheckInRecord[]>
-  /** The check-in a customer started, used to show them their own seat on the map. */
-  findActiveCheckInByUser(userId: string, flightId?: string): Promise<CheckInRecord | null>
+  /** The check-ins of a flight; the pnr and the name are the booking's, the service filters those. */
   searchCheckIns(query: { flightId?: string; pnr?: string; name?: string }): Promise<CheckInRecord[]>
 
   createDocument(input: CreateDocumentInput): Promise<TravelDocumentRecord>

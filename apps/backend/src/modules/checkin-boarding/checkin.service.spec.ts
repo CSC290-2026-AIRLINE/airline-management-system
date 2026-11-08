@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import type { Actor } from './actor'
+import { canCustomerAccess } from './actor'
 import { CheckInService } from './checkin.service'
 import { SPECIMEN_LINE1, buildLine2, buildSpecimenLine2 } from './domain/mrz'
 import { AIRPORTS, BOOKINGS, DEMO_NOW, FLIGHTS } from './providers/fixtures'
@@ -19,6 +20,7 @@ import {
   LoggerNotify,
 } from './providers/fixture-providers'
 import type { BookingPassenger, FlightRecord, PassengerProfile } from './providers/providers'
+import type { CheckInRecord } from './store/checkin-store'
 import { CheckInStore } from './store/checkin-store'
 
 const cust: Actor = { userId: 'user-anna', staffId: null }
@@ -50,6 +52,7 @@ function build() {
   const seats = new FixtureSeats(clock)
   const payments = new FixturePayments()
   const audit = new LoggerAudit()
+  const notify = new LoggerNotify()
   const svc = new CheckInService(
     clock,
     new FixtureFlights(),
@@ -61,12 +64,12 @@ function build() {
     new FixtureScreening(),
     new FixturePolice(),
     new FixtureTiers(),
-    new LoggerNotify(),
+    notify,
     audit,
     new FixtureSettings(),
     store,
   )
-  return { svc, clock, store, passengers, payments, audit, seats }
+  return { svc, clock, store, passengers, payments, audit, notify, seats }
 }
 
 const addedBookings: BookingPassenger[] = []
@@ -137,6 +140,7 @@ describe('CheckInService.start', () => {
       fareClass: 'Y',
       specialAssistance: [],
       isPolice: false,
+      customerUserId: null,
     })
     addBooking({
       bookingPassengerId: 'bp-test-cancelled',
@@ -150,6 +154,7 @@ describe('CheckInService.start', () => {
       fareClass: 'Y',
       specialAssistance: [],
       isPolice: false,
+      customerUserId: null,
     })
 
     await expect(svc.start(cust, { pnr: 'ZZ9999', lastName: 'Nobody' })).rejects.toMatchObject({ code: 'NOT_FOUND' })
@@ -176,7 +181,9 @@ describe('CheckInService.start', () => {
     const spy = jest.spyOn(audit, 'record')
     const b = await svc.start(other, { pnr: 'ER204F', lastName: 'Eriksson' })
     expect(b.id).toBe(a.id)
-    expect((await store.getCheckIn(a.id))!.started_by_user_id).toBe('user-other')
+    expect((await store.getCheckIn(a.id))!.status).toBe('started')
+    // The new caller owns the check-in now, the old one may not touch it any more.
+    await expect(svc.get(cust, a.id)).rejects.toMatchObject({ code: 'FORBIDDEN' })
     await expect(svc.submitDocument(other, a.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })).resolves.toBeTruthy()
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'check_in.start', summary: 'resumed' }))
   })
@@ -256,6 +263,7 @@ describe('CheckInService.submitDocument', () => {
       fareClass: 'Y',
       specialAssistance: [],
       isPolice: false,
+      customerUserId: null,
     })
     // The passport holder was born in 1926: with the clock on 2025 the MRZ year 26 must read 1926, not 2026.
     passengers.extra = {
@@ -304,6 +312,7 @@ describe('CheckInService.submitDocument', () => {
       fareClass: 'Y',
       specialAssistance: [],
       isPolice: false,
+      customerUserId: null,
     })
     const c = await svc.start(cust, { pnr: 'VS318X', lastName: 'Lopez' })
     await expect(svc.submitDocument(cust, c.id, { mrzLine1: SARA_LINE1, mrzLine2: SARA_LINE2 })).rejects.toMatchObject({
@@ -356,6 +365,7 @@ describe('CheckInService.submitDocument', () => {
       fareClass: 'Y',
       specialAssistance: [],
       isPolice: false,
+      customerUserId: null,
     })
     passengers.extra = {
       id: 'pax-other',
@@ -394,12 +404,71 @@ describe('CheckInService.submitDocument', () => {
       }
     }
   })
+
+  it('refuses a passport whose issuing country cannot be mapped', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    await expect(
+      svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1.replace('UTO', 'XXA'), mrzLine2: buildSpecimenLine2() }),
+    ).rejects.toMatchObject({ code: 'MRZ_INVALID', details: { failedCheck: 'issuing_country' } })
+  })
+
+  it('stores the visa number only when the destination needs a visa', async () => {
+    const { svc } = build()
+    // Anna flies to NRT (jp) and her passport is 'ut': no visa is needed, so the number is not kept.
+    const c = await svc.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    const v = await svc.submitDocument(cust, c.id, {
+      mrzLine1: SPECIMEN_LINE1,
+      mrzLine2: buildSpecimenLine2(),
+      visaNumber: 'V999',
+    })
+    expect(v.document).toMatchObject({ visaNumber: null, visaRequired: false })
+  })
+})
+
+describe('the check-in id', () => {
+  it('is a v4 UUID', async () => {
+    const { svc } = build()
+    const view = await svc.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    expect(view.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+})
+
+describe('the ownership rule', () => {
+  const record = { passenger_id: 'pax-1' } as CheckInRecord
+  const booking = { customerUserId: 'user-anna' } as BookingPassenger
+
+  it('lets the customer of the booking in', () => {
+    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: 'user-anna' }, null)).toBe(true)
+  })
+
+  it('lets the customer of the passenger in', () => {
+    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: null }, { passengerId: 'pax-1' })).toBe(true)
+  })
+
+  it('refuses everybody else, staff may read every check-in', () => {
+    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: null }, null)).toBe(false)
+    expect(canCustomerAccess(record, cust, null, { passengerId: 'pax-2' })).toBe(false)
+    expect(canCustomerAccess(record, staff, null, null)).toBe(true)
+  })
+})
+
+describe('CheckInService notifications', () => {
+  it('notifies with the F13 type codes', async () => {
+    const { svc, notify } = build()
+    const spy = jest.spyOn(notify, 'send')
+    const c = await svc.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    await svc.complete(cust, c.id)
+    expect(spy).toHaveBeenCalledWith('boarding_pass_issued', expect.objectContaining({ checkInId: c.id }))
+    expect(spy).toHaveBeenCalledWith('check_in_completed', expect.objectContaining({ checkInId: c.id }))
+  })
 })
 
 describe('CheckInService seats', () => {
   it('refuses an exit row for special assistance', async () => {
     const { svc, store } = build()
-    const somchai = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.pnr === 'SA204B')!
+    const somchai = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-sa204b')!
     await store.updateCheckIn(somchai.id, { status: 'started' })
     await expect(svc.holdSeat(staff, 'flt-fy204', { checkInId: somchai.id, seatCode: '12A' })).rejects.toMatchObject({
       code: 'VALIDATION',
@@ -430,6 +499,7 @@ describe('CheckInService seats', () => {
       fareClass: 'Y',
       specialAssistance: [],
       isPolice: false,
+      customerUserId: null,
     })
     const other: Actor = { userId: 'user-other', staffId: null }
     const a = await svc.start(cust, { pnr: 'ER204F', lastName: 'Eriksson' })

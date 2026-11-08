@@ -3,6 +3,7 @@ import { CheckInService } from './checkin.service'
 import { CounterService } from './counter.service'
 import { CheckInError } from './errors'
 import { GateService } from './gate.service'
+import { BOOKINGS } from './providers/fixtures'
 import {
   FixtureBookings,
   FixtureClock,
@@ -68,7 +69,9 @@ function build() {
 }
 
 async function idOf(store: CheckInStore, pnr: string): Promise<string> {
-  const record = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.pnr === pnr)
+  const booking = BOOKINGS.find((b) => b.pnr === pnr)
+  if (!booking) throw new Error(`${pnr} is not a booking`)
+  const record = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === booking.bookingPassengerId)
   if (!record) throw new Error(`${pnr} is not seeded`)
   return record.id
 }
@@ -189,6 +192,27 @@ describe('GateService.scan', () => {
       code: 'FORBIDDEN',
     })
   })
+
+  it('scan rejects the pass of a cancelled check-in with CANCELLED', async () => {
+    const { gate, store } = build()
+    await store.updateCheckIn(await idOf(store, 'SA204B'), { status: 'cancelled' })
+    expect(await gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'R8KD2WQN' })).toMatchObject({
+      event: 'rejected',
+      reason: 'CANCELLED',
+    })
+  })
+})
+
+describe('GateService notifications', () => {
+  it('notifies with the F13 type codes', async () => {
+    const { gate, notify } = build()
+    const spy = jest.spyOn(notify, 'send')
+    await gate.setGate(staff, 'flt-fy204', { gateId: 'gate-a2' })
+    expect(spy).toHaveBeenCalledWith('gate_changed', expect.objectContaining({ flightId: 'flt-fy204' }))
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    await gate.closeGate(staff, 'flt-fy204', {})
+    expect(spy).toHaveBeenCalledWith('boarding_call', expect.objectContaining({ flightId: 'flt-fy204' }))
+  })
 })
 
 describe('GateService.setGate', () => {
@@ -198,7 +222,7 @@ describe('GateService.setGate', () => {
     const auditSpy = jest.spyOn(audit, 'record')
     await gate.setGate(staff, 'flt-fy204', { gateId: 'gate-a2' })
     expect((await gate.passengerList(staff, 'gate-a2', 'flt-fy204')).gate.code).toBe('A2')
-    expect(notifySpy).toHaveBeenCalledWith('gate_change', expect.objectContaining({ flightId: 'flt-fy204' }))
+    expect(notifySpy).toHaveBeenCalledWith('gate_changed', expect.objectContaining({ flightId: 'flt-fy204' }))
     expect(auditSpy).toHaveBeenCalledWith(expect.objectContaining({ action: 'gate.change' }))
     expect((await checkins.boardingPass(staff, await idOf(store, 'SA204B'))).gate).toBe('A2')
   })

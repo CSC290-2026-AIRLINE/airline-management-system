@@ -2,7 +2,7 @@ export type CheckInStatus = 'started' | 'on_hold' | 'denied' | 'checked_in' | 'b
 export type Cabin = 'economy' | 'premium_economy' | 'business' | 'first'
 export type SeatType = 'standard' | 'front' | 'exit' | 'business'
 export type SeatStatus = 'free' | 'taken' | 'held' | 'blocked' | 'mine'
-export type RejectReason = 'WRONG_GATE' | 'WRONG_FLIGHT' | 'ALREADY_BOARDED' | 'NOT_FOUND' | 'GATE_CLOSED' | 'ON_HOLD'
+export type RejectReason = 'WRONG_GATE' | 'WRONG_FLIGHT' | 'ALREADY_BOARDED' | 'NOT_FOUND' | 'GATE_CLOSED' | 'ON_HOLD' | 'CANCELLED'
 export type IssueCode = 'NAME_MISMATCH' | 'EXCESS_UNPAID' | 'ON_HOLD' | 'VISA_CHECK' | 'PROFILE_DIFFERS'
 
 export interface ApiError {

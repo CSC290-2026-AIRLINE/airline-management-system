@@ -52,6 +52,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'Y',
     specialAssistance: [],
     isPolice: true,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-sa204b',
@@ -65,6 +66,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'Y',
     specialAssistance: ['WCHR'],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-bz204c',
@@ -78,6 +80,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'J',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-bz204d',
@@ -91,6 +94,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'J',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-pe204e',
@@ -104,6 +108,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'W',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-er204f',
@@ -117,6 +122,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'Y',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-ec204g',
@@ -130,6 +136,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'Y',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-hd204h',
@@ -143,6 +150,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'Y',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-ec204j',
@@ -156,6 +164,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'Y',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-sa318a',
@@ -169,6 +178,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'Y',
     specialAssistance: ['UMNR'],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-bz318b',
@@ -182,6 +192,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'J',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-pe318c',
@@ -195,6 +206,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'W',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-ec318d',
@@ -208,6 +220,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'Y',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
   {
     bookingPassengerId: 'bp-ec318e',
@@ -221,6 +234,7 @@ export const BOOKINGS: BookingPassenger[] = [
     fareClass: 'Y',
     specialAssistance: [],
     isPolice: false,
+    customerUserId: null,
   },
 ]
 

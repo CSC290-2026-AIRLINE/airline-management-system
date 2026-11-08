@@ -39,9 +39,9 @@ export interface TravelDocumentView {
   visaNumber: string | null
   visaRequired: boolean
   /** The backend does not expose it yet; the mock does, so the counter can show a checked visa. */
-  visaCheckedAt: string | null
+  visaCheckedAt?: string | null
   /** The name as the passport shows it; the backend does not expose it yet, the mock does. */
-  nameOnPassport: string | null
+  nameOnPassport?: string | null
   nameMismatch: boolean
   nameMismatchClearedAt: string | null
   profileDifferences: string[]

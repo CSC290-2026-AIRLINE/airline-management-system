@@ -4,6 +4,7 @@ import type {
   Cabin,
   CarryOnAllowance,
   CheckedBagView,
+  CheckInStatus,
   CheckInView,
   CheckInWindow,
   FlightSummary,
@@ -44,7 +45,7 @@ export function toCheckInWindow(window: { opensAt: Date; closesAt: Date; boardin
 }
 
 /** Only the last four characters of the passport number ever leave the backend. */
-export function toDocumentView(document: TravelDocumentRecord): TravelDocumentView {
+export function toDocumentView(document: TravelDocumentRecord, visaRequired: boolean): TravelDocumentView {
   return {
     id: document.id,
     numberLast4: document.number_last4,
@@ -52,7 +53,7 @@ export function toDocumentView(document: TravelDocumentRecord): TravelDocumentVi
     nationality: document.nationality,
     expiryDate: document.expiry_date,
     visaNumber: document.visa_number,
-    visaRequired: document.visa_required,
+    visaRequired,
     nameMismatch: document.name_mismatch,
     nameMismatchClearedAt: document.name_mismatch_cleared_at?.toISOString() ?? null,
     profileDifferences: document.profile_differences,
@@ -183,15 +184,15 @@ export function toStaffCheckInView(input: StaffCheckInViewInput): StaffCheckInVi
   }
 }
 
-export function toStaffRow(input: { checkIn: CheckInRecord; flightNumber: string; issues: IssueCode[] }): StaffCheckInRow {
-  return {
-    id: input.checkIn.id,
-    pnr: input.checkIn.pnr,
-    passengerName: input.checkIn.passenger_name,
-    flightNumber: input.flightNumber,
-    status: input.checkIn.status,
-    issues: input.issues,
-  }
+export function toStaffRow(input: {
+  id: string
+  pnr: string
+  passengerName: string
+  flightNumber: string
+  status: CheckInStatus
+  issues: IssueCode[]
+}): StaffCheckInRow {
+  return { ...input }
 }
 
 export function toGateInfo(gate: { id: string; code: string; airport_code: string; is_active: boolean }): GateInfo {

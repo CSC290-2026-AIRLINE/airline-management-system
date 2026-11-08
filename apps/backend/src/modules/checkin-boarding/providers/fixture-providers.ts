@@ -330,7 +330,10 @@ export class FixtureTiers implements TierProvider {
 export class LoggerNotify implements NotifyProvider {
   private readonly logger = new Logger(LoggerNotify.name)
 
-  async send(event: 'check_in_done' | 'boarding_pass' | 'gate_change' | 'boarding_call', payload: Record<string, unknown>): Promise<void> {
+  async send(
+    event: 'check_in_completed' | 'boarding_pass_issued' | 'gate_changed' | 'boarding_call',
+    payload: Record<string, unknown>,
+  ): Promise<void> {
     this.logger.log(`notify ${event} ${JSON.stringify(payload)}`)
   }
 }

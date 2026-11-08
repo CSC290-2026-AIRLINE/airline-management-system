@@ -7,6 +7,7 @@ import { CheckInError, invalidState } from '../errors'
 import { BOOKINGS, GATES, PROFILES, SEEDED_DOC_EXPIRY, SEEDED_PASSES } from '../providers/fixtures'
 import { CLOCK } from '../providers/providers'
 import type { ClockProvider } from '../providers/providers'
+import { newCheckInId } from '../reference'
 import type { CheckInRepository } from './checkin-repository'
 
 export interface CheckInRecord {
@@ -20,10 +21,6 @@ export interface CheckInRecord {
   checked_in_at: Date | null
   created_at: Date
   updated_at: Date
-  started_by_user_id: string | null
-  /** Denormalised for the staff search; feature 3 owns the real booking. */
-  pnr: string
-  passenger_name: string
 }
 
 export interface TravelDocumentRecord {
@@ -35,7 +32,6 @@ export interface TravelDocumentRecord {
   nationality: string | null
   expiry_date: string
   visa_number: string | null
-  visa_required: boolean
   /** In-memory only until the migration carries the visa review columns. */
   visa_checked_by: string | null
   visa_checked_at: Date | null
@@ -43,6 +39,8 @@ export interface TravelDocumentRecord {
   name_mismatch_cleared_by: string | null
   name_mismatch_cleared_at: Date | null
   profile_differences: string[]
+  profile_differences_cleared_by: string | null
+  profile_differences_cleared_at: Date | null
   created_at: Date
   updated_at: Date
 }
@@ -128,13 +126,10 @@ export interface CreateCheckInInput {
   booking_passenger_id: string
   passenger_id: string
   flight_id: string
-  pnr: string
-  passenger_name: string
   status?: CheckInStatus
   declared_bags?: number | null
   screening_run_id?: string | null
   checked_in_at?: Date | null
-  started_by_user_id?: string | null
 }
 
 export interface CreateDocumentInput {
@@ -144,7 +139,6 @@ export interface CreateDocumentInput {
   nationality?: string | null
   expiry_date: string
   visa_number?: string | null
-  visa_required?: boolean
   name_mismatch?: boolean
   profile_differences?: string[]
 }
@@ -241,8 +235,6 @@ export class CheckInStore implements CheckInRepository {
         booking_passenger_id: booking.bookingPassengerId,
         passenger_id: booking.passengerId,
         flight_id: booking.flightId,
-        pnr: booking.pnr,
-        passenger_name: `${booking.firstName} ${booking.lastName}`,
         status: seed.status,
         screening_run_id: seed.status === 'on_hold' ? 'scr-demo-hold' : null,
         checked_in_at: now,
@@ -301,26 +293,12 @@ export class CheckInStore implements CheckInRepository {
     return [...this.checkIns.values()].filter((c) => c.flight_id === flightId)
   }
 
-  /** The check-in a customer started, used to show them their own seat on the map. */
-  async findActiveCheckInByUser(userId: string, flightId?: string): Promise<CheckInRecord | null> {
-    for (const record of this.checkIns.values()) {
-      if (record.started_by_user_id !== userId) continue
-      if (flightId && record.flight_id !== flightId) continue
-      if (record.status === 'cancelled') continue
-      return record
-    }
-    return null
-  }
-
+  /**
+   * The check-ins of a flight. The pnr and the name belong to the booking, so this store filters the flight only
+   * and the service filters the pnr and the name.
+   */
   async searchCheckIns(query: { flightId?: string; pnr?: string; name?: string }): Promise<CheckInRecord[]> {
-    const pnr = query.pnr?.trim().toUpperCase()
-    const name = query.name?.trim().toUpperCase()
-    return [...this.checkIns.values()].filter((c) => {
-      if (query.flightId && c.flight_id !== query.flightId) return false
-      if (pnr && !c.pnr.toUpperCase().includes(pnr)) return false
-      if (name && !c.passenger_name.toUpperCase().includes(name)) return false
-      return true
-    })
+    return [...this.checkIns.values()].filter((c) => !query.flightId || c.flight_id === query.flightId)
   }
 
   async createDocument(input: CreateDocumentInput): Promise<TravelDocumentRecord> {
@@ -526,7 +504,7 @@ export class CheckInStore implements CheckInRepository {
   private insertCheckIn(input: CreateCheckInInput): CheckInRecord {
     const now = this.now()
     const record: CheckInRecord = {
-      id: `ci-${(this.seq += 1)}`,
+      id: newCheckInId(),
       booking_passenger_id: input.booking_passenger_id,
       passenger_id: input.passenger_id,
       flight_id: input.flight_id,
@@ -536,9 +514,6 @@ export class CheckInStore implements CheckInRepository {
       checked_in_at: input.checked_in_at ?? null,
       created_at: now,
       updated_at: now,
-      started_by_user_id: input.started_by_user_id ?? null,
-      pnr: input.pnr,
-      passenger_name: input.passenger_name,
     }
     this.checkIns.set(record.id, record)
     return record
@@ -555,13 +530,14 @@ export class CheckInStore implements CheckInRepository {
       nationality: input.nationality ?? null,
       expiry_date: input.expiry_date,
       visa_number: input.visa_number ?? null,
-      visa_required: input.visa_required ?? false,
       visa_checked_by: null,
       visa_checked_at: null,
       name_mismatch: input.name_mismatch ?? false,
       name_mismatch_cleared_by: null,
       name_mismatch_cleared_at: null,
       profile_differences: input.profile_differences ?? [],
+      profile_differences_cleared_by: null,
+      profile_differences_cleared_at: null,
       created_at: now,
       updated_at: now,
     }

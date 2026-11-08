@@ -20,6 +20,8 @@ export interface ScanContext {
 export function decideScan(ctx: ScanContext): { event: 'boarded' | 'rejected'; reason: RejectReason | null } {
   const pass = ctx.pass
   if (!pass) return { event: 'rejected', reason: 'NOT_FOUND' }
+  // A cancelled check-in is a new booking on the same flight, so its pass never boards.
+  if (pass.status === 'cancelled') return { event: 'rejected', reason: 'CANCELLED' }
   if (pass.status === 'on_hold' || pass.status === 'denied') return { event: 'rejected', reason: 'ON_HOLD' }
   if (pass.flightId !== ctx.flightAtGate) {
     const wrongGate = ctx.passFlightGateId !== null && ctx.passFlightGateId !== ctx.gateId

@@ -70,7 +70,7 @@ function build() {
 
 /** Pim Saetang is seeded checked_in on FY 204: economy, 20 kg free, 500 THB per kg, 32 kg a bag. */
 async function pimId(store: CheckInStore): Promise<string> {
-  const record = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.pnr === 'EC204G')
+  const record = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-ec204g')
   if (!record) throw new Error('Pim Saetang is not seeded')
   return record.id
 }
@@ -253,6 +253,7 @@ describe('CounterService issues', () => {
       fareClass: 'Y',
       specialAssistance: [],
       isPolice: false,
+      customerUserId: null,
     }
     addedBookings.push(sara)
     BOOKINGS.push(sara)
@@ -274,6 +275,37 @@ describe('CounterService issues', () => {
     await expect(counter.search(cust, {})).rejects.toMatchObject({ code: 'FORBIDDEN' })
   })
 
+  it('clear-mismatch clears the profile differences too', async () => {
+    const { counter, checkins, store } = build()
+    const sara: BookingPassenger = {
+      bookingPassengerId: 'bp-test-sara',
+      pnr: 'VS318X',
+      paid: true,
+      flightId: 'flt-fy318',
+      passengerId: 'pax-ec318d',
+      firstName: 'Sara',
+      lastName: 'Lopez',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+      customerUserId: null,
+    }
+    addedBookings.push(sara)
+    BOOKINGS.push(sara)
+    const c = await checkins.start(cust, { pnr: 'VS318X', lastName: 'Lopez' })
+    await checkins.submitDocument(cust, c.id, { mrzLine1: SARA_LINE1, mrzLine2: SARA_LINE2, visaNumber: 'V123' })
+
+    const view = await counter.detail(staff, c.id)
+    expect(view.issues).toContain('PROFILE_DIFFERS')
+    const documentId = view.checkIn.document!.id
+    const cleared = await counter.clearMismatch(staff, documentId)
+    expect(cleared.issues).not.toContain('PROFILE_DIFFERS')
+    const document = (await store.getDocument(documentId))!
+    expect(document.profile_differences_cleared_by).toBe('staff-demo')
+    expect(document.profile_differences_cleared_at).not.toBeNull()
+  })
+
   it('a new document after a cleared name mismatch flags the mismatch again', async () => {
     const { counter, checkins } = build()
     const sara: BookingPassenger = {
@@ -288,6 +320,7 @@ describe('CounterService issues', () => {
       fareClass: 'Y',
       specialAssistance: [],
       isPolice: false,
+      customerUserId: null,
     }
     addedBookings.push(sara)
     BOOKINGS.push(sara)
@@ -316,6 +349,7 @@ describe('CounterService issues', () => {
       fareClass: 'Y',
       specialAssistance: [],
       isPolice: false,
+      customerUserId: null,
     }
     addedBookings.push(sara)
     BOOKINGS.push(sara)

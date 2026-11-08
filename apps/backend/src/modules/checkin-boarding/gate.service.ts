@@ -8,6 +8,7 @@ import { toFlightSummary, toGateInfo, toGateList, toHeadcount } from './mappers'
 import { AUDIT, BOOKINGS, CLOCK, FLIGHTS, NOTIFY, POLICE, SEATS, SENSOR, SETTINGS } from './providers/providers'
 import type {
   AuditProvider,
+  BookingPassenger,
   BookingProvider,
   ClockProvider,
   FlightProvider,
@@ -73,7 +74,7 @@ export class GateService {
     if (boarding?.gate_id === gate.id) return this.flightSummaryOf(flight)
 
     await this.store.upsertFlightBoarding(flightId, gate.id)
-    await this.notify.send('gate_change', { flightId, from: from?.code ?? null, to: gate.code })
+    await this.notify.send('gate_changed', { flightId, from: from?.code ?? null, to: gate.code })
     await this.audit.record({
       actorType: 'staff',
       actorId: actor.userId,
@@ -110,7 +111,7 @@ export class GateService {
         checkInId: record.id,
         boardingPassId: pass.id,
         reference: pass.reference,
-        passengerName: record.passenger_name,
+        passengerName: this.nameOf(booking),
         seat: pass.seat_code,
         boardingGroup: pass.boarding_group,
         specialAssistance: booking?.specialAssistance ?? [],
@@ -143,10 +144,12 @@ export class GateService {
 
     const pass = await this.store.passByReference(reference)
     const record = pass ? await this.store.getCheckIn(pass.check_in_id) : null
+    const booking = record ? await this.bookings.byBookingPassengerId(record.booking_passenger_id) : null
+    const passengerName = this.nameOf(booking)
     const passRow = record ? await this.store.flightBoarding(record.flight_id) : null
     // A pass that was closed out is no longer valid, unless the gate itself is closed: then the agent has to
     // see that this flight is done.
-    const closedOut = record ? record.status === 'cancelled' || record.status === 'no_show' : false
+    const closedOut = record ? record.status === 'no_show' : false
     if (!pass || !record || (closedOut && !passRow?.closed_at)) {
       await this.store.appendEvent({
         flight_id: input.flightId,
@@ -174,7 +177,7 @@ export class GateService {
       passFlightGateId: passRow?.gate_id ?? null,
       passFlightClosedAt: passRow?.closed_at ?? null,
     })
-    const passenger = { name: record.passenger_name, seat: pass.seat_code, boardingGroup: pass.boarding_group }
+    const passenger = { name: passengerName, seat: pass.seat_code, boardingGroup: pass.boarding_group }
 
     if (decision.event === 'boarded') {
       try {
@@ -203,7 +206,7 @@ export class GateService {
         return {
           event: 'rejected',
           reason: 'ALREADY_BOARDED',
-          message: `Already boarded: ${record.passenger_name} was scanned before.`,
+          message: `Already boarded: ${passengerName} was scanned before.`,
           passenger,
           correctGate: null,
         }
@@ -215,12 +218,12 @@ export class GateService {
         action: 'boarding.board',
         entityType: 'boarding_pass',
         entityId: pass.id,
-        summary: `${record.passenger_name} boarded ${scanned.flightNumber}`,
+        summary: `${passengerName} boarded ${scanned.flightNumber}`,
       })
       return {
         event: 'boarded',
         reason: null,
-        message: `Boarded: ${record.passenger_name}, seat ${pass.seat_code}.`,
+        message: `Boarded: ${passengerName}, seat ${pass.seat_code}.`,
         passenger,
         correctGate: null,
       }
@@ -241,7 +244,7 @@ export class GateService {
     return {
       event: 'rejected',
       reason,
-      message: await this.messageOf(reason, record.passenger_name, reference, correctGate, scanned, record.flight_id),
+      message: await this.messageOf(reason, passengerName, reference, correctGate, scanned, record.flight_id),
       passenger,
       correctGate,
     }
@@ -380,6 +383,11 @@ export class GateService {
     return actor.staffId
   }
 
+  /** The name of the passenger behind a booking; the check-in row does not carry it. */
+  private nameOf(booking: BookingPassenger | null): string {
+    return booking ? `${booking.firstName} ${booking.lastName}` : ''
+  }
+
   private async flightOf(flightId: string): Promise<FlightRecord> {
     const flight = await this.flightProvider.byId(flightId)
     if (!flight) throw notFound('Flight')
@@ -437,6 +445,8 @@ export class GateService {
         return `Already boarded: ${name} was scanned before.`
       case 'ON_HOLD':
         return `On hold: do not board ${name}. Ask them to wait for security staff.`
+      case 'CANCELLED':
+        return `Cancelled: the check-in of ${name} was cancelled, this pass does not board.`
       default:
         return `${reference} is not a boarding pass for any flight today.`
     }

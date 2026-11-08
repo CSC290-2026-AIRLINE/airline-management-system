@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { BoardingPassView, Cabin, CheckInStatus, CheckInView, SeatChoice, SeatLock, SeatMap, SeatMapSeat } from './api-types'
 import type { Actor } from './actor'
+import { canCustomerAccess } from './actor'
 import { boardingGroup } from './domain/boarding'
 import { toAlpha2 } from './domain/countries'
 import type { MrzData } from './domain/mrz'
@@ -29,6 +30,7 @@ import type {
   BookingPassenger,
   BookingProvider,
   ClockProvider,
+  CustomerRef,
   FlightProvider,
   FlightRecord,
   NotifyProvider,
@@ -64,6 +66,8 @@ export class CheckInService {
   private readonly holds = new Map<string, HeldSeat>()
   /** Feature 5's payment id per booking passenger; the seat itself lives in feature 3. */
   private readonly seatPayments = new Map<string, string | null>()
+  /** The user each check-in was handed to by POST /check-ins. */
+  private readonly issuedTo = new Map<string, string>()
 
   constructor(
     @Inject(CLOCK) private readonly clock: ClockProvider,
@@ -96,24 +100,23 @@ export class CheckInService {
     const existing = await this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId)
     if (existing) {
       // The PNR and the surname proved the booking: the caller takes the check-in over from a previous session.
-      const takenOver = actor.staffId === null && existing.started_by_user_id !== actor.userId
-      const record = takenOver ? await this.store.updateCheckIn(existing.id, { started_by_user_id: actor.userId }) : existing
-      if (takenOver) await this.record(actor, 'check_in.start', 'check_in', record.id, 'resumed')
-      if (await this.store.getDocumentByCheckIn(record.id)) {
-        await this.record(actor, 'view_sensitive', 'check_in', record.id, 'check-in read', true)
+      const previousOwner = this.issuedTo.get(existing.id)
+      const takenOver = actor.staffId === null && previousOwner !== undefined && previousOwner !== actor.userId
+      if (actor.staffId === null) this.issuedTo.set(existing.id, actor.userId)
+      if (takenOver) await this.record(actor, 'check_in.start', 'check_in', existing.id, 'resumed')
+      if (await this.store.getDocumentByCheckIn(existing.id)) {
+        await this.record(actor, 'view_sensitive', 'check_in', existing.id, 'check-in read', true)
       }
-      return this.viewOf(record)
+      return this.viewOf(existing)
     }
 
     const record = await this.store.createCheckIn({
       booking_passenger_id: booking.bookingPassengerId,
       passenger_id: booking.passengerId,
       flight_id: booking.flightId,
-      pnr: booking.pnr,
-      passenger_name: `${booking.firstName} ${booking.lastName}`,
       status: 'started',
-      started_by_user_id: actor.userId,
     })
+    if (actor.staffId === null) this.issuedTo.set(record.id, actor.userId)
     await this.record(actor, 'check_in.start', 'check_in', record.id, 'check-in started')
     return this.viewOf(record)
   }
@@ -140,6 +143,12 @@ export class CheckInService {
     }
 
     const booking = await this.bookingOf(record)
+    const issuing2 = toAlpha2(data.issuingCountry3)
+    if (!issuing2) {
+      throw new CheckInError(422, 'MRZ_INVALID', 'The issuing country of this passport is not a known country', {
+        failedCheck: 'issuing_country',
+      })
+    }
     const nationality2 = toAlpha2(data.nationality3)
     await this.assertNotDuplicate(record, booking, data, nationality2)
 
@@ -152,18 +161,15 @@ export class CheckInService {
     const sync = profileSync(profile ?? { dateOfBirth: null, gender: null, nationality: null, passportNumber: null }, data)
     if (Object.keys(sync.fill).length > 0) await this.passengers.fill(record.passenger_id, sync.fill)
 
-    const differences: string[] = [...sync.differences]
-    const issuing2 = toAlpha2(data.issuingCountry3)
-    if (!issuing2) differences.push('issuing_country_unmapped')
     const document = await this.upsertDocument(record.id, {
       number_last4: data.numberLast4,
-      issuing_country: issuing2 ?? 'zz',
+      issuing_country: issuing2,
       nationality: nationality2,
       expiry_date: data.expiryDate,
-      visa_number: input.visaNumber ?? null,
-      visa_required: visaRequired,
+      // The visa number is only kept when the destination needs one.
+      visa_number: visaRequired ? (input.visaNumber ?? null) : null,
       name_mismatch: compareNames(data, booking),
-      profile_differences: differences,
+      profile_differences: [...sync.differences],
     })
 
     const screening = await this.screening.check({
@@ -184,7 +190,7 @@ export class CheckInService {
     let bookingPassengerId: string | null = null
     let cabin: Cabin | null = null
     if (viewer && viewer.staffId === null) {
-      const record = await this.store.findActiveCheckInByUser(viewer.userId, flightId)
+      const record = await this.activeCheckInOf(viewer.userId, flightId)
       if (record) {
         bookingPassengerId = record.booking_passenger_id
         cabin = (await this.bookings.byBookingPassengerId(bookingPassengerId))?.cabin ?? null
@@ -220,7 +226,7 @@ export class CheckInService {
     const held = this.holds.get(lockId)
     if (held && actor.staffId === null) {
       const owner = await this.store.getCheckIn(held.checkInId)
-      if (owner && owner.started_by_user_id !== actor.userId) {
+      if (owner && !(await this.mayAccess(actor, owner))) {
         throw new CheckInError(403, 'FORBIDDEN', 'This seat hold belongs to another passenger')
       }
     }
@@ -300,7 +306,8 @@ export class CheckInService {
     // A concurrent complete may have issued the pass first: read it back so both callers see the same one.
     const pass = (await this.store.passesForCheckIn(record.id))[0]
     await this.store.updateCheckIn(record.id, { status: 'checked_in', checked_in_at: this.clock.now() })
-    await this.notify.send('boarding_pass', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
+    await this.notify.send('boarding_pass_issued', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
+    await this.notify.send('check_in_completed', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
     await this.record(actor, 'check_in.complete', 'boarding_pass', pass.id, 'boarding pass issued')
     return this.passView(record, pass)
   }
@@ -347,10 +354,38 @@ export class CheckInService {
   private async require(actor: Actor, id: string): Promise<CheckInRecord> {
     const record = await this.store.getCheckIn(id)
     if (!record) throw notFound('Check-in')
-    if (actor.staffId === null && record.started_by_user_id !== actor.userId) {
+    if (!(await this.mayAccess(actor, record))) {
       throw new CheckInError(403, 'FORBIDDEN', 'This check-in belongs to another passenger')
     }
     return record
+  }
+
+  /**
+   * The customer owns the check-in through the booking or through the passenger of their customer row. Until the
+   * database carries the owner, the id handed out by POST /check-ins is the third way in.
+   */
+  private async mayAccess(actor: Actor, record: CheckInRecord): Promise<boolean> {
+    if (actor.staffId !== null) return true
+    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
+    const customer = await this.customerOf(actor)
+    if (canCustomerAccess(record, actor, booking, customer)) return true
+    // shortcut: the id was given to this user by POST /check-ins, until the check-in table carries the owner.
+    return this.issuedTo.get(record.id) === actor.userId
+  }
+
+  private async customerOf(actor: Actor): Promise<CustomerRef | null> {
+    if (!this.passengers.customerByUserId) return null
+    return this.passengers.customerByUserId(actor.userId)
+  }
+
+  /** The check-in this user started on this flight, if it is still open. */
+  private async activeCheckInOf(userId: string, flightId: string): Promise<CheckInRecord | null> {
+    for (const [checkInId, owner] of this.issuedTo) {
+      if (owner !== userId) continue
+      const record = await this.store.getCheckIn(checkInId)
+      if (record && record.flight_id === flightId && record.status !== 'cancelled') return record
+    }
+    return null
   }
 
   private assertStarted(record: CheckInRecord, message: string): void {
@@ -406,7 +441,6 @@ export class CheckInService {
       nationality: string | null
       expiry_date: string
       visa_number: string | null
-      visa_required: boolean
       name_mismatch: boolean
       profile_differences: string[]
     },
@@ -435,7 +469,7 @@ export class CheckInService {
       checkIn: record,
       flight: toFlightSummary(flight, await this.gateOf(flight.id), window.boardingAt),
       window: toCheckInWindow(window, isWindowOpen(this.clock.now(), window)),
-      booking: { pnr: record.pnr, bookingPassengerId: record.booking_passenger_id },
+      booking: { pnr: booking.pnr, bookingPassengerId: record.booking_passenger_id },
       passenger: {
         id: record.passenger_id,
         firstName: booking.firstName,
@@ -444,7 +478,7 @@ export class CheckInService {
         fareClass: booking.fareClass,
         specialAssistance: booking.specialAssistance,
       },
-      document: document ? toDocumentView(document) : null,
+      document: document ? toDocumentView(document, await this.visaRequiredOf(document, flight)) : null,
       seat: await this.seatChoiceOf(record, booking),
       boardingPassId: pass?.id ?? null,
     })
@@ -454,6 +488,7 @@ export class CheckInService {
     const flight = await this.flightOf(record.flight_id)
     const window = await this.windowOf(flight)
     const gate = await this.gateOf(flight.id)
+    const booking = await this.bookingOf(record)
     return toBoardingPassView({
       pass,
       checkIn: record,
@@ -461,9 +496,14 @@ export class CheckInService {
       seat: pass.seat_code,
       gate: gate?.code ?? null,
       boardingAt: window.boardingAt.toISOString(),
-      passengerName: record.passenger_name,
+      passengerName: `${booking.firstName} ${booking.lastName}`,
       bags: record.declared_bags ?? 0,
     })
+  }
+
+  /** Whether the destination of the flight needs a visa for the nationality of the document. */
+  private async visaRequiredOf(document: TravelDocumentRecord, flight: FlightRecord): Promise<boolean> {
+    return this.settings.visaRequired(document.nationality ?? '', flight.destination.country)
   }
 
   private async seatChoiceOf(record: CheckInRecord, booking: BookingPassenger): Promise<SeatChoice | null> {

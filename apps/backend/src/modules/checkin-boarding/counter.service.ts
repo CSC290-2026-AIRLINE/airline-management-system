@@ -28,7 +28,7 @@ import type {
   SettingsProvider,
   TierProvider,
 } from './providers/providers'
-import type { CheckedBagRecord, CheckInRecord } from './store/checkin-store'
+import type { CheckedBagRecord, CheckInRecord, UpdateDocumentPatch } from './store/checkin-store'
 import { CHECKIN_REPOSITORY } from './store/checkin-repository'
 import type { CheckInRepository } from './store/checkin-repository'
 
@@ -61,13 +61,23 @@ export class CounterService {
   /** The issue list of the counter: every check-in of a flight, a PNR or a name. */
   async search(actor: Actor, query: { flightId?: string; pnr?: string; name?: string }): Promise<StaffCheckInRow[]> {
     this.staffIdOf(actor)
+    const pnr = query.pnr?.trim().toUpperCase()
+    const name = query.name?.trim().toUpperCase()
     const rows: StaffCheckInRow[] = []
     for (const record of await this.store.searchCheckIns(query)) {
+      const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
+      if (!booking) continue
+      const passengerName = `${booking.firstName} ${booking.lastName}`
+      if (pnr && !booking.pnr.toUpperCase().includes(pnr)) continue
+      if (name && !passengerName.toUpperCase().includes(name)) continue
       const flight = await this.flights.byId(record.flight_id)
       rows.push(
         toStaffRow({
-          checkIn: record,
+          id: record.id,
+          pnr: booking.pnr,
+          passengerName,
           flightNumber: flight?.flightNumber ?? '',
+          status: record.status,
           issues: await this.issuesOf(record, await this.bagsOf(record)),
         }),
       )
@@ -257,7 +267,7 @@ export class CounterService {
     return this.detail(actor, record.id)
   }
 
-  /** Clears a name mismatch from the issue list. */
+  /** Clears a name mismatch from the issue list. The profile differences of the same document go with it. */
   async clearMismatch(actor: Actor, documentId: string): Promise<StaffCheckInView> {
     const staffId = this.staffIdOf(actor)
     const document = await this.store.getDocument(documentId)
@@ -265,10 +275,13 @@ export class CounterService {
     if (!document.name_mismatch || document.name_mismatch_cleared_at) {
       throw invalidState('There is no name mismatch to clear')
     }
-    await this.store.updateDocument(documentId, {
-      name_mismatch_cleared_by: staffId,
-      name_mismatch_cleared_at: this.clock.now(),
-    })
+    const clearedAt = this.clock.now()
+    const patch: UpdateDocumentPatch = { name_mismatch_cleared_by: staffId, name_mismatch_cleared_at: clearedAt }
+    if (document.profile_differences.length > 0) {
+      patch.profile_differences_cleared_by = staffId
+      patch.profile_differences_cleared_at = clearedAt
+    }
+    await this.store.updateDocument(documentId, patch)
     await this.record(actor, 'travel_document.clear_mismatch', 'travel_document', documentId, 'name mismatch cleared')
     return this.detail(actor, document.check_in_id)
   }
@@ -337,16 +350,19 @@ export class CounterService {
     if (record.status === 'on_hold' || record.status === 'denied') issues.push('ON_HOLD')
     if (bags.some((b) => b.excess_fee > 0 && !b.excess_payment_id)) issues.push('EXCESS_UNPAID')
     if (document?.name_mismatch && !document.name_mismatch_cleared_at) issues.push('NAME_MISMATCH')
-    if (document?.visa_required && document.visa_number && !document.visa_checked_at) issues.push('VISA_CHECK')
-    if (document && document.profile_differences.length > 0) issues.push('PROFILE_DIFFERS')
+    if (document?.visa_number && !document.visa_checked_at) issues.push('VISA_CHECK')
+    if (document && document.profile_differences.length > 0 && !document.profile_differences_cleared_at) {
+      issues.push('PROFILE_DIFFERS')
+    }
     return issues
   }
 
   private async lookupOf(bag: CheckedBagRecord, record: CheckInRecord): Promise<BagLookup> {
+    const booking = await this.bookingOf(record)
     return {
       bag: toBagView(bag),
-      passengerName: record.passenger_name,
-      pnr: record.pnr,
+      passengerName: `${booking.firstName} ${booking.lastName}`,
+      pnr: booking.pnr,
       flight: await this.flightSummaryOf(record.flight_id),
     }
   }
