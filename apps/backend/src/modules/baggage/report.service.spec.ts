@@ -9,6 +9,7 @@ import type { ReportRepository } from './common/report.ports'
 describe('ReportService', () => {
   let service: ReportService
   let repository: InMemoryReportRepository
+  let photos: { upload: jest.Mock; remove: jest.Mock; retrieve: jest.Mock }
 
   const access = {
     bookingReference: 'ABC123',
@@ -27,6 +28,7 @@ describe('ReportService', () => {
 
   beforeEach(() => {
     repository = new InMemoryReportRepository()
+    photos = { upload: jest.fn(), remove: jest.fn(), retrieve: jest.fn() }
     service = new ReportService(
       repository,
       new MockBookingVerification([
@@ -57,6 +59,7 @@ describe('ReportService', () => {
       ]),
       new InMemoryCaseNumberSequence(),
       new MockSimulationClock(new Date('2026-10-29T10:00:00Z')),
+      photos,
     )
   })
 
@@ -66,6 +69,61 @@ describe('ReportService', () => {
     expect(report.caseNumber).toBe('LB-2026-000001')
     expect(report.status).toBe('open')
     expect(report.bookingPassengerId).toBe('BP001')
+    expect(report.photoUrl).toBeNull()
+    expect(photos.upload).not.toHaveBeenCalled()
+  })
+
+  it('stores an optional photo only after booking authorization and persists a guarded photo path', async () => {
+    const photo = { buffer: Buffer.from([0xff, 0xd8, 0xff]), mimetype: 'image/jpeg', size: 3 }
+    const report = await service.create({ ...validInput, reportedByCustomerId: 'CUSTOMER-1' }, photo)
+
+    expect(photos.upload).toHaveBeenCalledWith(report.id, photo)
+    expect(report.photoUrl).toBe(`/api/customer/lost-reports/${report.caseNumber}/photo`)
+    expect(report.photoUrl).not.toContain(report.id)
+  })
+
+  it('does not store a photo when booking authorization fails', async () => {
+    const photo = { buffer: Buffer.from([0xff, 0xd8, 0xff]), mimetype: 'image/jpeg', size: 3 }
+
+    await expect(service.create({ ...validInput, bookingReference: 'WRONG' }, photo)).rejects.toMatchObject({ code: 'INVALID_REPORT' })
+
+    expect(photos.upload).not.toHaveBeenCalled()
+    await expect(repository.listByBookingPassengerId('BP001')).resolves.toHaveLength(0)
+  })
+
+  it('cleans up the uploaded object when report persistence fails', async () => {
+    const photo = { buffer: Buffer.from([0xff, 0xd8, 0xff]), mimetype: 'image/jpeg', size: 3 }
+    jest.spyOn(repository, 'create').mockRejectedValueOnce(new Error('database write failed'))
+
+    await expect(service.create(validInput, photo)).rejects.toThrow('database write failed')
+
+    expect(photos.upload).toHaveBeenCalledTimes(1)
+    expect(photos.remove).toHaveBeenCalledWith(expect.any(String))
+  })
+
+  it('authorizes photo retrieval by booking ownership and report creator', async () => {
+    const photo = { buffer: Buffer.from([0xff, 0xd8, 0xff]), mimetype: 'image/jpeg', size: 3 }
+    const created = await service.create({ ...validInput, reportedByCustomerId: 'CUSTOMER-1' }, photo)
+    const photoObject = { body: {} as never, contentType: 'image/jpeg' as const }
+    photos.retrieve.mockResolvedValue(photoObject)
+
+    await expect(service.getPhotoForCaseNumber(created.caseNumber, access, 'CUSTOMER-1')).resolves.toBe(photoObject)
+    expect(photos.retrieve).toHaveBeenCalledWith(created.id)
+
+    photos.retrieve.mockClear()
+    await expect(service.getPhotoForCaseNumber(created.caseNumber, access, 'CUSTOMER-2')).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+    expect(photos.retrieve).not.toHaveBeenCalled()
+  })
+
+  it('does not retrieve a photo for reports without one', async () => {
+    const created = await service.create({ ...validInput, reportedByCustomerId: 'CUSTOMER-1' })
+
+    await expect(service.getPhotoForCaseNumber(created.caseNumber, access, 'CUSTOMER-1')).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+    expect(photos.retrieve).not.toHaveBeenCalled()
   })
 
   it('rejects an invalid booking', async () => {

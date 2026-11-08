@@ -1,4 +1,23 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UseFilters, UseGuards, UsePipes, ValidationPipe, Patch } from '@nestjs/common'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  StreamableFile,
+  UploadedFile,
+  UseFilters,
+  UseGuards,
+  UseInterceptors,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
 import type { DeliveryChoiceResult } from './bag-delivery.service'
 import { ReportService } from './report.service'
 import type { LostBagReport } from './common/report.types'
@@ -11,6 +30,9 @@ import { PassengerDeliveryChoiceService } from './passenger-delivery-choice.serv
 import { PassengerCaseSummaryService } from './passenger-case-summary.service'
 import type { PassengerCaseSummary } from './common/passenger-case-summary.types'
 import { BagMatchingService } from './bag-matching.service'
+import { LOST_REPORT_PHOTO_MAX_BYTES, type UploadedLostReportPhoto } from './lost-report-photo.storage'
+
+const PHOTO_MIME_TYPES = new Set(['image/jpeg', 'image/png'])
 
 @Controller('customer/lost-reports')
 @UseGuards(BaggageCustomerGuard)
@@ -32,12 +54,31 @@ export class PassengerLostReportController {
 
   @Post()
   @HttpCode(201)
-  async create(@CurrentBaggageCustomer() customer: BaggageCustomer, @Body() dto: CreatePassengerLostReportDto): Promise<LostBagReport> {
-    const report = await this.reports.create({
-      ...dto,
-      passengerId: customer.passengerId,
-      reportedByCustomerId: customer.customerId,
-    })
+  @UseInterceptors(
+    FileInterceptor('photo', {
+      limits: { fileSize: LOST_REPORT_PHOTO_MAX_BYTES },
+      fileFilter: (_request, file, callback) => {
+        if (!PHOTO_MIME_TYPES.has(file.mimetype)) {
+          callback(new BadRequestException('Choose a JPG or PNG image.'), false)
+          return
+        }
+        callback(null, true)
+      },
+    }),
+  )
+  async create(
+    @CurrentBaggageCustomer() customer: BaggageCustomer,
+    @Body() dto: CreatePassengerLostReportDto,
+    @UploadedFile() photo?: UploadedLostReportPhoto,
+  ): Promise<LostBagReport> {
+    const report = await this.reports.create(
+      {
+        ...dto,
+        passengerId: customer.passengerId,
+        reportedByCustomerId: customer.customerId,
+      },
+      photo,
+    )
 
     await this.matching.suggestForReport(report.id)
 
@@ -61,6 +102,23 @@ export class PassengerLostReportController {
     return this.reports.getByCaseNumber(caseNumber, {
       ...query,
       passengerId: customer.passengerId,
+    })
+  }
+
+  @Get(':caseNumber/photo')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async getPhoto(
+    @CurrentBaggageCustomer() customer: BaggageCustomer,
+    @Param('caseNumber') caseNumber: string,
+    @Query() query: PassengerReportAccessQuery,
+  ): Promise<StreamableFile> {
+    const photo = await this.reports.getPhotoForCaseNumber(caseNumber, { ...query, passengerId: customer.passengerId }, customer.customerId)
+    const extension = photo.contentType === 'image/png' ? 'png' : 'jpg'
+    return new StreamableFile(photo.body, {
+      type: photo.contentType,
+      disposition: `inline; filename="lost-baggage-photo.${extension}"`,
+      length: photo.contentLength,
     })
   }
 

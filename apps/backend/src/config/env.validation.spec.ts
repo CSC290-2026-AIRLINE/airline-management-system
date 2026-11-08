@@ -20,6 +20,32 @@ describe('validateEnv', () => {
     expect(config.REFRESH_TOKEN_TTL_DAYS).toBe(30)
   })
 
+  it('allows local photo storage configuration when all S3 settings are supplied', () => {
+    const config = validateEnv({
+      ...validEnv,
+      S3_ENDPOINT: 'http://localhost:8333',
+      S3_ACCESS_KEY: 'local-access-key',
+      S3_SECRET_KEY: 'local-secret-key',
+    })
+
+    expect(config.S3_ENDPOINT).toBe('http://localhost:8333')
+    expect(config.S3_ACCESS_KEY).toBe('local-access-key')
+    expect(config.S3_SECRET_KEY).toBe('local-secret-key')
+  })
+
+  it('keeps photo storage optional for existing no-photo workflows', () => {
+    expect(validateEnv(validEnv).S3_ENDPOINT).toBeUndefined()
+  })
+
+  it('rejects partial or invalid S3 configuration', () => {
+    expect(() => validateEnv({ ...validEnv, S3_ENDPOINT: 'http://localhost:8333' })).toThrow(
+      'S3_ENDPOINT, S3_ACCESS_KEY, and S3_SECRET_KEY must be configured together',
+    )
+    expect(() => validateEnv({ ...validEnv, S3_ENDPOINT: 'ftp://localhost:8333', S3_ACCESS_KEY: 'a', S3_SECRET_KEY: 'b' })).toThrow(
+      'S3_ENDPOINT must be a valid HTTP or HTTPS URL',
+    )
+  })
+
   it('throws and lists every missing variable', () => {
     const env = { ...validEnv, ACCESS_TOKEN_SECRET: undefined, CLERK_SECRET_KEY_STAFF: '' }
 

@@ -58,6 +58,7 @@ function makeRepository(
     pickup_airport: null,
     status: 'preparing',
   })
+  const create = jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve(reportRow(data)))
   const queryRaw = jest.fn().mockResolvedValue(options.lockedRows ?? [{ id: reportRow().id }])
   const tx = {
     $queryRaw: queryRaw,
@@ -67,6 +68,7 @@ function makeRepository(
   const transaction = jest.fn((callback: (transactionClient: typeof tx) => Promise<unknown>) => callback(tx))
   const repository = new PrismaReportRepository({
     $transaction: transaction,
+    lost_bag_report: { create },
     bag_delivery: {
       findUnique: findDeliveryUnique.mockImplementation(({ select }: { select?: Record<string, boolean> }) => {
         if (select?.delivery_type) return findDeliveryChoiceUnique()
@@ -75,8 +77,44 @@ function makeRepository(
     },
   } as unknown as DbService)
 
-  return { repository, transaction, queryRaw, findFirst, findDispatchEvent, findDeliveryUnique, findDeliveryChoiceUnique, update }
+  return { repository, transaction, queryRaw, findFirst, findDispatchEvent, findDeliveryUnique, findDeliveryChoiceUnique, update, create }
 }
+
+describe('PrismaReportRepository photo reference persistence', () => {
+  it('persists and returns the stable authorized photo endpoint rather than a storage key', async () => {
+    const harness = makeRepository()
+    const photoUrl = '/api/customer/lost-reports/LB-2026-000001/photo'
+    const report = {
+      ...{
+        id: reportRow().id,
+        caseNumber: 'LB-2026-000001',
+        bookingPassengerId: reportRow().booking_passenger_id,
+        passengerId: reportRow().passenger_id,
+        flightId: reportRow().flight_id,
+        reportedByCustomerId: '00000000-0000-4000-8000-000000000007',
+        reportedByStaffId: null,
+        tagNumber: null,
+        bagType: 'suitcase' as const,
+        colour: 'black' as const,
+        brand: null,
+        description: null,
+        photoUrl,
+        contactEmail: 'passenger@example.com',
+        contactPhone: null,
+        status: 'open' as const,
+        reportedAt: new Date('2026-10-29T10:00:00Z'),
+        lostAt: null,
+        closedAt: null,
+        createdAt: new Date('2026-10-29T10:00:00Z'),
+        updatedAt: new Date('2026-10-29T10:00:00Z'),
+      },
+    }
+
+    await expect(harness.repository.create(report)).resolves.toMatchObject({ photoUrl })
+    expect(harness.create).toHaveBeenCalledWith({ data: expect.objectContaining({ photo_url: photoUrl }) })
+    expect(photoUrl).not.toContain(report.id)
+  })
+})
 
 describe('PrismaReportRepository delivery lookup', () => {
   it('looks up the delivery by the verified report id', async () => {

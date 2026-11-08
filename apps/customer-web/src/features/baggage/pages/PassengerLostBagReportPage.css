@@ -39,9 +39,9 @@
 .passenger-report-layout,
 .passenger-report-success-layout {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(16rem, 0.9fr);
+  grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
   align-items: start;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 .passenger-report-card {
@@ -57,33 +57,35 @@
 }
 
 .passenger-report-form__section + .passenger-report-form__section {
-  margin-top: 1.7rem;
-  padding-top: 1.45rem;
-  border-top: 1px solid #e8edf5;
+  margin-top: 1.5rem;
 }
 
 .passenger-report-form__section-heading {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
   margin-bottom: 1rem;
 }
 
-.passenger-report-form__section-heading > span,
 .passenger-report-next li > span {
   display: grid;
-  flex: 0 0 1.7rem;
-  width: 1.7rem;
-  height: 1.7rem;
+  flex: 0 0 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
   place-items: center;
   border-radius: 50%;
   background: var(--report-orange);
   color: var(--report-ink);
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
-.passenger-report-form__section-heading h2,
+.passenger-report-form__section-heading h2 {
+  margin: 0;
+  color: var(--report-ink);
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
 .passenger-report-next h2,
 .passenger-report-existing h2 {
   margin: 0;
@@ -98,8 +100,30 @@
 }
 
 .passenger-report-fields--booking {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  align-items: end;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.passenger-report-booking-lookup__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.passenger-report-booking-lookup__actions p {
+  margin: 0;
+  color: var(--report-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.passenger-report-booking-found {
+  margin: 1rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.55rem;
+  background: #e7f5ec;
+  color: #157443;
+  font-size: 0.9rem;
 }
 
 .passenger-report-fields--flight {
@@ -125,14 +149,157 @@
   padding: 0.65rem 0.75rem;
   border: 1px solid #d5ddea;
   border-radius: 0.55rem;
-  background: #fff;
+  background: #f8fafc;
   color: var(--report-ink);
   font: inherit;
+}
+
+.passenger-report-colour-select {
+  position: relative;
+  display: block;
+}
+
+.passenger-report-field .passenger-report-colour-select--selected select {
+  padding-left: 2rem;
+}
+
+.passenger-report-field select.passenger-report-select--chevron-inset {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3 6 5 5 5-5' fill='none' stroke='%2317233f' stroke-linecap='round' stroke-linejoin='round' stroke-width='2'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 9px 9px;
+}
+
+.passenger-report-colour-select__swatch {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0.75rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 1px solid #aab3c1;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .passenger-report-field textarea {
   min-height: 6rem;
   resize: vertical;
+}
+
+.passenger-report-photo {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.passenger-report-photo__dropzone {
+  position: relative;
+  display: grid;
+  min-height: 6.75rem;
+  box-sizing: border-box;
+  place-content: center;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 0.8rem 1rem;
+  border: 1px dashed #cbd5e5;
+  border-radius: 0.55rem;
+  color: var(--report-muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.passenger-report-photo__dropzone:hover {
+  border-color: var(--report-orange);
+  background: #fffaf0;
+}
+
+.passenger-report-photo__dropzone:focus-within {
+  outline: 2px solid var(--report-orange);
+  outline-offset: 2px;
+}
+
+.passenger-report-photo__dropzone.is-disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.passenger-report-photo__dropzone svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.passenger-report-photo__dropzone strong {
+  color: #454d5e;
+  font-size: 0.9rem;
+}
+
+.passenger-report-photo__dropzone > span {
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.passenger-report-photo__mobile-help {
+  display: none;
+}
+
+.passenger-report-photo__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.passenger-report-photo__browse {
+  color: var(--report-ink);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.passenger-report-photo__selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  color: var(--report-muted);
+  font-size: 0.85rem;
+}
+
+.passenger-report-photo__selected > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.passenger-report-photo__remove {
+  flex: 0 0 auto;
+  padding: 0.25rem 0;
+  border: 0;
+  background: transparent;
+  color: #8b251e;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.passenger-report-photo__remove:disabled {
+  cursor: wait;
+}
+
+.passenger-report-photo__error {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.8rem;
 }
 
 .passenger-report-field input:focus-visible,
@@ -175,6 +342,8 @@
 }
 
 .passenger-report-button--find {
+  background: var(--report-ink);
+  color: #fff;
   white-space: nowrap;
 }
 
@@ -207,15 +376,20 @@
 
 .passenger-report-next {
   padding: 1.35rem;
+  border-color: var(--report-ink);
+  background: var(--report-ink);
+  color: #fff;
 }
 
 .passenger-report-next h2 {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.1rem;
+  color: #fff;
+  font-size: 1.5rem;
 }
 
 .passenger-report-next ol {
   display: grid;
-  gap: 1.15rem;
+  gap: 0.95rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -229,14 +403,7 @@
 }
 
 .passenger-report-next li > span {
-  width: 1.5rem;
-  height: 1.5rem;
-  font-size: 0.72rem;
-}
-
-.passenger-report-next strong {
-  color: var(--report-ink);
-  font-size: 0.9rem;
+  align-self: start;
 }
 
 .passenger-report-next p,
@@ -247,6 +414,15 @@
   line-height: 1.45;
 }
 
+.passenger-report-next p {
+  color: #e2e7f0;
+  font-size: 0.9rem;
+}
+
+.passenger-report-next li p {
+  margin: 0;
+}
+
 .passenger-report-existing {
   padding: 1.25rem;
 }
@@ -254,8 +430,13 @@
 .passenger-report-existing a {
   display: inline-block;
   margin-top: 0.85rem;
-  color: var(--report-ink);
+  padding: 0.65rem 1rem;
+  border-radius: 0.55rem;
+  background: var(--report-ink);
+  color: #fff;
   font-weight: 650;
+  text-align: center;
+  text-decoration: none;
 }
 
 .passenger-report-success {
@@ -316,6 +497,7 @@
 @media (max-width: 760px) {
   .passenger-report-page {
     padding: 1.25rem 1.5rem 2.5rem;
+    background: linear-gradient(180deg, #f1f2f4 0%, #fff 55%, #ffd17f 100%);
   }
 
   .passenger-report-layout,
@@ -338,9 +520,16 @@
     grid-column: auto;
   }
 
+  .passenger-report-booking-lookup__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .passenger-report-button--find,
-  .passenger-report-form__submit-row .passenger-report-button {
+  .passenger-report-form__submit-row .passenger-report-button,
+  .passenger-report-existing a {
     width: 100%;
+    box-sizing: border-box;
   }
 
   .passenger-report-form__submit-row {
@@ -349,5 +538,13 @@
 
   .passenger-report-success__actions {
     display: grid;
+  }
+
+  .passenger-report-photo__desktop-help {
+    display: none;
+  }
+
+  .passenger-report-photo__mobile-help {
+    display: inline;
   }
 }

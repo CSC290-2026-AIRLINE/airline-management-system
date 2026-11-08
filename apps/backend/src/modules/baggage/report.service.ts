@@ -1,9 +1,11 @@
+import { Logger } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { BAG_TYPES, BAG_COLOURS, type BagType, type BagColour } from './common/baggage.constants'
 import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import { isValidBaggageTag } from './common/baggage-tag.util'
 import { formatCaseNumber } from './common/case-number.util'
 import type { LostBagReport } from './common/report.types'
+import type { LostReportPhotoObject, ReportPhotoStorage, UploadedLostReportPhoto } from './lost-report-photo.storage'
 import type {
   BookingVerification,
   CheckedBagLookup,
@@ -36,15 +38,18 @@ export interface ReportAccessInput {
 }
 
 export class ReportService {
+  private readonly logger = new Logger(ReportService.name)
+
   constructor(
     private readonly repository: ReportRepository,
     private readonly bookings: BookingVerification,
     private readonly checkedBags: CheckedBagLookup,
     private readonly sequence: CaseNumberSequence,
     private readonly clock: SimulationClock,
+    private readonly photos: ReportPhotoStorage,
   ) {}
 
-  async create(input: CreateReportInput): Promise<LostBagReport> {
+  async create(input: CreateReportInput, photo?: UploadedLostReportPhoto): Promise<LostBagReport> {
     const contactEmail = input.contactEmail?.trim() || null
     const contactPhone = input.contactPhone?.trim() || null
     const tagNumber = input.tagNumber?.trim() || null
@@ -85,10 +90,11 @@ export class ReportService {
 
     const reportedAt = this.clock.now()
     const nextNumber = await this.sequence.next()
+    const caseNumber = formatCaseNumber(reportedAt, nextNumber)
 
     const report: LostBagReport = {
       id: randomUUID(),
-      caseNumber: formatCaseNumber(reportedAt, nextNumber),
+      caseNumber,
       bookingPassengerId: passenger.bookingPassengerId,
       passengerId: passenger.passengerId,
       flightId: passenger.flightId,
@@ -99,7 +105,7 @@ export class ReportService {
       colour: input.colour,
       brand: input.brand?.trim() || null,
       description: input.description?.trim() || null,
-      photoUrl: null,
+      photoUrl: photo ? this.photoPath(caseNumber) : null,
       contactEmail,
       contactPhone,
       status: 'open',
@@ -110,7 +116,20 @@ export class ReportService {
       updatedAt: new Date(),
     }
 
-    return this.repository.create(report)
+    if (photo) await this.photos.upload(report.id, photo)
+
+    try {
+      return await this.repository.create(report)
+    } catch (error) {
+      if (photo) {
+        try {
+          await this.photos.remove(report.id)
+        } catch {
+          this.logger.error(`Failed to clean up lost-baggage photo for report ${report.id}`)
+        }
+      }
+      throw error
+    }
   }
 
   async getByCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
@@ -127,6 +146,16 @@ export class ReportService {
     }
 
     return report
+  }
+
+  async getPhotoForCaseNumber(caseNumber: string, access: ReportAccessInput, customerId: string): Promise<LostReportPhotoObject> {
+    const report = await this.getByCaseNumber(caseNumber, access)
+
+    if (report.reportedByCustomerId !== customerId || !report.photoUrl) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
+    }
+
+    return this.photos.retrieve(report.id)
   }
 
   async getDeliveryIdForCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<string | null> {
@@ -175,5 +204,9 @@ export class ReportService {
     }
 
     return cancelled
+  }
+
+  private photoPath(caseNumber: string): string {
+    return `/api/customer/lost-reports/${caseNumber}/photo`
   }
 }

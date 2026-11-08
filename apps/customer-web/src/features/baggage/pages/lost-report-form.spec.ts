@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  buildCreateLostReportFormData,
   buildCreateLostReportPayload,
   createLostReportPageState,
   isCurrentFlightLookup,
   lostReportPageReducer,
+  LOST_REPORT_PHOTO_MAX_BYTES,
+  validateLostReportPhoto,
   validateLostReportForm,
   type EligibleFlight,
   type LostBagFormValues,
@@ -86,6 +89,25 @@ test('maps validated fields to the passenger create payload and omits identity f
   })
   assert.equal('passengerId' in payload, false)
   assert.equal('customerId' in payload, false)
+})
+
+test('validates optional JPG and PNG photos up to exactly 10 MB', () => {
+  assert.equal(validateLostReportPhoto(null), null)
+  assert.equal(validateLostReportPhoto({ type: 'image/jpeg', size: LOST_REPORT_PHOTO_MAX_BYTES }), null)
+  assert.equal(validateLostReportPhoto({ type: 'image/png', size: 1 }), null)
+  assert.equal(validateLostReportPhoto({ type: 'image/webp', size: 1 }), 'Choose a JPG or PNG image.')
+  assert.equal(validateLostReportPhoto({ type: 'image/png', size: LOST_REPORT_PHOTO_MAX_BYTES + 1 }), 'Photo must be 10 MB or smaller.')
+})
+
+test('maps report fields and the optional photo to multipart form data', () => {
+  const photo = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'bag.jpg', { type: 'image/jpeg' })
+  const formData = buildCreateLostReportFormData(validValues, flights, photo)
+
+  assert.equal(formData.get('bookingReference'), 'H8LD3Q')
+  assert.equal(formData.get('flightId'), flights[0].flightId)
+  assert.equal(formData.get('photo'), photo)
+  assert.equal(formData.has('passengerId'), false)
+  assert.equal(formData.has('customerId'), false)
 })
 
 test('flight lookup and report submission success and error states are observable', () => {

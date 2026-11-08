@@ -1,6 +1,10 @@
 jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
 
+jest.mock('@nestjs/config', () => ({ ConfigService: class ConfigService {} }))
+
+import { Global, Module } from '@nestjs/common'
 import { Test, type TestingModule } from '@nestjs/testing'
+import { ConfigService } from '@nestjs/config'
 import { DbModule } from '@backend/db/db.module'
 import { DbService } from '@backend/db/db.service'
 import { PassengerLostReportController } from './passenger-lost-report.controller'
@@ -14,13 +18,21 @@ import { PrismaCheckedBagLookup } from './prisma-checked-bag.lookup'
 import { PrismaReportRepository } from './prisma-report.repository'
 import { ReportService } from './report.service'
 import { BagMatchingService } from './bag-matching.service'
+import { LostReportPhotoStorage } from './lost-report-photo.storage'
+
+@Global()
+@Module({
+  providers: [{ provide: ConfigService, useValue: { get: jest.fn() } }],
+  exports: [ConfigService],
+})
+class TestConfigModule {}
 
 describe('PassengerLostReportModule dependency injection', () => {
   let moduleRef: TestingModule
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
-      imports: [DbModule, PassengerLostReportModule],
+      imports: [TestConfigModule, DbModule, PassengerLostReportModule],
     })
       .overrideProvider(DbService)
       .useValue({})
@@ -42,5 +54,6 @@ describe('PassengerLostReportModule dependency injection', () => {
     expect(moduleRef.get(PrismaBookingVerification)).toBeInstanceOf(PrismaBookingVerification)
     expect(moduleRef.get(PrismaCheckedBagLookup)).toBeInstanceOf(PrismaCheckedBagLookup)
     expect(moduleRef.get(PrismaCaseNumberSequence)).toBeInstanceOf(PrismaCaseNumberSequence)
+    expect(moduleRef.get(LostReportPhotoStorage)).toBeInstanceOf(LostReportPhotoStorage)
   })
 })

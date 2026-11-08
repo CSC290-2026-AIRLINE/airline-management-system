@@ -1,14 +1,17 @@
-import { useReducer, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useReducer, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
 import {
   buildCreateLostReportPayload,
+  buildCreateLostReportFormData,
   createLostReportPageState,
   lostReportPageReducer,
   PASSENGER_BAG_COLOURS,
   PASSENGER_BAG_TYPES,
   isCurrentFlightLookup,
+  LOST_REPORT_PHOTO_ACCEPT,
   validateLostReportForm,
+  validateLostReportPhoto,
   type EligibleFlight,
   type LostBagFormValues,
 } from './lost-report-form'
@@ -35,6 +38,22 @@ const EMPTY_VALUES: LostBagFormValues = {
   contactPhone: '',
 }
 
+const BAG_COLOUR_SWATCH: Record<(typeof PASSENGER_BAG_COLOURS)[number][0], string> = {
+  black: '#202124',
+  white: '#fff',
+  grey: '#87909d',
+  blue: '#3478c8',
+  red: '#d94c4c',
+  green: '#398c5a',
+  yellow: '#e1b92e',
+  orange: '#ed8a2f',
+  pink: '#e887a5',
+  purple: '#9068b4',
+  brown: '#805738',
+  beige: '#d8c69a',
+  multi: 'linear-gradient(135deg, #e74c3c 0 25%, #f1c40f 25% 50%, #2ecc71 50% 75%, #3498db 75%)',
+}
+
 async function getResponseMessage(response: Response, fallback: string): Promise<string> {
   const body = (await response.json().catch(() => null)) as ApiErrorBody | null
   if (response.status === 401) return 'Your sign-in has expired. Sign in again and retry.'
@@ -54,6 +73,9 @@ export function PassengerLostBagReportPage() {
   const [values, setValues] = useState<LostBagFormValues>(EMPTY_VALUES)
   const [pageState, dispatch] = useReducer(lostReportPageReducer, undefined, createLostReportPageState)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [photo, setPhoto] = useState<File | null>(null)
+  const [photoError, setPhotoError] = useState('')
+  const photoInput = useRef<HTMLInputElement>(null)
   const submissionPending = useRef(false)
   const flightLookupRequest = useRef(0)
   const flightLookupAccess = useRef({ bookingReference: '', surname: '' })
@@ -128,16 +150,19 @@ export function PassengerLostBagReportPage() {
     if (submissionPending.current || pageState.submitState === 'submitting') return
     const errors = validateLostReportForm(values, pageState.flights)
     setFieldErrors(errors)
-    if (Object.keys(errors).length) return
+    const fileError = validateLostReportPhoto(photo)
+    if (fileError) setPhotoError(fileError)
+    if (Object.keys(errors).length || photoError || fileError) return
 
     submissionPending.current = true
     dispatch({ type: 'submit-started' })
     try {
       const payload = buildCreateLostReportPayload(values, pageState.flights)
+      const requestInit: RequestInit = photo
+        ? { method: 'POST', body: buildCreateLostReportFormData(values, pageState.flights, photo) }
+        : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
       const response = await fetchWithAuth('/api/customer/lost-reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        ...requestInit,
       })
       if (!response.ok) {
         dispatch({
@@ -184,8 +209,29 @@ export function PassengerLostBagReportPage() {
   function reportAnotherBag() {
     setValues(EMPTY_VALUES)
     setFieldErrors({})
+    setPhoto(null)
+    setPhotoError('')
+    if (photoInput.current) photoInput.current.value = ''
     dispatch({ type: 'reset' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function selectPhoto(file: File | undefined) {
+    if (!file) return
+    const error = validateLostReportPhoto(file)
+    if (error) {
+      setPhoto(null)
+      setPhotoError(error)
+      if (photoInput.current) photoInput.current.value = ''
+      return
+    }
+    setPhoto(file)
+    setPhotoError('')
+  }
+
+  function handlePhotoDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault()
+    if (pageState.submitState !== 'submitting') selectPhoto(event.dataTransfer.files[0])
   }
 
   const selectedFlight = pageState.flights.find((flight) => flight.flightId === values.flightId)
@@ -241,38 +287,42 @@ export function PassengerLostBagReportPage() {
           <form className="passenger-report-card passenger-report-form" onSubmit={(event) => void submitReport(event)} noValidate>
             <section className="passenger-report-form__section" aria-labelledby="report-booking-title">
               <div className="passenger-report-form__section-heading">
-                <span>1</span>
-                <h2 id="report-booking-title">Find your booking</h2>
+                <h2 id="report-booking-title">1. Find your booking</h2>
               </div>
-              <div className="passenger-report-fields passenger-report-fields--booking">
-                <Field label="Booking reference" error={fieldErrors.bookingReference}>
-                  <input
-                    disabled={pageState.submitState === 'submitting'}
-                    autoComplete="off"
-                    maxLength={6}
-                    value={values.bookingReference}
-                    onChange={(event) => updateValue('bookingReference', event.currentTarget.value.toUpperCase())}
-                    aria-invalid={Boolean(fieldErrors.bookingReference)}
-                  />
-                </Field>
-                <Field label="Surname" error={fieldErrors.surname}>
-                  <input
-                    disabled={pageState.submitState === 'submitting'}
-                    autoComplete="family-name"
-                    maxLength={100}
-                    value={values.surname}
-                    onChange={(event) => updateValue('surname', event.currentTarget.value)}
-                    aria-invalid={Boolean(fieldErrors.surname)}
-                  />
-                </Field>
-                <button
-                  className="passenger-report-button passenger-report-button--find"
-                  type="button"
-                  disabled={pageState.flightState === 'loading' || pageState.submitState === 'submitting'}
-                  onClick={() => void findFlights()}
-                >
-                  {pageState.flightState === 'loading' ? 'Finding…' : 'Find booking'}
-                </button>
+              <div className="passenger-report-booking-lookup">
+                <div className="passenger-report-fields passenger-report-fields--booking">
+                  <Field label="Booking reference" error={fieldErrors.bookingReference}>
+                    <input
+                      disabled={pageState.submitState === 'submitting'}
+                      autoComplete="off"
+                      maxLength={6}
+                      value={values.bookingReference}
+                      onChange={(event) => updateValue('bookingReference', event.currentTarget.value.toUpperCase())}
+                      aria-invalid={Boolean(fieldErrors.bookingReference)}
+                    />
+                  </Field>
+                  <Field label="Surname" error={fieldErrors.surname}>
+                    <input
+                      disabled={pageState.submitState === 'submitting'}
+                      autoComplete="family-name"
+                      maxLength={100}
+                      value={values.surname}
+                      onChange={(event) => updateValue('surname', event.currentTarget.value)}
+                      aria-invalid={Boolean(fieldErrors.surname)}
+                    />
+                  </Field>
+                </div>
+                <div className="passenger-report-booking-lookup__actions">
+                  <button
+                    className="passenger-report-button passenger-report-button--find"
+                    type="button"
+                    disabled={pageState.flightState === 'loading' || pageState.submitState === 'submitting'}
+                    onClick={() => void findFlights()}
+                  >
+                    {pageState.flightState === 'loading' ? 'Finding…' : 'Find booking'}
+                  </button>
+                  <p>Find your booking first. We check the reference and surname on every step.</p>
+                </div>
               </div>
               {pageState.flightState === 'error' && (
                 <p className="passenger-report-message passenger-report-message--error" role="alert">
@@ -285,35 +335,40 @@ export function PassengerLostBagReportPage() {
                 </p>
               )}
               {pageState.flights.length > 0 && (
-                <div className="passenger-report-fields passenger-report-fields--flight">
-                  <Field label="Flight" error={fieldErrors.flightId}>
-                    <select
-                      disabled={pageState.submitState === 'submitting'}
-                      required
-                      value={values.flightId}
-                      onChange={(event) => updateValue('flightId', event.currentTarget.value)}
-                      aria-invalid={Boolean(fieldErrors.flightId)}
-                    >
-                      <option value="">Choose a flight</option>
-                      {pageState.flights.map((flight) => (
-                        <option key={flight.flightId} value={flight.flightId}>
-                          {flight.flightNumber} · {flight.origin} to {flight.destination} · {formatFlightDate(flight.serviceDate)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
+                <>
+                  <p className="passenger-report-booking-found" role="status">
+                    Booking {values.bookingReference} found. Select a flight to continue.
+                  </p>
+                  <div className="passenger-report-fields passenger-report-fields--flight">
+                    <Field label="Flight" error={fieldErrors.flightId}>
+                      <select
+                        disabled={pageState.submitState === 'submitting'}
+                        required
+                        value={values.flightId}
+                        onChange={(event) => updateValue('flightId', event.currentTarget.value)}
+                        aria-invalid={Boolean(fieldErrors.flightId)}
+                      >
+                        <option value="">Choose a flight</option>
+                        {pageState.flights.map((flight) => (
+                          <option key={flight.flightId} value={flight.flightId}>
+                            {flight.flightNumber} · {flight.origin} to {flight.destination} · {formatFlightDate(flight.serviceDate)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                </>
               )}
             </section>
 
             <section className="passenger-report-form__section" aria-labelledby="report-bag-title">
               <div className="passenger-report-form__section-heading">
-                <span>2</span>
-                <h2 id="report-bag-title">Tell us about the bag</h2>
+                <h2 id="report-bag-title">2. Your bag</h2>
               </div>
               <div className="passenger-report-fields">
                 <Field label="Bag type" error={fieldErrors.bagType}>
                   <select
+                    className="passenger-report-select--chevron-inset"
                     disabled={pageState.submitState === 'submitting'}
                     required
                     value={values.bagType}
@@ -329,60 +384,122 @@ export function PassengerLostBagReportPage() {
                   </select>
                 </Field>
                 <Field label="Main colour" error={fieldErrors.colour}>
-                  <select
-                    disabled={pageState.submitState === 'submitting'}
-                    required
-                    value={values.colour}
-                    onChange={(event) => updateValue('colour', event.currentTarget.value)}
-                    aria-invalid={Boolean(fieldErrors.colour)}
-                  >
-                    <option value="">Choose a colour</option>
-                    {PASSENGER_BAG_COLOURS.map(([colour, label]) => (
-                      <option key={colour} value={colour}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
+                  <span className={`passenger-report-colour-select${values.colour ? ' passenger-report-colour-select--selected' : ''}`}>
+                    {values.colour && (
+                      <span
+                        aria-hidden="true"
+                        className="passenger-report-colour-select__swatch"
+                        style={{ background: BAG_COLOUR_SWATCH[values.colour as keyof typeof BAG_COLOUR_SWATCH] }}
+                      />
+                    )}
+                    <select
+                      className="passenger-report-select--chevron-inset"
+                      disabled={pageState.submitState === 'submitting'}
+                      required
+                      value={values.colour}
+                      onChange={(event) => updateValue('colour', event.currentTarget.value)}
+                      aria-invalid={Boolean(fieldErrors.colour)}
+                    >
+                      <option value="">Choose a colour</option>
+                      {PASSENGER_BAG_COLOURS.map(([colour, label]) => (
+                        <option key={colour} value={colour}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
                 </Field>
-                <Field label="Baggage tag (optional)" error={fieldErrors.tagNumber}>
-                  <input
-                    disabled={pageState.submitState === 'submitting'}
-                    autoComplete="off"
-                    inputMode="numeric"
-                    maxLength={10}
-                    value={values.tagNumber}
-                    onChange={(event) => updateValue('tagNumber', event.currentTarget.value.trim())}
-                    aria-invalid={Boolean(fieldErrors.tagNumber)}
-                  />
-                </Field>
-                <Field label="Brand (optional)" error={fieldErrors.brand}>
+                <Field label="Brand (if known)" error={fieldErrors.brand}>
                   <input
                     disabled={pageState.submitState === 'submitting'}
                     maxLength={100}
+                    placeholder="e.g. Samsonite"
                     value={values.brand}
                     onChange={(event) => updateValue('brand', event.currentTarget.value)}
                     aria-invalid={Boolean(fieldErrors.brand)}
                   />
                 </Field>
-                <Field className="passenger-report-fields__wide" label="Description (optional)" error={fieldErrors.description}>
+                <Field label="Bag tag number (if you have it)" error={fieldErrors.tagNumber}>
+                  <input
+                    disabled={pageState.submitState === 'submitting'}
+                    autoComplete="off"
+                    inputMode="numeric"
+                    maxLength={10}
+                    placeholder="10 digits, e.g. 0789204578"
+                    value={values.tagNumber}
+                    onChange={(event) => updateValue('tagNumber', event.currentTarget.value.trim())}
+                    aria-invalid={Boolean(fieldErrors.tagNumber)}
+                  />
+                </Field>
+                <Field className="passenger-report-fields__wide" label="Anything that makes it stand out" error={fieldErrors.description}>
                   <textarea
                     disabled={pageState.submitState === 'submitting'}
                     maxLength={1000}
                     rows={4}
                     value={values.description}
+                    placeholder="Stickers, ribbons, a broken wheel, what was inside"
                     onChange={(event) => updateValue('description', event.currentTarget.value)}
                     aria-invalid={Boolean(fieldErrors.description)}
                   />
                 </Field>
+                <div className="passenger-report-photo passenger-report-fields__wide">
+                  <label
+                    className={`passenger-report-photo__dropzone${pageState.submitState === 'submitting' ? ' is-disabled' : ''}`}
+                    htmlFor="lost-report-photo"
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={handlePhotoDrop}
+                  >
+                    <input
+                      ref={photoInput}
+                      id="lost-report-photo"
+                      className="passenger-report-photo__input"
+                      type="file"
+                      accept={LOST_REPORT_PHOTO_ACCEPT}
+                      disabled={pageState.submitState === 'submitting'}
+                      onChange={(event) => selectPhoto(event.currentTarget.files?.[0])}
+                      aria-describedby="lost-report-photo-help"
+                    />
+                    <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+                      <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 15v4h14v-4" />
+                    </svg>
+                    <strong>Photo (optional)</strong>
+                    <span id="lost-report-photo-help">
+                      <span className="passenger-report-photo__desktop-help">
+                        Drag a photo here or <span className="passenger-report-photo__browse">browse</span>. JPG or PNG, up to 10 MB.
+                      </span>
+                      <span className="passenger-report-photo__mobile-help">Tap to take or choose a photo. JPG or PNG, up to 10 MB.</span>
+                    </span>
+                  </label>
+                  {photo && (
+                    <div className="passenger-report-photo__selected" aria-live="polite">
+                      <span title={photo.name}>{photo.name}</span>
+                      <button
+                        className="passenger-report-photo__remove"
+                        type="button"
+                        disabled={pageState.submitState === 'submitting'}
+                        onClick={() => {
+                          setPhoto(null)
+                          setPhotoError('')
+                          if (photoInput.current) photoInput.current.value = ''
+                        }}
+                      >
+                        Remove photo
+                      </button>
+                    </div>
+                  )}
+                  {photoError && (
+                    <p className="passenger-report-photo__error" role="alert">
+                      {photoError}
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
 
             <section className="passenger-report-form__section" aria-labelledby="report-contact-title">
               <div className="passenger-report-form__section-heading">
-                <span>3</span>
-                <h2 id="report-contact-title">How can we contact you?</h2>
+                <h2 id="report-contact-title">3. How we reach you</h2>
               </div>
-              <p className="passenger-report-form__hint">Enter at least one contact method.</p>
               <div className="passenger-report-fields">
                 <Field label="Email" error={fieldErrors.contactEmail}>
                   <input
@@ -390,6 +507,7 @@ export function PassengerLostBagReportPage() {
                     type="email"
                     autoComplete="email"
                     maxLength={254}
+                    placeholder="you@example.com"
                     value={values.contactEmail}
                     onChange={(event) => updateValue('contactEmail', event.currentTarget.value)}
                     aria-invalid={Boolean(fieldErrors.contactEmail)}
@@ -401,6 +519,7 @@ export function PassengerLostBagReportPage() {
                     type="tel"
                     autoComplete="tel"
                     maxLength={30}
+                    placeholder="+66 …"
                     value={values.contactPhone}
                     onChange={(event) => updateValue('contactPhone', event.currentTarget.value)}
                     aria-invalid={Boolean(fieldErrors.contactPhone)}
@@ -412,6 +531,7 @@ export function PassengerLostBagReportPage() {
                   {fieldErrors.contact}
                 </p>
               )}
+              <p className="passenger-report-form__hint">Give at least one. We only use it for this case.</p>
               {pageState.submitError && (
                 <p className="passenger-report-message passenger-report-message--error" role="alert">
                   {pageState.submitError}
@@ -423,7 +543,7 @@ export function PassengerLostBagReportPage() {
                   type="submit"
                   disabled={pageState.submitState === 'submitting' || pageState.flightState !== 'loaded' || pageState.flights.length === 0}
                 >
-                  {pageState.submitState === 'submitting' ? 'Sending report…' : 'Send report'}
+                  {pageState.submitState === 'submitting' ? (photo ? 'Sending photo and report…' : 'Sending report…') : 'Send report'}
                 </button>
               </div>
             </section>
@@ -432,8 +552,8 @@ export function PassengerLostBagReportPage() {
             <WhatHappensNext />
             <section className="passenger-report-card passenger-report-existing">
               <h2>Already reported?</h2>
-              <p>Open your case to see updates from the baggage team.</p>
-              <Link to="/lost-bag-case">Open my case</Link>
+              <p>Open My bag case with your case number, booking reference and surname.</p>
+              <Link to="/lost-bag-case">Check my case</Link>
             </section>
           </aside>
         </div>
@@ -463,24 +583,19 @@ function WhatHappensNext() {
       <ol>
         <li>
           <span>1</span>
-          <div>
-            <strong>We search</strong>
-            <p>Staff at every airport check for bags matching your description.</p>
-          </div>
+          <p>You get a case number right away.</p>
         </li>
         <li>
           <span>2</span>
-          <div>
-            <strong>We confirm it’s yours</strong>
-            <p>We’ll contact you when staff find a possible match.</p>
-          </div>
+          <p>Staff compare your report with every bag found at our airports.</p>
         </li>
         <li>
           <span>3</span>
-          <div>
-            <strong>You follow your case</strong>
-            <p>Use your case number to see updates online.</p>
-          </div>
+          <p>Once staff confirm it is your bag, you choose home, hotel, another address or airport pickup.</p>
+        </li>
+        <li>
+          <span>4</span>
+          <p>We pay for sending it to you. You never pay.</p>
         </li>
       </ol>
     </section>

@@ -28,6 +28,16 @@ export const PASSENGER_BAG_COLOURS = [
 export type PassengerBagType = (typeof PASSENGER_BAG_TYPES)[number][0]
 export type PassengerBagColour = (typeof PASSENGER_BAG_COLOURS)[number][0]
 
+export const LOST_REPORT_PHOTO_MAX_BYTES = 10 * 1024 * 1024
+export const LOST_REPORT_PHOTO_ACCEPT = 'image/jpeg,image/png,.jpg,.jpeg,.png'
+
+export function validateLostReportPhoto(file: Pick<File, 'type' | 'size'> | null): string | null {
+  if (!file) return null
+  if (!['image/jpeg', 'image/png'].includes(file.type)) return 'Choose a JPG or PNG image.'
+  if (file.size > LOST_REPORT_PHOTO_MAX_BYTES) return 'Photo must be 10 MB or smaller.'
+  return null
+}
+
 export interface EligibleFlight {
   flightId: string
   flightNumber: string
@@ -181,4 +191,12 @@ export function buildCreateLostReportPayload(values: LostBagFormValues, flights:
   }
 
   return payload
+}
+
+export function buildCreateLostReportFormData(values: LostBagFormValues, flights: EligibleFlight[], photo: File): FormData {
+  const payload = buildCreateLostReportPayload(values, flights)
+  const formData = new FormData()
+  for (const [key, value] of Object.entries(payload)) formData.append(key, value)
+  formData.append('photo', photo)
+  return formData
 }
