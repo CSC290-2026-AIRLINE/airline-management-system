@@ -2,7 +2,7 @@ import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
 import { DeliveryChoiceForm, type PassengerDeliveryChoice } from '../components/DeliveryChoiceForm'
-import { createPassengerCasePageState, passengerCasePageReducer, passengerDeliveryFormKey } from './case-page-state'
+import { createPassengerCasePageState, isCurrentCaseRequest, passengerCasePageReducer, passengerDeliveryFormKey } from './case-page-state'
 import { timelineEventLabel, type PassengerCaseTimelineEvent } from './passenger-case-summary-view'
 import './PassengerLostBagCasePage.css'
 
@@ -165,6 +165,7 @@ export function PassengerLostBagCasePage() {
   const { fetchWithAuth } = useAppAuth()
   const location = useLocation()
   const openedFromReport = useRef(false)
+  const caseRequestGeneration = useRef(0)
   const caseSummaryRequest = useRef(0)
   const [caseNumber, setCaseNumber] = useState('')
   const [bookingReference, setBookingReference] = useState('')
@@ -214,6 +215,9 @@ export function PassengerLostBagCasePage() {
   }
 
   async function loadCase(requestAccess: CaseAccess) {
+    const requestId = ++caseRequestGeneration.current
+    caseSummaryRequest.current += 1
+    const isCurrent = () => isCurrentCaseRequest(requestId, caseRequestGeneration.current)
     const normalizedAccess = {
       ...requestAccess,
       caseNumber: requestAccess.caseNumber.trim().toUpperCase(),
@@ -222,6 +226,7 @@ export function PassengerLostBagCasePage() {
     }
 
     setIsLookingUp(true)
+    setIsSaving(false)
     setError('')
     dispatchCasePage({ type: 'reset' })
     setCaseSummary(null)
@@ -233,9 +238,6 @@ export function PassengerLostBagCasePage() {
     setCaseNumber(normalizedAccess.caseNumber)
     setBookingReference(normalizedAccess.bookingReference)
     setSurname(normalizedAccess.surname)
-    caseSummaryRequest.current += 1
-    const summaryRequestId = caseSummaryRequest.current
-
     try {
       const query = accessQuery(normalizedAccess)
       const casePath = `/api/customer/lost-reports/${encodeURIComponent(normalizedAccess.caseNumber)}`
@@ -243,65 +245,83 @@ export function PassengerLostBagCasePage() {
         fetchWithAuth(`${casePath}?${query}`),
         fetchWithAuth(`/api/customer/lost-reports?${query}`),
       ])
+      if (!isCurrent()) return
 
       if (!reportResponse.ok) {
         const message =
           reportResponse.status === 404
             ? 'We could not find a case matching those details.'
             : await responseError(reportResponse, 'We could not open this case. Try again.')
+        if (!isCurrent()) return
         throw new Error(message)
       }
 
       const reportData = (await reportResponse.json()) as LostBagReportDetail
+      if (!isCurrent()) return
       let caseNumbers: string[] = []
       let listMessage = ''
       if (listResponse.ok) {
         const list = (await listResponse.json()) as LostBagReportListItem[]
+        if (!isCurrent()) return
         caseNumbers = [...new Set(list.map((item) => item.caseNumber))]
       } else {
         listMessage = await responseError(listResponse, 'Other cases could not be loaded.')
+        if (!isCurrent()) return
       }
 
+      if (!isCurrent()) return
       dispatchCasePage({ type: 'report-loaded', report: reportData })
       setAccess(normalizedAccess)
       setIsEditingAccess(false)
       setRelatedCases(caseNumbers)
       setCaseListMessage(listMessage)
-      void loadCaseSummary(normalizedAccess, summaryRequestId)
+      void loadCaseSummary(normalizedAccess, requestId)
 
       try {
         const deliveryResponse = await fetchWithAuth(`${casePath}/delivery-choice?${query}`)
+        if (!isCurrent()) return
 
         if (deliveryResponse.status === 404) {
           dispatchCasePage({ type: 'delivery-missing' })
           return
         }
         if (!deliveryResponse.ok) {
+          const message = await responseError(deliveryResponse, 'Delivery details could not be loaded. Reopen the case to try again.')
+          if (!isCurrent()) return
           dispatchCasePage({
             type: 'delivery-failed',
-            message: await responseError(deliveryResponse, 'Delivery details could not be loaded. Reopen the case to try again.'),
+            message,
           })
           return
         }
 
-        dispatchCasePage({ type: 'delivery-loaded', delivery: (await deliveryResponse.json()) as DeliveryChoiceState })
+        const delivery = (await deliveryResponse.json()) as DeliveryChoiceState
+        if (!isCurrent()) return
+        dispatchCasePage({ type: 'delivery-loaded', delivery })
       } catch (cause) {
+        if (!isCurrent()) return
         dispatchCasePage({
           type: 'delivery-failed',
           message: cause instanceof Error ? cause.message : 'Delivery details could not be loaded. Reopen the case to try again.',
         })
       }
     } catch (cause) {
+      if (!isCurrent()) return
       setError(cause instanceof Error ? cause.message : 'We could not open this case. Try again.')
       dispatchCasePage({ type: 'reset' })
       setAccess(null)
       setIsEditingAccess(true)
     } finally {
-      setIsLookingUp(false)
+      if (isCurrent()) setIsLookingUp(false)
     }
   }
 
-  async function loadCaseSummary(currentAccess: CaseAccess, requestId = caseSummaryRequest.current): Promise<void> {
+  async function loadCaseSummary(currentAccess: CaseAccess, caseRequestId: number): Promise<void> {
+    const summaryRequestId = ++caseSummaryRequest.current
+    const isCurrent = () =>
+      isCurrentCaseRequest(caseRequestId, caseRequestGeneration.current) &&
+      isCurrentCaseRequest(summaryRequestId, caseSummaryRequest.current)
+    if (!isCurrent()) return
     const query = accessQuery(currentAccess)
     const path = `/api/customer/lost-reports/${encodeURIComponent(currentAccess.caseNumber)}/summary?${query}`
     setCaseSummaryLoading(true)
@@ -309,20 +329,24 @@ export function PassengerLostBagCasePage() {
 
     try {
       const response = await fetchWithAuth(path)
-      if (requestId !== caseSummaryRequest.current) return
+      if (!isCurrent()) return
       if (!response.ok) {
+        const message = await responseError(response, 'Recovery timeline details could not be loaded.')
+        if (!isCurrent()) return
         setCaseSummary(null)
-        setCaseSummaryError(await responseError(response, 'Recovery timeline details could not be loaded.'))
+        setCaseSummaryError(message)
         return
       }
 
-      setCaseSummary((await response.json()) as PassengerCaseSummary)
+      const summary = (await response.json()) as PassengerCaseSummary
+      if (!isCurrent()) return
+      setCaseSummary(summary)
     } catch (cause) {
-      if (requestId !== caseSummaryRequest.current) return
+      if (!isCurrent()) return
       setCaseSummary(null)
       setCaseSummaryError(cause instanceof Error ? cause.message : 'Recovery timeline details could not be loaded.')
     } finally {
-      if (requestId === caseSummaryRequest.current) setCaseSummaryLoading(false)
+      if (isCurrent()) setCaseSummaryLoading(false)
     }
   }
 
@@ -393,24 +417,31 @@ export function PassengerLostBagCasePage() {
   async function saveChoice(choice: PassengerDeliveryChoice): Promise<void> {
     if (!access) throw new Error('Case access is no longer available. Reopen the case and try again.')
 
+    const currentAccess = access
+    const requestId = caseRequestGeneration.current
+    const isCurrent = () => isCurrentCaseRequest(requestId, caseRequestGeneration.current)
     setIsSaving(true)
     setError('')
     setSaveNotice('')
     try {
       const response = await fetchWithAuth(
-        `/api/customer/lost-reports/${encodeURIComponent(access.caseNumber)}/delivery-choice?${accessQuery(access)}`,
+        `/api/customer/lost-reports/${encodeURIComponent(currentAccess.caseNumber)}/delivery-choice?${accessQuery(currentAccess)}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(choice),
         },
       )
+      if (!isCurrent()) return
       if (!response.ok) {
-        if (response.status === 409) await refreshCaseState(access)
-        throw new Error(await responseError(response, 'We could not save your delivery choice. Try again.'))
+        if (response.status === 409) await refreshCaseState(currentAccess, requestId)
+        const message = await responseError(response, 'We could not save your delivery choice. Try again.')
+        if (!isCurrent()) return
+        throw new Error(message)
       }
 
       const result = (await response.json()) as DeliveryChoiceUpdate
+      if (!isCurrent()) return
       dispatchCasePage({
         type: 'delivery-loaded',
         delivery: {
@@ -420,31 +451,36 @@ export function PassengerLostBagCasePage() {
           status: result.status,
         },
       })
-      void loadCaseSummary(access)
+      void loadCaseSummary(currentAccess, requestId)
       setSaveNotice('Your delivery choice was saved.')
     } catch (cause) {
+      if (!isCurrent()) return
       const message = cause instanceof Error ? cause.message : 'We could not save your delivery choice. Try again.'
       setError(message)
       throw cause
     } finally {
-      setIsSaving(false)
+      if (isCurrent()) setIsSaving(false)
     }
   }
 
-  async function refreshCaseState(currentAccess: CaseAccess): Promise<void> {
+  async function refreshCaseState(currentAccess: CaseAccess, requestId: number): Promise<void> {
+    const isCurrent = () => isCurrentCaseRequest(requestId, caseRequestGeneration.current)
     const query = accessQuery(currentAccess)
     const casePath = `/api/customer/lost-reports/${encodeURIComponent(currentAccess.caseNumber)}`
     const [reportResult, deliveryResult] = await Promise.allSettled([
       fetchWithAuth(`${casePath}?${query}`),
       fetchWithAuth(`${casePath}/delivery-choice?${query}`),
     ])
-    void loadCaseSummary(currentAccess)
+    if (!isCurrent()) return
+    void loadCaseSummary(currentAccess, requestId)
 
     if (reportResult.status === 'fulfilled' && reportResult.value.ok) {
       const refreshedReport = (await reportResult.value.json().catch(() => null)) as LostBagReportDetail | null
+      if (!isCurrent()) return
       if (refreshedReport) dispatchCasePage({ type: 'report-loaded', report: refreshedReport })
     }
 
+    if (!isCurrent()) return
     if (deliveryResult.status === 'rejected') {
       dispatchCasePage({
         type: 'delivery-failed',
@@ -459,16 +495,22 @@ export function PassengerLostBagCasePage() {
     const deliveryResponse = deliveryResult.value
     try {
       if (deliveryResponse.status === 404) {
+        if (!isCurrent()) return
         dispatchCasePage({ type: 'delivery-missing' })
       } else if (deliveryResponse.ok) {
-        dispatchCasePage({ type: 'delivery-loaded', delivery: (await deliveryResponse.json()) as DeliveryChoiceState })
+        const delivery = (await deliveryResponse.json()) as DeliveryChoiceState
+        if (!isCurrent()) return
+        dispatchCasePage({ type: 'delivery-loaded', delivery })
       } else {
+        const message = await responseError(deliveryResponse, 'Delivery details could not be loaded. Reopen the case to try again.')
+        if (!isCurrent()) return
         dispatchCasePage({
           type: 'delivery-failed',
-          message: await responseError(deliveryResponse, 'Delivery details could not be loaded. Reopen the case to try again.'),
+          message,
         })
       }
     } catch (cause) {
+      if (!isCurrent()) return
       dispatchCasePage({
         type: 'delivery-failed',
         message: cause instanceof Error ? cause.message : 'Delivery details could not be loaded. Reopen the case to try again.',

@@ -12,6 +12,7 @@ export type PassengerCaseTimelineEvent =
   | { type: 'out_for_delivery'; occurredAt: string; airport: string }
   | { type: 'bag_delivered'; occurredAt: string }
   | { type: 'case_closed'; occurredAt: string }
+  | { type: 'case_cancelled'; occurredAt: string }
 
 const DELIVERY_LABELS: Record<DeliveryType, string> = {
   home: 'Home',
@@ -46,5 +47,7 @@ export function timelineEventLabel(event: PassengerCaseTimelineEvent): string {
       return 'Bag delivered'
     case 'case_closed':
       return 'Case closed'
+    case 'case_cancelled':
+      return 'Case cancelled'
   }
 }

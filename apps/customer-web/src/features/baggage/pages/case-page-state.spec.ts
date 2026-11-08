@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createPassengerCasePageState, passengerCasePageReducer, passengerDeliveryFormKey } from './case-page-state.ts'
+import {
+  createPassengerCasePageState,
+  isCurrentCaseRequest,
+  passengerCasePageReducer,
+  passengerDeliveryFormKey,
+} from './case-page-state.ts'
 
 interface Report {
   caseNumber: string
@@ -12,6 +17,68 @@ interface Delivery {
   pickupAirport: string | null
   status: string
 }
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: Error) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+test('stale case responses, errors, and loading cleanup cannot replace a newer lookup', async () => {
+  let currentRequestId = 1
+  const page = { report: '', error: '', isLookingUp: true }
+  const oldRequest = deferred<string>()
+  const newRequest = deferred<string>()
+
+  const settle = async (requestId: number, promise: Promise<string>) => {
+    try {
+      const result = await promise
+      if (isCurrentCaseRequest(requestId, currentRequestId)) page.report = result
+    } catch (error) {
+      if (isCurrentCaseRequest(requestId, currentRequestId)) page.error = (error as Error).message
+    } finally {
+      if (isCurrentCaseRequest(requestId, currentRequestId)) page.isLookingUp = false
+    }
+  }
+
+  const oldLookup = settle(1, oldRequest.promise)
+  currentRequestId = 2
+  page.isLookingUp = true
+  const newLookup = settle(2, newRequest.promise)
+
+  oldRequest.reject(new Error('stale authorization error'))
+  await oldLookup
+  assert.deepEqual(page, { report: '', error: '', isLookingUp: true })
+
+  newRequest.resolve('new case')
+  await newLookup
+  assert.deepEqual(page, { report: 'new case', error: '', isLookingUp: false })
+})
+
+test('an out-of-order older case success cannot overwrite the latest case', async () => {
+  let currentRequestId = 1
+  const page = { report: '' }
+  const oldRequest = deferred<string>()
+  const newRequest = deferred<string>()
+  const settle = async (requestId: number, promise: Promise<string>) => {
+    const result = await promise
+    if (isCurrentCaseRequest(requestId, currentRequestId)) page.report = result
+  }
+
+  const oldLookup = settle(1, oldRequest.promise)
+  currentRequestId = 2
+  const newLookup = settle(2, newRequest.promise)
+  newRequest.resolve('new case')
+  await newLookup
+  oldRequest.resolve('old case')
+  await oldLookup
+
+  assert.equal(page.report, 'new case')
+})
 
 test('an authoritative delivery refresh replaces the choice and increments the form revision', () => {
   const report = { caseNumber: 'LB-2026-000001' }

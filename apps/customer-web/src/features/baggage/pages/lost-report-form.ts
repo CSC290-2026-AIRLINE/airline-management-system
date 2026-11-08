@@ -42,6 +42,25 @@ export interface CaseAccess {
   surname: string
 }
 
+export interface FlightLookupRequest {
+  requestId: number
+  bookingReference: string
+  surname: string
+}
+
+export interface FlightLookupAccess {
+  bookingReference: string
+  surname: string
+}
+
+export function isCurrentFlightLookup(request: FlightLookupRequest, currentRequestId: number, currentAccess: FlightLookupAccess): boolean {
+  return (
+    request.requestId === currentRequestId &&
+    request.bookingReference === currentAccess.bookingReference.trim().toUpperCase() &&
+    request.surname === currentAccess.surname.trim()
+  )
+}
+
 export interface LostBagFormValues {
   bookingReference: string
   surname: string

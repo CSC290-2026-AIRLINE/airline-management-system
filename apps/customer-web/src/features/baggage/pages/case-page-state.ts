@@ -27,6 +27,10 @@ export function passengerDeliveryFormKey(caseNumber: string, revision: number): 
   return `${caseNumber}-${revision}`
 }
 
+export function isCurrentCaseRequest(requestId: number, currentRequestId: number): boolean {
+  return requestId === currentRequestId
+}
+
 export function passengerCasePageReducer<Report, Delivery>(
   state: PassengerCasePageState<Report, Delivery>,
   action: PassengerCasePageAction<Report, Delivery>,

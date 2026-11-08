@@ -7,6 +7,7 @@ import {
   lostReportPageReducer,
   PASSENGER_BAG_COLOURS,
   PASSENGER_BAG_TYPES,
+  isCurrentFlightLookup,
   validateLostReportForm,
   type EligibleFlight,
   type LostBagFormValues,
@@ -54,8 +55,15 @@ export function PassengerLostBagReportPage() {
   const [pageState, dispatch] = useReducer(lostReportPageReducer, undefined, createLostReportPageState)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const submissionPending = useRef(false)
+  const flightLookupRequest = useRef(0)
+  const flightLookupAccess = useRef({ bookingReference: '', surname: '' })
 
   function updateValue<K extends keyof LostBagFormValues>(key: K, value: LostBagFormValues[K]) {
+    if (key === 'bookingReference' || key === 'surname') {
+      flightLookupRequest.current += 1
+      flightLookupAccess.current = { ...flightLookupAccess.current, [key]: value }
+    }
+
     setValues((current) => ({
       ...current,
       [key]: value,
@@ -75,6 +83,9 @@ export function PassengerLostBagReportPage() {
     dispatch({ type: 'flights-loading' })
     const reference = values.bookingReference.trim().toUpperCase()
     const surname = values.surname.trim()
+    flightLookupAccess.current = { bookingReference: reference, surname }
+    const request = { requestId: ++flightLookupRequest.current, bookingReference: reference, surname }
+    const isCurrent = () => isCurrentFlightLookup(request, flightLookupRequest.current, flightLookupAccess.current)
     const accessErrors: Record<string, string> = {}
     if (!/^[A-Z0-9]{6}$/.test(reference)) accessErrors.bookingReference = 'Enter a valid six-character booking reference.'
     if (!surname) accessErrors.surname = 'Enter the surname on the booking.'
@@ -89,17 +100,22 @@ export function PassengerLostBagReportPage() {
     try {
       const query = `bookingReference=${encodeURIComponent(reference)}&surname=${encodeURIComponent(surname)}`
       const response = await fetchWithAuth(`/api/customer/lost-report-flights?${query}`)
+      if (!isCurrent()) return
       if (!response.ok) {
+        const message = await getResponseMessage(response, 'Eligible flights could not be loaded. Try again.')
+        if (!isCurrent()) return
         dispatch({
           type: 'flights-failed',
-          message: await getResponseMessage(response, 'Eligible flights could not be loaded. Try again.'),
+          message,
         })
         return
       }
       const flights = (await response.json()) as EligibleFlight[]
+      if (!isCurrent()) return
       dispatch({ type: 'flights-loaded', flights })
       setValues((current) => ({ ...current, flightId: '' }))
     } catch (cause) {
+      if (!isCurrent()) return
       dispatch({
         type: 'flights-failed',
         message: cause instanceof Error ? cause.message : 'Eligible flights could not be loaded. Try again.',

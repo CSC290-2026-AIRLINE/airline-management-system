@@ -13,6 +13,7 @@ test('maps persisted passenger timeline entries to safe case-page labels', () =>
     { type: 'out_for_delivery', occurredAt: '2026-10-21T08:15:00Z', airport: 'NRT' },
     { type: 'bag_delivered', occurredAt: '2026-10-21T09:00:00Z' },
     { type: 'case_closed', occurredAt: '2026-10-21T10:00:00Z' },
+    { type: 'case_cancelled', occurredAt: '2026-10-21T10:00:00Z' },
   ]
 
   assert.deepEqual(events.map(timelineEventLabel), [
@@ -25,6 +26,7 @@ test('maps persisted passenger timeline entries to safe case-page labels', () =>
     'Bag out for delivery at NRT',
     'Bag delivered',
     'Case closed',
+    'Case cancelled',
   ])
 })
 

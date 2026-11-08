@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   buildCreateLostReportPayload,
   createLostReportPageState,
+  isCurrentFlightLookup,
   lostReportPageReducer,
   validateLostReportForm,
   type EligibleFlight,
@@ -30,6 +31,16 @@ const validValues: LostBagFormValues = {
   description: ' Silver ribbon ',
   contactEmail: ' passenger@example.com ',
   contactPhone: '',
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: Error) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 test('validates required fields, tag format, contact validation, and the selected eligible flight', () => {
@@ -95,4 +106,64 @@ test('flight lookup and report submission success and error states are observabl
   const succeeded = lostReportPageReducer(submitted, { type: 'submit-succeeded', caseNumber: 'LB-2026-000118' })
   assert.equal(succeeded.submitState, 'success')
   assert.equal(succeeded.caseNumber, 'LB-2026-000118')
+})
+
+test('a flight lookup invalidated by changed booking inputs ignores stale success, error, and cleanup', async () => {
+  let currentRequestId = 1
+  let currentAccess = { bookingReference: 'ABC123', surname: 'Lee' }
+  let state = { flights: ['old state'], error: '', loading: true }
+  const pending = deferred<string[]>()
+  const request = { requestId: 1, bookingReference: 'ABC123', surname: 'Lee' }
+  const isCurrent = () => isCurrentFlightLookup(request, currentRequestId, currentAccess)
+
+  const settle = async () => {
+    try {
+      const result = await pending.promise
+      if (isCurrent()) state.flights = result
+    } catch (error) {
+      if (isCurrent()) state.error = (error as Error).message
+    } finally {
+      if (isCurrent()) state.loading = false
+    }
+  }
+  const lookup = settle()
+
+  currentRequestId += 1
+  currentAccess = { bookingReference: 'XYZ789', surname: 'Kim' }
+  state = { flights: [], error: '', loading: false }
+  pending.reject(new Error('old booking lookup failed'))
+  await lookup
+
+  assert.deepEqual(state, { flights: [], error: '', loading: false })
+})
+
+test('an older out-of-order flight result cannot replace the latest booking result', async () => {
+  let currentRequestId = 1
+  let currentAccess = { bookingReference: 'ABC123', surname: 'Lee' }
+  const state = { flights: [] as string[] }
+  const oldPending = deferred<string[]>()
+  const newPending = deferred<string[]>()
+  const settle = async (requestId: number, bookingReference: string, surname: string, pending: Promise<string[]>) => {
+    const result = await pending
+    if (isCurrentFlightLookup({ requestId, bookingReference, surname }, currentRequestId, currentAccess)) state.flights = result
+  }
+
+  const oldLookup = settle(1, 'ABC123', 'Lee', oldPending.promise)
+  currentRequestId = 2
+  currentAccess = { bookingReference: 'XYZ789', surname: 'Kim' }
+  const newLookup = settle(2, 'XYZ789', 'Kim', newPending.promise)
+  newPending.resolve(['new flight'])
+  await newLookup
+  oldPending.resolve(['old flight'])
+  await oldLookup
+
+  assert.deepEqual(state.flights, ['new flight'])
+})
+
+test('flight lookup generation and normalized booking inputs must both match', () => {
+  const request = { requestId: 3, bookingReference: 'ABC123', surname: 'Lee' }
+
+  assert.equal(isCurrentFlightLookup(request, 3, { bookingReference: ' abc123 ', surname: ' Lee ' }), true)
+  assert.equal(isCurrentFlightLookup(request, 4, { bookingReference: 'ABC123', surname: 'Lee' }), false)
+  assert.equal(isCurrentFlightLookup(request, 3, { bookingReference: 'XYZ789', surname: 'Lee' }), false)
 })
