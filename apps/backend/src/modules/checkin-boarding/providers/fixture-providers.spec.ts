@@ -19,7 +19,7 @@ describe('FixtureSeats', () => {
     const a = await seats.hold('flt-fy204', '17E', 'bp-er204f', 300_000)
     await expect(seats.hold('flt-fy204', '17E', 'bp-ec204g', 300_000)).rejects.toMatchObject({ code: 'SEAT_TAKEN' })
     clock.set(new Date(DEMO_NOW.getTime() + 300_001))
-    await expect(seats.confirm(a.id)).rejects.toMatchObject({ code: 'LOCK_EXPIRED' })
+    await expect(seats.confirm(a.id, null)).rejects.toMatchObject({ code: 'LOCK_EXPIRED' })
     await expect(seats.hold('flt-fy204', '17E', 'bp-ec204g', 300_000)).resolves.toMatchObject({ seatCode: '17E' })
   })
 
@@ -55,8 +55,8 @@ describe('FixtureSeats', () => {
     const seats = new FixtureSeats(new FixtureClock())
     const first = await seats.hold('flt-fy204', '17E', 'bp-er204f', 300_000)
     await seats.hold('flt-fy204', '19D', 'bp-er204f', 300_000)
-    await expect(seats.confirm(first.id)).rejects.toMatchObject({ code: 'NOT_FOUND' })
-    await expect(seats.confirm('lock-2')).resolves.toMatchObject({ seatCode: '19D' })
+    await expect(seats.confirm(first.id, null)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(seats.confirm('lock-2', null)).resolves.toMatchObject({ seatCode: '19D' })
   })
 })
 
@@ -112,10 +112,12 @@ describe('FixturePricing and FixturePayments', () => {
 
   it('payments hand out a new id each time', async () => {
     const payments = new FixturePayments()
-    expect(await payments.charge({ amount: 1500, currency: 'THB', purpose: 'excess_baggage', reference: 'r' })).toEqual({
+    expect(await payments.charge({ amount: 1500, currency: 'THB', purpose: 'excess_baggage', reference: 'r', bookingId: 'bk-1' })).toEqual({
       paymentId: 'pay-1',
     })
-    expect(await payments.charge({ amount: 250, currency: 'THB', purpose: 'seat', reference: 'r' })).toEqual({ paymentId: 'pay-2' })
+    expect(await payments.charge({ amount: 250, currency: 'THB', purpose: 'seat', reference: 'r', bookingId: 'bk-1' })).toEqual({
+      paymentId: 'pay-2',
+    })
   })
 })
 

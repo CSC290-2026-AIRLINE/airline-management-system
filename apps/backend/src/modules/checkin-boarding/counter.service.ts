@@ -210,7 +210,14 @@ export class CounterService {
     const unpaid = bags.filter((b) => b.excess_fee > 0 && !b.excess_payment_id)
     if (unpaid.length > 0) {
       const amount = Math.round(unpaid.reduce((sum, b) => sum + b.excess_fee, 0) * 100) / 100
-      const charge = await this.payments.charge({ amount, currency: 'THB', purpose: 'excess_baggage', reference: record.id })
+      const booking = await this.bookingOf(record)
+      const charge = await this.payments.charge({
+        amount,
+        currency: 'THB',
+        purpose: 'excess_baggage',
+        reference: `check_in:${record.id}:bags:${unpaid.length}`,
+        bookingId: booking.bookingId,
+      })
       // Bags paid together share one payment id.
       for (const other of unpaid) {
         await this.store.updateBag(other.id, { excess_payment_id: charge.paymentId })

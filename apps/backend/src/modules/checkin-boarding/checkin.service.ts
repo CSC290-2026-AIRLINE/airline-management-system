@@ -244,18 +244,24 @@ export class CheckInService {
     this.assertWindowOpen(flight, await this.windowOf(flight))
     const held = this.holds.get(input.lockId)
     if (!held || held.checkInId !== record.id) throw notFound('Seat hold')
-    const confirmed = await this.seats.confirm(input.lockId)
-    this.holds.delete(input.lockId)
+    // The hold runs out before the money goes in: an expired hold is never charged.
+    if (new Date(held.lock.expiresAt).getTime() <= this.clock.now().getTime()) {
+      throw new CheckInError(409, 'LOCK_EXPIRED', 'The seat hold has expired', { seatCode: held.lock.seatCode })
+    }
+    const booking = await this.bookingOf(record)
     let paymentId: string | null = null
     if (held.lock.fee > 0) {
       const charge = await this.payments.charge({
         amount: held.lock.fee,
         currency: 'THB',
         purpose: 'seat',
-        reference: record.id,
+        reference: `seat_assignment:${input.lockId}`,
+        bookingId: booking.bookingId,
       })
       paymentId = charge.paymentId
     }
+    const confirmed = await this.seats.confirm(input.lockId, paymentId)
+    this.holds.delete(input.lockId)
     this.seatPayments.set(record.booking_passenger_id, paymentId)
     const pass = (await this.store.passesForCheckIn(record.id))[0]
     if (pass) await this.store.updatePass(pass.id, { seat_code: confirmed.seatCode })

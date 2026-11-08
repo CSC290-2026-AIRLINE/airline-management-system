@@ -9,6 +9,7 @@ import {
   FARE_CLASS_CABIN,
   FLIGHTS,
   HOLD_LAST4,
+  POLICE_PASSPORTS,
   PROFILES,
   PRICING,
   SEAT_LAYOUT,
@@ -113,12 +114,16 @@ interface FixtureLock {
 @Injectable()
 export class FixtureSeats implements SeatProvider {
   private readonly locks = new Map<string, FixtureLock>()
-  private readonly assignments = new Map<string, { seatCode: string; type: SeatType }>()
+  private readonly assignments = new Map<string, { seatCode: string; type: SeatType; paymentId: string | null }>()
   private lockSeq = 0
 
   constructor(@Inject(CLOCK) private readonly clock: ClockProvider) {
     for (const seed of SEEDED_PASSES) {
-      this.assignments.set(`bp-${seed.pnr.toLowerCase()}`, { seatCode: seed.seat, type: seatOf(seed.seat)?.type ?? 'standard' })
+      this.assignments.set(`bp-${seed.pnr.toLowerCase()}`, {
+        seatCode: seed.seat,
+        type: seatOf(seed.seat)?.type ?? 'standard',
+        paymentId: null,
+      })
     }
   }
 
@@ -183,7 +188,7 @@ export class FixtureSeats implements SeatProvider {
     this.locks.delete(lockId)
   }
 
-  async confirm(lockId: string): Promise<{ seatCode: string; type: SeatType }> {
+  async confirm(lockId: string, paymentId: string | null): Promise<{ seatCode: string; type: SeatType }> {
     const entry = this.locks.get(lockId)
     if (!entry) throw new CheckInError(404, 'NOT_FOUND', `Seat hold ${lockId} not found`)
     if (new Date(entry.lock.expiresAt).getTime() <= this.clock.now().getTime()) {
@@ -192,12 +197,13 @@ export class FixtureSeats implements SeatProvider {
     }
     this.locks.delete(lockId)
     const type = seatOf(entry.lock.seatCode)?.type ?? 'standard'
-    this.assignments.set(entry.bookingPassengerId, { seatCode: entry.lock.seatCode, type })
+    this.assignments.set(entry.bookingPassengerId, { seatCode: entry.lock.seatCode, type, paymentId })
     return { seatCode: entry.lock.seatCode, type }
   }
 
   async assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType } | null> {
-    return this.assignments.get(bookingPassengerId) ?? null
+    const assignment = this.assignments.get(bookingPassengerId)
+    return assignment ? { seatCode: assignment.seatCode, type: assignment.type } : null
   }
 
   async assignAnyStandard(
@@ -221,7 +227,7 @@ export class FixtureSeats implements SeatProvider {
       free.find((s) => s.type === 'standard' || s.type === 'business') ??
       (opts.avoidExitRow ? undefined : free.find((s) => s.type === 'exit'))
     if (!seat) throw new CheckInError(409, 'SEAT_TAKEN', 'No free seat left on this flight')
-    this.assignments.set(bookingPassengerId, { seatCode: seat.code, type: seat.type })
+    this.assignments.set(bookingPassengerId, { seatCode: seat.code, type: seat.type, paymentId: null })
     return { seatCode: seat.code, type: seat.type }
   }
 
@@ -278,7 +284,7 @@ export class FixturePricing implements PricingProvider {
 
 @Injectable()
 export class FixturePayments implements PaymentProvider {
-  readonly charges: Array<{ amount: number; currency: 'THB'; purpose: string; reference: string }> = []
+  readonly charges: Array<{ amount: number; currency: 'THB'; purpose: string; reference: string; bookingId: string }> = []
   private seq = 0
 
   async charge(input: {
@@ -286,6 +292,7 @@ export class FixturePayments implements PaymentProvider {
     currency: 'THB'
     purpose: 'seat' | 'excess_baggage'
     reference: string
+    bookingId: string
   }): Promise<{ paymentId: string }> {
     this.seq += 1
     this.charges.push(input)
@@ -312,8 +319,14 @@ export class FixtureScreening implements ScreeningProvider {
 
 @Injectable()
 export class FixturePolice implements PoliceProvider {
+  /** Feature 8 has no service: the air marshals are the passports in POLICE_PASSPORTS. */
   async policePassengerIds(flightId: string): Promise<string[]> {
-    return BOOKINGS.filter((b) => b.flightId === flightId && b.isPolice).map((b) => b.passengerId)
+    return BOOKINGS.filter((b) => b.flightId === flightId && this.isMarshal(b.passengerId)).map((b) => b.passengerId)
+  }
+
+  private isMarshal(passengerId: string): boolean {
+    const passport = PROFILES.find((p) => p.id === passengerId)?.passportNumber
+    return passport != null && POLICE_PASSPORTS.includes(passport)
   }
 }
 

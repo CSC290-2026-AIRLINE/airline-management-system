@@ -38,8 +38,10 @@ export const GATES = [
   { id: 'gate-a2', airport_code: 'BKK', code: 'A2', is_active: true },
 ]
 
-/** The prototype's 14 passengers. Anna (ER204F) is the demo customer and has no seed. */
-export const BOOKINGS: BookingPassenger[] = [
+/**
+ * The prototype's 14 passengers. Anna (ER204F) is the demo customer and has no seed.
+ */
+const BASE_BOOKINGS: Array<Omit<BookingPassenger, 'bookingId'>> = [
   {
     bookingPassengerId: 'bp-pl204a',
     pnr: 'PL204A',
@@ -238,6 +240,15 @@ export const BOOKINGS: BookingPassenger[] = [
   },
 ]
 
+/**
+ * The demo booking id is the PNR in lower case: the database has real ids, the demo only needs one that no payment row
+ * points at yet.
+ */
+export const BOOKINGS: BookingPassenger[] = BASE_BOOKINGS.map((booking) => ({
+  ...booking,
+  bookingId: `bk-${booking.pnr.toLowerCase()}`,
+}))
+
 export interface SeededPass {
   pnr: string
   reference: string
@@ -390,6 +401,9 @@ export const PROFILES: PassengerProfile[] = [
     passportNumber: 'CN2345678',
   },
 ]
+
+/** The passports of the air marshals on the demo flights; feature 8 has no service yet. */
+export const POLICE_PASSPORTS = ['TH1234567']
 
 /** nationality, destination country, visa required. No row means no visa is needed. */
 export const VISA_RULES: Array<[string, string, boolean]> = [

@@ -137,6 +137,7 @@ describe('CheckInService.start', () => {
     })
     addBooking({
       bookingPassengerId: 'bp-test-unpaid',
+      bookingId: 'bk-test-unpaid',
       pnr: 'XX000U',
       paid: false,
       flightId: 'flt-fy204',
@@ -151,6 +152,7 @@ describe('CheckInService.start', () => {
     })
     addBooking({
       bookingPassengerId: 'bp-test-cancelled',
+      bookingId: 'bk-test-cancelled',
       pnr: 'XX000C',
       paid: true,
       flightId: 'flt-test-cancelled',
@@ -262,6 +264,7 @@ describe('CheckInService.submitDocument', () => {
     })
     addBooking({
       bookingPassengerId: 'bp-test-1926',
+      bookingId: 'bk-test-1926',
       pnr: 'YR204F',
       paid: true,
       flightId: 'flt-test-2025',
@@ -311,6 +314,7 @@ describe('CheckInService.submitDocument', () => {
     const { svc } = build()
     addBooking({
       bookingPassengerId: 'bp-test-visa',
+      bookingId: 'bk-test-visa',
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
@@ -364,6 +368,7 @@ describe('CheckInService.submitDocument', () => {
     const { svc, passengers } = build()
     addBooking({
       bookingPassengerId: 'bp-test-hyphen',
+      bookingId: 'bk-test-hyphen',
       pnr: 'HY204F',
       paid: true,
       flightId: 'flt-fy204',
@@ -519,6 +524,7 @@ describe('CheckInService seats', () => {
     const { svc, payments, seats } = build()
     addBooking({
       bookingPassengerId: 'bp-test-second',
+      bookingId: 'bk-test-second',
       pnr: 'XX204B',
       paid: true,
       flightId: 'flt-fy204',

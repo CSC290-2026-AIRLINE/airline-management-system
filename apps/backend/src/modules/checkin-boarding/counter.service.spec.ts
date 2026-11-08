@@ -162,7 +162,9 @@ describe('CounterService.tagBag', () => {
     expect(t.view.bags[0].excessPaymentId).toBeNull()
     expect((await counter.tagBag(staff, b1.id)).bag.tagNumber).toBe('0402000002')
     expect(t.view.issues).not.toContain('EXCESS_UNPAID')
-    expect(payments.charges).toEqual([{ amount: 1500, currency: 'THB', purpose: 'excess_baggage', reference: id }])
+    expect(payments.charges).toEqual([
+      { amount: 1500, currency: 'THB', purpose: 'excess_baggage', reference: `check_in:${id}:bags:1`, bookingId: 'bk-ec204g' },
+    ])
   })
 
   it('a bag with no excess tags without a payment', async () => {
@@ -231,7 +233,9 @@ describe('CounterService.removeBag', () => {
     expect(tagged.bag.excessPaymentId).toBe('pay-1')
     // The second bag was charged in the same payment, so it may not be removed.
     await expect(counter.removeBag(staff, v.bags[1].id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
-    expect(payments.charges).toEqual([{ amount: 7500, currency: 'THB', purpose: 'excess_baggage', reference: id }])
+    expect(payments.charges).toEqual([
+      { amount: 7500, currency: 'THB', purpose: 'excess_baggage', reference: `check_in:${id}:bags:2`, bookingId: 'bk-ec204g' },
+    ])
     expect((await counter.detail(staff, id)).bags).toHaveLength(2)
   })
 })
@@ -254,6 +258,7 @@ describe('CounterService issues', () => {
     const { counter, checkins, store } = build()
     const sara: BookingPassenger = {
       bookingPassengerId: 'bp-test-sara',
+      bookingId: 'bk-test-sara',
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
@@ -300,6 +305,7 @@ describe('CounterService issues', () => {
     const { counter, checkins, store } = build()
     const sara: BookingPassenger = {
       bookingPassengerId: 'bp-test-sara',
+      bookingId: 'bk-test-sara',
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
@@ -331,6 +337,7 @@ describe('CounterService issues', () => {
     const { counter, checkins, store } = build()
     const sara: BookingPassenger = {
       bookingPassengerId: 'bp-test-sara',
+      bookingId: 'bk-test-sara',
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
@@ -366,6 +373,7 @@ describe('CounterService issues', () => {
     const { counter, checkins, store } = build()
     const sara: BookingPassenger = {
       bookingPassengerId: 'bp-test-sara',
+      bookingId: 'bk-test-sara',
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
@@ -415,6 +423,7 @@ describe('CounterService issues', () => {
     const { counter, checkins } = build()
     const sara: BookingPassenger = {
       bookingPassengerId: 'bp-test-sara',
+      bookingId: 'bk-test-sara',
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',
@@ -444,6 +453,7 @@ describe('CounterService issues', () => {
     const { counter, checkins } = build()
     const sara: BookingPassenger = {
       bookingPassengerId: 'bp-test-sara',
+      bookingId: 'bk-test-sara',
       pnr: 'VS318X',
       paid: true,
       flightId: 'flt-fy318',

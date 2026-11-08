@@ -50,6 +50,8 @@ export interface BookingPassenger {
   bookingPassengerId: string
   pnr: string
   paid: boolean
+  /** The booking this passenger is on; the payments of feature 6 hang on it. */
+  bookingId: string
   flightId: string
   passengerId: string
   firstName: string
@@ -97,7 +99,8 @@ export interface SeatProvider {
   seatMap(flightId: string, viewer: { bookingPassengerId: string | null; cabin: Cabin | null }): Promise<SeatMap>
   hold(flightId: string, seatCode: string, bookingPassengerId: string, ttlMs: number): Promise<SeatLock>
   release(lockId: string): Promise<void>
-  confirm(lockId: string): Promise<{ seatCode: string; type: SeatType }>
+  /** A paid seat is confirmed with the payment id, so the row carries both. */
+  confirm(lockId: string, paymentId: string | null): Promise<{ seatCode: string; type: SeatType }>
   assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType } | null>
   assignAnyStandard(
     flightId: string,
@@ -115,7 +118,14 @@ export interface PricingProvider {
 
 /** Feature 5 owns payments. */
 export interface PaymentProvider {
-  charge(input: { amount: number; currency: 'THB'; purpose: 'seat' | 'excess_baggage'; reference: string }): Promise<{ paymentId: string }>
+  charge(input: {
+    amount: number
+    currency: 'THB'
+    purpose: 'seat' | 'excess_baggage'
+    reference: string
+    /** The booking the check-in or the seat belongs to; the payment row hangs on it. */
+    bookingId: string
+  }): Promise<{ paymentId: string }>
 }
 
 /** Feature 7 owns screening: clear or held. */
