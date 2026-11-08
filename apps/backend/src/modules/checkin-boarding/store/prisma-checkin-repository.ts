@@ -99,11 +99,11 @@ export class PrismaCheckInRepository implements CheckInRepository {
   }
 
   async listCheckIns(): Promise<CheckInRecord[]> {
-    return (await this.db.check_in.findMany()).map(toCheckInRecord)
+    return (await this.db.check_in.findMany({ orderBy: { created_at: 'asc' } })).map(toCheckInRecord)
   }
 
   async listCheckInsByFlight(flightId: string): Promise<CheckInRecord[]> {
-    return (await this.db.check_in.findMany({ where: { flight_id: flightId } })).map(toCheckInRecord)
+    return (await this.db.check_in.findMany({ where: { flight_id: flightId }, orderBy: { created_at: 'asc' } })).map(toCheckInRecord)
   }
 
   /**
@@ -111,7 +111,7 @@ export class PrismaCheckInRepository implements CheckInRepository {
    * through the relations: the coupon of the check-in carries the booking, the check-in carries the passenger.
    */
   async searchCheckIns(query: { flightId?: string; pnr?: string; name?: string }): Promise<CheckInRecord[]> {
-    return (await this.db.check_in.findMany({ where: this.searchWhere(query) })).map(toCheckInRecord)
+    return (await this.db.check_in.findMany({ where: this.searchWhere(query), orderBy: { created_at: 'asc' } })).map(toCheckInRecord)
   }
 
   /** The counter searches a flight, a booking ref or a name; every word of the name has to be in the passenger. */
@@ -150,7 +150,7 @@ export class PrismaCheckInRepository implements CheckInRepository {
   }
 
   async listDocuments(): Promise<TravelDocumentRecord[]> {
-    return (await this.db.travel_document.findMany()).map(toDocumentRecord)
+    return (await this.db.travel_document.findMany({ orderBy: { created_at: 'asc' } })).map(toDocumentRecord)
   }
 
   async updateDocument(id: string, patch: UpdateDocumentPatch): Promise<TravelDocumentRecord> {
@@ -178,13 +178,20 @@ export class PrismaCheckInRepository implements CheckInRepository {
     return toBagRecord(row)
   }
 
+  /** A removed bag is gone: the soft-deleted row is not a bag any more. */
   async getBag(id: string): Promise<CheckedBagRecord | null> {
-    const row = await this.db.checked_bag.findUnique({ where: { id } })
+    const row = await this.db.checked_bag.findFirst({ where: { id, deleted_at: null } })
     return row ? toBagRecord(row) : null
   }
 
   async listBags(checkInId: string): Promise<CheckedBagRecord[]> {
-    return (await this.db.checked_bag.findMany({ where: { check_in_id: checkInId, deleted_at: null } })).map(toBagRecord)
+    return (
+      await this.db.checked_bag.findMany({
+        where: { check_in_id: checkInId, deleted_at: null },
+        // The counter weighs the bags one by one and recomputes the excess over them in that order.
+        orderBy: { created_at: 'asc' },
+      })
+    ).map(toBagRecord)
   }
 
   /** Feature 10 looks a bag up by the number on its tag. */
@@ -213,7 +220,9 @@ export class PrismaCheckInRepository implements CheckInRepository {
 
   async nextBagTagSeq(): Promise<number> {
     const rows = await this.db.$queryRaw<{ nextval: bigint }[]>`SELECT nextval('bag_tag_seq')`
-    return Number(rows[0]?.nextval ?? 0)
+    const value = rows[0]?.nextval
+    if (value === undefined || value === null) throw new Error('bag_tag_seq returned no value')
+    return Number(value)
   }
 
   async upsertCarryOnCheck(input: UpsertCarryOnCheckInput): Promise<CarryOnCheckRecord> {
@@ -238,7 +247,7 @@ export class PrismaCheckInRepository implements CheckInRepository {
   }
 
   async listGates(): Promise<GateRecord[]> {
-    return (await this.db.gate.findMany()).map(toGateRecord)
+    return (await this.db.gate.findMany({ orderBy: { code: 'asc' } })).map(toGateRecord)
   }
 
   async getGate(id: string): Promise<GateRecord | null> {
@@ -297,11 +306,11 @@ export class PrismaCheckInRepository implements CheckInRepository {
   }
 
   async passesForCheckIn(checkInId: string): Promise<BoardingPassRecord[]> {
-    return (await this.db.boarding_pass.findMany({ where: { check_in_id: checkInId } })).map(toPassRecord)
+    return (await this.db.boarding_pass.findMany({ where: { check_in_id: checkInId }, orderBy: { created_at: 'asc' } })).map(toPassRecord)
   }
 
   async listPasses(): Promise<BoardingPassRecord[]> {
-    return (await this.db.boarding_pass.findMany()).map(toPassRecord)
+    return (await this.db.boarding_pass.findMany({ orderBy: { created_at: 'asc' } })).map(toPassRecord)
   }
 
   async updatePass(id: string, patch: UpdatePassPatch): Promise<BoardingPassRecord> {
@@ -325,7 +334,7 @@ export class PrismaCheckInRepository implements CheckInRepository {
   }
 
   async listEvents(flightId: string): Promise<BoardingEventRecord[]> {
-    return (await this.db.boarding_event.findMany({ where: { flight_id: flightId } })).map(toEventRecord)
+    return (await this.db.boarding_event.findMany({ where: { flight_id: flightId }, orderBy: { created_at: 'asc' } })).map(toEventRecord)
   }
 
   async hasFinalEvent(boardingPassId: string): Promise<boolean> {

@@ -146,7 +146,7 @@ describe('the Prisma mappers', () => {
 describe('PrismaCheckInRepository', () => {
   it('soft-deletes a bag', async () => {
     const { db, repo } = build()
-    db.checked_bag.findUnique.mockResolvedValue(bagRow)
+    db.checked_bag.findFirst.mockResolvedValue(bagRow)
     db.checked_bag.update.mockResolvedValue({ ...bagRow, deleted_at: new Date() })
     await repo.deleteBag('bag-1')
     expect(db.checked_bag.update).toHaveBeenCalledWith(
@@ -156,9 +156,25 @@ describe('PrismaCheckInRepository', () => {
 
   it('refuses to remove a tagged bag', async () => {
     const { db, repo } = build()
-    db.checked_bag.findUnique.mockResolvedValue({ ...bagRow, tag_number: '0402000001', status: 'tagged' })
+    db.checked_bag.findFirst.mockResolvedValue({ ...bagRow, tag_number: '0402000001', status: 'tagged' })
     await expect(repo.deleteBag('bag-1')).rejects.toMatchObject({ code: 'INVALID_STATE' })
     expect(db.checked_bag.update).not.toHaveBeenCalled()
+  })
+
+  it('does not find a bag that was removed', async () => {
+    const { db, repo } = build()
+    db.checked_bag.findFirst.mockResolvedValue(null)
+    await expect(repo.getBag('bag-1')).resolves.toBeNull()
+    expect(db.checked_bag.findFirst).toHaveBeenCalledWith({ where: { id: 'bag-1', deleted_at: null } })
+  })
+
+  it('lists the bags in the order they were weighed', async () => {
+    const { db, repo } = build()
+    db.checked_bag.findMany.mockResolvedValue([bagRow])
+    await repo.listBags('ci-1')
+    expect(db.checked_bag.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { check_in_id: 'ci-1', deleted_at: null }, orderBy: { created_at: 'asc' } }),
+    )
   })
 
   it('turns a duplicate final event into ALREADY_BOARDED', async () => {
@@ -169,12 +185,21 @@ describe('PrismaCheckInRepository', () => {
     const event = await repo.appendEvent(eventInput)
     expect(event.event).toBe('rejected')
     expect(event.reason).toBe('ALREADY_BOARDED')
+    expect(db.boarding_event.create).toHaveBeenNthCalledWith(2, {
+      data: expect.objectContaining({ event: 'rejected', reason: 'ALREADY_BOARDED' }),
+    })
   })
 
   it('reads the bag tag sequence', async () => {
     const { db, repo } = build()
     db.$queryRaw.mockResolvedValue([{ nextval: 7n }])
     await expect(repo.nextBagTagSeq()).resolves.toBe(7)
+  })
+
+  it('fails when the bag tag sequence gives nothing', async () => {
+    const { db, repo } = build()
+    db.$queryRaw.mockResolvedValue([])
+    await expect(repo.nextBagTagSeq()).rejects.toThrow('bag_tag_seq returned no value')
   })
 
   it('stamps updated_at from the clock on every update', async () => {
@@ -212,6 +237,7 @@ describe('PrismaCheckInRepository', () => {
           },
         ],
       },
+      orderBy: { created_at: 'asc' },
     })
   })
 
