@@ -26,7 +26,7 @@ interface TestRequest extends Request {
 
 /** The platform's JWT guard is not loaded: the spec signs a user in with a header instead. */
 async function startApp(resolve: (user: { id: string }) => { isStaff: boolean; staffId: string | null }): Promise<INestApplication> {
-  const moduleRef = await Test.createTestingModule({ imports: [CheckinBoardingModule] })
+  const moduleRef = await Test.createTestingModule({ imports: [CheckinBoardingModule.register('memory')] })
     .overrideProvider(STAFF_IDENTITY)
     .useValue({ resolve })
     .compile()

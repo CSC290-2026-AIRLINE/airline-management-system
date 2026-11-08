@@ -43,7 +43,8 @@ import type {
 } from './providers/providers'
 import { newReference } from './reference'
 import type { BoardingPassRecord, CheckInPatch, CheckInRecord, TravelDocumentRecord } from './store/checkin-store'
-import { CheckInStore } from './store/checkin-store'
+import { CHECKIN_REPOSITORY } from './store/checkin-repository'
+import type { CheckInRepository } from './store/checkin-repository'
 
 /** Feature 3 holds a seat for five minutes. */
 const SEAT_HOLD_TTL_MS = 300_000
@@ -78,7 +79,7 @@ export class CheckInService {
     @Inject(NOTIFY) private readonly notify: NotifyProvider,
     @Inject(AUDIT) private readonly audit: AuditProvider,
     @Inject(SETTINGS) private readonly settings: SettingsProvider,
-    private readonly store: CheckInStore,
+    @Inject(CHECKIN_REPOSITORY) private readonly store: CheckInRepository,
   ) {}
 
   async start(actor: Actor, input: { pnr: string; lastName: string }): Promise<CheckInView> {
@@ -92,19 +93,19 @@ export class CheckInService {
     }
     this.assertWindowOpen(flight, await this.windowOf(flight))
 
-    const existing = this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId)
+    const existing = await this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId)
     if (existing) {
       // The PNR and the surname proved the booking: the caller takes the check-in over from a previous session.
       const takenOver = actor.staffId === null && existing.started_by_user_id !== actor.userId
-      const record = takenOver ? this.store.updateCheckIn(existing.id, { started_by_user_id: actor.userId }) : existing
+      const record = takenOver ? await this.store.updateCheckIn(existing.id, { started_by_user_id: actor.userId }) : existing
       if (takenOver) await this.record(actor, 'check_in.start', 'check_in', record.id, 'resumed')
-      if (this.store.getDocumentByCheckIn(record.id)) {
+      if (await this.store.getDocumentByCheckIn(record.id)) {
         await this.record(actor, 'view_sensitive', 'check_in', record.id, 'check-in read', true)
       }
       return this.viewOf(record)
     }
 
-    const record = this.store.createCheckIn({
+    const record = await this.store.createCheckIn({
       booking_passenger_id: booking.bookingPassengerId,
       passenger_id: booking.passengerId,
       flight_id: booking.flightId,
@@ -118,15 +119,15 @@ export class CheckInService {
   }
 
   async get(actor: Actor, id: string): Promise<CheckInView> {
-    const record = this.require(actor, id)
-    if (this.store.getDocumentByCheckIn(record.id)) {
+    const record = await this.require(actor, id)
+    if (await this.store.getDocumentByCheckIn(record.id)) {
       await this.record(actor, 'view_sensitive', 'check_in', record.id, 'check-in read', true)
     }
     return this.viewOf(record)
   }
 
   async submitDocument(actor: Actor, id: string, input: { mrzLine1: string; mrzLine2: string; visaNumber?: string }): Promise<CheckInView> {
-    const record = this.require(actor, id)
+    const record = await this.require(actor, id)
     this.assertStarted(record, 'The travel document can only be submitted while the check-in is open')
     const flight = await this.flightOf(record.flight_id)
     this.assertWindowOpen(flight, await this.windowOf(flight))
@@ -154,7 +155,7 @@ export class CheckInService {
     const differences: string[] = [...sync.differences]
     const issuing2 = toAlpha2(data.issuingCountry3)
     if (!issuing2) differences.push('issuing_country_unmapped')
-    const document = this.upsertDocument(record.id, {
+    const document = await this.upsertDocument(record.id, {
       number_last4: data.numberLast4,
       issuing_country: issuing2 ?? 'zz',
       nationality: nationality2,
@@ -171,7 +172,7 @@ export class CheckInService {
       numberLast4: data.numberLast4,
       lastName: booking.lastName,
     })
-    this.store.updateCheckIn(record.id, {
+    await this.store.updateCheckIn(record.id, {
       status: screening.outcome === 'held' ? 'on_hold' : record.status,
       screening_run_id: screening.runId,
     })
@@ -183,7 +184,7 @@ export class CheckInService {
     let bookingPassengerId: string | null = null
     let cabin: Cabin | null = null
     if (viewer && viewer.staffId === null) {
-      const record = this.store.findActiveCheckInByUser(viewer.userId, flightId)
+      const record = await this.store.findActiveCheckInByUser(viewer.userId, flightId)
       if (record) {
         bookingPassengerId = record.booking_passenger_id
         cabin = (await this.bookings.byBookingPassengerId(bookingPassengerId))?.cabin ?? null
@@ -193,12 +194,12 @@ export class CheckInService {
   }
 
   async holdSeat(actor: Actor, flightId: string, input: { checkInId: string; seatCode: string }): Promise<SeatLock> {
-    const record = this.require(actor, input.checkInId)
+    const record = await this.require(actor, input.checkInId)
     if (record.flight_id !== flightId) throw notFound('Flight')
     this.assertOpen(record, 'A seat can only be picked while the check-in is open')
     const flight = await this.flightOf(record.flight_id)
     this.assertWindowOpen(flight, await this.windowOf(flight))
-    if (!this.store.getDocumentByCheckIn(record.id)) {
+    if (!(await this.store.getDocumentByCheckIn(record.id))) {
       throw invalidState('The travel document must be submitted before a seat can be picked')
     }
     const booking = await this.bookingOf(record)
@@ -218,7 +219,7 @@ export class CheckInService {
   async releaseSeat(actor: Actor, lockId: string): Promise<void> {
     const held = this.holds.get(lockId)
     if (held && actor.staffId === null) {
-      const owner = this.store.getCheckIn(held.checkInId)
+      const owner = await this.store.getCheckIn(held.checkInId)
       if (owner && owner.started_by_user_id !== actor.userId) {
         throw new CheckInError(403, 'FORBIDDEN', 'This seat hold belongs to another passenger')
       }
@@ -228,7 +229,7 @@ export class CheckInService {
   }
 
   async confirmSeat(actor: Actor, id: string, input: { lockId: string }): Promise<CheckInView> {
-    const record = this.require(actor, id)
+    const record = await this.require(actor, id)
     this.assertOpen(record, 'The seat can only be confirmed while the check-in is open')
     const flight = await this.flightOf(record.flight_id)
     this.assertWindowOpen(flight, await this.windowOf(flight))
@@ -247,8 +248,8 @@ export class CheckInService {
       paymentId = charge.paymentId
     }
     this.seatPayments.set(record.booking_passenger_id, paymentId)
-    const pass = this.store.passesForCheckIn(record.id)[0]
-    if (pass) this.store.updatePass(pass.id, { seat_code: confirmed.seatCode })
+    const pass = (await this.store.passesForCheckIn(record.id))[0]
+    if (pass) await this.store.updatePass(pass.id, { seat_code: confirmed.seatCode })
     await this.record(actor, 'check_in.seat_confirm', 'check_in', record.id, `seat ${confirmed.seatCode} confirmed`)
     return this.viewOf(record)
   }
@@ -256,23 +257,23 @@ export class CheckInService {
   async declareBags(actor: Actor, id: string, input: { declaredBags: number }): Promise<CheckInView> {
     // The route table gives the bag count to the passenger, the counter weighs the bags.
     if (actor.staffId !== null) throw new CheckInError(403, 'FORBIDDEN', 'The bag count is declared by the passenger')
-    const record = this.require(actor, id)
+    const record = await this.require(actor, id)
     this.assertStarted(record, 'The bags can only be declared while the check-in is open')
     const flight = await this.flightOf(record.flight_id)
     this.assertWindowOpen(flight, await this.windowOf(flight))
     if (!Number.isInteger(input.declaredBags) || input.declaredBags < 0 || input.declaredBags > 10) {
       throw validation('The number of bags must be a whole number between 0 and 10', { declaredBags: input.declaredBags })
     }
-    this.store.updateCheckIn(record.id, { declared_bags: input.declaredBags })
+    await this.store.updateCheckIn(record.id, { declared_bags: input.declaredBags })
     return this.viewOf(record)
   }
 
   async complete(actor: Actor, id: string): Promise<BoardingPassView> {
-    const record = this.require(actor, id)
-    const issued = this.store.passesForCheckIn(record.id)[0]
+    const record = await this.require(actor, id)
+    const issued = (await this.store.passesForCheckIn(record.id))[0]
     if (issued) return this.passView(record, issued)
     this.assertStarted(record, 'The boarding pass can only be issued while the check-in is open')
-    if (!this.store.getDocumentByCheckIn(record.id)) {
+    if (!(await this.store.getDocumentByCheckIn(record.id))) {
       throw invalidState('The travel document must be submitted before the boarding pass is issued')
     }
     const flight = await this.flightOf(record.flight_id)
@@ -290,31 +291,30 @@ export class CheckInService {
       ? 1
       : boardingGroup({ specialAssistance: booking.specialAssistance, cabin: booking.cabin, tier: tier?.level ?? null })
 
-    this.store.createPass({
+    await this.store.createPass({
       check_in_id: record.id,
       reference: newReference(),
       seat_code: seat.seatCode,
       boarding_group: group,
     })
     // A concurrent complete may have issued the pass first: read it back so both callers see the same one.
-    const pass = this.store.passesForCheckIn(record.id)[0]
-    this.store.updateCheckIn(record.id, { status: 'checked_in', checked_in_at: this.clock.now() })
+    const pass = (await this.store.passesForCheckIn(record.id))[0]
+    await this.store.updateCheckIn(record.id, { status: 'checked_in', checked_in_at: this.clock.now() })
     await this.notify.send('boarding_pass', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
     await this.record(actor, 'check_in.complete', 'boarding_pass', pass.id, 'boarding pass issued')
     return this.passView(record, pass)
   }
 
   async boardingPass(actor: Actor, id: string): Promise<BoardingPassView> {
-    const record = this.require(actor, id)
-    const pass = this.store.passesForCheckIn(record.id)[0]
+    const record = await this.require(actor, id)
+    const pass = (await this.store.passesForCheckIn(record.id))[0]
     if (!pass) throw notFound('Boarding pass')
     return this.passView(record, pass)
   }
 
   /** Feature 7's callback: a hold may arrive after the pass was issued. */
-  // eslint-disable-next-line @typescript-eslint/require-await -- async because feature 7's callback is async
   async applyScreeningResult(id: string, outcome: 'held' | 'clear' | 'denied'): Promise<void> {
-    const record = this.store.getCheckIn(id)
+    const record = await this.store.getCheckIn(id)
     if (!record) throw notFound('Check-in')
     if (record.status === 'boarded' || record.status === 'no_show' || record.status === 'cancelled') return
     const status: CheckInStatus =
@@ -322,30 +322,30 @@ export class CheckInService {
         ? 'on_hold'
         : outcome === 'denied'
           ? 'denied'
-          : this.store.passesForCheckIn(id).length > 0
+          : (await this.store.passesForCheckIn(id)).length > 0
             ? 'checked_in'
             : 'started'
     const patch: CheckInPatch = { status }
     if ((status === 'on_hold' || status === 'denied') && !record.screening_run_id) patch.screening_run_id = `scr-${id}`
-    this.store.updateCheckIn(id, patch)
+    await this.store.updateCheckIn(id, patch)
   }
 
   /** A hold that is still open when the window closes becomes a no-show and gives the seat back. */
   async releaseExpiredHolds(): Promise<number> {
     let released = 0
-    for (const record of this.store.listCheckIns()) {
+    for (const record of await this.store.listCheckIns()) {
       if (record.status !== 'on_hold') continue
       const flight = await this.flightOf(record.flight_id)
       if (isWindowOpen(this.clock.now(), await this.windowOf(flight))) continue
       await this.seats.releaseAssigned(record.booking_passenger_id)
-      this.store.updateCheckIn(record.id, { status: 'no_show' })
+      await this.store.updateCheckIn(record.id, { status: 'no_show' })
       released += 1
     }
     return released
   }
 
-  private require(actor: Actor, id: string): CheckInRecord {
-    const record = this.store.getCheckIn(id)
+  private async require(actor: Actor, id: string): Promise<CheckInRecord> {
+    const record = await this.store.getCheckIn(id)
     if (!record) throw notFound('Check-in')
     if (actor.staffId === null && record.started_by_user_id !== actor.userId) {
       throw new CheckInError(403, 'FORBIDDEN', 'This check-in belongs to another passenger')
@@ -398,7 +398,7 @@ export class CheckInService {
     }
   }
 
-  private upsertDocument(
+  private async upsertDocument(
     checkInId: string,
     values: {
       number_last4: string
@@ -410,8 +410,8 @@ export class CheckInService {
       name_mismatch: boolean
       profile_differences: string[]
     },
-  ): TravelDocumentRecord {
-    const existing = this.store.getDocumentByCheckIn(checkInId)
+  ): Promise<TravelDocumentRecord> {
+    const existing = await this.store.getDocumentByCheckIn(checkInId)
     if (existing) {
       // A new passport is a new document: the staff clearances of the old one do not carry over.
       return this.store.updateDocument(existing.id, {
@@ -429,11 +429,11 @@ export class CheckInService {
     const flight = await this.flightOf(record.flight_id)
     const window = await this.windowOf(flight)
     const booking = await this.bookingOf(record)
-    const document = this.store.getDocumentByCheckIn(record.id)
-    const pass = this.store.passesForCheckIn(record.id)[0]
+    const document = await this.store.getDocumentByCheckIn(record.id)
+    const pass = (await this.store.passesForCheckIn(record.id))[0]
     return toCheckInView({
       checkIn: record,
-      flight: toFlightSummary(flight, this.gateOf(flight.id), window.boardingAt),
+      flight: toFlightSummary(flight, await this.gateOf(flight.id), window.boardingAt),
       window: toCheckInWindow(window, isWindowOpen(this.clock.now(), window)),
       booking: { pnr: record.pnr, bookingPassengerId: record.booking_passenger_id },
       passenger: {
@@ -453,7 +453,7 @@ export class CheckInService {
   private async passView(record: CheckInRecord, pass: BoardingPassRecord): Promise<BoardingPassView> {
     const flight = await this.flightOf(record.flight_id)
     const window = await this.windowOf(flight)
-    const gate = this.gateOf(flight.id)
+    const gate = await this.gateOf(flight.id)
     return toBoardingPassView({
       pass,
       checkIn: record,
@@ -484,10 +484,10 @@ export class CheckInService {
     return seat
   }
 
-  private gateOf(flightId: string): { id: string; code: string } | null {
-    const boarding = this.store.flightBoarding(flightId)
+  private async gateOf(flightId: string): Promise<{ id: string; code: string } | null> {
+    const boarding = await this.store.flightBoarding(flightId)
     if (!boarding) return null
-    const gate = this.store.getGate(boarding.gate_id)
+    const gate = await this.store.getGate(boarding.gate_id)
     return gate ? { id: gate.id, code: gate.code } : null
   }
 

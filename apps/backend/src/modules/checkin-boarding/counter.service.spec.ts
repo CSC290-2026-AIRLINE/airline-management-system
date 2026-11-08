@@ -69,8 +69,8 @@ function build() {
 }
 
 /** Pim Saetang is seeded checked_in on FY 204: economy, 20 kg free, 500 THB per kg, 32 kg a bag. */
-function pimId(store: CheckInStore): string {
-  const record = store.listCheckInsByFlight('flt-fy204').find((c) => c.pnr === 'EC204G')
+async function pimId(store: CheckInStore): Promise<string> {
+  const record = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.pnr === 'EC204G')
   if (!record) throw new Error('Pim Saetang is not seeded')
   return record.id
 }
@@ -98,7 +98,7 @@ afterEach(() => {
 describe('CounterService.weighBag', () => {
   it('weighs bags in order, each keeps the excess it added, fee at the copied rate', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     await counter.weighBag(staff, id, bag(15))
     await counter.weighBag(staff, id, bag(8))
     const v = await counter.weighBag(staff, id, bag(10))
@@ -114,12 +114,12 @@ describe('CounterService.weighBag', () => {
 
   it('weighBag rejects non-positive weight', async () => {
     const { counter, store } = build()
-    await expect(counter.weighBag(staff, pimId(store), bag(0))).rejects.toMatchObject({ code: 'VALIDATION' })
+    await expect(counter.weighBag(staff, await pimId(store), bag(0))).rejects.toMatchObject({ code: 'VALIDATION' })
   })
 
   it('refuses an overweight or oversize bag and stores nothing', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     await expect(counter.weighBag(staff, id, bag(32.5))).rejects.toMatchObject({
       code: 'BAG_REFUSED',
       details: { reason: 'overweight', maxBagKg: 32, maxLinearCm: 158 },
@@ -133,8 +133,8 @@ describe('CounterService.weighBag', () => {
 
   it('weighs a bag only while the check-in is open', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
-    store.updateCheckIn(id, { status: 'boarded' })
+    const id = await pimId(store)
+    await store.updateCheckIn(id, { status: 'boarded' })
     await expect(counter.weighBag(staff, id, bag(10))).rejects.toMatchObject({ code: 'INVALID_STATE' })
   })
 })
@@ -142,7 +142,7 @@ describe('CounterService.weighBag', () => {
 describe('CounterService.tagBag', () => {
   it('pays all unpaid bags together and numbers them', async () => {
     const { counter, store, payments } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const v = await weigh(counter, id, 15, 8)
     const [b1, b2] = v.bags
     const t = await counter.tagBag(staff, b2.id)
@@ -156,7 +156,7 @@ describe('CounterService.tagBag', () => {
 
   it('a bag with no excess tags without a payment', async () => {
     const { counter, store, payments } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const v = await weigh(counter, id, 15)
     const t = await counter.tagBag(staff, v.bags[0].id)
     expect(t.bag).toMatchObject({ tagNumber: '0402000001', status: 'tagged', excessPaymentId: null })
@@ -165,7 +165,7 @@ describe('CounterService.tagBag', () => {
 
   it('a bag without excess is not marked as paid', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const v = await weigh(counter, id, 5, 25)
     const t = await counter.tagBag(staff, v.bags[1].id)
     expect(t.bag.excessPaymentId).toBe('pay-1')
@@ -174,15 +174,15 @@ describe('CounterService.tagBag', () => {
 
   it('a bag is only tagged while the check-in is open', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const v = await weigh(counter, id, 15)
-    store.updateCheckIn(id, { status: 'on_hold' })
+    await store.updateCheckIn(id, { status: 'on_hold' })
     await expect(counter.tagBag(staff, v.bags[0].id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
   })
 
   it('tagging an already tagged bag keeps its number', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const v = await weigh(counter, id, 15)
     const first = await counter.tagBag(staff, v.bags[0].id)
     const again = await counter.tagBag(staff, v.bags[0].id)
@@ -193,7 +193,7 @@ describe('CounterService.tagBag', () => {
 describe('CounterService.removeBag', () => {
   it('removing a bag weighed by mistake recomputes the unpaid bags and never removes a tagged bag', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const v = await weigh(counter, id, 15, 8, 10)
     await counter.removeBag(staff, v.bags[0].id)
     expect((await counter.detail(staff, id)).bags.map((b) => b.excessKg)).toEqual([0, 0])
@@ -203,18 +203,18 @@ describe('CounterService.removeBag', () => {
 
   it('never removes a tagged bag, not even after the gate offloaded it', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const v = await weigh(counter, id, 15)
     const tagged = await counter.tagBag(staff, v.bags[0].id)
     // The gate offloads the bags of a no-show, the printed tag stays on the bag.
-    store.updateBag(tagged.bag.id, { status: 'offloaded' })
+    await store.updateBag(tagged.bag.id, { status: 'offloaded' })
     await expect(counter.removeBag(staff, tagged.bag.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
     expect((await counter.detail(staff, id)).bags).toHaveLength(1)
   })
 
   it('never removes a bag that was paid together with another one', async () => {
     const { counter, store, payments } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const v = await weigh(counter, id, 25, 10)
     const tagged = await counter.tagBag(staff, v.bags[0].id)
     expect(tagged.bag.excessPaymentId).toBe('pay-1')
@@ -228,7 +228,7 @@ describe('CounterService.removeBag', () => {
 describe('CounterService.carryOn', () => {
   it('carry-on over 7 kg or oversize must be checked', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const ok = await counter.carryOn(staff, id, { weightKg: 6, lengthCm: 50, widthCm: 30, heightCm: 20 })
     expect(ok.carryOnCheck).toMatchObject({ weightKg: 6, withinSize: true, result: 'ok' })
     const heavy = await counter.carryOn(staff, id, { weightKg: 8, lengthCm: 50, widthCm: 30, heightCm: 20 })
@@ -266,7 +266,7 @@ describe('CounterService issues', () => {
     expect(cleared.issues).not.toContain('NAME_MISMATCH')
     const visa = await counter.checkVisa(staff, documentId)
     expect(visa.issues).not.toContain('VISA_CHECK')
-    expect(store.getDocument(documentId)!.visa_checked_at).not.toBeNull()
+    expect((await store.getDocument(documentId))!.visa_checked_at).not.toBeNull()
   })
 
   it('a customer cannot use the counter', async () => {
@@ -333,7 +333,7 @@ describe('CounterService issues', () => {
   it('detail audits the sensitive read', async () => {
     const { counter, store, audit } = build()
     const spy = jest.spyOn(audit, 'record')
-    await counter.detail(staff, pimId(store))
+    await counter.detail(staff, await pimId(store))
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'view_sensitive', isSensitive: true }))
   })
 })
@@ -341,7 +341,7 @@ describe('CounterService issues', () => {
 describe('CounterService lookups', () => {
   it('bag lookups by tag and by flight return passenger, pnr and flight', async () => {
     const { counter, store } = build()
-    const id = pimId(store)
+    const id = await pimId(store)
     const v = await weigh(counter, id, 15)
     const t = await counter.tagBag(staff, v.bags[0].id)
     const found = await counter.bagByTag(staff, t.bag.tagNumber!)
@@ -355,8 +355,8 @@ describe('CounterService lookups', () => {
 
   it('printPass stamps printed_at once and keeps it on reprint', async () => {
     const { counter, store, clock } = build()
-    const id = pimId(store)
-    const pass = store.passesForCheckIn(id)[0]
+    const id = await pimId(store)
+    const pass = (await store.passesForCheckIn(id))[0]
     const first = await counter.printPass(staff, pass.id)
     expect(first.printedAt).toBe('2026-11-11T01:00:00.000Z')
     clock.set(new Date(clock.now().getTime() + 60_000))

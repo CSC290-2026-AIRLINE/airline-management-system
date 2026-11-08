@@ -176,7 +176,7 @@ describe('CheckInService.start', () => {
     const spy = jest.spyOn(audit, 'record')
     const b = await svc.start(other, { pnr: 'ER204F', lastName: 'Eriksson' })
     expect(b.id).toBe(a.id)
-    expect(store.getCheckIn(a.id)!.started_by_user_id).toBe('user-other')
+    expect((await store.getCheckIn(a.id))!.started_by_user_id).toBe('user-other')
     await expect(svc.submitDocument(other, a.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })).resolves.toBeTruthy()
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'check_in.start', summary: 'resumed' }))
   })
@@ -227,7 +227,7 @@ describe('CheckInService.submitDocument', () => {
     const v = await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
     expect(v.document).toMatchObject({ numberLast4: '02C3', nameMismatch: false, visaRequired: false, issuingCountry: 'ut' })
     expect(v.steps.document).toBe(true)
-    expect(JSON.stringify(store.getDocumentByCheckIn(c.id))).not.toContain('L898902C3')
+    expect(JSON.stringify(await store.getDocumentByCheckIn(c.id))).not.toContain('L898902C3')
     expect(await passengers.byId('pax-er204f')).toMatchObject({ passportNumber: 'L898902C3', nationality: 'ut' })
   })
 
@@ -399,8 +399,8 @@ describe('CheckInService.submitDocument', () => {
 describe('CheckInService seats', () => {
   it('refuses an exit row for special assistance', async () => {
     const { svc, store } = build()
-    const somchai = store.listCheckInsByFlight('flt-fy204').find((c) => c.pnr === 'SA204B')!
-    store.updateCheckIn(somchai.id, { status: 'started' })
+    const somchai = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.pnr === 'SA204B')!
+    await store.updateCheckIn(somchai.id, { status: 'started' })
     await expect(svc.holdSeat(staff, 'flt-fy204', { checkInId: somchai.id, seatCode: '12A' })).rejects.toMatchObject({
       code: 'VALIDATION',
       details: { reason: 'exit_row_special_assistance' },
@@ -497,7 +497,7 @@ describe('CheckInService.complete', () => {
     expect(p.reference).toMatch(/^[A-HJ-NP-Z2-9]{8}$/)
     expect(p.qrPayload).toBe(p.reference)
     expect((await svc.get(cust, c.id)).status).toBe('checked_in')
-    expect(store.getCheckIn(c.id)!.checked_in_at).toEqual(new Date(DEMO_NOW))
+    expect((await store.getCheckIn(c.id))!.checked_in_at).toEqual(new Date(DEMO_NOW))
   })
 
   it('is idempotent', async () => {
@@ -507,7 +507,7 @@ describe('CheckInService.complete', () => {
     const a = await svc.complete(cust, c.id)
     const b = await svc.complete(cust, c.id)
     expect(b.reference).toBe(a.reference)
-    expect(store.listPasses()).toHaveLength(14)
+    expect(await store.listPasses()).toHaveLength(14)
   })
 
   it('two concurrent completes issue one pass', async () => {
@@ -516,7 +516,7 @@ describe('CheckInService.complete', () => {
     await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
     const [a, b] = await Promise.all([svc.complete(cust, c.id), svc.complete(cust, c.id)])
     expect(b.reference).toBe(a.reference)
-    expect(store.passesForCheckIn(c.id)).toHaveLength(1)
+    expect(await store.passesForCheckIn(c.id)).toHaveLength(1)
   })
 
   it('without a document is INVALID_STATE', async () => {
@@ -572,9 +572,9 @@ describe('CheckInService.applyScreeningResult', () => {
     await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
     await svc.complete(cust, c.id)
     await svc.applyScreeningResult(c.id, 'held')
-    expect(store.getCheckIn(c.id)!.status).toBe('on_hold')
+    expect((await store.getCheckIn(c.id))!.status).toBe('on_hold')
     await svc.applyScreeningResult(c.id, 'clear')
-    expect(store.getCheckIn(c.id)!.status).toBe('checked_in')
+    expect((await store.getCheckIn(c.id))!.status).toBe('checked_in')
   })
 })
 
@@ -586,11 +586,11 @@ describe('CheckInService.releaseExpiredHolds', () => {
     const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '7E' })
     await svc.confirmSeat(cust, c.id, { lockId: lock.id })
     await svc.applyScreeningResult(c.id, 'held')
-    expect(store.getCheckIn(c.id)!.status).toBe('on_hold')
+    expect((await store.getCheckIn(c.id))!.status).toBe('on_hold')
 
     clock.set(new Date(DEMO_NOW.getTime() + 3 * 3600_000))
     expect(await svc.releaseExpiredHolds()).toBeGreaterThanOrEqual(1)
-    expect(store.getCheckIn(c.id)!.status).toBe('no_show')
+    expect((await store.getCheckIn(c.id))!.status).toBe('no_show')
     expect(await seats.assigned('bp-er204f')).toBeNull()
   })
 })

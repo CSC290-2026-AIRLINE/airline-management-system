@@ -14,7 +14,7 @@ import { validateEnv } from './config/env.validation'
     DbModule,
     AuthModule,
     AdminConsoleModule,
-    CheckinBoardingModule,
+    CheckinBoardingModule.register('db'),
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -18,7 +18,8 @@ import type {
   SensorProvider,
   SettingsProvider,
 } from './providers/providers'
-import { CheckInStore } from './store/checkin-store'
+import { CHECKIN_REPOSITORY } from './store/checkin-repository'
+import type { CheckInRepository } from './store/checkin-repository'
 
 /** The passengers board in their boarding group, and inside a group in the order of their surname. */
 function surnameOf(passengerName: string): string {
@@ -41,12 +42,12 @@ export class GateService {
     @Inject(NOTIFY) private readonly notify: NotifyProvider,
     @Inject(AUDIT) private readonly audit: AuditProvider,
     @Inject(SETTINGS) private readonly settings: SettingsProvider,
-    private readonly store: CheckInStore,
+    @Inject(CHECKIN_REPOSITORY) private readonly store: CheckInRepository,
   ) {}
 
   /** The gates of the airport. */
-  gates(): Promise<GateInfo[]> {
-    return Promise.resolve(this.store.listGates().map(toGateInfo))
+  async gates(): Promise<GateInfo[]> {
+    return (await this.store.listGates()).map(toGateInfo)
   }
 
   /** The flights of the day, each with the gate it boards at. */
@@ -61,17 +62,17 @@ export class GateService {
   /** Moves a flight to another gate. Feature 6 owns the gates, feature 13 is told about the change. */
   async setGate(actor: Actor, flightId: string, input: { gateId: string }): Promise<FlightSummary> {
     this.staffIdOf(actor)
-    const gate = this.store.getGate(input.gateId)
+    const gate = await this.store.getGate(input.gateId)
     if (!gate) throw notFound('Gate')
     if (!gate.is_active) throw validation('This gate is not active', { gateId: gate.id })
     const flight = await this.flightOf(flightId)
-    const boarding = this.store.flightBoarding(flightId)
+    const boarding = await this.store.flightBoarding(flightId)
     if (boarding?.closed_at) throw invalidState('The gate of this flight is closed')
 
-    const from = boarding ? this.store.getGate(boarding.gate_id) : null
+    const from = boarding ? await this.store.getGate(boarding.gate_id) : null
     if (boarding?.gate_id === gate.id) return this.flightSummaryOf(flight)
 
-    this.store.upsertFlightBoarding(flightId, gate.id)
+    await this.store.upsertFlightBoarding(flightId, gate.id)
     await this.notify.send('gate_change', { flightId, from: from?.code ?? null, to: gate.code })
     await this.audit.record({
       actorType: 'staff',
@@ -89,20 +90,20 @@ export class GateService {
   /** The passenger list of the gate: the air marshals first, then the four boarding groups. */
   async passengerList(actor: Actor, gateId: string, flightId: string): Promise<GateList> {
     this.staffIdOf(actor)
-    const gate = this.store.getGate(gateId)
+    const gate = await this.store.getGate(gateId)
     if (!gate) throw notFound('Gate')
-    const boarding = this.store.flightBoarding(flightId)
+    const boarding = await this.store.flightBoarding(flightId)
     if (!boarding) throw notFound('Flight boarding')
     if (boarding.gate_id !== gateId) {
-      throw validation('This flight is not at this gate', { correctGate: this.gateCodeOf(boarding.gate_id) })
+      throw validation('This flight is not at this gate', { correctGate: await this.gateCodeOf(boarding.gate_id) })
     }
     const flight = await this.flightOf(flightId)
     const policeIds = await this.police.policePassengerIds(flightId)
-    const boarded = this.boardedPassIds(flightId)
+    const boarded = await this.boardedPassIds(flightId)
 
     const entries: GateListEntry[] = []
-    for (const record of this.store.listCheckInsByFlight(flightId)) {
-      const pass = this.store.passesForCheckIn(record.id)[0]
+    for (const record of await this.store.listCheckInsByFlight(flightId)) {
+      const pass = (await this.store.passesForCheckIn(record.id))[0]
       if (!pass) continue
       const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
       entries.push({
@@ -124,7 +125,7 @@ export class GateService {
       gate: { id: gate.id, code: gate.code },
       flight: await this.flightSummaryOf(flight),
       closedAt: boarding.closed_at?.toISOString() ?? null,
-      boardedCount: this.boardedCountOf(flightId),
+      boardedCount: await this.boardedCountOf(flightId),
       entries,
     })
   }
@@ -134,20 +135,20 @@ export class GateService {
     const staffId = this.staffIdOf(actor)
     const reference = input.reference.trim().toUpperCase()
     const scanned = await this.flightOf(input.flightId)
-    const boarding = this.store.flightBoarding(input.flightId)
+    const boarding = await this.store.flightBoarding(input.flightId)
     if (!boarding) throw notFound('Flight boarding')
     if (boarding.gate_id !== gateId) {
-      throw validation('This flight is not at this gate', { correctGate: this.gateCodeOf(boarding.gate_id) })
+      throw validation('This flight is not at this gate', { correctGate: await this.gateCodeOf(boarding.gate_id) })
     }
 
-    const pass = this.store.passByReference(reference)
-    const record = pass ? this.store.getCheckIn(pass.check_in_id) : null
-    const passRow = record ? this.store.flightBoarding(record.flight_id) : null
+    const pass = await this.store.passByReference(reference)
+    const record = pass ? await this.store.getCheckIn(pass.check_in_id) : null
+    const passRow = record ? await this.store.flightBoarding(record.flight_id) : null
     // A pass that was closed out is no longer valid, unless the gate itself is closed: then the agent has to
     // see that this flight is done.
     const closedOut = record ? record.status === 'cancelled' || record.status === 'no_show' : false
     if (!pass || !record || (closedOut && !passRow?.closed_at)) {
-      this.store.appendEvent({
+      await this.store.appendEvent({
         flight_id: input.flightId,
         gate_id: gateId,
         boarding_pass_id: null,
@@ -155,6 +156,7 @@ export class GateService {
         event: 'rejected',
         reason: 'NOT_FOUND',
         staff_id: staffId,
+        occurred_at: this.clock.now(),
       })
       return {
         event: 'rejected',
@@ -166,7 +168,7 @@ export class GateService {
     }
 
     const decision = decideScan({
-      pass: { flightId: record.flight_id, status: record.status, alreadyFinal: this.store.hasFinalEvent(pass.id) },
+      pass: { flightId: record.flight_id, status: record.status, alreadyFinal: await this.store.hasFinalEvent(pass.id) },
       gateId,
       flightAtGate: input.flightId,
       passFlightGateId: passRow?.gate_id ?? null,
@@ -176,7 +178,7 @@ export class GateService {
 
     if (decision.event === 'boarded') {
       try {
-        this.store.appendEvent({
+        await this.store.appendEvent({
           flight_id: input.flightId,
           gate_id: gateId,
           boarding_pass_id: pass.id,
@@ -184,10 +186,11 @@ export class GateService {
           event: 'boarded',
           reason: null,
           staff_id: staffId,
+          occurred_at: this.clock.now(),
         })
       } catch {
         // The unique index won: another agent boarded this pass a moment earlier.
-        this.store.appendEvent({
+        await this.store.appendEvent({
           flight_id: input.flightId,
           gate_id: gateId,
           boarding_pass_id: pass.id,
@@ -195,6 +198,7 @@ export class GateService {
           event: 'rejected',
           reason: 'ALREADY_BOARDED',
           staff_id: staffId,
+          occurred_at: this.clock.now(),
         })
         return {
           event: 'rejected',
@@ -204,7 +208,7 @@ export class GateService {
           correctGate: null,
         }
       }
-      this.store.updateCheckIn(record.id, { status: 'boarded' })
+      await this.store.updateCheckIn(record.id, { status: 'boarded' })
       await this.audit.record({
         actorType: 'staff',
         actorId: actor.userId,
@@ -223,8 +227,8 @@ export class GateService {
     }
 
     const reason = decision.reason ?? 'NOT_FOUND'
-    const correctGate = reason === 'WRONG_GATE' ? this.gateCodeOf(passRow?.gate_id ?? null) : null
-    this.store.appendEvent({
+    const correctGate = reason === 'WRONG_GATE' ? await this.gateCodeOf(passRow?.gate_id ?? null) : null
+    await this.store.appendEvent({
       flight_id: input.flightId,
       gate_id: gateId,
       boarding_pass_id: pass.id,
@@ -232,6 +236,7 @@ export class GateService {
       event: 'rejected',
       reason,
       staff_id: staffId,
+      occurred_at: this.clock.now(),
     })
     return {
       event: 'rejected',
@@ -243,17 +248,16 @@ export class GateService {
   }
 
   /** The head-count of the gate: the sensor reading, the manual count and the number that boarded. */
-  // eslint-disable-next-line @typescript-eslint/require-await -- async because the route contract is async
   async headcount(actor: Actor, flightId: string): Promise<Headcount> {
     this.staffIdOf(actor)
-    const boarding = this.store.flightBoarding(flightId)
+    const boarding = await this.store.flightBoarding(flightId)
     if (!boarding) throw notFound('Flight boarding')
     return toHeadcount({
       flightId,
-      gateCode: this.gateCodeOf(boarding.gate_id) ?? '',
+      gateCode: (await this.gateCodeOf(boarding.gate_id)) ?? '',
       sensorCount: boarding.sensor_count,
       manualCount: boarding.manual_count,
-      boardedCount: boarding.boarded_count ?? this.boardedCountOf(flightId),
+      boardedCount: boarding.boarded_count ?? (await this.boardedCountOf(flightId)),
       closedAt: boarding.closed_at,
     })
   }
@@ -265,14 +269,14 @@ export class GateService {
     input: { source: 'sensor' } | { source: 'manual'; count: number },
   ): Promise<Headcount> {
     this.staffIdOf(actor)
-    const boarding = this.store.flightBoarding(flightId)
+    const boarding = await this.store.flightBoarding(flightId)
     if (!boarding) throw notFound('Flight boarding')
     if (boarding.closed_at) throw invalidState('The gate of this flight is closed')
 
     if (input.source === 'sensor') {
-      const count = await this.sensor.read(boarding.gate_id, { boardedCount: this.boardedCountOf(flightId) })
+      const count = await this.sensor.read(boarding.gate_id, { boardedCount: await this.boardedCountOf(flightId) })
       if (count === null) throw validation('The head-count sensor is not available', { reason: 'sensor_unavailable' })
-      this.store.updateFlightBoarding(flightId, { sensor_count: count })
+      await this.store.updateFlightBoarding(flightId, { sensor_count: count })
       await this.audit.record({
         actorType: 'staff',
         actorId: actor.userId,
@@ -286,7 +290,7 @@ export class GateService {
       if (!Number.isInteger(input.count) || input.count < 0) {
         throw validation('The manual count must be a whole number of zero or more', { count: input.count })
       }
-      this.store.updateFlightBoarding(flightId, { manual_count: input.count })
+      await this.store.updateFlightBoarding(flightId, { manual_count: input.count })
       await this.audit.record({
         actorType: 'staff',
         actorId: actor.userId,
@@ -303,7 +307,7 @@ export class GateService {
   /** Closes the gate: the count is frozen, everybody who did not board is a no-show. */
   async closeGate(actor: Actor, flightId: string, input: { confirmMismatch?: boolean }): Promise<Headcount> {
     const staffId = this.staffIdOf(actor)
-    const boarding = this.store.flightBoarding(flightId)
+    const boarding = await this.store.flightBoarding(flightId)
     if (!boarding) throw notFound('Flight boarding')
     if (boarding.closed_at) throw invalidState('The gate of this flight is already closed')
 
@@ -311,7 +315,7 @@ export class GateService {
     if (count === null || count === undefined) {
       throw validation('A head-count is required before the gate can be closed', { reason: 'headcount_required' })
     }
-    const boarded = this.boardedCountOf(flightId)
+    const boarded = await this.boardedCountOf(flightId)
     const source = boarding.manual_count !== null ? 'manual' : 'sensor'
     if (count !== boarded && !input.confirmMismatch) {
       throw new CheckInError(
@@ -323,14 +327,14 @@ export class GateService {
     }
 
     const closedAt = this.clock.now()
-    this.store.updateFlightBoarding(flightId, { boarded_count: boarded, closed_at: closedAt, closed_by: staffId })
+    await this.store.updateFlightBoarding(flightId, { boarded_count: boarded, closed_at: closedAt, closed_by: staffId })
 
     let noShow = 0
-    for (const record of this.store.listCheckInsByFlight(flightId)) {
-      const pass = this.store.passesForCheckIn(record.id)[0]
+    for (const record of await this.store.listCheckInsByFlight(flightId)) {
+      const pass = (await this.store.passesForCheckIn(record.id))[0]
       if (pass) {
-        if (this.store.hasFinalEvent(pass.id)) continue
-        this.store.appendEvent({
+        if (await this.store.hasFinalEvent(pass.id)) continue
+        await this.store.appendEvent({
           flight_id: flightId,
           gate_id: boarding.gate_id,
           boarding_pass_id: pass.id,
@@ -338,6 +342,7 @@ export class GateService {
           event: 'no_show',
           reason: null,
           staff_id: null,
+          occurred_at: closedAt,
         })
       } else if (record.status === 'started' || record.status === 'on_hold') {
         // Never checked in, so the seat goes back to the pool.
@@ -345,14 +350,14 @@ export class GateService {
       } else {
         continue
       }
-      this.store.updateCheckIn(record.id, { status: 'no_show' })
-      this.offloadBags(record.id)
+      await this.store.updateCheckIn(record.id, { status: 'no_show' })
+      await this.offloadBags(record.id)
       noShow += 1
     }
 
     await this.notify.send('boarding_call', {
       flightId,
-      gate: this.gateCodeOf(boarding.gate_id),
+      gate: await this.gateCodeOf(boarding.gate_id),
       boarded,
       noShow,
     })
@@ -383,31 +388,32 @@ export class GateService {
 
   private async flightSummaryOf(flight: FlightRecord): Promise<FlightSummary> {
     const window = computeWindow(flight.depAt, await this.settings.window())
-    const boarding = this.store.flightBoarding(flight.id)
-    const gate = boarding ? this.store.getGate(boarding.gate_id) : null
+    const boarding = await this.store.flightBoarding(flight.id)
+    const gate = boarding ? await this.store.getGate(boarding.gate_id) : null
     return toFlightSummary(flight, gate ? { id: gate.id, code: gate.code } : null, window.boardingAt)
   }
 
-  private gateCodeOf(gateId: string | null): string | null {
+  private async gateCodeOf(gateId: string | null): Promise<string | null> {
     if (!gateId) return null
-    return this.store.getGate(gateId)?.code ?? null
+    const gate = await this.store.getGate(gateId)
+    return gate?.code ?? null
   }
 
-  private boardedPassIds(flightId: string): Set<string> {
+  private async boardedPassIds(flightId: string): Promise<Set<string>> {
     const ids = new Set<string>()
-    for (const event of this.store.listEvents(flightId)) {
+    for (const event of await this.store.listEvents(flightId)) {
       if (event.event === 'boarded' && event.boarding_pass_id) ids.add(event.boarding_pass_id)
     }
     return ids
   }
 
-  private boardedCountOf(flightId: string): number {
-    return this.store.listEvents(flightId).filter((e) => e.event === 'boarded').length
+  private async boardedCountOf(flightId: string): Promise<number> {
+    return (await this.store.listEvents(flightId)).filter((e) => e.event === 'boarded').length
   }
 
-  private offloadBags(checkInId: string): void {
-    for (const bag of this.store.listBags(checkInId)) {
-      if (bag.status !== 'offloaded') this.store.updateBag(bag.id, { status: 'offloaded' })
+  private async offloadBags(checkInId: string): Promise<void> {
+    for (const bag of await this.store.listBags(checkInId)) {
+      if (bag.status !== 'offloaded') await this.store.updateBag(bag.id, { status: 'offloaded' })
     }
   }
 

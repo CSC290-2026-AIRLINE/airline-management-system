@@ -1,6 +1,7 @@
 import { CheckInError } from '../errors'
 import { FixtureClock } from '../providers/fixture-providers'
 import { CheckInStore } from './checkin-store'
+import type { CheckInRepository } from './checkin-repository'
 
 const store = () => {
   const s = new CheckInStore()
@@ -9,9 +10,9 @@ const store = () => {
 }
 
 /** The error a call throws, so its code can be checked. */
-function failureOf(fn: () => unknown): unknown {
+async function failureOf(fn: () => Promise<unknown>): Promise<unknown> {
   try {
-    fn()
+    await fn()
   } catch (error) {
     return error
   }
@@ -19,29 +20,30 @@ function failureOf(fn: () => unknown): unknown {
 }
 
 describe('CheckInStore', () => {
-  it('seeds 13 checked-in passengers, two gates and two boarding rows', () => {
+  it('seeds 13 checked-in passengers, two gates and two boarding rows', async () => {
     const s = store()
-    expect(s.listCheckInsByFlight('flt-fy204')).toHaveLength(8)
-    expect(s.listCheckInsByFlight('flt-fy318')).toHaveLength(5)
-    expect(s.flightBoarding('flt-fy204')?.gate_id).toBe('gate-a1')
-    expect(s.flightBoarding('flt-fy318')?.gate_id).toBe('gate-a2')
-    expect(s.listGates().map((g) => g.code)).toEqual(['A1', 'A2'])
-    expect(s.passByReference('H3VN8PLA')).toBeTruthy()
-    expect(s.getCheckIn(s.passByReference('H3VN8PLA')!.check_in_id)?.status).toBe('on_hold')
-    expect(s.listPasses()).toHaveLength(13)
+    expect(await s.listCheckInsByFlight('flt-fy204')).toHaveLength(8)
+    expect(await s.listCheckInsByFlight('flt-fy318')).toHaveLength(5)
+    expect((await s.flightBoarding('flt-fy204'))?.gate_id).toBe('gate-a1')
+    expect((await s.flightBoarding('flt-fy318'))?.gate_id).toBe('gate-a2')
+    expect((await s.listGates()).map((g) => g.code)).toEqual(['A1', 'A2'])
+    expect(await s.passByReference('H3VN8PLA')).toBeTruthy()
+    const dana = await s.passByReference('H3VN8PLA')
+    expect((await s.getCheckIn(dana!.check_in_id))?.status).toBe('on_hold')
+    expect(await s.listPasses()).toHaveLength(13)
   })
 
-  it('seeds a document per check-in with only the last four characters', () => {
+  it('seeds a document per check-in with only the last four characters', async () => {
     const s = store()
-    const dana = s.passByReference('H3VN8PLA')!
-    const document = s.getDocumentByCheckIn(dana.check_in_id)!
+    const dana = (await s.passByReference('H3VN8PLA'))!
+    const document = (await s.getDocumentByCheckIn(dana.check_in_id))!
     expect(document.number_last4).toBe('0000')
-    expect(JSON.stringify(s.listDocuments())).not.toContain('SEC000000')
+    expect(JSON.stringify(await s.listDocuments())).not.toContain('SEC000000')
   })
 
-  it('appendEvent allows one final event per pass', () => {
+  it('appendEvent allows one final event per pass', async () => {
     const s = store()
-    const pass = s.passByReference('R8KD2WQN')!
+    const pass = (await s.passByReference('R8KD2WQN'))!
     const event = {
       flight_id: 'flt-fy204',
       gate_id: 'gate-a1',
@@ -50,14 +52,15 @@ describe('CheckInStore', () => {
       event: 'boarded' as const,
       reason: null,
       staff_id: 'staff-demo',
+      occurred_at: new Date(),
     }
-    s.appendEvent(event)
-    expect(() => s.appendEvent(event)).toThrow(CheckInError)
-    expect(s.listEvents('flt-fy204')).toHaveLength(1)
-    expect(s.hasFinalEvent(pass.id)).toBe(true)
+    await s.appendEvent(event)
+    await expect(s.appendEvent(event)).rejects.toBeInstanceOf(CheckInError)
+    expect(await s.listEvents('flt-fy204')).toHaveLength(1)
+    expect(await s.hasFinalEvent(pass.id)).toBe(true)
   })
 
-  it('rejected events are unlimited', () => {
+  it('rejected events are unlimited', async () => {
     const s = store()
     const event = {
       flight_id: 'flt-fy204',
@@ -67,63 +70,64 @@ describe('CheckInStore', () => {
       event: 'rejected' as const,
       reason: 'NOT_FOUND',
       staff_id: 'staff-demo',
+      occurred_at: new Date(),
     }
-    s.appendEvent(event)
-    s.appendEvent(event)
-    expect(s.listEvents('flt-fy204')).toHaveLength(2)
+    await s.appendEvent(event)
+    await s.appendEvent(event)
+    expect(await s.listEvents('flt-fy204')).toHaveLength(2)
   })
 
-  it('createPass hands out one pass per check-in', () => {
+  it('createPass hands out one pass per check-in', async () => {
     const s = store()
-    const checkIn = s.createCheckIn({
+    const checkIn = await s.createCheckIn({
       booking_passenger_id: 'bp-test-pass',
       passenger_id: 'pax-test-pass',
       flight_id: 'flt-fy204',
       pnr: 'TST001',
       passenger_name: 'Test One',
     })
-    const first = s.createPass({ check_in_id: checkIn.id, reference: 'AAAA1111', seat_code: '5A', boarding_group: 4 })
-    const second = s.createPass({ check_in_id: checkIn.id, reference: 'BBBB2222', seat_code: '5B', boarding_group: 4 })
+    const first = await s.createPass({ check_in_id: checkIn.id, reference: 'AAAA1111', seat_code: '5A', boarding_group: 4 })
+    const second = await s.createPass({ check_in_id: checkIn.id, reference: 'BBBB2222', seat_code: '5B', boarding_group: 4 })
     expect(second).toBe(first)
-    expect(s.passesForCheckIn(checkIn.id)).toHaveLength(1)
+    expect(await s.passesForCheckIn(checkIn.id)).toHaveLength(1)
   })
 
-  it('updateCheckIn bumps updated_at', () => {
+  it('updateCheckIn bumps updated_at', async () => {
     const clock = new FixtureClock()
     const s = new CheckInStore()
     s.seedDemo(clock)
-    const checkIn = s.listCheckInsByFlight('flt-fy204')[0]
+    const checkIn = (await s.listCheckInsByFlight('flt-fy204'))[0]
     clock.set(new Date(clock.now().getTime() + 1000))
-    s.updateCheckIn(checkIn.id, { declared_bags: 2 })
-    const updated = s.getCheckIn(checkIn.id)!
+    await s.updateCheckIn(checkIn.id, { declared_bags: 2 })
+    const updated = (await s.getCheckIn(checkIn.id))!
     expect(updated.declared_bags).toBe(2)
     expect(updated.updated_at.getTime()).toBeGreaterThan(updated.created_at.getTime())
   })
 
-  it('searches by flight, pnr and name, case-insensitively', () => {
+  it('searches by flight, pnr and name, case-insensitively', async () => {
     const s = store()
-    expect(s.searchCheckIns({ pnr: 'ec204g' })).toHaveLength(1)
-    expect(s.searchCheckIns({ name: 'kowalski' })).toHaveLength(1)
-    expect(s.searchCheckIns({ flightId: 'flt-fy318' })).toHaveLength(5)
-    expect(s.searchCheckIns({ pnr: 'ER204F' })).toHaveLength(0)
+    expect(await s.searchCheckIns({ pnr: 'ec204g' })).toHaveLength(1)
+    expect(await s.searchCheckIns({ name: 'kowalski' })).toHaveLength(1)
+    expect(await s.searchCheckIns({ flightId: 'flt-fy318' })).toHaveLength(5)
+    expect(await s.searchCheckIns({ pnr: 'ER204F' })).toHaveLength(0)
   })
 
-  it('finds the active check-in of a booking passenger', () => {
+  it('finds the active check-in of a booking passenger', async () => {
     const s = store()
-    expect(s.findActiveCheckInByBookingPassenger('bp-pl204a')?.status).toBe('checked_in')
-    expect(s.findActiveCheckInByBookingPassenger('bp-er204f')).toBeNull()
+    expect((await s.findActiveCheckInByBookingPassenger('bp-pl204a'))?.status).toBe('checked_in')
+    expect(await s.findActiveCheckInByBookingPassenger('bp-er204f')).toBeNull()
   })
 
-  it('hands out bag tag sequence numbers', () => {
+  it('hands out bag tag sequence numbers', async () => {
     const s = store()
-    expect(s.nextBagTagSeq()).toBe(1)
-    expect(s.nextBagTagSeq()).toBe(2)
+    expect(await s.nextBagTagSeq()).toBe(1)
+    expect(await s.nextBagTagSeq()).toBe(2)
   })
 
-  it('listBags leaves out soft deleted bags', () => {
+  it('listBags leaves out soft deleted bags', async () => {
     const s = store()
-    const checkIn = s.listCheckInsByFlight('flt-fy204')[0]
-    const bag = s.createBag({
+    const checkIn = (await s.listCheckInsByFlight('flt-fy204'))[0]
+    const bag = await s.createBag({
       check_in_id: checkIn.id,
       weight_kg: 15,
       excess_kg: 0,
@@ -131,15 +135,15 @@ describe('CheckInStore', () => {
       excess_fee: 0,
       weighed_by: 'staff-demo',
     })
-    expect(s.listBags(checkIn.id)).toHaveLength(1)
-    s.deleteBag(bag.id)
-    expect(s.listBags(checkIn.id)).toHaveLength(0)
+    expect(await s.listBags(checkIn.id)).toHaveLength(1)
+    await s.deleteBag(bag.id)
+    expect(await s.listBags(checkIn.id)).toHaveLength(0)
   })
 
-  it('deleteBag refuses a tagged bag and a bag that is not weighed', () => {
+  it('deleteBag refuses a tagged bag and a bag that is not weighed', async () => {
     const s = store()
-    const checkIn = s.listCheckInsByFlight('flt-fy204')[0]
-    const tagged = s.createBag({
+    const checkIn = (await s.listCheckInsByFlight('flt-fy204'))[0]
+    const tagged = await s.createBag({
       check_in_id: checkIn.id,
       weight_kg: 15,
       excess_kg: 0,
@@ -147,10 +151,10 @@ describe('CheckInStore', () => {
       excess_fee: 0,
       weighed_by: 'staff-demo',
     })
-    s.updateBag(tagged.id, { tag_number: '0402000001', status: 'tagged' })
-    expect(failureOf(() => s.deleteBag(tagged.id))).toMatchObject({ code: 'INVALID_STATE', status: 409 })
+    await s.updateBag(tagged.id, { tag_number: '0402000001', status: 'tagged' })
+    expect(await failureOf(() => s.deleteBag(tagged.id))).toMatchObject({ code: 'INVALID_STATE', status: 409 })
 
-    const offloaded = s.createBag({
+    const offloaded = await s.createBag({
       check_in_id: checkIn.id,
       weight_kg: 15,
       excess_kg: 0,
@@ -158,13 +162,26 @@ describe('CheckInStore', () => {
       excess_fee: 0,
       weighed_by: 'staff-demo',
     })
-    s.updateBag(offloaded.id, { status: 'offloaded' })
-    expect(failureOf(() => s.deleteBag(offloaded.id))).toMatchObject({ code: 'INVALID_STATE', status: 409 })
-    expect(s.listBags(checkIn.id)).toHaveLength(2)
+    await s.updateBag(offloaded.id, { status: 'offloaded' })
+    expect(await failureOf(() => s.deleteBag(offloaded.id))).toMatchObject({ code: 'INVALID_STATE', status: 409 })
+    expect(await s.listBags(checkIn.id)).toHaveLength(2)
   })
 
-  it('seeds the police passenger in boarding group 1', () => {
+  it('seeds the police passenger in boarding group 1', async () => {
     const s = store()
-    expect(s.passByReference('V3LP9KWE')!.boarding_group).toBe(1)
+    expect((await s.passByReference('V3LP9KWE'))!.boarding_group).toBe(1)
+  })
+
+  it('implements the repository asynchronously', async () => {
+    const clock = new FixtureClock()
+    const repo: CheckInRepository = new CheckInStore(clock)
+    const created = await repo.createCheckIn({
+      booking_passenger_id: 'bp-repo-test',
+      passenger_id: 'pax-repo-test',
+      flight_id: 'flt-fy204',
+      pnr: 'RP0001',
+      passenger_name: 'Repo One',
+    })
+    await expect(repo.getCheckIn(created.id)).resolves.toMatchObject({ id: created.id })
   })
 })
