@@ -87,8 +87,9 @@ decided by `register('memory' | 'db')` in `checkin-boarding.module.ts` — one l
 ### The fixtures that stay, and what replaces them
 
 - **Screening** (`FixtureScreening`) — feature 7's screening service (`POST /screening/check`: clear or held, and
-  later hold and release). Until it lands, a passport whose last four are `0000` and the surname Kowalski end up on
-  hold.
+  later hold and release). Until it lands, the fixture holds a passenger whose passport ends in `0000` **or** whose
+  surname is Kowalski (`providers/fixture-providers.ts`: `numberLast4 === HOLD_LAST4 || lastName === 'KOWALSKI'`).
+  Dana Kowalski matches both rules.
 - **Police** (`FixturePolice`) — feature 8's air-marshal service per flight. The marshal is recognised by his
   passport number (`TH1234567`, Narong Sukjai) in both modes: `DbBookings` reads `passenger.passport_number`, and the
   fixture resolves the passport behind the passenger.
@@ -217,20 +218,20 @@ the document and clears what staff had cleared before.
 
 ## Demo fixtures
 
-| What          | Value                                                                                                                                                                |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Clock         | `db`: feature 15's `SimulationClock` (real time, shiftable). `memory`: `DEMO_NOW` = 2026-11-11T01:00:00.000Z (08:00 Bangkok)                                         |
-| Flights       | FY 204 BKK→NRT gate A1, FY 318 BKK→ICN gate A2. `db`: the seeded departure (next quarter-hour ≥ 3 h out, or `F6_DEMO_DEP_AT`). `memory`: 03:25Z and 03:40Z on 11 Nov |
-| Gates         | A1 and A2, both active at BKK                                                                                                                                        |
-| Bookings      | 14 prototype passengers; Anna Eriksson (`ER224F`) is the demo customer and has no passport on file                                                                   |
-| Passports     | the ICAO specimen passport for Anna; `SEEDED_DOC_EXPIRY` (2030-04-15) for the documents of the memory mode                                                           |
-| Seats         | 20 rows, business 1–3, exit row 12, front rows 4–5, the prototype's taken seats                                                                                      |
-| Security hold | a passport whose last four are `0000`, or the surname Kowalski                                                                                                       |
-| Air marshal   | Narong Sukjai, passport `TH1234567`                                                                                                                                  |
-| Baggage       | economy 20 kg free (premium economy 25, business 30), 500 THB per kg, max 32 kg per bag, max 158 cm linear                                                           |
-| Carry-on      | 7 kg, 56 × 36 × 23 cm for every cabin                                                                                                                                |
-| Bag tags      | `0` + the airline number + a 6 digit sequence — `999` in `db` mode (from `check_in_setting`), `402` in `memory` mode                                                 |
-| Seeded passes | `memory` mode seeds 13 passes (every booking but Anna; Dana Kowalski is on hold). `db` mode seeds none                                                               |
+| What          | Value                                                                                                                                                                                                                              |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Clock         | `db`: feature 15's `SimulationClock` (real time, shiftable). `memory`: `DEMO_NOW` = 2026-11-11T01:00:00.000Z (08:00 Bangkok)                                                                                                       |
+| Flights       | FY 204 BKK→NRT gate A1, FY 318 BKK→ICN gate A2. `db`: the seeded departure (next quarter-hour ≥ 3 h out, or `F6_DEMO_DEP_AT`). `memory`: 03:25Z and 03:40Z on 11 Nov                                                               |
+| Gates         | A1 and A2, both active at BKK                                                                                                                                                                                                      |
+| Bookings      | 14 prototype passengers; Anna Eriksson (`ER224F`) is the demo customer                                                                                                                                                             |
+| Passports     | Anna's passenger row carries **no passport number** in either mode, so she types the ICAO specimen MRZ at step 2. `SEEDED_DOC_EXPIRY` (2030-04-15) is the expiry of the seeded documents                                           |
+| Seats         | 20 rows, business 1–3, exit row 12, front rows 4–5, the prototype's taken seats                                                                                                                                                    |
+| Security hold | a passport whose last four are `0000` **or** the surname Kowalski (`FixtureScreening`); Dana Kowalski matches both rules                                                                                                           |
+| Air marshal   | Narong Sukjai, passport `TH1234567`                                                                                                                                                                                                |
+| Baggage       | economy 20 kg free (premium economy 25, business 30), 500 THB per kg, max 32 kg per bag, max 158 cm linear                                                                                                                         |
+| Carry-on      | 7 kg, 56 × 36 × 23 cm for every cabin                                                                                                                                                                                              |
+| Bag tags      | `0` + the airline number + a 6 digit sequence — `999` in `db` mode (from `check_in_setting`), `402` in `memory` mode                                                                                                               |
+| Seeded passes | `memory` mode seeds 13 check-ins, each with a boarding pass — every booking but Anna. Twelve of them are `checked_in`; **Dana Kowalski's on-hold check-in is the thirteenth**, so it is counted among the 13. `db` mode seeds none |
 
 The booking references are the ones of `providers/demo-data.ts`: Anna is `ER224F`, Narong is `PL224A`, and so on. The
 `booking_reference` CHECK of the database allows only `A-H`, `J-N`, `P-Z` and `2-9`, so every `0` of the prototype
