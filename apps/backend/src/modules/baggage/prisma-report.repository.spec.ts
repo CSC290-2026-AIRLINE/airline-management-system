@@ -118,6 +118,297 @@ describe('PrismaReportRepository delivery lookup', () => {
   })
 })
 
+describe('PrismaReportRepository passenger case summary projection', () => {
+  const reportId = reportRow().id
+  const matchUpdatedAt = new Date('2026-10-20T11:00:00.000Z')
+  const matchRecordedAt = new Date('2026-10-20T11:01:00.000Z')
+  const reportCreatedAt = new Date('2026-10-20T10:00:00.000Z')
+  const choiceRecordedAt = new Date('2026-10-20T12:00:00.000Z')
+  const dispatchRecordedAt = new Date('2026-10-20T13:00:00.000Z')
+  const deliveredRecordedAt = new Date('2026-10-20T14:00:00.000Z')
+  const deliveryId = '00000000-0000-4000-8000-000000000006'
+  const foundBagId = '00000000-0000-4000-8000-000000000005'
+
+  function summaryHarness(
+    options: {
+      confirmed?: boolean
+      withDelivery?: boolean
+      choices?: unknown[]
+      locations?: unknown[]
+      deliveryStatus?: string
+      deliveredAt?: Date | null
+      lostAt?: Date | null
+      closedAt?: Date | null
+    } = {},
+  ) {
+    const report = {
+      case_number: 'LB-2026-000001',
+      status: options.closedAt ? 'closed' : 'matched',
+      bag_type: 'suitcase',
+      colour: 'blue',
+      brand: 'Rimowa',
+      tag_number: 'TAG123',
+      description: 'Blue suitcase',
+      reported_at: new Date('2026-10-20T09:00:00.000Z'),
+      lost_at: options.lostAt ?? null,
+      closed_at: options.closedAt ?? null,
+      created_at: reportCreatedAt,
+      passenger: { first_name: 'Tom', last_name: 'Becker' },
+      flight: { flight_number: 'FY 204', service_date: new Date('2026-10-19T00:00:00.000Z'), route: { origin: 'BKK', destination: 'NRT' } },
+      bag_match:
+        options.confirmed === false
+          ? []
+          : [{ id: 'match-1', found_bag_id: foundBagId, reviewed_at: new Date('2026-10-20T08:00:00Z'), updated_at: matchUpdatedAt }],
+      bag_delivery:
+        options.withDelivery === false
+          ? null
+          : {
+              id: deliveryId,
+              delivery_type: 'hotel',
+              address: 'Hotel Gracery',
+              pickup_airport: null,
+              status: options.deliveryStatus ?? 'delivered',
+              delivered_at: options.deliveredAt === undefined ? new Date('2026-10-20T07:00:00Z') : options.deliveredAt,
+              updated_at: deliveredRecordedAt,
+            },
+    }
+    const findUnique = jest.fn().mockResolvedValue(report)
+    const choices = [
+      {
+        occurred_at: new Date('2026-10-20T06:00:00Z'),
+        recorded_at: choiceRecordedAt,
+        seq: 42n,
+        after: { deliveryType: 'hotel', chosenBy: 'passenger', customerId: 'private-id', reportId, address: 'private' },
+      },
+      {
+        occurred_at: new Date('2026-10-20T06:30:00Z'),
+        recorded_at: new Date('2026-10-20T12:30:00.000Z'),
+        seq: 43n,
+        after: { deliveryType: 'home', chosenBy: 'staff', staffId: 'private-staff-id' },
+      },
+      {
+        occurred_at: new Date('2026-10-20T06:45:00Z'),
+        recorded_at: new Date('2026-10-20T12:45:00.000Z'),
+        seq: 44n,
+        after: { deliveryType: 'hotel', chosenBy: 'staff' },
+      },
+    ]
+    const auditFindMany = jest.fn().mockResolvedValue(options.choices ?? choices)
+    const auditFindFirst = jest.fn().mockResolvedValue({
+      recorded_at: matchRecordedAt,
+      seq: 41n,
+      after: { status: 'confirmed', foundBagId },
+    })
+    const locations = [
+      {
+        action: 'sent',
+        airport_code: 'BKK',
+        to_airport: 'NRT',
+        note: 'private staff note',
+        staff_id: 'private-staff-id',
+        occurred_at: new Date('2026-10-20T05:00:00Z'),
+        created_at: dispatchRecordedAt,
+      },
+      {
+        action: 'out_for_delivery',
+        airport_code: 'NRT',
+        to_airport: null,
+        occurred_at: new Date('2026-10-20T04:00:00Z'),
+        created_at: new Date('2026-10-20T13:30:00.000Z'),
+      },
+      {
+        action: 'delivered',
+        airport_code: 'NRT',
+        to_airport: null,
+        occurred_at: new Date('2026-10-20T03:00:00Z'),
+        created_at: deliveredRecordedAt,
+      },
+    ]
+    const locationFindMany = jest.fn().mockResolvedValue(options.locations ?? locations)
+    const repository = new PrismaReportRepository({
+      lost_bag_report: { findUnique },
+      audit_log: { findMany: auditFindMany, findFirst: auditFindFirst },
+      bag_location_event: { findMany: locationFindMany },
+    } as unknown as DbService)
+
+    return { repository, findUnique, auditFindMany, auditFindFirst, locationFindMany }
+  }
+
+  it('projects only passenger-safe data and orders real events by insertion metadata across a clock rewind', async () => {
+    const lostAt = new Date('2026-10-20T10:30:00.000Z')
+    const closedAt = new Date('2026-10-20T15:00:00.000Z')
+    const harness = summaryHarness({ lostAt, closedAt })
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result).toEqual({
+      caseNumber: 'LB-2026-000001',
+      status: 'closed',
+      reportedAt: new Date('2026-10-20T09:00:00.000Z'),
+      lostAt,
+      closedAt,
+      passenger: { firstName: 'Tom', lastName: 'Becker' },
+      flight: { flightNumber: 'FY 204', serviceDate: new Date('2026-10-19T00:00:00.000Z'), origin: 'BKK', destination: 'NRT' },
+      bag: { type: 'suitcase', colour: 'blue', brand: 'Rimowa', tagNumber: 'TAG123', description: 'Blue suitcase' },
+      delivery: { deliveryType: 'hotel', address: 'Hotel Gracery', pickupAirport: null, status: 'delivered' },
+      timeline: [
+        { type: 'report_received', occurredAt: new Date('2026-10-20T09:00:00.000Z') },
+        { type: 'case_marked_lost', occurredAt: lostAt },
+        { type: 'match_confirmed', occurredAt: new Date('2026-10-20T08:00:00Z') },
+        { type: 'choice_saved', occurredAt: new Date('2026-10-20T06:00:00Z'), deliveryType: 'hotel', chosenBy: 'passenger' },
+        { type: 'choice_saved', occurredAt: new Date('2026-10-20T06:30:00Z'), deliveryType: 'home', chosenBy: 'staff' },
+        { type: 'choice_saved', occurredAt: new Date('2026-10-20T06:45:00Z'), deliveryType: 'hotel', chosenBy: 'staff' },
+        { type: 'bag_sent', occurredAt: new Date('2026-10-20T05:00:00Z'), fromAirport: 'BKK', toAirport: 'NRT' },
+        { type: 'out_for_delivery', occurredAt: new Date('2026-10-20T04:00:00Z'), airport: 'NRT' },
+        { type: 'bag_delivered', occurredAt: new Date('2026-10-20T07:00:00Z') },
+        { type: 'case_closed', occurredAt: closedAt },
+      ],
+    })
+    expect(JSON.stringify(result)).not.toContain('private-id')
+    expect(JSON.stringify(result)).not.toContain('private-staff-id')
+    expect(JSON.stringify(result)).not.toContain('private')
+    expect(harness.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: reportId } }))
+    const projection = harness.findUnique.mock.calls[0][0].select
+    expect(projection).not.toHaveProperty('id')
+    expect(projection).not.toHaveProperty('contact_email')
+    expect(projection).not.toHaveProperty('contact_phone')
+    expect(projection.passenger).toEqual({ select: { first_name: true, last_name: true } })
+    expect(harness.locationFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ found_bag_id: foundBagId, created_at: { gt: matchRecordedAt } }),
+      }),
+    )
+    expect(harness.auditFindFirst).toHaveBeenCalledWith({
+      where: { source_feature: '10', entity_type: 'bag_match', entity_id: 'match-1', action: 'status_change', is_sensitive: false },
+      orderBy: { seq: 'desc' },
+      select: { recorded_at: true, seq: true, after: true },
+    })
+    expect(harness.auditFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ entity_id: deliveryId, is_sensitive: false }) }),
+    )
+  })
+
+  it('omits the closure milestone when closed_at is null', async () => {
+    const harness = summaryHarness({ lostAt: new Date('2026-10-20T10:30:00.000Z'), closedAt: null })
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result?.closedAt).toBeNull()
+    expect(result?.timeline.map((event) => event.type)).not.toContain('case_closed')
+    expect(result?.timeline.map((event) => event.type)).toEqual(
+      expect.arrayContaining(['report_received', 'case_marked_lost', 'match_confirmed']),
+    )
+  })
+
+  it('omits all recovery milestones when no confirmed match or delivery exists', async () => {
+    const harness = summaryHarness({ confirmed: false, withDelivery: false })
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result?.delivery).toBeNull()
+    expect(result?.timeline).toEqual([{ type: 'report_received', occurredAt: new Date('2026-10-20T09:00:00.000Z') }])
+    expect(harness.auditFindMany).not.toHaveBeenCalled()
+    expect(harness.auditFindFirst).not.toHaveBeenCalled()
+    expect(harness.locationFindMany).not.toHaveBeenCalled()
+  })
+
+  it('omits choice and movement milestones when a confirmed case has no choice or movement audit', async () => {
+    const harness = summaryHarness({
+      choices: [],
+      locations: [],
+      deliveryStatus: 'waiting_choice',
+      deliveredAt: null,
+    })
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result?.timeline.map((event) => event.type)).toEqual(['report_received', 'match_confirmed'])
+  })
+
+  it('omits dispatch and handover milestones when only the choice has been recorded', async () => {
+    const harness = summaryHarness({
+      locations: [],
+      deliveryStatus: 'preparing',
+      deliveredAt: null,
+    })
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result?.timeline.map((event) => event.type)).toEqual([
+      'report_received',
+      'match_confirmed',
+      'choice_saved',
+      'choice_saved',
+      'choice_saved',
+    ])
+  })
+
+  it('omits handover when dispatch exists but delivery is not delivered', async () => {
+    const harness = summaryHarness({ deliveryStatus: 'in_transit', deliveredAt: null })
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result?.timeline.map((event) => event.type)).toEqual([
+      'report_received',
+      'match_confirmed',
+      'choice_saved',
+      'choice_saved',
+      'choice_saved',
+      'bag_sent',
+      'out_for_delivery',
+    ])
+  })
+
+  it('does not present an arrival as recovery history unless a post-confirmation recovery send precedes it', async () => {
+    const harness = summaryHarness({
+      locations: [
+        {
+          action: 'arrived',
+          airport_code: 'NRT',
+          to_airport: null,
+          occurred_at: new Date('2026-10-20T04:00:00Z'),
+          created_at: dispatchRecordedAt,
+        },
+      ],
+      deliveryStatus: 'in_transit',
+      deliveredAt: null,
+    })
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result?.timeline.some((event) => event.type === 'bag_arrived')).toBe(false)
+  })
+
+  it('includes arrival only when it follows a persisted post-confirmation recovery send', async () => {
+    const harness = summaryHarness({
+      locations: [
+        {
+          action: 'sent',
+          airport_code: 'BKK',
+          to_airport: 'NRT',
+          occurred_at: new Date('2026-10-20T05:00:00Z'),
+          created_at: dispatchRecordedAt,
+        },
+        {
+          action: 'arrived',
+          airport_code: 'NRT',
+          to_airport: null,
+          occurred_at: new Date('2026-10-20T04:00:00Z'),
+          created_at: new Date('2026-10-20T13:15:00.000Z'),
+        },
+      ],
+      deliveryStatus: 'in_transit',
+      deliveredAt: null,
+    })
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result?.timeline.filter((event) => event.type === 'bag_sent' || event.type === 'bag_arrived')).toEqual([
+      { type: 'bag_sent', occurredAt: new Date('2026-10-20T05:00:00Z'), fromAirport: 'BKK', toAirport: 'NRT' },
+      { type: 'bag_arrived', occurredAt: new Date('2026-10-20T04:00:00Z'), airport: 'NRT' },
+    ])
+  })
+
+  it('returns null when the verified report no longer exists', async () => {
+    const harness = summaryHarness()
+    harness.findUnique.mockResolvedValue(null)
+
+    await expect(harness.repository.findPassengerCaseSummaryByReportId(reportId)).resolves.toBeNull()
+  })
+})
+
 describe('PrismaReportRepository cancellation', () => {
   const reportId = reportRow().id
   const bookingPassengerId = reportRow().booking_passenger_id

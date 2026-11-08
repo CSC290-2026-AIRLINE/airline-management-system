@@ -8,6 +8,8 @@ import { CreatePassengerLostReportDto, PassengerReportAccessQuery } from './dto/
 import { PassengerDeliveryChoiceDto } from './dto/passenger-delivery-choice.dto'
 import { BaggageErrorFilter } from './common/baggage-error.filter'
 import { PassengerDeliveryChoiceService } from './passenger-delivery-choice.service'
+import { PassengerCaseSummaryService } from './passenger-case-summary.service'
+import type { PassengerCaseSummary } from './common/passenger-case-summary.types'
 
 @Controller('customer/lost-reports')
 @UseGuards(BaggageCustomerGuard)
@@ -23,6 +25,7 @@ export class PassengerLostReportController {
   constructor(
     private readonly reports: ReportService,
     private readonly deliveryChoices: PassengerDeliveryChoiceService,
+    private readonly caseSummaries: PassengerCaseSummaryService,
   ) {}
 
   @Post()
@@ -50,6 +53,18 @@ export class PassengerLostReportController {
     @Query() query: PassengerReportAccessQuery,
   ): Promise<LostBagReport> {
     return this.reports.getByCaseNumber(caseNumber, {
+      ...query,
+      passengerId: customer.passengerId,
+    })
+  }
+
+  @Get(':caseNumber/summary')
+  getCaseSummary(
+    @CurrentBaggageCustomer() customer: BaggageCustomer,
+    @Param('caseNumber') caseNumber: string,
+    @Query() query: PassengerReportAccessQuery,
+  ): Promise<PassengerCaseSummary> {
+    return this.caseSummaries.getByCaseNumber(caseNumber, {
       ...query,
       passengerId: customer.passengerId,
     })

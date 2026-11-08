@@ -8,6 +8,7 @@ import type {
   BookingVerification,
   CheckedBagLookup,
   DeliveryChoiceSnapshot,
+  VerifiedReportFlight,
   ReportRepository,
   CaseNumberSequence,
   SimulationClock,
@@ -148,6 +149,10 @@ export class ReportService {
     }
 
     return this.repository.listByBookingPassengerId(passenger.bookingPassengerId)
+  }
+
+  listConfirmedFlights(access: ReportAccessInput): Promise<VerifiedReportFlight[]> {
+    return this.bookings.listConfirmedFlights(access)
   }
 
   async cancel(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {

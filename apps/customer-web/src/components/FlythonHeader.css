@@ -1,0 +1,254 @@
+.flython-header {
+  position: relative;
+  z-index: 10;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 1rem 3.2%;
+  background: #f6f8fc;
+  color: #17233f;
+  color-scheme: light;
+  text-align: left;
+}
+
+.flython-header__bar {
+  display: flex;
+  min-height: 4.1rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0 2.2rem;
+  border-radius: 0.85rem;
+  background: #f0f2f6;
+}
+
+.flython-header__brand {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.55rem;
+  color: #142544;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.flython-header__mark {
+  position: relative;
+  display: block;
+  flex: 0 0 2.55rem;
+  width: 2.55rem;
+  height: 1.35rem;
+}
+
+.flython-header__mark span {
+  position: absolute;
+  display: block;
+  height: 0.25rem;
+  border-radius: 999px 1px 999px 1px;
+  transform: skewX(-32deg);
+}
+
+.flython-header__mark span:first-child {
+  top: 0.08rem;
+  right: 0;
+  width: 2.1rem;
+  background: #ff9f0a;
+}
+
+.flython-header__mark span:nth-child(2) {
+  top: 0.48rem;
+  left: 0.18rem;
+  width: 2rem;
+  background: #142544;
+}
+
+.flython-header__mark span:last-child {
+  top: 0.88rem;
+  left: 0.04rem;
+  width: 1.45rem;
+  background: #a9b4c7;
+}
+
+.flython-header__brand-text {
+  display: grid;
+}
+
+.flython-header__wordmark {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.45rem;
+  font-weight: 700;
+}
+
+.flython-header__airline {
+  margin-top: 0.15rem;
+  font-size: 0.48rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+}
+
+.flython-header__nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: clamp(1rem, 3.5vw, 3.2rem);
+  margin-left: auto;
+}
+
+.flython-header__link {
+  color: #17233f;
+  font-size: 0.9rem;
+  text-decoration: none;
+  text-underline-offset: 0.2rem;
+}
+
+.flython-header__link:hover,
+.flython-header__link--active {
+  text-decoration: underline;
+  text-decoration-color: #ff9f0a;
+  text-decoration-thickness: 2px;
+}
+
+.flython-header__profile {
+  flex: 0 0 auto;
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.25rem 0.8rem 0.25rem 0.35rem;
+  border: 0;
+  border-radius: 999px;
+  background: #142544;
+  color: #fff;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.flython-header__avatar {
+  display: grid;
+  width: 1.95rem;
+  height: 1.95rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #dbe8ff;
+  color: #2450a4;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.flython-header__menu-toggle {
+  display: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border: 0;
+  border-radius: 0.65rem;
+  background: #142544;
+  color: #fff;
+  cursor: pointer;
+}
+
+.flython-header__menu-icon {
+  display: grid;
+  width: 1.15rem;
+  gap: 0.24rem;
+}
+
+.flython-header__menu-icon span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: transform 140ms ease;
+}
+
+.flython-header__menu-icon--open span:first-child {
+  transform: translateY(0.38rem) rotate(45deg);
+}
+
+.flython-header__menu-icon--open span:nth-child(2) {
+  opacity: 0;
+}
+
+.flython-header__menu-icon--open span:last-child {
+  transform: translateY(-0.38rem) rotate(-45deg);
+}
+
+.flython-header__menu-toggle:focus-visible,
+.flython-header__brand:focus-visible,
+.flython-header__link:focus-visible {
+  outline: 2px solid #ff9f0a;
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .flython-header {
+    padding: 0.75rem 1.25rem;
+  }
+
+  .flython-header__bar {
+    min-height: 3.8rem;
+    justify-content: initial;
+    gap: 0.55rem;
+    padding: 0.45rem 0.65rem 0.45rem 1rem;
+    background: #fff;
+  }
+
+  .flython-header__brand {
+    order: 1;
+    margin-right: auto;
+  }
+
+  .flython-header__menu-toggle {
+    display: grid;
+    order: 3;
+  }
+
+  .flython-header__profile {
+    order: 2;
+  }
+
+  .flython-header__nav {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    right: 0;
+    left: 0;
+    display: none;
+    align-items: stretch;
+    gap: 0;
+    margin: 0;
+    padding: 0.35rem 1rem;
+    border: 1px solid #d9e0eb;
+    border-radius: 0.75rem;
+    background: #fff;
+    box-shadow: 0 8px 24px rgb(23 35 63 / 12%);
+  }
+
+  .flython-header__nav--open {
+    display: grid;
+  }
+
+  .flython-header__link {
+    padding: 0.8rem 0.2rem;
+  }
+
+  .flython-header__link + .flython-header__link {
+    border-top: 1px solid #e8edf5;
+  }
+
+  .flython-header__profile {
+    min-height: 2.75rem;
+    padding: 0.2rem;
+  }
+
+  .flython-header__profile > span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}

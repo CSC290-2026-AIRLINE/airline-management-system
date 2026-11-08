@@ -42,6 +42,14 @@ export interface VerifiedBookingPassenger {
   flightId: string
 }
 
+export interface VerifiedReportFlight {
+  flightId: string
+  flightNumber: string
+  serviceDate: Date
+  origin: string
+  destination: string
+}
+
 export interface BookingVerification {
   verifyPassenger(input: {
     bookingReference: string
@@ -49,6 +57,8 @@ export interface BookingVerification {
     passengerId: string
     flightId?: string
   }): Promise<VerifiedBookingPassenger | null>
+
+  listConfirmedFlights(input: { bookingReference: string; surname: string; passengerId: string }): Promise<VerifiedReportFlight[]>
 }
 
 export interface CheckedBagOwnership {

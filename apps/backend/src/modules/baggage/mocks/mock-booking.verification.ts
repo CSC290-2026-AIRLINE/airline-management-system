@@ -1,4 +1,4 @@
-import type { BookingVerification, VerifiedBookingPassenger } from '../common/report.ports'
+import type { BookingVerification, VerifiedBookingPassenger, VerifiedReportFlight } from '../common/report.ports'
 
 export interface MockBookingRecord extends VerifiedBookingPassenger {
   bookingReference: string
@@ -29,5 +29,9 @@ export class MockBookingVerification implements BookingVerification {
       passengerId: booking.passengerId,
       flightId: booking.flightId,
     })
+  }
+
+  listConfirmedFlights(): Promise<VerifiedReportFlight[]> {
+    return Promise.resolve([])
   }
 }

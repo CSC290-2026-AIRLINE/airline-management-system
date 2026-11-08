@@ -1,6 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
+import { useLocation } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
 import { DeliveryChoiceForm, type PassengerDeliveryChoice } from '../components/DeliveryChoiceForm'
+import { createPassengerCasePageState, passengerCasePageReducer, passengerDeliveryFormKey } from './case-page-state'
+import { timelineEventLabel, type PassengerCaseTimelineEvent } from './passenger-case-summary-view'
 import './PassengerLostBagCasePage.css'
 
 interface CaseAccess {
@@ -20,6 +23,12 @@ interface LostBagReportDetail {
   reportedAt: string
   lostAt: string | null
   closedAt: string | null
+}
+
+interface PassengerCaseSummary {
+  passenger: { firstName: string; lastName: string }
+  flight: { flightNumber: string; serviceDate: string; origin: string; destination: string }
+  timeline: PassengerCaseTimelineEvent[]
 }
 
 interface LostBagReportListItem {
@@ -74,6 +83,10 @@ async function responseError(response: Response, fallback: string): Promise<stri
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
+function formatServiceDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(value))
 }
 
 function formatStatus(status: string): string {
@@ -150,19 +163,26 @@ function toInitialChoice(delivery: DeliveryChoiceState): PassengerDeliveryChoice
 
 export function PassengerLostBagCasePage() {
   const { fetchWithAuth } = useAppAuth()
+  const location = useLocation()
+  const openedFromReport = useRef(false)
+  const caseSummaryRequest = useRef(0)
   const [caseNumber, setCaseNumber] = useState('')
   const [bookingReference, setBookingReference] = useState('')
   const [surname, setSurname] = useState('')
   const [access, setAccess] = useState<CaseAccess | null>(null)
-  const [report, setReport] = useState<LostBagReportDetail | null>(null)
-  const [delivery, setDelivery] = useState<DeliveryChoiceState | null>(null)
+  const [casePage, dispatchCasePage] = useReducer(
+    passengerCasePageReducer<LostBagReportDetail, DeliveryChoiceState>,
+    createPassengerCasePageState<LostBagReportDetail, DeliveryChoiceState>(),
+  )
+  const { report, delivery, deliveryUnavailable: isDeliveryUnavailable, deliveryError, deliveryFormRevision } = casePage
+  const [caseSummary, setCaseSummary] = useState<PassengerCaseSummary | null>(null)
+  const [caseSummaryError, setCaseSummaryError] = useState('')
+  const [caseSummaryLoading, setCaseSummaryLoading] = useState(false)
   const [relatedCases, setRelatedCases] = useState<string[]>([])
   const [caseListMessage, setCaseListMessage] = useState('')
   const [isLookingUp, setIsLookingUp] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isEditingAccess, setIsEditingAccess] = useState(true)
-  const [isDeliveryUnavailable, setIsDeliveryUnavailable] = useState(false)
-  const [deliveryFormRevision, setDeliveryFormRevision] = useState(0)
   const [saveNotice, setSaveNotice] = useState('')
   const [error, setError] = useState('')
 
@@ -203,15 +223,18 @@ export function PassengerLostBagCasePage() {
 
     setIsLookingUp(true)
     setError('')
-    setReport(null)
-    setDelivery(null)
+    dispatchCasePage({ type: 'reset' })
+    setCaseSummary(null)
+    setCaseSummaryError('')
+    setCaseSummaryLoading(false)
     setAccess(null)
-    setIsDeliveryUnavailable(false)
     setRelatedCases([])
     setCaseListMessage('')
     setCaseNumber(normalizedAccess.caseNumber)
     setBookingReference(normalizedAccess.bookingReference)
     setSurname(normalizedAccess.surname)
+    caseSummaryRequest.current += 1
+    const summaryRequestId = caseSummaryRequest.current
 
     try {
       const query = accessQuery(normalizedAccess)
@@ -239,33 +262,78 @@ export function PassengerLostBagCasePage() {
         listMessage = await responseError(listResponse, 'Other cases could not be loaded.')
       }
 
-      const deliveryResponse = await fetchWithAuth(`${casePath}/delivery-choice?${query}`)
-
-      setReport(reportData)
+      dispatchCasePage({ type: 'report-loaded', report: reportData })
       setAccess(normalizedAccess)
       setIsEditingAccess(false)
       setRelatedCases(caseNumbers)
       setCaseListMessage(listMessage)
+      void loadCaseSummary(normalizedAccess, summaryRequestId)
 
-      if (deliveryResponse.status === 404) {
-        setIsDeliveryUnavailable(true)
-        return
-      }
-      if (!deliveryResponse.ok) {
-        throw new Error(await responseError(deliveryResponse, 'We could not load the delivery details. Try again.'))
-      }
+      try {
+        const deliveryResponse = await fetchWithAuth(`${casePath}/delivery-choice?${query}`)
 
-      setDelivery((await deliveryResponse.json()) as DeliveryChoiceState)
+        if (deliveryResponse.status === 404) {
+          dispatchCasePage({ type: 'delivery-missing' })
+          return
+        }
+        if (!deliveryResponse.ok) {
+          dispatchCasePage({
+            type: 'delivery-failed',
+            message: await responseError(deliveryResponse, 'Delivery details could not be loaded. Reopen the case to try again.'),
+          })
+          return
+        }
+
+        dispatchCasePage({ type: 'delivery-loaded', delivery: (await deliveryResponse.json()) as DeliveryChoiceState })
+      } catch (cause) {
+        dispatchCasePage({
+          type: 'delivery-failed',
+          message: cause instanceof Error ? cause.message : 'Delivery details could not be loaded. Reopen the case to try again.',
+        })
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'We could not open this case. Try again.')
-      setReport(null)
-      setDelivery(null)
+      dispatchCasePage({ type: 'reset' })
       setAccess(null)
       setIsEditingAccess(true)
     } finally {
       setIsLookingUp(false)
     }
   }
+
+  async function loadCaseSummary(currentAccess: CaseAccess, requestId = caseSummaryRequest.current): Promise<void> {
+    const query = accessQuery(currentAccess)
+    const path = `/api/customer/lost-reports/${encodeURIComponent(currentAccess.caseNumber)}/summary?${query}`
+    setCaseSummaryLoading(true)
+    setCaseSummaryError('')
+
+    try {
+      const response = await fetchWithAuth(path)
+      if (requestId !== caseSummaryRequest.current) return
+      if (!response.ok) {
+        setCaseSummary(null)
+        setCaseSummaryError(await responseError(response, 'Recovery timeline details could not be loaded.'))
+        return
+      }
+
+      setCaseSummary((await response.json()) as PassengerCaseSummary)
+    } catch (cause) {
+      if (requestId !== caseSummaryRequest.current) return
+      setCaseSummary(null)
+      setCaseSummaryError(cause instanceof Error ? cause.message : 'Recovery timeline details could not be loaded.')
+    } finally {
+      if (requestId === caseSummaryRequest.current) setCaseSummaryLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const caseAccess = location.state.passengerCaseAccess
+    if (!caseAccess || openedFromReport.current) return
+    openedFromReport.current = true
+    void loadCase(caseAccess)
+    // This history state is a one-time handoff from the successful report form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state.passengerCaseAccess])
 
   function openRelatedCase(nextCaseNumber: string) {
     if (!access) return
@@ -343,13 +411,16 @@ export function PassengerLostBagCasePage() {
       }
 
       const result = (await response.json()) as DeliveryChoiceUpdate
-      setDelivery({
-        deliveryType: result.deliveryType,
-        address: result.address,
-        pickupAirport: result.pickupAirport,
-        status: result.status,
+      dispatchCasePage({
+        type: 'delivery-loaded',
+        delivery: {
+          deliveryType: result.deliveryType,
+          address: result.address,
+          pickupAirport: result.pickupAirport,
+          status: result.status,
+        },
       })
-      setDeliveryFormRevision((revision) => revision + 1)
+      void loadCaseSummary(access)
       setSaveNotice('Your delivery choice was saved.')
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'We could not save your delivery choice. Try again.'
@@ -363,18 +434,45 @@ export function PassengerLostBagCasePage() {
   async function refreshCaseState(currentAccess: CaseAccess): Promise<void> {
     const query = accessQuery(currentAccess)
     const casePath = `/api/customer/lost-reports/${encodeURIComponent(currentAccess.caseNumber)}`
-    const [reportResponse, deliveryResponse] = await Promise.all([
+    const [reportResult, deliveryResult] = await Promise.allSettled([
       fetchWithAuth(`${casePath}?${query}`),
       fetchWithAuth(`${casePath}/delivery-choice?${query}`),
     ])
+    void loadCaseSummary(currentAccess)
 
-    if (reportResponse.ok) setReport((await reportResponse.json()) as LostBagReportDetail)
-    if (deliveryResponse.status === 404) {
-      setDelivery(null)
-      setIsDeliveryUnavailable(true)
-    } else if (deliveryResponse.ok) {
-      setDelivery((await deliveryResponse.json()) as DeliveryChoiceState)
-      setIsDeliveryUnavailable(false)
+    if (reportResult.status === 'fulfilled' && reportResult.value.ok) {
+      const refreshedReport = (await reportResult.value.json().catch(() => null)) as LostBagReportDetail | null
+      if (refreshedReport) dispatchCasePage({ type: 'report-loaded', report: refreshedReport })
+    }
+
+    if (deliveryResult.status === 'rejected') {
+      dispatchCasePage({
+        type: 'delivery-failed',
+        message:
+          deliveryResult.reason instanceof Error
+            ? deliveryResult.reason.message
+            : 'Delivery details could not be loaded. Reopen the case to try again.',
+      })
+      return
+    }
+
+    const deliveryResponse = deliveryResult.value
+    try {
+      if (deliveryResponse.status === 404) {
+        dispatchCasePage({ type: 'delivery-missing' })
+      } else if (deliveryResponse.ok) {
+        dispatchCasePage({ type: 'delivery-loaded', delivery: (await deliveryResponse.json()) as DeliveryChoiceState })
+      } else {
+        dispatchCasePage({
+          type: 'delivery-failed',
+          message: await responseError(deliveryResponse, 'Delivery details could not be loaded. Reopen the case to try again.'),
+        })
+      }
+    } catch (cause) {
+      dispatchCasePage({
+        type: 'delivery-failed',
+        message: cause instanceof Error ? cause.message : 'Delivery details could not be loaded. Reopen the case to try again.',
+      })
     }
   }
 
@@ -462,6 +560,17 @@ export function PassengerLostBagCasePage() {
             </ol>
 
             <dl className="passenger-case-card__details">
+              {caseSummary && (
+                <>
+                  <dt>Passenger</dt>
+                  <dd>{`${caseSummary.passenger.firstName} ${caseSummary.passenger.lastName}`}</dd>
+                  <dt>Flight</dt>
+                  <dd>
+                    {caseSummary.flight.flightNumber} · {caseSummary.flight.origin} to {caseSummary.flight.destination} ·{' '}
+                    {formatServiceDate(caseSummary.flight.serviceDate)}
+                  </dd>
+                </>
+              )}
               <dt>Bag</dt>
               <dd>{[report.colour, report.bagType, report.brand].filter(Boolean).join(' · ')}</dd>
               {report.tagNumber && (
@@ -494,23 +603,28 @@ export function PassengerLostBagCasePage() {
 
             <h3>Timeline</h3>
             <ol className="passenger-case-timeline">
-              <li>
-                <time dateTime={report.reportedAt}>{formatDate(report.reportedAt)}</time>
-                <span>Report received</span>
-              </li>
-              {report.lostAt && (
-                <li>
-                  <time dateTime={report.lostAt}>{formatDate(report.lostAt)}</time>
-                  <span>Case marked lost</span>
+              {caseSummary?.timeline.map((event, index) => (
+                <li key={`${event.type}-${event.occurredAt}-${index}`}>
+                  <time dateTime={event.occurredAt}>{formatDate(event.occurredAt)}</time>
+                  <span>{timelineEventLabel(event)}</span>
                 </li>
-              )}
-              {report.closedAt && (
-                <li>
-                  <time dateTime={report.closedAt}>{formatDate(report.closedAt)}</time>
-                  <span>Case closed</span>
-                </li>
-              )}
+              ))}
             </ol>
+            {caseSummaryLoading && (
+              <p className="passenger-case-page__loading" role="status">
+                Loading recovery timeline…
+              </p>
+            )}
+            {caseSummaryError && (
+              <p className="passenger-case-page__loading" role="status">
+                Recovery timeline unavailable. {caseSummaryError}
+              </p>
+            )}
+            {caseSummary && caseSummary.timeline.length === 0 && (
+              <p className="passenger-case-page__loading" role="status">
+                No recovery updates have been recorded yet.
+              </p>
+            )}
           </section>
 
           <aside className="passenger-case-delivery">
@@ -518,6 +632,11 @@ export function PassengerLostBagCasePage() {
               <section className="passenger-case-info" role="status">
                 <h2>Delivery choice unavailable</h2>
                 <p>This case does not have an associated recovery delivery yet.</p>
+              </section>
+            ) : deliveryError ? (
+              <section className="passenger-case-info" role="status">
+                <h2>Delivery details unavailable</h2>
+                <p>{deliveryError}</p>
               </section>
             ) : !delivery ? (
               <section className="passenger-case-info" role="status">
@@ -537,7 +656,7 @@ export function PassengerLostBagCasePage() {
               </section>
             ) : (
               <DeliveryChoiceForm
-                key={`${report.caseNumber}-${deliveryFormRevision}`}
+                key={passengerDeliveryFormKey(report.caseNumber, deliveryFormRevision)}
                 locked={deliveryLocked}
                 initialChoice={toInitialChoice(delivery)}
                 onSaveChoice={saveChoice}

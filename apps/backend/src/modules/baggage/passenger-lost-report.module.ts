@@ -10,13 +10,16 @@ import { PrismaCaseNumberSequence } from './prisma-case-number.sequence'
 import { PassengerLostReportController } from './passenger-lost-report.controller'
 import { BaggageCustomerGuard } from './guards/baggage-customer.guard'
 import { PassengerDeliveryChoiceService } from './passenger-delivery-choice.service'
+import { PassengerLostReportFlightsController } from './passenger-lost-report-flights.controller'
+import { PassengerCaseSummaryService } from './passenger-case-summary.service'
 
 @Module({
   imports: [AuditModule, BaggageModule],
-  controllers: [PassengerLostReportController],
+  controllers: [PassengerLostReportController, PassengerLostReportFlightsController],
   providers: [
     BaggageCustomerGuard,
     PassengerDeliveryChoiceService,
+    PassengerCaseSummaryService,
     PrismaReportRepository,
     PrismaBookingVerification,
     PrismaCheckedBagLookup,

@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
 import { AppAuthProvider } from '../auth/AuthProvider'
+import { FlythonHeader } from '../components/FlythonHeader'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: ({ context, location }) => {
@@ -16,6 +17,7 @@ export const Route = createFileRoute('/_authenticated')({
 function AuthenticatedLayout() {
   return (
     <AppAuthProvider>
+      <FlythonHeader />
       <Outlet />
     </AppAuthProvider>
   )
