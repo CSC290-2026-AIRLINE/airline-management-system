@@ -2,9 +2,9 @@ import { effectiveTier, nextMemberTier, progressToNextTier, qualifyingTier, tier
 import { MemberTier, TierRule } from './types'
 
 const rules: TierRule[] = [
-  { code: 'silver', name: 'Silver', rank: 1, minMiles: 15000, minFlights: 20, validMonths: 12, bonusBaggageKg: 5 },
-  { code: 'gold', name: 'Gold', rank: 2, minMiles: 40000, minFlights: 50, validMonths: 12, bonusBaggageKg: 10 },
-  { code: 'platinum', name: 'Platinum', rank: 3, minMiles: 80000, minFlights: 100, validMonths: 12, bonusBaggageKg: 15 },
+  { code: 'silver', name: 'Silver', rank: 1, minMiles: 15000, minFlights: 20, validMonths: 12 },
+  { code: 'gold', name: 'Gold', rank: 2, minMiles: 40000, minFlights: 50, validMonths: 12 },
+  { code: 'platinum', name: 'Platinum', rank: 3, minMiles: 80000, minFlights: 100, validMonths: 12 },
 ]
 const byCode = (code: string) => rules.find((r) => r.code === code) as TierRule
 const now = new Date('2026-10-30T00:00:00Z')

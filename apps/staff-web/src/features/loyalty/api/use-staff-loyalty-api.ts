@@ -1,9 +1,27 @@
+import { useEffect } from 'react'
+import { useAppAuth } from '@staff-web/auth/AuthProvider'
+import { createHttpStaffLoyaltyApi } from './http-staff-loyalty-api'
 import { createMockStaffLoyaltyApi } from './mock-staff-loyalty-api'
+import type { StaffLoyaltyApi } from './types'
 
-// One mock for the whole session. Replace with an HTTP client built on fetchWithAuth once the backend module is merged;
-// the pages only see the StaffLoyaltyApi interface.
-const mockApi = createMockStaffLoyaltyApi()
+type FetchWithAuth = ReturnType<typeof useAppAuth>['fetchWithAuth']
 
-export function useStaffLoyaltyApi() {
-  return mockApi
+// fetchWithAuth is a new function on every render, so one stable client reads the latest one from here. Pages pass the
+// client to useLoad and useCallback, so its identity must not change between renders.
+let currentFetch: FetchWithAuth | null = null
+
+// Award Release and the Lounge Desk still read demo data: their backend routes come in the next Feature 11 change.
+const demo = createMockStaffLoyaltyApi()
+
+const api = createHttpStaffLoyaltyApi((path, init) => {
+  if (!currentFetch) return Promise.reject(new Error('Not signed in.'))
+  return currentFetch(path, init)
+}, demo)
+
+export function useStaffLoyaltyApi(): StaffLoyaltyApi {
+  const { fetchWithAuth } = useAppAuth()
+  useEffect(() => {
+    currentFetch = fetchWithAuth
+  })
+  return api
 }

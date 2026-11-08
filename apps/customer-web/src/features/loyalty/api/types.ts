@@ -1,5 +1,5 @@
-// Response shapes of the Feature 11 customer API (GET /api/loyalty/...). The mock returns the same shapes, so the pages
-// do not change when the HTTP client replaces it.
+// Response shapes of the Feature 11 customer API (/api/loyalty/...). They mirror the backend's
+// apps/backend/src/modules/loyalty/dto/responses.ts; change both together.
 
 export type TierCode = 'silver' | 'gold' | 'platinum'
 

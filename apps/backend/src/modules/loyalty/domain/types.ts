@@ -1,5 +1,5 @@
-// Shapes of the Feature 11 tables proposed in docs/feature-11-loyalty/schema-proposal.sql. The domain functions take
-// plain values so they can be tested without a database; the service maps Prisma rows onto these once the tables exist.
+// Plain shapes of the Feature 11 tables (migration 20261106120400_feature11_loyalty). The domain functions take plain
+// values so they can be tested without a database; the loyalty services map Prisma rows onto these.
 
 export type TierCode = 'silver' | 'gold' | 'platinum'
 
@@ -12,7 +12,6 @@ export interface TierRule {
   minMiles: number
   minFlights: number
   validMonths: number
-  bonusBaggageKg: number
 }
 
 export interface EarnRule {
@@ -47,3 +46,19 @@ export const DEFAULT_SETTINGS: LoyaltySettings = {
   expiryReminderDays: 30,
   awardCutoffHours: 72,
 }
+
+// loyalty_tier_benefit.insurance_price: NULL = not offered, 0 = included, above 0 = the member price (base currency).
+export type Insurance = { kind: 'none' } | { kind: 'included' } | { kind: 'member_price'; priceThb: number }
+
+// One loyalty_tier_benefit row. Features 6 and 12 read these through tierForPassenger.
+export interface TierBenefits {
+  loungeGuests: number | null // NULL = no lounge access, 0 = member only
+  extraBaggageKg: number
+  priorityCheckIn: boolean
+  priorityBoarding: boolean
+  upgradeEligible: boolean
+  insurance: Insurance
+}
+
+export const SETTING_KEYS = ['miles_retention_months', 'expiry_reminder_days', 'award_cutoff_hours'] as const
+export type SettingKey = (typeof SETTING_KEYS)[number]

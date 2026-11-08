@@ -1,5 +1,5 @@
-// Shapes of the planned Feature 11 staff API. The mock returns the same shapes, so the pages do not change when the
-// HTTP client replaces it. Every route behind these needs the loyalty-admin role on the backend.
+// Shapes the Feature 11 staff pages use. http-staff-loyalty-api.ts maps the backend's /api/staff/loyalty responses onto
+// them (apps/backend/src/modules/loyalty/dto/responses.ts). The routes need an admin or loyalty role on the backend.
 
 export type TierCode = 'silver' | 'gold' | 'platinum'
 
