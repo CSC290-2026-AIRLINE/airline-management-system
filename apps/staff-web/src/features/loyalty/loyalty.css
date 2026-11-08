@@ -1,0 +1,29 @@
+/* Feature 11 (loyalty) colours, from the F11 Figma file. Imported by index.css so they join the app's one Tailwind build
+   (a second `@import 'tailwindcss'` would emit a second, conflicting set of utilities). */
+@theme {
+  --color-f11-ink: #0a1424;
+  --color-f11-muted: #677287;
+  --color-f11-line: #e0e5ed;
+  --color-f11-divider: #e8edf3;
+  --color-f11-field: #dbe2ea;
+  --color-f11-navy: #102544;
+  --color-f11-link: #1f408c;
+  --color-f11-teal: #0e7490;
+  --color-f11-soft: #f7f9fc;
+  --color-f11-band: #f6f7f9;
+  --color-f11-ok: #087338;
+  --color-f11-warn: #995c05;
+  --color-f11-danger: #b42318;
+  --color-f11-sidebar: #13213b;
+  --color-f11-sidebar-active: #2a3b5c;
+  --color-f11-canvas: #f7f8fb;
+}
+
+/* Pages marked data-full-bleed (the loyalty pages) fill the window. index.css boxes #root at 1126px for the starter
+   pages; this lifts the box only while such a page is on screen. */
+#root:has([data-full-bleed]) {
+  width: 100%;
+  max-width: none;
+  border: 0;
+  text-align: left;
+}
