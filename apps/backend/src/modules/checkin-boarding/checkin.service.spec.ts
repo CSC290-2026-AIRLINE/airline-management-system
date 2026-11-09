@@ -695,6 +695,13 @@ describe('CheckInService.applyScreeningResult', () => {
     await svc.applyScreeningResult(c.id, 'clear')
     expect((await store.getCheckIn(c.id))!.status).toBe('checked_in')
   })
+
+  it('a hold before any screening run records a UUID run id (the column is uuid)', async () => {
+    const { svc, store } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.applyScreeningResult(c.id, 'held')
+    expect((await store.getCheckIn(c.id))!.screening_run_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+  })
 })
 
 describe('CheckInService.releaseExpiredHolds', () => {

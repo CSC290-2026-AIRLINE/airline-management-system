@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/require-await -- the provider interfaces are async so the real modules can be swapped in */
+import { randomUUID } from 'node:crypto'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import type { Cabin, CarryOnAllowance, SeatLock, SeatMap, SeatStatus, SeatType } from '../api-types'
 import { CheckInError } from '../errors'
@@ -313,7 +314,8 @@ export class FixtureScreening implements ScreeningProvider {
   }): Promise<{ runId: string; outcome: 'clear' | 'held' }> {
     this.seq += 1
     const held = input.numberLast4 === HOLD_LAST4 || input.lastName.toUpperCase() === 'KOWALSKI'
-    return { runId: `scr-${this.seq}`, outcome: held ? 'held' : 'clear' }
+    // A UUID, not `scr-N`: check_in.screening_run_id is a uuid column and this fixture also runs in 'db' mode until F7 lands.
+    return { runId: randomUUID(), outcome: held ? 'held' : 'clear' }
   }
 }
 

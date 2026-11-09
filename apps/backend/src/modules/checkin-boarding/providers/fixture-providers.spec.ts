@@ -85,6 +85,14 @@ describe('FixtureScreening', () => {
       await screening.check({ passengerId: 'pax-er224f', flightId: 'flt-fy204', numberLast4: '02C3', lastName: 'Eriksson' }),
     ).toMatchObject({ outcome: 'clear' })
   })
+
+  it('the run id is a UUID: check_in.screening_run_id is a uuid column in the real database', async () => {
+    const screening = new FixtureScreening()
+    const first = await screening.check({ passengerId: 'pax-er224f', flightId: 'flt-fy204', numberLast4: '02C3', lastName: 'Eriksson' })
+    const second = await screening.check({ passengerId: 'pax-er224f', flightId: 'flt-fy204', numberLast4: '02C3', lastName: 'Eriksson' })
+    expect(first.runId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    expect(second.runId).not.toBe(first.runId)
+  })
 })
 
 describe('FixturePassengers', () => {

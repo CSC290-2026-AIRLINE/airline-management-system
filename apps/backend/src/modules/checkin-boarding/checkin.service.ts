@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
 import type {
   BagAllowance,
@@ -352,7 +353,8 @@ export class CheckInService {
             ? 'checked_in'
             : 'started'
     const patch: CheckInPatch = { status }
-    if ((status === 'on_hold' || status === 'denied') && !record.screening_run_id) patch.screening_run_id = `scr-${id}`
+    // The column is uuid and the CHECK needs a run id for on_hold/denied, so a hold without an F7 run gets a fresh one.
+    if ((status === 'on_hold' || status === 'denied') && !record.screening_run_id) patch.screening_run_id = randomUUID()
     await this.store.updateCheckIn(id, patch)
   }
 
