@@ -60,14 +60,16 @@ function groupByType(rates: Rate[]): RateRow[] {
     if (!row) {
       row = {
         commodity_type_id: rate.commodity_type_id,
-        commodity_type_name: rate.commodity_type_name,
+        commodity_type_name: rate.cargo_commodity_type?.name ?? 'Unknown',
         bands: DISTANCE_BANDS.map(() => ({ rate: null, rate_per_kg: 0, min_charge: 0 })),
       }
       map.set(rate.commodity_type_id, row)
     }
-    const bandIndex = DISTANCE_BANDS.findIndex((b) => rate.min_distance_km >= b.min && (b.max === null || rate.max_distance_km <= b.max))
+    const bandIndex = DISTANCE_BANDS.findIndex(
+      (b) => rate.min_distance_km >= b.min && (b.max === null || (rate.max_distance_km != null && rate.max_distance_km <= b.max)),
+    )
     if (bandIndex >= 0) {
-      row.bands[bandIndex] = { rate, rate_per_kg: rate.rate_per_kg, min_charge: rate.min_charge }
+      row.bands[bandIndex] = { rate, rate_per_kg: Number(rate.rate_per_kg), min_charge: Number(rate.min_charge) }
     }
   }
   return Array.from(map.values())
@@ -219,8 +221,8 @@ export function RatesSection() {
       try {
         const [ratesData, typesData] = await Promise.all([api.listRates(), api.listCommodityTypes()])
         if (!cancelled) {
-          setRates(ratesData.rates)
-          setCommodityTypes(typesData.commodity_types)
+          setRates(Array.isArray(ratesData) ? ratesData : [])
+          setCommodityTypes(Array.isArray(typesData) ? typesData : [])
           setLoading(false)
         }
       } catch (err) {

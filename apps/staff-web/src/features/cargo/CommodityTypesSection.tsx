@@ -65,9 +65,9 @@ function NoticeBanner({ notice }: { notice: Notice }) {
 interface EditState {
   name: string
   handling_class: string
-  min_kg: string
-  max_kg: string
-  max_piece_kg: string
+  min_weight_kg: string
+  max_weight_kg: string
+  max_piece_weight_kg: string
   is_active: boolean
 }
 
@@ -75,9 +75,9 @@ function editStateFrom(row: CommodityType): EditState {
   return {
     name: row.name,
     handling_class: row.handling_class,
-    min_kg: String(row.min_kg),
-    max_kg: String(row.max_kg),
-    max_piece_kg: String(row.max_piece_kg),
+    min_weight_kg: String(row.min_weight_kg),
+    max_weight_kg: String(row.max_weight_kg),
+    max_piece_weight_kg: String(row.max_piece_weight_kg),
     is_active: row.is_active,
   }
 }
@@ -110,9 +110,9 @@ function AddCommodityTypeDialog({ onClose, onSubmit }: { onClose: () => void; on
         code: code.trim().toUpperCase(),
         name: name.trim(),
         handling_class: handlingClass,
-        min_kg: Number(minKg),
-        max_kg: Number(maxKg),
-        max_piece_kg: Number(maxPieceKg),
+        min_weight_kg: Number(minKg),
+        max_weight_kg: Number(maxKg),
+        max_piece_weight_kg: Number(maxPieceKg),
         is_active: true,
       })
     } catch (err) {
@@ -210,7 +210,7 @@ export function CommodityTypesSection() {
       try {
         const data = await api.listCommodityTypes()
         if (!cancelled) {
-          setRows(data.commodity_types)
+          setRows(Array.isArray(data) ? data : [])
           setLoading(false)
         }
       } catch (err) {
@@ -245,9 +245,9 @@ export function CommodityTypesSection() {
       const updated = await api.updateCommodityType(row.id, {
         name: editState.name.trim(),
         handling_class: editState.handling_class,
-        min_kg: Number(editState.min_kg),
-        max_kg: Number(editState.max_kg),
-        max_piece_kg: Number(editState.max_piece_kg),
+        min_weight_kg: Number(editState.min_weight_kg),
+        max_weight_kg: Number(editState.max_weight_kg),
+        max_piece_weight_kg: Number(editState.max_piece_weight_kg),
         is_active: editState.is_active,
       })
       setRows((prev) => prev.map((r) => (r.id === row.id ? updated : r)))
@@ -347,9 +347,9 @@ export function CommodityTypesSection() {
                       <Input
                         type="number"
                         min={0}
-                        value={editState.min_kg}
+                        value={editState.min_weight_kg}
                         className="h-8 w-20"
-                        onChange={(e) => setEditState({ ...editState, min_kg: e.target.value })}
+                        onChange={(e) => setEditState({ ...editState, min_weight_kg: e.target.value })}
                       />
                       <span className="text-xs text-muted-foreground">kg</span>
                     </div>
@@ -359,9 +359,9 @@ export function CommodityTypesSection() {
                       <Input
                         type="number"
                         min={0}
-                        value={editState.max_kg}
+                        value={editState.max_weight_kg}
                         className="h-8 w-24"
-                        onChange={(e) => setEditState({ ...editState, max_kg: e.target.value })}
+                        onChange={(e) => setEditState({ ...editState, max_weight_kg: e.target.value })}
                       />
                       <span className="text-xs text-muted-foreground">kg</span>
                     </div>
@@ -371,9 +371,9 @@ export function CommodityTypesSection() {
                       <Input
                         type="number"
                         min={0}
-                        value={editState.max_piece_kg}
+                        value={editState.max_piece_weight_kg}
                         className="h-8 w-20"
-                        onChange={(e) => setEditState({ ...editState, max_piece_kg: e.target.value })}
+                        onChange={(e) => setEditState({ ...editState, max_piece_weight_kg: e.target.value })}
                       />
                       <span className="text-xs text-muted-foreground">kg</span>
                     </div>
@@ -413,9 +413,9 @@ export function CommodityTypesSection() {
                 <TableCell>
                   <ClassBadge value={row.handling_class} />
                 </TableCell>
-                <TableCell className="text-muted-foreground">{row.min_kg} kg</TableCell>
-                <TableCell className="text-muted-foreground">{Intl.NumberFormat().format(row.max_kg)} kg</TableCell>
-                <TableCell className="text-muted-foreground">{row.max_piece_kg} kg</TableCell>
+                <TableCell className="text-muted-foreground">{Number(row.min_weight_kg)} kg</TableCell>
+                <TableCell className="text-muted-foreground">{Intl.NumberFormat().format(Number(row.max_weight_kg))} kg</TableCell>
+                <TableCell className="text-muted-foreground">{Number(row.max_piece_weight_kg)} kg</TableCell>
                 <TableCell>
                   <Badge
                     variant="outline"
@@ -453,7 +453,8 @@ export function CommodityTypesSection() {
 
       {isEditing(editingId, rows) && (
         <p className="mt-2 text-xs text-muted-foreground">
-          Applies to new bookings only. Bookings already made keep {rows.find((r) => r.id === editingId)?.max_piece_kg} kg a piece.
+          Applies to new bookings only. Bookings already made keep {Number(rows.find((r) => r.id === editingId)?.max_piece_weight_kg)} kg a
+          piece.
         </p>
       )}
 
