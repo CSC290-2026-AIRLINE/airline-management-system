@@ -73,7 +73,8 @@ export function SeatMap({
                   if (!seat) {
                     return <span key={letter} className={styles.blank} style={{ gridColumn: columnOf(letter), gridRow: 2 }} />
                   }
-                  const taken = seat.status === 'taken' || seat.status === 'held' || seat.status === 'blocked'
+                  // Your own seat is not a pick: re-holding it would answer SEAT_TAKEN against the database.
+                  const taken = seat.status === 'taken' || seat.status === 'held' || seat.status === 'blocked' || seat.status === 'mine'
                   return (
                     <button
                       key={seat.code}
