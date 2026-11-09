@@ -269,9 +269,10 @@ export class CheckInStore implements CheckInRepository {
   async updateCheckIn(id: string, patch: CheckInPatch): Promise<CheckInRecord> {
     const record = this.checkIns.get(id)
     if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Check-in not found')
-    Object.assign(record, patch)
-    record.updated_at = this.now()
-    return record
+    // A new object, like a database row: a caller holding the old record must use the returned one.
+    const next = { ...record, ...patch, updated_at: this.now() }
+    this.checkIns.set(id, next)
+    return next
   }
 
   async cancelCheckIn(id: string): Promise<CheckInRecord> {
@@ -323,9 +324,9 @@ export class CheckInStore implements CheckInRepository {
   async updateDocument(id: string, patch: UpdateDocumentPatch): Promise<TravelDocumentRecord> {
     const record = this.documents.get(id)
     if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Travel document not found')
-    Object.assign(record, patch)
-    record.updated_at = this.now()
-    return record
+    const next = { ...record, ...patch, updated_at: this.now() }
+    this.documents.set(id, next)
+    return next
   }
 
   async createBag(input: CreateBagInput): Promise<CheckedBagRecord> {
@@ -369,9 +370,9 @@ export class CheckInStore implements CheckInRepository {
   async updateBag(id: string, patch: UpdateBagPatch): Promise<CheckedBagRecord> {
     const record = this.bags.get(id)
     if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Bag not found')
-    Object.assign(record, patch)
-    record.updated_at = this.now()
-    return record
+    const next = { ...record, ...patch, updated_at: this.now() }
+    this.bags.set(id, next)
+    return next
   }
 
   /** Soft delete: a tagged bag is never removed, the row stays for the audit. */
@@ -431,9 +432,9 @@ export class CheckInStore implements CheckInRepository {
   async updateFlightBoarding(flightId: string, patch: UpdateFlightBoardingPatch): Promise<FlightBoardingRecord> {
     const record = this.boardingRows.get(flightId)
     if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Flight boarding not found')
-    Object.assign(record, patch)
-    record.updated_at = this.now()
-    return record
+    const next = { ...record, ...patch, updated_at: this.now() }
+    this.boardingRows.set(flightId, next)
+    return next
   }
 
   async createPass(input: CreatePassInput): Promise<BoardingPassRecord> {
@@ -462,9 +463,9 @@ export class CheckInStore implements CheckInRepository {
   async updatePass(id: string, patch: UpdatePassPatch): Promise<BoardingPassRecord> {
     const record = this.passes.get(id)
     if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Boarding pass not found')
-    Object.assign(record, patch)
-    record.updated_at = this.now()
-    return record
+    const next = { ...record, ...patch, updated_at: this.now() }
+    this.passes.set(id, next)
+    return next
   }
 
   /** The unique index on the final events: a pass boards or no-shows exactly once. */

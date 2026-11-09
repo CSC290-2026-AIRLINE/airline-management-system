@@ -185,12 +185,12 @@ export class CheckInService {
       numberLast4: data.numberLast4,
       lastName: booking.lastName,
     })
-    await this.store.updateCheckIn(record.id, {
+    const updated = await this.store.updateCheckIn(record.id, {
       status: screening.outcome === 'held' ? 'on_hold' : record.status,
       screening_run_id: screening.runId,
     })
     await this.record(actor, 'travel_document.submit', 'travel_document', document.id, 'travel document submitted')
-    return this.viewOf(record)
+    return this.viewOf(updated)
   }
 
   /**
@@ -290,8 +290,8 @@ export class CheckInService {
     if (!Number.isInteger(input.declaredBags) || input.declaredBags < 0 || input.declaredBags > 10) {
       throw validation('The number of bags must be a whole number between 0 and 10', { declaredBags: input.declaredBags })
     }
-    await this.store.updateCheckIn(record.id, { declared_bags: input.declaredBags })
-    return this.viewOf(record)
+    const updated = await this.store.updateCheckIn(record.id, { declared_bags: input.declaredBags })
+    return this.viewOf(updated)
   }
 
   async complete(actor: Actor, id: string): Promise<BoardingPassView> {
@@ -325,11 +325,11 @@ export class CheckInService {
     })
     // A concurrent complete may have issued the pass first: read it back so both callers see the same one.
     const pass = (await this.store.passesForCheckIn(record.id))[0]
-    await this.store.updateCheckIn(record.id, { status: 'checked_in', checked_in_at: this.clock.now() })
+    const updated = await this.store.updateCheckIn(record.id, { status: 'checked_in', checked_in_at: this.clock.now() })
     await this.notify.send('boarding_pass_issued', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
     await this.notify.send('check_in_completed', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
     await this.record(actor, 'check_in.complete', 'boarding_pass', pass.id, 'boarding pass issued')
-    return this.passView(record, pass)
+    return this.passView(updated, pass)
   }
 
   async boardingPass(actor: Actor, id: string): Promise<BoardingPassView> {
