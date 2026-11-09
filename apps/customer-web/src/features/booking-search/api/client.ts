@@ -1,4 +1,3 @@
-import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import type { ApiErrorBody, FlightSearchRequest, FlightSearchResponse } from './types'
 
 export class ApiError extends Error {
@@ -25,11 +24,13 @@ async function readError(response: Response): Promise<ApiError> {
 }
 
 export function useBookingSearchApi() {
-  const { fetchWithAuth } = useAppAuth()
+  // Search is public; AppAuthProvider only wraps authenticated routes.
+  const apiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? ''
 
-  async function searchFlights(input: FlightSearchRequest): Promise<FlightSearchResponse> {
-    const response = await fetchWithAuth('/api/search/flights', {
+  async function searchFlights(input: FlightSearchRequest, signal?: AbortSignal): Promise<FlightSearchResponse> {
+    const response = await fetch(`${apiUrl}/api/search/flights`, {
       method: 'POST',
+      signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     })
