@@ -6,6 +6,10 @@ import { ConfirmService } from './confirm.service'
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
 const NOW = new Date('2026-11-08T10:00:00Z')
+const KEYS = [
+  { flightId: 'f1', cabin: 'business' },
+  { flightId: 'f2', cabin: 'economy' },
+]
 
 function makeBooking(overrides: Record<string, unknown> = {}) {
   return {
@@ -53,7 +57,12 @@ function makeHarness() {
       }
       return Promise.resolve([{ id: booking.id, status: booking.status, confirmed_at: booking.confirmed_at }])
     }),
-    booking: { update: jest.fn().mockResolvedValue({}) },
+    booking: {
+      update: jest.fn((args: { where: { id: string }; data: Record<string, unknown> }) => {
+        Object.assign(booking, args.data)
+        return Promise.resolve({})
+      }),
+    },
     booking_coupon: {
       findMany: jest.fn().mockResolvedValue([{ id: 'coupon-1' }, { id: 'coupon-2' }]),
       update: jest.fn().mockResolvedValue({}),
@@ -149,11 +158,88 @@ describe('ConfirmService.confirmBooking', () => {
     expect(h.db.$transaction).not.toHaveBeenCalled()
   })
 
-  it('refuses an expired booking until B3 adds the late-payment retry', async () => {
+  it('confirms an expired booking when a late payment finds the seats still free', async () => {
     const h = makeHarness()
     h.booking.status = 'expired'
 
-    await expect(h.service.confirmBooking('ABC123')).rejects.toMatchObject({ code: 'INVALID_BOOKING_STATE' })
+    const result = await h.service.confirmBooking('ABC123')
+
+    expect(h.inventory.lock).toHaveBeenCalledWith(h.tx, KEYS)
+    expect(h.inventory.sell).toHaveBeenCalledWith(h.tx, KEYS, 2, false)
+    expect(h.tx.booking.update).toHaveBeenCalledWith({
+      where: { id: 'booking-1' },
+      data: expect.objectContaining({ status: 'confirmed', confirmed_at: NOW }),
+    })
+    expect(h.tx.booking_coupon.update).toHaveBeenCalledTimes(2)
+    expect(h.seats.assignHeldForBooking).toHaveBeenCalledWith(h.tx, 'booking-1', NOW)
+    expect(h.refunds.record).not.toHaveBeenCalled()
+    expect(h.events.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'booking.confirmed', reference: 'ABC123', flightIds: ['f2', 'f1'] }),
+    )
+    expect(result).toMatchObject({ bookingId: 'booking-1', reference: 'ABC123', status: 'confirmed', total: 297, confirmedAt: NOW })
+  })
+
+  it('refunds the full total and answers HOLD_EXPIRED_REFUNDED when the seats are gone', async () => {
+    const h = makeHarness()
+    h.booking.status = 'expired'
+    h.inventory.sell.mockRejectedValue(new BookingError('SEAT_UNAVAILABLE', 'No seats left.', 409))
+
+    const error: unknown = await h.service.confirmBooking('ABC123').catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(BookingError)
+    expect(error).toMatchObject({ code: 'HOLD_EXPIRED_REFUNDED', status: 409 })
+    expect(h.refunds.record).toHaveBeenCalledWith({
+      bookingId: 'booking-1',
+      amount: 297,
+      currency: 'USD',
+      reason: 'hold_expired',
+    })
+    expect(h.tx.booking.update).not.toHaveBeenCalled()
+    expect(h.tx.booking_coupon.update).not.toHaveBeenCalled()
+    expect(h.seats.assignHeldForBooking).not.toHaveBeenCalled()
+    expect(h.pricing.redeem).not.toHaveBeenCalled()
+    expect(h.screening.screen).not.toHaveBeenCalled()
+    expect(h.events.publish).not.toHaveBeenCalled()
+  })
+
+  it('returns the same result without side effects when a successful late payment is confirmed again', async () => {
+    const h = makeHarness()
+    h.booking.status = 'expired'
+
+    const first = await h.service.confirmBooking('ABC123')
+
+    h.db.$transaction.mockClear()
+    h.inventory.sell.mockClear()
+    h.seats.assignHeldForBooking.mockClear()
+    h.refunds.record.mockClear()
+    h.pricing.redeem.mockClear()
+    h.screening.screen.mockClear()
+    h.events.publish.mockClear()
+
+    const second = await h.service.confirmBooking('ABC123')
+
+    expect(second).toEqual(first)
+    expect(h.db.$transaction).not.toHaveBeenCalled()
+    expect(h.inventory.sell).not.toHaveBeenCalled()
+    expect(h.seats.assignHeldForBooking).not.toHaveBeenCalled()
+    expect(h.refunds.record).not.toHaveBeenCalled()
+    expect(h.pricing.redeem).not.toHaveBeenCalled()
+    expect(h.screening.screen).not.toHaveBeenCalled()
+    expect(h.events.publish).not.toHaveBeenCalled()
+  })
+
+  it('answers HOLD_EXPIRED_REFUNDED again when a repeated late payment still finds no seats', async () => {
+    const h = makeHarness()
+    h.booking.status = 'expired'
+    h.inventory.sell.mockRejectedValue(new BookingError('SEAT_UNAVAILABLE', 'No seats left.', 409))
+
+    await expect(h.service.confirmBooking('ABC123')).rejects.toMatchObject({ code: 'HOLD_EXPIRED_REFUNDED' })
+    await expect(h.service.confirmBooking('ABC123')).rejects.toMatchObject({ code: 'HOLD_EXPIRED_REFUNDED' })
+
+    expect(h.tx.booking.update).not.toHaveBeenCalled()
+    expect(h.tx.booking_coupon.update).not.toHaveBeenCalled()
+    expect(h.seats.assignHeldForBooking).not.toHaveBeenCalled()
+    expect(h.events.publish).not.toHaveBeenCalled()
   })
 
   it('refunds and answers FLIGHT_NOT_FOR_SALE when a flight is no longer sellable', async () => {

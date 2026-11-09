@@ -65,6 +65,21 @@ interface LoadedCoupon {
   fare_quote: { promo_code: { code: string } | null } | null
 }
 
+interface ConfirmOutcome {
+  alreadyConfirmed: boolean
+  bookingId: string
+  confirmedAt: Date
+}
+
+// Thrown inside the transaction when an expired hold cannot be sold again, so the transaction rolls back. The refund
+// and the HOLD_EXPIRED_REFUNDED answer happen after the rollback, outside the transaction.
+class LatePaymentSeatsGoneError extends Error {
+  constructor() {
+    super('The seats of the expired hold were no longer available.')
+    this.name = 'LatePaymentSeatsGoneError'
+  }
+}
+
 function inventoryKeys(segments: Array<{ flight_id: string; cabin: string }>): InventoryKey[] {
   const keys = new Map<string, InventoryKey>()
   for (const segment of segments) {
@@ -94,8 +109,10 @@ export class ConfirmService {
   ) {}
 
   /**
-   * B1: Feature 5a (and Feature 11) call this after the payment is captured. Safe to repeat: a booking that is
-   * already confirmed returns the same result and none of the post-commit side effects run a second time.
+   * B1/B3: Feature 5a (and Feature 11) call this after the payment is captured. Safe to repeat: a booking that is
+   * already confirmed returns the same result and none of the post-commit side effects run a second time. A payment
+   * captured after the hold expired tries to sell the seats again (B3); if they are gone, the payment is refunded and
+   * the caller gets HOLD_EXPIRED_REFUNDED.
    */
   async confirmBooking(reference: string): Promise<ConfirmBookingResult> {
     const booking = await this.db.booking.findUnique({ where: { booking_reference: reference }, select: BOOKING_SELECT })
@@ -113,11 +130,6 @@ export class ConfirmService {
     if (booking.status === 'cancelled') {
       throw new BookingError('INVALID_BOOKING_STATE', `Booking ${reference} is cancelled.`, 409, { status: booking.status })
     }
-    if (booking.status === 'expired') {
-      // B3 replaces this with the late-payment retry: take the seats again, or refund and answer
-      // HOLD_EXPIRED_REFUNDED when they are gone.
-      throw new BookingError('INVALID_BOOKING_STATE', `Booking ${reference} has expired.`, 409, { status: booking.status })
-    }
 
     const flightIds = [...new Set(booking.booking_segment.map((segment) => segment.flight_id))]
     await this.assertFlightsForSale(booking.id, flightIds, total, booking.currency)
@@ -126,29 +138,60 @@ export class ConfirmService {
     const count = seatedPassengerCount(booking.booking_passenger)
     const award = booking.payment_type === 'miles'
 
-    const outcome = await this.db.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ id: string; status: string; confirmed_at: Date | null }>>`
-        SELECT id, status, confirmed_at FROM booking WHERE booking_reference = ${reference} FOR UPDATE`
-      const locked = rows[0]
-      if (!locked) {
-        throw new NotFoundException(`Booking ${reference} was not found.`)
-      }
-      if (locked.status === 'confirmed') {
-        return { alreadyConfirmed: true, bookingId: locked.id, confirmedAt: locked.confirmed_at ?? now }
-      }
-      if (locked.status !== 'held') {
-        throw new BookingError('INVALID_BOOKING_STATE', `Booking ${reference} is ${locked.status}.`, 409, { status: locked.status })
-      }
+    const outcome = await this.db
+      .$transaction(async (tx): Promise<ConfirmOutcome> => {
+        const rows = await tx.$queryRaw<Array<{ id: string; status: string; confirmed_at: Date | null }>>`
+          SELECT id, status, confirmed_at FROM booking WHERE booking_reference = ${reference} FOR UPDATE`
+        const locked = rows[0]
+        if (!locked) {
+          throw new NotFoundException(`Booking ${reference} was not found.`)
+        }
+        if (locked.status === 'confirmed') {
+          return { alreadyConfirmed: true, bookingId: locked.id, confirmedAt: locked.confirmed_at ?? now }
+        }
+        if (locked.status !== 'held' && locked.status !== 'expired') {
+          throw new BookingError('INVALID_BOOKING_STATE', `Booking ${reference} is ${locked.status}.`, 409, {
+            status: locked.status,
+          })
+        }
 
-      await this.inventory.lock(tx, keys)
-      await this.inventory.sell(tx, keys, count, award)
-      await this.statusService.move(tx, { id: locked.id, status: locked.status }, 'confirmed', {
-        issueTicket: () => nextTicketNumber(tx, AIRLINE_TICKET_NUMBER),
+        await this.inventory.lock(tx, keys)
+        if (locked.status === 'expired') {
+          try {
+            await this.inventory.sell(tx, keys, count, award)
+          } catch {
+            // Roll back, then refund outside the transaction and answer HOLD_EXPIRED_REFUNDED (B3).
+            throw new LatePaymentSeatsGoneError()
+          }
+        } else {
+          await this.inventory.sell(tx, keys, count, award)
+        }
+        await this.statusService.move(tx, { id: locked.id, status: locked.status }, 'confirmed', {
+          issueTicket: () => nextTicketNumber(tx, AIRLINE_TICKET_NUMBER),
+        })
+        await this.seats.assignHeldForBooking(tx, locked.id, now)
+
+        return { alreadyConfirmed: false, bookingId: locked.id, confirmedAt: now }
       })
-      await this.seats.assignHeldForBooking(tx, locked.id, now)
-
-      return { alreadyConfirmed: false, bookingId: locked.id, confirmedAt: now }
-    })
+      .catch(async (error: unknown): Promise<never> => {
+        if (!(error instanceof LatePaymentSeatsGoneError)) {
+          throw error
+        }
+        if (total > 0) {
+          await this.refunds.record({
+            bookingId: booking.id,
+            amount: total,
+            currency: booking.currency,
+            reason: 'hold_expired',
+          })
+        }
+        throw new BookingError(
+          'HOLD_EXPIRED_REFUNDED',
+          `Booking ${reference} expired and its seats were no longer available; the payment has been refunded.`,
+          409,
+          { status: 'expired' },
+        )
+      })
 
     if (!outcome.alreadyConfirmed) {
       await this.afterConfirm(booking, coupons, now)
