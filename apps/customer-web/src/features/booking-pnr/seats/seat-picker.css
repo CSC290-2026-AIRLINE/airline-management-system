@@ -1,0 +1,59 @@
+.seat-picker {
+  color: #14213d;
+  font-family: Inter, sans-serif;
+}
+.seat-picker__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+}
+.seat-picker__rows {
+  overflow-x: auto;
+}
+.seat-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+.seat-picker__number {
+  width: 2rem;
+  text-align: right;
+  padding-right: 0.5rem;
+  font-size: 0.8rem;
+}
+.seat-picker__seat {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid #9aacc0;
+  border-radius: 0.4rem;
+  background: white;
+  color: #14213d;
+  cursor: pointer;
+}
+.seat-picker__seat--aisle {
+  margin-left: 1rem;
+}
+.seat-picker__seat--extra_legroom {
+  background: #fff2d6;
+  border-color: #d4982e;
+}
+.seat-picker__seat--exit {
+  border-color: #34789b;
+}
+.seat-picker__seat[aria-pressed='true'] {
+  background: #102544;
+  color: white;
+  border-color: #102544;
+}
+.seat-picker__seat:disabled {
+  background: #e5e7eb;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+.seat-picker__seat:focus-visible {
+  outline: 3px solid #4e9ce1;
+  outline-offset: 2px;
+}
