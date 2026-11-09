@@ -18,8 +18,10 @@ import {
   type Cabin,
   type CouponCancelReason,
   type CouponStatus,
+  type CustomerTrips,
   type FlightBookingCounts,
   type FlightPassengerDto,
+  type PassengerCounts,
   type PassengerType,
   type PaymentType,
   type ServiceCode,
@@ -212,11 +214,6 @@ interface ListExtras {
 interface CustomerBookingEntry {
   item: BookingListItem
   past: boolean
-}
-
-export interface CustomerTrips {
-  upcoming: BookingListItem[]
-  past: BookingListItem[]
 }
 
 const EMPTY_EXTRAS: ListExtras = { total: 0, openServiceRequests: 0, checkedIn: false }
@@ -438,6 +435,7 @@ export class BookingReadService implements BookingReadPort {
     return {
       upcoming: entries.filter((entry) => !entry.past).map((entry) => entry.item),
       past: entries.filter((entry) => entry.past).map((entry) => entry.item),
+      serverNow: this.clock.now(),
     }
   }
 
@@ -597,14 +595,36 @@ export class BookingReadService implements BookingReadPort {
   }
 
   private toListItem(row: ListRow, extra: ListExtras): BookingListItem {
-    const travelDate = row.booking_segment.length > 0 ? row.booking_segment[0].seat_inventory.flight.dep_at : null
+    const flights = row.booking_segment.map((segment) => segment.seat_inventory.flight)
+    const travelDate = flights.length > 0 ? flights[0].dep_at : null
+    const travelEndDate = flights.length > 0 ? flights[flights.length - 1].dep_at : null
+
     return {
       ...this.toSummary(row, extra.total),
       leadPassengerName: this.leadPassengerName(row),
       trip: this.tripLabel(row),
       travelDate,
+      travelEndDate,
+      passengerCounts: this.passengerCounts(row),
+      flightNumbers: flights.map((flight) => flight.flight_number),
+      flightCount: flights.length,
       openServiceRequests: extra.openServiceRequests,
     }
+  }
+
+  /** The passengers of a booking, by type (B11: "1 adult, 1 child"). */
+  private passengerCounts(row: ListRow): PassengerCounts {
+    const counts: PassengerCounts = { adults: 0, children: 0, infants: 0 }
+    for (const passenger of row.booking_passenger) {
+      if (passenger.passenger_type === 'adult') {
+        counts.adults += 1
+      } else if (passenger.passenger_type === 'child') {
+        counts.children += 1
+      } else if (passenger.passenger_type === 'infant') {
+        counts.infants += 1
+      }
+    }
+    return counts
   }
 
   private toSummary(row: SummaryRow, total: number): BookingSummary {

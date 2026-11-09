@@ -338,6 +338,59 @@ describe('BookingReadService customer lists', () => {
 
     await expect(h.service.listCustomerTrips('user-1')).rejects.toBeInstanceOf(NotFoundException)
   })
+
+  it('counts the passengers and the flights of a listing', async () => {
+    const h = makeHarness()
+    h.db.booking.findMany.mockResolvedValue([
+      listRow({
+        booking_reference: 'NEW123',
+        booking_passenger: [
+          listPassenger('bp-1', 'adult', 'Somchai', 'Wongchai', new Date('2026-11-01T00:00:00Z')),
+          listPassenger('bp-2', 'child', 'Mia', 'Wongchai', new Date('2026-11-01T00:01:00Z')),
+          listPassenger('bp-3', 'infant', 'Nara', 'Wongchai', new Date('2026-11-01T00:02:00Z')),
+        ],
+        booking_segment: [
+          listSegment(1, 'BKK', 'NRT', new Date('2026-11-12T02:00:00Z')),
+          listSegment(2, 'NRT', 'BKK', new Date('2026-11-19T02:00:00Z')),
+        ],
+      }),
+    ])
+
+    const items = await h.service.listCustomerBookings('customer-1')
+
+    expect(items[0]).toMatchObject({
+      passengerCounts: { adults: 1, children: 1, infants: 1 },
+      flightNumbers: ['FL1', 'FL2'],
+      flightCount: 2,
+      travelDate: new Date('2026-11-12T02:00:00Z'),
+      travelEndDate: new Date('2026-11-19T02:00:00Z'),
+    })
+  })
+
+  it('leaves the counts and the flight dates empty for a booking without passengers or segments', async () => {
+    const h = makeHarness()
+    h.db.booking.findMany.mockResolvedValue([listRow({ booking_reference: 'EMPTY', booking_passenger: [], booking_segment: [] })])
+
+    const items = await h.service.listCustomerBookings('customer-1')
+
+    expect(items[0]).toMatchObject({
+      passengerCounts: { adults: 0, children: 0, infants: 0 },
+      flightNumbers: [],
+      flightCount: 0,
+      travelDate: null,
+      travelEndDate: null,
+    })
+  })
+
+  it('answers My Trips with the clock reading so the page can count down a hold', async () => {
+    const h = makeHarness()
+    h.db.customer.findUnique.mockResolvedValue({ id: 'customer-1' })
+    h.db.booking.findMany.mockResolvedValue([listRow()])
+
+    const trips = await h.service.listCustomerTrips('user-1')
+
+    expect(trips.serverNow).toEqual(NOW)
+  })
 })
 
 describe('BookingReadService staff list', () => {

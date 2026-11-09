@@ -362,7 +362,30 @@ export interface BookingListItem extends BookingSummary {
   trip: string
   // First departure of the booking, used for upcoming/past and the "Travelling" column.
   travelDate: Date | null
+  // Last departure of the booking (the return leg); null for a booking without segments.
+  travelEndDate: Date | null
+  // Passengers on the booking, by type.
+  passengerCounts: PassengerCounts
+  // The flights of the booking, in segment order (for example ["FL203", "FL204"]).
+  flightNumbers: string[]
+  // Number of flights on the booking.
+  flightCount: number
   openServiceRequests: number
+}
+
+// The passengers of a booking, by type (B11).
+export interface PassengerCounts {
+  adults: number
+  children: number
+  infants: number
+}
+
+// My Trips, split into the Upcoming and Past tabs (B4, B11).
+export interface CustomerTrips {
+  upcoming: BookingListItem[]
+  past: BookingListItem[]
+  // The simulation clock's now, so the page can count down a hold without a second request (B11).
+  serverNow: Date
 }
 
 export interface BookingPage {
