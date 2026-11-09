@@ -12,3 +12,7 @@ The script uses the default local PostgreSQL credentials from `docker-compose.ym
 The HTTP harness uses the real JWT guard with synthetic identities and an ephemeral test signing key. It also verifies that the demo-passenger endpoint requires authentication and returns 404 outside development. It tests the real hold controller, DTO validation, hold service, inventory service and PostgreSQL transactions. Pricing uses the existing USD 148.50 stub. Seat and assistance ports remain test doubles; a deliberately failing seat port checks rollback.
 
 Checks cover the last-seat race, concurrent idempotent retries, customer-scoped keys, price changes, full 15-minute expiry, multi-leg rollback, infant pricing/lap links, booking-reference collision retries, and malformed requests. Individual seat rules, real authentication, payment and miles remain outside these checks.
+
+Staff booking (`POST /api/staff/bookings`) uses the same hold transaction. The JWT subject must resolve to a live staff record whose user is neither deleted nor disabled; the target customer must also be active. The body supplies `customerId` but cannot supply `bookedByStaffId`. Until the platform provides its shared staff-only guard, these membership checks stay inside `HoldService.createForStaff`. Role-specific staff permissions remain a platform integration item.
+
+The integration script also checks customer-token rejection, forged actor fields, disabled staff/customers, correct `booked_by_staff_id`, and idempotent staff retries using the real JWT guard.

@@ -1,3 +1,4 @@
+import { StaffBookingController } from './staff/staff-booking.controller'
 import { DemoPassengerController } from './hold/demo-passenger.controller'
 import { DemoPassengerService } from './hold/demo-passenger.service'
 import { Module } from '@nestjs/common'
@@ -37,7 +38,7 @@ import { SeatStub } from './stubs/seat.stub'
 import { ServiceRequestStub } from './stubs/service-request.stub'
 
 @Module({
-  controllers: [HoldController, DemoPassengerController],
+  controllers: [HoldController, DemoPassengerController, StaffBookingController],
   providers: [
     HoldService,
     DemoPassengerService,

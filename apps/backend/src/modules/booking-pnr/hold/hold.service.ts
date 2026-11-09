@@ -31,14 +31,40 @@ export class HoldService {
     @Inject(BOOKING_CLOCK) private readonly clock: BookingClock,
   ) {}
 
-  async createForUser(userId: string, key: string | undefined, request: HoldBookingDto): Promise<HoldBookingResponse> {
+  private requireKey(key: string | undefined): string {
     if (!key?.trim() || key.length > 200)
       throw new BookingError('INVALID_BOOKING_STATE', 'Idempotency-Key is required (maximum 200 characters)', 400)
+    return key.trim()
+  }
+
+  async createForUser(userId: string, key: string | undefined, request: HoldBookingDto): Promise<HoldBookingResponse> {
+    const normalizedKey = this.requireKey(key)
     const customer = await this.db.customer.findFirst({ where: { user_id: userId, deleted_at: null }, select: { id: true } })
     if (!customer) throw new BookingError('INVALID_BOOKING_STATE', 'A customer account is required to book', 403)
+    return this.create(customer.id, null, normalizedKey, request)
+  }
+
+  async createForStaff(userId: string, customerId: string, key: string | undefined, request: HoldBookingDto): Promise<HoldBookingResponse> {
+    const normalizedKey = this.requireKey(key)
+    // Feature-local staff membership check until the platform supplies its shared staff guard.
+    // The actor always comes from the existing JWT guard, never from request-body fields.
+    const staff = await this.db.staff.findFirst({
+      where: { user_id: userId, deleted_at: null, user: { type: 'staff', deleted_at: null, disabled_at: null } },
+      select: { id: true },
+    })
+    if (!staff) throw new BookingError('INVALID_BOOKING_STATE', 'An active staff account is required', 403)
+    const customer = await this.db.customer.findFirst({
+      where: { id: customerId, deleted_at: null, user: { type: 'customer', deleted_at: null, disabled_at: null } },
+      select: { id: true },
+    })
+    if (!customer) throw new BookingError('INVALID_BOOKING_STATE', 'Customer not found', 404)
+    return this.create(customer.id, staff.id, normalizedKey, request)
+  }
+
+  private async create(customerId: string, staffId: string | null, key: string, request: HoldBookingDto): Promise<HoldBookingResponse> {
     try {
       return await insertWithBookingReference(
-        (reference) => this.db.$transaction((tx) => this.hold(tx, customer.id, key.trim(), reference, request), { timeout: 15000 }),
+        (reference) => this.db.$transaction((tx) => this.hold(tx, customerId, key, reference, request, staffId), { timeout: 15000 }),
         (error) => isUniqueConstraintError(error) && JSON.stringify((error as { meta?: unknown }).meta ?? {}).includes('booking_reference'),
       )
     } catch (error) {
@@ -47,13 +73,13 @@ export class HoldService {
       throw error
     }
   }
-
   private async hold(
     tx: BookingTransaction,
     customerId: string,
     key: string,
     reference: string,
     request: HoldBookingDto,
+    staffId: string | null,
   ): Promise<HoldBookingResponse> {
     // Serialize retries for the same customer/key before any inventory decision, including the last-seat race.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${customerId}:${key}`}, 0))`
@@ -123,7 +149,7 @@ export class HoldService {
       data: {
         booking_reference: reference,
         customer_id: customerId,
-        booked_by_staff_id: null,
+        booked_by_staff_id: staffId,
         trip_type: request.tripType,
         status: 'held',
         payment_type: 'cash',

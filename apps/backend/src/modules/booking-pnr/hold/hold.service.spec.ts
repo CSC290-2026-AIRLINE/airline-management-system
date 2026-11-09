@@ -44,7 +44,8 @@ function fixture() {
     fare_class: { findMany: jest.fn(() => Promise.resolve([{ id: 'fare', cabin: 'economy' }])) },
   }
   const db = {
-    customer: { findFirst: jest.fn(() => Promise.resolve({ id: 'customer' })) },
+    staff: { findFirst: jest.fn(() => Promise.resolve({ id: 'staff-agent' } as { id: string } | null)) },
+    customer: { findFirst: jest.fn(() => Promise.resolve({ id: 'customer' } as { id: string } | null)) },
     $transaction: jest.fn((fn: (value: typeof tx) => unknown) => fn(tx)),
   }
   const inventory = { lock: jest.fn(() => Promise.resolve()), hold: jest.fn(() => Promise.resolve()) }
@@ -65,6 +66,45 @@ function fixture() {
 }
 
 describe('HoldService', () => {
+  it('holds for the selected customer and records the authenticated staff member', async () => {
+    const { service, db, tx } = fixture()
+    await service.createForStaff('staff-user', 'target-customer', 'staff-key', request)
+    expect(db.staff.findFirst).toHaveBeenCalledWith({
+      where: { user_id: 'staff-user', deleted_at: null, user: { type: 'staff', deleted_at: null, disabled_at: null } },
+      select: { id: true },
+    })
+    expect(db.customer.findFirst).toHaveBeenCalledWith({
+      where: { id: 'target-customer', deleted_at: null, user: { type: 'customer', deleted_at: null, disabled_at: null } },
+      select: { id: true },
+    })
+    expect(tx.booking.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ customer_id: 'customer', booked_by_staff_id: 'staff-agent' }),
+    })
+  })
+
+  it('denies non-staff callers before looking up the target customer or writing inventory', async () => {
+    const { service, db, inventory } = fixture()
+    db.staff.findFirst.mockResolvedValueOnce(null)
+    await expect(service.createForStaff('customer-user', 'target', 'key', request)).rejects.toMatchObject({ status: 403 })
+    expect(db.customer.findFirst).not.toHaveBeenCalled()
+    expect(inventory.hold).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unavailable target customer without creating a hold', async () => {
+    const { service, db, inventory } = fixture()
+    db.customer.findFirst.mockResolvedValueOnce(null)
+    await expect(service.createForStaff('staff-user', 'missing', 'key', request)).rejects.toMatchObject({ status: 404 })
+    expect(inventory.hold).not.toHaveBeenCalled()
+  })
+
+  it('replays a staff hold without creating another booking or changing its original staff actor', async () => {
+    const { service, tx, created, inventory } = fixture()
+    tx.booking.findUnique.mockResolvedValueOnce(created)
+    expect(await service.createForStaff('staff-user', 'target', 'same-key', request)).toMatchObject({ reference: 'ABC234' })
+    expect(tx.booking.create).not.toHaveBeenCalled()
+    expect(inventory.hold).not.toHaveBeenCalled()
+  })
+
   it('creates a held PNR, coupons and a full 15-minute hold using the clock', async () => {
     const { service, tx, inventory } = fixture()
     expect(await service.createForUser('user', 'key', request)).toMatchObject({

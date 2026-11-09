@@ -18,6 +18,7 @@ const { DbService } = load('db/db.service')
 const { InventoryService } = load('modules/booking-pnr/inventory/inventory.service')
 const { HoldService } = load('modules/booking-pnr/hold/hold.service')
 const { HoldController } = load('modules/booking-pnr/hold/hold.controller')
+const { StaffBookingController } = load('modules/booking-pnr/staff/staff-booking.controller')
 const { DemoPassengerController } = load('modules/booking-pnr/hold/demo-passenger.controller')
 const { DemoPassengerService } = load('modules/booking-pnr/hold/demo-passenger.service')
 const { JwtAuthGuard } = load('auth/guards/jwt-auth.guard')
@@ -69,7 +70,7 @@ async function main() {
   const url = 'postgresql://postgres:postgrespassword@localhost:5432/' + database
   pool = new Pool({ connectionString: url })
   const schema = fs.readFileSync(root + '/apps/backend/src/db/prisma/schema.prisma', 'utf8')
-  for (const model of ['customer', 'staff', 'passenger', 'route', 'flight', 'fare_class']) {
+  for (const model of ['user', 'customer', 'staff', 'passenger', 'route', 'flight', 'fare_class']) {
     const ddl = fixtureTable(model, schema)
     await pool.query(ddl)
   }
@@ -93,7 +94,7 @@ async function main() {
   const jwt = new JwtService({ secret: randomBytes(32).toString('hex') })
   class TestModule {}
   Module({
-    controllers: [HoldController, DemoPassengerController],
+    controllers: [HoldController, DemoPassengerController, StaffBookingController],
     providers: [
       { provide: HoldService, useValue: holds },
       { provide: DemoPassengerService, useValue: demos },
@@ -107,7 +108,8 @@ async function main() {
   const users = [randomUUID(), randomUUID()]
   const passengers = [randomUUID(), randomUUID()]
   for (const index of [0, 1]) {
-    await pool.query('INSERT INTO customer (user_id) VALUES ($1)', [users[index]])
+    await pool.query('INSERT INTO "user" (id, type, email) VALUES ($1, $2, $3)', [users[index], 'customer', 'fixture@example.com'])
+    await pool.query('INSERT INTO customer (user_id, user_type) VALUES ($1, $2)', [users[index], 'customer'])
     await pool.query("INSERT INTO passenger (id, date_of_birth, passport_number) VALUES ($1, '1990-01-01', $2)", [
       passengers[index],
       `F03SEED00${index + 1}`,
@@ -158,6 +160,49 @@ async function main() {
   assert.equal(blockedDemo.status, 404)
   demoConfig.set('NODE_ENV', 'development')
   console.log('PASS: real JWT guard protects demo lookup, returns actual seeded IDs, and blocks the endpoint in production')
+  const staffUser = randomUUID(),
+    staffId = randomUUID()
+  await pool.query('INSERT INTO "user" (id, type, email) VALUES ($1, $2, $3)', [staffUser, 'staff', 'agent@example.com'])
+  await pool.query('INSERT INTO staff (id, user_id, user_type) VALUES ($1, $2, $3)', [staffId, staffUser, 'staff'])
+  const staffToken = jwt.sign({ sub: staffUser, email: 'agent@example.com' })
+  const customer = await db.customer.findFirst({ where: { user_id: users[0] } })
+  const staffFlight = await newFlight()
+  const staffBody = { ...body(staffFlight), customerId: customer.id }
+  function staffPost(token, key, data) {
+    return http(app.getHttpServer())
+      .post('/api/staff/bookings')
+      .set('Authorization', 'Bearer ' + token)
+      .set('Idempotency-Key', key)
+      .send(data)
+  }
+  const denied = await staffPost(jwt.sign({ sub: users[0], email: 'fixture@example.com' }), 'customer-denied', staffBody)
+  assert.equal(denied.status, 403, JSON.stringify(denied.body))
+  assert.equal(await inventory.seatsLeft(staffFlight, 'economy'), 1)
+  const anonymousStaff = await http(app.getHttpServer()).post('/api/staff/bookings').send(staffBody)
+  assert.equal(anonymousStaff.status, 401)
+  const forged = await staffPost(staffToken, 'forged', { ...staffBody, bookedByStaffId: randomUUID() })
+  assert.equal(forged.status, 422)
+  const staffResult = await staffPost(staffToken, 'staff-key', staffBody)
+  assert.equal(staffResult.status, 201, JSON.stringify(staffResult.body))
+  const savedStaffBooking = await db.booking.findUnique({ where: { id: staffResult.body.bookingId } })
+  assert.equal(savedStaffBooking.customer_id, customer.id)
+  assert.equal(savedStaffBooking.booked_by_staff_id, staffId)
+  const staffReplay = await staffPost(staffToken, 'staff-key', staffBody)
+  assert.equal(staffReplay.status, 201)
+  assert.deepEqual(staffReplay.body, staffResult.body)
+  await pool.query('UPDATE "user" SET disabled_at = now() WHERE id = $1', [staffUser])
+  const disabledStaff = await staffPost(staffToken, 'disabled', { ...staffBody, segments: body(await newFlight()).segments })
+  assert.equal(disabledStaff.status, 403)
+  await pool.query('UPDATE "user" SET disabled_at = NULL WHERE id = $1', [staffUser])
+  await pool.query('UPDATE "user" SET disabled_at = now() WHERE id = $1', [users[0]])
+  const disabledCustomer = await staffPost(staffToken, 'disabled-customer', staffBody)
+  assert.equal(disabledCustomer.status, 404)
+  await pool.query('UPDATE "user" SET disabled_at = NULL WHERE id = $1', [users[0]])
+  const unknownCustomer = await staffPost(staffToken, 'unknown-customer', { ...staffBody, customerId: randomUUID() })
+  assert.equal(unknownCustomer.status, 404)
+  console.log(
+    'PASS: staff booking uses the selected customer and authenticated staff ID, replays safely, and rejects customer tokens, forged actors and disabled accounts',
+  )
   const raceFlight = await newFlight()
   const raced = await Promise.all([0, 1].map((i) => post(i, 'race-' + i, body(raceFlight, i))))
   assert.deepEqual(raced.map((r) => r.status).sort(), [201, 409], JSON.stringify(raced.map((r) => r.body)))
