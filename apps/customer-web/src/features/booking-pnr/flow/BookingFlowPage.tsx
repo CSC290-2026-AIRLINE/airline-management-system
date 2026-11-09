@@ -165,10 +165,10 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
     )
   if (step === 1) return <FlightSearchPage initialItinerary={itinerary} onContinue={selectItinerary} />
   return (
-    <main className="f3-search f3-flow">
+    <main className="f3-search f3-flow f3-customer-flow">
       <ol className="f3-flow-stepper" aria-label="Booking progress">
         {['Flights', 'Passengers', 'Seats', 'Review & pay'].map((label, index) => (
-          <li key={label} aria-current={step === index + 1 ? 'step' : undefined}>
+          <li className={step > index + 1 ? 'is-complete' : undefined} key={label} aria-current={step === index + 1 ? 'step' : undefined}>
             <span>{step > index + 1 ? '✓' : index + 1}</span>
             {label}
           </li>
@@ -236,25 +236,26 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                 demoProfiles={!resolvePassengers && demo.enabled ? demo.profiles : undefined}
                 demoLoading={demo.loading}
                 demoError={demo.error}
+                renderAssistance={
+                  AssistanceFields
+                    ? (person) => (
+                        <div className="f3-passenger-assistance">
+                          <h3>
+                            Special assistance <span>(optional)</span>
+                          </h3>
+                          <AssistanceFields
+                            value={assistance[person.key] ?? { serviceCode: null, note: '' }}
+                            disabled={busy}
+                            onChange={(value) => {
+                              setAssistance((current) => ({ ...current, [person.key]: value }))
+                              setError(null)
+                            }}
+                          />
+                        </div>
+                      )
+                    : undefined
+                }
               />
-              {AssistanceFields &&
-                travellers.map((person) => (
-                  <section
-                    className="f3-passenger-card"
-                    key={person.key}
-                    aria-label={`Assistance for ${person.givenName || person.expectedType}`}
-                  >
-                    <h2>Assistance for {person.givenName || person.expectedType}</h2>
-                    <AssistanceFields
-                      value={assistance[person.key] ?? { serviceCode: null, note: '' }}
-                      disabled={busy}
-                      onChange={(value) => {
-                        setAssistance((current) => ({ ...current, [person.key]: value }))
-                        setError(null)
-                      }}
-                    />
-                  </section>
-                ))}
             </>
           )}
           {step === 3 &&

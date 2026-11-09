@@ -1,5 +1,5 @@
 import type { DemoPassenger } from './demo-passengers'
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
 import { ageAt, passengerType, type BookingContact, type TravellerDraft } from '../flow/draft'
 
@@ -14,6 +14,7 @@ interface Props {
   demoProfiles?: DemoPassenger[]
   demoLoading?: boolean
   demoError?: string | null
+  renderAssistance?: (traveller: TravellerDraft) => ReactNode
   error: string | null
 }
 export function PassengersPage({
@@ -28,6 +29,7 @@ export function PassengersPage({
   demoProfiles,
   demoLoading,
   demoError,
+  renderAssistance,
 }: Props) {
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -48,43 +50,52 @@ export function PassengersPage({
         const type = passengerType(person.dateOfBirth, departure)
         return (
           <fieldset className="f3-passenger-card" key={person.key}>
-            <legend>
+            <legend className="f3-passenger-legend">
               Passenger {index + 1} · {type ?? person.expectedType}
               {type === 'child' ? ` (age ${ageAt(person.dateOfBirth, departure)})` : ''}
             </legend>
-            {demoProfiles && (
-              <label className="f3-demo-picker">
-                Fill from demo traveller
-                <select
-                  required
-                  value={person.demoPassengerId ?? ''}
-                  disabled={demoLoading}
-                  onChange={(event) => {
-                    const profile = demoProfiles.find((candidate) => candidate.id === event.target.value)
-                    onTravellerChange(person.key, {
-                      demoPassengerId: profile?.id,
-                      givenName: profile?.givenName ?? '',
-                      familyName: profile?.familyName ?? '',
-                      dateOfBirth: profile?.dateOfBirth ?? '',
-                      passportNumber: profile?.passportNumber ?? '',
-                    })
-                  }}
-                >
-                  <option value="">Choose a demo traveller</option>
-                  {demoProfiles
-                    .filter((profile) => passengerType(profile.dateOfBirth, departure) === person.expectedType)
-                    .map((profile) => (
-                      <option
-                        key={profile.id}
-                        value={profile.id}
-                        disabled={travellers.some((other) => other.key !== person.key && other.demoPassengerId === profile.id)}
-                      >
-                        {profile.givenName} {profile.familyName}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            )}
+            <div className="f3-passenger-heading">
+              <div>
+                <p className="f3-search-eyebrow">
+                  PASSENGER {index + 1} · {type ?? person.expectedType}
+                  {type === 'child' ? ` (AGE ${ageAt(person.dateOfBirth, departure)})` : ''}
+                </p>
+                <h2>{[person.givenName, person.familyName].filter(Boolean).join(' ') || 'Traveller details'}</h2>
+              </div>
+              {demoProfiles && (
+                <label className="f3-demo-picker">
+                  Fill from demo traveller
+                  <select
+                    required
+                    value={person.demoPassengerId ?? ''}
+                    disabled={demoLoading}
+                    onChange={(event) => {
+                      const profile = demoProfiles.find((candidate) => candidate.id === event.target.value)
+                      onTravellerChange(person.key, {
+                        demoPassengerId: profile?.id,
+                        givenName: profile?.givenName ?? '',
+                        familyName: profile?.familyName ?? '',
+                        dateOfBirth: profile?.dateOfBirth ?? '',
+                        passportNumber: profile?.passportNumber ?? '',
+                      })
+                    }}
+                  >
+                    <option value="">Choose a demo traveller</option>
+                    {demoProfiles
+                      .filter((profile) => passengerType(profile.dateOfBirth, departure) === person.expectedType)
+                      .map((profile) => (
+                        <option
+                          key={profile.id}
+                          value={profile.id}
+                          disabled={travellers.some((other) => other.key !== person.key && other.demoPassengerId === profile.id)}
+                        >
+                          {profile.givenName} {profile.familyName}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+            </div>
             <div className="f3-passenger-fields">
               <label>
                 Given name (as on passport)
@@ -154,11 +165,13 @@ export function PassengersPage({
                 </select>
               </label>
             )}
+            {renderAssistance?.(person)}
           </fieldset>
         )
       })}
       <fieldset className="f3-passenger-card">
-        <legend>Contact for this booking</legend>
+        <legend className="f3-passenger-legend">Contact for this booking</legend>
+        <h2 className="f3-passenger-section-title">Contact for this booking</h2>
         <div className="f3-passenger-fields">
           <label>
             Email
@@ -185,7 +198,8 @@ export function PassengersPage({
         </div>
       </fieldset>
       <fieldset className="f3-passenger-card">
-        <legend>Promo code</legend>
+        <legend className="f3-passenger-legend">Promo code</legend>
+        <h2 className="f3-passenger-section-title">Promo code</h2>
         <label>
           Code (optional)
           <input
@@ -195,7 +209,10 @@ export function PassengersPage({
             onChange={(event) => onContactChange({ ...contact, promoCode: event.target.value })}
           />
         </label>
-        <p>The code is checked when you create the booking hold. If the total changes, you can review it before continuing.</p>
+        <p className="f3-passenger-info">
+          The code is checked when you create the booking hold. If the total changes, you can review it before continuing. It is used up
+          only when payment succeeds.
+        </p>
       </fieldset>
       {error && (
         <p className="f3-flow-error" role="alert">
