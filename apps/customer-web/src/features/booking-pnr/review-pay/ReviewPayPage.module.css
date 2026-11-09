@@ -1,0 +1,306 @@
+.page {
+  min-height: 100vh;
+  background: var(--f3-page);
+  color: var(--f3-ink);
+  font-family: var(--f3-font);
+  padding: 40px 24px 64px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.header {
+  text-align: left;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--f3-muted);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.header h1 {
+  margin: 0 0 6px;
+  font-size: 30px;
+  line-height: 1.15;
+  color: var(--f3-ink);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 15px;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+}
+
+.mainColumn,
+.summaryColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.summaryColumn {
+  position: sticky;
+  top: 24px;
+}
+
+.card {
+  background: var(--f3-card);
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: left;
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: var(--f3-ink);
+}
+
+.holdBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 101, 28, 0.18);
+  border-radius: 10px;
+  background: var(--f3-warning-soft);
+  color: var(--f3-warning);
+  font-size: 14px;
+}
+
+.holdBanner p {
+  margin: 0;
+}
+
+.holdPill {
+  padding: 4px 10px;
+  border: 1px solid rgba(148, 101, 28, 0.25);
+  border-radius: 999px;
+  background: var(--f3-card);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.flightRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--f3-line);
+}
+
+.flightRow:first-of-type {
+  padding-top: 0;
+}
+
+.flightRow:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.flightNumber {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.flightRoute {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 14px;
+}
+
+.flightSeats {
+  color: var(--f3-ink);
+  font-size: 14px;
+  text-align: right;
+}
+
+.passengerRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--f3-line);
+}
+
+.passengerRow:first-of-type {
+  padding-top: 0;
+}
+
+.passengerRow:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.passengerName {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.muted {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 13px;
+}
+
+.chips {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.warningChip {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--f3-warning-soft);
+  color: var(--f3-warning);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.priceRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.totalRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 2px solid var(--f3-ink);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.messageCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 560px;
+  margin: 48px auto;
+  padding: 28px;
+  border: 1px solid var(--f3-border);
+  border-radius: 12px;
+  background: var(--f3-card);
+  text-align: center;
+}
+
+.messageCard h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.messageCard p {
+  margin: 0;
+}
+
+.successChip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--f3-success-soft);
+  color: var(--f3-success);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.confirmedCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+  margin: 48px auto;
+  padding: 28px;
+  border: 1px solid var(--f3-border);
+  border-radius: 12px;
+  background: var(--f3-card);
+  text-align: center;
+}
+
+.confirmedCard h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.confirmedCard p {
+  margin: 0;
+}
+
+.confirmedActions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .columns {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryColumn {
+    position: static;
+  }
+
+  .flightSeats {
+    text-align: left;
+  }
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 24px 16px 48px;
+  }
+
+  .header h1 {
+    font-size: 26px;
+  }
+}

@@ -1,0 +1,24 @@
+:root {
+  --f3-navy: #14213d;
+  --f3-primary: #102544;
+  --f3-primary-hover: #1c3e6a;
+  --f3-ink: #0a1424;
+  --f3-muted: #677287;
+  --f3-page: #f7f9fc;
+  --f3-card: #ffffff;
+  --f3-border: #d9dfe9;
+  --f3-line: #e6e8ef;
+  --f3-amber: #fca311;
+  --f3-success: #1f8a4c;
+  --f3-success-soft: #e4f5e9;
+  --f3-warning: #94651c;
+  --f3-warning-soft: #fef4de;
+  --f3-danger: #b8171f;
+  --f3-danger-soft: #fdecec;
+  --f3-info: #1d4ed8;
+  --f3-info-soft: #dbeafe;
+  --f3-selected: #eaf2ff;
+  --f3-neutral: #475569;
+  --f3-neutral-soft: #eef2f7;
+  --f3-font: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+}

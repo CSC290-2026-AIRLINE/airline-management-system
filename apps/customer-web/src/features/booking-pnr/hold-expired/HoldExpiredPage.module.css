@@ -1,0 +1,88 @@
+.page {
+  min-height: 100vh;
+  background: var(--f3-page);
+  color: var(--f3-ink);
+  font-family: var(--f3-font);
+  padding: 48px 24px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.shell {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px;
+  border: 1px solid var(--f3-border);
+  border-radius: 12px;
+  background: var(--f3-card);
+  text-align: left;
+}
+
+.chip,
+.neutralChip {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chip {
+  background: var(--f3-danger-soft);
+  color: var(--f3-danger);
+}
+
+.neutralChip {
+  background: var(--f3-neutral-soft);
+  color: var(--f3-neutral);
+}
+
+.card h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.body {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.note {
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--f3-info-soft);
+  color: var(--f3-info);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 24px 16px;
+  }
+
+  .card {
+    padding: 22px;
+  }
+
+  .card h1 {
+    font-size: 24px;
+  }
+}

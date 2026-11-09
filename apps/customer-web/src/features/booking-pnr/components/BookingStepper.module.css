@@ -1,0 +1,65 @@
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--f3-muted);
+}
+
+.circle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--f3-neutral-soft);
+  color: var(--f3-neutral);
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+.current .circle {
+  background: var(--f3-primary);
+  color: #ffffff;
+}
+
+.done .circle {
+  background: var(--f3-success);
+  color: #ffffff;
+}
+
+.current .label {
+  color: var(--f3-ink);
+  font-weight: 600;
+}
+
+.upcoming .label {
+  color: var(--f3-muted);
+}
+
+.connector {
+  width: 18px;
+  height: 1px;
+  background: var(--f3-border);
+}
+
+@media (max-width: 600px) {
+  .label {
+    display: none;
+  }
+
+  .connector {
+    width: 12px;
+  }
+}

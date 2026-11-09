@@ -1,5 +1,5 @@
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
-import type { ApiErrorBody, BookingDetail, CancelPreview, HoldBookingRequest, HoldBookingResponse } from './types'
+import type { ApiErrorBody, BookingDetail, CancelPreview, ConfirmBookingResult, HoldBookingRequest, HoldBookingResponse } from './types'
 
 export class ApiError extends Error {
   readonly code: string
@@ -47,6 +47,14 @@ export function useBookingPnrApi() {
     return (await response.json()) as HoldBookingResponse
   }
 
+  async function devConfirmBooking(reference: string): Promise<ConfirmBookingResult> {
+    const response = await fetchWithAuth(`/api/dev/bookings/${encodeURIComponent(reference)}/confirm`, { method: 'POST' })
+    if (!response.ok) {
+      throw await readError(response)
+    }
+    return (await response.json()) as ConfirmBookingResult
+  }
+
   async function getCancelPreview(reference: string): Promise<CancelPreview> {
     const response = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}/cancellation-preview`)
     if (!response.ok) {
@@ -62,5 +70,5 @@ export function useBookingPnrApi() {
     }
   }
 
-  return { getBooking, holdBooking, getCancelPreview, cancelBooking }
+  return { getBooking, holdBooking, devConfirmBooking, getCancelPreview, cancelBooking }
 }

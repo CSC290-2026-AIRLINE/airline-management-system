@@ -1,0 +1,30 @@
+.amounts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+}
+
+.term {
+  color: var(--f3-muted);
+}
+
+.value {
+  margin: 0;
+  font-weight: 600;
+}
+
+.newTotal {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--f3-ink);
+}

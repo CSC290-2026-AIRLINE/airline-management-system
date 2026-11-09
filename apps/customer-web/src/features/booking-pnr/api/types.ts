@@ -179,6 +179,16 @@ export interface HoldBookingResponse {
   holdExpiresAt: string
 }
 
+// POST /dev/bookings/:ref/confirm, B1's dev stand-in for checkout (Feature 5a).
+export interface ConfirmBookingResult {
+  bookingId: string
+  reference: string
+  status: 'confirmed'
+  total: number
+  holdExpiresAt: string
+  confirmedAt: string
+}
+
 // `details` of 409 PRICE_CHANGED: nothing is held; send the hold again with expectedTotal = newTotal.
 export interface PriceChangedDetails {
   previousTotal: number
