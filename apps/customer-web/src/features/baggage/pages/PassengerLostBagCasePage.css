@@ -11,7 +11,7 @@
   width: 100%;
   min-height: 100svh;
   margin: 0;
-  padding: 2rem 8.3% 4rem;
+  padding: 2rem max(1.5rem, calc((100% - 75rem) / 2)) 4rem;
   box-sizing: border-box;
   background: #f6f8fc;
   color: #17233f;
@@ -186,7 +186,7 @@
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
   align-items: start;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 .passenger-case-card {
@@ -364,7 +364,9 @@
 }
 
 .passenger-case-delivery .delivery-choice {
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .passenger-case-info h2 {
