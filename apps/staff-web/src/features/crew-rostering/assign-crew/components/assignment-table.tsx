@@ -36,8 +36,9 @@ function Names({ members, missingLabel }: { members: readonly { name: string }[]
   }
   return (
     <span className="flex flex-col">
-      {members.map((member) => (
-        <span key={member.name}>{member.name}</span>
+      {/* Short names ("S. Boonmee") are not unique, so the position is part of the key. */}
+      {members.map((member, index) => (
+        <span key={`${index}:${member.name}`}>{member.name}</span>
       ))}
       {missingLabel && <span className="font-bold text-invalid">{missingLabel}</span>}
     </span>

@@ -29,7 +29,8 @@ function legSpan(pairings: readonly RosterPairing[]): { from: string; to: string
 
 export function RunAutoAssignModal({ pairings, base, flightCount, isRerun = false, onCancel, onConfirm }: RunAutoAssignModalProps) {
   const span = legSpan(pairings)
-  const flightNumbers = pairings.flatMap((pairing) => pairing.legs.map((leg) => leg.flightNumber))
+  // The same flight number flies on several days, so a flight is keyed by its id, not its number.
+  const flights = pairings.flatMap((pairing) => pairing.legs.map((leg) => ({ id: leg.flightId, number: leg.flightNumber })))
 
   return (
     <BaseModalOverlay
@@ -66,14 +67,14 @@ export function RunAutoAssignModal({ pairings, base, flightCount, isRerun = fals
           {/* The full flight list fits a desktop row but not a phone, so the phone
               gets the leg count instead of a list it cannot show. */}
           <div className="hidden flex-wrap justify-end gap-1.5 sm:flex">
-            {flightNumbers.map((flightNumber) => (
-              <span key={flightNumber} className="rounded-full bg-info-bg px-2.5 py-1 text-[11px] font-bold text-blue-700">
-                {flightNumber}
+            {flights.map((flight) => (
+              <span key={flight.id} className="rounded-full bg-info-bg px-2.5 py-1 text-[11px] font-bold text-blue-700">
+                {flight.number}
               </span>
             ))}
           </div>
           <span className="rounded-full bg-info-bg px-2.5 py-1 text-[11px] font-bold text-blue-700 sm:hidden">
-            {pluralise(flightNumbers.length, 'leg')}
+            {pluralise(flights.length, 'leg')}
           </span>
         </div>
 
