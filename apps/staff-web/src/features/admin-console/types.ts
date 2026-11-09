@@ -49,7 +49,7 @@ export interface AuditEntry {
   entity_id: string | null
   summary: string | null
   reason: string | null
-  /** null when is_sensitive is true */
+  /** In the list, null when is_sensitive is true. From `GET /api/admin/audit-log/:id`, the masked copy. */
   before: unknown
   after: unknown
   is_sensitive: boolean
@@ -64,9 +64,22 @@ export interface AuditPage {
 export interface AuditFilters {
   source_feature?: string
   actor_type?: 'staff' | 'customer' | 'system'
+  /** One person: `audit_log.actor_id` (their `user.id`). */
+  actor_id?: string
   action?: string
+  /** `YYYY-MM-DD` from the date input. Sent as the start of that day in the viewer's time zone. */
   from?: string
+  /** `YYYY-MM-DD`. Sent as the end of that day in the viewer's time zone, so the whole day is included. */
   to?: string
+}
+
+/** Response of `GET /api/admin/staff/:id/screens` — the menu one staff member gets. */
+export interface StaffScreensResponse {
+  staff_id: string
+  /** `false` when the account is switched off: they cannot sign in, so they see nothing. */
+  active: boolean
+  role: { id: string; code: string; name: string; is_admin: boolean }
+  screens: ScreenDto[]
 }
 
 /* ----- Staff & roles ------------------------------------------------------- */

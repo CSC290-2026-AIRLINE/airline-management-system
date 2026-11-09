@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { Eye, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { CircleAlert, Eye, X } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
@@ -13,12 +14,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@staff
 import { cn } from '@staff-web/lib/utils'
 import { useListScreens } from '../api/screens'
 import { useListRoles, useGetRoleScreens, useReplaceRoleScreens } from '../api/roles'
+import { errorText } from '../api/fetch'
 import { useStaffApi } from '../api/staff'
 import { useRoleAccess } from '../hooks/useRoleAccess'
 import { featureLabel } from '../feature-labels'
 import { AdminErrorCard } from '../components/AdminErrorCard'
 import { NoAccessScreen } from '../components/NoAccessScreen'
-import type { ScreenDto, StaffRow } from '../types'
+import type { ScreenDto, StaffRow, StaffScreensResponse } from '../types'
 
 /* Helpers --------------------------------------------------------------- */
 
@@ -146,6 +148,13 @@ export function RoleAccessPage() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewStaffId, setPreviewStaffId] = useState<string | null>(null)
+  /* The chosen person's menu, from `GET /api/admin/staff/:id/screens`. `id` says whose answer it is. */
+  const [previewMenu, setPreviewMenu] = useState<{
+    id: string | null
+    loading: boolean
+    data: StaffScreensResponse | null
+    error: string | null
+  }>({ id: null, loading: false, data: null, error: null })
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -239,16 +248,31 @@ export function RoleAccessPage() {
     }
   }
 
-  /* What a staff member with this role can actually open, mirroring the policy `GET /api/me/screens` applies on the
-     server: core screens for everyone, admin screens for an `is_admin` role, assignable screens only with a grant.
-     Saved grants only — the dialog says unsaved changes are not included. */
-  const previewSees = useMemo(() => {
-    const role = currentRole
-    if (!role) return []
-    return registry.screens.flatMap((g) =>
-      g.screens.filter((s) => (s.kind === 'core' ? true : s.kind === 'admin' ? role.is_admin : registry.granted.has(s.id))),
-    )
-  }, [currentRole, registry.granted, registry.screens])
+  /* What the chosen person can actually open, worked out by the server for that person (`GET /api/admin/staff/:id/
+     screens`) with the same rules as their own `GET /api/me/screens`. Saved grants only — the dialog says unsaved changes
+     are not included. A new person resets the answer while rendering; the effect fetches it. */
+  const previewWanted = previewOpen ? previewStaffId : null
+  if (previewWanted !== previewMenu.id) {
+    setPreviewMenu({ id: previewWanted, loading: !!previewWanted, data: null, error: null })
+  }
+  useEffect(() => {
+    if (!previewWanted) return
+    let cancelled = false
+    staffApi
+      .screens(previewWanted)
+      .then((data) => {
+        if (!cancelled) setPreviewMenu({ id: previewWanted, loading: false, data, error: null })
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setPreviewMenu({ id: previewWanted, loading: false, data: null, error: errorText(e) })
+      })
+    return () => {
+      cancelled = true
+    }
+    // `staffApi` closes over `fetchWithAuth`, recreated every render; see `useStaffApi`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewWanted])
+  const previewSees = previewMenu.data?.screens ?? []
 
   /* Save — the whole grant set goes to the server; there is no per-screen PATCH. */
   async function save() {
@@ -268,7 +292,7 @@ export function RoleAccessPage() {
       resetEdits()
       setPanel({ kind: 'saved', reason: savedReason, previous, staffCount: currentRole?.staff_count ?? 0 })
     } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : String(e))
+      setSaveError(errorText(e))
     } finally {
       setSaving(false)
     }
@@ -353,6 +377,26 @@ export function RoleAccessPage() {
               {currentRole?.staff_count ?? 0} staff with this role · {changeCount} unsaved change{changeCount === 1 ? '' : 's'}
             </p>
           </div>
+
+          {registry.missingRoleId && registry.missingRoleId === roleId && (
+            <Alert variant="destructive" className="mb-4 border-danger-line/40 bg-danger-soft">
+              <CircleAlert aria-hidden="true" />
+              <AlertDescription className="flex flex-wrap items-center gap-3 text-current">
+                Role not found. It may have been removed since this page loaded.
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    selectRole(null)
+                    registry.reload()
+                  }}
+                >
+                  Reload roles
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Screen matrix ----------------------------------------------- */}
           {registry.screens.length === 0 ? (
@@ -595,7 +639,15 @@ export function RoleAccessPage() {
             <p className="text-xs font-semibold text-white/70 uppercase">
               {previewPerson ? `${previewPerson.first_name} ${previewPerson.last_name}` : (currentRole?.name ?? 'This role')} sees
             </p>
-            {previewSees.length === 0 ? (
+            {!previewPerson ? (
+              <p className="px-2.5 py-2 text-sm text-white/70">Choose a staff member.</p>
+            ) : previewMenu.loading ? (
+              <p className="px-2.5 py-2 text-sm text-white/70">Loading their menu…</p>
+            ) : previewMenu.error ? (
+              <p className="px-2.5 py-2 text-sm text-white/70">Could not load their menu — {previewMenu.error}</p>
+            ) : previewMenu.data && !previewMenu.data.active ? (
+              <p className="px-2.5 py-2 text-sm text-white/70">This account is deactivated, so it can’t sign in and sees no menu.</p>
+            ) : previewSees.length === 0 ? (
               <p className="px-2.5 py-2 text-sm text-white/70">No screens yet.</p>
             ) : (
               previewSees.map((s) => (
