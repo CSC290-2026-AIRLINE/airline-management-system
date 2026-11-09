@@ -1,0 +1,137 @@
+.f3-flow h1 {
+  margin-bottom: 12px;
+}
+.f3-flow-stepper {
+  padding: 0;
+  margin: 0 0 32px;
+  list-style: none;
+  display: flex;
+  gap: 24px;
+  color: #677287;
+  font-size: 13px;
+}
+.f3-flow-stepper li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.f3-flow-stepper span {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  height: 27px;
+  width: 27px;
+  background: #e6e8ef;
+  color: #677287;
+}
+.f3-flow-stepper [aria-current='step'] {
+  color: #102544;
+  font-weight: 700;
+}
+.f3-flow-stepper [aria-current='step'] span {
+  background: #102544;
+  color: white;
+}
+.f3-flow-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 24px;
+  align-items: start;
+}
+.f3-passengers-form {
+  min-width: 0;
+}
+.f3-passenger-card {
+  border: 1px solid #d9dfe9;
+  border-radius: 10px;
+  padding: 22px;
+  margin: 0 0 22px;
+  background: white;
+  min-width: 0;
+}
+.f3-passenger-card legend {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 8px;
+  text-transform: capitalize;
+}
+.f3-passenger-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.f3-passenger-card > p {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #677287;
+}
+.f3-lap-field {
+  margin-top: 18px;
+}
+.f3-flow-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+.f3-flow-summary {
+  background: white;
+  border: 1px solid #d9dfe9;
+  border-radius: 10px;
+  padding: 20px;
+}
+.f3-flow-summary article {
+  margin: 18px 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e6e8ef;
+}
+.f3-flow-summary article p {
+  color: #677287;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.f3-flow-summary > strong {
+  display: block;
+  margin: 12px 0;
+  font-size: 22px;
+}
+.f3-flow-summary > p:not(.f3-search-eyebrow) {
+  font-size: 12px;
+  color: #677287;
+}
+.f3-flow-error {
+  padding: 12px 16px;
+  margin-top: 16px !important;
+  border-radius: 6px;
+  background: #fdecec;
+  color: #b8171f !important;
+}
+@media (max-width: 760px) {
+  .f3-flow-columns {
+    grid-template-columns: 1fr;
+  }
+  .f3-flow-stepper {
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10px;
+  }
+  .f3-flow-stepper li {
+    flex-direction: column;
+    gap: 6px;
+    text-align: center;
+  }
+  .f3-passenger-fields {
+    grid-template-columns: 1fr;
+  }
+  .f3-passenger-card {
+    padding: 18px 16px;
+  }
+  .f3-flow-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .f3-flow-summary {
+    order: 2;
+  }
+}

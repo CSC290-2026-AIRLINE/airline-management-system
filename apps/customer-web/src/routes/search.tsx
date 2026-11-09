@@ -1,7 +1,16 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { FlightSearchPage } from '../features/booking-search/pages/FlightSearchPage'
+import { saveItinerary } from '../features/booking-pnr/flow/draft'
 
-// Public: anyone can search (POST /search/flights is @Public() on the backend). Booking needs a signed-in customer.
-export const Route = createFileRoute('/search')({
-  component: FlightSearchPage,
-})
+export const Route = createFileRoute('/search')({ component: SearchRoute })
+function SearchRoute() {
+  const navigate = useNavigate()
+  return (
+    <FlightSearchPage
+      onContinue={(itinerary) => {
+        saveItinerary(itinerary)
+        void navigate({ to: '/booking' })
+      }}
+    />
+  )
+}

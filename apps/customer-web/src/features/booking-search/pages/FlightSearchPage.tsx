@@ -17,6 +17,7 @@ export interface SearchItinerary {
   expectedTotal: number
 }
 interface SearchProps {
+  initialItinerary?: SearchItinerary
   onContinue?: (itinerary: SearchItinerary) => void
 }
 type Sort = 'price' | 'departure' | 'duration'
@@ -54,19 +55,27 @@ export function FlightSearchPage(props: SearchProps) {
   )
 }
 
-function FlightSearchContent({ onContinue }: SearchProps) {
+function FlightSearchContent({ onContinue, initialItinerary }: SearchProps) {
   const { searchFlights } = useBookingSearchApi()
-  const [form, setForm] = useState<FlightSearchFormValue>({
-    tripType: 'one_way',
-    legs: [{ origin: '', destination: '', date: '' }],
-    adults: 1,
-    children: 0,
-    infants: 0,
-    cabin: 'economy',
-  })
-  const [result, setResult] = useState<FlightSearchResponse | null>(null)
-  const [submitted, setSubmitted] = useState<FlightSearchRequest | null>(null)
-  const [selected, setSelected] = useState<Array<SelectedFlight | undefined>>([])
+  const [form, setForm] = useState<FlightSearchFormValue>(
+    initialItinerary
+      ? { ...initialItinerary.request, cabin: initialItinerary.request.cabin ?? 'economy' }
+      : {
+          tripType: 'one_way',
+          legs: [{ origin: '', destination: '', date: '' }],
+          adults: 1,
+          children: 0,
+          infants: 0,
+          cabin: 'economy',
+        },
+  )
+  const [result, setResult] = useState<FlightSearchResponse | null>(
+    initialItinerary
+      ? { legs: initialItinerary.request.legs.map((leg, index) => ({ leg, options: [initialItinerary.selections[index].flight] })) }
+      : null,
+  )
+  const [submitted, setSubmitted] = useState<FlightSearchRequest | null>(initialItinerary?.request ?? null)
+  const [selected, setSelected] = useState<Array<SelectedFlight | undefined>>(initialItinerary?.selections ?? [])
   const [isLoading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sort, setSort] = useState<Sort>('price')
