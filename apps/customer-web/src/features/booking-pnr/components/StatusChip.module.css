@@ -1,0 +1,35 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.confirmed {
+  background: var(--f3-success-soft);
+  color: var(--f3-success);
+}
+
+.held {
+  background: var(--f3-warning-soft);
+  color: var(--f3-warning);
+}
+
+.completed {
+  background: var(--f3-neutral-soft);
+  color: var(--f3-neutral);
+}
+
+.cancelled {
+  background: var(--f3-danger-soft);
+  color: var(--f3-danger);
+}
+
+.expired {
+  background: var(--f3-neutral-soft);
+  color: var(--f3-neutral);
+}

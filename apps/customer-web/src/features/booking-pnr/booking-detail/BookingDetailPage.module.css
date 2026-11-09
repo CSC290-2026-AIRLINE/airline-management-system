@@ -1,0 +1,108 @@
+.page {
+  min-height: 100vh;
+  background: var(--f3-page);
+  color: var(--f3-ink);
+  font-family: var(--f3-font);
+  padding: 40px 24px 64px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.backLink {
+  color: var(--f3-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.backLink:focus-visible {
+  outline: 2px solid var(--f3-primary);
+  outline-offset: 2px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.titleRow h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.15;
+  color: var(--f3-ink);
+}
+
+.card {
+  padding: 20px;
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+  background: var(--f3-card);
+}
+
+.card h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: var(--f3-ink);
+}
+
+.muted {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.messageCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 28px;
+  border: 1px solid var(--f3-border);
+  border-radius: 12px;
+  background: var(--f3-card);
+  text-align: center;
+}
+
+.messageCard h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 24px 16px 48px;
+  }
+
+  .titleRow h1 {
+    font-size: 24px;
+  }
+}
