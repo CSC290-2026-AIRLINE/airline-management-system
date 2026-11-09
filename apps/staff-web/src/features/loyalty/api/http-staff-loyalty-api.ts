@@ -1,4 +1,15 @@
-import type { EarnRuleRow, LoyaltySettings, MemberDetail, MemberListItem, StaffLoyaltyApi, TierBenefits, TierCode, TierRule } from './types'
+import type {
+  EarnRuleRow,
+  LoungeResult,
+  LoungeVisit,
+  LoyaltySettings,
+  MemberDetail,
+  MemberListItem,
+  StaffLoyaltyApi,
+  TierBenefits,
+  TierCode,
+  TierRule,
+} from './types'
 
 type FetchWithAuth = (path: string, init?: RequestInit) => Promise<Response>
 
@@ -68,12 +79,12 @@ const send = (method: 'POST' | 'PUT', body: unknown): RequestInit => ({
 const base = '/api/staff/loyalty'
 
 /**
- * Member Lookup and Loyalty Rules over the Feature 11 staff routes. Award Release and the Lounge Desk have no backend
- * routes yet, so those four methods come from `fallback` (the demo data) until they do.
+ * Member Lookup, Loyalty Rules and the Lounge Desk over the Feature 11 staff routes. Award Release has no backend
+ * routes yet, so its two methods come from `fallback` (the demo data) until they do.
  */
 export function createHttpStaffLoyaltyApi(
   fetchWithAuth: FetchWithAuth,
-  fallback: Pick<StaffLoyaltyApi, 'getAwardFlights' | 'saveRelease' | 'checkInLounge' | 'getLoungeVisits'>,
+  fallback: Pick<StaffLoyaltyApi, 'getAwardFlights' | 'saveRelease'>,
 ): StaffLoyaltyApi {
   const get = async <T>(path: string) => json<T>(await fetchWithAuth(`${base}${path}`))
 
@@ -118,7 +129,10 @@ export function createHttpStaffLoyaltyApi(
 
     getAwardFlights: () => fallback.getAwardFlights(),
     saveRelease: (flightId, cabin, released, milesCost) => fallback.saveRelease(flightId, cabin, released, milesCost),
-    checkInLounge: (query, guests) => fallback.checkInLounge(query, guests),
-    getLoungeVisits: () => fallback.getLoungeVisits(),
+    // A refusal (tier, ticket, guests, already visited) is a 200 with the reason; only "nothing matches" is an error.
+    checkInLounge: async (query, guests) =>
+      json<LoungeResult>(await fetchWithAuth(`${base}/lounge-visits`, send('POST', { query: query.trim(), guests }))),
+
+    getLoungeVisits: () => get<LoungeVisit[]>('/lounge-visits'),
   }
 }

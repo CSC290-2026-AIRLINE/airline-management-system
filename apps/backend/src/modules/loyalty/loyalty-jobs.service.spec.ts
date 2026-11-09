@@ -5,6 +5,7 @@ import { LoyaltyDataService } from './loyalty-data.service'
 import { LoyaltyError } from './loyalty-error'
 import { LoyaltyJobScheduler } from './loyalty-job-scheduler'
 import { LoyaltyJobsService } from './loyalty-jobs.service'
+import type { LoyaltyUpgradeService } from './loyalty-upgrade.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@nestjs/config', () => ({ ConfigService: class {} }))
@@ -81,7 +82,9 @@ function makeSvc() {
   const clock = new SimulationClock()
   jest.spyOn(clock, 'now').mockReturnValue(NOW)
   const dbService = db as unknown as DbService
-  return { svc: new LoyaltyJobsService(dbService, new LoyaltyDataService(dbService), clock), db, clock }
+  const upgrades = { run: jest.fn().mockResolvedValue({ candidates: 0, upgraded: 0, noSeat: 0, skipped: 0 }) }
+  const svc = new LoyaltyJobsService(dbService, new LoyaltyDataService(dbService), clock, upgrades as unknown as LoyaltyUpgradeService)
+  return { svc, db, clock, upgrades }
 }
 
 async function errorOf(promise: Promise<unknown>) {
@@ -285,10 +288,16 @@ describe('LoyaltyJobsService', () => {
   })
 
   describe('run', () => {
-    it('answers 501 for the jobs that wait on feature 3b', async () => {
+    it('answers 501 for return-to-cash, which waits on feature 3b', async () => {
       const { svc } = makeSvc()
       expect(await errorOf(svc.run('return-to-cash'))).toEqual({ status: 501, code: 'JOB_NOT_AVAILABLE' })
-      expect(await errorOf(svc.run('upgrade'))).toEqual({ status: 501, code: 'JOB_NOT_AVAILABLE' })
+    })
+
+    it('runs the upgrade job at the simulated time', async () => {
+      const { svc, upgrades } = makeSvc()
+      const result = await svc.run('upgrade')
+      expect(upgrades.run).toHaveBeenCalledWith(NOW)
+      expect(result).toMatchObject({ job: 'upgrade', counts: { upgraded: 0 } })
     })
 
     it('refuses a second run of the same job while the first is running', async () => {
@@ -306,19 +315,24 @@ describe('LoyaltyJobsService', () => {
 })
 
 describe('LoyaltyJobScheduler', () => {
-  it('runs earn every tick and the daily jobs once per simulated day', async () => {
+  it('runs earn every tick, upgrade once per simulated hour and the daily jobs once per simulated day', async () => {
     const { svc, clock } = makeSvc()
     const run = jest.spyOn(svc, 'run').mockResolvedValue({ job: 'x', ranAt: NOW.toISOString(), counts: {} })
     const scheduler = new LoyaltyJobScheduler(svc, clock, testConfig)
 
     await scheduler.tick()
     await scheduler.tick()
-    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'tier', 'expire', 'earn'])
+    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'upgrade', 'tier', 'expire', 'earn'])
+
+    jest.spyOn(clock, 'now').mockReturnValue(new Date('2026-11-08T04:05:00Z'))
+    run.mockClear()
+    await scheduler.tick()
+    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'upgrade'])
 
     jest.spyOn(clock, 'now').mockReturnValue(new Date('2026-11-09T00:10:00Z'))
     run.mockClear()
     await scheduler.tick()
-    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'tier', 'expire'])
+    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'upgrade', 'tier', 'expire'])
   })
 
   it('keeps going when a job fails', async () => {
@@ -326,6 +340,6 @@ describe('LoyaltyJobScheduler', () => {
     const run = jest.spyOn(svc, 'run').mockRejectedValueOnce(new Error('db down'))
     run.mockResolvedValue({ job: 'x', ranAt: NOW.toISOString(), counts: {} })
     await new LoyaltyJobScheduler(svc, clock, testConfig).tick()
-    expect(run).toHaveBeenCalledTimes(3)
+    expect(run).toHaveBeenCalledTimes(4)
   })
 })

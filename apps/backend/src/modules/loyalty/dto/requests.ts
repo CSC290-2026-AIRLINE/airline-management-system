@@ -83,6 +83,37 @@ export class SettingDto {
   value!: number
 }
 
+/** `POST /staff/loyalty/lounge-visits`: a member number (FL…) or a booking reference, and the guests coming in. */
+export class LoungeVisitDto {
+  @IsString()
+  @Matches(/\S/, { message: 'Enter a member number or booking reference.' })
+  @MaxLength(20)
+  query!: string
+
+  @IsInt()
+  @Min(0)
+  @Max(9)
+  guests!: number
+}
+
+/** `GET /loyalty/award-flights?origin=BKK&destination=NRT&date=2026-11-12&seats=2`. */
+export class AwardSearchQueryDto {
+  @Matches(/^[A-Za-z]{3}$/, { message: 'Choose where you fly from.' })
+  origin!: string
+
+  @Matches(/^[A-Za-z]{3}$/, { message: 'Choose where you fly to.' })
+  destination!: string
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Choose a date.' })
+  date!: string
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(9)
+  seats!: number
+}
+
 export class InsuranceDto {
   @IsIn(['none', 'included', 'member_price'])
   kind!: Insurance['kind']

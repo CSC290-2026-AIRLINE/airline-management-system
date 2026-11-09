@@ -1,4 +1,4 @@
-import type { BenefitUse, LoyaltyApi, MemberSummary, RedemptionRow, StatementRow, TierInfo } from './types'
+import type { AwardRoute, AwardSearchResult, BenefitUse, LoyaltyApi, MemberSummary, RedemptionRow, StatementRow, TierInfo } from './types'
 
 type FetchWithAuth = (path: string, init?: RequestInit) => Promise<Response>
 
@@ -31,5 +31,10 @@ export function createHttpLoyaltyApi(fetchWithAuth: FetchWithAuth): LoyaltyApi {
     getStatement: async () => json<StatementRow[]>(await fetchWithAuth('/api/loyalty/members/me/transactions')),
     getRedemptions: async () => json<RedemptionRow[]>(await fetchWithAuth('/api/loyalty/redemptions')),
     getBenefitUses: async () => json<BenefitUse[]>(await fetchWithAuth('/api/loyalty/members/me/benefits')),
+    getAwardRoutes: async () => json<AwardRoute[]>(await fetchWithAuth('/api/loyalty/award-routes')),
+    async searchAwardFlights(q) {
+      const params = new URLSearchParams({ origin: q.origin, destination: q.destination, date: q.date, seats: String(q.seats) })
+      return json<AwardSearchResult>(await fetchWithAuth(`/api/loyalty/award-flights?${params.toString()}`))
+    },
   }
 }

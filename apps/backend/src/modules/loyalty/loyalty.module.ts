@@ -3,18 +3,28 @@ import { AdminConsoleModule } from '@backend/modules/admin-console/admin-console
 import { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
 import { LoyaltyStaffGuard } from './guards/loyalty-staff.guard'
 import { LoyaltyController } from './loyalty.controller'
+import { LoyaltyAwardService } from './loyalty-award.service'
 import { LoyaltyDataService } from './loyalty-data.service'
 import { LoyaltyJobScheduler } from './loyalty-job-scheduler'
 import { LoyaltyJobsService } from './loyalty-jobs.service'
+import { LoyaltyInsuranceService } from './loyalty-insurance.service'
+import { LoyaltyLoungeService } from './loyalty-lounge.service'
 import { LoyaltyMemberService } from './loyalty-member.service'
 import { LoyaltyRulesService } from './loyalty-rules.service'
+import { InterimSeatUpgrader, LOYALTY_SEAT_PORT } from './loyalty-seat.port'
 import { LoyaltyStaffService } from './loyalty-staff.service'
+import { LoyaltyUpgradeService } from './loyalty-upgrade.service'
 import { F11_SCREENS } from './screens'
 import { StaffLoyaltyController } from './staff-loyalty.controller'
 
 /**
  * Feature 11, the loyalty programme. Imports the admin console for its audit writer, the one shared simulation clock
- * and the screen registry. `LoyaltyJobScheduler` runs the earn, tier and expiry jobs on the simulation clock. Other features use `LoyaltyMemberService.tierForPassenger` in process, never over HTTP.
+ * and the screen registry. `LoyaltyJobScheduler` runs the earn, upgrade, tier and expiry jobs on the simulation clock.
+ *
+ * Other features call Feature 11 in process, never over HTTP: `LoyaltyMemberService.tierForPassenger` (6, 12),
+ * `LoyaltyAwardService.awardAvailability` (3a) and `LoyaltyInsuranceService.issueInsurancePolicy` /
+ * `cancelInsurancePolicy` (3b). The upgrade job moves seats through LOYALTY_SEAT_PORT; rebind it to feature 3b's
+ * `upgradeCoupon` once 3b exports it.
  */
 @Module({
   imports: [AdminConsoleModule],
@@ -27,8 +37,13 @@ import { StaffLoyaltyController } from './staff-loyalty.controller'
     LoyaltyStaffGuard,
     LoyaltyJobsService,
     LoyaltyJobScheduler,
+    LoyaltyLoungeService,
+    LoyaltyInsuranceService,
+    LoyaltyAwardService,
+    LoyaltyUpgradeService,
+    { provide: LOYALTY_SEAT_PORT, useClass: InterimSeatUpgrader },
   ],
-  exports: [LoyaltyMemberService],
+  exports: [LoyaltyMemberService, LoyaltyAwardService, LoyaltyInsuranceService],
 })
 export class LoyaltyModule implements OnModuleInit {
   private readonly logger = new Logger(LoyaltyModule.name)

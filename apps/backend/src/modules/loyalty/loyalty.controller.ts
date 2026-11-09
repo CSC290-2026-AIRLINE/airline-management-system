@@ -3,8 +3,17 @@ import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { Public } from '@backend/auth/decorators/public.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import type { StatementFilter } from './domain/ledger-view'
-import { StatementQueryDto } from './dto/requests'
-import type { BenefitUseDto, MemberSummaryDto, RedemptionRowDto, StatementRowDto, TierInfoDto } from './dto/responses'
+import { AwardSearchQueryDto, StatementQueryDto } from './dto/requests'
+import type {
+  AwardRouteDto,
+  AwardSearchDto,
+  BenefitUseDto,
+  MemberSummaryDto,
+  RedemptionRowDto,
+  StatementRowDto,
+  TierInfoDto,
+} from './dto/responses'
+import { LoyaltyAwardService } from './loyalty-award.service'
 import { toLoyaltyValidationError } from './loyalty-error'
 import { LoyaltyMemberService } from './loyalty-member.service'
 import { LoyaltyRulesService } from './loyalty-rules.service'
@@ -22,6 +31,7 @@ export class LoyaltyController {
   constructor(
     private readonly members: LoyaltyMemberService,
     private readonly rules: LoyaltyRulesService,
+    private readonly awards: LoyaltyAwardService,
   ) {}
 
   /** The tier table with each tier's benefits, for the Join page and the dashboard. */
@@ -55,5 +65,17 @@ export class LoyaltyController {
   @Get('redemptions')
   redemptions(@CurrentUser() user: AuthenticatedUser): Promise<RedemptionRowDto[]> {
     return this.members.redemptions(user.id)
+  }
+
+  /** Routes with open flights ahead, for Flight Search with miles. */
+  @Get('award-routes')
+  awardRoutes(): Promise<AwardRouteDto[]> {
+    return this.awards.routes()
+  }
+
+  /** Flights on a route and date with their award cabins (miles cost, seats left) and whether the balance covers them. */
+  @Get('award-flights')
+  awardFlights(@CurrentUser() user: AuthenticatedUser, @Query() query: AwardSearchQueryDto): Promise<AwardSearchDto> {
+    return this.awards.search(user.id, query)
   }
 }

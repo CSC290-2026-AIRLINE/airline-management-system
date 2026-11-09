@@ -3,7 +3,19 @@ import { Link } from '@tanstack/react-router'
 import type { BookingStatus, TierCode, TransactionType } from '../api/types'
 import { formatSignedMiles } from '../format'
 import type { LoadState } from '../use-load'
-import { BOOKING_LABEL, BOOKING_PILL, cx, FLIGHT_SEARCH_PATH, MILES_TONE, NO_TIER_ART, TIER_ART, TYPE_LABEL, TYPE_PILL, ui } from './ui'
+import {
+  AWARD_SEARCH_PATH,
+  BOOKING_LABEL,
+  BOOKING_PILL,
+  cx,
+  FLIGHT_SEARCH_PATH,
+  MILES_TONE,
+  NO_TIER_ART,
+  TIER_ART,
+  TYPE_LABEL,
+  TYPE_PILL,
+  ui,
+} from './ui'
 
 // Small pieces shared by the Feature 11 customer pages.
 
@@ -58,9 +70,17 @@ export function TierCard({ code, name, className }: { code: TierCode | null; nam
   )
 }
 
-export function SearchFlightsLink({ label, className = ui.button }: { label: string; className?: string }) {
+export function SearchFlightsLink({
+  label,
+  className = ui.button,
+  to = FLIGHT_SEARCH_PATH,
+}: {
+  label: string
+  className?: string
+  to?: typeof FLIGHT_SEARCH_PATH | typeof AWARD_SEARCH_PATH
+}) {
   return (
-    <Link to={FLIGHT_SEARCH_PATH} className={className}>
+    <Link to={to} className={className}>
       {label}
     </Link>
   )
