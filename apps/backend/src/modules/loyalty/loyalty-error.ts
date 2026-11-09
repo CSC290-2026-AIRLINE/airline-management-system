@@ -12,6 +12,9 @@ export type LoyaltyErrorCode =
   | 'SETTING_NOT_FOUND'
   | 'INSUFFICIENT_MILES'
   | 'LOYALTY_ROLE_REQUIRED'
+  | 'JOB_NOT_FOUND'
+  | 'JOB_NOT_AVAILABLE'
+  | 'JOB_RUNNING'
 
 /** Every Feature 11 error has the shape `{ error: { code, message, details? } }`, which both loyalty apps read. */
 export class LoyaltyError extends HttpException {

@@ -15,9 +15,17 @@ import {
 } from '@nestjs/common'
 import type { TierBenefits, TierRule } from './domain/types'
 import { AdjustmentDto, EarnRuleDto, MemberSearchDto, SettingDto, TierBenefitsDto, TierRuleDto } from './dto/requests'
-import type { EarnRuleDto as EarnRuleRow, LoyaltySettingsDto, MemberDetailDto, MemberListItemDto, TierInfoDto } from './dto/responses'
+import type {
+  EarnRuleDto as EarnRuleRow,
+  JobRunResultDto,
+  LoyaltySettingsDto,
+  MemberDetailDto,
+  MemberListItemDto,
+  TierInfoDto,
+} from './dto/responses'
 import { LoyaltyStaff, LoyaltyStaffGuard, type LoyaltyStaffPrincipal } from './guards/loyalty-staff.guard'
 import { LoyaltyError, memberNotFound, toLoyaltyValidationError } from './loyalty-error'
+import { LoyaltyJobsService, isJobName } from './loyalty-jobs.service'
 import { LoyaltyRulesService } from './loyalty-rules.service'
 import { LoyaltyStaffService } from './loyalty-staff.service'
 
@@ -34,6 +42,7 @@ export class StaffLoyaltyController {
   constructor(
     private readonly staff: LoyaltyStaffService,
     private readonly rules: LoyaltyRulesService,
+    private readonly jobs: LoyaltyJobsService,
   ) {}
 
   @Get('members')
@@ -109,5 +118,16 @@ export class StaffLoyaltyController {
     const insurance: TierBenefits['insurance'] =
       dto.insurance.kind === 'member_price' ? { kind: 'member_price', priceThb: dto.insurance.priceThb ?? 0 } : { kind: dto.insurance.kind }
     return this.rules.updateTierBenefits(who, code, { ...dto, insurance })
+  }
+
+  /**
+   * Runs one background job now, at the current simulated time, for demos and tests: `earn`, `tier` or `expire`.
+   * `return-to-cash` and `upgrade` answer 501 until feature 3b ships `setAwardSeats` and `upgradeCoupon`.
+   */
+  @Post('jobs/:name/run')
+  @HttpCode(200)
+  runJob(@Param('name') name: string): Promise<JobRunResultDto> {
+    if (!isJobName(name)) throw new LoyaltyError(HttpStatus.NOT_FOUND, 'JOB_NOT_FOUND', `No loyalty job named "${name}".`)
+    return this.jobs.run(name)
   }
 }

@@ -129,4 +129,54 @@ describe('LoyaltyMemberService', () => {
     db.customer.findFirst.mockRejectedValue(new Error('connection lost'))
     await expect(svc.tierForPassenger('pax-anna')).resolves.toEqual({ tierCode: null })
   })
+
+  describe('tierForPassenger', () => {
+    const goldBenefits = {
+      tier_code: 'gold',
+      lounge_guests: 1,
+      extra_baggage_kg: { toString: () => '10' },
+      priority_checkin: true,
+      priority_boarding: true,
+      upgrade_eligible: true,
+      insurance_price: { toString: () => '0' },
+    }
+    const goldMember = (expires: string) => ({
+      id: 'cust-1',
+      loyalty_member: { tier_code: 'gold', tier_qualified_at: new Date('2026-03-01T00:00:00Z'), tier_expires_at: new Date(expires) },
+    })
+
+    it('returns the tier and benefits of the passenger who flies, looked up through customer.passenger_id', async () => {
+      const { svc, db } = makeSvc()
+      db.customer.findFirst.mockResolvedValue(goldMember('2027-03-01T00:00:00Z'))
+      db.loyalty_tier_benefit.findMany.mockResolvedValue([goldBenefits])
+      const tier = await svc.tierForPassenger('pax-anna')
+      expect(db.customer.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { passenger_id: 'pax-anna', deleted_at: null } }))
+      expect(tier).toEqual({
+        tierCode: 'gold',
+        name: 'Gold',
+        expiresAt: new Date('2027-03-01T00:00:00Z'),
+        benefits: {
+          loungeGuests: 1,
+          extraBaggageKg: 10,
+          priorityCheckIn: true,
+          priorityBoarding: true,
+          upgradeEligible: true,
+          insurance: { kind: 'included' },
+        },
+      })
+    })
+
+    it('treats a tier past tier_expires_at as no tier, before the tier job clears it', async () => {
+      const { svc, db } = makeSvc()
+      db.customer.findFirst.mockResolvedValue(goldMember('2026-11-08T02:59:59Z'))
+      db.loyalty_tier_benefit.findMany.mockResolvedValue([goldBenefits])
+      await expect(svc.tierForPassenger('pax-anna')).resolves.toEqual({ tierCode: null })
+    })
+
+    it('answers no tier for a passenger who is not a member (a companion on the booking)', async () => {
+      const { svc, db } = makeSvc()
+      db.customer.findFirst.mockResolvedValue(null)
+      await expect(svc.tierForPassenger('pax-ben')).resolves.toEqual({ tierCode: null })
+    })
+  })
 })

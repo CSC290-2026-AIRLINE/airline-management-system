@@ -4,6 +4,8 @@ import { AdminConsoleService } from '@backend/modules/admin-console/admin-consol
 import { LoyaltyStaffGuard } from './guards/loyalty-staff.guard'
 import { LoyaltyController } from './loyalty.controller'
 import { LoyaltyDataService } from './loyalty-data.service'
+import { LoyaltyJobScheduler } from './loyalty-job-scheduler'
+import { LoyaltyJobsService } from './loyalty-jobs.service'
 import { LoyaltyMemberService } from './loyalty-member.service'
 import { LoyaltyRulesService } from './loyalty-rules.service'
 import { LoyaltyStaffService } from './loyalty-staff.service'
@@ -12,12 +14,20 @@ import { StaffLoyaltyController } from './staff-loyalty.controller'
 
 /**
  * Feature 11, the loyalty programme. Imports the admin console for its audit writer, the one shared simulation clock
- * and the screen registry. Other features use `LoyaltyMemberService.tierForPassenger` in process, never over HTTP.
+ * and the screen registry. `LoyaltyJobScheduler` runs the earn, tier and expiry jobs on the simulation clock. Other features use `LoyaltyMemberService.tierForPassenger` in process, never over HTTP.
  */
 @Module({
   imports: [AdminConsoleModule],
   controllers: [LoyaltyController, StaffLoyaltyController],
-  providers: [LoyaltyDataService, LoyaltyMemberService, LoyaltyStaffService, LoyaltyRulesService, LoyaltyStaffGuard],
+  providers: [
+    LoyaltyDataService,
+    LoyaltyMemberService,
+    LoyaltyStaffService,
+    LoyaltyRulesService,
+    LoyaltyStaffGuard,
+    LoyaltyJobsService,
+    LoyaltyJobScheduler,
+  ],
   exports: [LoyaltyMemberService],
 })
 export class LoyaltyModule implements OnModuleInit {

@@ -89,3 +89,10 @@ export interface EarnRuleDto {
 }
 
 export type LoyaltySettingsDto = LoyaltySettings
+
+/** `POST /staff/loyalty/jobs/:name/run`: what one job run did at the simulated time `ranAt`. */
+export interface JobRunResultDto {
+  job: string
+  ranAt: string
+  counts: Record<string, number>
+}
