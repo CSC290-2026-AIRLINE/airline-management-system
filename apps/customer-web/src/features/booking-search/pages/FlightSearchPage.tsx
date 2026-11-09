@@ -1,4 +1,4 @@
-import { Component, useRef, useState, type ReactNode } from 'react'
+import { Component, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { FlightSearchForm } from '../components/FlightSearchForm'
 import { validateSearch } from '../components/search-validation'
 import type { FlightSearchFormValue } from '../components/contracts'
@@ -34,7 +34,7 @@ class SearchBoundary extends Component<{ children: ReactNode }, { failed: boolea
   }
   render() {
     return this.state.failed ? (
-      <main className="f3-search">
+      <main className="f3-search f3-search-page">
         <h1>Flight search is unavailable</h1>
         <p>Refresh the page to try again.</p>
         <button className="f3-search-primary" onClick={() => window.location.reload()}>
@@ -138,7 +138,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink = { href: 
     })
   }
   return (
-    <main className="f3-search">
+    <main className="f3-search f3-search-page">
       <div className="f3-search-heading">
         <div>
           <p className="f3-search-eyebrow">FLYTHON · BOOK A FLIGHT</p>
@@ -198,6 +198,10 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink = { href: 
                   !previous ||
                   new Date(option.depAt).getTime() >= new Date(previous.flight.arrAt).getTime() + 3600000,
               )
+              const cabinColumns = (Object.keys(cabins) as Array<keyof typeof cabins>).filter((cabin) =>
+                filtered.some((flight) => flight.cabins.some((fare) => fare.cabin === cabin)),
+              )
+              const columnStyle = { '--f3-cabin-count': Math.max(1, cabinColumns.length) } as CSSProperties
               return (
                 <section className="f3-search-card f3-search-results" key={legIndex} aria-label={`Leg ${legIndex + 1} results`}>
                   <header>
@@ -222,6 +226,16 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink = { href: 
                       No flights depart at least 60 minutes after your previous arrival. Choose a different flight or adjust your search.
                     </p>
                   )}
+                  {filtered.length > 0 && (
+                    <div className="f3-search-cabin-headings" aria-hidden="true">
+                      <span>Flight</span>
+                      <div className="f3-search-cabin-columns" style={columnStyle}>
+                        {cabinColumns.map((cabin) => (
+                          <span key={cabin}>{cabins[cabin]}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {filtered.map((flight) => (
                     <article className="f3-search-flight" key={flight.flightId}>
                       <div className="f3-search-flight-time">
@@ -238,36 +252,49 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink = { href: 
                             : ''}
                         </small>
                       </div>
-                      <div className="f3-search-fares" role="group" aria-label={`${flight.flightNumber} fares`}>
-                        {flight.cabins.map((fare) => {
-                          const picked =
-                            selected[legIndex]?.flight.flightId === flight.flightId &&
-                            selected[legIndex]?.fare.fareClassId === fare.fareClassId
-                          return (
-                            <button
-                              key={`${fare.cabin}/${fare.fareClassId}`}
-                              className={`f3-search-fare ${picked ? 'is-selected' : ''}`}
-                              disabled={!!fare.unavailableReason}
-                              aria-pressed={picked}
-                              onClick={() =>
-                                setSelected((current) => {
-                                  const next = current.slice(0, legIndex)
-                                  next[legIndex] = { flight, fare }
-                                  return next
-                                })
-                              }
-                            >
-                              <span>
-                                {cabins[fare.cabin]} · {fare.fareClassCode}
-                              </span>
-                              <strong>{fare.unavailableReason ? 'Not available' : money(fare.pricePerPassenger)}</strong>
-                              <small className={fare.seatsLeft <= 4 ? 'f3-search-low' : ''}>
-                                {fare.unavailableReason ?? `${fare.seatsLeft > 9 ? '9+' : fare.seatsLeft} seats left`}
-                              </small>
-                              {picked && <span className="f3-search-selected">✓ Selected</span>}
-                            </button>
-                          )
-                        })}
+                      <div className="f3-search-cabin-columns" style={columnStyle} role="group" aria-label={`${flight.flightNumber} fares`}>
+                        {cabinColumns.map((cabin) => (
+                          <div className="f3-search-cabin-cell" key={cabin}>
+                            {!flight.cabins.some((fare) => fare.cabin === cabin) && (
+                              <p className="f3-search-unavailable">
+                                {cabins[cabin]}
+                                <br />
+                                Not available
+                              </p>
+                            )}
+                            {flight.cabins
+                              .filter((fare) => fare.cabin === cabin)
+                              .map((fare) => {
+                                const picked =
+                                  selected[legIndex]?.flight.flightId === flight.flightId &&
+                                  selected[legIndex]?.fare.fareClassId === fare.fareClassId
+                                return (
+                                  <button
+                                    key={`${fare.cabin}/${fare.fareClassId}`}
+                                    className={`f3-search-fare ${picked ? 'is-selected' : ''}`}
+                                    disabled={!!fare.unavailableReason}
+                                    aria-pressed={picked}
+                                    onClick={() =>
+                                      setSelected((current) => {
+                                        const next = current.slice(0, legIndex)
+                                        next[legIndex] = { flight, fare }
+                                        return next
+                                      })
+                                    }
+                                  >
+                                    <span>
+                                      {cabins[fare.cabin]} · {fare.fareClassCode}
+                                    </span>
+                                    <strong>{fare.unavailableReason ? 'Not available' : money(fare.pricePerPassenger)}</strong>
+                                    <small className={fare.seatsLeft <= 4 ? 'f3-search-low' : ''}>
+                                      {fare.unavailableReason ?? `${fare.seatsLeft > 9 ? '9+' : fare.seatsLeft} seats left`}
+                                    </small>
+                                    {picked && <span className="f3-search-selected">✓ Selected</span>}
+                                  </button>
+                                )
+                              })}
+                          </div>
+                        ))}
                       </div>
                     </article>
                   ))}

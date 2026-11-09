@@ -34,7 +34,7 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
     ['multi_city', 'Multi-city'],
   ]
   return (
-    <form className="f3-search-card f3-search-form" onSubmit={submit} aria-label="Flight search">
+    <form className={`f3-search-card f3-search-form is-${value.tripType}`} onSubmit={submit} aria-label="Flight search">
       <div className="f3-search-tabs" role="group" aria-label="Trip type">
         {labels.map(([type, label]) => (
           <button type="button" key={type} aria-pressed={value.tripType === type} onClick={() => setTrip(type)}>
@@ -49,74 +49,76 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
         <option value="HKG">Hong Kong</option>
         <option value="SIN">Singapore</option>
       </datalist>
-      {value.legs.map((leg, index) =>
-        value.tripType === 'return' && index === 1 ? (
-          <label key="return" className="f3-return-date">
-            Return
-            <input
-              aria-label="Return date"
-              type="date"
-              required
-              min={value.legs[0].date || today()}
-              value={leg.date}
-              onChange={(event) => setLeg(1, { date: event.target.value })}
-            />
-          </label>
-        ) : (
-          <fieldset className="f3-search-leg" key={index}>
-            <legend>{value.tripType === 'multi_city' ? `Leg ${index + 1}` : 'Where would you like to go?'}</legend>
-            <label>
-              From
+      <div className="f3-search-route-fields">
+        {value.legs.map((leg, index) =>
+          value.tripType === 'return' && index === 1 ? (
+            <label key="return" className="f3-return-date">
+              Return
               <input
-                aria-label={`Leg ${index + 1} origin`}
-                placeholder="Airport code, e.g. BKK"
-                list="f3-airports"
-                autoComplete="off"
-                maxLength={3}
-                required
-                pattern="[A-Z]{3}"
-                value={leg.origin}
-                onChange={(event) => setLeg(index, { origin: event.target.value.toUpperCase() })}
-              />
-            </label>
-            <label>
-              To
-              <input
-                aria-label={`Leg ${index + 1} destination`}
-                placeholder="Airport code, e.g. HKT"
-                list="f3-airports"
-                autoComplete="off"
-                maxLength={3}
-                required
-                pattern="[A-Z]{3}"
-                value={leg.destination}
-                onChange={(event) => setLeg(index, { destination: event.target.value.toUpperCase() })}
-              />
-            </label>
-            <label>
-              Depart
-              <input
-                aria-label={`Leg ${index + 1} departure date`}
+                aria-label="Return date"
                 type="date"
                 required
-                min={index > 0 ? value.legs[index - 1].date || today() : today()}
+                min={value.legs[0].date || today()}
                 value={leg.date}
-                onChange={(event) => setLeg(index, { date: event.target.value })}
+                onChange={(event) => setLeg(1, { date: event.target.value })}
               />
             </label>
-            {value.tripType === 'multi_city' && value.legs.length > 2 && (
-              <button
-                className="f3-search-remove"
-                type="button"
-                aria-label={`Remove leg ${index + 1}`}
-                onClick={() => onChange({ ...value, legs: value.legs.filter((_, position) => position !== index) })}
-              >
-                Remove
-              </button>
-            )}
-          </fieldset>
-        ),
-      )}
+          ) : (
+            <fieldset className="f3-search-leg" key={index}>
+              <legend>{value.tripType === 'multi_city' ? `Leg ${index + 1}` : 'Where would you like to go?'}</legend>
+              <label>
+                From
+                <input
+                  aria-label={`Leg ${index + 1} origin`}
+                  placeholder="Airport code, e.g. BKK"
+                  list="f3-airports"
+                  autoComplete="off"
+                  maxLength={3}
+                  required
+                  pattern="[A-Z]{3}"
+                  value={leg.origin}
+                  onChange={(event) => setLeg(index, { origin: event.target.value.toUpperCase() })}
+                />
+              </label>
+              <label>
+                To
+                <input
+                  aria-label={`Leg ${index + 1} destination`}
+                  placeholder="Airport code, e.g. HKT"
+                  list="f3-airports"
+                  autoComplete="off"
+                  maxLength={3}
+                  required
+                  pattern="[A-Z]{3}"
+                  value={leg.destination}
+                  onChange={(event) => setLeg(index, { destination: event.target.value.toUpperCase() })}
+                />
+              </label>
+              <label>
+                Depart
+                <input
+                  aria-label={`Leg ${index + 1} departure date`}
+                  type="date"
+                  required
+                  min={index > 0 ? value.legs[index - 1].date || today() : today()}
+                  value={leg.date}
+                  onChange={(event) => setLeg(index, { date: event.target.value })}
+                />
+              </label>
+              {value.tripType === 'multi_city' && value.legs.length > 2 && (
+                <button
+                  className="f3-search-remove"
+                  type="button"
+                  aria-label={`Remove leg ${index + 1}`}
+                  onClick={() => onChange({ ...value, legs: value.legs.filter((_, position) => position !== index) })}
+                >
+                  Remove
+                </button>
+              )}
+            </fieldset>
+          ),
+        )}
+      </div>
       {value.tripType === 'multi_city' && value.legs.length < 5 && (
         <button
           className="f3-search-secondary"
