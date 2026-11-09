@@ -54,6 +54,9 @@ export class CargoService {
         },
       })
     } catch (err: unknown) {
+      if (isRecordNotFound(err)) {
+        throw new NotFoundException({ error: { code: 'NOT_FOUND', message: `Commodity type ${id} not found` } })
+      }
       if (isPrismaUniqueViolation(err)) {
         throw new ConflictException({ error: { code: 'DUPLICATE', message: 'A commodity type with this code already exists' } })
       }
@@ -86,7 +89,7 @@ export class CargoService {
         include: { cargo_commodity_type: true },
       })
     } catch (err: unknown) {
-      if (isPrismaExclusionViolation(err) || isPrismaCheckViolation(err)) {
+      if (isExclusionOrCheckViolation(err)) {
         throw new ConflictException({
           error: { code: 'OVERLAP', message: 'Distance band overlaps with an existing rate for this commodity type' },
         })
@@ -113,7 +116,10 @@ export class CargoService {
         include: { cargo_commodity_type: true },
       })
     } catch (err: unknown) {
-      if (isPrismaExclusionViolation(err) || isPrismaCheckViolation(err)) {
+      if (isRecordNotFound(err)) {
+        throw new NotFoundException({ error: { code: 'NOT_FOUND', message: `Rate ${id} not found` } })
+      }
+      if (isExclusionOrCheckViolation(err)) {
         throw new ConflictException({
           error: { code: 'OVERLAP', message: 'Distance band overlaps with an existing rate for this commodity type' },
         })
@@ -141,10 +147,23 @@ function isPrismaUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002'
 }
 
-function isPrismaExclusionViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2010'
+function isRecordNotFound(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2025'
 }
 
-function isPrismaCheckViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2009'
+function isExclusionOrCheckViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  const e = err as Record<string, unknown>
+  const msg = typeof e.message === 'string' ? e.message : ''
+  if (msg.includes('23P01') || msg.includes('23514')) return true
+  const meta = e.meta as Record<string, unknown> | undefined
+  const metaMsg = typeof meta?.message === 'string' ? meta.message : ''
+  if (metaMsg.includes('23P01') || metaMsg.includes('23514')) return true
+  if (metaMsg.includes('exclusion') || metaMsg.includes('violates check')) return true
+  const cause = e.cause as Record<string, unknown> | undefined
+  if (cause != null && typeof cause === 'object') {
+    const causeCode = typeof cause.code === 'string' ? cause.code : ''
+    if (causeCode === '23P01' || causeCode === '23514') return true
+  }
+  return false
 }
