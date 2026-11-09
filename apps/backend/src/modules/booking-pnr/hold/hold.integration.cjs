@@ -19,6 +19,8 @@ const { InventoryService } = load('modules/booking-pnr/inventory/inventory.servi
 const { HoldService } = load('modules/booking-pnr/hold/hold.service')
 const { HoldController } = load('modules/booking-pnr/hold/hold.controller')
 const { StaffBookingController } = load('modules/booking-pnr/staff/staff-booking.controller')
+const { DemoBookingCustomerController } = load('modules/booking-pnr/staff/demo-booking-customer.controller')
+const { DemoBookingCustomerService } = load('modules/booking-pnr/staff/demo-booking-customer.service')
 const { DemoPassengerController } = load('modules/booking-pnr/hold/demo-passenger.controller')
 const { DemoPassengerService } = load('modules/booking-pnr/hold/demo-passenger.service')
 const { JwtAuthGuard } = load('auth/guards/jwt-auth.guard')
@@ -94,9 +96,10 @@ async function main() {
   const jwt = new JwtService({ secret: randomBytes(32).toString('hex') })
   class TestModule {}
   Module({
-    controllers: [HoldController, DemoPassengerController, StaffBookingController],
+    controllers: [HoldController, DemoPassengerController, StaffBookingController, DemoBookingCustomerController],
     providers: [
       { provide: HoldService, useValue: holds },
+      { provide: DemoBookingCustomerService, useValue: new DemoBookingCustomerService(db, demoConfig) },
       { provide: DemoPassengerService, useValue: demos },
     ],
   })(TestModule)
@@ -166,6 +169,23 @@ async function main() {
   await pool.query('INSERT INTO staff (id, user_id, user_type) VALUES ($1, $2, $3)', [staffId, staffUser, 'staff'])
   const staffToken = jwt.sign({ sub: staffUser, email: 'agent@example.com' })
   const customer = await db.customer.findFirst({ where: { user_id: users[0] } })
+  await pool.query('UPDATE "user" SET clerk_user_id = $1 WHERE id = $2', ['f03-seed-customer', users[0]])
+  await pool.query('UPDATE customer SET passenger_id = $1 WHERE id = $2', [passengers[0], customer.id])
+  const listCustomers = (token) =>
+    http(app.getHttpServer())
+      .get('/api/dev/staff/booking-customers')
+      .set('Authorization', 'Bearer ' + token)
+  assert.equal((await listCustomers(jwt.sign({ sub: users[0], email: 'fixture@example.com' }))).status, 403)
+  const staffCustomers = await listCustomers(staffToken)
+  assert.equal(staffCustomers.status, 200, JSON.stringify(staffCustomers.body))
+  assert.deepEqual(
+    staffCustomers.body.map((row) => row.id),
+    [customer.id],
+  )
+  demoConfig.set('NODE_ENV', 'production')
+  assert.equal((await listCustomers(staffToken)).status, 404)
+  demoConfig.set('NODE_ENV', 'development')
+  console.log('PASS: staff customer selector exposes only the seeded customer, rejects customer tokens and is unavailable in production')
   const staffFlight = await newFlight()
   const staffBody = { ...body(staffFlight), customerId: customer.id }
   function staffPost(token, key, data) {

@@ -1,3 +1,5 @@
+import { DemoBookingCustomerController } from './staff/demo-booking-customer.controller'
+import { DemoBookingCustomerService } from './staff/demo-booking-customer.service'
 import { StaffBookingController } from './staff/staff-booking.controller'
 import { DemoPassengerController } from './hold/demo-passenger.controller'
 import { DemoPassengerService } from './hold/demo-passenger.service'
@@ -38,9 +40,10 @@ import { SeatStub } from './stubs/seat.stub'
 import { ServiceRequestStub } from './stubs/service-request.stub'
 
 @Module({
-  controllers: [HoldController, DemoPassengerController, StaffBookingController],
+  controllers: [HoldController, DemoPassengerController, StaffBookingController, DemoBookingCustomerController],
   providers: [
     HoldService,
+    DemoBookingCustomerService,
     DemoPassengerService,
     BookingStatusService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.

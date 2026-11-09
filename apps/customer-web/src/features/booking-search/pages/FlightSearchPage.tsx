@@ -1,5 +1,4 @@
 import { Component, useRef, useState, type ReactNode } from 'react'
-import { Link } from '@tanstack/react-router'
 import { FlightSearchForm } from '../components/FlightSearchForm'
 import { validateSearch } from '../components/search-validation'
 import type { FlightSearchFormValue } from '../components/contracts'
@@ -17,6 +16,7 @@ export interface SearchItinerary {
   expectedTotal: number
 }
 interface SearchProps {
+  tripLink?: { href: string; label: string }
   initialItinerary?: SearchItinerary
   onContinue?: (itinerary: SearchItinerary) => void
 }
@@ -55,7 +55,7 @@ export function FlightSearchPage(props: SearchProps) {
   )
 }
 
-function FlightSearchContent({ onContinue, initialItinerary }: SearchProps) {
+function FlightSearchContent({ onContinue, initialItinerary, tripLink = { href: '/bookings', label: 'My Trips →' } }: SearchProps) {
   const { searchFlights } = useBookingSearchApi()
   const [form, setForm] = useState<FlightSearchFormValue>(
     initialItinerary
@@ -144,7 +144,7 @@ function FlightSearchContent({ onContinue, initialItinerary }: SearchProps) {
           <p className="f3-search-eyebrow">FLYTHON · BOOK A FLIGHT</p>
           <h1>Find a flight</h1>
         </div>
-        <Link to="/bookings">My Trips →</Link>
+        <a href={tripLink.href}>{tripLink.label}</a>
       </div>
       <p className="f3-search-intro">Direct flights only. Seats and prices are checked live; searching does not reserve seats.</p>
       <FlightSearchForm
