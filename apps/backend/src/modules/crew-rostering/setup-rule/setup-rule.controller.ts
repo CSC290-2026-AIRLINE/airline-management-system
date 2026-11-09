@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import {
   SetupRuleService,
@@ -12,6 +12,8 @@ import {
   type LanguageOptionRow,
   type RuleSetRow,
 } from './setup-rule.service'
+import { asObject, requireText } from '../request-parsing'
+import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
  * Feature 8 · Step 2 — legality rules.
@@ -21,6 +23,7 @@ import {
  * layer and they stay as strict as a DTO would be.
  */
 @Controller('crew-rostering/setup-rule')
+@UseGuards(StaffOnlyGuard)
 export class SetupRuleController {
   constructor(private readonly setupRuleService: SetupRuleService) {}
 
@@ -46,7 +49,7 @@ export class SetupRuleController {
   }
 
   @Get('countries')
-  listCountries(): CountryOptionRow[] {
+  async listCountries(): Promise<CountryOptionRow[]> {
     return this.setupRuleService.listCountries()
   }
 
@@ -94,16 +97,6 @@ export class SetupRuleController {
 /* ── input parsing ──────────────────────────────────────────────────────────
  * Inline rather than in a DTO folder, as this feature requires. */
 
-function asObject(body: unknown): Record<string, unknown> {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Request body must be a JSON object')
-  return body as Record<string, unknown>
-}
-
-function requireText(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new BadRequestException(`${field} is required`)
-  return value.trim()
-}
-
 /** A finite, non-negative number. `NaN` from an empty input is rejected here, not compared later. */
 function requireNumber(value: unknown, field: string): number {
   if (value === null || value === undefined || value === '') throw new BadRequestException(`${field} is required`)
@@ -112,6 +105,13 @@ function requireNumber(value: unknown, field: string): number {
   if (!Number.isFinite(parsed)) throw new BadRequestException(`${field} must be a number`)
   if (parsed < 0) throw new BadRequestException(`${field} cannot be negative`)
   return parsed
+}
+
+/** `country_language.language_code` is a 2-letter ISO 639-1 code in lower case. */
+function requireLanguageCode(value: unknown, field: string): string {
+  const code = requireText(value, field).toLowerCase()
+  if (!/^[a-z]{2}$/.test(code)) throw new BadRequestException(`${field} must be a 2-letter language code`)
+  return code
 }
 
 function parseDefaults(body: Record<string, unknown>): DefaultLimitsRow {
@@ -138,7 +138,7 @@ function parseCountryLanguage(body: Record<string, unknown>): CountryLanguageInp
   const languages = body.languages
   if (!Array.isArray(languages) || languages.length === 0) throw new BadRequestException('languages must list at least one code')
   return {
-    country: typeof body.country === 'string' ? body.country.trim() : '',
-    languages: languages.map((entry, index) => requireText(entry, `languages[${index}]`).toLowerCase()),
+    country: typeof body.country === 'string' && body.country.trim() !== '' ? body.country.trim() : undefined,
+    languages: languages.map((entry, index) => requireLanguageCode(entry, `languages[${index}]`)),
   }
 }

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 import {
   CREW_ROLES,
   SetupCrewService,
@@ -13,6 +13,8 @@ import {
   type FleetOptionRow,
   type LanguageOptionRow,
 } from './setup-crew.service'
+import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
+import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
  * Feature 8 · Step 1 — crew directory.
@@ -22,6 +24,7 @@ import {
  * whole validation layer and they must stay as strict as a DTO would be.
  */
 @Controller('crew-rostering/setup-crew')
+@UseGuards(StaffOnlyGuard)
 export class SetupCrewController {
   constructor(private readonly setupCrewService: SetupCrewService) {}
 
@@ -62,7 +65,7 @@ export class SetupCrewController {
 
   @Get('crew/:crewId')
   async getCrew(@Param('crewId') crewId: string): Promise<CrewMemberRow> {
-    return this.setupCrewService.getCrew(requireText(crewId, 'crewId'))
+    return this.setupCrewService.getCrew(requireUuid(crewId, 'crewId'))
   }
 
   @Post('crew')
@@ -72,12 +75,12 @@ export class SetupCrewController {
 
   @Patch('crew/:crewId')
   async updateCrew(@Param('crewId') crewId: string, @Body() body: unknown): Promise<CrewMemberRow> {
-    return this.setupCrewService.updateCrew(requireText(crewId, 'crewId'), parseProfile(asObject(body)))
+    return this.setupCrewService.updateCrew(requireUuid(crewId, 'crewId'), parseProfile(asObject(body)))
   }
 
   @Post('crew/:crewId/certifications')
   async addCertification(@Param('crewId') crewId: string, @Body() body: unknown): Promise<CertificationRow> {
-    return this.setupCrewService.addCertification(requireText(crewId, 'crewId'), parseCertification(asObject(body)))
+    return this.setupCrewService.addCertification(requireUuid(crewId, 'crewId'), parseCertification(asObject(body)))
   }
 
   @Patch('crew/:crewId/certifications/:certificationId')
@@ -87,8 +90,8 @@ export class SetupCrewController {
     @Body() body: unknown,
   ): Promise<CertificationRow> {
     return this.setupCrewService.updateCertification(
-      requireText(crewId, 'crewId'),
-      requireText(certificationId, 'certificationId'),
+      requireUuid(crewId, 'crewId'),
+      requireUuid(certificationId, 'certificationId'),
       parseCertification(asObject(body)),
     )
   }
@@ -96,7 +99,7 @@ export class SetupCrewController {
   @Delete('crew/:crewId/certifications/:certificationId')
   @HttpCode(204)
   async removeCertification(@Param('crewId') crewId: string, @Param('certificationId') certificationId: string): Promise<void> {
-    await this.setupCrewService.removeCertification(requireText(crewId, 'crewId'), requireText(certificationId, 'certificationId'))
+    await this.setupCrewService.removeCertification(requireUuid(crewId, 'crewId'), requireUuid(certificationId, 'certificationId'))
   }
 }
 
@@ -104,17 +107,6 @@ export class SetupCrewController {
  * Inline rather than in a DTO folder, as this feature requires. Each helper throws
  * a `BadRequestException` naming the field, which is what a class-validator message
  * would have done. */
-
-function asObject(body: unknown): Record<string, unknown> {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Request body must be a JSON object')
-  return body as Record<string, unknown>
-}
-
-/** A required, non-blank string. Blank is rejected rather than trimmed to empty. */
-function requireText(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new BadRequestException(`${field} is required`)
-  return value.trim()
-}
 
 /** An optional string. Anything non-string other than `null`/`undefined` is a bad request. */
 function optionalText(value: unknown, field: string): string | null {
@@ -127,15 +119,6 @@ function optionalEmail(value: unknown): string | null {
   const email = optionalText(value, 'email')
   if (email !== null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('email must be a valid address')
   return email
-}
-
-/** A `YYYY-MM-DD` calendar date. Rejects full ISO instants — the page only ever sends dates. */
-function requireDate(value: unknown, field: string): string {
-  const text = requireText(value, field)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(`${text}T00:00:00.000Z`))) {
-    throw new BadRequestException(`${field} must be a YYYY-MM-DD date`)
-  }
-  return text
 }
 
 function optionalDate(value: unknown, field: string): string | null {
@@ -152,7 +135,11 @@ function parseRole(value: unknown): CrewRole {
 function parseLanguages(value: unknown): string[] {
   if (value === null || value === undefined) return []
   if (!Array.isArray(value)) throw new BadRequestException('languages must be an array of codes')
-  return value.map((entry, index) => requireText(entry, `languages[${index}]`).toLowerCase())
+  return value.map((entry, index) => {
+    const code = requireText(entry, `languages[${index}]`).toLowerCase()
+    if (!/^[a-z]{2}$/.test(code)) throw new BadRequestException(`languages[${index}] must be a 2-letter language code`)
+    return code
+  })
 }
 
 function parseProfile(body: Record<string, unknown>): CrewProfileInput {
@@ -162,7 +149,7 @@ function parseProfile(body: Record<string, unknown>): CrewProfileInput {
     employeeNo: requireText(body.employeeNo, 'employeeNo'),
     role: parseRole(body.role),
     base: requireText(body.base, 'base').toUpperCase(),
-    fleet: requireText(body.fleet, 'fleet').toUpperCase(),
+    fleet: requireText(body.fleet, 'fleet'),
     languages: parseLanguages(body.languages),
     licenceNumber: requireText(body.licenceNumber, 'licenceNumber'),
     licenceExpiresOn: requireDate(body.licenceExpiresOn, 'licenceExpiresOn'),
@@ -175,7 +162,7 @@ function parseProfile(body: Record<string, unknown>): CrewProfileInput {
 function parseCertification(body: Record<string, unknown>): CertificationInput {
   return {
     name: requireText(body.name, 'name'),
-    aircraftType: optionalText(body.aircraftType, 'aircraftType')?.toUpperCase() ?? null,
+    aircraftType: optionalText(body.aircraftType, 'aircraftType'),
     expiresOn: requireDate(body.expiresOn, 'expiresOn'),
   }
 }

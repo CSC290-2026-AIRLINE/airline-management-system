@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
 import {
   BuildPairingService,
   type BuildParams,
@@ -6,10 +6,13 @@ import {
   type CommitResult,
   type GenerateResult,
   type DeletePairingResult,
+  type FlightImpactRow,
   type PairingListResult,
   type SaveLegInput,
   type SaveLegsResult,
 } from './build-pairing.service'
+import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
+import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
  * Feature 8 · Step 2 — build pairings.
@@ -19,6 +22,7 @@ import {
  * helper and every handler gets the same `YYYY-MM-DD` and IATA validation.
  */
 @Controller('crew-rostering/build-pairing')
+@UseGuards(StaffOnlyGuard)
 export class BuildPairingController {
   constructor(private readonly buildPairingService: BuildPairingService) {}
 
@@ -37,17 +41,17 @@ export class BuildPairingController {
     return this.buildPairingService.generatePairings(parseBuildParams(asObject(body)))
   }
 
+  /** The pairings and crew a change to this flight affects. Feature 2 uses it to re-check rosters. */
+  @Get('flights/:flightId/impact')
+  async flightImpact(@Param('flightId') flightId: string): Promise<FlightImpactRow> {
+    return this.buildPairingService.flightImpact(requireUuid(flightId, 'flightId'))
+  }
+
   /** Stores the chosen pairings and hands them to the window's draft roster run. */
   @Post('pairings/commit')
   async commitPairings(@Body() body: unknown): Promise<CommitResult> {
     const source = asObject(body)
     return this.buildPairingService.commitPairings(parseBuildParams(source), parseDrafts(source.pairings))
-  }
-
-  /** Deletes pairings stored by an earlier version of this step that were never committed. */
-  @Delete('pairings')
-  async clearPairings(@Query() query: Record<string, string | undefined>): Promise<{ deleted: number; kept: number }> {
-    return this.buildPairingService.clearPairings(parseBuildParams(query))
   }
 
   @Put('pairings/:pairingId/legs')
@@ -63,32 +67,6 @@ export class BuildPairingController {
 
 /* ── input parsing ──────────────────────────────────────────────────────────
  * Inline rather than in a DTO folder, as this feature requires. */
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-function asObject(body: unknown): Record<string, unknown> {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new BadRequestException('Request body must be a JSON object')
-  return body as Record<string, unknown>
-}
-
-function requireText(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new BadRequestException(`${field} is required`)
-  return value.trim()
-}
-
-/** Ids reach Postgres as UUID parameters, so a malformed one is a 400 here rather than a 500 there. */
-function requireUuid(value: unknown, field: string): string {
-  const text = requireText(value, field)
-  if (!UUID.test(text)) throw new BadRequestException(`${field} must be a UUID`)
-  return text
-}
-
-function requireDate(value: unknown, field: string): string {
-  const text = requireText(value, field)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || Number.isNaN(Date.parse(`${text}T00:00:00.000Z`)))
-    throw new BadRequestException(`${field} must be a YYYY-MM-DD date`)
-  return text
-}
 
 function parseBuildParams(source: Record<string, unknown>): BuildParams {
   const dateFrom = requireDate(source.dateFrom, 'dateFrom')

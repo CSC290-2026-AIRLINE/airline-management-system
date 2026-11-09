@@ -1,7 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
+import { loadBaseContext } from '../base-context'
 import { LOCAL_MISS_RATE, POLICE_SHORT_RATE, pickOne } from './random-pick'
+import { isoDate, isRestBetween, shortName } from '../crew-format'
 
 /**
  * Feature 8 · Step 3 — assign crew.
@@ -77,6 +79,18 @@ export interface AssignCrewParams {
   dateTo: string
   /** IATA base. */
   base: string
+}
+
+/** How auto-assign picks people. */
+export interface AutoAssignOptions {
+  /**
+   * Demo mode: now and then a seat gets someone who is not rested, a local speaker is skipped or
+   * a police officer is left out, so Ops have breaks to fix. Off by default, so a normal run
+   * picks only legal crew and a break comes only from a real shortage.
+   */
+  demoBreaks?: boolean
+  /** The random source; fixed in tests. */
+  random?: () => number
 }
 
 export interface RosterRunRow {
@@ -345,7 +359,7 @@ export class AssignCrewService {
    * so a re-run is a re-crew rather than a second set of seats. Rows Ops added by hand
    * (`assigned_by = 'ops'`) stay, and the seats they fill are not filled again.
    */
-  async autoAssign(rosterRunId: string, pairingIds: string[]): Promise<RunResult> {
+  async autoAssign(rosterRunId: string, pairingIds: string[], options: AutoAssignOptions = {}): Promise<RunResult> {
     const { run, pairings } = await this.loadRun(rosterRunId)
     if (run.status === 'published') throw new ConflictException('This roster is published and can no longer be crewed automatically')
 
@@ -376,7 +390,7 @@ export class AssignCrewService {
 
     const rows: Prisma.pairing_leg_assignmentCreateManyInput[] = []
     for (const pairing of targets) {
-      const plan = this.planPairing(pairing, pool, busy)
+      const plan = this.planPairing(pairing, pool, busy, options)
       for (const leg of pairing.legs) {
         const byOps = kept.filter((row) => row.pairing_leg_id === leg.id)
         const onLeg = new Set(byOps.map((row) => row.crew_id))
@@ -407,7 +421,10 @@ export class AssignCrewService {
         })
         if (raced > 0) throw new ConflictException('Some of this crew were assigned elsewhere while auto-assign ran. Run it again.')
       }
-      await tx.pairing_leg_assignment.deleteMany({ where: { pairing_id: { in: [...targetIds] }, assigned_by: 'auto' } })
+      // Rows already taken off (a sick call or a swap) are history, so only the live automatic rows are replaced.
+      await tx.pairing_leg_assignment.deleteMany({
+        where: { pairing_id: { in: [...targetIds] }, assigned_by: 'auto', unassigned_at: null },
+      })
       if (rows.length > 0) await tx.pairing_leg_assignment.createMany({ data: rows })
     })
 
@@ -441,12 +458,19 @@ export class AssignCrewService {
    * A candidate must hold the seat's role, a licence valid through the last flight date,
    * the fleet of every leg (police travel as passengers and are exempt), a current type
    * rating if a pilot, enough rest either side of the pairing and room under the 28-day
-   * cap. Among those, a person is picked at random; now and then (`BREAK_RATE`) the pick is
-   * someone who is qualified but not rested, so a run has rule breaks for Ops to fix. With nobody
-   * legal a seat stays empty. The chosen people are then marked busy, which the next pairing's
-   * legal picks respect.
+   * cap. Among those, a person is picked at random, a local-language speaker first for the
+   * cabin when one is legal and free, and the police complement is always filled. With nobody
+   * legal a seat stays empty, which is a real `NO_LEGAL_CREW` shortage. Only with `demoBreaks`
+   * does the dice sometimes pick someone qualified but not rested (`BREAK_RATE`), skip the local
+   * speaker or leave a police officer out. The chosen people are then marked busy, which the
+   * next pairing's legal picks respect.
    */
-  private planPairing(pairing: RunPairing, pool: CrewDbRow[], busy: Map<string, BusyLeg[]>): Record<SeatRole, CrewDbRow[]> {
+  private planPairing(
+    pairing: RunPairing,
+    pool: CrewDbRow[],
+    busy: Map<string, BusyLeg[]>,
+    { demoBreaks = false, random = Math.random }: AutoAssignOptions,
+  ): Record<SeatRole, CrewDbRow[]> {
     const { limits } = pairing
     const first = pairing.legs[0]
     const last = pairing.legs[pairing.legs.length - 1]
@@ -484,8 +508,8 @@ export class AssignCrewService {
       const picked: CrewDbRow[] = []
       for (let taken = 0; taken < Math.max(0, count); taken += 1) {
         const legal = pool.filter((member) => eligible(member, seat) && prefer(member))
-        const loose = pool.filter((member) => eligible(member, seat, false) && prefer(member))
-        const member = pickOne(legal, loose, Math.random)
+        const loose = demoBreaks ? pool.filter((member) => eligible(member, seat, false) && prefer(member)) : legal
+        const member = pickOne(legal, loose, random)
         if (!member) break
         chosen.add(member.id)
         picked.push(member)
@@ -506,14 +530,15 @@ export class AssignCrewService {
     for (const languages of languageSets.values()) {
       const have = cabin.filter((member) => speaks(member.languages, languages)).length
       const room = CABIN_CREW_PER_LEG - cabin.length
-      // Now and then the speaker is left to chance, which is what raises NO_LOCAL_CREW.
-      const wanted = Math.random() < LOCAL_MISS_RATE ? 0 : Math.min(room, limits.minLocalCrew - have)
+      // In demo mode the speaker is sometimes left to chance, which is what raises NO_LOCAL_CREW.
+      const wanted = demoBreaks && random() < LOCAL_MISS_RATE ? 0 : Math.min(room, limits.minLocalCrew - have)
       cabin.push(...pick('cabin_crew', wanted, (member) => speaks(member.languages, languages)))
     }
     cabin.push(...pick('cabin_crew', CABIN_CREW_PER_LEG - cabin.length))
 
     const international = pairing.legs.some((leg) => leg.international)
-    const policeWanted = Math.random() < POLICE_SHORT_RATE ? Math.max(0, limits.minPoliceInternational - 1) : limits.minPoliceInternational
+    const policeWanted =
+      demoBreaks && random() < POLICE_SHORT_RATE ? Math.max(0, limits.minPoliceInternational - 1) : limits.minPoliceInternational
     const police = international ? pick('police', policeWanted) : []
 
     const plan: Record<SeatRole, CrewDbRow[]> = { captain, first_officer: firstOfficer, cabin_crew: cabin, police }
@@ -558,7 +583,7 @@ export class AssignCrewService {
     for (const pairing of pairings) {
       const { limits } = pairing
 
-      for (const day of this.dutyDays(pairing.legs, context.timeZone)) {
+      for (const day of this.dutyDays(pairing.legs, limits)) {
         const minutes = this.dutyMinutes(day, limits)
         if (day.length > limits.maxFlightsPerDuty || minutes > limits.maxDutyHours * 60) {
           raise({
@@ -745,12 +770,18 @@ export class AssignCrewService {
     })
   }
 
-  /** Consecutive legs of one pairing that depart on the same local day form one duty. */
-  private dutyDays(legs: Leg[], timeZone: string): Leg[][] {
+  /**
+   * Consecutive legs of one pairing form one duty unless the rest between them (release to the
+   * next report) is at least the minimum rest. A leg landing 23:45 and the next leaving 00:05 is
+   * one duty, not two on either side of midnight.
+   */
+  private dutyDays(legs: Leg[], limits: RuleLimitsRow): Leg[][] {
     const days: Leg[][] = []
     for (const leg of legs) {
       const current = days[days.length - 1]
-      if (current && localDay(current[0].dep, timeZone) === localDay(leg.dep, timeZone)) current.push(leg)
+      const previous = current?.[current.length - 1]
+      if (previous && !isRestBetween(previous.arr, leg.dep, limits.reportMinutes, limits.releaseMinutes, limits.minRestHours))
+        current.push(leg)
       else days.push([leg])
     }
     return days
@@ -762,15 +793,27 @@ export class AssignCrewService {
     return Math.max(0, Math.round((end - start) / 60_000))
   }
 
-  /** A person's duties across every run: their legs grouped by pairing and local day, in time order. */
+  /**
+   * A person's duties across every run, in time order. Within one pairing, legs are one duty
+   * unless the rest between them reaches the minimum; different pairings are always separate
+   * duties, so rest between them is still checked.
+   */
   private personDuties(legs: BusyLeg[], context: Context): { firstLegId: string; start: number; end: number }[] {
-    const groups = new Map<string, BusyLeg[]>()
+    const { reportMinutes, releaseMinutes, minRestHours } = context.defaults
+    const groups: BusyLeg[][] = []
+    const open = new Map<string, BusyLeg[]>()
     for (const leg of [...legs].sort((a, b) => a.dep.getTime() - b.dep.getTime())) {
-      const key = `${leg.pairingId}|${localDay(leg.dep, context.timeZone)}`
-      groups.set(key, [...(groups.get(key) ?? []), leg])
+      const current = open.get(leg.pairingId)
+      const previous = current?.[current.length - 1]
+      if (current && previous && !isRestBetween(previous.arr, leg.dep, reportMinutes, releaseMinutes, minRestHours)) {
+        current.push(leg)
+      } else {
+        const group = [leg]
+        open.set(leg.pairingId, group)
+        groups.push(group)
+      }
     }
-    const { reportMinutes, releaseMinutes } = context.defaults
-    return [...groups.values()]
+    return groups
       .map((group) => ({
         firstLegId: group[0].legId,
         start: group[0].dep.getTime() - reportMinutes * 60_000,
@@ -832,21 +875,10 @@ export class AssignCrewService {
   }
 
   private async loadContext(base: string): Promise<Context> {
-    const [settings, countryRules, airports, languages] = await Promise.all([
-      this.db.crew_setting.findMany({ select: { key: true, value: true } }),
-      this.db.country_legality_rule.findMany({ select: { country_code: true, min_rest_hours: true, max_duty_hours: true } }),
-      this.db.airport.findMany({ select: { iata_code: true, country: true, timezone: true } }),
+    const [{ read, ...shared }, languages] = await Promise.all([
+      loadBaseContext(this.db, base),
       this.db.country_language.findMany({ select: { country_code: true, language_code: true }, orderBy: { language_code: 'asc' } }),
     ])
-
-    const baseAirport = airports.find((airport) => airport.iata_code === base)
-    if (!baseAirport) throw new NotFoundException(`Base ${base} was not found`)
-
-    const setting = new Map(settings.map((row) => [row.key, Number.parseFloat(row.value)]))
-    const read = (key: string, fallback: number): number => {
-      const value = setting.get(key)
-      return value !== undefined && Number.isFinite(value) ? value : fallback
-    }
 
     const countryLanguages = new Map<string, string[]>()
     for (const row of languages)
@@ -864,15 +896,8 @@ export class AssignCrewService {
         reportMinutes: read('report_minutes', 60),
         releaseMinutes: read('release_minutes', 0),
       },
-      countryRules: new Map(
-        countryRules.map((rule) => [
-          rule.country_code,
-          { minRestHours: Number(rule.min_rest_hours), maxDutyHours: Number(rule.max_duty_hours) },
-        ]),
-      ),
-      airportCountry: new Map(airports.map((airport) => [airport.iata_code, airport.country.toLowerCase()])),
       countryLanguages,
-      timeZone: baseAirport.timezone,
+      ...shared,
     }
   }
 
@@ -1022,10 +1047,6 @@ function breakKey(legId: string, rule: string, crewId: string | null, role: stri
   return `${legId}|${rule}|${crewId ?? ''}|${role ?? ''}`
 }
 
-function shortName(member: { first_name: string; last_name: string }): string {
-  return `${member.first_name.charAt(0)}. ${member.last_name}`
-}
-
 function toCrewSummary(member: CrewDbRow): CrewSummaryRow {
   return {
     id: member.id,
@@ -1034,16 +1055,6 @@ function toCrewSummary(member: CrewDbRow): CrewSummaryRow {
     role: member.role as SeatRole,
     languages: member.languages,
   }
-}
-
-/** `YYYY-MM-DD` of a `DATE` column, which Prisma returns at UTC midnight. */
-function isoDate(value: Date): string {
-  return value.toISOString().slice(0, 10)
-}
-
-/** `YYYY-MM-DD` of an instant in the given timezone. */
-function localDay(instant: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant)
 }
 
 function hours(value: number): string {

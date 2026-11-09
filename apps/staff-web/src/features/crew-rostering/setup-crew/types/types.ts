@@ -60,6 +60,8 @@ export interface CrewMember {
   employeeNo: string
   role: CrewRole
   base: AirportCode
+  /** Name of the country the base airport is in; where the crew member counts as local. */
+  baseCountry: string
   fleet: string
   /** Spoken language codes, e.g. `['th', 'en']`. Order is display order. */
   languages: string[]

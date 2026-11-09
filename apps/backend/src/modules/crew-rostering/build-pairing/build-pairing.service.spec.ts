@@ -127,3 +127,113 @@ describe('BuildPairingService.commitPairings', () => {
     )
   })
 })
+
+/** Just enough of `DbService` for `saveLegs` on a pairing in a draft run, and for dropping drafts. */
+function setupEdit() {
+  const out = flight('1', 'BKK', 'NRT', 1, 7)
+  const back = flight('2', 'NRT', 'BKK', 9, 15)
+  const row = {
+    id: 'pairing-1',
+    code: 'P-1',
+    base_airport: 'BKK',
+    pairing_leg: [
+      { id: 'leg-1', added_by: 'auto', flight: out },
+      { id: 'leg-2', added_by: 'auto', flight: back },
+    ],
+    roster_run_pairing: { roster_run: { id: 'run-1', status: 'draft' } },
+  }
+  const tx = {
+    rule_break: { deleteMany: jest.fn() },
+    pairing_leg_assignment: { deleteMany: jest.fn() },
+    roster_run_pairing: { deleteMany: jest.fn() },
+    pairing_leg: { deleteMany: jest.fn(), createMany: jest.fn() },
+    pairing: { update: jest.fn() },
+  }
+  const db = {
+    crew_setting: { findMany: jest.fn().mockResolvedValue([]) },
+    country_legality_rule: { findMany: jest.fn().mockResolvedValue([]) },
+    airport: {
+      findMany: jest.fn().mockResolvedValue([
+        { iata_code: 'BKK', country: 'TH', timezone: 'Asia/Bangkok' },
+        { iata_code: 'NRT', country: 'JP', timezone: 'Asia/Tokyo' },
+      ]),
+    },
+    pairing: {
+      findUnique: jest.fn().mockResolvedValue(row),
+      findMany: jest.fn().mockResolvedValue([{ id: row.id, roster_run_pairing: { pairing_id: row.id } }]),
+      deleteMany: jest.fn(),
+    },
+    flight: { findMany: jest.fn().mockResolvedValue([{ id: '1', flight_number: 'FD1', pairing_leg: { pairing_id: 'pairing-1' } }]) },
+    $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)),
+  }
+  return { service: new BuildPairingService(db as unknown as DbService), tx, db }
+}
+
+describe('BuildPairingService.saveLegs on a committed pairing', () => {
+  it('keeps the pairing in its run and clears only the legs taken off', async () => {
+    const { service, tx } = setupEdit()
+
+    const result = await service.saveLegs('pairing-1', [leg('1')])
+
+    expect(tx.roster_run_pairing.deleteMany).not.toHaveBeenCalled()
+    expect(tx.rule_break.deleteMany).toHaveBeenCalledWith({ where: { pairing_leg_id: { in: ['leg-2'] } } })
+    expect(tx.pairing_leg_assignment.deleteMany).toHaveBeenCalledWith({ where: { pairing_leg_id: { in: ['leg-2'] } } })
+    expect(tx.pairing_leg.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['leg-2'] } } })
+    expect(result.withdrawnFromRun).toBe(false)
+  })
+
+  it('is still in the run after the next Generate, which drops only pairings outside every run', async () => {
+    const { service, db } = setupEdit()
+    await service.saveLegs('pairing-1', [leg('1')])
+
+    const result = await (service as unknown as { discardDrafts: (p: typeof params) => Promise<unknown> }).discardDrafts(params)
+
+    expect(db.pairing.deleteMany).not.toHaveBeenCalled()
+    expect(result).toEqual({ deleted: 0, kept: 1 })
+  })
+})
+
+describe('BuildPairingService.flightImpact', () => {
+  const FLIGHT = '11111111-1111-4111-8111-111111111111'
+  function impactService(options: { pairing?: boolean }) {
+    const db = {
+      flight: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: FLIGHT,
+          flight_number: 'FD1',
+          pairing_leg: options.pairing
+            ? { pairing: { id: 'pairing-1', code: 'P-1', roster_run_pairing: { roster_run: { id: 'run-1', status: 'draft' } } } }
+            : null,
+        }),
+      },
+      pairing_leg_assignment: {
+        findMany: jest.fn().mockResolvedValue([
+          { role: 'captain', crew: { id: 'c-1', first_name: 'Somchai', last_name: 'Kittipong' } },
+          // The same person on the next leg of the pairing counts once.
+          { role: 'captain', crew: { id: 'c-1', first_name: 'Somchai', last_name: 'Kittipong' } },
+          { role: 'police', crew: { id: 'c-2', first_name: 'Anan', last_name: 'Sukhum' } },
+        ]),
+      },
+    }
+    return { service: new BuildPairingService(db as unknown as DbService), db }
+  }
+
+  it('counts the pairings that use the flight and the crew on them once each', async () => {
+    const { service, db } = impactService({ pairing: true })
+
+    const result = await service.flightImpact(FLIGHT)
+
+    expect(result).toMatchObject({ flightNumber: 'FD1', pairingCount: 1, crewCount: 2 })
+    expect(result.pairings[0]).toMatchObject({ code: 'P-1', rosterRunId: 'run-1', rosterRunStatus: 'draft' })
+    expect(db.pairing_leg_assignment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { pairing_id: 'pairing-1', unassigned_at: null } }),
+    )
+  })
+
+  it('reports nothing affected for a flight in no pairing, and does not read assignments', async () => {
+    const { service, db } = impactService({ pairing: false })
+
+    expect(await service.flightImpact(FLIGHT)).toMatchObject({ pairings: [], pairingCount: 0, crewCount: 0 })
+    expect(db.pairing_leg_assignment.findMany).not.toHaveBeenCalled()
+  })
+})

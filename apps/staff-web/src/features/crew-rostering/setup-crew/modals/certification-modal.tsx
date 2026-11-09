@@ -24,9 +24,9 @@ export function CertificationModal({
   certification: Certification | null
   fleets: readonly string[]
   onCancel: () => void
-  onSubmit: (input: CertificationInput) => void
+  onSubmit: (input: CertificationInput) => void | Promise<void>
   /** Only the edit variant renders `Remove`, so only it has to supply this. */
-  onRemove?: () => void
+  onRemove?: () => void | Promise<void>
 }) {
   const [form, setForm] = useState<CertificationInput>(
     certification

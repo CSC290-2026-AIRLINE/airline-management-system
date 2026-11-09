@@ -12,6 +12,7 @@ import {
   type RunPairing,
   type SeatRole,
 } from '../assign-crew/assign-crew.service'
+import { isoDate, shortName } from '../crew-format'
 
 /**
  * Feature 8 · Step 4 — fix and publish.
@@ -83,6 +84,8 @@ export interface RosterFactRow {
 }
 
 export interface RemovedMemberRow {
+  /** Who came off, so the cover picker never offers the same person back. */
+  crewId: string
   name: string
   role: SeatRole
   reason: string
@@ -334,6 +337,8 @@ export class FixPublishService {
     const role = plan.role
 
     const outgoing = await this.db.$transaction(async (tx) => {
+      // Run first, then crew: publish takes the run lock alone, so the two can never wait on each other in a circle.
+      await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${brk.roster_run_id}::uuid FOR UPDATE`
       await tx.$queryRaw`SELECT id FROM crew WHERE id = ${replacementId}::uuid FOR UPDATE`
 
       const fresh = await this.loadWorld(tx, brk.roster_run_id)
@@ -345,7 +350,7 @@ export class FixPublishService {
       }
 
       const scopeIds = freshPlan.scope.map((item) => item.id)
-      const leaving = fresh.assignments.filter((row) => scopeIds.includes(row.legId) && this.isLeaving(row, freshPlan, fresh))
+      const leaving = this.leavingRows(freshPlan, fresh)
       if (leaving.length > 0) {
         await tx.pairing_leg_assignment.updateMany({
           where: { id: { in: leaving.map((row) => row.id) } },
@@ -465,6 +470,7 @@ export class FixPublishService {
     const name = shortName(row.crew)
     const flightNumber = row.pairing_leg.flight.flight_number
     await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
       await tx.pairing_leg_assignment.update({ where: { id: row.id }, data: { unassigned_at: new Date(), reason: input.reason } })
       await tx.audit_log.create({
         data: {
@@ -503,31 +509,45 @@ export class FixPublishService {
     if (!run) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
     if (run.status === 'published') throw new ConflictException('This roster is already published')
 
-    await this.assignCrew.check(rosterRunId)
+    await this.db.$transaction(
+      async (tx) => {
+        // The run row is locked before anything is read, so a swap or sick call cannot slip in between the check and
+        // the flip, and a second publish waits here and then finds the run already published.
+        const [locked] = await tx.$queryRaw<{ status: string }[]>`SELECT status FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
+        if (!locked) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
+        if (locked.status === 'published') throw new ConflictException('This roster is already published')
 
-    await this.db.$transaction(async (tx) => {
-      const pairings = await tx.roster_run_pairing.count({ where: { roster_run_id: rosterRunId } })
-      if (pairings === 0) throw new ConflictException('ROSTER_EMPTY · Commit at least one pairing in Build pairings before publishing')
-      const open = await tx.rule_break.count({ where: { roster_run_id: rosterRunId, resolved_at: null } })
-      if (open > 0) throw new ConflictException(`ROSTER_HAS_BREAKS · close ${open} open ${open === 1 ? 'break' : 'breaks'} to publish`)
+        // Checked again under the lock, so what is counted below is the roster as it stands now.
+        await this.assignCrew.check(rosterRunId)
 
-      const now = new Date()
-      await tx.roster_run.update({ where: { id: rosterRunId }, data: { status: 'published', published_at: now, updated_at: now } })
-      await tx.audit_log.create({
-        data: {
-          occurred_at: now,
-          actor_type: 'staff',
-          actor_id: actorUserId ?? null,
-          source_feature: '8',
-          action: 'status_change',
-          entity_type: 'roster_run',
-          entity_id: rosterRunId,
-          summary: 'Roster published',
-          before: { status: 'draft' },
-          after: { status: 'published', published_at: now.toISOString() },
-        },
-      })
-    })
+        const pairings = await tx.roster_run_pairing.count({ where: { roster_run_id: rosterRunId } })
+        if (pairings === 0) throw new ConflictException('ROSTER_EMPTY · Commit at least one pairing in Build pairings before publishing')
+        const open = await tx.rule_break.count({ where: { roster_run_id: rosterRunId, resolved_at: null } })
+        if (open > 0) throw new ConflictException(`ROSTER_HAS_BREAKS · close ${open} open ${open === 1 ? 'break' : 'breaks'} to publish`)
+
+        const now = new Date()
+        const flipped = await tx.roster_run.updateMany({
+          where: { id: rosterRunId, status: 'draft' },
+          data: { status: 'published', published_at: now, updated_at: now },
+        })
+        if (flipped.count === 0) throw new ConflictException('This roster is already published')
+        await tx.audit_log.create({
+          data: {
+            occurred_at: now,
+            actor_type: 'staff',
+            actor_id: actorUserId ?? null,
+            source_feature: '8',
+            action: 'status_change',
+            entity_type: 'roster_run',
+            entity_id: rosterRunId,
+            summary: 'Roster published',
+            before: { status: 'draft' },
+            after: { status: 'published', published_at: now.toISOString() },
+          },
+        })
+      },
+      { timeout: 30_000 },
+    )
 
     return this.buildState(rosterRunId)
   }
@@ -732,15 +752,34 @@ export class FixPublishService {
     return none('This rule is about the pairing itself, not a person, so a swap cannot close it. Change the pairing in Build pairings.')
   }
 
-  /** True when the row is the one a swap takes off the roster. */
-  private isLeaving(row: ActiveAssignment, plan: Plan, world: World): boolean {
-    if (plan.mode === 'replace-subject') return row.crewId === plan.subjectId
-    if (plan.mode === 'replace-non-speaker') {
-      if (row.role !== 'cabin_crew') return false
+  /**
+   * The assignments a swap takes off the roster.
+   *
+   * Swapping out a person takes that person off. Closing `NO_LOCAL_CREW` takes **one** cabin crew member who does
+   * not speak the language off each leg, which is what the page says, so the cabin keeps its size: one comes off,
+   * the speaker goes on. They are picked by name so the same swap always lets the same person go.
+   */
+  private leavingRows(plan: Plan, world: World): ActiveAssignment[] {
+    const scopeIds = new Set(plan.scope.map((leg) => leg.id))
+    const onScope = world.assignments.filter((row) => scopeIds.has(row.legId))
+
+    if (plan.mode === 'replace-subject') return onScope.filter((row) => row.crewId === plan.subjectId)
+    if (plan.mode !== 'replace-non-speaker') return []
+
+    const nameOf = (row: ActiveAssignment) => {
       const member = world.crewById.get(row.crewId)
-      return !!member && !plan.languages.some((language) => member.languages.includes(language))
+      return member ? `${member.last_name} ${member.first_name}` : ''
     }
-    return false
+    const nonSpeakers = onScope
+      .filter((row) => {
+        const member = world.crewById.get(row.crewId)
+        return row.role === 'cabin_crew' && !!member && !plan.languages.some((language) => member.languages.includes(language))
+      })
+      .sort((a, b) => nameOf(a).localeCompare(nameOf(b)) || a.id.localeCompare(b.id))
+
+    const onePerLeg = new Map<string, ActiveAssignment>()
+    for (const row of nonSpeakers) if (!onePerLeg.has(row.legId)) onePerLeg.set(row.legId, row)
+    return [...onePerLeg.values()]
   }
 
   private replacementSet(plan: Plan, world: World): ReplacementSetRow {
@@ -788,8 +827,19 @@ export class FixPublishService {
     const model = scope[0]?.aircraftType ?? ''
     const role = member.role as SeatRole
     const isPilot = role === 'captain' || role === 'first_officer'
+    // A sick call leaves the seat empty with no subject, so the person who came off has to be ruled out here.
+    const cameOff = scope.some((leg) => world.removed.get(`${leg.id}|${member.role}`)?.crewId === member.id)
+    // The picker already filters on both, so these only bite when a swap is asked for directly: the seat is the
+    // plan's role, and nobody takes a second seat on a leg they are already crewed on.
+    const alreadyOnLeg = world.assignments.some((item) => scopeIds.has(item.legId) && item.crewId === member.id)
     let eligible: string | undefined
-    if (isoDate(member.licence_expires_on) < lastDate) {
+    if (plan.role !== null && member.role !== plan.role) {
+      eligible = `${shortName(member)} is ${ROLE_NOUN[member.role as SeatRole].one}, not ${ROLE_NOUN[plan.role].one}.`
+    } else if (alreadyOnLeg) {
+      eligible = `${shortName(member)} is already crewed on this flight.`
+    } else if (cameOff) {
+      eligible = `${shortName(member)} came off this seat and cannot cover it.`
+    } else if (isoDate(member.licence_expires_on) < lastDate) {
       eligible = `Licence expires ${isoDate(member.licence_expires_on)}, before ${lastDate}.`
     } else if (role !== 'police' && scope.some((leg) => leg.aircraftType !== member.fleet_aircraft_type)) {
       eligible = `Flies the ${member.fleet_aircraft_type}, but this flight is a ${model}.`
@@ -902,6 +952,7 @@ export class FixPublishService {
         where: { pairing_id: { in: pairingIds }, unassigned_at: { not: null } },
         select: {
           pairing_leg_id: true,
+          crew_id: true,
           role: true,
           reason: true,
           unassigned_at: true,
@@ -930,7 +981,7 @@ export class FixPublishService {
     for (const row of off) {
       const key = `${row.pairing_leg_id}|${row.role}`
       if (removed.has(key) || (row.reason ?? '').startsWith(SWAP_REASON)) continue
-      removed.set(key, { name: shortName(row.crew), role: row.role as SeatRole, reason: row.reason ?? 'Removed' })
+      removed.set(key, { crewId: row.crew_id, name: shortName(row.crew), role: row.role as SeatRole, reason: row.reason ?? 'Removed' })
     }
 
     return {
@@ -976,15 +1027,6 @@ export class FixPublishService {
     if (!row) throw new NotFoundException(`Break ${breakId} was not found`)
     return row
   }
-}
-
-function shortName(member: { first_name: string; last_name: string }): string {
-  return `${member.first_name.charAt(0)}. ${member.last_name}`
-}
-
-/** `YYYY-MM-DD` of a `DATE` column, which Prisma returns at UTC midnight. */
-function isoDate(value: Date): string {
-  return value.toISOString().slice(0, 10)
 }
 
 /** `15 Sep, 12:30` in the given timezone. */

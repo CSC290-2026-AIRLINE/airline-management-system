@@ -62,7 +62,7 @@ export function RosterTable({ assignments, openBreaks, updated, onSickCall, onFi
                 <th
                   key={heading}
                   scope="col"
-                  className="px-3 py-3 text-[11px] font-semibold tracking-widest text-primary-text/55 uppercase"
+                  className={`px-3 py-3 text-[11px] font-semibold tracking-widest text-primary-text/55 uppercase ${heading === 'Action' ? 'text-center' : ''}`}
                 >
                   {heading}
                 </th>
@@ -189,7 +189,7 @@ function RosterRow({
       <td className="px-3 py-3.5">
         <StatusPill state={state} />
       </td>
-      <td className="px-3 py-3.5 text-right whitespace-nowrap">
+      <td className="px-3 py-3.5 text-center whitespace-nowrap">
         <ActionButton state={state} legId={assignment.leg.legId} onSickCall={onSickCall} onFindCover={onFindCover} />
       </td>
     </tr>
@@ -209,13 +209,13 @@ function ActionButton({
 }) {
   if (state.kind === 'ok') {
     return (
-      <Button variant="outline" className="px-3! py-1.5! text-xs" onClick={() => onSickCall(legId)}>
+      <Button variant="outline" className="min-w-28 px-3! py-1.5! text-xs" onClick={() => onSickCall(legId)}>
         Sick call
       </Button>
     )
   }
   return (
-    <Button className="px-3! py-1.5! text-xs" onClick={() => onFindCover(legId)}>
+    <Button className="min-w-28 px-3! py-1.5! text-xs" onClick={() => onFindCover(legId)}>
       {state.kind === 'uncovered' ? 'Find cover →' : 'Review →'}
     </Button>
   )
