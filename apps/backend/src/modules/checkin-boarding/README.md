@@ -92,7 +92,8 @@ decided by `register('memory' | 'db')` in `checkin-boarding.module.ts` — one l
   Dana Kowalski matches both rules.
 - **Police** (`FixturePolice`) — feature 8's air-marshal service per flight. The marshal is recognised by his
   passport number (`TH1234567`, Narong Sukjai) in both modes: `DbBookings` reads `passenger.passport_number`, and the
-  fixture resolves the passport behind the passenger.
+  fixture resolves the passport behind the passenger. The boarding group reads `booking.isPolice` as well, so the
+  marshal boards first even when the police service knows nothing about the flight.
 - **Tiers** (`FixtureTiers`) — feature 11's tier lookup. Nobody has a tier, so there is no bag bonus and nobody is
   moved up a boarding group by tier.
 - **Notifications** (`LoggerNotify`) — feature 13's notification service. The four type codes are already the ones
@@ -164,7 +165,9 @@ every row is looked up on its natural key first, so a second run changes nothing
   gates themselves, the example visa rules and the `bag_tag_airline_number` setting come from the shared
   `seedCheckIn()`.
 - The demo customer, the 14 passengers of the prototype, and for each of them one booking, one segment, one booking
-  passenger and one coupon (the coupon carries a ticket number from the database's own sequence).
+  passenger and one coupon (the coupon carries a ticket number from the database's own sequence). The special
+  assistance of the prototype (`WCHR` for Somchai Prasert, `UMNR` for Ji-woo Park) is written as the live
+  `booking_service_request` rows of feature 3.
 
 `F6_DEMO_DEP_AT` (an ISO date, in the environment of the seed) pins the departure of FY 204; FY 318 follows fifteen
 minutes later. Without it the departure is the next quarter of an hour at least three hours out, so the check-in
@@ -202,13 +205,17 @@ id. When the confirmation fails, the payment is left behind on purpose and the a
 - **The name on the passport.** The schema stores the last four characters of the passport number only, so the staff
   view answers `nameOnPassport: null` and the frontends show "—". The name itself lives on the passenger row of
   feature 7; no column is requested for it here.
-- **Special assistance.** Feature 3's `booking_service_request` table carries the codes, but `DbBookings` does not
-  read it yet, so `specialAssistance` is empty and boarding group 1 (special assistance) is empty in `db` mode. In
-  the memory mode the fixture keeps the prototype's codes (`WCHR` for Somchai Prasert, `UMNR` for Ji-woo Park).
 - **The seat layout.** There is no seat-layout table (the layout JSON of `aircraft_type` belongs to feature 9), so
   the 20-row A–F layout stays in `providers/fixtures.ts` (`SEAT_LAYOUT`) and both modes read it. What is persisted is
   `seat_assignment`: `held`, `assigned` or `released`, with `hold_expires_at`, `fee_amount` and `payment_id`. A hold
   that ran out is swept before the next hold is written, because the unique index still counts it.
+
+### Special assistance
+
+The codes come from feature 3: `DbBookings` reads the live `booking_service_request` rows of the passenger (`requested`
+or `accepted`), so `specialAssistance` is filled in `db` mode and boarding group 1 works there as well. The memory mode
+keeps the prototype's codes (`WCHR` for Somchai Prasert, `UMNR` for Ji-woo Park) and the seed writes the same codes
+into the table.
 
 ### One action clears both document flags
 
@@ -258,7 +265,7 @@ shown by the demo script.
 - **Staff roles** are not enforced: `DbStaffIdentity` only reads `user.type`. Feature 1's roles decide who may do what.
 - **F3 seat API**: the seat map, the 5-minute hold, confirm and release are ours. `DbSeats` writes the holds into
   `seat_assignment` and reads the layout from the fixture; replace the provider with G13's contract when it exists.
-  Feature 3's special-assistance codes are not read yet either, so boarding group 1 is empty in `db` mode.
+  Feature 3's special-assistance codes are read from `booking_service_request` (`requested` or `accepted`).
 - **F11 tier**: `FixtureTiers` returns none, so nobody gets the tier bag bonus or boarding group 2/3 by tier.
 - **F5 checkout**: `DbPayments` writes the `payment` row itself, with `provider = 'fake'`. When feature 5 exposes a
   checkout, that provider is the one file to replace.

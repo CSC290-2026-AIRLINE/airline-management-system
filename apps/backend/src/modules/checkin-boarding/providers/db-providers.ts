@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import type { Prisma } from '@backend/db/generated/prisma/client'
 import type { Cabin, CarryOnAllowance, SeatType } from '../api-types'
 import { DEFAULT_WINDOW_SETTINGS } from '../domain/window'
 import type { WindowSettings } from '../domain/window'
@@ -87,20 +88,22 @@ interface CouponRow {
   booking_passenger: {
     booking: { id: string; booking_reference: string; status: string; customer: { user_id: string } }
     passenger: { first_name: string; last_name: string; passport_number: string | null }
+    booking_service_request: { service_code: string }[]
   }
   booking_segment: { cabin: string; fare_class: { code: string } | null }
 }
 
-/** The coupon of a booking passenger: the booking, the passenger and the segment behind it. */
+/** The coupon of a booking passenger: the booking, the passenger, the segment and the service requests behind it. */
 const COUPON_INCLUDE = {
   booking_passenger: {
     include: {
       booking: { include: { customer: { select: { user_id: true } } } },
       passenger: { select: { first_name: true, last_name: true, passport_number: true } },
+      booking_service_request: { where: { status: { in: ['requested', 'accepted'] } }, select: { service_code: true } },
     },
   },
   booking_segment: { include: { fare_class: { select: { code: true } } } },
-} as const
+} satisfies Prisma.booking_couponInclude
 
 /** Feature 3 owns the bookings; feature 6 reads the passenger behind a PNR. */
 @Injectable()
@@ -155,8 +158,8 @@ const toBookingPassenger = (row: CouponRow): BookingPassenger => {
     lastName: passenger.last_name,
     cabin: toCabin(row.booking_segment.cabin),
     fareClass: row.booking_segment.fare_class?.code ?? '',
-    // shortcut: feature 3 has no special assistance table yet, so nobody is marked.
-    specialAssistance: [],
+    // The special assistance codes of feature 3: the live service requests of the passenger.
+    specialAssistance: row.booking_passenger.booking_service_request.map((request) => request.service_code),
     // shortcut: feature 8 has no air marshal service, the demo passports stand in for it.
     isPolice: passenger.passport_number !== null && POLICE_PASSPORTS.includes(passenger.passport_number),
     customerUserId: booking.customer.user_id,

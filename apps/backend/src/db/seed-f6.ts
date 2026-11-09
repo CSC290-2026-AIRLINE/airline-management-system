@@ -96,6 +96,7 @@ export async function seedFeature6(prisma: PrismaClient): Promise<void> {
   }
 
   const customer = await seedDemoCustomer(prisma, DEMO_PASSENGERS)
+  let serviceRequests = 0
   for (const passenger of DEMO_PASSENGERS) {
     const flight = flights.find((f) => f.demo.key === passenger.flight)!
     const fareClass = fareClasses.get(passenger.fareClass)!
@@ -150,6 +151,13 @@ export async function seedFeature6(prisma: PrismaClient): Promise<void> {
         },
       })
     }
+    serviceRequests += await seedServiceRequests(prisma, {
+      bookingId: booking.id,
+      bookingPassengerId: bookingPassenger.id,
+      segmentId: segment.id,
+      codes: passenger.specialAssistance,
+      now,
+    })
   }
 
   console.log(`Seeded the Feature 6 network: ${airports} airports, 2 routes, 1 aircraft type, ${aircraft.size} aircraft, 2 flights.`)
@@ -157,8 +165,42 @@ export async function seedFeature6(prisma: PrismaClient): Promise<void> {
     `Seeded the Feature 6 pricing: ${fareClasses.size} fare classes, ${fareClasses.size} baggage rates, ${SEAT_FEES.length} seat fees.`,
   )
   console.log(
-    `Seeded the Feature 6 bookings: 1 demo customer, ${DEMO_PASSENGERS.length} passengers, ${DEMO_PASSENGERS.length} bookings and coupons.`,
+    `Seeded the Feature 6 bookings: 1 demo customer, ${DEMO_PASSENGERS.length} passengers, ${DEMO_PASSENGERS.length} bookings and coupons, ${serviceRequests} service requests.`,
   )
+}
+
+/**
+ * The special assistance codes of a demo passenger: one live service request of feature 3 per code. A code that is
+ * already on the books is left alone, so a second run of the seed changes nothing.
+ */
+async function seedServiceRequests(
+  prisma: PrismaClient,
+  input: { bookingId: string; bookingPassengerId: string; segmentId: string; codes: string[]; now: Date },
+): Promise<number> {
+  let live = 0
+  for (const code of input.codes) {
+    const existing = await prisma.booking_service_request.findFirst({
+      where: {
+        booking_passenger_id: input.bookingPassengerId,
+        service_code: code,
+        status: { in: ['requested', 'accepted'] },
+      },
+    })
+    if (!existing) {
+      await prisma.booking_service_request.create({
+        data: {
+          booking_id: input.bookingId,
+          booking_passenger_id: input.bookingPassengerId,
+          booking_segment_id: input.segmentId,
+          service_code: code,
+          status: 'accepted',
+          requested_at: input.now,
+        },
+      })
+    }
+    live += 1
+  }
+  return live
 }
 
 async function seedAirports(prisma: PrismaClient): Promise<number> {

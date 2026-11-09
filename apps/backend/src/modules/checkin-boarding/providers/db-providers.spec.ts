@@ -19,6 +19,7 @@ const couponRow = (over: Record<string, unknown> = {}) => ({
     id: 'bp-1',
     booking: { id: 'bk-1', booking_reference: 'PL224A', status: 'confirmed', customer: { user_id: 'u-1' } },
     passenger: { first_name: 'Narong', last_name: 'Sukjai', passport_number: 'TH1234567' },
+    booking_service_request: [] as { service_code: string }[],
   },
   booking_segment: { cabin: 'economy', fare_class: { code: 'Y' } },
   ...over,
@@ -76,7 +77,16 @@ describe('DbBookings', () => {
     expect(booking.isPolice).toBe(true)
   })
 
-  it('feature 3 has no special assistance table yet', async () => {
+  it('the special assistance codes come from the service requests of feature 3', async () => {
+    const row = couponRow()
+    row.booking_passenger.booking_service_request = [{ service_code: 'WCHR' }]
+    const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([row]), findFirst: jest.fn() } }
+    const bookings = new DbBookings(db as unknown as DbService)
+    const [booking] = await bookings.findByPnrAndLastName('PL224A', 'sukjai')
+    expect(booking.specialAssistance).toEqual(['WCHR'])
+  })
+
+  it('a passenger without a service request has no special assistance', async () => {
     const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([couponRow()]), findFirst: jest.fn() } }
     const bookings = new DbBookings(db as unknown as DbService)
     const [booking] = await bookings.findByPnrAndLastName('PL224A', 'sukjai')
