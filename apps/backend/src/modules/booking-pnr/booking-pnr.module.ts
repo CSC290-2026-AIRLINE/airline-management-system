@@ -23,7 +23,7 @@ import { BookingReadStub } from './stubs/booking-read.stub'
 import { CancelForFlightStub } from './stubs/cancel-for-flight.stub'
 import { CheckoutStub } from './stubs/checkout.stub'
 import { LocalFlightEventBus } from './stubs/flight-event-bus.stub'
-import { InventoryStub } from './stubs/inventory.stub'
+import { InventoryService } from './inventory/inventory.service'
 import { LoyaltyStub } from './stubs/loyalty.stub'
 import { PricingStub } from './stubs/pricing.stub'
 import { RefundStub } from './stubs/refund.stub'
@@ -38,7 +38,7 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },
     { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
-    { provide: INVENTORY_PORT, useClass: InventoryStub },
+    { provide: INVENTORY_PORT, useClass: InventoryService },
     { provide: SEAT_PORT, useClass: SeatStub },
     { provide: SERVICE_REQUEST_PORT, useClass: ServiceRequestStub },
     { provide: PRICING_PORT, useClass: PricingStub },
