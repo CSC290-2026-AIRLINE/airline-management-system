@@ -1,0 +1,430 @@
+.f3-lookup {
+  box-sizing: border-box;
+  min-height: 100svh;
+  background: #f7f9fc;
+  color: #0a1424;
+  font:
+    14px/1.5 Inter,
+    'Segoe UI',
+    sans-serif;
+  text-align: left;
+  padding: 36px 28px 52px;
+  color-scheme: light;
+}
+.f3-lookup * {
+  box-sizing: border-box;
+}
+.f3-lookup h1 {
+  font-size: 30px;
+  font-weight: 700;
+  margin: 2px 0 8px;
+  color: #0a1424;
+}
+.f3-lookup h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+.f3-lookup h3 {
+  font-size: 16px;
+  font-weight: 650;
+  margin: 20px 0 12px;
+}
+.f3-lookup p {
+  margin: 0;
+}
+.f3-lookup a {
+  color: #102544;
+  text-underline-offset: 4px;
+}
+.f3-lookup :is(button, a, input, select):focus-visible {
+  outline: 3px solid #fca311;
+  outline-offset: 3px;
+}
+.f3-lookup button {
+  cursor: pointer;
+}
+.f3-lookup button:disabled {
+  cursor: not-allowed;
+}
+.f3-lookup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.f3-lookup-heading a {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.f3-lookup-eyebrow {
+  color: #677287;
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+}
+.f3-lookup-muted {
+  color: #677287;
+}
+.f3-lookup-card {
+  margin-top: 24px;
+  background: white;
+  border: 1px solid #d9dfe9;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.f3-lookup-filters {
+  padding: 22px;
+}
+.f3-lookup label {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.f3-lookup :is(input:not([type='checkbox']), select) {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid #d9dfe9;
+  border-radius: 7px;
+  padding: 9px 12px;
+  font: inherit;
+  background: white;
+  color: #0a1424;
+}
+.f3-lookup select:disabled {
+  color: #7b8494;
+  background: #f1f4f9;
+}
+.f3-lookup-filter-row {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1fr auto;
+  gap: 16px;
+  margin-top: 18px;
+  align-items: end;
+}
+.f3-lookup .f3-lookup-primary {
+  min-height: 42px;
+  background: #102544;
+  color: white;
+}
+.f3-lookup-custom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  max-width: 500px;
+  margin-top: 16px;
+}
+.f3-lookup-hint {
+  color: #677287;
+  font-size: 12px;
+  margin-top: 16px !important;
+}
+.f3-lookup-error,
+.f3-lookup-warning,
+.f3-lookup-success {
+  padding: 14px 16px;
+  margin: 16px 0 !important;
+  border-radius: 7px;
+}
+.f3-lookup-error {
+  background: #fdecec;
+  color: #b8171f;
+}
+.f3-lookup-error button {
+  margin-top: 10px;
+}
+.f3-lookup-warning {
+  background: #fef4de;
+  color: #94651c;
+}
+.f3-lookup-success {
+  background: #e4f5e9;
+  color: #1f8a4c;
+}
+.f3-lookup-results-heading {
+  padding: 18px 22px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e6e8ef;
+}
+.f3-lookup-results-heading p {
+  font-weight: 600;
+}
+.f3-lookup-results-heading span {
+  font-size: 12px;
+  color: #677287;
+  text-align: right;
+}
+.f3-lookup-empty {
+  padding: 44px 22px;
+  text-align: center;
+  color: #677287;
+}
+.f3-lookup-empty h2 {
+  color: #0a1424;
+}
+.f3-lookup-table-wrap {
+  overflow-x: auto;
+}
+.f3-lookup table {
+  width: 100%;
+  min-width: 850px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.f3-lookup :is(th, td) {
+  padding: 15px 18px;
+  border-bottom: 1px solid #e6e8ef;
+  text-align: left;
+  vertical-align: middle;
+}
+.f3-lookup th {
+  background: #fbfcfe;
+  color: #677287;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.f3-lookup td small {
+  display: block;
+  color: #677287;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.f3-lookup tbody tr:hover {
+  background: #f8faff;
+}
+.f3-lookup .f3-lookup-right {
+  text-align: right;
+  white-space: nowrap;
+}
+.f3-lookup-reference {
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
+  color: #102544;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  font-weight: 700;
+}
+.f3-lookup-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: #eef2f7;
+  color: #475569;
+  font-size: 11px;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.f3-lookup-chip.is-confirmed {
+  background: #e4f5e9;
+  color: #1f8a4c;
+}
+.f3-lookup-chip.is-held {
+  background: #fef4de;
+  color: #94651c;
+}
+.f3-lookup-chip.is-cancelled {
+  background: #fdecec;
+  color: #b8171f;
+}
+.f3-lookup-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  color: #677287;
+  font-size: 12px;
+}
+.f3-lookup-pagination > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.f3-lookup-pagination label {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.f3-lookup-pagination select {
+  width: 70px;
+}
+.f3-lookup-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.f3-lookup-modal {
+  margin: auto;
+  padding: 26px;
+  min-height: 0;
+  border: 0;
+  border-radius: 12px;
+  width: min(900px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  background: white;
+  box-shadow: 0 16px 70px #0a142433;
+}
+.f3-lookup-modal::backdrop {
+  background: #0a142499;
+}
+.f3-lookup-modal-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.f3-lookup-modal-heading > div {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.f3-lookup-modal-heading h2 {
+  margin: 0;
+}
+.f3-lookup-modal-heading > button {
+  font-size: 25px;
+}
+.f3-lookup-detail-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+.f3-lookup-detail-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #e6e8ef;
+}
+.f3-lookup-detail-item p {
+  color: #677287;
+  font-size: 12px;
+  margin-top: 5px;
+}
+.f3-lookup-contact {
+  margin: 18px 0;
+}
+.f3-lookup-contact > strong {
+  display: block;
+  font-size: 20px;
+  margin-top: 16px;
+}
+.f3-lookup-history {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.f3-lookup-history li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 0 10px 16px;
+  border-left: 2px solid #d9dfe9;
+}
+.f3-lookup-history span,
+.f3-lookup-history small {
+  color: #677287;
+  font-size: 12px;
+}
+.f3-lookup-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 26px;
+  flex-wrap: wrap;
+}
+.f3-lookup-actions > div {
+  display: flex;
+  gap: 10px;
+}
+.f3-lookup-check {
+  display: flex !important;
+  align-items: center;
+  gap: 10px !important;
+  margin: 18px 0;
+}
+.f3-lookup-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: #102544;
+}
+.f3-lookup-amounts {
+  margin: 22px 0;
+}
+.f3-lookup-amounts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e6e8ef;
+}
+.f3-lookup-amounts dd {
+  margin: 0;
+  font-weight: 650;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .f3-lookup {
+    padding: 24px 16px 40px;
+  }
+  .f3-lookup-heading {
+    align-items: start;
+  }
+  .f3-lookup-heading h1 {
+    font-size: 27px;
+  }
+  .f3-lookup-heading a {
+    max-width: 120px;
+    text-align: right;
+    font-size: 12px;
+  }
+  .f3-lookup-filters {
+    padding: 18px 16px;
+  }
+  .f3-lookup-filter-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .f3-lookup-custom {
+    grid-template-columns: 1fr;
+  }
+  .f3-lookup-results-heading {
+    flex-direction: column;
+    padding: 16px;
+  }
+  .f3-lookup-results-heading span {
+    text-align: left;
+  }
+  .f3-lookup-pagination {
+    flex-direction: column;
+    align-items: start;
+    padding: 16px;
+  }
+  .f3-lookup-pagination > div {
+    flex-wrap: wrap;
+  }
+  .f3-lookup-modal {
+    padding: 20px 16px;
+  }
+  .f3-lookup-detail-columns {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .f3-lookup-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .f3-lookup-actions > div {
+    flex-wrap: wrap;
+  }
+}
