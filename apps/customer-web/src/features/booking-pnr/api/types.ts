@@ -232,6 +232,16 @@ export interface CancelPreview {
   milesReturned?: number | null
 }
 
+// POST /bookings/:ref/cancel: what the cancellation did.
+export interface CancelBookingResult {
+  reference: string
+  status: 'cancelled' | 'expired'
+  fee: number
+  refund: number
+  currency: string
+  milesReturned?: number | null
+}
+
 export interface ApiErrorBody {
   error: {
     code: string

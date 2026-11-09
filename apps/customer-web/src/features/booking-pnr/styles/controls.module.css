@@ -1,6 +1,7 @@
 .primary,
 .secondary,
-.danger {
+.danger,
+.dangerOutline {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -48,16 +49,29 @@
   filter: brightness(0.95);
 }
 
+/* The destructive outline of the design: red text and border ("Cancel booking" on Booking detail). */
+.dangerOutline {
+  background: var(--f3-card);
+  color: var(--f3-danger);
+  border-color: var(--f3-danger);
+}
+
+.dangerOutline:hover:not(:disabled) {
+  background: var(--f3-danger-soft);
+}
+
 .primary:disabled,
 .secondary:disabled,
-.danger:disabled {
+.danger:disabled,
+.dangerOutline:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
 .primary:focus-visible,
 .secondary:focus-visible,
-.danger:focus-visible {
+.danger:focus-visible,
+.dangerOutline:focus-visible {
   outline: 2px solid var(--f3-primary);
   outline-offset: 2px;
 }

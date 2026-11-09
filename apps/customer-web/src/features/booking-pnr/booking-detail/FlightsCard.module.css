@@ -1,0 +1,74 @@
+.card {
+  padding: 20px;
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+  background: var(--f3-card);
+}
+
+.card h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  color: var(--f3-ink);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th {
+  padding: 0 16px 10px 0;
+  border-bottom: 1px solid var(--f3-line);
+  color: var(--f3-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 14px 16px 14px 0;
+  border-bottom: 1px solid var(--f3-line);
+  vertical-align: top;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.flightTitle {
+  margin: 0;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.flightMeta {
+  margin: 2px 0 0;
+  color: var(--f3-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.seats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.seat {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.ticket {
+  margin: 0;
+  color: var(--f3-muted);
+  white-space: nowrap;
+}

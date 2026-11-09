@@ -2,6 +2,7 @@ import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import type {
   ApiErrorBody,
   BookingDetail,
+  CancelBookingResult,
   CancelPreview,
   ConfirmBookingResult,
   CustomerTrips,
@@ -71,11 +72,12 @@ export function useBookingPnrApi() {
     return (await response.json()) as CancelPreview
   }
 
-  async function cancelBooking(reference: string): Promise<void> {
+  async function cancelBooking(reference: string): Promise<CancelBookingResult> {
     const response = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}/cancel`, { method: 'POST' })
     if (!response.ok) {
       throw await readError(response)
     }
+    return (await response.json()) as CancelBookingResult
   }
 
   async function getCustomerTrips(): Promise<CustomerTrips> {
