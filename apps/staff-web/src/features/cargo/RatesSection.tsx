@@ -65,9 +65,7 @@ function groupByType(rates: Rate[]): RateRow[] {
       }
       map.set(rate.commodity_type_id, row)
     }
-    const bandIndex = DISTANCE_BANDS.findIndex(
-      (b) => rate.min_distance_km >= b.min && (b.max === null || rate.min_distance_km <= b.max),
-    )
+    const bandIndex = DISTANCE_BANDS.findIndex((b) => rate.min_distance_km >= b.min && (b.max === null || rate.min_distance_km <= b.max))
     if (bandIndex >= 0) {
       row.bands[bandIndex] = { rate, rate_per_kg: Number(rate.rate_per_kg), min_charge: Number(rate.min_charge) }
     }
