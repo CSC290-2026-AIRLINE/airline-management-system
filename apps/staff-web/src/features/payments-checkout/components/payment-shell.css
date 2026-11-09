@@ -1,0 +1,16 @@
+/*
+ * The payment screens are full-bleed, like the frames: the navy bar runs the width of the window.
+ *
+ * The app's `#root` is the starter's centred 1126px column, so the payment shell escapes it — the same trick the admin
+ * console uses with `.admin-shell` in `src/index.css`. It lives here, inside the feature folder, so the shared
+ * stylesheet stays untouched.
+ *
+ * TODO(F5a): if the platform folds the payment screens into the admin shell, delete this file and the `payment-shell`
+ * class with it.
+ */
+#root:has(.payment-shell) {
+  width: 100%;
+  max-width: none;
+  border: 0;
+  text-align: left;
+}
