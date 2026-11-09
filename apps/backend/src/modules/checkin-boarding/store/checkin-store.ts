@@ -470,13 +470,9 @@ export class CheckInStore implements CheckInRepository {
 
   /** The unique index on the final events: a pass boards or no-shows exactly once. */
   async appendEvent(input: Omit<BoardingEventRecord, 'id' | 'created_at'>): Promise<BoardingEventRecord> {
-    if (
-      input.boarding_pass_id &&
-      (input.event === 'boarded' || input.event === 'no_show') &&
-      this.hasFinalEventNow(input.boarding_pass_id)
-    ) {
-      throw new CheckInError(409, 'INVALID_STATE', 'pass already final')
-    }
+    // The row that lost the race comes back as a rejection, the way the database answers it.
+    const lost =
+      !!input.boarding_pass_id && (input.event === 'boarded' || input.event === 'no_show') && this.hasFinalEventNow(input.boarding_pass_id)
     const now = this.now()
     const record: BoardingEventRecord = {
       id: `ev-${(this.seq += 1)}`,
@@ -484,8 +480,8 @@ export class CheckInStore implements CheckInRepository {
       gate_id: input.gate_id,
       boarding_pass_id: input.boarding_pass_id,
       scanned_reference: input.scanned_reference,
-      event: input.event,
-      reason: input.reason,
+      event: lost ? 'rejected' : input.event,
+      reason: lost ? 'ALREADY_BOARDED' : input.reason,
       staff_id: input.staff_id,
       occurred_at: input.occurred_at,
       created_at: now,

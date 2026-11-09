@@ -182,29 +182,18 @@ export class GateService {
     const passenger = { name: passengerName, seat: pass.seat_code, boardingGroup: pass.boarding_group }
 
     if (decision.event === 'boarded') {
-      try {
-        await this.store.appendEvent({
-          flight_id: input.flightId,
-          gate_id: gateId,
-          boarding_pass_id: pass.id,
-          scanned_reference: reference,
-          event: 'boarded',
-          reason: null,
-          staff_id: staffId,
-          occurred_at: this.clock.now(),
-        })
-      } catch {
+      const written = await this.store.appendEvent({
+        flight_id: input.flightId,
+        gate_id: gateId,
+        boarding_pass_id: pass.id,
+        scanned_reference: reference,
+        event: 'boarded',
+        reason: null,
+        staff_id: staffId,
+        occurred_at: this.clock.now(),
+      })
+      if (written.event !== 'boarded') {
         // The unique index won: another agent boarded this pass a moment earlier.
-        await this.store.appendEvent({
-          flight_id: input.flightId,
-          gate_id: gateId,
-          boarding_pass_id: pass.id,
-          scanned_reference: reference,
-          event: 'rejected',
-          reason: 'ALREADY_BOARDED',
-          staff_id: staffId,
-          occurred_at: this.clock.now(),
-        })
         return {
           event: 'rejected',
           reason: 'ALREADY_BOARDED',
@@ -339,7 +328,7 @@ export class GateService {
       const pass = (await this.store.passesForCheckIn(record.id))[0]
       if (pass) {
         if (await this.store.hasFinalEvent(pass.id)) continue
-        await this.store.appendEvent({
+        const written = await this.store.appendEvent({
           flight_id: flightId,
           gate_id: boarding.gate_id,
           boarding_pass_id: pass.id,
@@ -349,6 +338,8 @@ export class GateService {
           staff_id: null,
           occurred_at: closedAt,
         })
+        // The pass boarded while the gate was closing: it is not a no-show and its bags stay on board.
+        if (written.event !== 'no_show') continue
       } else if (record.status === 'started' || record.status === 'on_hold') {
         // Never checked in, so the seat goes back to the pool.
         await this.seats.releaseAssigned(record.booking_passenger_id)

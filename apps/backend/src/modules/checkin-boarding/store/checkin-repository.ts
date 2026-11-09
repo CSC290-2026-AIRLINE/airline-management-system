@@ -70,7 +70,10 @@ export interface CheckInRepository {
   listPasses(): Promise<BoardingPassRecord[]>
   updatePass(id: string, patch: UpdatePassPatch): Promise<BoardingPassRecord>
 
-  /** The unique index on the final events: a pass boards or no-shows exactly once. */
+  /**
+   * The unique index on the final events: a pass boards or no-shows exactly once. A lost race is not thrown, the row
+   * comes back as a rejection with the reason ALREADY_BOARDED.
+   */
   appendEvent(input: Omit<BoardingEventRecord, 'id' | 'created_at'>): Promise<BoardingEventRecord>
   listEvents(flightId: string): Promise<BoardingEventRecord[]>
   hasFinalEvent(boardingPassId: string): Promise<boolean>

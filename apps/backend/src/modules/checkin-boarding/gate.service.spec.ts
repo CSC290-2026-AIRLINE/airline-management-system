@@ -1,7 +1,6 @@
 import type { Actor } from './actor'
 import { CheckInService } from './checkin.service'
 import { CounterService } from './counter.service'
-import { CheckInError } from './errors'
 import { GateService } from './gate.service'
 import { BOOKINGS } from './providers/fixtures'
 import {
@@ -165,15 +164,19 @@ describe('GateService.scan', () => {
   it('a scan that loses the race on the unique index is recorded as ALREADY_BOARDED', async () => {
     const { gate, store } = build()
     const original = store.appendEvent.bind(store)
-    jest.spyOn(store, 'appendEvent').mockImplementation((input) => {
-      if (input.event === 'boarded') throw new CheckInError(409, 'INVALID_STATE', 'pass already final')
-      return original(input)
+    const before = (await store.listEvents('flt-fy204')).length
+    jest.spyOn(store, 'appendEvent').mockImplementation(async (input) => {
+      if (input.event !== 'boarded') return original(input)
+      // The database wrote the rejection in its own row and handed it back.
+      await original({ ...input, event: 'rejected', reason: 'ALREADY_BOARDED' })
+      return { ...input, id: 'ev-race', created_at: new Date(), event: 'rejected', reason: 'ALREADY_BOARDED' }
     })
     expect(await gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'R8KD2WQN' })).toMatchObject({
       event: 'rejected',
       reason: 'ALREADY_BOARDED',
     })
-    expect((await store.listEvents('flt-fy204')).filter((e) => e.event === 'rejected')).toHaveLength(1)
+    expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).not.toBe('boarded')
+    expect(await store.listEvents('flt-fy204')).toHaveLength(before + 1)
   })
 
   it('scan rejects a closed gate', async () => {
@@ -281,6 +284,24 @@ describe('GateService head-count and close', () => {
     await gate.closeGate(staff, 'flt-fy204', {})
     expect((await store.getBag(tagged.bag.id))?.status).toBe('offloaded')
     await expect(counter.removeBag(staff, tagged.bag.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+  })
+
+  it('a pass that boarded while the gate closed is not a no-show', async () => {
+    const { gate, store, notify } = build()
+    const original = store.appendEvent.bind(store)
+    const pass = await store.passByReference('R8KD2WQN')
+    if (!pass) throw new Error('the seeded pass is missing')
+    jest.spyOn(store, 'appendEvent').mockImplementation(async (input) => {
+      if (input.event !== 'no_show' || input.boarding_pass_id !== pass.id) return original(input)
+      // The database wrote the rejection in its own row and handed it back.
+      await original({ ...input, event: 'rejected', reason: 'ALREADY_BOARDED' })
+      return { ...input, id: 'ev-race', created_at: new Date(), event: 'rejected', reason: 'ALREADY_BOARDED' }
+    })
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    const notifySpy = jest.spyOn(notify, 'send')
+    await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
+    expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).not.toBe('no_show')
+    expect(notifySpy).toHaveBeenCalledWith('boarding_call', expect.objectContaining({ noShow: 7 }))
   })
 
   it('close needs a count, shows a mismatch, confirms, freezes, marks no-shows and offloads bags', async () => {

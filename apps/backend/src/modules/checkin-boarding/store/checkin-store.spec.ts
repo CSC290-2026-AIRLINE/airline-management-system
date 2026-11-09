@@ -1,4 +1,3 @@
-import { CheckInError } from '../errors'
 import { FixtureClock } from '../providers/fixture-providers'
 import { CheckInStore } from './checkin-store'
 import type { CheckInRepository } from './checkin-repository'
@@ -55,8 +54,9 @@ describe('CheckInStore', () => {
       occurred_at: new Date(),
     }
     await s.appendEvent(event)
-    await expect(s.appendEvent(event)).rejects.toBeInstanceOf(CheckInError)
-    expect(await s.listEvents('flt-fy204')).toHaveLength(1)
+    // The row that lost the race is a rejection, the way the database answers it.
+    expect(await s.appendEvent(event)).toMatchObject({ event: 'rejected', reason: 'ALREADY_BOARDED' })
+    expect(await s.listEvents('flt-fy204')).toHaveLength(2)
     expect(await s.hasFinalEvent(pass.id)).toBe(true)
   })
 
