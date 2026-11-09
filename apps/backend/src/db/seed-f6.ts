@@ -193,7 +193,9 @@ async function seedServiceRequests(
           booking_passenger_id: input.bookingPassengerId,
           booking_segment_id: input.segmentId,
           service_code: code,
-          status: 'accepted',
+          // F3's CHECKs: 'requested' is the only status without a handling staff member, and UMNR/MEDA need a note.
+          status: 'requested',
+          note: 'Feature 6 demo booking (seed-f6)',
           requested_at: input.now,
         },
       })
