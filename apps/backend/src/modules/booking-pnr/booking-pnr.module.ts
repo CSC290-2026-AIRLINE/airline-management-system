@@ -1,3 +1,5 @@
+import { DemoPassengerController } from './hold/demo-passenger.controller'
+import { DemoPassengerService } from './hold/demo-passenger.service'
 import { Module } from '@nestjs/common'
 import { HoldController } from './hold/hold.controller'
 import { HoldService } from './hold/hold.service'
@@ -35,9 +37,10 @@ import { SeatStub } from './stubs/seat.stub'
 import { ServiceRequestStub } from './stubs/service-request.stub'
 
 @Module({
-  controllers: [HoldController],
+  controllers: [HoldController, DemoPassengerController],
   providers: [
     HoldService,
+    DemoPassengerService,
     BookingStatusService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },

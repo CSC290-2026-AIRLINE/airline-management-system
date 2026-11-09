@@ -9,7 +9,8 @@ req('reflect-metadata')
 req('tsconfig-paths').register({ baseUrl: root + '/apps/backend/dist', paths: { '@backend/*': ['src/*'] } })
 const { Pool } = req('pg')
 const { ConfigService } = req('@nestjs/config')
-const { NestFactory } = req('@nestjs/core')
+const { NestFactory, Reflector } = req('@nestjs/core')
+const { JwtService } = req('@nestjs/jwt')
 const { Module } = req('@nestjs/common')
 const http = req('supertest')
 const load = (name) => req(root + '/apps/backend/dist/src/' + name + '.js')
@@ -17,6 +18,9 @@ const { DbService } = load('db/db.service')
 const { InventoryService } = load('modules/booking-pnr/inventory/inventory.service')
 const { HoldService } = load('modules/booking-pnr/hold/hold.service')
 const { HoldController } = load('modules/booking-pnr/hold/hold.controller')
+const { DemoPassengerController } = load('modules/booking-pnr/hold/demo-passenger.controller')
+const { DemoPassengerService } = load('modules/booking-pnr/hold/demo-passenger.service')
+const { JwtAuthGuard } = load('auth/guards/jwt-auth.guard')
 const { PricingStub } = load('modules/booking-pnr/stubs/pricing.stub')
 const { BookingErrorFilter } = load('modules/booking-pnr/common/booking-error.filter')
 const { BookingError } = load('modules/booking-pnr/common/booking-error')
@@ -84,21 +88,30 @@ async function main() {
     },
   }
   const holds = new HoldService(db, inventory, new PricingStub(), seats, { createForHold: async () => {} }, clock)
+  const demoConfig = new ConfigService({ NODE_ENV: 'development' })
+  const demos = new DemoPassengerService(db, demoConfig)
+  const jwt = new JwtService({ secret: randomBytes(32).toString('hex') })
   class TestModule {}
-  Module({ controllers: [HoldController], providers: [{ provide: HoldService, useValue: holds }] })(TestModule)
+  Module({
+    controllers: [HoldController, DemoPassengerController],
+    providers: [
+      { provide: HoldService, useValue: holds },
+      { provide: DemoPassengerService, useValue: demos },
+    ],
+  })(TestModule)
   app = await NestFactory.create(TestModule, { logger: false })
   app.setGlobalPrefix('api')
-  app.use((request, response, next) => {
-    request.user = { id: request.headers['x-test-user'], email: 'fixture@example.com' }
-    next()
-  })
+  app.useGlobalGuards(new JwtAuthGuard(new Reflector(), jwt))
   app.useGlobalFilters(new BookingErrorFilter())
   await app.init()
   const users = [randomUUID(), randomUUID()]
   const passengers = [randomUUID(), randomUUID()]
   for (const index of [0, 1]) {
     await pool.query('INSERT INTO customer (user_id) VALUES ($1)', [users[index]])
-    await pool.query("INSERT INTO passenger (id, date_of_birth) VALUES ($1, '1990-01-01')", [passengers[index]])
+    await pool.query("INSERT INTO passenger (id, date_of_birth, passport_number) VALUES ($1, '1990-01-01', $2)", [
+      passengers[index],
+      `F03SEED00${index + 1}`,
+    ])
   }
   const fare = randomUUID(),
     route = randomUUID()
@@ -124,10 +137,27 @@ async function main() {
     }
   }
   function post(index, key, data) {
-    let call = http(app.getHttpServer()).post('/api/bookings').set('x-test-user', users[index])
+    let call = http(app.getHttpServer())
+      .post('/api/bookings')
+      .set('Authorization', 'Bearer ' + jwt.sign({ sub: users[index], email: 'fixture@example.com' }))
     if (key) call = call.set('Idempotency-Key', key)
     return call.send(data)
   }
+  const anonymousDemo = await http(app.getHttpServer()).get('/api/dev/booking-passengers')
+  assert.equal(anonymousDemo.status, 401)
+  const token = jwt.sign({ sub: users[0], email: 'fixture@example.com' })
+  const demoList = await http(app.getHttpServer())
+    .get('/api/dev/booking-passengers')
+    .set('Authorization', 'Bearer ' + token)
+  assert.equal(demoList.status, 200, JSON.stringify(demoList.body))
+  assert.deepEqual(demoList.body.map((person) => person.id).sort(), [...passengers].sort())
+  demoConfig.set('NODE_ENV', 'production')
+  const blockedDemo = await http(app.getHttpServer())
+    .get('/api/dev/booking-passengers')
+    .set('Authorization', 'Bearer ' + token)
+  assert.equal(blockedDemo.status, 404)
+  demoConfig.set('NODE_ENV', 'development')
+  console.log('PASS: real JWT guard protects demo lookup, returns actual seeded IDs, and blocks the endpoint in production')
   const raceFlight = await newFlight()
   const raced = await Promise.all([0, 1].map((i) => post(i, 'race-' + i, body(raceFlight, i))))
   assert.deepEqual(raced.map((r) => r.status).sort(), [201, 409], JSON.stringify(raced.map((r) => r.body)))

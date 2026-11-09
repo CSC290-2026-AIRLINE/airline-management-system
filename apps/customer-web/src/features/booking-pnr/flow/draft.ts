@@ -3,6 +3,7 @@ import type { PassengerType } from '../api/types'
 
 export interface TravellerDraft {
   key: string
+  demoPassengerId?: string
   expectedType: PassengerType
   givenName: string
   familyName: string

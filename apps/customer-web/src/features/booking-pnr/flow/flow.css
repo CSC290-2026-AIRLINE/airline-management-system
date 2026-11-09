@@ -135,3 +135,22 @@
     order: 2;
   }
 }
+.f3-demo-notice {
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid #c8d9f0;
+  border-radius: 8px;
+  background: #eaf2ff;
+  color: #102544;
+  font-size: 13px;
+}
+.f3-demo-notice p {
+  margin-top: 6px;
+}
+.f3-demo-picker {
+  margin-bottom: 20px;
+}
+.f3-flow input[readonly] {
+  background: #f7f9fc;
+  color: #475569;
+}

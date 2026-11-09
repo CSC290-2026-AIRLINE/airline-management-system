@@ -1,3 +1,4 @@
+import { useDemoPassengers } from '../passengers/useDemoPassengers'
 import { useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FlightSearchPage, type SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
@@ -32,6 +33,8 @@ export function BookingFlowPage({ resolvePassengers, onHeld }: FlowProps) {
   const resolved = useRef<{ signature: string; ids: Array<{ key: string; passengerId: string }> } | null>(null)
   const inFlight = useRef(false)
   const { holdBooking } = useBookingPnrApi()
+  const demo = useDemoPassengers(!resolvePassengers)
+  const passengerResolver = resolvePassengers ?? demo.resolve
 
   function updateTraveller(key: string, change: Partial<TravellerDraft>) {
     setTravellers((current) => current.map((person) => (person.key === key ? { ...person, ...change } : person)))
@@ -53,7 +56,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld }: FlowProps) {
   async function createHold(seats: HoldBookingSeat[] = []) {
     if (!itinerary || inFlight.current) return
     // Until Feature 7's resolver is agreed, fail before any hold or profile write.
-    if (!resolvePassengers) {
+    if (!passengerResolver) {
       setError('Traveller profiles are temporarily unavailable. Your details are kept on this page. Please try again later.')
       return
     }
@@ -62,7 +65,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld }: FlowProps) {
     setError(null)
     try {
       const signature = JSON.stringify(travellers)
-      const ids = resolved.current?.signature === signature ? resolved.current.ids : await resolvePassengers(travellers)
+      const ids = resolved.current?.signature === signature ? resolved.current.ids : await passengerResolver(travellers)
       if (
         ids.length !== travellers.length ||
         new Set(ids.map((item) => item.key)).size !== travellers.length ||
@@ -151,6 +154,9 @@ export function BookingFlowPage({ resolvePassengers, onHeld }: FlowProps) {
               }}
               onContinue={continueToSeats}
               error={error}
+              demoProfiles={!resolvePassengers && demo.enabled ? demo.profiles : undefined}
+              demoLoading={demo.loading}
+              demoError={demo.error}
             />
           )}
           {step === 3 && (
