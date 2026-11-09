@@ -114,7 +114,7 @@ async function seedFlights(
     const serviceDate = futureServiceDate(offset)
     for (const [index, route] of routes.entries()) {
       const flightNumber = `F3090${index + 1}`
-      const scheduledDepAt = new Date(serviceDate.getTime() + 9 * 60 * 60 * 1000)
+      const scheduledDepAt = new Date(serviceDate.getTime() + (9 + index * 3) * 60 * 60 * 1000)
       const scheduledArrAt = new Date(scheduledDepAt.getTime() + 85 * 60 * 1000)
 
       const flight = await prisma.flight.upsert({
