@@ -1,21 +1,26 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { HttpStatus, Injectable, Logger } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import type {
   AuditEntryDto,
   AuditPage,
   MyScreensDto,
+  RegisterScreenResult,
   ReplaceRoleScreensResult,
   RoleScreensDto,
   RoleSummary,
   ScreenDto,
   ScreenGroup,
+  StaffScreensDto,
 } from './dto/admin-console.types'
-import type { AuditQueryDto } from './dto/audit-query.dto'
-import type { RegisterScreenDto } from './dto/register-screen.dto'
+import { DATE_ONLY, type AuditQueryDto } from './dto/audit-query.dto'
+import type { RegisterScreenDto, RegisterScreenRequestDto } from './dto/register-screen.dto'
 import type { ScreenKind } from './dto/register-screen.dto'
 import type { SelfRegisterScreen } from './dto/admin-console.types'
 import type { AdminPrincipal } from './guards/admin-console.guard'
+import { AdminError, auditEntryNotFound, roleNotFound } from './admin-error'
+import { AuditService, maskValue, sensitiveKeySet, stableAuditId } from './audit/audit.service'
+import { staffNotFound } from './staff.service'
 import { SimulationClock } from './simulation-clock'
 
 const DEFAULT_AUDIT_LIMIT = 50
@@ -26,6 +31,43 @@ const SOURCE_FEATURE = '15'
 
 /** Mirrors `ReplaceRoleScreensDto`'s `MinLength`. Re-checked in the service so non-HTTP callers are covered too. */
 const MIN_REASON_LENGTH = 10
+
+/**
+ * A plain date in the audit filters (`to=2026-11-01`) means a whole day in Thailand, where the airline runs. Thailand
+ * has no daylight saving time, so a fixed UTC+7 is exact. The staff web sends instants for the viewer's own day instead.
+ */
+const AUDIT_DAY_UTC_OFFSET_MINUTES = 7 * 60
+
+/** Start of a `YYYY-MM-DD` day in Thailand time, as an instant; `addDays` moves it by whole days. */
+function thaiDayStart(date: string, addDays = 0): Date {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + addDays) - AUDIT_DAY_UTC_OFFSET_MINUTES * 60_000)
+}
+
+/** How long one admin opening one sensitive entry counts as one view (and one `view_sensitive` row). */
+const SENSITIVE_VIEW_WINDOW_MS = 60_000
+
+/** Screen columns every screen query here reads. */
+const SCREEN_SELECT = { id: true, feature_no: true, code: true, name: true, kind: true, is_active: true } as const
+
+function toScreenDto(row: { id: string; feature_no: string; code: string; name: string; kind: string; is_active: boolean }): ScreenDto {
+  return { ...row, kind: row.kind as ScreenKind }
+}
+
+/** `f05.refunds` → `f05`, `core.home` → `core`: the part of a code that says which feature owns the screen. */
+function codePrefix(code: string): string {
+  const dot = code.indexOf('.')
+  return dot === -1 ? code : code.slice(0, dot)
+}
+
+/**
+ * Fallback `feature_no` for a screen registered without one. The code convention is `f<feature_no>.<snake_name>`; the
+ * prefix is used, or `'1'` (platform) when there is none.
+ */
+export function deriveFeatureNo(code: string): string {
+  const m = /^f(\d+[a-z]?)\./.exec(code)
+  return m && m[1] ? m[1] : '1'
+}
 
 /** Order-insensitive set comparison — the caller's ordering carries no meaning, only membership does. */
 function sameIds(a: string[], b: string[]): boolean {
@@ -50,55 +92,169 @@ function sameIds(a: string[], b: string[]): boolean {
  */
 @Injectable()
 export class AdminConsoleService {
+  private readonly logger = new Logger(AdminConsoleService.name)
+
   constructor(
     private readonly db: DbService,
     private readonly clock: SimulationClock,
+    private readonly audit: AuditService,
   ) {}
 
   /* ──────────────────────────────────────────────────────────────────────────── */
-  /*  Self-registration (called by OnModuleInit and by POST /admin/screens) */
+  /*  Screen registry: features at boot (registerSelfScreens), admins by hand (POST /admin/screens) */
   /* ──────────────────────────────────────────────────────────────────────────── */
 
   /**
-   * Idempotent on `code`. Never updates `kind` once set — `kind` only changes by an out-of-band migration, and
-   * touching it here could violate the composite FK `role_screen.screen_kind = screen.kind` if any rows already
-   * reference the screen.
+   * Adds the screen, or brings an existing one up to date: its name and `feature_no` follow the caller, and a screen
+   * that was turned off is turned back on. `kind` is never changed once set — the composite FK
+   * `role_screen.(screen_id, screen_kind)` would break for a screen that roles already hold — so a different `kind` is
+   * logged and ignored; changing it is a migration.
    */
   async registerScreen(dto: RegisterScreenDto & { feature_no: string }): Promise<ScreenDto> {
-    const upserted = await this.db.screen.upsert({
-      where: { code: dto.code },
-      create: {
-        code: dto.code,
-        name: dto.name,
-        kind: dto.kind ?? 'assignable',
-        feature_no: dto.feature_no,
-      },
-      // Empty `update` is intentional: see JSDoc above. To change `kind`, hand-edit the DB.
-      update: {},
-      select: {
-        id: true,
-        feature_no: true,
-        code: true,
-        name: true,
-        kind: true,
-        is_active: true,
-      },
+    return (await this.syncScreen(dto)).screen
+  }
+
+  private async syncScreen(
+    dto: RegisterScreenDto & { feature_no: string },
+    tx: Prisma.TransactionClient | DbService = this.db,
+  ): Promise<{ screen: ScreenDto; before: ScreenDto | null; changed: boolean }> {
+    const name = dto.name.trim()
+    const existing = await tx.screen.findUnique({ where: { code: dto.code }, select: SCREEN_SELECT })
+    if (!existing) {
+      const created = await tx.screen.create({
+        data: { code: dto.code, name, kind: dto.kind ?? 'assignable', feature_no: dto.feature_no },
+        select: SCREEN_SELECT,
+      })
+      return { screen: toScreenDto(created), before: null, changed: true }
+    }
+    if (dto.kind && dto.kind !== existing.kind) {
+      this.logger.warn(`Screen ${dto.code} is registered as ${dto.kind} but stored as ${existing.kind}; kind is left unchanged`)
+    }
+    const before = toScreenDto(existing)
+    if (existing.name === name && existing.feature_no === dto.feature_no && existing.is_active) {
+      return { screen: before, before, changed: false }
+    }
+    const updated = await tx.screen.update({
+      where: { id: existing.id },
+      data: { name, feature_no: dto.feature_no, is_active: true, updated_at: new Date() },
+      select: SCREEN_SELECT,
     })
-    return {
-      id: upserted.id,
-      feature_no: upserted.feature_no,
-      code: upserted.code,
-      name: upserted.name,
-      kind: upserted.kind as ScreenDto['kind'],
-      is_active: upserted.is_active,
+    return { screen: toScreenDto(updated), before, changed: true }
+  }
+
+  /**
+   * Called by each feature's `OnModuleInit` with the full list of its screens. Brings the registry in line with that
+   * list: new screens are added, renamed ones take the new name, and a screen the feature no longer lists is turned off
+   * (`is_active = false`), which takes it off every menu and out of the Role access matrix. Rows are never deleted, so
+   * `role_screen` grants and old audit rows keep pointing at a real screen.
+   *
+   * "The feature's screens" means every screen whose code starts with the same prefix as one in the list (`f05.` for
+   * `f05.refunds`), so pass all of a feature's screens in one call — a screen left out of the call is turned off.
+   * Every change is written to the audit log as the system.
+   */
+  async registerSelfScreens(screens: SelfRegisterScreen[]): Promise<void> {
+    const listed = new Set(screens.map((s) => s.code))
+    const changes: { before: ScreenDto | null; after: ScreenDto }[] = []
+    for (const s of screens) {
+      const result = await this.syncScreen({ code: s.code, name: s.name, kind: s.kind, feature_no: s.feature_no })
+      if (result.changed) changes.push({ before: result.before, after: result.screen })
+    }
+
+    const prefixes = [...new Set(screens.map((s) => codePrefix(s.code)))]
+    if (prefixes.length > 0) {
+      const stale = await this.db.screen.findMany({
+        where: { is_active: true, OR: prefixes.map((p) => ({ code: { startsWith: `${p}.` } })) },
+        select: SCREEN_SELECT,
+      })
+      for (const row of stale.filter((r) => !listed.has(r.code))) {
+        const after = await this.db.screen.update({
+          where: { id: row.id },
+          data: { is_active: false, updated_at: new Date() },
+          select: SCREEN_SELECT,
+        })
+        changes.push({ before: toScreenDto(row), after: toScreenDto(after) })
+      }
+    }
+
+    for (const { before, after } of changes) {
+      const what = !before
+        ? `Registered screen ${after.name} (${after.code})`
+        : !after.is_active
+          ? `Turned off screen ${after.name} (${after.code}): its feature no longer lists it`
+          : !before.is_active
+            ? `Turned screen ${after.name} (${after.code}) back on`
+            : `Updated screen ${after.code}: ${before.name} → ${after.name}`
+      await this.audit.tryWrite({
+        actor: AuditService.systemActor(),
+        sourceFeature: SOURCE_FEATURE,
+        action: before ? 'update' : 'create',
+        entityType: 'screen',
+        entityId: after.id,
+        summary: what,
+        reason: 'Screen registry synced at startup',
+        ...(before ? { before: { name: before.name, feature_no: before.feature_no, is_active: before.is_active } } : {}),
+        after: { name: after.name, feature_no: after.feature_no, is_active: after.is_active },
+      })
     }
   }
 
-  /** Bulk variant called by `OnModuleInit` — keeps module startup deterministic. */
-  async registerSelfScreens(screens: SelfRegisterScreen[]): Promise<void> {
-    for (const s of screens) {
-      await this.registerScreen({ code: s.code, name: s.name, kind: s.kind, feature_no: s.feature_no })
+  /**
+   * `POST /admin/screens`: an admin adds or renames one assignable screen. A `core` or `admin` screen with the same code
+   * is refused (`SCREEN_KIND_CONFLICT`) — those belong to code, not to a request. The change and its audit row commit
+   * together; a request that changes nothing writes nothing.
+   */
+  async registerScreenByAdmin(admin: AdminPrincipal, dto: RegisterScreenRequestDto): Promise<RegisterScreenResult> {
+    const reason = this.requireReason(dto.reason)
+    const name = dto.name.trim()
+    if (!name) {
+      throw new AdminError(HttpStatus.BAD_REQUEST, 'VALIDATION_FAILED', 'The screen needs a name.', {
+        fields: { name: ['name should not be empty'] },
+      })
     }
+    const feature_no = dto.feature_no ?? deriveFeatureNo(dto.code)
+
+    return this.db.$transaction(async (tx) => {
+      const existing = await tx.screen.findUnique({ where: { code: dto.code }, select: { kind: true } })
+      if (existing && existing.kind !== 'assignable') {
+        throw new AdminError(
+          HttpStatus.CONFLICT,
+          'SCREEN_KIND_CONFLICT',
+          `${dto.code} is a ${existing.kind} screen. Only assignable screens can be changed here.`,
+        )
+      }
+      const result = await this.syncScreen({ code: dto.code, name, kind: 'assignable', feature_no }, tx)
+      if (!result.changed) return { ok: true, changed: false, screen: result.screen }
+
+      const audit = await this.audit.write(
+        {
+          actor: AuditService.staffActor(admin),
+          sourceFeature: SOURCE_FEATURE,
+          action: result.before ? 'update' : 'create',
+          entityType: 'screen',
+          entityId: result.screen.id,
+          summary: result.before
+            ? `Updated screen ${result.screen.code}: ${result.before.name} → ${result.screen.name}`
+            : `Registered screen ${result.screen.name} (${result.screen.code})`,
+          reason,
+          ...(result.before
+            ? { before: { name: result.before.name, feature_no: result.before.feature_no, is_active: result.before.is_active } }
+            : {}),
+          after: { name: result.screen.name, feature_no: result.screen.feature_no, is_active: result.screen.is_active },
+        },
+        tx,
+      )
+      return { ok: true, changed: true, screen: result.screen, audit_seq: audit.seq }
+    })
+  }
+
+  private requireReason(reason: string): string {
+    const trimmed = (reason ?? '').trim()
+    if (trimmed.length < MIN_REASON_LENGTH) {
+      throw new AdminError(HttpStatus.BAD_REQUEST, 'REASON_REQUIRED', `A reason of at least ${MIN_REASON_LENGTH} characters is required.`, {
+        min_length: MIN_REASON_LENGTH,
+      })
+    }
+    return trimmed
   }
 
   /* ──────────────────────────────────────────────────────────────────────────── */
@@ -182,15 +338,24 @@ export class AdminConsoleService {
   /*  Per-role granted screens (for the Role access matrix) */
   /* ──────────────────────────────────────────────────────────────────────────── */
 
-  async getRoleScreens(roleId: string): Promise<RoleScreensDto | null> {
+  /**
+   * The role's grants on screens that are still active. A grant on a screen that was turned off stays in `role_screen`
+   * (it comes back if the screen does) but is not shown, so the matrix only ever lists what the role can open.
+   * `ROLE_NOT_FOUND` (404) when the role does not exist.
+   */
+  async getRoleScreens(roleId: string): Promise<RoleScreensDto> {
     const role = await this.db.role.findUnique({ where: { id: roleId }, select: { id: true } })
-    if (!role) return null
-    const grants = await this.db.role_screen.findMany({
-      where: { role_id: roleId },
+    if (!role) throw roleNotFound()
+    return { role_id: roleId, screen_ids: await this.activeGrantIds(this.db, roleId) }
+  }
+
+  private async activeGrantIds(client: Prisma.TransactionClient | DbService, roleId: string): Promise<string[]> {
+    const grants = await client.role_screen.findMany({
+      where: { role_id: roleId, screen: { is_active: true } },
       orderBy: [{ screen_id: 'asc' }],
       select: { screen_id: true },
     })
-    return { role_id: roleId, screen_ids: grants.map((g) => g.screen_id) }
+    return grants.map((g) => g.screen_id)
   }
 
   /* ──────────────────────────────────────────────────────────────────────────── */
@@ -213,25 +378,17 @@ export class AdminConsoleService {
    */
   async replaceRoleScreens(admin: AdminPrincipal, roleId: string, screenIds: string[], reason: string): Promise<ReplaceRoleScreensResult> {
     // Defence for non-HTTP callers (tests, future internal callers): the DTO guards the HTTP path only.
-    const trimmedReason = reason.trim()
-    if (trimmedReason.length < MIN_REASON_LENGTH) {
-      throw new BadRequestException(`reason must be at least ${MIN_REASON_LENGTH} characters`)
-    }
+    const trimmedReason = this.requireReason(reason)
 
     const role = await this.db.role.findUnique({ where: { id: roleId }, select: { id: true, code: true } })
-    if (!role) {
-      throw new NotFoundException(`Role ${roleId} not found`)
-    }
+    if (!role) throw roleNotFound()
 
     // De-duplicate before comparing, so a client that sends the same id twice gets the same result as one that does
     // not — otherwise `changed` would flip on every save.
     const wanted = [...new Set(screenIds)]
-    const before = await this.db.role_screen.findMany({
-      where: { role_id: roleId },
-      orderBy: [{ screen_id: 'asc' }],
-      select: { screen_id: true },
-    })
-    const beforeIds = before.map((g) => g.screen_id)
+    // Compared with the active grants only — the set the matrix showed. Grants on screens that were turned off are not
+    // part of what the admin is editing; a save that changes something clears them along with the rest.
+    const beforeIds = await this.activeGrantIds(this.db, roleId)
     const unchanged = sameIds(beforeIds, wanted)
     if (unchanged) {
       // Nothing to write, so there is nothing to audit. Returning early also keeps a no-op save from appending a row
@@ -248,8 +405,13 @@ export class AdminConsoleService {
       const foundIds = new Set(found.map((s) => s.id))
       const rejected = wanted.filter((id) => !foundIds.has(id))
       if (rejected.length > 0) {
-        throw new BadRequestException(
-          `Only active assignable screens can be granted; rejected ${rejected.length} id(s): ${rejected.slice(0, 5).join(', ')}`,
+        throw new AdminError(
+          HttpStatus.BAD_REQUEST,
+          'SCREEN_NOT_ASSIGNABLE',
+          rejected.length === 1
+            ? 'One of these screens can’t be given to a role: it is a Core or Admin screen, turned off, or unknown.'
+            : `${rejected.length} of these screens can’t be given to a role: they are Core or Admin screens, turned off, or unknown.`,
+          { screen_ids: rejected },
         )
       }
     }
@@ -295,11 +457,15 @@ export class AdminConsoleService {
   /* ──────────────────────────────────────────────────────────────────────────── */
 
   /**
-   * One audit entry by id, used by `GET /admin/audit-log/:id`. Returns `null` when no such row — the controller turns
-   * that into a 404. Sensitive-masking rules match `listAudit`: the `before`/`after` payloads are hidden when
-   * `is_sensitive` is true, regardless of who is asking. (Admin role does not unmask sensitive rows.)
+   * One audit entry by id, for `GET /admin/audit-log/:id` (the entry page). `AUDIT_ENTRY_NOT_FOUND` (404) when there is
+   * no such row.
+   *
+   * A sensitive entry comes back with its masked `before` / `after` — the copy the writer stored, masked again here with
+   * the default sensitive keys in case a row was written without the writer — and opening it is itself recorded as a
+   * `view_sensitive` row. That row is written before the data is returned: if it cannot be written, the data is not
+   * shown (`AUDIT_WRITE_FAILED`, 503). Opening the same entry again within a minute counts as the same view.
    */
-  async getAuditEntry(id: string): Promise<AuditEntryDto | null> {
+  async getAuditEntry(admin: AdminPrincipal, id: string): Promise<AuditEntryDto> {
     const row = await this.db.audit_log.findUnique({
       where: { id },
       select: {
@@ -321,7 +487,27 @@ export class AdminConsoleService {
         is_sensitive: true,
       },
     })
-    if (!row) return null
+    if (!row) throw auditEntryNotFound()
+
+    if (row.is_sensitive) {
+      const window = Math.floor(Date.now() / SENSITIVE_VIEW_WINDOW_MS)
+      try {
+        await this.audit.recordSensitiveView(AuditService.staffActor(admin), {
+          id: stableAuditId('view_sensitive', admin.id, row.id, String(window)),
+          sourceFeature: SOURCE_FEATURE,
+          entityType: 'audit_log',
+          entityId: row.id,
+          summary: `Opened sensitive audit entry #${row.seq.toString()}`,
+        })
+      } catch {
+        throw new AdminError(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'AUDIT_WRITE_FAILED',
+          'This entry holds sensitive data and opening it could not be recorded, so it is not shown. Try again.',
+        )
+      }
+    }
+
     const actor = (await this.actorNames([row])).get(row.actor_id ?? '')
     return {
       seq: row.seq.toString(),
@@ -339,8 +525,8 @@ export class AdminConsoleService {
       entity_id: row.entity_id,
       summary: row.summary,
       reason: row.reason,
-      before: row.is_sensitive ? null : row.before,
-      after: row.is_sensitive ? null : row.after,
+      before: maskValue(row.before, sensitiveKeySet()),
+      after: maskValue(row.after, sensitiveKeySet()),
       is_sensitive: row.is_sensitive,
     }
   }
@@ -356,10 +542,17 @@ export class AdminConsoleService {
     if (query.actor_id !== undefined) where.actor_id = query.actor_id
     if (query.action !== undefined) where.action = query.action
     if (query.from !== undefined || query.to !== undefined) {
-      where.occurred_at = {
-        ...(query.from !== undefined ? { gte: new Date(query.from) } : {}),
-        ...(query.to !== undefined ? { lte: new Date(query.to) } : {}),
+      // A plain date is a whole Thailand day: `from` is that day's first instant, `to` runs up to (not including) the
+      // next day's. An instant is used exactly as sent.
+      const toWholeDay = query.to !== undefined && DATE_ONLY.test(query.to)
+      const from = query.from === undefined ? undefined : DATE_ONLY.test(query.from) ? thaiDayStart(query.from) : new Date(query.from)
+      const to = query.to === undefined ? undefined : toWholeDay ? thaiDayStart(query.to, 1) : new Date(query.to)
+      if (from && to && (toWholeDay ? from >= to : from > to)) {
+        throw new AdminError(HttpStatus.BAD_REQUEST, 'VALIDATION_FAILED', 'The From date is after the To date.', {
+          fields: { from: ['from must be on or before to'] },
+        })
       }
+      where.occurred_at = { ...(from ? { gte: from } : {}), ...(to ? (toWholeDay ? { lt: to } : { lte: to }) : {}) }
     }
     if (query.cursor !== undefined) {
       // `seq` is UNIQUE, so this is a total order and `seq < cursor` is exactly "next page after cursor", with no skip.
@@ -411,9 +604,10 @@ export class AdminConsoleService {
       entity_id: row.entity_id,
       summary: row.summary,
       reason: row.reason,
-      // schema.sql: "before/after are masked by the writer; list views hide them".
-      before: row.is_sensitive ? null : (row.before as unknown),
-      after: row.is_sensitive ? null : (row.after as unknown),
+      // schema.sql: "before/after are masked by the writer; list views hide them". Other rows still pass through the
+      // default mask, in case a feature wrote one without the writer.
+      before: row.is_sensitive ? null : maskValue(row.before, sensitiveKeySet()),
+      after: row.is_sensitive ? null : maskValue(row.after, sensitiveKeySet()),
       is_sensitive: row.is_sensitive,
     }))
 
@@ -449,32 +643,50 @@ export class AdminConsoleService {
       select: { role_id: true, role: { select: { code: true, name: true, is_admin: true } } },
     })
     if (!staff) return { screen_codes: [], provisioned: false, role: null }
+    const screens = await this.screensForRole(staff.role_id, staff.role.is_admin)
+    return { screen_codes: screens.map((s) => s.code), provisioned: true, role: { code: staff.role.code, name: staff.role.name } }
+  }
 
-    const grants = await this.db.role_screen.findMany({
-      where: { role_id: staff.role_id },
-      select: { screen_id: true },
+  /**
+   * `GET /admin/staff/:id/screens`: the menu one staff member gets, by the same policy as `GET /me/screens` — what the
+   * Role access "Preview as user" dialog shows. Saved grants only. `active: false` means the account is switched off
+   * and cannot sign in at all; `screens` is still what their role would show. `STAFF_NOT_FOUND` (404) for an unknown or
+   * removed staff id.
+   */
+  async screensForStaff(staffId: string): Promise<StaffScreensDto> {
+    const staff = await this.db.staff.findFirst({
+      where: { id: staffId, deleted_at: null },
+      select: {
+        id: true,
+        role: { select: { id: true, code: true, name: true, is_admin: true } },
+        user: { select: { disabled_at: true, deleted_at: true } },
+      },
     })
-
-    const wantedKinds: ScreenKind[] = staff.role.is_admin ? ['core', 'admin'] : ['core']
-    const allowedAuto = await this.db.screen.findMany({
-      where: { is_active: true, kind: { in: wantedKinds } },
-      select: { code: true },
-    })
-
-    const role = { code: staff.role.code, name: staff.role.name }
-    if (grants.length === 0) {
-      return { screen_codes: allowedAuto.map((s) => s.code), provisioned: true, role }
+    if (!staff) throw staffNotFound()
+    const screens = await this.screensForRole(staff.role.id, staff.role.is_admin)
+    return {
+      staff_id: staff.id,
+      active: !staff.user.disabled_at && !staff.user.deleted_at,
+      role: staff.role,
+      screens,
     }
+  }
 
-    const allowedGranted = await this.db.screen.findMany({
-      where: { id: { in: grants.map((g) => g.screen_id) }, is_active: true },
-      select: { code: true },
+  /**
+   * The one screen policy: every active `core` screen, every active `admin` screen for an `is_admin` role, and every
+   * active `assignable` screen the role holds a `role_screen` grant for. Sorted by feature, then code.
+   */
+  private async screensForRole(roleId: string, isAdmin: boolean): Promise<ScreenDto[]> {
+    const autoKinds: ScreenKind[] = isAdmin ? ['core', 'admin'] : ['core']
+    const rows = await this.db.screen.findMany({
+      where: {
+        is_active: true,
+        OR: [{ kind: { in: autoKinds } }, { kind: 'assignable', role_screen: { some: { role_id: roleId } } }],
+      },
+      orderBy: [{ feature_no: 'asc' }, { code: 'asc' }],
+      select: SCREEN_SELECT,
     })
-
-    const codes = new Set<string>()
-    for (const s of allowedAuto) codes.add(s.code)
-    for (const s of allowedGranted) codes.add(s.code)
-    return { screen_codes: [...codes], provisioned: true, role }
+    return rows.map(toScreenDto)
   }
 
   /**

@@ -21,6 +21,8 @@ import { CreateStaffDto } from './dto/create-staff.dto'
 import { UpdateStaffDto } from './dto/update-staff.dto'
 import type { StaffListDto, StaffRowDto } from './dto/staff.types'
 import { StaffError, StaffService, staffNotFound } from './staff.service'
+import { AdminConsoleService } from './admin-console.service'
+import type { StaffScreensDto } from './dto/admin-console.types'
 
 /**
  * Turns class-validator failures into the `{ error: { code, message, details } }` shape the Staff & roles screen reads.
@@ -46,12 +48,21 @@ function toStaffValidationError(errors: ValidationError[]): StaffError {
   }),
 )
 export class StaffController {
-  constructor(private readonly svc: StaffService) {}
+  constructor(
+    private readonly svc: StaffService,
+    private readonly screens: AdminConsoleService,
+  ) {}
 
   /** Every non-deleted staff account, plus the predicted next staff code and the caller's own staff id. */
   @Get()
   list(@Admin() admin: AdminPrincipal): Promise<StaffListDto> {
     return this.svc.list(admin)
+  }
+
+  /** The menu this person gets — the Role access "Preview as user" dialog. `STAFF_NOT_FOUND` (404) for an unknown id. */
+  @Get(':id/screens')
+  screensFor(@Param('id', new ParseUUIDPipe({ exceptionFactory: staffNotFound })) id: string): Promise<StaffScreensDto> {
+    return this.screens.screensForStaff(id)
   }
 
   /** Provision a staff account. It is claimed at the person's first Clerk sign-in with the same email. */
