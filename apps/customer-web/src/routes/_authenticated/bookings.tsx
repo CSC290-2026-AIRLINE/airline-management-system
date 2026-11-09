@@ -1,6 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { MyTripsPage } from '../../features/booking-pnr/pages/MyTripsPage'
+import { MyBookingsPage } from '../../features/booking-pnr/my-bookings/MyBookingsPage'
 
+// My Trips (B11). The tab is URL state, so "Upcoming" and "Past" can be linked to.
 export const Route = createFileRoute('/_authenticated/bookings')({
-  component: MyTripsPage,
+  validateSearch: (search: Record<string, unknown>): { tab?: 'upcoming' | 'past' } => ({
+    tab: search.tab === 'past' ? 'past' : 'upcoming',
+  }),
+  component: BookingsRoute,
 })
+
+function BookingsRoute() {
+  const { tab } = Route.useSearch()
+  return <MyBookingsPage tab={tab ?? 'upcoming'} />
+}
