@@ -2,7 +2,6 @@ import path from 'node:path'
 import { faker } from '@faker-js/faker'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
-import { seedCrewRostering } from '../modules/crew-rostering/seed/crew-rostering.seed'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -159,7 +158,6 @@ async function main() {
 
   const roleIds = await seedRoles()
   await seedFlightNetwork()
-  await seedCrewRostering(prisma)
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()
