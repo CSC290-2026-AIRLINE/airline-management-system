@@ -138,6 +138,48 @@ describe('DbSeats', () => {
     expect(order).toEqual(['tx:start', 'release', 'sweep', 'create', 'tx:end'])
   })
 
+  it('holding a seat gives back the earlier hold, not the seat the passenger has', async () => {
+    const { seats, db } = build()
+    await seats.hold('flt-fy204', '5B', 'bp-1', 300_000)
+    const release = db.seat_assignment.updateMany.mock.calls[0][0]
+    expect(release.where).toMatchObject({ booking_coupon_id: 'bc-1' })
+    expect(release.where.status).toBe('held')
+  })
+
+  it('confirming a hold gives the seat the passenger had back first', async () => {
+    const { seats, db } = build()
+    db.seat_assignment.findUnique.mockResolvedValue(seatRow())
+    const order: string[] = []
+    db.seat_assignment.updateMany.mockImplementation((args: { where?: { status?: string } }) => {
+      order.push(args.where?.status === 'assigned' ? 'release' : 'promote')
+      return Promise.resolve({ count: 1 })
+    })
+    await seats.confirm('sa-1', 'pay-1')
+    expect(db.$transaction).toHaveBeenCalled()
+    expect(order).toEqual(['release', 'promote'])
+    expect(db.seat_assignment.updateMany).toHaveBeenCalledWith({
+      where: { booking_coupon_id: 'bc-1', status: 'assigned', id: { not: 'sa-1' } },
+      data: { status: 'released', released_at: NOW, updated_at: NOW },
+    })
+  })
+
+  it('an expired hold cannot be confirmed and the transaction rolls back', async () => {
+    const { seats, db } = build()
+    db.seat_assignment.findUnique.mockResolvedValue(seatRow({ hold_expires_at: new Date(NOW.getTime() - 1) }))
+    db.seat_assignment.updateMany.mockResolvedValue({ count: 0 })
+    let rolledBack = false
+    db.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      try {
+        return await fn(db)
+      } catch (error) {
+        rolledBack = true
+        throw error
+      }
+    })
+    await expect(seats.confirm('sa-1', null)).rejects.toMatchObject({ code: 'LOCK_EXPIRED' })
+    expect(rolledBack).toBe(true)
+  })
+
   it('confirming a paid seat records the payment id', async () => {
     const { seats, db } = build()
     db.seat_assignment.findUnique.mockResolvedValue(seatRow())

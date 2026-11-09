@@ -78,9 +78,9 @@ export class DbSeats implements SeatProvider {
     const expiresAt = new Date(now.getTime() + ttlMs)
     try {
       const row = await this.db.$transaction(async (tx) => {
-        // The passenger keeps one seat: the earlier hold is given back before the new one is written.
+        // The passenger keeps the seat they have: only the earlier hold is given back before the new one is written.
         await tx.seat_assignment.updateMany({
-          where: { booking_coupon_id: coupon.id, status: { in: ['held', 'assigned'] } },
+          where: { booking_coupon_id: coupon.id, status: 'held' },
           data: { status: 'released', released_at: now, updated_at: now },
         })
         // An expired hold still sits in the unique index of the free seats, so it is swept away first.
@@ -124,14 +124,21 @@ export class DbSeats implements SeatProvider {
     const row = await this.db.seat_assignment.findUnique({ where: { id: lockId } })
     if (!row) throw new CheckInError(404, 'NOT_FOUND', `Seat hold ${lockId} not found`)
     const now = this.clock.now()
-    // Only a live hold becomes an assigned seat: a row that was taken or that ran out is not confirmed.
-    const updated = await this.db.seat_assignment.updateMany({
-      where: { id: lockId, status: 'held', hold_expires_at: { gt: now } },
-      data: { status: 'assigned', assigned_at: now, payment_id: paymentId, updated_at: now },
+    await this.db.$transaction(async (tx) => {
+      // The seat the passenger had is given back only when the new one is confirmed.
+      await tx.seat_assignment.updateMany({
+        where: { booking_coupon_id: row.booking_coupon_id, status: 'assigned', id: { not: lockId } },
+        data: { status: 'released', released_at: now, updated_at: now },
+      })
+      // Only a live hold becomes an assigned seat: a row that was taken or that ran out is not confirmed.
+      const updated = await tx.seat_assignment.updateMany({
+        where: { id: lockId, status: 'held', hold_expires_at: { gt: now } },
+        data: { status: 'assigned', assigned_at: now, payment_id: paymentId, updated_at: now },
+      })
+      if (updated.count === 0) {
+        throw new CheckInError(409, 'LOCK_EXPIRED', 'The seat hold has expired', { seatCode: row.seat_code })
+      }
     })
-    if (updated.count === 0) {
-      throw new CheckInError(409, 'LOCK_EXPIRED', 'The seat hold has expired', { seatCode: row.seat_code })
-    }
     return { seatCode: row.seat_code, type: seatOf(row.seat_code)?.type ?? 'standard' }
   }
 
