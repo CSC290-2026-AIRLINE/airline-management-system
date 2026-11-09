@@ -96,3 +96,55 @@ export interface JobRunResultDto {
   ranAt: string
   counts: Record<string, number>
 }
+
+/** One cabin's award seats on the Award Release page: `released` is award_limit, `redeemed` the award seats held or sold. */
+export interface CabinReleaseDto {
+  released: number
+  redeemed: number
+  milesCost: number
+}
+
+/** `GET /staff/loyalty/awards`: a flight with its award seats per cabin. */
+export interface AwardFlightDto {
+  flightId: string
+  flightNumber: string
+  route: string
+  departsAt: string
+  status: 'scheduled' | 'delayed' | 'cancelled' | 'departed'
+  aircraft: { name: string; cabins: string[] }
+  releases: Record<string, CabinReleaseDto>
+  /** The cutoff passed on a flight still for sale: unredeemed seats went back to cash and the release is locked. */
+  returnedToCash: boolean
+}
+
+/** `awardAvailability` (feature 3a): the miles price and award seats left for one flight and cabin. */
+export interface AwardAvailabilityDto {
+  flightId: string
+  cabin: string
+  milesCost: number
+  seatsLeft: number
+  seatsNeeded: number
+  milesTotal: number
+  open: boolean
+  available: boolean
+  /** The customer's balance, or null when no customer is given or they have not joined. */
+  balance: number | null
+  balanceCovers: boolean | null
+}
+
+/** `redeem(bookingId)` (feature 3b): the redeem rows written, one per award coupon. */
+export interface RedeemResultDto {
+  memberId: string
+  milesSpent: number
+  redeemed: { bookingCouponId: string; miles: number }[]
+  /** Coupons that already had a redeem row (a repeated call); nothing was written for them. */
+  alreadyRedeemed: number
+}
+
+/** `reverseRedemption(couponIds)` (feature 3b): the miles given back. */
+export interface ReversalResultDto {
+  reversed: number
+  milesReturned: number
+  /** Coupons skipped because they are still held or confirmed, or have no redeem row. */
+  skippedCouponIds: string[]
+}

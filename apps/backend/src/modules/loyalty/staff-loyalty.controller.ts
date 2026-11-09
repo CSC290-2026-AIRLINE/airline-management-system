@@ -14,8 +14,19 @@ import {
   ValidationPipe,
 } from '@nestjs/common'
 import type { TierBenefits, TierRule } from './domain/types'
-import { AdjustmentDto, EarnRuleDto, MemberSearchDto, SettingDto, TierBenefitsDto, TierRuleDto } from './dto/requests'
+import {
+  AdjustmentDto,
+  AwardFlightsQueryDto,
+  EarnRuleDto,
+  MemberSearchDto,
+  ReleaseAwardDto,
+  SettingDto,
+  TierBenefitsDto,
+  TierRuleDto,
+  UpdateAwardDto,
+} from './dto/requests'
 import type {
+  AwardFlightDto,
   EarnRuleDto as EarnRuleRow,
   JobRunResultDto,
   LoyaltySettingsDto,
@@ -24,17 +35,23 @@ import type {
   TierInfoDto,
 } from './dto/responses'
 import { LoyaltyStaff, LoyaltyStaffGuard, type LoyaltyStaffPrincipal } from './guards/loyalty-staff.guard'
-import { LoyaltyError, memberNotFound, toLoyaltyValidationError } from './loyalty-error'
+import { LoyaltyAwardService } from './loyalty-award.service'
+import { LoyaltyError, invalid, memberNotFound, toLoyaltyValidationError } from './loyalty-error'
 import { LoyaltyJobsService, isJobName } from './loyalty-jobs.service'
 import { LoyaltyRulesService } from './loyalty-rules.service'
 import { LoyaltyStaffService } from './loyalty-staff.service'
 
 const memberId = new ParseUUIDPipe({ exceptionFactory: memberNotFound })
+const flightId = new ParseUUIDPipe({
+  exceptionFactory: () => new LoyaltyError(HttpStatus.NOT_FOUND, 'FLIGHT_NOT_FOUND', 'No flight with that id.'),
+})
+const AWARD_CABINS = new Set(['economy', 'premium_economy', 'business', 'first'])
+
 const fareClassId = new ParseUUIDPipe({
   exceptionFactory: () => new LoyaltyError(HttpStatus.NOT_FOUND, 'FARE_CLASS_NOT_FOUND', 'No fare class with that id.'),
 })
 
-/** `/api/staff/loyalty/*`: Member Lookup and Loyalty Rules. Loyalty staff only (see `LoyaltyStaffGuard`). */
+/** `/api/staff/loyalty/*`: Member Lookup, Loyalty Rules, Award Release and job runs. Loyalty staff only (see `LoyaltyStaffGuard`). */
 @Controller('staff/loyalty')
 @UseGuards(LoyaltyStaffGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: toLoyaltyValidationError }))
@@ -43,6 +60,7 @@ export class StaffLoyaltyController {
     private readonly staff: LoyaltyStaffService,
     private readonly rules: LoyaltyRulesService,
     private readonly jobs: LoyaltyJobsService,
+    private readonly awards: LoyaltyAwardService,
   ) {}
 
   @Get('members')
@@ -120,9 +138,35 @@ export class StaffLoyaltyController {
     return this.rules.updateTierBenefits(who, code, { ...dto, insurance })
   }
 
+  /** Award Release: flights in the window with their award seats per cabin. */
+  @Get('awards')
+  awardFlights(@Query() query: AwardFlightsQueryDto): Promise<AwardFlightDto[]> {
+    return this.awards.listFlights(query.from ? new Date(query.from) : undefined, query.to ? new Date(query.to) : undefined)
+  }
+
+  /** Release award seats on a flight and cabin: writes the miles price and raises `award_limit` in one transaction. */
+  @Post('awards')
+  @HttpCode(201)
+  releaseAward(@LoyaltyStaff() who: LoyaltyStaffPrincipal, @Body() dto: ReleaseAwardDto): Promise<AwardFlightDto> {
+    return this.awards.release(who, dto.flightId, dto.cabin, dto.seats, dto.milesCost)
+  }
+
+  /** Change the seats set aside (not below the award seats already taken) or the miles price. */
+  @Put('awards/:flightId/:cabin')
+  updateAward(
+    @LoyaltyStaff() who: LoyaltyStaffPrincipal,
+    @Param('flightId', flightId) id: string,
+    @Param('cabin') cabin: string,
+    @Body() dto: UpdateAwardDto,
+  ): Promise<AwardFlightDto> {
+    if (!AWARD_CABINS.has(cabin)) throw invalid('cabin', 'Unknown cabin.')
+    if (dto.seats === undefined && dto.milesCost === undefined) throw invalid('seats', 'Enter the seats or the miles per seat.')
+    return this.awards.updateRelease(who, id, cabin, dto)
+  }
+
   /**
-   * Runs one background job now, at the current simulated time, for demos and tests: `earn`, `tier` or `expire`.
-   * `return-to-cash` and `upgrade` answer 501 until feature 3b ships `setAwardSeats` and `upgradeCoupon`.
+   * Runs one background job now, at the current simulated time, for demos and tests: `earn`, `tier`, `expire` or
+   * `return-to-cash`. `upgrade` answers 501 until feature 3b ships `upgradeCoupon`.
    */
   @Post('jobs/:name/run')
   @HttpCode(200)

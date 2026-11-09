@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -118,4 +119,51 @@ export class TierBenefitsDto {
   @ValidateNested()
   @Type(() => InsuranceDto)
   insurance!: InsuranceDto
+}
+
+const AWARD_CABINS = ['economy', 'premium_economy', 'business', 'first']
+
+/** `POST /staff/loyalty/awards`: release award seats on one flight and cabin, with the miles price per seat. */
+export class ReleaseAwardDto {
+  @IsUUID()
+  flightId!: string
+
+  @IsIn(AWARD_CABINS)
+  cabin!: string
+
+  @IsInt()
+  @Min(0)
+  @Max(999)
+  seats!: number
+
+  @IsInt()
+  @Min(1)
+  @Max(10_000_000)
+  milesCost!: number
+}
+
+/** `PUT /staff/loyalty/awards/:flightId/:cabin`: change the seats set aside, the miles price, or both. */
+export class UpdateAwardDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(999)
+  seats?: number
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10_000_000)
+  milesCost?: number
+}
+
+/** `GET /staff/loyalty/awards?from=&to=`: flights departing in the window (default: yesterday to 90 days ahead). */
+export class AwardFlightsQueryDto {
+  @IsOptional()
+  @IsDateString()
+  from?: string
+
+  @IsOptional()
+  @IsDateString()
+  to?: string
 }

@@ -8,13 +8,14 @@ import { draftExpiries, expiryReminders, reminderEventId } from './domain/expiry
 import { TIER_WINDOW_MONTHS, nextMemberTier, qualifyingTier, tierChanged, tierStats, type TierActivity } from './domain/tier'
 import type { EarnRule, LedgerRow, MemberTier, TierCode, TransactionType } from './domain/types'
 import type { JobRunResultDto } from './dto/responses'
+import { LoyaltyAwardService } from './loyalty-award.service'
 import { LoyaltyError, isCheckViolation } from './loyalty-error'
 import { LoyaltyDataService } from './loyalty-data.service'
 
-/** The jobs `POST /staff/loyalty/jobs/:name/run` accepts. return-to-cash and upgrade wait on feature 3b's methods. */
+/** The jobs `POST /staff/loyalty/jobs/:name/run` accepts. upgrade waits on feature 3b's `upgradeCoupon`. */
 export const JOB_NAMES = ['earn', 'tier', 'expire', 'return-to-cash', 'upgrade'] as const
 export type JobName = (typeof JOB_NAMES)[number]
-const AVAILABLE_JOBS: readonly JobName[] = ['earn', 'tier', 'expire']
+const AVAILABLE_JOBS: readonly JobName[] = ['earn', 'tier', 'expire', 'return-to-cash']
 
 export const isJobName = (name: string): name is JobName => (JOB_NAMES as readonly string[]).includes(name)
 
@@ -60,6 +61,9 @@ const passengerName = (m: { customer: { passenger: { first_name: string; last_na
  *             `miles_expiring` reminder per member and expiry date. Messages go through feature 13's `inbound_event`,
  *             whose UNIQUE (source, source_event_id) makes a repeat a no-op, so Feature 11 records nothing.
  *
+ *   - return-to-cash: inside `award_cutoff_hours` of departure, lowers `award_limit` to the award seats in use
+ *             (`LoyaltyAwardService.returnToCash`), so unredeemed award seats sell for cash.
+ *
  * A job never runs twice at once in this process; the second call answers 409 JOB_RUNNING.
  */
 @Injectable()
@@ -71,6 +75,7 @@ export class LoyaltyJobsService {
     private readonly db: DbService,
     private readonly data: LoyaltyDataService,
     private readonly clock: SimulationClock,
+    private readonly awards: LoyaltyAwardService,
   ) {}
 
   async run(name: JobName): Promise<JobRunResultDto> {
@@ -78,7 +83,7 @@ export class LoyaltyJobsService {
       throw new LoyaltyError(
         HttpStatus.NOT_IMPLEMENTED,
         'JOB_NOT_AVAILABLE',
-        `The ${name} job needs feature 3b's ${name === 'upgrade' ? 'upgradeCoupon' : 'setAwardSeats'} method, which is not built yet.`,
+        `The ${name} job needs feature 3b's upgradeCoupon method, which is not built yet.`,
       )
     }
     if (this.running.has(name)) {
@@ -87,7 +92,14 @@ export class LoyaltyJobsService {
     this.running.add(name)
     const now = this.clock.now()
     try {
-      const counts = name === 'earn' ? await this.earn(now) : name === 'tier' ? await this.tier(now) : await this.expire(now)
+      const counts =
+        name === 'earn'
+          ? await this.earn(now)
+          : name === 'tier'
+            ? await this.tier(now)
+            : name === 'return-to-cash'
+              ? await this.awards.returnToCash(now)
+              : await this.expire(now)
       this.logger.log(`${name} job at ${now.toISOString()}: ${JSON.stringify(counts)}`)
       return { job: name, ranAt: now.toISOString(), counts }
     } finally {

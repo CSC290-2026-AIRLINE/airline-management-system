@@ -15,6 +15,15 @@ export type LoyaltyErrorCode =
   | 'JOB_NOT_FOUND'
   | 'JOB_NOT_AVAILABLE'
   | 'JOB_RUNNING'
+  | 'FLIGHT_NOT_FOUND'
+  | 'BOOKING_NOT_FOUND'
+  | 'NOT_A_MILES_BOOKING'
+  | 'AWARD_CABIN_NOT_FOUND'
+  | 'AWARD_ALREADY_RELEASED'
+  | 'AWARD_NOT_RELEASED'
+  | 'AWARD_CLOSED'
+  | 'AWARD_BELOW_TAKEN'
+  | 'AWARD_SEATS_UNAVAILABLE'
 
 /** Every Feature 11 error has the shape `{ error: { code, message, details? } }`, which both loyalty apps read. */
 export class LoyaltyError extends HttpException {

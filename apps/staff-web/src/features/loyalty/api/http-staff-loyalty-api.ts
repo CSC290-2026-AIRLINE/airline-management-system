@@ -1,4 +1,14 @@
-import type { EarnRuleRow, LoyaltySettings, MemberDetail, MemberListItem, StaffLoyaltyApi, TierBenefits, TierCode, TierRule } from './types'
+import type {
+  AwardFlight,
+  EarnRuleRow,
+  LoyaltySettings,
+  MemberDetail,
+  MemberListItem,
+  StaffLoyaltyApi,
+  TierBenefits,
+  TierCode,
+  TierRule,
+} from './types'
 
 type FetchWithAuth = (path: string, init?: RequestInit) => Promise<Response>
 
@@ -68,12 +78,12 @@ const send = (method: 'POST' | 'PUT', body: unknown): RequestInit => ({
 const base = '/api/staff/loyalty'
 
 /**
- * Member Lookup and Loyalty Rules over the Feature 11 staff routes. Award Release and the Lounge Desk have no backend
- * routes yet, so those four methods come from `fallback` (the demo data) until they do.
+ * Member Lookup, Loyalty Rules and Award Release over the Feature 11 staff routes. The Lounge Desk has no backend routes
+ * yet, so its two methods come from `fallback` (the demo data) until they do.
  */
 export function createHttpStaffLoyaltyApi(
   fetchWithAuth: FetchWithAuth,
-  fallback: Pick<StaffLoyaltyApi, 'getAwardFlights' | 'saveRelease' | 'checkInLounge' | 'getLoungeVisits'>,
+  fallback: Pick<StaffLoyaltyApi, 'checkInLounge' | 'getLoungeVisits'>,
 ): StaffLoyaltyApi {
   const get = async <T>(path: string) => json<T>(await fetchWithAuth(`${base}${path}`))
 
@@ -116,8 +126,25 @@ export function createHttpStaffLoyaltyApi(
     adjustMiles: async (id, miles, reason) =>
       json<MemberDetail>(await fetchWithAuth(`${base}/members/${encodeURIComponent(id)}/adjustments`, send('POST', { miles, reason }))),
 
-    getAwardFlights: () => fallback.getAwardFlights(),
-    saveRelease: (flightId, cabin, released, milesCost) => fallback.saveRelease(flightId, cabin, released, milesCost),
+    getAwardFlights: () => get<AwardFlight[]>('/awards'),
+
+    // Changing a release is a PUT; a cabin with no release yet answers 404 AWARD_NOT_RELEASED, and then the first
+    // release is a POST. Both answer the updated flight.
+    async saveRelease(flightId, cabin, released, milesCost) {
+      const body = { seats: released, milesCost }
+      const res = await fetchWithAuth(`${base}/awards/${encodeURIComponent(flightId)}/${encodeURIComponent(cabin)}`, send('PUT', body))
+      if (res.status === 404) {
+        const code = (
+          (await res
+            .clone()
+            .json()
+            .catch(() => null)) as { error?: { code?: string } } | null
+        )?.error?.code
+        if (code === 'AWARD_NOT_RELEASED')
+          return json<AwardFlight>(await fetchWithAuth(`${base}/awards`, send('POST', { flightId, cabin, ...body })))
+      }
+      return json<AwardFlight>(res)
+    },
     checkInLounge: (query, guests) => fallback.checkInLounge(query, guests),
     getLoungeVisits: () => fallback.getLoungeVisits(),
   }

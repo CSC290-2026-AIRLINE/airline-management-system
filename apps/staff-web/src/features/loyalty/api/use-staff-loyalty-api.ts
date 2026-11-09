@@ -10,7 +10,7 @@ type FetchWithAuth = ReturnType<typeof useAppAuth>['fetchWithAuth']
 // client to useLoad and useCallback, so its identity must not change between renders.
 let currentFetch: FetchWithAuth | null = null
 
-// Award Release and the Lounge Desk still read demo data: their backend routes come in the next Feature 11 change.
+// The Lounge Desk still reads demo data: its backend routes come in a later Feature 11 change.
 const demo = createMockStaffLoyaltyApi()
 
 const api = createHttpStaffLoyaltyApi((path, init) => {

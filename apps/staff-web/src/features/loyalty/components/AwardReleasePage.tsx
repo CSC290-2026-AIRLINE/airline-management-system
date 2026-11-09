@@ -191,8 +191,8 @@ function AwardFlights({ api, initial }: { api: StaffLoyaltyApi; initial: AwardFl
         </ul>
       )}
       <p className={ui.small}>
-        Seat columns show redeemed / released. Departed and cancelled flights are closed. Within 72 hours of departure the unredeemed seats
-        go back to cash sale and the release is locked.
+        Seat columns show redeemed / released. Departed and cancelled flights are closed. Inside the award cutoff (Loyalty Rules, 72 hours
+        to start) the unredeemed seats go back to cash sale and the release is locked.
       </p>
 
       {open && !desktop && (

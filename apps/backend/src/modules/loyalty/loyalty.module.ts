@@ -1,7 +1,9 @@
 import { Logger, Module, type OnModuleInit } from '@nestjs/common'
 import { AdminConsoleModule } from '@backend/modules/admin-console/admin-console.module'
 import { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
+import { AWARD_SEAT_PORT, SeatInventoryAwardSeats } from './award-seats.port'
 import { LoyaltyStaffGuard } from './guards/loyalty-staff.guard'
+import { LoyaltyAwardService } from './loyalty-award.service'
 import { LoyaltyController } from './loyalty.controller'
 import { LoyaltyDataService } from './loyalty-data.service'
 import { LoyaltyJobScheduler } from './loyalty-job-scheduler'
@@ -14,7 +16,7 @@ import { StaffLoyaltyController } from './staff-loyalty.controller'
 
 /**
  * Feature 11, the loyalty programme. Imports the admin console for its audit writer, the one shared simulation clock
- * and the screen registry. `LoyaltyJobScheduler` runs the earn, tier and expiry jobs on the simulation clock. Other features use `LoyaltyMemberService.tierForPassenger` in process, never over HTTP.
+ * and the screen registry. `LoyaltyJobScheduler` runs the earn, tier, expiry and return-to-cash jobs on the simulation clock. Other features use `LoyaltyMemberService.tierForPassenger` in process, never over HTTP.
  */
 @Module({
   imports: [AdminConsoleModule],
@@ -27,8 +29,12 @@ import { StaffLoyaltyController } from './staff-loyalty.controller'
     LoyaltyStaffGuard,
     LoyaltyJobsService,
     LoyaltyJobScheduler,
+    LoyaltyAwardService,
+    // Interim: writes award_limit itself until feature 3b's InventoryPort.setAwardSeats exists.
+    { provide: AWARD_SEAT_PORT, useClass: SeatInventoryAwardSeats },
   ],
-  exports: [LoyaltyMemberService],
+  // tierForPassenger for features 6 and 12; awardAvailability (3a), redeem and reverseRedemption (3b).
+  exports: [LoyaltyMemberService, LoyaltyAwardService],
 })
 export class LoyaltyModule implements OnModuleInit {
   private readonly logger = new Logger(LoyaltyModule.name)
