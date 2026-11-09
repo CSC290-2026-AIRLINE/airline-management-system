@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { APP_FILTER } from '@nestjs/core'
 import { BookingProviderAdapter, BOOKING_PROVIDER } from './providers/booking-provider.adapter'
 import { CancelController } from './cancel/cancel.controller'
+import { CancelForFlightService } from './cancel/cancel-for-flight.service'
 import { CancelService } from './cancel/cancel.service'
 import { BookingStatusService } from './common/booking-status.service'
 import { BookingErrorFilter } from './common/booking-error.filter'
@@ -30,7 +31,6 @@ import {
   SEAT_PORT,
   SERVICE_REQUEST_PORT,
 } from './contracts'
-import { CancelForFlightStub } from './stubs/cancel-for-flight.stub'
 import { CheckoutStub } from './stubs/checkout.stub'
 import { LocalFlightEventBus } from './stubs/flight-event-bus.stub'
 import { InventoryStub } from './stubs/inventory.stub'
@@ -49,6 +49,7 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
     ConfirmService,
     ReleaseService,
     CancelService,
+    CancelForFlightService,
     HoldExpiryJob,
     BookingReadService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
@@ -65,7 +66,7 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
     { provide: SCREENING_PORT, useClass: ScreeningStub },
     { provide: SEAT_MAP_PORT, useClass: SeatMapStub },
     { provide: BOOKING_READ_PORT, useExisting: BookingReadService },
-    { provide: CANCEL_FOR_FLIGHT_PORT, useClass: CancelForFlightStub },
+    { provide: CANCEL_FOR_FLIGHT_PORT, useExisting: CancelForFlightService },
     { provide: FLIGHT_EVENT_BUS, useClass: LocalFlightEventBus },
     { provide: BOOKING_PROVIDER, useClass: BookingProviderAdapter },
   ],
