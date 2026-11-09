@@ -9,6 +9,9 @@ import { ConfirmService } from './confirm/confirm.service'
 import { DevConfirmController } from './confirm/dev-confirm.controller'
 import { HoldExpiryJob } from './confirm/hold-expiry.job'
 import { ReleaseService } from './confirm/release.service'
+import { BookingReadService } from './manage/booking-read.service'
+import { BookingsController } from './manage/bookings.controller'
+import { CustomerBookingsController } from './manage/customer-bookings.controller'
 import {
   BOOKING_CLOCK,
   BOOKING_EVENT_BUS,
@@ -25,7 +28,6 @@ import {
   SEAT_PORT,
   SERVICE_REQUEST_PORT,
 } from './contracts'
-import { BookingReadStub } from './stubs/booking-read.stub'
 import { CancelForFlightStub } from './stubs/cancel-for-flight.stub'
 import { CheckoutStub } from './stubs/checkout.stub'
 import { LocalFlightEventBus } from './stubs/flight-event-bus.stub'
@@ -39,12 +41,13 @@ import { SeatStub } from './stubs/seat.stub'
 import { ServiceRequestStub } from './stubs/service-request.stub'
 
 @Module({
-  controllers: [DevConfirmController],
+  controllers: [DevConfirmController, BookingsController, CustomerBookingsController],
   providers: [
     BookingStatusService,
     ConfirmService,
     ReleaseService,
     HoldExpiryJob,
+    BookingReadService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },
     { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
@@ -58,7 +61,7 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
     { provide: REFUND_PORT, useClass: RefundStub },
     { provide: SCREENING_PORT, useClass: ScreeningStub },
     { provide: SEAT_MAP_PORT, useClass: SeatMapStub },
-    { provide: BOOKING_READ_PORT, useClass: BookingReadStub },
+    { provide: BOOKING_READ_PORT, useExisting: BookingReadService },
     { provide: CANCEL_FOR_FLIGHT_PORT, useClass: CancelForFlightStub },
     { provide: FLIGHT_EVENT_BUS, useClass: LocalFlightEventBus },
     { provide: BOOKING_PROVIDER, useClass: BookingProviderAdapter },
