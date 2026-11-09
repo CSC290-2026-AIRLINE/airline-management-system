@@ -1,3 +1,4 @@
+import { StaffBookingLookupService } from './staff/staff-booking-lookup.service'
 import { DemoBookingCustomerController } from './staff/demo-booking-customer.controller'
 import { DemoBookingCustomerService } from './staff/demo-booking-customer.service'
 import { StaffBookingController } from './staff/staff-booking.controller'
@@ -43,6 +44,7 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
   controllers: [HoldController, DemoPassengerController, StaffBookingController, DemoBookingCustomerController],
   providers: [
     HoldService,
+    StaffBookingLookupService,
     DemoBookingCustomerService,
     DemoPassengerService,
     BookingStatusService,

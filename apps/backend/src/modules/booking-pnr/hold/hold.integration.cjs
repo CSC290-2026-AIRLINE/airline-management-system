@@ -19,6 +19,7 @@ const { InventoryService } = load('modules/booking-pnr/inventory/inventory.servi
 const { HoldService } = load('modules/booking-pnr/hold/hold.service')
 const { HoldController } = load('modules/booking-pnr/hold/hold.controller')
 const { StaffBookingController } = load('modules/booking-pnr/staff/staff-booking.controller')
+const { StaffBookingLookupService } = load('modules/booking-pnr/staff/staff-booking-lookup.service')
 const { DemoBookingCustomerController } = load('modules/booking-pnr/staff/demo-booking-customer.controller')
 const { DemoBookingCustomerService } = load('modules/booking-pnr/staff/demo-booking-customer.service')
 const { DemoPassengerController } = load('modules/booking-pnr/hold/demo-passenger.controller')
@@ -94,11 +95,24 @@ async function main() {
   const demoConfig = new ConfigService({ NODE_ENV: 'development' })
   const demos = new DemoPassengerService(db, demoConfig)
   const jwt = new JwtService({ secret: randomBytes(32).toString('hex') })
+  const lookupCalls = [],
+    detailCalls = []
+  const lookupPort = {
+    listStaffBookings: async (query) => {
+      lookupCalls.push(query)
+      return { items: [], page: query.page, pageSize: query.pageSize, total: 0 }
+    },
+    getBookingDetail: async (reference, viewer) => {
+      detailCalls.push({ reference, viewer })
+      return reference === 'ABC234' ? { reference, history: [] } : null
+    },
+  }
   class TestModule {}
   Module({
     controllers: [HoldController, DemoPassengerController, StaffBookingController, DemoBookingCustomerController],
     providers: [
       { provide: HoldService, useValue: holds },
+      { provide: StaffBookingLookupService, useValue: new StaffBookingLookupService(db, lookupPort) },
       { provide: DemoBookingCustomerService, useValue: new DemoBookingCustomerService(db, demoConfig) },
       { provide: DemoPassengerService, useValue: demos },
     ],
@@ -186,6 +200,33 @@ async function main() {
   assert.equal((await listCustomers(staffToken)).status, 404)
   demoConfig.set('NODE_ENV', 'development')
   console.log('PASS: staff customer selector exposes only the seeded customer, rejects customer tokens and is unavailable in production')
+  const lookup = (url) =>
+    http(app.getHttpServer())
+      .get(url)
+      .set('Authorization', 'Bearer ' + staffToken)
+  assert.equal((await http(app.getHttpServer()).get('/api/staff/bookings')).status, 401)
+  const customerLookup = await http(app.getHttpServer())
+    .get('/api/staff/bookings')
+    .set('Authorization', 'Bearer ' + jwt.sign({ sub: users[0], email: 'fixture@example.com' }))
+  assert.equal(customerLookup.status, 403)
+  assert.equal(lookupCalls.length, 0)
+  const searched = await lookup('/api/staff/bookings?search=%20ABC234%20&from=bad&status=bad&flightId=bad&dateType=bad&page=2&pageSize=5')
+  assert.equal(searched.status, 200, JSON.stringify(searched.body))
+  assert.deepEqual(searched.body, { items: [], page: 2, pageSize: 5, total: 0 })
+  assert.deepEqual(lookupCalls.at(-1), { search: 'ABC234', page: 2, pageSize: 5 })
+  const filtered = await lookup('/api/staff/bookings?dateType=travelling&from=2026-11-01&to=2026-11-30&status=confirmed')
+  assert.equal(filtered.status, 200, JSON.stringify(filtered.body))
+  assert.equal(lookupCalls.at(-1).from.toISOString(), '2026-11-01T00:00:00.000Z')
+  assert.equal(lookupCalls.at(-1).to.toISOString(), '2026-11-30T23:59:59.999Z')
+  for (const query of ['page=0', 'pageSize=101', 'from=invalid', 'from=2026-12-01&to=2026-11-01', 'unknown=true'])
+    assert.equal((await lookup('/api/staff/bookings?' + query)).status, 400)
+  const lookupDetail = await lookup('/api/staff/bookings/abc234')
+  assert.equal(lookupDetail.status, 200)
+  assert.deepEqual(detailCalls.at(-1), { reference: 'ABC234', viewer: { staff: true } })
+  assert.equal((await lookup('/api/staff/bookings/ZZZ999')).status, 404)
+  console.log(
+    'PASS: staff lookup uses B read port, enforces auth, ignores filters for search, validates dates/paging and requests the staff detail view',
+  )
   const staffFlight = await newFlight()
   const staffBody = { ...body(staffFlight), customerId: customer.id }
   function staffPost(token, key, data) {
