@@ -1,3 +1,4 @@
+import { StaffBookingLayout } from '../../features/booking-pnr/booking-lookup/StaffBookingLayout'
 import { createFileRoute } from '@tanstack/react-router'
 import { BookingLookupPage } from '../../features/booking-pnr/pages/BookingLookupPage'
 
@@ -8,5 +9,9 @@ export const Route = createFileRoute('/_authenticated/booking-lookup')({
         ? search.reference.trim().toUpperCase()
         : undefined,
   }),
-  component: BookingLookupPage,
+  component: () => (
+    <StaffBookingLayout>
+      <BookingLookupPage />
+    </StaffBookingLayout>
+  ),
 })
