@@ -46,6 +46,26 @@ export interface EligibleFlight {
   destination: string
 }
 
+export interface BookingFlightSummary {
+  bookingReference: string
+  flightNumber: string
+  serviceDate: string
+  origin: string
+  destination: string
+}
+
+export function buildBookingFlightSummary(bookingReference: string, flight: EligibleFlight | undefined): BookingFlightSummary | null {
+  if (!flight) return null
+
+  return {
+    bookingReference: bookingReference.trim().toUpperCase(),
+    flightNumber: flight.flightNumber,
+    serviceDate: flight.serviceDate,
+    origin: flight.origin,
+    destination: flight.destination,
+  }
+}
+
 export interface CaseAccess {
   caseNumber: string
   bookingReference: string

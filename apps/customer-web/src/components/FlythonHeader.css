@@ -93,6 +93,15 @@
   margin-left: auto;
 }
 
+.flython-header__menu-heading,
+.flython-header__menu-profile {
+  display: none;
+}
+
+.flython-header__menu-links {
+  display: contents;
+}
+
 .flython-header__link {
   color: #17233f;
   font-size: 0.9rem;
@@ -176,7 +185,8 @@
 
 .flython-header__menu-toggle:focus-visible,
 .flython-header__brand:focus-visible,
-.flython-header__link:focus-visible {
+.flython-header__link:focus-visible,
+.flython-header__menu-heading button:focus-visible {
   outline: 2px solid #ff9f0a;
   outline-offset: 3px;
 }
@@ -209,31 +219,115 @@
   }
 
   .flython-header__nav {
-    position: absolute;
-    top: calc(100% + 0.45rem);
+    position: fixed;
+    z-index: 20;
+    inset: 0;
     right: 0;
-    left: 0;
     display: none;
-    align-items: stretch;
-    gap: 0;
+    align-content: start;
+    align-items: start;
+    gap: 1rem;
     margin: 0;
-    padding: 0.35rem 1rem;
-    border: 1px solid #d9e0eb;
-    border-radius: 0.75rem;
-    background: #fff;
-    box-shadow: 0 8px 24px rgb(23 35 63 / 12%);
+    padding: 1.5rem;
+    overflow-y: auto;
+    background: #f6f8fc;
   }
 
   .flython-header__nav--open {
     display: grid;
   }
 
+  .flython-header__menu-heading {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    color: #17233f;
+    font-size: 1.35rem;
+    font-weight: 700;
+  }
+
+  .flython-header__menu-heading button {
+    display: grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: #fff;
+    color: #17233f;
+    font: inherit;
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+
+  .flython-header__menu-links {
+    display: grid;
+    width: 100%;
+    padding: 0.35rem;
+    border: 1px solid #d9e0eb;
+    border-radius: 0.9rem;
+    background: #fff;
+  }
+
   .flython-header__link {
-    padding: 0.8rem 0.2rem;
+    position: relative;
+    display: flex;
+    min-height: 3rem;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 0.8rem;
+    border-radius: 0.6rem;
+  }
+
+  .flython-header__link::after {
+    color: #68758f;
+    content: '›';
+    font-size: 1.35rem;
   }
 
   .flython-header__link + .flython-header__link {
     border-top: 1px solid #e8edf5;
+  }
+
+  .flython-header__link--active {
+    background: #eaf1ff;
+    font-weight: 650;
+  }
+
+  .flython-header__link--active::before {
+    position: absolute;
+    top: 0.7rem;
+    bottom: 0.7rem;
+    left: 0.25rem;
+    width: 3px;
+    border-radius: 3px;
+    background: #ff9f0a;
+    content: '';
+  }
+
+  .flython-header__menu-profile {
+    display: flex;
+    width: min(100%, 19rem);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid #d9e0eb;
+    border-radius: 0.9rem;
+    background: #fff;
+    color: #17233f;
+  }
+
+  .flython-header__menu-profile > span:last-child {
+    display: grid;
+    min-width: 0;
+    gap: 0.15rem;
+  }
+
+  .flython-header__menu-profile small {
+    overflow-wrap: anywhere;
+    color: #68758f;
+    font-size: 0.78rem;
   }
 
   .flython-header__profile {

@@ -126,6 +126,18 @@
   font-size: 0.9rem;
 }
 
+.passenger-report-booking-summary {
+  min-width: 0;
+  margin: 1rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.55rem;
+  background: var(--report-orange-soft);
+  color: #8a5200;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .passenger-report-fields--flight {
   grid-template-columns: minmax(0, 1fr);
   align-items: end;
@@ -489,6 +501,7 @@
 
 .passenger-report-success__actions {
   display: flex;
+  flex-direction: row-reverse;
   flex-wrap: wrap;
   gap: 0.65rem;
   margin-top: 1.5rem;

@@ -42,22 +42,39 @@ export function FlythonHeader() {
         </button>
 
         <nav aria-label="Customer navigation" className={`flython-header__nav${isNavigationOpen ? ' flython-header__nav--open' : ''}`}>
-          <Link
-            aria-current={pathname === '/report-lost-bag' ? 'page' : undefined}
-            className={pathname === '/report-lost-bag' ? 'flython-header__link flython-header__link--active' : 'flython-header__link'}
-            to="/report-lost-bag"
-            onClick={() => setIsNavigationOpen(false)}
-          >
-            Lost bag
-          </Link>
-          <Link
-            aria-current={pathname === '/lost-bag-case' ? 'page' : undefined}
-            className={pathname === '/lost-bag-case' ? 'flython-header__link flython-header__link--active' : 'flython-header__link'}
-            to="/lost-bag-case"
-            onClick={() => setIsNavigationOpen(false)}
-          >
-            My bag case
-          </Link>
+          <div className="flython-header__menu-heading">
+            <span>Menu</span>
+            <button type="button" aria-label="Close navigation menu" onClick={() => setIsNavigationOpen(false)}>
+              ×
+            </button>
+          </div>
+          <div className="flython-header__menu-links">
+            <Link
+              aria-current={pathname === '/report-lost-bag' ? 'page' : undefined}
+              className={pathname === '/report-lost-bag' ? 'flython-header__link flython-header__link--active' : 'flython-header__link'}
+              to="/report-lost-bag"
+              onClick={() => setIsNavigationOpen(false)}
+            >
+              Lost bag
+            </Link>
+            <Link
+              aria-current={pathname === '/lost-bag-case' ? 'page' : undefined}
+              className={pathname === '/lost-bag-case' ? 'flython-header__link flython-header__link--active' : 'flython-header__link'}
+              to="/lost-bag-case"
+              onClick={() => setIsNavigationOpen(false)}
+            >
+              My bag case
+            </Link>
+          </div>
+          <div className="flython-header__menu-profile">
+            <span aria-hidden="true" className="flython-header__avatar">
+              {profileInitial(user?.email)}
+            </span>
+            <span>
+              <strong>Profile</strong>
+              <small>{user?.email ? `Signed in · ${user.email}` : 'Signed in'}</small>
+            </span>
+          </div>
         </nav>
 
         <div aria-label="Signed-in profile" className="flython-header__profile" role="group">

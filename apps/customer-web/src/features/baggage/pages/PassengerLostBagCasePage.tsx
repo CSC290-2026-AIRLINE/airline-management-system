@@ -1,8 +1,9 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
-import { useLocation } from '@tanstack/react-router'
+import { Link, useLocation } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
 import { DeliveryChoiceForm, type PassengerDeliveryChoice } from '../components/DeliveryChoiceForm'
 import { createPassengerCasePageState, isCurrentCaseRequest, passengerCasePageReducer, passengerDeliveryFormKey } from './case-page-state'
+import { canReportBagFoundByPassenger, caseProgressPresentation, caseStatusLabel, shouldShowNoOpenCase } from './case-page-presentation'
 import { timelineEventLabel, type PassengerCaseTimelineEvent } from './passenger-case-summary-view'
 import './PassengerLostBagCasePage.css'
 
@@ -59,7 +60,6 @@ interface ApiErrorBody {
 const EDITABLE_DELIVERY_STATUSES: DeliveryStatus[] = ['waiting_choice', 'preparing']
 const RECOVERY_REPORT_STATUSES = ['matched', 'delivering', 'lost']
 const CASE_NUMBER_PATTERN = /^LB-\d{4}-\d{6}$/i
-const PROGRESS_STEPS = ['Searching', 'Bag found', 'On its way', 'Back with you']
 
 const DELIVERY_TYPE_LABELS: Record<DeliveryType, string> = {
   home: 'Home',
@@ -89,22 +89,6 @@ function formatServiceDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(value))
 }
 
-function formatStatus(status: string): string {
-  return status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
-}
-
-function caseStatusLabel(report: LostBagReportDetail, delivery: DeliveryChoiceState | null): string {
-  if (report.status === 'cancelled') return 'Cancelled'
-  if (report.status === 'closed' || delivery?.status === 'delivered') return 'Back with you'
-  if (report.status === 'delivering' || delivery?.status === 'in_transit' || delivery?.status === 'ready_for_pickup') {
-    return 'Being delivered'
-  }
-  if (report.status === 'matched' || delivery) return 'Owner confirmed'
-  if (report.status === 'open' || report.status === 'lost') return 'Searching'
-
-  return formatStatus(report.status)
-}
-
 function deliveryStatusLabel(status: DeliveryStatus): string {
   const labels: Record<DeliveryStatus, string> = {
     waiting_choice: 'Waiting for passenger',
@@ -115,14 +99,6 @@ function deliveryStatusLabel(status: DeliveryStatus): string {
   }
 
   return labels[status]
-}
-
-function progressStep(report: LostBagReportDetail, delivery: DeliveryChoiceState | null): number {
-  if (report.status === 'closed' || delivery?.status === 'delivered') return 3
-  if (report.status === 'delivering' || delivery?.status === 'in_transit' || delivery?.status === 'ready_for_pickup') return 2
-  if (report.status === 'matched' || delivery) return 1
-
-  return 0
 }
 
 function deliveryDestination(delivery: DeliveryChoiceState): string | null {
@@ -183,6 +159,8 @@ export function PassengerLostBagCasePage() {
   const [caseListMessage, setCaseListMessage] = useState('')
   const [isLookingUp, setIsLookingUp] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
+  const [isConfirmingSelfFound, setIsConfirmingSelfFound] = useState(false)
   const [isEditingAccess, setIsEditingAccess] = useState(true)
   const [saveNotice, setSaveNotice] = useState('')
   const [error, setError] = useState('')
@@ -227,6 +205,8 @@ export function PassengerLostBagCasePage() {
 
     setIsLookingUp(true)
     setIsSaving(false)
+    setIsCancelling(false)
+    setIsConfirmingSelfFound(false)
     setError('')
     dispatchCasePage({ type: 'reset' })
     setCaseSummary(null)
@@ -518,9 +498,46 @@ export function PassengerLostBagCasePage() {
     }
   }
 
+  async function reportBagFoundByPassenger(): Promise<void> {
+    if (!report || !access || !canReportBagFoundByPassenger(report.status)) return
+
+    const currentAccess = access
+    const requestId = caseRequestGeneration.current
+    const isCurrent = () => isCurrentCaseRequest(requestId, caseRequestGeneration.current)
+    setIsCancelling(true)
+    setError('')
+    setSaveNotice('')
+
+    try {
+      const response = await fetchWithAuth(
+        `/api/customer/lost-reports/${encodeURIComponent(currentAccess.caseNumber)}/cancel?${accessQuery(currentAccess)}`,
+        { method: 'PATCH' },
+      )
+      if (!isCurrent()) return
+      if (!response.ok) {
+        throw new Error(await responseError(response, 'This report can no longer be cancelled.'))
+      }
+
+      const cancelledReport = (await response.json()) as LostBagReportDetail
+      if (!isCurrent()) return
+      dispatchCasePage({ type: 'report-loaded', report: cancelledReport })
+      setIsConfirmingSelfFound(false)
+      setSaveNotice('This report was cancelled because you found your bag yourself.')
+      void loadCaseSummary(currentAccess, requestId)
+    } catch (cause) {
+      if (!isCurrent()) return
+      setError(cause instanceof Error ? cause.message : 'This report could not be cancelled. Try again.')
+    } finally {
+      if (isCurrent()) setIsCancelling(false)
+    }
+  }
+
   const reportEligible = report ? RECOVERY_REPORT_STATUSES.includes(report.status) : false
   const deliveryEditable = delivery ? EDITABLE_DELIVERY_STATUSES.includes(delivery.status) : false
   const deliveryLocked = !deliveryEditable || report?.status === 'delivering'
+  const progress = report ? caseProgressPresentation(report.status, delivery?.status ?? null) : { steps: [], activeStep: 0 }
+  const displayedCaseStatus = report ? caseStatusLabel(report.status, delivery?.status ?? null) : ''
+  const isTimedOutCase = progress.steps[0] === 'Reported'
 
   return (
     <main className="passenger-case-page">
@@ -574,17 +591,34 @@ export function PassengerLostBagCasePage() {
         )}
       </section>
 
+      {shouldShowNoOpenCase(Boolean(report), isLookingUp, Boolean(error)) && (
+        <section className="passenger-case-empty" aria-labelledby="passenger-case-empty-title">
+          <h2 id="passenger-case-empty-title">No case open yet</h2>
+          <p>Enter your case details above to follow a report. If you have not reported a bag yet, start here.</p>
+          <Link className="passenger-case-empty__link" to="/report-lost-bag">
+            Report a lost bag
+          </Link>
+        </section>
+      )}
+
       {report && !isEditingAccess && (
         <div className="passenger-case-layout">
           <section className="passenger-case-card" aria-labelledby="passenger-case-title">
             <header className="passenger-case-card__heading">
               <h2 id="passenger-case-title">{report.caseNumber}</h2>
-              <span className="passenger-case-card__status">{caseStatusLabel(report, delivery)}</span>
+              <span
+                className={`passenger-case-card__status${displayedCaseStatus === 'Open' ? ' passenger-case-card__status--open' : ''}${displayedCaseStatus === 'Lost' ? ' passenger-case-card__status--lost' : ''}`}
+              >
+                {displayedCaseStatus}
+              </span>
             </header>
 
-            <ol className="passenger-case-progress" aria-label="Baggage recovery progress">
-              {PROGRESS_STEPS.map((step, index) => {
-                const activeStep = progressStep(report, delivery)
+            <ol
+              className={`passenger-case-progress${isTimedOutCase ? ' passenger-case-progress--lost' : ''}`}
+              aria-label="Baggage recovery progress"
+            >
+              {progress.steps.map((step, index) => {
+                const activeStep = progress.activeStep
                 const className =
                   index < activeStep
                     ? 'passenger-case-progress__step passenger-case-progress__step--complete'
@@ -643,6 +677,18 @@ export function PassengerLostBagCasePage() {
               )}
             </dl>
 
+            {isTimedOutCase && (
+              <p className="passenger-case-timeout" role="status">
+                Your bag was not found within 21 days.
+                {report.lostAt && (
+                  <>
+                    {' '}
+                    Marked lost <time dateTime={report.lostAt}>{formatDate(report.lostAt)}</time>.
+                  </>
+                )}
+              </p>
+            )}
+
             <h3>Timeline</h3>
             <ol className="passenger-case-timeline">
               {caseSummary?.timeline.map((event, index) => (
@@ -667,13 +713,44 @@ export function PassengerLostBagCasePage() {
                 No recovery updates have been recorded yet.
               </p>
             )}
+
+            {canReportBagFoundByPassenger(report.status) && access && (
+              <div className="passenger-case-self-found">
+                {!isConfirmingSelfFound ? (
+                  <button
+                    className="passenger-case-self-found__trigger"
+                    type="button"
+                    disabled={isCancelling}
+                    onClick={() => setIsConfirmingSelfFound(true)}
+                  >
+                    I found it myself
+                  </button>
+                ) : (
+                  <div className="passenger-case-self-found__confirmation" role="group" aria-label="Confirm found bag cancellation">
+                    <p>Cancel this report because you found your bag yourself?</p>
+                    <div>
+                      <button type="button" disabled={isCancelling} onClick={() => void reportBagFoundByPassenger()}>
+                        {isCancelling ? 'Cancelling…' : 'Yes, cancel report'}
+                      </button>
+                      <button type="button" disabled={isCancelling} onClick={() => setIsConfirmingSelfFound(false)}>
+                        Keep searching
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           <aside className="passenger-case-delivery">
             {isDeliveryUnavailable ? (
               <section className="passenger-case-info" role="status">
-                <h2>Delivery choice unavailable</h2>
-                <p>This case does not have an associated recovery delivery yet.</p>
+                <h2>Delivery</h2>
+                <p>
+                  {report.status === 'lost'
+                    ? 'Nothing to choose for this case yet. If staff find the bag, you can choose where we send it here.'
+                    : 'Once staff confirm a found bag is yours, you can choose home, hotel, another address, or airport pickup here.'}
+                </p>
               </section>
             ) : deliveryError ? (
               <section className="passenger-case-info" role="status">

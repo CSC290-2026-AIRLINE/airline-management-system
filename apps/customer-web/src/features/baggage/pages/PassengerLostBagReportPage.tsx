@@ -4,6 +4,7 @@ import { useAppAuth } from '../../../auth/AuthProvider'
 import {
   buildCreateLostReportPayload,
   buildCreateLostReportFormData,
+  buildBookingFlightSummary,
   createLostReportPageState,
   lostReportPageReducer,
   PASSENGER_BAG_COLOURS,
@@ -235,6 +236,7 @@ export function PassengerLostBagReportPage() {
   }
 
   const selectedFlight = pageState.flights.find((flight) => flight.flightId === values.flightId)
+  const bookingFlightSummary = buildBookingFlightSummary(values.bookingReference, selectedFlight)
 
   return (
     <main className="passenger-report-page">
@@ -272,11 +274,11 @@ export function PassengerLostBagReportPage() {
               )}
             </dl>
             <div className="passenger-report-success__actions">
-              <button className="passenger-report-button passenger-report-button--secondary" type="button" onClick={reportAnotherBag}>
-                Report another bag
-              </button>
               <button className="passenger-report-button" type="button" onClick={openCreatedCase}>
                 Open my case
+              </button>
+              <button className="passenger-report-button passenger-report-button--secondary" type="button" onClick={reportAnotherBag}>
+                Report another bag
               </button>
             </div>
           </section>
@@ -336,9 +338,11 @@ export function PassengerLostBagReportPage() {
               )}
               {pageState.flights.length > 0 && (
                 <>
-                  <p className="passenger-report-booking-found" role="status">
-                    Booking {values.bookingReference} found. Select a flight to continue.
-                  </p>
+                  {!bookingFlightSummary && (
+                    <p className="passenger-report-booking-found" role="status">
+                      Booking {values.bookingReference} found. Select a flight to continue.
+                    </p>
+                  )}
                   <div className="passenger-report-fields passenger-report-fields--flight">
                     <Field label="Flight" error={fieldErrors.flightId}>
                       <select
@@ -357,6 +361,15 @@ export function PassengerLostBagReportPage() {
                       </select>
                     </Field>
                   </div>
+                  {bookingFlightSummary && (
+                    <p className="passenger-report-booking-summary" role="status">
+                      Booking {bookingFlightSummary.bookingReference} · {bookingFlightSummary.flightNumber} · {bookingFlightSummary.origin}{' '}
+                      to {bookingFlightSummary.destination} ·{' '}
+                      {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
+                        new Date(bookingFlightSummary.serviceDate),
+                      )}
+                    </p>
+                  )}
                 </>
               )}
             </section>

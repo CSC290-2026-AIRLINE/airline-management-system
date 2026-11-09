@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   buildCreateLostReportFormData,
   buildCreateLostReportPayload,
+  buildBookingFlightSummary,
   createLostReportPageState,
   isCurrentFlightLookup,
   lostReportPageReducer,
@@ -89,6 +90,26 @@ test('maps validated fields to the passenger create payload and omits identity f
   })
   assert.equal('passengerId' in payload, false)
   assert.equal('customerId' in payload, false)
+})
+
+test('booking summary uses only the selected authorized flight and follows selection changes', () => {
+  assert.equal(buildBookingFlightSummary('h8ld3q', undefined), null)
+
+  const otherFlight = { ...flights[0], flightNumber: 'FY 204', serviceDate: '2026-10-19', destination: 'NRT' }
+  assert.deepEqual(buildBookingFlightSummary(' h8ld3q ', flights[0]), {
+    bookingReference: 'H8LD3Q',
+    flightNumber: 'FY 117',
+    serviceDate: '2026-10-18',
+    origin: 'BKK',
+    destination: 'SIN',
+  })
+  assert.deepEqual(buildBookingFlightSummary('H8LD3Q', otherFlight), {
+    bookingReference: 'H8LD3Q',
+    flightNumber: 'FY 204',
+    serviceDate: '2026-10-19',
+    origin: 'BKK',
+    destination: 'NRT',
+  })
 })
 
 test('validates optional JPG and PNG photos up to exactly 10 MB', () => {
