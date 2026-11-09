@@ -34,8 +34,7 @@ function nextToastId(): number {
 function cabinLabel(c: Cabin): string {
   if (c === 'economy') return 'Economy'
   if (c === 'premium_economy') return 'Premium economy'
-  if (c === 'business') return 'Business'
-  return 'First'
+  return 'Business'
 }
 
 function settingToDraft(s: CabinSetting | null): Draft {

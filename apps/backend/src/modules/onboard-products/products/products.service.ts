@@ -8,6 +8,7 @@ import { Injectable } from '@nestjs/common'
 import { DbService } from '../../../db/db.service'
 import { ApiErrorException } from '../common/api-error'
 import { toNumber } from '../common/mapping'
+import { productInUseMessage, productInUseReason } from '../common/product-in-use'
 import type { Prisma } from '../../../db/generated/prisma/client'
 import type { ProductDraft } from './dto/product.dto'
 
@@ -36,9 +37,17 @@ export interface ProductCreateResult {
 export class ProductsService {
   constructor(private readonly db: DbService) {}
 
-  async list(): Promise<ProductDto[]> {
+  // The product list, with the filters the staff page uses: the
+  // category, the special-meal code and a dietary attribute.
+  async list(filter: { category?: string; typeCode?: string; dietaryAttribute?: string } = {}): Promise<ProductDto[]> {
+    const where: Record<string, unknown> = { deleted_at: null }
+    if (filter.category) where.category = filter.category
+    if (filter.typeCode) where.type_code = filter.typeCode
+    if (filter.dietaryAttribute) {
+      where.product_dietary = { some: { attribute: filter.dietaryAttribute } }
+    }
     const rows = await this.db.product.findMany({
-      where: { deleted_at: null },
+      where,
       include: { product_dietary: true },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     })
@@ -138,22 +147,41 @@ export class ProductsService {
     return { product: await this.toDto(updated) }
   }
 
-  // Soft delete: refuse if the product is referenced by any stock or
-  // open catering order. The check looks at warehouse_stock (non-zero
-  // on-hand), stock_batch.quantity_remaining, or any catering_order_line
-  // for a flight whose catering_order.status is not 'closed' or 'void'.
+  // Soft delete: refuse if the product is still in use. It is in use
+  // when it has stock in a warehouse, stock on an aircraft, a line on
+  // an open customer order or a line on a catering order that is not
+  // closed yet.
   async remove(id: string): Promise<void> {
     const existing = await this.db.product.findFirst({ where: { id, deleted_at: null } })
     if (!existing) throw new ApiErrorException('NOT_FOUND', 'Product not found.', 404)
+
     const onHand = await this.db.warehouse_stock.count({ where: { product_id: id, quantity_on_hand: { gt: 0 } } })
     const batchLeft = await this.db.stock_batch.count({ where: { product_id: id, quantity_remaining: { gt: 0 } } })
-    if (onHand > 0 || batchLeft > 0) {
-      throw new ApiErrorException('PRODUCT_IN_USE', 'Product still has stock in a warehouse.', 409)
-    }
     const inAircraft = await this.db.aircraft_stock.count({ where: { product_id: id, quantity: { gt: 0 } } })
-    if (inAircraft > 0) {
-      throw new ApiErrorException('PRODUCT_IN_USE', 'Product still on an aircraft.', 409)
+    const onCustomerOrder = await this.db.product_order_line.count({
+      where: {
+        product_id: id,
+        deleted_at: null,
+        product_order: { status: { in: ['pending_payment', 'confirmed'] } },
+      },
+    })
+    const onCateringOrder = await this.db.catering_order_line.count({
+      where: {
+        product_id: id,
+        catering_order: { status: { notIn: ['closed', 'void'] } },
+      },
+    })
+
+    const reason = productInUseReason({
+      warehouseStock: onHand + batchLeft,
+      aircraftStock: inAircraft,
+      openCustomerOrder: onCustomerOrder,
+      openCateringOrder: onCateringOrder,
+    })
+    if (reason) {
+      throw new ApiErrorException('PRODUCT_IN_USE', productInUseMessage(reason), 409, { reason })
     }
+
     await this.db.product.update({ where: { id }, data: { deleted_at: new Date() } })
   }
 

@@ -1,15 +1,25 @@
 // E2E smoke test for the F12 module. Mints a JWT for the first staff
-// user, then walks the full F12 surface in two halves:
-//   1. Read endpoints (list, get, resolve, reportable flights, etc.)
-//   2. Write endpoints that exercise the main flows:
+// user and one for the first customer, then walks the full F12 surface
+// in three parts:
+//   1. The staff read endpoints (list, get, resolve, stock, ...)
+//   2. The staff write endpoints that exercise the main flows:
 //      - create product (with dietaryAttributes)
 //      - receive delivery (purchase receipt)
 //      - adjust stock (stock movement)
-//      - upsert network cabin setting
-//      - upsert a product offering
+//      - upsert a cabin setting
+//      - offer a product
 //      - refresh a generated catering order
-//      - load a catering order (idempotent for the loaded ones)
+//      - transfer the stock to the aircraft and mark the order loaded
 //      - submit a flight report
+//   3. The customer API:
+//      - the catalogue of a flight
+//      - a checkout (reserve stock, start the payment)
+//      - the order list and the order detail
+//      - a payment event, and the same event a second time (F5 retries)
+//      - a cancel
+//
+// The routes are the ones of the Iteration-02 API table: creates are
+// POST, edits are PUT, and there is no PATCH.
 
 import path from 'node:path'
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -36,6 +46,9 @@ const IDS = {
   flightF405: '00000000-0000-0000-0000-f00000000002',
   flightF308: '00000000-0000-0000-0000-f00000000003',
   flightF309: '00000000-0000-0000-0000-f00000000005',
+  aircraftFYA: '00000000-0000-0000-0000-c00000000001',
+  aircraftFYB: '00000000-0000-0000-0000-c00000000002',
+  routeBkkNrt: '00000000-0000-0000-0000-d00000000001',
 }
 
 interface Result {
@@ -46,21 +59,22 @@ interface Result {
 }
 const results: Result[] = []
 
-async function call(name: string, path: string, init?: RequestInit): Promise<void> {
+async function call(name: string, path: string, init?: RequestInit, token = TOKEN): Promise<string> {
   const url = `${BASE}${path}`
   const res = await fetch(url, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}), Authorization: `Bearer ${TOKEN}` },
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}), Authorization: `Bearer ${token}` },
   })
   const text = await res.text()
   results.push({ name, ok: res.ok, status: res.status, preview: text.slice(0, 2000) })
+  return text
 }
 
 // Same as call() but treats REPORT_ALREADY_SUBMITTED (409) as a
 // pass: that just means the seed was already exercised in a previous
 // run, and the row is in its final state. Anything else still fails
 // loudly.
-async function callIdempotent(name: string, path: string, init?: RequestInit): Promise<void> {
+async function callIdempotent(name: string, path: string, init?: RequestInit): Promise<string> {
   const url = `${BASE}${path}`
   const res = await fetch(url, {
     ...init,
@@ -69,12 +83,14 @@ async function callIdempotent(name: string, path: string, init?: RequestInit): P
   const text = await res.text()
   if (res.status === 409 && text.includes('REPORT_ALREADY_SUBMITTED')) {
     results.push({ name, ok: true, status: res.status, preview: 'REPORT_ALREADY_SUBMITTED (idempotent re-run OK)' })
-    return
+    return text
   }
   results.push({ name, ok: res.ok, status: res.status, preview: text.slice(0, 2000) })
+  return text
 }
 
 let TOKEN = ''
+let CUSTOMER_TOKEN = ''
 
 async function main() {
   // Find the first staff + their user.
@@ -82,6 +98,13 @@ async function main() {
   if (!staff) throw new Error('No staff row found; run db:seed first.')
   TOKEN = jwt.sign({ sub: staff.user_id, email: staff.user.email })
   console.log(`Using staff ${staff.id} (user ${staff.user_id})\n`)
+
+  // The customer API needs a customer row, because an order is always
+  // attached to one.
+  const customer = await prisma.customer.findFirst({ where: { deleted_at: null }, include: { user: true } })
+  if (!customer) throw new Error('No customer row found; run db:seed first.')
+  CUSTOMER_TOKEN = jwt.sign({ sub: customer.user_id, email: customer.user.email })
+  console.log(`Using customer ${customer.id} (user ${customer.user_id})\n`)
 
   // ============================================================
   // READ endpoints
@@ -94,23 +117,25 @@ async function main() {
   await call('stock-batches.list', '/api/staff/stock-batches')
   await call('stock-movements.list', '/api/staff/stock-movements')
   await call('offerings.list', '/api/staff/product-offerings')
-  await call('cabin-settings.network', '/api/staff/cabin-settings/network')
-  // cabin-settings.resolve takes a flightId, not a routeId.
-  await call('cabin-settings.resolve-f401', `/api/staff/cabin-settings/resolve/${IDS.flightF401}`)
+  await call('offerings.list-bkk-nrt-economy', `/api/staff/product-offerings?routeId=${IDS.routeBkkNrt}&cabin=economy`)
+  await call('cabin-settings.network', '/api/staff/cabin-settings?scope=network')
+  await call('cabin-settings.route', `/api/staff/cabin-settings?scope=route&scopeId=${IDS.routeBkkNrt}`)
+  await call('cabin-settings.flight', `/api/staff/cabin-settings?scope=flight&scopeId=${IDS.flightF401}&cabin=business`)
+  await call('cabin-settings.resolved-f401', `/api/staff/flights/${IDS.flightF401}/cabin-settings`)
   await call('catering-orders.list', '/api/staff/catering-orders')
-  await call('catering-orders.get-f401', `/api/staff/catering-orders/flight/${IDS.flightF401}`)
-  await call('catering-orders.get-f309', `/api/staff/catering-orders/flight/${IDS.flightF309}`)
-  await call('stock-transfers.list-f401', `/api/staff/stock-transfers/flight/${IDS.flightF401}`)
-  await call('aircraft-stock.list-fyb', '/api/staff/aircraft-stock/00000000-0000-0000-0000-c00000000002')
-  await call('aircraft-stock.list-fya', '/api/staff/aircraft-stock/00000000-0000-0000-0000-c00000000001')
-  await call('sales.list-f401', `/api/staff/sales/flight/${IDS.flightF401}`)
-  await call('flight-report.list-reportable', '/api/staff/flight-reports/reportable-flights')
-  await call('flight-report.get-f401', `/api/staff/flight-reports/flight/${IDS.flightF401}`)
-  // routes.list + routes.flights: the new /api/staff/routes/:routeId/flights
+  await call('catering-orders.list-range', '/api/staff/catering-orders?from=2020-01-01&to=2100-01-01')
+  await call('catering-orders.get-f401', `/api/staff/flights/${IDS.flightF401}/catering-order`)
+  await call('catering-orders.get-f309', `/api/staff/flights/${IDS.flightF309}/catering-order`)
+  await call('aircraft-stock.list-fyb', `/api/staff/aircraft/${IDS.aircraftFYB}/stock`)
+  await call('aircraft-stock.list-fya', `/api/staff/aircraft/${IDS.aircraftFYA}/stock`)
+  await call('sales.list-f401', `/api/staff/flights/${IDS.flightF401}/sales`)
+  await call('flight-report.get-f401', `/api/staff/flights/${IDS.flightF401}/flight-report`)
+  await call('warehouse-stock.list', `/api/staff/warehouse-stock?warehouseId=${IDS.warehouseBKK}`)
+  await call('warehouse-stock.list-low', `/api/staff/warehouse-stock?warehouseId=${IDS.warehouseBKK}&lowOnly=true`)
+  // routes.list + routes.flights: the /api/staff/routes/:routeId/flights
   // endpoint that backs the route-detail page's "Single-flight picker".
-  // F401 is on the BKK→NRT route; its id is the routeId below.
   await call('routes.list', '/api/staff/routes')
-  await call('routes.flights-bkk-nrt', '/api/staff/routes/00000000-0000-0000-0000-d00000000001/flights')
+  await call('routes.flights-bkk-nrt', `/api/staff/routes/${IDS.routeBkkNrt}/flights`)
 
   // ============================================================
   // WRITE endpoints
@@ -119,7 +144,7 @@ async function main() {
 
   // products.create: needs the full draft shape including dietaryAttributes.
   await call('products.create', '/api/staff/products', {
-    method: 'PUT',
+    method: 'POST',
     body: JSON.stringify({
       name: 'Smoke test snack',
       sku: `SMOKE-${Date.now().toString(36).toUpperCase().slice(-6)}`,
@@ -138,7 +163,7 @@ async function main() {
   // at BKK from the BKK supplier. Uses an expiring batch 5 days out.
   const expiresAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString()
   await call('purchase-receipts.create', '/api/staff/purchase-receipts', {
-    method: 'PUT',
+    method: 'POST',
     body: JSON.stringify({
       supplierId: IDS.supplierBKK,
       warehouseId: IDS.warehouseBKK,
@@ -154,12 +179,15 @@ async function main() {
     }),
   })
 
+  // purchase-receipts.list with the date filter.
+  await call('purchase-receipts.list', '/api/staff/purchase-receipts?warehouseId=' + IDS.warehouseBKK + '&from=2020-01-01')
+
   // stock-movements.create: remove 1 unit of beef stir-fry (spoilage).
   // Quantity is small so re-runs that already moved 1 unit will see
   // ADJUST_INSUFFICIENT and we accept that as a non-fatal in the
   // report (the call still ran).
   await call('stock-movements.create', '/api/staff/stock-movements', {
-    method: 'PUT',
+    method: 'POST',
     body: JSON.stringify({
       warehouseId: IDS.warehouseBKK,
       productId: IDS.productBeef,
@@ -181,9 +209,9 @@ async function main() {
     }),
   })
 
-  // product-offerings.upsert: add sparkling water to network economy.
-  await call('offerings.upsert-water-network-economy', '/api/staff/product-offerings', {
-    method: 'PUT',
+  // product-offerings.create: add sparkling water to network economy.
+  await call('offerings.create-water-network-economy', '/api/staff/product-offerings', {
+    method: 'POST',
     body: JSON.stringify({
       productId: IDS.productWater,
       scope: 'network',
@@ -198,14 +226,25 @@ async function main() {
   // catering-orders.refresh: use the generated CO309 (FL309) so the
   // call is legal regardless of the seed state. Refresh is idempotent
   // (regenerates the lines), so re-running the smoke is safe.
-  await call('catering-orders.refresh-f309', `/api/staff/catering-orders/flight/${IDS.flightF309}/refresh`, {
-    method: 'PUT',
+  await call('catering-orders.refresh-f309', `/api/staff/flights/${IDS.flightF309}/catering-order`, {
+    method: 'POST',
     body: '{}',
   })
 
-  // catering-orders.load: idempotent for f-401 (already loaded). The
-  // /load endpoint returns the existing loaded order on a second call.
-  await call('catering-orders.load-f401', `/api/staff/catering-orders/flight/${IDS.flightF401}/load`, {
+  // stock-transfers: the catering order's lines move to the aircraft.
+  // It is safe to retry, so a second call moves nothing.
+  await call('stock-transfers.create-f309', `/api/staff/flights/${IDS.flightF309}/stock-transfers`, {
+    method: 'POST',
+    body: '{}',
+  })
+  await call('stock-transfers.create-f309-retry', `/api/staff/flights/${IDS.flightF309}/stock-transfers`, {
+    method: 'POST',
+    body: '{}',
+  })
+
+  // catering-orders.loaded: idempotent for f-401 (already loaded). The
+  // endpoint returns the existing loaded order on a second call.
+  await call('catering-orders.loaded-f401', `/api/staff/flights/${IDS.flightF401}/catering-order/loaded`, {
     method: 'PUT',
     body: '{}',
   })
@@ -217,12 +256,80 @@ async function main() {
   // left untouched. served=20, sold=0, wasted=0, damaged=0 →
   // remaining=0, valid. Re-runs of the smoke see REPORT_ALREADY_SUBMITTED
   // which is fine.
-  await callIdempotent('flight-report.submit-f308', `/api/staff/flight-reports/flight/${IDS.flightF308}/submit`, {
+  await callIdempotent('flight-report.submit-f308', `/api/staff/flights/${IDS.flightF308}/flight-report`, {
     method: 'PUT',
     body: JSON.stringify({
       lines: [{ productId: IDS.productWater, served: 20, wasted: 0, damaged: 0 }],
     }),
   })
+
+  // ============================================================
+  // Customer API
+  // ============================================================
+  console.log('\n--- Customer ---')
+
+  // The order window of a flight is the departure minus the cabin's
+  // window (48h in the seed), so the smoke opens a short window on
+  // F308's economy cabin to be able to check out.
+  await call('cabin-settings.upsert-flight-f308-economy', '/api/staff/cabin-settings', {
+    method: 'PUT',
+    body: JSON.stringify({
+      scope: 'flight',
+      routeId: null,
+      flightId: IDS.flightF308,
+      cabin: 'economy',
+      orderWindowHours: 2,
+    }),
+  })
+
+  await call('catalog.f308-economy', `/api/catalog?flightId=${IDS.flightF308}&cabin=economy`, undefined, CUSTOMER_TOKEN)
+
+  // The booking is a F3b stub: any UUID is a confirmed booking.
+  const bookingId = '00000000-0000-4000-8000-00000000f012'
+  const orderText = await call(
+    'product-orders.checkout',
+    '/api/product-orders',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        bookingId,
+        flightId: IDS.flightF308,
+        cabin: 'economy',
+        lines: [{ productId: IDS.productWater, quantity: 2 }],
+      }),
+    },
+    CUSTOMER_TOKEN,
+  )
+
+  await call('product-orders.list', `/api/product-orders?bookingId=${bookingId}`, undefined, CUSTOMER_TOKEN)
+
+  let orderId = ''
+  try {
+    const parsed = JSON.parse(orderText) as { id?: string }
+    orderId = parsed.id ?? ''
+  } catch {
+    orderId = ''
+  }
+
+  if (orderId) {
+    await call('product-orders.get', `/api/product-orders/${orderId}`, undefined, CUSTOMER_TOKEN)
+
+    // F5 reports the payment, and then the same event again: the
+    // second one must not move the order a second time.
+    await call('payment-events.paid', '/api/payment-events', {
+      method: 'POST',
+      body: JSON.stringify({ reference: orderId, status: 'paid' }),
+    })
+    await call('payment-events.paid-again', '/api/payment-events', {
+      method: 'POST',
+      body: JSON.stringify({ reference: orderId, status: 'paid' }),
+    })
+
+    // Cancel the order: it releases the stock and asks F5 to refund.
+    await call('product-orders.cancel', `/api/product-orders/${orderId}`, { method: 'DELETE' }, CUSTOMER_TOKEN)
+  } else {
+    console.log('No order id in the checkout response; the customer order steps are skipped.')
+  }
 
   // ============================================================
   // Report

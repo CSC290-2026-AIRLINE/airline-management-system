@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Get, Post, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
 import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
@@ -40,15 +40,31 @@ export class PurchaseReceiptsController {
   constructor(private readonly receipts: PurchaseReceiptsService) {}
 
   @Get()
-  async list(@Query('warehouseId') warehouseId?: string, @Query('supplierId') supplierId?: string) {
-    return this.receipts.list({ ...(warehouseId ? { warehouseId } : {}), ...(supplierId ? { supplierId } : {}) })
+  async list(
+    @Query('warehouseId') warehouseId?: string,
+    @Query('supplierId') supplierId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.receipts.list({
+      ...(warehouseId ? { warehouseId } : {}),
+      ...(supplierId ? { supplierId } : {}),
+      ...(from ? { from: parseDate(from, 'from') } : {}),
+      ...(to ? { to: parseDate(to, 'to') } : {}),
+    })
   }
 
-  // Spec: PUT only. POST is provided as a synonym so the staff-web's
-  // createPurchaseReceipt helper can hit a dedicated create route.
-  @Put()
   @Post()
   async create(@Body() body: unknown, @CurrentStaff() staff: StaffContext) {
     return this.receipts.create(parseInput(body), staff.id)
   }
+}
+
+// A date filter is an ISO date or date-time.
+function parseDate(value: string, name: string): Date {
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    throw new ApiErrorException('LINE_INVALID', `${name} must be an ISO date.`, 400)
+  }
+  return new Date(parsed)
 }

@@ -51,11 +51,20 @@ export class PurchaseReceiptsService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(filter: { warehouseId?: string; supplierId?: string } = {}): Promise<PurchaseReceiptDto[]> {
+  // The delivery history. The date range filters on received_at.
+  async list(filter: { warehouseId?: string; supplierId?: string; from?: Date; to?: Date } = {}): Promise<PurchaseReceiptDto[]> {
     const rows = await this.db.purchase_receipt.findMany({
       where: {
         ...(filter.warehouseId ? { warehouse_id: filter.warehouseId } : {}),
         ...(filter.supplierId ? { supplier_id: filter.supplierId } : {}),
+        ...(filter.from || filter.to
+          ? {
+              received_at: {
+                ...(filter.from ? { gte: filter.from } : {}),
+                ...(filter.to ? { lte: filter.to } : {}),
+              },
+            }
+          : {}),
       },
       include: { stock_batch: { include: { product: true } } },
       orderBy: { received_at: 'desc' },

@@ -10,9 +10,9 @@ import { MealPolicyInvalidError, OfferingsApiError, SettingInvalidError } from '
 import {
   applyRouteOverrides,
   mapCabinSetting,
+  mapCabinSettingScope,
   mapFlightSummary,
   mapOffering,
-  mapReportableFlight,
   mapRoute,
   mapRouteDetail,
   mapRouteFlight,
@@ -53,6 +53,9 @@ export interface OfferingsApi {
   listFlightExceptions: (filter: { search: string }) => Promise<{ total: number; exceptions: FlightException[] }>
   getRouteDetail: (routeId: string) => Promise<RouteDetail>
   getNetworkDefault: () => Promise<NetworkDefaults>
+  listProductOfferings: (filters?: { routeId?: string; cabin?: Cabin }) => Promise<ProductOffering[]>
+  // The settings the flight sets for itself (the rows at the flight
+  // scope). A cabin without a row of its own is not in the list.
   getFlightCabinSettings: (flightId: string) => Promise<CabinSetting[]>
   putCabinSettings: (
     scope: 'network' | 'route' | 'flight',
@@ -115,26 +118,66 @@ function summarizeException(settings: CabinSetting[], flightId: string, cabin: C
   return bits.join(', ')
 }
 
+// The fields a flight overrides, in the words the exceptions table
+// shows. A null field is "inherit", so it is not a change.
+function changedFields(row: CabinSetting): string[] {
+  const bits: string[] = []
+  if (row.mealService != null) bits.push('meal service')
+  if (row.mealSelection != null) bits.push('meal selection')
+  if (row.orderWindowHours != null) bits.push('order window')
+  if (row.includedPerPassenger != null) bits.push('included')
+  if (row.preorderEnabled != null) bits.push('pre-order')
+  if (row.premiumMealsAllowed != null) bits.push('premium meals')
+  if (row.snacksEnabled != null) bits.push('snacks')
+  if (row.dutyFreeEnabled != null) bits.push('duty free')
+  if (row.onboardBufferPercent != null) bits.push('onboard buffer')
+  return bits
+}
+
 export function createOfferingsApi(client: ApiClient): OfferingsApi {
   async function loadRoutes(): Promise<RouteSummary[]> {
     const wire = await client.get<unknown[]>('/api/staff/routes')
     return (wire ?? []).map((r) => mapRoute(r as never))
   }
 
-  async function loadCabinSettings(scope: 'network' | 'route' | 'flight', key: string | null): Promise<CabinSetting[]> {
-    const path = scope === 'network' ? '/api/staff/cabin-settings/network' : `/api/staff/cabin-settings/${scope}/${key}`
-    const wire = await client.get<unknown[]>(path)
-    return (wire ?? []).map((s) => mapCabinSetting(s as never))
+  async function loadCabinSettings(scope: 'network' | 'route', key: string | null): Promise<CabinSetting[]> {
+    // Network and route settings are read through the scope filter; a
+    // flight's own settings have their own scope.
+    return loadScopeRows(scope, scope === 'route' ? key : null)
   }
 
-  async function loadOfferings(): Promise<ProductOffering[]> {
-    const wire = await client.get<unknown[]>('/api/staff/product-offerings')
+  // The scope endpoint answers with one entry per cabin: the effective
+  // value of every field and the row that lives at this scope. Only
+  // the row is a setting the staff UI reads and edits, so a scope
+  // without a row of its own is dropped.
+  async function loadScopeRows(scope: 'network' | 'route' | 'flight', scopeId: string | null): Promise<CabinSetting[]> {
+    const wire = await client.get<unknown[]>('/api/staff/cabin-settings', {
+      scope,
+      scopeId: scopeId ?? undefined,
+    })
+    return (wire ?? []).map((s) => mapCabinSettingScope(s as never)).filter((s): s is CabinSetting => s != null)
+  }
+
+  // The settings one flight sets for itself.
+  async function loadFlightCabinSettings(flightId: string): Promise<CabinSetting[]> {
+    return loadScopeRows('flight', flightId)
+  }
+
+  // Every flight that overrides its route with its own settings.
+  async function loadAllFlightCabinSettings(): Promise<CabinSetting[]> {
+    return loadScopeRows('flight', null)
+  }
+
+  async function loadOfferings(filters?: { routeId?: string; cabin?: Cabin }): Promise<ProductOffering[]> {
+    const wire = await client.get<unknown[]>('/api/staff/product-offerings', {
+      routeId: filters?.routeId,
+      cabin: filters?.cabin,
+    })
     return (wire ?? []).map((o) => mapOffering(o as never))
   }
 
   async function loadRouteOverrides(routeId: string): Promise<CabinSetting[]> {
-    const wire = await client.get<unknown[]>(`/api/staff/cabin-settings/route/${routeId}`)
-    return (wire ?? []).map((s) => mapCabinSetting(s as never))
+    return loadCabinSettings('route', routeId)
   }
 
   async function loadRouteFlights(
@@ -145,6 +188,47 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
     return (wire ?? []).map((f) => mapRouteFlight(f as never))
   }
 
+  // The single-flight exceptions: the flights that override their
+  // route, with their own cabin settings or their own offerings. The
+  // backend has no list route for them, so they are read from the
+  // scope endpoints and the route's flights.
+  async function loadFlightExceptions(): Promise<FlightException[]> {
+    const [routes, flightSettings, offerings] = await Promise.all([loadRoutes(), loadAllFlightCabinSettings(), loadOfferings()])
+    const rows: FlightException[] = []
+    for (const route of routes) {
+      const flights = await loadRouteFlights(route.id)
+      for (const flight of flights) {
+        const settings = flightSettings.filter((s) => s.flightId === flight.id)
+        const flightOfferings = offerings.filter((o) => o.scope === 'flight' && o.flightId === flight.id)
+        const routeLabel = `${route.originAirport} → ${route.destinationAirport}`
+        for (const setting of settings) {
+          rows.push({
+            id: flight.id,
+            routeId: route.id,
+            flightNumber: flight.flightNumber,
+            scheduledDeparture: flight.scheduledDeparture,
+            cabin: setting.cabin,
+            changedSettings: changedFields(setting),
+            route: routeLabel,
+          })
+        }
+        // A flight can also override the menu only.
+        if (settings.length === 0 && flightOfferings.length > 0) {
+          rows.push({
+            id: flight.id,
+            routeId: route.id,
+            flightNumber: flight.flightNumber,
+            scheduledDeparture: flight.scheduledDeparture,
+            cabin: flightOfferings[0].cabin,
+            changedSettings: ['menu'],
+            route: routeLabel,
+          })
+        }
+      }
+    }
+    return rows
+  }
+
   return {
     async getOfferedMenu() {
       try {
@@ -153,7 +237,7 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
           loadOfferings(),
           loadRoutes(),
           loadOfferings(),
-          client.get<unknown[]>('/api/staff/flight-reports/reportable-flights'),
+          loadFlightExceptions(),
         ])
         // Mark routes customized where the network+route settings disagree
         // (any route-level row → custom). We need the route-scoped settings
@@ -173,27 +257,11 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
           }
           return withStatus
         })
-        // Flight exceptions: derive from the reportable-flights list. The
-        // wire doesn't carry per-flight "has flight-scope settings" info,
-        // so each reportable flight is a candidate. The page filters
-        // client-side; the audit kept the "no fake data" rule here.
-        const exceptionRows: FlightException[] = (exceptions ?? []).map((row) => {
-          const f = mapReportableFlight(row as never)
-          return {
-            id: f.id,
-            routeId: f.routeId,
-            flightNumber: f.flightNumber,
-            scheduledDeparture: f.scheduledDeparture,
-            cabin: 'economy' as Cabin,
-            changedSettings: [],
-            route: `${f.departureAirport} → ${f.arrivalAirport}`,
-          }
-        })
         return {
           networkOfferings,
           networkCabinSettings: netSettings,
           routes,
-          flightExceptions: exceptionRows,
+          flightExceptions: exceptions,
         }
       } catch (err) {
         rethrow(err, new OfferingsApiError('UNKNOWN', 'Could not load the offered menu.', 0))
@@ -240,24 +308,7 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
     },
     async listFlightExceptions(filter) {
       try {
-        // TODO: when the F12 backend ships a dedicated
-        // /api/staff/flight-exceptions endpoint, replace this with a real
-        // call. For now we list every reportable flight as a candidate;
-        // the page filters client-side and the "Settings changed" column
-        // will be empty until the dedicated endpoint exists.
-        const wire = await client.get<unknown[]>('/api/staff/flight-reports/reportable-flights')
-        const all: FlightException[] = (wire ?? []).map((row) => {
-          const f = mapReportableFlight(row as never)
-          return {
-            id: f.id,
-            routeId: f.routeId,
-            flightNumber: f.flightNumber,
-            scheduledDeparture: f.scheduledDeparture,
-            cabin: 'economy' as Cabin,
-            changedSettings: [],
-            route: `${f.departureAirport} → ${f.arrivalAirport}`,
-          }
-        })
+        const all = await loadFlightExceptions()
         const search = filter.search.trim().toLowerCase()
         const exceptions = search ? all.filter((e) => e.flightNumber.toLowerCase().includes(search)) : all
         return { total: exceptions.length, exceptions }
@@ -291,9 +342,11 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
           hasException: false,
           exceptionSummary: '',
         }))
-        // Use the reportable-flights / route-settings to infer the
-        // exception summary for each flight.
-        const flightSettings = await loadCabinSettings('flight', routeId).catch(() => [] as CabinSetting[])
+        // The flight-scope rows of every flight on the route: they are
+        // what makes a flight an exception.
+        const flightSettings = (
+          await Promise.all(flightSummaries.map((f) => loadFlightCabinSettings(f.id).catch(() => [] as CabinSetting[])))
+        ).flat()
         for (const fs of flightSummaries) {
           const summaries: string[] = []
           for (const cabin of ['economy', 'business'] as Cabin[]) {
@@ -303,10 +356,16 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
           fs.hasException = summaries.length > 0
           fs.exceptionSummary = summaries.join(' · ')
         }
+        const flightIds = new Set(flightSummaries.map((f) => f.id))
         return mapRouteDetail(
           routeSummary ? applyRouteOverrides(routeSummary, allSettings) : null,
-          allSettings,
-          offerings.filter((o) => o.scope === 'network' || o.routeId === routeId),
+          [...allSettings, ...flightSettings],
+          // The menu of the route, plus the menu of its own flights:
+          // a flight can override the menu only.
+          offerings.filter(
+            (o) =>
+              o.scope === 'network' || o.routeId === routeId || (o.scope === 'flight' && o.flightId != null && flightIds.has(o.flightId)),
+          ),
           flightSummaries,
         )
       } catch (err) {
@@ -324,11 +383,17 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
         rethrow(err, new OfferingsApiError('UNKNOWN', 'Could not load the network default.', 0))
       }
     },
+    async listProductOfferings(filters) {
+      try {
+        return await loadOfferings(filters)
+      } catch (err) {
+        rethrow(err, new OfferingsApiError('UNKNOWN', 'Could not load the offerings.', 0))
+      }
+    },
     async getFlightCabinSettings(flightId) {
       try {
-        requireId('GET /api/staff/cabin-settings/flight/:id', 'flightId', flightId)
-        const wire = await client.get<unknown[]>(`/api/staff/cabin-settings/flight/${flightId}`)
-        return (wire ?? []).map((s) => mapCabinSetting(s as never))
+        requireId('GET /api/staff/cabin-settings?scope=flight', 'flightId', flightId)
+        return await loadFlightCabinSettings(flightId)
       } catch (err) {
         if (err instanceof MissingIdError) return []
         rethrow(err, new OfferingsApiError('UNKNOWN', 'Could not load the flight settings.', 0))
@@ -364,7 +429,7 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
     },
     async createProductOffering(input) {
       try {
-        const wire = await client.put<unknown>('/api/staff/product-offerings', toOfferingInput(input))
+        const wire = await client.post<unknown>('/api/staff/product-offerings', toOfferingInput(input))
         return mapOffering(wire as never)
       } catch (err) {
         rethrow(err, new OfferingsApiError('UNKNOWN', 'Could not add the offering.', 0))
@@ -399,7 +464,7 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
         let added = 0
         let skipped = 0
         const existing = new Set(
-          (await loadOfferings())
+          (await loadOfferings({ cabin }))
             .filter((o) => o.productId === productId && o.cabin === cabin && o.isActive)
             .map((o) => o.routeId ?? '__network__'),
         )
@@ -408,7 +473,7 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
             skipped++
             continue
           }
-          await client.put<unknown>(
+          await client.post<unknown>(
             '/api/staff/product-offerings',
             toOfferingInput({
               productId,
@@ -431,7 +496,7 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
       try {
         const { routes } = await this.listRoutes(filter)
         const routeIds = new Set(routes.map((r) => r.id))
-        const all = await loadOfferings()
+        const all = await loadOfferings({ cabin })
         const targets = all.filter(
           (o) => o.productId === productId && o.cabin === cabin && o.scope === 'route' && o.routeId && routeIds.has(o.routeId),
         )
@@ -446,11 +511,10 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
     async clearFlightException(flightId) {
       // Drop all flight-scope cabin settings + offerings for this flight.
       try {
-        requireId('GET /api/staff/cabin-settings/flight/:id (for clearing)', 'flightId', flightId)
-        const settings = await client.get<unknown[]>(`/api/staff/cabin-settings/flight/${flightId}`)
-        for (const s of (settings ?? []) as Array<Record<string, unknown>>) {
-          const cabin = String(s.cabin) as Cabin
-          await this.resetCabinSettingsToInherited('flight', null, flightId, cabin)
+        requireId('GET /api/staff/cabin-settings?scope=flight', 'flightId', flightId)
+        const settings = await loadFlightCabinSettings(flightId)
+        for (const s of settings) {
+          await this.resetCabinSettingsToInherited('flight', null, flightId, s.cabin)
         }
         // No direct /product-offerings?flight= filter; this is a best-effort
         // cleanup that works for the demo's handful of flights.

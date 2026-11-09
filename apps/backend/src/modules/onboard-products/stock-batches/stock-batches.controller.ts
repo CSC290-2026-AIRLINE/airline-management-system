@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Get, Post, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
 import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
@@ -29,7 +29,6 @@ export class StockBatchesController {
     })
   }
 
-  @Put('write-off-expired')
   @Post('write-off-expired')
   async writeOff(@Query('warehouseId') warehouseId: string | undefined, @Body() body: unknown, @CurrentStaff() staff: StaffContext) {
     const filter: { warehouseId?: string; productId?: string } = {}

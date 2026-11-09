@@ -41,6 +41,14 @@ export const F12_ERROR_CODES = [
   'IMAGE_INVALID',
   'PRODUCT_IN_USE',
   'NO_WAREHOUSE_FOR_AIRPORT',
+  // Customer ordering + payment codes.
+  'BOOKING_NOT_CONFIRMED',
+  'MEAL_LIMIT_EXCEEDED',
+  'ORDER_WINDOW_CLOSED',
+  'OUT_OF_STOCK',
+  'PAYMENT_FAILED',
+  'PAYMENT_AFTER_EXPIRY',
+  'MEAL_CHOICE_NOT_ALLOWED',
 ] as const
 
 export type F12ErrorCode = (typeof F12_ERROR_CODES)[number]

@@ -1,8 +1,9 @@
 // Offerings HTTP surface under /api/staff/product-offerings.
-// PUT-only mutations per the F12 spec. Toggle a single offering via
-// /:id (isActive and/or isDefault). Soft delete via DELETE.
+// Creates are POST, edits are PUT, and there is no PATCH. Toggle a
+// single offering via /:id (isActive and/or isDefault). Soft delete
+// via DELETE.
 
-import { Body, Controller, Delete, Get, HttpCode, Param, Put } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
 import { StaffAuth } from '../common/staff-auth.decorator'
 import { OfferingsService, type OfferingInput } from './offerings.service'
@@ -62,12 +63,12 @@ export class OfferingsController {
   constructor(private readonly offerings: OfferingsService) {}
 
   @Get()
-  async list() {
-    return this.offerings.list()
+  async list(@Query('routeId') routeId?: string, @Query('cabin') cabin?: string) {
+    return this.offerings.list({ ...(routeId ? { routeId } : {}), ...(cabin ? { cabin } : {}) })
   }
 
-  @Put()
-  async upsert(@Body() body: unknown) {
+  @Post()
+  async create(@Body() body: unknown) {
     return this.offerings.upsert(parseUpsert(body))
   }
 

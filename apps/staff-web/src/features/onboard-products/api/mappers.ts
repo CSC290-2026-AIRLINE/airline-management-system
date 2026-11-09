@@ -15,7 +15,6 @@ import type {
   DietaryAttribute,
   Flight,
   FlightCateringStatus,
-  FlightException,
   FlightReport,
   FlightReportLine,
   FlightReportStatus,
@@ -429,10 +428,6 @@ interface WireCabinSetting {
   snacksEnabled: boolean | null
   dutyFreeEnabled: boolean | null
   onboardBufferPercent: number | null
-  // Backend may return how many open orders this upsert affected; the
-  // previous frontend hardcoded this to 0. Surface whatever the wire
-  // says; fall back to 0 only if the field is genuinely absent.
-  affectedOpenOrders?: number
 }
 
 export function mapCabinSetting(wire: WireCabinSetting): CabinSetting {
@@ -454,15 +449,35 @@ export function mapCabinSetting(wire: WireCabinSetting): CabinSetting {
   } as CabinSetting
 }
 
+// The scope endpoint answers with one entry per cabin: the effective
+// value of every field (with the scope it comes from) and the row that
+// lives at this scope. The staff UI edits rows, so a scope without a
+// row of its own is not a setting row.
+interface WireCabinSettingScope {
+  scope: string
+  scopeId: string | null
+  cabin: string
+  row: WireCabinSetting | null
+}
+
+export function mapCabinSettingScope(wire: WireCabinSettingScope): CabinSetting | null {
+  if (!wire.row) return null
+  return mapCabinSetting(wire.row)
+}
+
 /**
  * Pull the affected-open-orders count off the cabin-setting response.
- * The wire may name this `affectedOpenOrders`; if the backend hasn't
- * started returning it yet this returns 0.
+ * The backend names it `openOrderCount`; the older name is still
+ * accepted. Missing means 0.
  */
 export function readAffectedOpenOrders(wire: unknown): number {
-  if (wire && typeof wire === 'object' && 'affectedOpenOrders' in wire) {
-    const v = (wire as { affectedOpenOrders: unknown }).affectedOpenOrders
-    if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (wire && typeof wire === 'object') {
+    for (const key of ['openOrderCount', 'affectedOpenOrders']) {
+      if (key in wire) {
+        const v = (wire as Record<string, unknown>)[key]
+        if (typeof v === 'number' && Number.isFinite(v)) return v
+      }
+    }
   }
   return 0
 }
@@ -510,7 +525,7 @@ export function mapRoute(wire: WireRoute): RouteSummary {
 }
 
 export function applyRouteOverrides(route: RouteSummary, settings: CabinSetting[]): RouteSummary {
-  const CABIN_KEYS: Array<keyof RouteSummary['cabinStatuses']> = ['economy', 'premium_economy', 'business', 'first']
+  const CABIN_KEYS: Array<keyof RouteSummary['cabinStatuses']> = ['economy', 'premium_economy', 'business']
   const out: RouteSummary = {
     ...route,
     cabinStatuses: { ...route.cabinStatuses } as RouteSummary['cabinStatuses'],
@@ -587,26 +602,6 @@ export function mapRouteDetail(
   return { route, cabinSettings, offerings, flights }
 }
 
-export function mapFlightException(wire: {
-  id: string
-  routeId: string
-  flightNumber: string
-  scheduledDeparture: string
-  cabin: string
-  changedSettings: string[]
-  route?: string
-}): FlightException {
-  return {
-    id: required('GET /api/staff/flight-exceptions', 'id', wire.id),
-    routeId: required('GET /api/staff/flight-exceptions', 'routeId', wire.routeId),
-    flightNumber: required('GET /api/staff/flight-exceptions', 'flightNumber', wire.flightNumber),
-    scheduledDeparture: toIsoString(wire.scheduledDeparture),
-    cabin: required('GET /api/staff/flight-exceptions', 'cabin', wire.cabin) as FlightException['cabin'],
-    changedSettings: Array.isArray(wire.changedSettings) ? wire.changedSettings : [],
-    route: wire.route ?? '',
-  }
-}
-
 // -- Catering orders ----------------------------------------------------------
 
 interface WireCateringOrderLine {
@@ -640,10 +635,10 @@ interface WireCateringOrder {
 
 export function mapCateringOrderLine(wire: WireCateringOrderLine): CateringOrderLine {
   return {
-    id: required('GET /api/staff/catering-orders/flight/:id', 'id', wire.id),
-    cabin: required('GET /api/staff/catering-orders/flight/:id', 'cabin', wire.cabin) as CateringOrderLine['cabin'],
-    productId: required('GET /api/staff/catering-orders/flight/:id', 'productId', wire.productId),
-    productName: required('GET /api/staff/catering-orders/flight/:id', 'productName', wire.productName),
+    id: required('GET /api/staff/flights/:flightId/catering-order', 'id', wire.id),
+    cabin: required('GET /api/staff/flights/:flightId/catering-order', 'cabin', wire.cabin) as CateringOrderLine['cabin'],
+    productId: required('GET /api/staff/flights/:flightId/catering-order', 'productId', wire.productId),
+    productName: required('GET /api/staff/flights/:flightId/catering-order', 'productName', wire.productName),
     quantityRequired: Number(wire.quantityRequired),
     quantityShort: Number(wire.quantityShort),
     source: ((wire.source as CateringOrderLine['source']) ?? 'order') as CateringOrderLine['source'],
@@ -652,19 +647,19 @@ export function mapCateringOrderLine(wire: WireCateringOrderLine): CateringOrder
 
 export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
   return {
-    id: required('GET /api/staff/catering-orders/flight/:id', 'id', wire.id),
-    flightId: required('GET /api/staff/catering-orders/flight/:id', 'flightId', wire.flightId),
-    flightNumber: required('GET /api/staff/catering-orders/flight/:id', 'flightNumber', wire.flightNumber),
-    departureAirport: required('GET /api/staff/catering-orders/flight/:id', 'departureAirport', wire.departureAirport),
-    arrivalAirport: required('GET /api/staff/catering-orders/flight/:id', 'arrivalAirport', wire.arrivalAirport),
+    id: required('GET /api/staff/flights/:flightId/catering-order', 'id', wire.id),
+    flightId: required('GET /api/staff/flights/:flightId/catering-order', 'flightId', wire.flightId),
+    flightNumber: required('GET /api/staff/flights/:flightId/catering-order', 'flightNumber', wire.flightNumber),
+    departureAirport: required('GET /api/staff/flights/:flightId/catering-order', 'departureAirport', wire.departureAirport),
+    arrivalAirport: required('GET /api/staff/flights/:flightId/catering-order', 'arrivalAirport', wire.arrivalAirport),
     scheduledDeparture: toIsoString(wire.scheduledDeparture),
     passengerCount: wire.passengerCount == null ? 0 : Number(wire.passengerCount),
-    status: required('GET /api/staff/catering-orders/flight/:id', 'status', wire.status) as CateringOrder['status'],
+    status: required('GET /api/staff/flights/:flightId/catering-order', 'status', wire.status) as CateringOrder['status'],
     cutoffAt: toIsoString(wire.cutoffAt),
     generatedAt: toIsoString(wire.generatedAt),
     loadedAt: toNullableIsoString(wire.loadedAt),
-    warehouseId: required('GET /api/staff/catering-orders/flight/:id', 'warehouseId', wire.warehouseId),
-    aircraftId: required('GET /api/staff/catering-orders/flight/:id', 'aircraftId', wire.aircraftId),
+    warehouseId: required('GET /api/staff/flights/:flightId/catering-order', 'warehouseId', wire.warehouseId),
+    aircraftId: required('GET /api/staff/flights/:flightId/catering-order', 'aircraftId', wire.aircraftId),
     lines: wire.lines.map(mapCateringOrderLine),
   }
 }
@@ -725,12 +720,12 @@ interface WireAircraftStockRow {
 
 export function mapAircraftStockRow(wire: WireAircraftStockRow): AircraftStockRow {
   return {
-    id: required('GET /api/staff/aircraft-stock/:id', 'id', wire.id),
-    aircraftId: required('GET /api/staff/aircraft-stock/:id', 'aircraftId', wire.aircraftId),
-    productId: required('GET /api/staff/aircraft-stock/:id', 'productId', wire.productId),
-    productName: required('GET /api/staff/aircraft-stock/:id', 'productName', wire.productName),
-    stockBatchId: required('GET /api/staff/aircraft-stock/:id', 'stockBatchId', wire.stockBatchId),
-    batchCode: required('GET /api/staff/aircraft-stock/:id', 'batchCode', wire.batchCode),
+    id: required('GET /api/staff/aircraft/:aircraftId/stock', 'id', wire.id),
+    aircraftId: required('GET /api/staff/aircraft/:aircraftId/stock', 'aircraftId', wire.aircraftId),
+    productId: required('GET /api/staff/aircraft/:aircraftId/stock', 'productId', wire.productId),
+    productName: required('GET /api/staff/aircraft/:aircraftId/stock', 'productName', wire.productName),
+    stockBatchId: required('GET /api/staff/aircraft/:aircraftId/stock', 'stockBatchId', wire.stockBatchId),
+    batchCode: required('GET /api/staff/aircraft/:aircraftId/stock', 'batchCode', wire.batchCode),
     quantity: Number(wire.quantity),
     expiresAt: toNullableIsoString(wire.expiresAt),
   }
@@ -748,12 +743,12 @@ interface WireStockTransfer {
 
 export function mapStockTransfer(wire: WireStockTransfer): StockTransfer {
   return {
-    id: required('GET /api/staff/stock-transfers/flight/:id', 'id', wire.id),
-    flightId: required('GET /api/staff/stock-transfers/flight/:id', 'flightId', wire.flightId),
-    aircraftId: required('GET /api/staff/stock-transfers/flight/:id', 'aircraftId', wire.aircraftId),
-    warehouseId: required('GET /api/staff/stock-transfers/flight/:id', 'warehouseId', wire.warehouseId),
+    id: required('POST /api/staff/flights/:flightId/stock-transfers', 'id', wire.id),
+    flightId: required('POST /api/staff/flights/:flightId/stock-transfers', 'flightId', wire.flightId),
+    aircraftId: required('POST /api/staff/flights/:flightId/stock-transfers', 'aircraftId', wire.aircraftId),
+    warehouseId: required('POST /api/staff/flights/:flightId/stock-transfers', 'warehouseId', wire.warehouseId),
     transferredAt: toIsoString(wire.transferredAt),
-    lines: wire.lines.map((l): StockTransferLine => ({
+    lines: (wire.lines ?? []).map((l): StockTransferLine => ({
       productId: l.productId,
       stockBatchId: l.stockBatchId,
       quantity: Number(l.quantity),
@@ -777,16 +772,16 @@ interface WireProductSale {
 
 export function mapProductSale(wire: WireProductSale): ProductSale {
   return {
-    id: required('GET /api/staff/sales/flight/:id', 'id', wire.id),
-    flightId: required('GET /api/staff/sales/flight/:id', 'flightId', wire.flightId),
-    productId: required('GET /api/staff/sales/flight/:id', 'productId', wire.productId),
-    productName: required('GET /api/staff/sales/flight/:id', 'productName', wire.productName),
+    id: required('GET /api/staff/flights/:flightId/sales', 'id', wire.id),
+    flightId: required('GET /api/staff/flights/:flightId/sales', 'flightId', wire.flightId),
+    productId: required('GET /api/staff/flights/:flightId/sales', 'productId', wire.productId),
+    productName: required('GET /api/staff/flights/:flightId/sales', 'productName', wire.productName),
     quantity: Number(wire.quantity),
     unitPriceAmount: toNumber(wire.unitPriceAmount),
     unitCostAmount: toNullableNumber(wire.unitCostAmount),
     totalAmount: toNumber(wire.totalAmount),
-    currency: required('GET /api/staff/sales/flight/:id', 'currency', wire.currency),
-    paymentId: required('GET /api/staff/sales/flight/:id', 'paymentId', wire.paymentId),
+    currency: required('GET /api/staff/flights/:flightId/sales', 'currency', wire.currency),
+    paymentId: required('GET /api/staff/flights/:flightId/sales', 'paymentId', wire.paymentId),
     soldAt: toIsoString(wire.soldAt),
   }
 }
@@ -825,16 +820,16 @@ interface WireFlightReport {
 
 export function mapFlightReport(wire: WireFlightReport): FlightReport {
   return {
-    id: required('GET /api/staff/flight-reports/flight/:id', 'id', wire.id),
-    flightId: required('GET /api/staff/flight-reports/flight/:id', 'flightId', wire.flightId),
-    flightNumber: required('GET /api/staff/flight-reports/flight/:id', 'flightNumber', wire.flightNumber),
-    route: required('GET /api/staff/flight-reports/flight/:id', 'route', wire.route),
-    status: required('GET /api/staff/flight-reports/flight/:id', 'status', wire.status) as FlightReportStatus,
+    id: required('GET /api/staff/flights/:flightId/flight-report', 'id', wire.id),
+    flightId: required('GET /api/staff/flights/:flightId/flight-report', 'flightId', wire.flightId),
+    flightNumber: required('GET /api/staff/flights/:flightId/flight-report', 'flightNumber', wire.flightNumber),
+    route: required('GET /api/staff/flights/:flightId/flight-report', 'route', wire.route),
+    status: required('GET /api/staff/flights/:flightId/flight-report', 'status', wire.status) as FlightReportStatus,
     submittedAt: toNullableIsoString(wire.submittedAt),
     lines: wire.lines.map((l): FlightReportLine => ({
       id: l.id,
-      productId: required('GET /api/staff/flight-reports/flight/:id', 'productId', l.productId),
-      productName: required('GET /api/staff/flight-reports/flight/:id', 'productName', l.productName),
+      productId: required('GET /api/staff/flights/:flightId/flight-report', 'productId', l.productId),
+      productName: required('GET /api/staff/flights/:flightId/flight-report', 'productName', l.productName),
       initialQuantity: Number(l.initialQuantity),
       served: Number(l.served),
       sold: Number(l.sold),
@@ -867,16 +862,16 @@ export interface WriteOffBatch {
 
 export function mapWriteOffBatch(wire: WireWriteOffBatch): WriteOffBatch {
   return {
-    id: required('PUT /api/staff/stock-batches/write-off-expired', 'id', wire.id),
-    productId: required('PUT /api/staff/stock-batches/write-off-expired', 'productId', wire.productId),
-    batchCode: required('PUT /api/staff/stock-batches/write-off-expired', 'batchCode', wire.batchCode),
+    id: required('POST /api/staff/stock-batches/write-off-expired', 'id', wire.id),
+    productId: required('POST /api/staff/stock-batches/write-off-expired', 'productId', wire.productId),
+    batchCode: required('POST /api/staff/stock-batches/write-off-expired', 'batchCode', wire.batchCode),
     quantityRemaining: Number(wire.quantityRemaining),
     expiresAt: toNullableIsoString(wire.expiresAt),
-    warehouseId: required('PUT /api/staff/stock-batches/write-off-expired', 'warehouseId', wire.warehouseId),
+    warehouseId: required('POST /api/staff/stock-batches/write-off-expired', 'warehouseId', wire.warehouseId),
   }
 }
 
-// -- Reportable flights (response of /api/staff/flight-reports/reportable-flights) --
+// -- Reportable flights (the rows of GET /api/staff/catering-orders) --
 
 export interface ReportableFlight {
   id: string
@@ -890,7 +885,7 @@ export interface ReportableFlight {
 }
 
 export function mapReportableFlight(wire: {
-  id: string
+  flightId: string
   flightNumber: string
   routeId: string
   departureAirport: string
@@ -900,38 +895,60 @@ export function mapReportableFlight(wire: {
   reportSubmitted: boolean
 }): ReportableFlight {
   return {
-    id: required('GET /api/staff/flight-reports/reportable-flights', 'id', wire.id),
-    flightNumber: required('GET /api/staff/flight-reports/reportable-flights', 'flightNumber', wire.flightNumber),
-    routeId: required('GET /api/staff/flight-reports/reportable-flights', 'routeId', wire.routeId),
-    departureAirport: required('GET /api/staff/flight-reports/reportable-flights', 'departureAirport', wire.departureAirport),
-    arrivalAirport: required('GET /api/staff/flight-reports/reportable-flights', 'arrivalAirport', wire.arrivalAirport),
+    id: required('GET /api/staff/catering-orders', 'flightId', wire.flightId),
+    flightNumber: required('GET /api/staff/catering-orders', 'flightNumber', wire.flightNumber),
+    routeId: required('GET /api/staff/catering-orders', 'routeId', wire.routeId),
+    departureAirport: required('GET /api/staff/catering-orders', 'departureAirport', wire.departureAirport),
+    arrivalAirport: required('GET /api/staff/catering-orders', 'arrivalAirport', wire.arrivalAirport),
     scheduledDeparture: toIsoString(wire.scheduledDeparture),
-    aircraftId: required('GET /api/staff/flight-reports/reportable-flights', 'aircraftId', wire.aircraftId),
+    aircraftId: required('GET /api/staff/catering-orders', 'aircraftId', wire.aircraftId),
     reportSubmitted: Boolean(wire.reportSubmitted),
   }
 }
 
-// -- Warehouse stock (derived from batches, since the backend has no
-//    dedicated /warehouse-stock endpoint) -------------------------------
+// -- Warehouse stock (response of GET /api/staff/warehouse-stock) ----------
 
-export function summarizeWarehouseStock(warehouseId: string, products: Product[], batches: StockBatch[]): WarehouseStockRow[] {
-  const byProduct = new Map<string, number>()
-  for (const b of batches) {
-    if (b.warehouseId !== warehouseId) continue
-    if (b.quantityRemaining <= 0) continue
-    byProduct.set(b.productId, (byProduct.get(b.productId) ?? 0) + b.quantityRemaining)
-  }
-  return Array.from(byProduct.entries()).map(([productId, qty], idx) => {
-    const product = products.find((p) => p.id === productId)
-    return {
-      id: `ws-${warehouseId}-${productId}-${idx}`,
-      warehouseId,
-      productId,
-      productName: product?.name ?? productId,
-      productCategory: product?.category ?? 'meal',
-      quantityOnHand: qty,
-      quantityReserved: 0,
-      reorderLevel: 10,
+interface WireWarehouseStockLine {
+  productId: string
+  sku: string
+  name: string
+  category: string
+  quantityOnHand: number
+  quantityReserved: number
+  availableQuantity: number
+  reorderLevel: number
+  isLow: boolean
+}
+
+export interface WireWarehouseStock {
+  warehouseId: string
+  code: string
+  name: string
+  airportCode: string
+  lines: WireWarehouseStockLine[]
+}
+
+// The endpoint answers with `{ warehouses: [...] }`: one entry when a
+// warehouseId is given, every warehouse when it is not. Every quantity on
+// the row is the backend's own number -- the reserved count, the reorder
+// level and the low-stock flag are read, never computed here.
+export function mapWarehouseStock(wire: { warehouses?: WireWarehouseStock[] }): WarehouseStockRow[] {
+  const rows: WarehouseStockRow[] = []
+  for (const warehouse of wire.warehouses ?? []) {
+    for (const line of warehouse.lines ?? []) {
+      rows.push({
+        warehouseId: required('GET /api/staff/warehouse-stock', 'warehouseId', warehouse.warehouseId),
+        productId: required('GET /api/staff/warehouse-stock', 'productId', line.productId),
+        sku: line.sku ?? '',
+        productName: required('GET /api/staff/warehouse-stock', 'name', line.name),
+        productCategory: required('GET /api/staff/warehouse-stock', 'category', line.category) as ProductCategory,
+        quantityOnHand: Number(line.quantityOnHand),
+        quantityReserved: Number(line.quantityReserved),
+        availableQuantity: Number(line.availableQuantity),
+        reorderLevel: Number(line.reorderLevel),
+        isLow: Boolean(line.isLow),
+      })
     }
-  })
+  }
+  return rows
 }

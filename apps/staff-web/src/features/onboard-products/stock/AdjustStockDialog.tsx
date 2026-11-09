@@ -41,7 +41,7 @@ export function AdjustStockDialog({ row, onClose, onSaved, onError }: Props) {
     return Number.isFinite(n) ? n : Number.NaN
   }, [quantity])
 
-  const available = row.quantityOnHand - row.quantityReserved
+  const available = Math.max(0, row.availableQuantity)
 
   const onHandAfter = useMemo(() => {
     if (parsedQuantity == null || Number.isNaN(parsedQuantity)) return null
@@ -102,7 +102,7 @@ export function AdjustStockDialog({ row, onClose, onSaved, onError }: Props) {
             Adjust stock
           </h2>
           <p className={styles.subtitle}>
-            {row.productName} · {row.warehouseId.replace('w-', '').toUpperCase()} warehouse
+            {row.productName} · {row.sku || row.warehouseId}
           </p>
         </header>
 

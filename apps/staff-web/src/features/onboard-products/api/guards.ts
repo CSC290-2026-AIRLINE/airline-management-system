@@ -1,5 +1,5 @@
 // API-layer guards. The F12 staff-web was being hit with URLs like
-// `GET /api/staff/aircraft-stock/undefined` because the page pulled a
+// `GET /api/staff/aircraft/undefined/stock` because the page pulled a
 // `String(undefined)` and concatenated it into a path. Every api
 // function with an id in the path calls `requireId` first, so a
 // missing or non-UUID id never reaches the network.

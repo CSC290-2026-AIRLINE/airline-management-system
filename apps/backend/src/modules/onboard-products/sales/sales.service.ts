@@ -70,9 +70,9 @@ export class SalesService {
     return this.toDto(row)
   }
 
-  async update(saleId: string, patch: { quantity?: number; unitPriceAmount?: number }): Promise<ProductSaleDto> {
+  async update(flightId: string, saleId: string, patch: { quantity?: number; unitPriceAmount?: number }): Promise<ProductSaleDto> {
     const existing = await this.db.product_sale.findUnique({ where: { id: saleId }, include: { product: true } })
-    if (!existing) throw new ApiErrorException('NOT_FOUND', 'Sale not found.', 404)
+    if (!existing || existing.flight_id !== flightId) throw new ApiErrorException('NOT_FOUND', 'Sale not found.', 404)
     const data: Record<string, number> = {}
     if (patch.quantity !== undefined) {
       if (!Number.isInteger(patch.quantity) || patch.quantity <= 0) {
@@ -93,9 +93,9 @@ export class SalesService {
     return this.toDto(row)
   }
 
-  async delete(saleId: string): Promise<void> {
+  async delete(flightId: string, saleId: string): Promise<void> {
     const existing = await this.db.product_sale.findUnique({ where: { id: saleId } })
-    if (!existing) throw new ApiErrorException('NOT_FOUND', 'Sale not found.', 404)
+    if (!existing || existing.flight_id !== flightId) throw new ApiErrorException('NOT_FOUND', 'Sale not found.', 404)
     await this.db.product_sale.delete({ where: { id: saleId } })
   }
 

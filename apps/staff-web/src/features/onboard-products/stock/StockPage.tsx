@@ -69,12 +69,10 @@ export function StockPage() {
   const navigate = useNavigate()
   const search = useSearch({ from: '/_authenticated/catering/stock/' })
   const api = useOnboardApi()
-  // Products are loaded once and reused so the warehouse stock rows can
-  // resolve product names; useOnboardApi re-creates a stock api that
-  // needs the product list to derive names. Pass a stable ref.
+  const stockApi = api.stock
+  // Products are loaded once and reused so the recent-movements list can
+  // resolve product names.
   const [products, setProducts] = useState<Product[]>([])
-  const productsRef = () => products
-  const stockApi = useOnboardApi(productsRef).stock
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [stock, setStock] = useState<WarehouseStockRow[]>([])
   const [batches, setBatches] = useState<StockBatch[]>([])
@@ -235,7 +233,9 @@ export function StockPage() {
 
   const stats = useMemo(() => {
     const total = stock.length
-    const low = stock.filter((r) => r.quantityOnHand - r.quantityReserved < r.reorderLevel).length
+    // The low-stock flag is the backend's own: a line is low when its
+    // available quantity is at or below its reorder level.
+    const low = stock.filter((r) => r.isLow).length
     const onHand = stock.reduce((acc, r) => acc + r.quantityOnHand, 0)
     const reserved = stock.reduce((acc, r) => acc + r.quantityReserved, 0)
     return { total, low, onHand, reserved }
@@ -368,14 +368,14 @@ export function StockPage() {
                 </thead>
                 <tbody>
                   {stock.map((row) => {
-                    const rawAvailable = row.quantityOnHand - row.quantityReserved
-                    // Clamp to zero so over-reserved rows don't show a negative
-                    // number to staff; the Reorder badge already flags them.
-                    const available = Math.max(0, rawAvailable)
-                    const low = rawAvailable < row.reorderLevel
+                    // The available quantity and the low-stock flag come
+                    // from the endpoint; the number is only clamped so an
+                    // over-reserved line never shows a negative figure.
+                    const available = Math.max(0, row.availableQuantity)
+                    const low = row.isLow
                     const summary = summarizeBatches(batches, row.productId, products)
                     return (
-                      <tr key={row.id} className={styles.row}>
+                      <tr key={row.productId} className={styles.row}>
                         <td className={styles.tdItem}>
                           <span className={styles.itemName}>{row.productName}</span>
                         </td>

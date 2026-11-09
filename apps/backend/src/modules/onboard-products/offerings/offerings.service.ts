@@ -34,9 +34,15 @@ export interface OfferingInput {
 export class OfferingsService {
   constructor(private readonly db: DbService) {}
 
-  async list(): Promise<OfferingDto[]> {
+  // The offered menu for a route and cabin. The filters are optional:
+  // without them every offering is returned.
+  async list(filter: { routeId?: string; cabin?: string } = {}): Promise<OfferingDto[]> {
     const rows = await this.db.product_offering.findMany({
-      where: { deleted_at: null },
+      where: {
+        deleted_at: null,
+        ...(filter.routeId ? { route_id: filter.routeId } : {}),
+        ...(filter.cabin ? { cabin: filter.cabin } : {}),
+      },
       orderBy: [{ scope: 'asc' }, { cabin: 'asc' }],
     })
     return rows.map(this.toDto)

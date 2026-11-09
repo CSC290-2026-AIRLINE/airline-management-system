@@ -1,7 +1,10 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common'
+// The catering order list: the flights with their order status, for
+// the staff picker. The flight-scoped routes live in the flights
+// controller (/staff/flights/:flightId/...).
+
+import { Controller, Get, Query } from '@nestjs/common'
+import { ApiErrorException } from '../common/api-error'
 import { StaffAuth } from '../common/staff-auth.decorator'
-import { CurrentStaff } from '../common/staff.decorator'
-import type { StaffContext } from '../common/staff.guard'
 import { CateringOrdersService } from './catering-orders.service'
 
 @Controller('staff/catering-orders')
@@ -10,33 +13,19 @@ export class CateringOrdersController {
   constructor(private readonly orders: CateringOrdersService) {}
 
   @Get()
-  async list() {
-    return this.orders.listOpenAndOrdered()
+  async list(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.orders.listOpenAndOrdered({
+      ...(from ? { from: parseDate(from, 'from') } : {}),
+      ...(to ? { to: parseDate(to, 'to') } : {}),
+    })
   }
+}
 
-  @Get('flight/:flightId')
-  async get(@Param('flightId') flightId: string) {
-    return this.orders.get(flightId)
+// A date filter is an ISO date or date-time.
+function parseDate(value: string, name: string): Date {
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    throw new ApiErrorException('LINE_INVALID', `${name} must be an ISO date.`, 400)
   }
-
-  // PUT only per the F12 spec.
-  @Put('flight/:flightId/refresh')
-  async refresh(@Param('flightId') flightId: string, @Body() _body: unknown, @CurrentStaff() staff: StaffContext) {
-    return this.orders.refresh(flightId, staff.id)
-  }
-
-  @Put('flight/:flightId/load')
-  async load(@Param('flightId') flightId: string, @Body() _body: unknown, @CurrentStaff() staff: StaffContext) {
-    return this.orders.load(flightId, staff.id)
-  }
-
-  @Put('flight/:flightId/close')
-  async close(@Param('flightId') flightId: string, @Body() _body: unknown, @CurrentStaff() staff: StaffContext) {
-    return this.orders.close(flightId, staff.id)
-  }
-
-  @Put('flight/:flightId/void')
-  async void(@Param('flightId') flightId: string, @Body() _body: unknown, @CurrentStaff() staff: StaffContext) {
-    return this.orders.void(flightId, staff.id)
-  }
+  return new Date(parsed)
 }

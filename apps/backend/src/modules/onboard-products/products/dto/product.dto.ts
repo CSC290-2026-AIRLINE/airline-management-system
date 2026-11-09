@@ -4,7 +4,7 @@ import type { F12Cabin, F12DietaryAttribute, F12ProductCategory, F12SpecialMealC
 const ALLOWED_CATEGORIES: F12ProductCategory[] = ['meal', 'snack', 'beverage', 'duty_free']
 const ALLOWED_TYPE_CODES: F12SpecialMealCode[] = ['STD', 'VGML', 'MOML', 'KSML', 'DBML', 'GFML']
 const ALLOWED_DIETARY: F12DietaryAttribute[] = ['halal', 'vegetarian', 'vegan', 'kosher', 'diabetic', 'gluten_free']
-const ALLOWED_CABINS: F12Cabin[] = ['economy', 'premium_economy', 'business', 'first']
+const ALLOWED_CABINS: F12Cabin[] = ['economy', 'premium_economy', 'business']
 
 // Only JPEG, PNG and WebP up to 5 MB. Base64 body comes in as a
 // data URL: "data:<mime>;base64,<...>" — we only need the prefix and

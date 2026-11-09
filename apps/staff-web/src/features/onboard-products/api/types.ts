@@ -3,7 +3,9 @@
 // (see the auth module's `{ accessToken, user: { id, email, type } }`
 // for the repo's reference).
 
-export type Cabin = 'economy' | 'premium_economy' | 'business' | 'first'
+// The three cabins the onboard-products feature serves. There is no
+// first cabin: the aircraft are not laid out with one.
+export type Cabin = 'economy' | 'premium_economy' | 'business'
 
 export type ProductCategory = 'meal' | 'snack' | 'beverage' | 'duty_free'
 
@@ -144,7 +146,7 @@ export interface FlightException {
 
 export interface CateringOrderLine {
   id: string
-  // 'all' = available to every cabin (e.g. beverages). The four cabin
+  // 'all' = available to every cabin (e.g. beverages). The three cabin
   // values are the per-cabin lines.
   cabin: Cabin | 'all'
   productId: string
@@ -236,15 +238,21 @@ export interface Supplier {
   isActive: boolean
 }
 
+// One line of GET /api/staff/warehouse-stock: what a warehouse holds
+// for one product. Every number comes from the endpoint -- the reserved
+// quantity, the reorder level and the low-stock flag are the backend's,
+// not derived here.
 export interface WarehouseStockRow {
-  id: string
   warehouseId: string
   productId: string
+  sku: string
   productName: string
   productCategory: ProductCategory
   quantityOnHand: number
   quantityReserved: number
+  availableQuantity: number
   reorderLevel: number
+  isLow: boolean
 }
 
 // A single batch of stock sitting in a warehouse. On hand always equals

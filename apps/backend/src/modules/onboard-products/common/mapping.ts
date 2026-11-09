@@ -2,7 +2,11 @@
 // so we don't repeat snake_case → camelCase, ISO date formatting, and
 // decimal → number conversion in every DTO.
 
-export type F12Cabin = 'economy' | 'premium_economy' | 'business' | 'first'
+export type F12Cabin = 'economy' | 'premium_economy' | 'business'
+// The Iteration-02 doc has three cabin tiles: Economy, Premium economy
+// and Business. "first" is not one of them, so it is not a value the
+// F12 code accepts anywhere.
+export const F12_CABINS: readonly F12Cabin[] = ['economy', 'premium_economy', 'business']
 export type F12ProductCategory = 'meal' | 'snack' | 'beverage' | 'duty_free'
 export type F12DietaryAttribute = 'halal' | 'vegetarian' | 'vegan' | 'kosher' | 'diabetic' | 'gluten_free'
 export type F12SpecialMealCode = 'STD' | 'VGML' | 'MOML' | 'KSML' | 'DBML' | 'GFML'
@@ -75,6 +79,15 @@ export interface CabinSettingRow {
   onboardBufferPercent: number | null
 }
 
+// Where a resolved value came from: the scope of the row that set it,
+// or 'default' when no row set it.
+export type CabinSettingSource = F12OfferingScope | 'default'
+
+export interface ResolvedCabinSettingWithSources {
+  values: ResolvedCabinSetting
+  sources: Record<keyof ResolvedCabinSetting, CabinSettingSource>
+}
+
 const NETWORK_DEFAULTS: ResolvedCabinSetting = {
   mealService: 'complimentary',
   mealSelection: 'fixed',
@@ -130,6 +143,40 @@ function pickFirst(rows: Array<CabinSettingRow | null | undefined>): ResolvedCab
     }
   }
   return out
+}
+
+// The same resolution as resolveCabinSetting, but it also says where
+// every value came from. The staff UI shows that, so a staff member
+// can see which scope a value is inherited from.
+export function resolveCabinSettingWithSources(rows: CabinSettingRow[]): ResolvedCabinSettingWithSources {
+  const fields: (keyof ResolvedCabinSetting)[] = [
+    'mealService',
+    'mealSelection',
+    'includedPerPassenger',
+    'preorderEnabled',
+    'orderWindowHours',
+    'premiumMealsAllowed',
+    'snacksEnabled',
+    'dutyFreeEnabled',
+    'onboardBufferPercent',
+  ]
+  const values: ResolvedCabinSetting = { ...NETWORK_DEFAULTS }
+  const sources = {} as Record<keyof ResolvedCabinSetting, CabinSettingSource>
+  for (const field of fields) sources[field] = 'default'
+  const set = new Set<keyof ResolvedCabinSetting>()
+  for (const row of rows) {
+    if (!row) continue
+    for (const field of fields) {
+      if (set.has(field)) continue
+      const value = row[field]
+      if (value != null) {
+        ;(values as unknown as Record<string, unknown>)[field] = value
+        sources[field] = row.scope
+        set.add(field)
+      }
+    }
+  }
+  return { values, sources }
 }
 
 // Shortest pre-order window across all four cabins. Used to compute

@@ -1,9 +1,9 @@
-// Products HTTP surface under /api/staff/products. PUT only: list
-// (GET), create (PUT), update (PUT), delete (PUT with { deleted: true
-// } on body) is rejected in favor of the dedicated DELETE. Image
-// upload is encoded in the same JSON body as a base64 data URL.
+// Products HTTP surface under /api/staff/products. Creates are POST,
+// edits are PUT, and there is no PATCH: list (GET), create (POST),
+// update (PUT), delete (DELETE). Image upload is encoded in the same
+// JSON body as a base64 data URL.
 
-import { Body, Controller, Delete, Get, HttpCode, Param, Put } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common'
 import { StaffAuth } from '../common/staff-auth.decorator'
 import { NoopStorageService } from '../common/cross-module-ports'
 import { ProductsService } from './products.service'
@@ -17,9 +17,19 @@ export class ProductsController {
     private readonly storage: NoopStorageService,
   ) {}
 
+  // The list filters by category, special-meal code and dietary
+  // attribute.
   @Get()
-  async list() {
-    return this.products.list()
+  async list(
+    @Query('category') category?: string,
+    @Query('typeCode') typeCode?: string,
+    @Query('dietaryAttribute') dietaryAttribute?: string,
+  ) {
+    return this.products.list({
+      ...(category ? { category } : {}),
+      ...(typeCode ? { typeCode } : {}),
+      ...(dietaryAttribute ? { dietaryAttribute } : {}),
+    })
   }
 
   @Get(':id')
@@ -27,7 +37,7 @@ export class ProductsController {
     return this.products.get(id)
   }
 
-  @Put()
+  @Post()
   @HttpCode(201)
   async create(@Body() body: unknown) {
     return this.products.create(parseProductDraft(body), this.storage)

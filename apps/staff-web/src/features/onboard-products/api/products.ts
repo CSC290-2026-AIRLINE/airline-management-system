@@ -9,10 +9,17 @@ import { ApiClient, ApiError, type ApiFetch } from './client'
 import { ImageInvalidError, ProductApiError, ProductInUseError } from './errors'
 import { MissingIdError, requireId } from './guards'
 import { mapProduct, toProductDraft, type ProductDraftInput } from './mappers'
-import type { Product } from './types'
+import type { DietaryAttribute, Product, ProductCategory, SpecialMealCode } from './types'
+
+// The filters the products list endpoint accepts.
+export interface ProductFilters {
+  category?: ProductCategory
+  typeCode?: SpecialMealCode
+  dietary?: DietaryAttribute
+}
 
 export interface ProductsApi {
-  list: () => Promise<Product[]>
+  list: (filters?: ProductFilters) => Promise<Product[]>
   get: (id: string) => Promise<Product | null>
   create: (input: ProductDraftInput) => Promise<Product>
   update: (id: string, input: ProductDraftInput) => Promise<Product>
@@ -32,9 +39,13 @@ function rethrow(err: unknown, fallback: ProductApiError): never {
 
 export function createProductsApi(client: ApiClient): ProductsApi {
   return {
-    async list() {
+    async list(filters) {
       try {
-        const wire = await client.get<unknown[]>('/api/staff/products')
+        const wire = await client.get<unknown[]>('/api/staff/products', {
+          category: filters?.category,
+          typeCode: filters?.typeCode,
+          dietary: filters?.dietary,
+        })
         return (wire ?? []).map((w) => mapProduct(w as never))
       } catch (err) {
         rethrow(err, new ProductApiError('UNKNOWN', err instanceof Error ? err.message : 'Could not load products.', 0))
@@ -42,9 +53,12 @@ export function createProductsApi(client: ApiClient): ProductsApi {
     },
     async get(id) {
       try {
-        requireId('GET /api/staff/products/:id', 'id', id)
-        const wire = await client.get<unknown>(`/api/staff/products/${id}`)
-        return wire ? mapProduct(wire as never) : null
+        requireId('GET /api/staff/products', 'id', id)
+        // The staff API has no product-by-id read: the list endpoint is
+        // the only product read, so the row is picked out of it.
+        const wire = await client.get<unknown[]>('/api/staff/products')
+        const found = (wire ?? []).map((w) => mapProduct(w as never)).find((p) => p.id === id)
+        return found ?? null
       } catch (err) {
         if (err instanceof MissingIdError) return null
         if (err instanceof ApiError && err.status === 404) return null
@@ -53,7 +67,7 @@ export function createProductsApi(client: ApiClient): ProductsApi {
     },
     async create(input) {
       try {
-        const body = await client.put<{ product: unknown }>('/api/staff/products', toProductDraft(input))
+        const body = await client.post<{ product: unknown }>('/api/staff/products', toProductDraft(input))
         return mapProduct(body.product as never)
       } catch (err) {
         rethrow(err, new ProductApiError('UNKNOWN', 'Could not save the product.', 0))

@@ -1,15 +1,25 @@
 // CabinSettings HTTP surface under /api/staff/cabin-settings.
-// Supports upserting at any scope (network/route/flight) and
-// resolving the effective values for a single flight.
+//
+//   GET /staff/cabin-settings?scope=&scopeId=&cabin=
+//        the settings at a scope (network, route or flight), with the
+//        effective value of every field and the scope it is inherited
+//        from. scope=flight without a scopeId lists every flight that
+//        overrides its route;
+//   PUT /staff/cabin-settings
+//        set or clear the settings for a scope and cabin; the response
+//        carries the number of open orders the change affects.
+//
+// The per-flight view (the resolved settings of every cabin on one
+// flight) is in the flights controller.
 
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common'
+import { Body, Controller, Get, Put, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
 import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
 import type { StaffContext } from '../common/staff.guard'
 import { CabinSettingsService, type CabinSettingInput } from './cabin-settings.service'
 
-const ALLOWED_CABINS = ['economy', 'premium_economy', 'business', 'first'] as const
+const ALLOWED_CABINS = ['economy', 'premium_economy', 'business'] as const
 const ALLOWED_SCOPES = ['network', 'route', 'flight'] as const
 const ALLOWED_MEAL_SERVICE = ['complimentary', 'paid', 'none'] as const
 const ALLOWED_MEAL_SELECTION = ['choose', 'fixed'] as const
@@ -23,7 +33,7 @@ function parseInput(body: unknown): CabinSettingInput {
     throw new ApiErrorException('SETTING_INVALID', 'scope must be network, route or flight.', 400)
   }
   if (!(ALLOWED_CABINS as readonly string[]).includes(b.cabin as string)) {
-    throw new ApiErrorException('SETTING_INVALID', 'cabin must be one of economy, premium_economy, business, first.', 400)
+    throw new ApiErrorException('SETTING_INVALID', 'cabin must be one of economy, premium_economy, business.', 400)
   }
   if (b.scope === 'route' && typeof b.routeId !== 'string') {
     throw new ApiErrorException('SETTING_INVALID', 'routeId is required when scope=route.', 400)
@@ -102,35 +112,23 @@ function parseInput(body: unknown): CabinSettingInput {
 export class CabinSettingsController {
   constructor(private readonly settings: CabinSettingsService) {}
 
-  @Get('network')
-  async network() {
-    return this.settings.listByScope('network')
-  }
-
-  @Get('route/:routeId')
-  async route(@Param('routeId') routeId: string) {
-    return this.settings.listByScope('route', routeId)
-  }
-
-  @Get('flight/:flightId')
-  async flight(@Param('flightId') flightId: string) {
-    return this.settings.listByScope('flight', flightId)
-  }
-
-  @Get('resolve/:flightId')
-  async resolve(@Param('flightId') flightId: string) {
-    const cabins = ['economy', 'premium_economy', 'business', 'first'] as const
-    const out: Record<string, unknown> = {}
-    for (const cabin of cabins) {
-      out[cabin] = await this.settings.resolveForFlight(flightId, cabin)
+  @Get()
+  async list(@Query('scope') scope?: string, @Query('scopeId') scopeId?: string, @Query('cabin') cabin?: string) {
+    const scopeValue = scope ?? 'network'
+    if (!(ALLOWED_SCOPES as readonly string[]).includes(scopeValue)) {
+      throw new ApiErrorException('SETTING_INVALID', 'scope must be network, route or flight.', 400)
     }
-    return out
+    if (cabin && !(ALLOWED_CABINS as readonly string[]).includes(cabin)) {
+      throw new ApiErrorException('SETTING_INVALID', 'cabin must be one of economy, premium_economy, business.', 400)
+    }
+    return this.settings.listAtScope(
+      scopeValue as CabinSettingInput['scope'],
+      scopeId ?? null,
+      cabin as CabinSettingInput['cabin'] | undefined,
+    )
   }
 
-  // Spec: PUT only. Use POST as the alias so the staff-web can hit a
-  // dedicated upsert route. (Same shape; same response.)
   @Put()
-  @Post()
   async upsert(@Body() body: unknown, @CurrentStaff() staff: StaffContext) {
     return this.settings.upsert(parseInput(body), staff.id)
   }

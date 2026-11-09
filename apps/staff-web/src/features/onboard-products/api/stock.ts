@@ -1,7 +1,7 @@
 // Stock API: warehouses, suppliers, batches, stock movements, purchase
-// receipts. Warehouse stock is derived from batches since the backend
-// has no dedicated /warehouse-stock endpoint; the page can still show
-// per-warehouse totals.
+// receipts. The warehouse stock table is read from the dedicated
+// /warehouse-stock endpoint, so the reserved quantities, the reorder
+// levels and the low-stock flags are the backend's own.
 
 import { useMemo } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
@@ -14,8 +14,8 @@ import {
   mapStockMovement,
   mapSupplier,
   mapWarehouse,
+  mapWarehouseStock,
   mapWriteOffBatch,
-  summarizeWarehouseStock,
   toPurchaseReceiptInput,
   toStockMovementInput,
   toSupplierInput,
@@ -24,6 +24,7 @@ import {
 } from './mappers'
 import type {
   CreatePurchaseReceiptInput,
+  Product,
   PurchaseReceipt,
   StockBatch,
   StockMovement,
@@ -32,7 +33,6 @@ import type {
   Warehouse,
   WarehouseStockRow,
 } from './types'
-import type { Product } from './types'
 
 export interface StockApi {
   listWarehouses: () => Promise<Warehouse[]>
@@ -48,10 +48,10 @@ export interface StockApi {
   ) => Promise<Supplier>
   deleteSupplier: (id: string) => Promise<void>
 
-  listWarehouseStock: (warehouseId: string) => Promise<WarehouseStockRow[]>
+  listWarehouseStock: (warehouseId: string | null, opts?: { lowOnly?: boolean }) => Promise<WarehouseStockRow[]>
   listStockBatches: (opts: { warehouseId?: string; productId?: string; expiringBefore?: string }) => Promise<StockBatch[]>
   listStockMovements: (opts: { warehouseId?: string; productId?: string; flightId?: string }) => Promise<StockMovement[]>
-  listPurchaseReceipts: (opts: { warehouseId?: string }) => Promise<PurchaseReceipt[]>
+  listPurchaseReceipts: (opts: { warehouseId?: string; from?: string; to?: string }) => Promise<PurchaseReceipt[]>
   createPurchaseReceipt: (input: CreatePurchaseReceiptInput, products: Product[]) => Promise<PurchaseReceipt>
   createStockMovement: (input: {
     warehouseId: string
@@ -69,7 +69,7 @@ function rethrow(err: unknown, fallback: StockApiError): never {
   throw fallback
 }
 
-export function createStockApi(client: ApiClient, productsRef: () => Product[]): StockApi {
+export function createStockApi(client: ApiClient): StockApi {
   return {
     async listWarehouses() {
       try {
@@ -81,7 +81,7 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
     },
     async createWarehouse(input) {
       try {
-        const wire = await client.put<unknown>('/api/staff/warehouses', toWarehouseInput(input))
+        const wire = await client.post<unknown>('/api/staff/warehouses', toWarehouseInput(input))
         return mapWarehouse(wire as never)
       } catch (err) {
         rethrow(err, new StockApiError('UNKNOWN', 'Could not add the warehouse.', 0))
@@ -121,7 +121,7 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
     },
     async createSupplier(input) {
       try {
-        const wire = await client.put<unknown>('/api/staff/suppliers', toSupplierInput(input))
+        const wire = await client.post<unknown>('/api/staff/suppliers', toSupplierInput(input))
         return mapSupplier(wire as never)
       } catch (err) {
         rethrow(err, new StockApiError('UNKNOWN', 'Could not add the supplier.', 0))
@@ -151,12 +151,17 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
       }
     },
 
-    async listWarehouseStock(warehouseId) {
+    async listWarehouseStock(warehouseId, opts) {
       try {
-        requireId('GET /api/staff/stock-batches (listWarehouseStock)', 'warehouseId', warehouseId)
-        const batches = await client.get<unknown[]>('/api/staff/stock-batches', { warehouseId })
-        const list = (batches ?? []).map((b) => mapStockBatch(b as never))
-        return summarizeWarehouseStock(warehouseId, productsRef(), list)
+        if (warehouseId != null) {
+          requireId('GET /api/staff/warehouse-stock', 'warehouseId', warehouseId)
+        }
+        // Without a warehouse the endpoint answers with every warehouse.
+        const wire = await client.get<{ warehouses?: unknown[] }>('/api/staff/warehouse-stock', {
+          warehouseId: warehouseId ?? undefined,
+          lowOnly: opts?.lowOnly === undefined ? undefined : String(opts.lowOnly),
+        })
+        return mapWarehouseStock(wire as never)
       } catch (err) {
         if (err instanceof MissingIdError) return []
         rethrow(err, new StockApiError('UNKNOWN', 'Could not load stock.', 0))
@@ -208,7 +213,11 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
         if (opts.warehouseId !== undefined) {
           requireId('GET /api/staff/purchase-receipts', 'warehouseId', opts.warehouseId)
         }
-        const wire = await client.get<unknown[]>('/api/staff/purchase-receipts', { warehouseId: opts.warehouseId })
+        const wire = await client.get<unknown[]>('/api/staff/purchase-receipts', {
+          warehouseId: opts.warehouseId,
+          from: opts.from,
+          to: opts.to,
+        })
         return (wire ?? []).map((r) => mapPurchaseReceipt(r as never))
       } catch (err) {
         if (err instanceof MissingIdError) return []
@@ -218,7 +227,7 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
     async createPurchaseReceipt(input, products) {
       const nameOf = (id: string) => products.find((p) => p.id === id)?.name ?? id
       try {
-        const wire = await client.put<unknown>('/api/staff/purchase-receipts', toPurchaseReceiptInput(input, nameOf))
+        const wire = await client.post<unknown>('/api/staff/purchase-receipts', toPurchaseReceiptInput(input, nameOf))
         return mapPurchaseReceipt(wire as never)
       } catch (err) {
         rethrow(err, new StockApiError('UNKNOWN', 'Could not save the delivery.', 0))
@@ -226,7 +235,7 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
     },
     async createStockMovement(input) {
       try {
-        const wire = await client.put<unknown>('/api/staff/stock-movements', toStockMovementInput(input))
+        const wire = await client.post<unknown>('/api/staff/stock-movements', toStockMovementInput(input))
         return mapStockMovement(wire as never)
       } catch (err) {
         rethrow(err, new StockApiError('UNKNOWN', 'Could not adjust the stock.', 0))
@@ -235,9 +244,9 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
     async writeOffExpiredBatchesNow(warehouseId) {
       try {
         if (warehouseId !== undefined) {
-          requireId('PUT /api/staff/stock-batches/write-off-expired', 'warehouseId', warehouseId)
+          requireId('POST /api/staff/stock-batches/write-off-expired', 'warehouseId', warehouseId)
         }
-        const wire = await client.put<unknown[]>('/api/staff/stock-batches/write-off-expired', { warehouseId })
+        const wire = await client.post<unknown[]>('/api/staff/stock-batches/write-off-expired', { warehouseId })
         // The endpoint returns the batches that were touched, not
         // movements. Movements become visible in the next list call.
         return (wire ?? []).map((m) => mapWriteOffBatch(m as never))
@@ -251,14 +260,7 @@ export function createStockApi(client: ApiClient, productsRef: () => Product[]):
 
 export { StockApiError }
 
-export function useStockApi(productsRef: () => Product[]): StockApi {
+export function useStockApi(): StockApi {
   const { fetchWithAuth } = useAppAuth()
-  return useMemo(
-    () => createStockApi(new ApiClient(fetchWithAuth as ApiFetch), productsRef),
-    // productsRef changes every render; re-creating the api each render
-    // is fine because all callers go through this hook and the api is
-    // cheap. The fetchWithAuth is the only real dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fetchWithAuth],
-  )
+  return useMemo(() => createStockApi(new ApiClient(fetchWithAuth as ApiFetch)), [fetchWithAuth])
 }

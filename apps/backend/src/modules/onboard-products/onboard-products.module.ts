@@ -12,6 +12,7 @@ import { SystemClock } from './common/clock'
 import { AuditService } from './common/audit.service'
 import { FlightsService } from './common/flights.service'
 import { NoopStorageService, StubBookingsService, StubPaymentsService, StubTierService } from './common/cross-module-ports'
+import { SharedModule } from './common/shared.module'
 import { ProductsModule } from './products/products.module'
 import { OfferingsModule } from './offerings/offerings.module'
 import { CabinSettingsModule } from './cabin-settings/cabin-settings.module'
@@ -26,10 +27,17 @@ import { AircraftStockModule } from './aircraft-stock/aircraft-stock.module'
 import { FlightReportModule } from './flight-report/flight-report.module'
 import { SalesModule } from './sales/sales.module'
 import { RoutesModule } from './routes/routes.module'
+import { FlightsModule } from './flights/flights.module'
+import { WarehouseStockModule } from './warehouse-stock/warehouse-stock.module'
+import { ProductOrdersModule } from './product-orders/product-orders.module'
+import { CatalogModule } from './catalog/catalog.module'
+import { PaymentEventsModule } from './payment-events/payment-events.module'
+import { SchedulerModule } from './scheduler/scheduler.module'
 
 @Global()
 @Module({
   imports: [
+    SharedModule,
     ProductsModule,
     OfferingsModule,
     CabinSettingsModule,
@@ -44,6 +52,12 @@ import { RoutesModule } from './routes/routes.module'
     SalesModule,
     FlightReportModule,
     RoutesModule,
+    FlightsModule,
+    WarehouseStockModule,
+    ProductOrdersModule,
+    CatalogModule,
+    PaymentEventsModule,
+    SchedulerModule,
   ],
   providers: [SystemClock, AuditService, FlightsService, NoopStorageService, StubBookingsService, StubPaymentsService, StubTierService],
   exports: [SystemClock, AuditService, FlightsService, NoopStorageService, StubBookingsService, StubPaymentsService, StubTierService],

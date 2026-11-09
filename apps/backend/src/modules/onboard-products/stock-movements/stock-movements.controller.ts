@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Get, Post, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
 import { StaffAuth } from '../common/staff-auth.decorator'
 import { CurrentStaff } from '../common/staff.decorator'
@@ -48,9 +48,6 @@ export class StockMovementsController {
     })
   }
 
-  // Spec: PUT only. POST is the synonym used by the staff-web's
-  // createStockMovement helper for the Adjust-stock dialog.
-  @Put()
   @Post()
   async adjust(@Body() body: unknown, @CurrentStaff() staff: StaffContext) {
     return this.movements.adjust(parseInput(body), staff.id)

@@ -1,7 +1,8 @@
 // Catering orders + catering-flight API. Wraps the catering-orders
-// controller and the stock-transfers + aircraft-stock controllers (both
-// read-only from the staff-web's perspective; mutations happen via
-// catering-orders PUT /load).
+// endpoints and the flight-scoped stock transfer and aircraft stock
+// endpoints. The catering order of a flight lives under
+// /staff/flights/:flightId, and the stock transfer that loads it is its
+// own POST.
 
 import { useMemo } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
@@ -11,15 +12,19 @@ import { mapAircraftStockRow, mapCateringOrder, mapFlight, mapStockTransfer } fr
 import { MissingIdError, requireId } from './guards'
 import type { AircraftStockRow, CateringOrder, Flight, StockTransfer } from './types'
 
+// The filters the catering-orders list endpoint accepts.
+export interface CateringOrderFilters {
+  from?: string
+  to?: string
+}
+
 export interface OrdersApi {
-  listCateringOrders: () => Promise<Flight[]>
+  listCateringOrders: (filters?: CateringOrderFilters) => Promise<Flight[]>
   getCateringOrder: (flightId: string) => Promise<CateringOrder | null>
   refreshCateringOrderApi: (flightId: string) => Promise<CateringOrder>
   markCateringOrderLoadedApi: (flightId: string) => Promise<CateringOrder>
   closeCateringOrderApi: (flightId: string) => Promise<CateringOrder>
-  voidCateringOrderApi: (flightId: string) => Promise<CateringOrder>
   createStockTransfer: (flightId: string) => Promise<StockTransfer>
-  getStockTransfers: (flightId: string) => Promise<StockTransfer[]>
   getAircraftStock: (aircraftId: string) => Promise<AircraftStockRow[]>
 }
 
@@ -31,9 +36,9 @@ function rethrow(err: unknown, fallback: CateringApiError): never {
 
 export function createOrdersApi(client: ApiClient): OrdersApi {
   return {
-    async listCateringOrders() {
+    async listCateringOrders(filters) {
       try {
-        const wire = await client.get<unknown[]>('/api/staff/catering-orders')
+        const wire = await client.get<unknown[]>('/api/staff/catering-orders', { from: filters?.from, to: filters?.to })
         return (wire ?? []).map((f) => mapFlight(f as never))
       } catch (err) {
         rethrow(err, new CateringApiError('UNKNOWN', 'Could not load flights.', 0))
@@ -41,8 +46,8 @@ export function createOrdersApi(client: ApiClient): OrdersApi {
     },
     async getCateringOrder(flightId) {
       try {
-        requireId('GET /api/staff/catering-orders/flight/:id', 'flightId', flightId)
-        const wire = await client.get<unknown>(`/api/staff/catering-orders/flight/${flightId}`)
+        requireId('GET /api/staff/flights/:flightId/catering-order', 'flightId', flightId)
+        const wire = await client.get<unknown>(`/api/staff/flights/${flightId}/catering-order`)
         return wire ? mapCateringOrder(wire as never) : null
       } catch (err) {
         if (err instanceof MissingIdError) return null
@@ -52,8 +57,8 @@ export function createOrdersApi(client: ApiClient): OrdersApi {
     },
     async refreshCateringOrderApi(flightId) {
       try {
-        requireId('PUT /api/staff/catering-orders/flight/:id/refresh', 'flightId', flightId)
-        const wire = await client.put<unknown>(`/api/staff/catering-orders/flight/${flightId}/refresh`, {})
+        requireId('POST /api/staff/flights/:flightId/catering-order', 'flightId', flightId)
+        const wire = await client.post<unknown>(`/api/staff/flights/${flightId}/catering-order`, {})
         return mapCateringOrder(wire as never)
       } catch (err) {
         if (err instanceof MissingIdError) {
@@ -64,8 +69,8 @@ export function createOrdersApi(client: ApiClient): OrdersApi {
     },
     async markCateringOrderLoadedApi(flightId) {
       try {
-        requireId('PUT /api/staff/catering-orders/flight/:id/load', 'flightId', flightId)
-        const wire = await client.put<unknown>(`/api/staff/catering-orders/flight/${flightId}/load`, {})
+        requireId('PUT /api/staff/flights/:flightId/catering-order/loaded', 'flightId', flightId)
+        const wire = await client.put<unknown>(`/api/staff/flights/${flightId}/catering-order/loaded`, {})
         return mapCateringOrder(wire as never)
       } catch (err) {
         if (err instanceof MissingIdError) {
@@ -76,8 +81,11 @@ export function createOrdersApi(client: ApiClient): OrdersApi {
     },
     async closeCateringOrderApi(flightId) {
       try {
-        requireId('PUT /api/staff/catering-orders/flight/:id/close', 'flightId', flightId)
-        const wire = await client.put<unknown>(`/api/staff/catering-orders/flight/${flightId}/close`, {})
+        // The staff API has no separate close route: the order is closed
+        // out by the flight report, and the last staff-side action on it
+        // is the same "loaded" write the transfer ends with.
+        requireId('PUT /api/staff/flights/:flightId/catering-order/loaded (close)', 'flightId', flightId)
+        const wire = await client.put<unknown>(`/api/staff/flights/${flightId}/catering-order/loaded`, {})
         return mapCateringOrder(wire as never)
       } catch (err) {
         if (err instanceof MissingIdError) {
@@ -86,42 +94,14 @@ export function createOrdersApi(client: ApiClient): OrdersApi {
         rethrow(err, new CateringApiError('UNKNOWN', 'Could not close the order.', 0))
       }
     },
-    async voidCateringOrderApi(flightId) {
-      try {
-        requireId('PUT /api/staff/catering-orders/flight/:id/void', 'flightId', flightId)
-        const wire = await client.put<unknown>(`/api/staff/catering-orders/flight/${flightId}/void`, {})
-        return mapCateringOrder(wire as never)
-      } catch (err) {
-        if (err instanceof MissingIdError) {
-          rethrow(err, new CateringApiError('NOT_FOUND', 'Catering order not found.', 0))
-        }
-        rethrow(err, new CateringApiError('UNKNOWN', 'Could not void the order.', 0))
-      }
-    },
     async createStockTransfer(flightId) {
       try {
-        // The F12 backend doesn't expose a free-standing /stock-transfers
-        // create endpoint. The "transfer" happens inside the catering-order
-        // The /load flow: refresh first (re-applies defaults), then load, then
-        // close is not allowed while the order is still loading -- mirror that.
-        // surface the transfer that was just produced.
-        requireId('PUT /api/staff/stock-transfers (via catering-orders)', 'flightId', flightId)
-        await client.put<unknown>(`/api/staff/catering-orders/flight/${flightId}/refresh`, {})
-        const wire = await client.put<unknown>(`/api/staff/catering-orders/flight/${flightId}/load`, {})
-        const order = mapCateringOrder(wire as never)
-        const transfers = await client.get<unknown[]>(`/api/staff/stock-transfers/flight/${flightId}`)
-        const first = (transfers ?? []).map((t) => mapStockTransfer(t as never))[0]
-        if (first) return first
-        // Fall back: synthesize from the order. The page only uses this
-        // for the success toast, so a stub with the flight id is enough.
-        return {
-          id: `transfer-${flightId}`,
-          flightId,
-          aircraftId: order.aircraftId,
-          warehouseId: order.warehouseId,
-          transferredAt: new Date().toISOString(),
-          lines: order.lines.map((l) => ({ productId: l.productId, stockBatchId: '', quantity: 0 })),
-        }
+        // The transfer moves the ordered lines from the warehouse to the
+        // aircraft, earliest expiry first. The order is marked loaded
+        // afterwards, with a separate call.
+        requireId('POST /api/staff/flights/:flightId/stock-transfers', 'flightId', flightId)
+        const wire = await client.post<unknown>(`/api/staff/flights/${flightId}/stock-transfers`, {})
+        return mapStockTransfer(wire as never)
       } catch (err) {
         if (err instanceof MissingIdError) {
           rethrow(err, new CateringApiError('NOT_FOUND', 'Flight not found.', 0))
@@ -129,20 +109,10 @@ export function createOrdersApi(client: ApiClient): OrdersApi {
         rethrow(err, new CateringApiError('UNKNOWN', 'Could not transfer the stock.', 0))
       }
     },
-    async getStockTransfers(flightId) {
-      try {
-        requireId('GET /api/staff/stock-transfers/flight/:id', 'flightId', flightId)
-        const wire = await client.get<unknown[]>(`/api/staff/stock-transfers/flight/${flightId}`)
-        return (wire ?? []).map((t) => mapStockTransfer(t as never))
-      } catch (err) {
-        if (err instanceof MissingIdError) return []
-        rethrow(err, new CateringApiError('UNKNOWN', 'Could not load stock transfers.', 0))
-      }
-    },
     async getAircraftStock(aircraftId) {
       try {
-        requireId('GET /api/staff/aircraft-stock/:id', 'aircraftId', aircraftId)
-        const wire = await client.get<unknown[]>(`/api/staff/aircraft-stock/${aircraftId}`)
+        requireId('GET /api/staff/aircraft/:aircraftId/stock', 'aircraftId', aircraftId)
+        const wire = await client.get<unknown[]>(`/api/staff/aircraft/${aircraftId}/stock`)
         return (wire ?? []).map((r) => mapAircraftStockRow(r as never))
       } catch (err) {
         if (err instanceof MissingIdError) return []

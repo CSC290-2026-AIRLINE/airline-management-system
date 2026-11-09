@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Put, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common'
 import { ApiErrorException } from '../common/api-error'
 import { StaffAuth } from '../common/staff-auth.decorator'
 import { SuppliersService, type SupplierInput } from './suppliers.service'
@@ -49,7 +49,7 @@ export class SuppliersController {
     return this.suppliers.list(airportCode)
   }
 
-  @Put()
+  @Post()
   async create(@Body() body: unknown) {
     return this.suppliers.create(parseInput(body))
   }

@@ -21,9 +21,9 @@ import styles from './OfferedMenuPage.module.css'
 
 const PAGE_SIZE = 15
 
-const CABINS: Cabin[] = ['economy', 'premium_economy', 'business', 'first']
+const CABINS: Cabin[] = ['economy', 'premium_economy', 'business']
 
-const ROUTE_TABLE_CABINS: Cabin[] = ['economy', 'premium_economy', 'business', 'first']
+const ROUTE_TABLE_CABINS: Cabin[] = ['economy', 'premium_economy', 'business']
 
 function nextToastId(): number {
   return Date.now() + Math.floor(Math.random() * 1000)
@@ -315,7 +315,6 @@ export function OfferedMenuPage() {
               <option value="economy">Economy</option>
               <option value="premium_economy">Premium economy</option>
               <option value="business">Business</option>
-              <option value="first">First</option>
             </select>
           </label>
           <label className={styles.filterField}>
@@ -377,7 +376,6 @@ export function OfferedMenuPage() {
               <option value="economy">Economy</option>
               <option value="premium_economy">Premium economy</option>
               <option value="business">Business</option>
-              <option value="first">First</option>
             </select>
             <button
               type="button"
@@ -533,7 +531,7 @@ export function OfferedMenuPage() {
             </thead>
             <tbody>
               {visibleExceptions.map((e) => (
-                <tr key={e.id} className={styles.row}>
+                <tr key={`${e.id}-${e.cabin}`} className={styles.row}>
                   <td>
                     <span className={styles.flightCode}>{e.flightNumber}</span>
                     <span className={styles.routeSub}>
@@ -628,8 +626,7 @@ export function OfferedMenuPage() {
 function cabinLabel(cabin: Cabin): string {
   if (cabin === 'economy') return 'Economy'
   if (cabin === 'premium_economy') return 'Premium economy'
-  if (cabin === 'business') return 'Business'
-  return 'First'
+  return 'Business'
 }
 
 function capitalize(s: string): string {

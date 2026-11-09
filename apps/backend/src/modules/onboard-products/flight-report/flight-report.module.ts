@@ -6,14 +6,12 @@
 // catering order and fills product_sale.unit_cost on every sale.
 
 import { Module } from '@nestjs/common'
-import { FlightReportController } from './flight-report.controller'
 import { FlightReportService } from './flight-report.service'
 import { SalesModule } from '../sales/sales.module'
 import { CateringOrdersModule } from '../catering-orders/catering-orders.module'
 
 @Module({
   imports: [SalesModule, CateringOrdersModule],
-  controllers: [FlightReportController],
   providers: [FlightReportService],
   exports: [FlightReportService],
 })

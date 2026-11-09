@@ -9,7 +9,6 @@ import { createOfferingsApi, type OfferingsApi } from './offerings'
 import { createOrdersApi, type OrdersApi } from './orders'
 import { createProductsApi, type ProductsApi } from './products'
 import { createStockApi, type StockApi } from './stock'
-import type { Product } from './types'
 
 export interface OnboardApi {
   products: ProductsApi
@@ -19,19 +18,16 @@ export interface OnboardApi {
   flightReport: FlightReportApi
 }
 
-export function useOnboardApi(productsRef: () => Product[] = () => []): OnboardApi {
+export function useOnboardApi(): OnboardApi {
   const { fetchWithAuth } = useAppAuth()
   return useMemo(() => {
     const client = new ApiClient(fetchWithAuth as ApiFetch)
     return {
       products: createProductsApi(client),
-      stock: createStockApi(client, productsRef),
+      stock: createStockApi(client),
       orders: createOrdersApi(client),
       offerings: createOfferingsApi(client),
       flightReport: createFlightReportApi(client),
     }
-    // productsRef changes every render; the api is cheap to recreate and
-    // productsRef's caller is responsible for memoization when needed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchWithAuth])
 }

@@ -386,7 +386,7 @@ export function FlightReportPage() {
         return
       }
       if (editingSale) {
-        await api.flightReport.updateFlightSaleApi(editingSale.id, { quantity: qty, unitPriceAmount: unitPrice })
+        await api.flightReport.updateFlightSaleApi(selectedId, editingSale.id, { quantity: qty, unitPriceAmount: unitPrice })
         showToast('success', 'Sale updated.')
       } else {
         await api.flightReport.createFlightSaleApi({
@@ -413,11 +413,11 @@ export function FlightReportPage() {
   }
 
   async function handleConfirmDelete() {
-    if (confirmDelete == null) return
+    if (confirmDelete == null || selectedId == null) return
     const id = confirmDelete.id
     setConfirmDelete(null)
     try {
-      await api.flightReport.deleteFlightSaleApi(id)
+      await api.flightReport.deleteFlightSaleApi(selectedId, id)
       showToast('success', 'Sale removed.')
       await refreshAfterMutation()
     } catch (err) {

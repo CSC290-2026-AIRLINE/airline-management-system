@@ -1,7 +1,7 @@
-// Flight report + on-board sales + reportable-flights API. The
-// "reportable flights" shape is a thin wrapper around the reportable
-// list from the backend; the page uses aircraftId from the flight
-// record.
+// Flight report + on-board sales API. The reportable flights come from
+// the catering-orders list: a flight can be reported on once its
+// catering order is loaded (or already closed out). The page uses
+// aircraftId from the flight record.
 
 import { useMemo } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
@@ -28,8 +28,8 @@ export interface FlightReportApi {
   }) => Promise<FlightReport>
   listFlightSales: (flightId: string) => Promise<ProductSale[]>
   createFlightSaleApi: (input: CreateFlightSaleInput) => Promise<ProductSale>
-  updateFlightSaleApi: (saleId: string, patch: UpdateFlightSaleInput) => Promise<ProductSale>
-  deleteFlightSaleApi: (saleId: string) => Promise<void>
+  updateFlightSaleApi: (flightId: string, saleId: string, patch: UpdateFlightSaleInput) => Promise<ProductSale>
+  deleteFlightSaleApi: (flightId: string, saleId: string) => Promise<void>
   listReportableFlights: () => Promise<ReportableFlight[]>
   getAircraftStock: (aircraftId: string) => Promise<ReturnType<typeof mapAircraftStockRow>[]>
 }
@@ -44,8 +44,8 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
   return {
     async getFlightReport(flightId) {
       try {
-        requireId('GET /api/staff/flight-reports/flight/:id', 'flightId', flightId)
-        const wire = await client.get<unknown>(`/api/staff/flight-reports/flight/${flightId}`)
+        requireId('GET /api/staff/flights/:flightId/flight-report', 'flightId', flightId)
+        const wire = await client.get<unknown>(`/api/staff/flights/${flightId}/flight-report`)
         return wire ? mapFlightReport(wire as never) : null
       } catch (err) {
         if (err instanceof MissingIdError) return null
@@ -55,8 +55,8 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
     },
     async submitFlightReportApi(input) {
       try {
-        requireId('PUT /api/staff/flight-reports/flight/:id/submit', 'flightId', input.flightId)
-        const wire = await client.put<unknown>(`/api/staff/flight-reports/flight/${input.flightId}/submit`, {
+        requireId('PUT /api/staff/flights/:flightId/flight-report', 'flightId', input.flightId)
+        const wire = await client.put<unknown>(`/api/staff/flights/${input.flightId}/flight-report`, {
           lines: input.lines.map((l) => ({ productId: l.productId, served: l.served, wasted: l.wasted, damaged: l.damaged })),
         })
         return mapFlightReport(wire as never)
@@ -69,8 +69,8 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
     },
     async listFlightSales(flightId) {
       try {
-        requireId('GET /api/staff/sales/flight/:id', 'flightId', flightId)
-        const wire = await client.get<unknown[]>(`/api/staff/sales/flight/${flightId}`)
+        requireId('GET /api/staff/flights/:flightId/sales', 'flightId', flightId)
+        const wire = await client.get<unknown[]>(`/api/staff/flights/${flightId}/sales`)
         return (wire ?? []).map((s) => mapProductSale(s as never))
       } catch (err) {
         if (err instanceof MissingIdError) return []
@@ -79,8 +79,8 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
     },
     async createFlightSaleApi(input) {
       try {
-        requireId('PUT /api/staff/sales/flight/:id', 'flightId', input.flightId)
-        const wire = await client.put<unknown>(`/api/staff/sales/flight/${input.flightId}`, toCreateSaleInput(input))
+        requireId('POST /api/staff/flights/:flightId/sales', 'flightId', input.flightId)
+        const wire = await client.post<unknown>(`/api/staff/flights/${input.flightId}/sales`, toCreateSaleInput(input))
         return mapProductSale(wire as never)
       } catch (err) {
         if (err instanceof MissingIdError) {
@@ -89,10 +89,11 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
         rethrow(err, new FlightReportApiError('UNKNOWN', 'Could not record the sale.', 0))
       }
     },
-    async updateFlightSaleApi(saleId, patch) {
+    async updateFlightSaleApi(flightId, saleId, patch) {
       try {
-        requireId('PUT /api/staff/sales/:id', 'saleId', saleId)
-        const wire = await client.put<unknown>(`/api/staff/sales/${saleId}`, patch)
+        requireId('PUT /api/staff/flights/:flightId/sales/:saleId', 'flightId', flightId)
+        requireId('PUT /api/staff/flights/:flightId/sales/:saleId', 'saleId', saleId)
+        const wire = await client.put<unknown>(`/api/staff/flights/${flightId}/sales/${saleId}`, patch)
         return mapProductSale(wire as never)
       } catch (err) {
         if (err instanceof MissingIdError) {
@@ -101,10 +102,11 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
         rethrow(err, new FlightReportApiError('UNKNOWN', 'Could not update the sale.', 0))
       }
     },
-    async deleteFlightSaleApi(saleId) {
+    async deleteFlightSaleApi(flightId, saleId) {
       try {
-        requireId('DELETE /api/staff/sales/:id', 'saleId', saleId)
-        await client.delete(`/api/staff/sales/${saleId}`)
+        requireId('DELETE /api/staff/flights/:flightId/sales/:saleId', 'flightId', flightId)
+        requireId('DELETE /api/staff/flights/:flightId/sales/:saleId', 'saleId', saleId)
+        await client.delete(`/api/staff/flights/${flightId}/sales/${saleId}`)
       } catch (err) {
         if (err instanceof MissingIdError) {
           rethrow(err, new FlightReportApiError('NOT_FOUND', 'Sale not found.', 0))
@@ -114,16 +116,24 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
     },
     async listReportableFlights() {
       try {
-        const wire = await client.get<unknown[]>('/api/staff/flight-reports/reportable-flights')
-        return (wire ?? []).map((r) => mapReportableFlight(r as never))
+        // The catering-orders list is the flight list with the order
+        // status. A flight can be reported on once its order is loaded
+        // or already closed out.
+        const wire = await client.get<unknown[]>('/api/staff/catering-orders')
+        return (wire ?? [])
+          .filter((row) => {
+            const status = (row as { status?: string }).status
+            return status === 'loaded' || status === 'closed'
+          })
+          .map((r) => mapReportableFlight(r as never))
       } catch (err) {
         rethrow(err, new FlightReportApiError('UNKNOWN', 'Could not load reportable flights.', 0))
       }
     },
     async getAircraftStock(aircraftId) {
       try {
-        requireId('GET /api/staff/aircraft-stock/:id', 'aircraftId', aircraftId)
-        const wire = await client.get<unknown[]>(`/api/staff/aircraft-stock/${aircraftId}`)
+        requireId('GET /api/staff/aircraft/:aircraftId/stock', 'aircraftId', aircraftId)
+        const wire = await client.get<unknown[]>(`/api/staff/aircraft/${aircraftId}/stock`)
         return (wire ?? []).map((r) => mapAircraftStockRow(r as never))
       } catch (err) {
         if (err instanceof MissingIdError) return []

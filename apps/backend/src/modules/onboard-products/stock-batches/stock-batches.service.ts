@@ -44,7 +44,7 @@ export class StockBatchesService {
     return rows.map(this.toDto)
   }
 
-  async writeOffExpired(filter: { warehouseId?: string; productId?: string }, staffId: string): Promise<StockBatchDto[]> {
+  async writeOffExpired(filter: { warehouseId?: string; productId?: string }, staffId: string | null): Promise<StockBatchDto[]> {
     const now = this.clock.now()
     const where: Record<string, unknown> = {
       expires_at: { lte: now },

@@ -7,9 +7,29 @@
 // and product_sale.
 
 import { Injectable } from '@nestjs/common'
+import { isUuid } from './mapping'
+import type { F12Cabin } from './mapping'
+
+export interface BookingPassenger {
+  id: string
+  name: string
+}
+
+export interface BookingSnapshot {
+  id: string
+  // null while F3b has no schema to read. The order service treats a
+  // null owner as "ownership cannot be checked yet" and relies on the
+  // authenticated customer for the rest; the port swap makes it real.
+  customerId: string | null
+  flightId: string | null
+  cabin: F12Cabin | null
+  status: 'confirmed' | 'cancelled' | 'pending'
+  passengers: BookingPassenger[]
+}
 
 export interface BookingsPort {
   isFlightBookable(flightId: string): Promise<boolean>
+  getBooking(bookingId: string): Promise<BookingSnapshot | null>
 }
 
 @Injectable()
@@ -20,10 +40,48 @@ export class StubBookingsService implements BookingsPort {
     await Promise.resolve(flightId)
     return true
   }
+
+  async getBooking(bookingId: string): Promise<BookingSnapshot | null> {
+    // A booking id that is not a UUID cannot be a real booking, so the
+    // order is refused with BOOKING_NOT_CONFIRMED. Anything else is
+    // treated as a confirmed booking that F3b has not modelled yet.
+    await Promise.resolve(bookingId)
+    if (!isUuid(bookingId)) return null
+    return {
+      id: bookingId,
+      customerId: null,
+      flightId: null,
+      cabin: null,
+      status: 'confirmed',
+      passengers: [],
+    }
+  }
+}
+
+export type PaymentStatus = 'pending' | 'paid' | 'failed'
+
+export interface PaymentRequest {
+  // F12 sends the order id as the reference, the total, the currency
+  // and the customer id. F5 owns the payment and any refund.
+  reference: string
+  amount: number
+  currency: string
+  customerId: string
+}
+
+export interface PaymentStartResult {
+  paymentId: string
+  status: PaymentStatus
 }
 
 export interface PaymentsPort {
   isPaymentConfirmed(paymentId: string): Promise<boolean>
+  // Start collecting a total. Returns the payment id F12 stores on the
+  // order and the status F5 reports first.
+  startPayment(request: PaymentRequest): Promise<PaymentStartResult>
+  // Ask F5 to refund a paid order (customer cancel, or a payment that
+  // arrived after the order expired).
+  refund(paymentId: string, amount: number, reason: string): Promise<boolean>
 }
 
 @Injectable()
@@ -34,6 +92,31 @@ export class StubPaymentsService implements PaymentsPort {
     await Promise.resolve(paymentId)
     return paymentId === 'f5-confirmed'
   }
+
+  async startPayment(request: PaymentRequest): Promise<PaymentStartResult> {
+    // F5 does not exist yet. Mint a deterministic payment id from the
+    // order reference so a retry of the checkout reuses the same id,
+    // and report the payment as pending: F5 confirms it later through
+    // POST /payment-events.
+    await Promise.resolve(request)
+    return { paymentId: deterministicPaymentId(request.reference), status: 'pending' }
+  }
+
+  async refund(paymentId: string, amount: number, reason: string): Promise<boolean> {
+    await Promise.resolve({ paymentId, amount, reason })
+    return true
+  }
+}
+
+// A stable UUID-shaped payment id derived from the order id, so the
+// same order always maps to the same payment.
+export function deterministicPaymentId(reference: string): string {
+  let hash = 0
+  for (let i = 0; i < reference.length; i++) {
+    hash = (hash * 31 + reference.charCodeAt(i)) >>> 0
+  }
+  const hex = hash.toString(16).padStart(8, '0')
+  return `f5000000-0000-4000-8000-${hex.repeat(4).slice(0, 12)}`
 }
 
 export type TierStatus = 'none' | 'silver' | 'gold' | 'platinum'

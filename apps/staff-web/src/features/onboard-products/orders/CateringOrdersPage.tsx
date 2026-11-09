@@ -45,13 +45,12 @@ function formatQuantity(n: number): string {
   return n.toLocaleString('en-US')
 }
 
-const CABIN_ORDER: Cabin[] = ['economy', 'premium_economy', 'business', 'first']
+const CABIN_ORDER: Cabin[] = ['economy', 'premium_economy', 'business']
 
 function cabinLabel(c: Cabin | 'all'): string {
   if (c === 'economy') return 'Economy'
   if (c === 'premium_economy') return 'Premium economy'
   if (c === 'business') return 'Business'
-  if (c === 'first') return 'First'
   return 'All cabins'
 }
 
@@ -293,7 +292,9 @@ export function CateringOrdersPage() {
       const order = await api.orders.closeCateringOrderApi(selectedId)
       setOrders((prev) => ({ ...prev, [selectedId]: order }))
       await refreshFlights()
-      showToast('success', 'Catering order closed out.')
+      // The staff API has no separate close route: the order is closed
+      // out by the flight report, so say what the server answered with.
+      showToast('success', order.status === 'closed' ? 'Catering order closed out.' : 'Order confirmed as loaded.')
     } catch (err) {
       if (err instanceof CateringApiError) {
         showToast('error', err.message)
