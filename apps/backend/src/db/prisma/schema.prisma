@@ -35,6 +35,7 @@ model aircraft {
   flight                                              flight[]
   flight_event_flight_event_new_aircraft_idToaircraft flight_event[]           @relation("flight_event_new_aircraft_idToaircraft")
   flight_event_flight_event_old_aircraft_idToaircraft flight_event[]           @relation("flight_event_old_aircraft_idToaircraft")
+  schedule_approval                                   schedule_approval[]
   stock_movement                                      stock_movement[]
   stock_transfer                                      stock_transfer[]
 
@@ -156,26 +157,31 @@ model aircraft_type {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model airport {
-  iata_code                                              String                @id
-  icao_code                                              String                @unique
-  name                                                   String
-  city                                                   String
-  country                                                String
-  timezone                                               String
-  min_turnaround_min                                     Int
-  is_active                                              Boolean               @default(true)
-  created_at                                             DateTime              @default(now()) @db.Timestamptz(6)
-  updated_at                                             DateTime              @default(now()) @db.Timestamptz(6)
-  aircraft                                               aircraft[]
-  aircraft_turnaround                                    aircraft_turnaround[]
-  airport_congestion_airport_congestion_airportToairport airport_congestion[]  @relation("airport_congestion_airportToairport")
-  airport_fee_airport_fee_airportToairport               airport_fee[]         @relation("airport_fee_airportToairport")
-  flight                                                 flight[]
-  flight_event                                           flight_event[]
-  route_route_destinationToairport                       route[]               @relation("route_destinationToairport")
-  route_route_originToairport                            route[]               @relation("route_originToairport")
-  supplier                                               supplier[]
-  warehouse                                              warehouse?
+  iata_code                                                        String                   @id
+  icao_code                                                        String                   @unique
+  name                                                             String
+  city                                                             String
+  country                                                          String
+  timezone                                                         String
+  min_turnaround_min                                               Int
+  is_active                                                        Boolean                  @default(true)
+  created_at                                                       DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at                                                       DateTime                 @default(now()) @db.Timestamptz(6)
+  aircraft                                                         aircraft[]
+  aircraft_turnaround                                              aircraft_turnaround[]
+  airport_approval_policy_airport_approval_policy_airportToairport airport_approval_policy? @relation("airport_approval_policy_airportToairport")
+  airport_congestion_airport_congestion_airportToairport           airport_congestion[]     @relation("airport_congestion_airportToairport")
+  airport_fee_airport_fee_airportToairport                         airport_fee[]            @relation("airport_fee_airportToairport")
+  crew                                                             crew[]
+  flight                                                           flight[]
+  flight_event                                                     flight_event[]
+  pairing                                                          pairing[]
+  roster_run                                                       roster_run[]
+  route_route_destinationToairport                                 route[]                  @relation("route_destinationToairport")
+  route_route_originToairport                                      route[]                  @relation("route_originToairport")
+  schedule_approval                                                schedule_approval[]
+  supplier                                                         supplier[]
+  warehouse                                                        warehouse?
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -488,37 +494,40 @@ model fleet_setting {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This table contains exclusion constraints and requires additional setup for migrations. Visit https://pris.ly/d/exclusion-constraints for more info.
 model flight {
-  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  pattern_id          String?              @db.Uuid
-  flight_number       String
-  service_date        DateTime             @db.Date
-  route_id            String               @db.Uuid
-  scheduled_dep_at    DateTime             @db.Timestamptz(6)
-  scheduled_arr_at    DateTime             @db.Timestamptz(6)
-  dep_at              DateTime             @db.Timestamptz(6)
-  arr_at              DateTime             @db.Timestamptz(6)
-  actual_destination  String?
-  aircraft_id         String               @db.Uuid
-  status              String               @default("scheduled")
-  created_at          DateTime             @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime             @default(now()) @db.Timestamptz(6)
-  aircraft_turnaround aircraft_turnaround?
-  cabin_setting       cabin_setting[]
-  catering_order      catering_order?
-  fare_quote          fare_quote[]
-  airport             airport?             @relation(fields: [actual_destination], references: [iata_code], onDelete: NoAction, onUpdate: NoAction)
-  aircraft            aircraft             @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "flight_aircraft_fk")
-  flight_pattern      flight_pattern?      @relation(fields: [pattern_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  route               route                @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  flight_event        flight_event[]
-  flight_report       flight_report?
-  product_offering    product_offering[]
-  product_order       product_order[]
-  product_sale        product_sale[]
-  schedule_conflict   schedule_conflict[]
-  screening_check     screening_check[]
-  stock_movement      stock_movement[]
-  stock_transfer      stock_transfer[]
+  id                                                              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pattern_id                                                      String?              @db.Uuid
+  flight_number                                                   String
+  service_date                                                    DateTime             @db.Date
+  route_id                                                        String               @db.Uuid
+  scheduled_dep_at                                                DateTime             @db.Timestamptz(6)
+  scheduled_arr_at                                                DateTime             @db.Timestamptz(6)
+  dep_at                                                          DateTime             @db.Timestamptz(6)
+  arr_at                                                          DateTime             @db.Timestamptz(6)
+  actual_destination                                              String?
+  aircraft_id                                                     String               @db.Uuid
+  status                                                          String               @default("scheduled")
+  created_at                                                      DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at                                                      DateTime             @default(now()) @db.Timestamptz(6)
+  aircraft_turnaround                                             aircraft_turnaround?
+  cabin_setting                                                   cabin_setting[]
+  catering_order                                                  catering_order?
+  fare_quote                                                      fare_quote[]
+  airport                                                         airport?             @relation(fields: [actual_destination], references: [iata_code], onDelete: NoAction, onUpdate: NoAction)
+  aircraft                                                        aircraft             @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "flight_aircraft_fk")
+  flight_pattern                                                  flight_pattern?      @relation(fields: [pattern_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  route                                                           route                @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flight_event                                                    flight_event[]
+  flight_report                                                   flight_report?
+  pairing_leg                                                     pairing_leg?
+  product_offering                                                product_offering[]
+  product_order                                                   product_order[]
+  product_sale                                                    product_sale[]
+  schedule_approval_schedule_approval_flight_idToflight           schedule_approval[]  @relation("schedule_approval_flight_idToflight")
+  schedule_approval_schedule_approval_resulting_flight_idToflight schedule_approval[]  @relation("schedule_approval_resulting_flight_idToflight")
+  schedule_conflict                                               schedule_conflict[]
+  screening_check                                                 screening_check[]
+  stock_movement                                                  stock_movement[]
+  stock_transfer                                                  stock_transfer[]
 
   @@unique([flight_number, service_date])
   @@index([aircraft_id, dep_at], map: "flight_aircraft_dep_idx")
@@ -578,17 +587,18 @@ model flight_event_outbox {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model flight_pattern {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  route_id       String   @db.Uuid
-  flight_number  String   @unique
-  dep_time_local DateTime @db.Time(6)
-  days_of_week   Int[]    @db.SmallInt
-  valid_from     DateTime @db.Date
-  valid_to       DateTime @db.Date
-  created_at     DateTime @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime @default(now()) @db.Timestamptz(6)
-  flight         flight[]
-  route          route    @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  route_id          String              @db.Uuid
+  flight_number     String              @unique
+  dep_time_local    DateTime            @db.Time(6)
+  days_of_week      Int[]               @db.SmallInt
+  valid_from        DateTime            @db.Date
+  valid_to          DateTime            @db.Date
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
+  flight            flight[]
+  route             route               @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  schedule_approval schedule_approval[]
 
   @@index([route_id], map: "flight_pattern_route_idx")
 }
@@ -652,13 +662,15 @@ model overweight_baggage_rate {
 }
 
 model partner_airline {
-  code                                                                 String              @id
-  name                                                                 String
-  is_active                                                            Boolean             @default(true)
-  created_at                                                           DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at                                                           DateTime            @default(now()) @db.Timestamptz(6)
-  flight_event_flight_event_partner_airlineTopartner_airline           flight_event[]      @relation("flight_event_partner_airlineTopartner_airline")
-  schedule_conflict_schedule_conflict_partner_airlineTopartner_airline schedule_conflict[] @relation("schedule_conflict_partner_airlineTopartner_airline")
+  code                                                                         String                  @id
+  name                                                                         String
+  is_active                                                                    Boolean                 @default(true)
+  created_at                                                                   DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                                                                   DateTime                @default(now()) @db.Timestamptz(6)
+  flight_event_flight_event_partner_airlineTopartner_airline                   flight_event[]          @relation("flight_event_partner_airlineTopartner_airline")
+  partner_airline_route_partner_airline_route_partner_airlineTopartner_airline partner_airline_route[] @relation("partner_airline_route_partner_airlineTopartner_airline")
+  schedule_approval                                                            schedule_approval[]
+  schedule_conflict_schedule_conflict_partner_airlineTopartner_airline         schedule_conflict[]     @relation("schedule_conflict_partner_airlineTopartner_airline")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -960,9 +972,11 @@ model route {
   flight                             flight[]
   flight_pattern                     flight_pattern[]
   overweight_baggage_rate            overweight_baggage_rate[]
+  partner_airline_route              partner_airline_route[]
   product_offering                   product_offering[]
   airport_route_destinationToairport airport                   @relation("route_destinationToairport", fields: [destination], references: [iata_code], onDelete: NoAction, onUpdate: NoAction)
   airport_route_originToairport      airport                   @relation("route_originToairport", fields: [origin], references: [iata_code], onDelete: NoAction, onUpdate: NoAction)
+  schedule_approval                  schedule_approval[]
 
   @@unique([origin, destination])
   @@index([destination])
@@ -1013,41 +1027,56 @@ model screen {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model screening_check {
-  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  run_id             String            @db.Uuid
-  passenger_id       String            @db.Uuid
-  flight_id          String            @db.Uuid
-  flight_dep_at      DateTime          @db.Timestamptz(6)
-  pnr_id             String?           @db.Uuid
-  trigger_point      String
-  watchlist_entry_id String?           @db.Uuid
-  match_level        String
-  outcome            String
-  occurred_at        DateTime          @db.Timestamptz(6)
-  created_at         DateTime          @default(now()) @db.Timestamptz(6)
-  flight             flight            @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "screening_check_flight_fk")
-  passenger          passenger         @relation(fields: [passenger_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  watchlist_entry    watchlist_entry?  @relation(fields: [watchlist_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  screening_review   screening_review?
+  id                       String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  run_id                   String             @db.Uuid
+  passenger_id             String             @db.Uuid
+  flight_id                String             @db.Uuid
+  pnr_id                   String?            @db.Uuid
+  trigger_point            String
+  watchlist_entry_id       String?            @db.Uuid
+  match_level              String
+  outcome                  String
+  occurred_at              DateTime           @db.Timestamptz(6)
+  created_at               DateTime           @default(now()) @db.Timestamptz(6)
+  name_similarity          Float?             @db.Real
+  snap_first_name          String
+  snap_last_name           String
+  snap_date_of_birth       DateTime?          @db.Date
+  snap_gender              String?
+  snap_nationality         String?
+  snap_passport            String?
+  snap_entry_first_name    String?
+  snap_entry_last_name     String?
+  snap_entry_date_of_birth DateTime?          @db.Date
+  snap_entry_gender        String?
+  snap_entry_nationality   String?
+  snap_entry_passport      String?
+  flight                   flight             @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "screening_check_flight_fk")
+  passenger                passenger          @relation(fields: [passenger_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  watchlist_entry          watchlist_entry?   @relation(fields: [watchlist_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  screening_review         screening_review[]
 
-  @@unique([passenger_id, flight_id, watchlist_entry_id, trigger_point], map: "screening_check_once_uq", where: raw("((watchlist_entry_id IS NOT NULL) AND (trigger_point <> 'identity_change'::text))"))
+  @@unique([passenger_id, flight_id, watchlist_entry_id, trigger_point], map: "screening_check_once_uq", where: raw("((watchlist_entry_id IS NOT NULL) AND (trigger_point = ANY (ARRAY['booking'::text, 'check_in'::text, 'new_entry'::text])))"))
   @@index([flight_id], map: "screening_check_flight_idx")
   @@index([passenger_id, occurred_at(sort: Desc)], map: "screening_check_passenger_idx")
-  @@index([flight_dep_at], map: "screening_check_queue_idx", where: raw("(outcome = ANY (ARRAY['flagged'::text, 'held'::text]))"))
+  @@index([flight_id], map: "screening_check_open_idx", where: raw("(outcome = ANY (ARRAY['flagged'::text, 'held'::text]))"))
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model screening_review {
   id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  screening_check_id    String          @unique @db.Uuid
+  screening_check_id    String          @db.Uuid
   decision              String
   reviewed_by_staff_id  String          @db.Uuid
   review_note           String
   reviewed_at           DateTime        @db.Timestamptz(6)
   authority_notified_at DateTime?       @db.Timestamptz(6)
   created_at            DateTime        @default(now()) @db.Timestamptz(6)
+  revision              Int
   staff                 staff           @relation(fields: [reviewed_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   screening_check       screening_check @relation(fields: [screening_check_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([screening_check_id, revision])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1082,6 +1111,9 @@ model staff {
   cabin_setting                                              cabin_setting[]
   catering_order                                             catering_order[]
   catering_setting                                           catering_setting[]
+  country_legality_rule                                      country_legality_rule[]
+  crew                                                       crew?
+  crew_setting                                               crew_setting[]
   currency_rate                                              currency_rate[]
   expense                                                    expense[]
   fleet_setting                                              fleet_setting[]
@@ -1091,6 +1123,9 @@ model staff {
   payment_schedule                                           payment_schedule[]
   pricing_setting                                            pricing_setting[]
   purchase_receipt                                           purchase_receipt[]
+  rule_break                                                 rule_break[]
+  schedule_approval_schedule_approval_requested_byTostaff    schedule_approval[]      @relation("schedule_approval_requested_byTostaff")
+  schedule_approval_schedule_approval_responded_byTostaff    schedule_approval[]      @relation("schedule_approval_responded_byTostaff")
   schedule_conflict                                          schedule_conflict[]
   screening_review                                           screening_review[]
   role                                                       role                     @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1282,9 +1317,269 @@ model watchlist_entry {
   created_by_staff_id                              String            @db.Uuid
   created_at                                       DateTime          @default(now()) @db.Timestamptz(6)
   updated_at                                       DateTime          @default(now()) @db.Timestamptz(6)
+  gender                                           String?
   screening_check                                  screening_check[]
   staff_watchlist_entry_cleared_by_staff_idTostaff staff?            @relation("watchlist_entry_cleared_by_staff_idTostaff", fields: [cleared_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff_watchlist_entry_created_by_staff_idTostaff staff             @relation("watchlist_entry_created_by_staff_idTostaff", fields: [created_by_staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([passport_number], map: "watchlist_entry_passport_idx", where: raw("((status = 'active'::text) AND (passport_number IS NOT NULL))"))
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model airport_approval_policy {
+  airport                                          String    @id
+  curfew_start_local                               DateTime? @db.Time(6)
+  curfew_end_local                                 DateTime? @db.Time(6)
+  max_departure_per_hour                           Int?
+  offer_style                                      String    @default("slots")
+  created_at                                       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                                       DateTime  @default(now()) @db.Timestamptz(6)
+  airport_airport_approval_policy_airportToairport airport   @relation("airport_approval_policy_airportToairport", fields: [airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model partner_airline_route {
+  partner_airline                                                        String
+  route_id                                                               String          @db.Uuid
+  partner_airline_partner_airline_route_partner_airlineTopartner_airline partner_airline @relation("partner_airline_route_partner_airlineTopartner_airline", fields: [partner_airline], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  route                                                                  route           @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([partner_airline, route_id])
+  @@index([route_id], map: "partner_airline_route_route_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model schedule_approval {
+  id                                                                                  String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purpose                                                                             String
+  flight_id                                                                           String?                   @db.Uuid
+  pattern_id                                                                          String?                   @db.Uuid
+  route_id                                                                            String                    @db.Uuid
+  flight_number                                                                       String
+  service_date                                                                        DateTime                  @db.Date
+  aircraft_id                                                                         String                    @db.Uuid
+  proposed_dep_at                                                                     DateTime                  @db.Timestamptz(6)
+  proposed_arr_at                                                                     DateTime                  @db.Timestamptz(6)
+  approver_type                                                                       String
+  approver_airport                                                                    String?
+  approver_partner_airline                                                            String?
+  status                                                                              String                    @default("pending")
+  reject_reason                                                                       String?
+  response_note                                                                       String?
+  previous_approval_id                                                                String?                   @db.Uuid
+  covered_by_approval_id                                                              String?                   @db.Uuid
+  revision                                                                            Int                       @default(1)
+  requested_by                                                                        String?                   @db.Uuid
+  requested_at                                                                        DateTime                  @db.Timestamptz(6)
+  respond_by                                                                          DateTime?                 @db.Timestamptz(6)
+  responded_by                                                                        String?                   @db.Uuid
+  responded_at                                                                        DateTime?                 @db.Timestamptz(6)
+  resulting_flight_id                                                                 String?                   @db.Uuid
+  created_at                                                                          DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                                                                          DateTime                  @default(now()) @db.Timestamptz(6)
+  aircraft                                                                            aircraft                  @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "schedule_approval_aircraft_fk")
+  airport                                                                             airport?                  @relation(fields: [approver_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction)
+  partner_airline                                                                     partner_airline?          @relation(fields: [approver_partner_airline], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  schedule_approval_schedule_approval_covered_by_approval_idToschedule_approval       schedule_approval?        @relation("schedule_approval_covered_by_approval_idToschedule_approval", fields: [covered_by_approval_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_schedule_approval_schedule_approval_covered_by_approval_idToschedule_approval schedule_approval[]       @relation("schedule_approval_covered_by_approval_idToschedule_approval")
+  flight_schedule_approval_flight_idToflight                                          flight?                   @relation("schedule_approval_flight_idToflight", fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flight_pattern                                                                      flight_pattern?           @relation(fields: [pattern_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  schedule_approval_schedule_approval_previous_approval_idToschedule_approval         schedule_approval?        @relation("schedule_approval_previous_approval_idToschedule_approval", fields: [previous_approval_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_schedule_approval_schedule_approval_previous_approval_idToschedule_approval   schedule_approval[]       @relation("schedule_approval_previous_approval_idToschedule_approval")
+  staff_schedule_approval_requested_byTostaff                                         staff?                    @relation("schedule_approval_requested_byTostaff", fields: [requested_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff_schedule_approval_responded_byTostaff                                         staff?                    @relation("schedule_approval_responded_byTostaff", fields: [responded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flight_schedule_approval_resulting_flight_idToflight                                flight?                   @relation("schedule_approval_resulting_flight_idToflight", fields: [resulting_flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  route                                                                               route                     @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  schedule_approval_offer                                                             schedule_approval_offer[]
+
+  @@unique([flight_number, service_date], map: "schedule_approval_live_uq", where: raw("(status = ANY (ARRAY['pending'::text, 'approved'::text, 'alternative_offered'::text]))"))
+  @@index([flight_id], map: "schedule_approval_flight_idx", where: raw("(flight_id IS NOT NULL)"))
+  @@index([flight_number, service_date], map: "schedule_approval_flight_number_idx")
+  @@index([requested_at], map: "schedule_approval_pending_idx", where: raw("(status = 'pending'::text)"))
+  @@index([previous_approval_id], map: "schedule_approval_previous_idx", where: raw("(previous_approval_id IS NOT NULL)"))
+  @@index([resulting_flight_id], map: "schedule_approval_resulting_flight_idx", where: raw("(resulting_flight_id IS NOT NULL)"))
+  @@index([route_id], map: "schedule_approval_route_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model schedule_approval_offer {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  approval_id       String            @db.Uuid
+  kind              String
+  starts_at         DateTime          @db.Timestamptz(6)
+  ends_at           DateTime?         @db.Timestamptz(6)
+  created_at        DateTime          @default(now()) @db.Timestamptz(6)
+  schedule_approval schedule_approval @relation(fields: [approval_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([approval_id, starts_at])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model country_language {
+  country_code  String
+  language_code String
+
+  @@id([country_code, language_code])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model country_legality_rule {
+  country_code   String   @id
+  min_rest_hours Decimal  @db.Decimal(4, 1)
+  max_duty_hours Decimal  @db.Decimal(4, 1)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_by     String?  @db.Uuid
+  staff          staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model crew {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staff_id               String?                  @unique @db.Uuid
+  first_name             String
+  last_name              String
+  employee_number        String                   @unique(map: "crew_employee_number_uq", where: raw("(deleted_at IS NULL)"))
+  role                   String
+  date_of_birth          DateTime?                @db.Date
+  email                  String?
+  phone                  String?
+  base_airport           String
+  fleet_aircraft_type    String
+  languages              String[]                 @default([])
+  licence_number         String                   @unique(map: "crew_licence_number_uq", where: raw("(deleted_at IS NULL)"))
+  licence_expires_on     DateTime                 @db.Date
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  deleted_at             DateTime?                @db.Timestamptz(6)
+  airport                airport                  @relation(fields: [base_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "crew_base_airport_fk")
+  staff                  staff?                   @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  crew_certification     crew_certification[]
+  pairing_leg_assignment pairing_leg_assignment[]
+  rule_break             rule_break[]
+
+  @@index([base_airport, role], map: "crew_base_role_idx", where: raw("(deleted_at IS NULL)"))
+  @@index([languages], type: Gin, where: raw("(deleted_at IS NULL)"))
+}
+
+model crew_certification {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  crew_id       String   @db.Uuid
+  name          String
+  aircraft_type String?
+  expires_on    DateTime @db.Date
+  crew          crew     @relation(fields: [crew_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([crew_id, name, aircraft_type], map: "crew_certification_uq")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model crew_setting {
+  key        String   @id
+  value      String
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_by String?  @db.Uuid
+  staff      staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model pairing {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String              @unique @default(dbgenerated("('P-'::text || nextval('pairing_code_seq'::regclass))"))
+  base_airport       String
+  created_at         DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime            @default(now()) @db.Timestamptz(6)
+  airport            airport             @relation(fields: [base_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "pairing_base_airport_fk")
+  pairing_leg        pairing_leg[]
+  roster_run_pairing roster_run_pairing?
+
+  @@index([base_airport], map: "pairing_base_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pairing_leg {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pairing_id             String                   @db.Uuid
+  flight_id              String                   @unique @db.Uuid
+  added_by               String                   @default("auto")
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  flight                 flight                   @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pairing_leg_flight_fk")
+  pairing                pairing                  @relation(fields: [pairing_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  pairing_leg_assignment pairing_leg_assignment[]
+  rule_break             rule_break[]
+
+  @@unique([id, pairing_id])
+  @@index([pairing_id], map: "pairing_leg_pairing_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pairing_leg_assignment {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pairing_id         String             @db.Uuid
+  pairing_leg_id     String             @db.Uuid
+  crew_id            String             @db.Uuid
+  role               String
+  assigned_by        String
+  assigned_at        DateTime           @db.Timestamptz(6)
+  unassigned_at      DateTime?          @db.Timestamptz(6)
+  reason             String?
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  crew               crew               @relation(fields: [crew_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  roster_run_pairing roster_run_pairing @relation(fields: [pairing_id], references: [pairing_id], onDelete: NoAction, onUpdate: NoAction)
+  pairing_leg        pairing_leg        @relation(fields: [pairing_leg_id, pairing_id], references: [id, pairing_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([pairing_leg_id, crew_id], map: "pairing_leg_assignment_active_uq", where: raw("(unassigned_at IS NULL)"))
+  @@unique([pairing_leg_id, role], map: "pairing_leg_assignment_pilot_uq", where: raw("((unassigned_at IS NULL) AND (role = ANY (ARRAY['captain'::text, 'first_officer'::text])))"))
+  @@index([crew_id], map: "pairing_leg_assignment_crew_idx", where: raw("(unassigned_at IS NULL)"))
+  @@index([pairing_leg_id], map: "pairing_leg_assignment_leg_idx")
+  @@index([pairing_id], map: "pairing_leg_assignment_pairing_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model roster_run {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  base_airport       String
+  date_from          DateTime             @db.Date
+  date_to            DateTime             @db.Date
+  status             String               @default("draft")
+  published_at       DateTime?            @db.Timestamptz(6)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  airport            airport              @relation(fields: [base_airport], references: [iata_code], onDelete: NoAction, onUpdate: NoAction, map: "roster_run_base_airport_fk")
+  roster_run_pairing roster_run_pairing[]
+
+  @@index([base_airport, date_from(sort: Desc)], map: "roster_run_base_idx")
+}
+
+model roster_run_pairing {
+  roster_run_id          String                   @db.Uuid
+  pairing_id             String                   @unique @db.Uuid
+  pairing_leg_assignment pairing_leg_assignment[]
+  pairing                pairing                  @relation(fields: [pairing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  roster_run             roster_run               @relation(fields: [roster_run_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rule_break             rule_break[]
+
+  @@id([roster_run_id, pairing_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rule_break {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roster_run_id      String             @db.Uuid
+  pairing_id         String             @db.Uuid
+  pairing_leg_id     String             @db.Uuid
+  crew_id            String?            @db.Uuid
+  role               String?
+  rule               String
+  detail             String
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  resolved_at        DateTime?          @db.Timestamptz(6)
+  resolution         String?
+  overridden_by      String?            @db.Uuid
+  override_reason    String?
+  crew               crew?              @relation(fields: [crew_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff              staff?             @relation(fields: [overridden_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pairing_leg        pairing_leg        @relation(fields: [pairing_leg_id, pairing_id], references: [id, pairing_id], onDelete: NoAction, onUpdate: NoAction)
+  roster_run_pairing roster_run_pairing @relation(fields: [roster_run_id, pairing_id], references: [roster_run_id, pairing_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([pairing_leg_id, rule, crew_id, role], map: "rule_break_open_uq", where: raw("(resolved_at IS NULL)"))
+  @@index([roster_run_id, pairing_id], map: "rule_break_run_idx")
+  @@index([roster_run_id], map: "rule_break_run_open_idx", where: raw("(resolved_at IS NULL)"))
 }
