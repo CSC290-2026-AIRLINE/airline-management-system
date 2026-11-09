@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common'
 import { APP_FILTER } from '@nestjs/core'
 import { BookingProviderAdapter, BOOKING_PROVIDER } from './providers/booking-provider.adapter'
+import { CancelController } from './cancel/cancel.controller'
+import { CancelService } from './cancel/cancel.service'
 import { BookingStatusService } from './common/booking-status.service'
 import { BookingErrorFilter } from './common/booking-error.filter'
 import { LocalBookingEventBus } from './common/booking-event-bus'
@@ -41,11 +43,12 @@ import { SeatStub } from './stubs/seat.stub'
 import { ServiceRequestStub } from './stubs/service-request.stub'
 
 @Module({
-  controllers: [DevConfirmController, BookingsController, CustomerBookingsController],
+  controllers: [DevConfirmController, BookingsController, CustomerBookingsController, CancelController],
   providers: [
     BookingStatusService,
     ConfirmService,
     ReleaseService,
+    CancelService,
     HoldExpiryJob,
     BookingReadService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
