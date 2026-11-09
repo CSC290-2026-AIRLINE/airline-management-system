@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common'
+import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import { BookingStatusService } from '../common/booking-status.service'
 import type { BookingDetail } from '../contracts'
 import { CancelService } from './cancel.service'
@@ -172,9 +172,13 @@ function makeHarness() {
     check_in: { findFirst: jest.fn(() => Promise.resolve(blockingCheckIn)) },
   }
 
-  const read = { getBookingForUser: jest.fn(() => Promise.resolve(detail)) }
+  const read = { getBookingForUser: jest.fn(() => Promise.resolve(detail)), getBooking: jest.fn(() => Promise.resolve(detail)) }
   const release = {
     releaseBooking: jest.fn().mockResolvedValue({ bookingId: BOOKING_ID, reference: REFERENCE, status: 'expired' }),
+  }
+  const audit = {
+    resolveActor: jest.fn(() => Promise.resolve({ type: 'staff', id: 'user-1', role: 'admin' })),
+    write: jest.fn().mockResolvedValue({ id: 'audit-1', seq: '1' }),
   }
   const inventory = {
     lock: jest.fn().mockResolvedValue(undefined),
@@ -193,6 +197,7 @@ function makeHarness() {
     read as never,
     new BookingStatusService(clock),
     release as never,
+    audit as never,
     clock,
     inventory as never,
     seats as never,
@@ -207,6 +212,7 @@ function makeHarness() {
     tx,
     read,
     release,
+    audit,
     inventory,
     seats,
     pricing,
@@ -470,5 +476,195 @@ describe('CancelService.cancelBooking', () => {
 
     await expect(h.service.cancelBooking(REFERENCE, 'other-user')).rejects.toBeInstanceOf(NotFoundException)
     expect(h.release.releaseBooking).not.toHaveBeenCalled()
+  })
+})
+
+describe('CancelService.getStaffPreview', () => {
+  it('returns the fee, the refund and the waiver preview for a confirmed booking', async () => {
+    const h = makeHarness()
+
+    const result = await h.service.getStaffPreview(REFERENCE, 'staff-1')
+
+    expect(h.read.getBooking).toHaveBeenCalledWith(REFERENCE)
+    expect(h.pricing.cancelQuote).toHaveBeenCalledWith({ bookingId: BOOKING_ID, couponIds: COUPON_IDS })
+    expect(result).toEqual({
+      fee: 100,
+      refund: 20,
+      currency: 'USD',
+      milesReturned: null,
+      feeWaiver: { fee: 0, refund: 120 },
+    })
+  })
+
+  it('shows no fee and no refund for a held booking', async () => {
+    const h = makeHarness()
+    h.setDetail(makeDetail({ status: 'held' }))
+
+    const result = await h.service.getStaffPreview(REFERENCE, 'staff-1')
+
+    expect(result).toEqual({
+      fee: 0,
+      refund: 0,
+      currency: 'USD',
+      milesReturned: null,
+      feeWaiver: { fee: 0, refund: 0 },
+    })
+    expect(h.pricing.cancelQuote).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 BOOKING_CLOSED once a passenger has checked in', async () => {
+    const h = makeHarness()
+    h.setBlockingCheckIn({ status: 'checked_in', flight_id: 'f2', booking_coupon: { id: 'coupon-1' } })
+
+    await expect(h.service.getStaffPreview(REFERENCE, 'staff-1')).rejects.toMatchObject({
+      code: 'BOOKING_CLOSED',
+      status: 409,
+    })
+  })
+
+  it('refuses a customer token', async () => {
+    const h = makeHarness()
+    h.audit.resolveActor.mockResolvedValueOnce({ type: 'customer', id: 'user-1', role: null })
+
+    await expect(h.service.getStaffPreview(REFERENCE, 'user-1')).rejects.toBeInstanceOf(ForbiddenException)
+    expect(h.read.getBooking).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 for an unknown booking', async () => {
+    const h = makeHarness()
+    h.setDetail(null)
+
+    await expect(h.service.getStaffPreview(REFERENCE, 'staff-1')).rejects.toBeInstanceOf(NotFoundException)
+  })
+})
+
+describe('CancelService.staffCancelBooking', () => {
+  it('cancels a confirmed booking with the staff reason and writes the Feature 15 entry in the transaction', async () => {
+    const h = makeHarness()
+
+    const result = await h.service.staffCancelBooking(REFERENCE, 'staff-1', {
+      reason: 'Customer request by phone',
+      waiveFee: false,
+    })
+
+    expect(h.tx.booking_coupon.updateMany).toHaveBeenCalledWith({
+      where: { booking_id: BOOKING_ID, status: 'confirmed' },
+      data: expect.objectContaining({ status: 'cancelled', cancel_reason: 'staff_request' }),
+    })
+    expect(h.refunds.record).toHaveBeenCalledWith({
+      bookingId: BOOKING_ID,
+      amount: 20,
+      currency: 'USD',
+      reason: 'staff_request',
+    })
+    expect(h.events.publish).toHaveBeenCalledWith(expect.objectContaining({ cancelReason: 'staff_request' }))
+    expect(h.audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: { type: 'staff', id: 'user-1', role: 'admin' },
+        sourceFeature: '3b',
+        action: 'status_change',
+        entityType: 'booking',
+        entityId: BOOKING_ID,
+        reason: 'Customer request by phone',
+        before: { status: 'confirmed', fee: 100, refund: 20 },
+        after: { status: 'cancelled', fee: 100, refund: 20, feeWaived: false, cancelReason: 'staff_request' },
+      }),
+      h.tx,
+    )
+    expect(result).toEqual({
+      reference: REFERENCE,
+      status: 'cancelled',
+      fee: 100,
+      refund: 20,
+      currency: 'USD',
+      milesReturned: null,
+      feeWaived: false,
+    })
+  })
+
+  it('waives the fee, so the refund carries the fee', async () => {
+    const h = makeHarness()
+
+    const result = await h.service.staffCancelBooking(REFERENCE, 'staff-1', {
+      reason: 'Service failure',
+      waiveFee: true,
+    })
+
+    expect(h.refunds.record).toHaveBeenCalledWith(expect.objectContaining({ amount: 120 }))
+    expect(h.audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        after: { status: 'cancelled', fee: 0, refund: 120, feeWaived: true, cancelReason: 'staff_request' },
+      }),
+      h.tx,
+    )
+    expect(result).toEqual({
+      reference: REFERENCE,
+      status: 'cancelled',
+      fee: 0,
+      refund: 120,
+      currency: 'USD',
+      milesReturned: null,
+      feeWaived: true,
+    })
+  })
+
+  it('releases a held booking and writes the audit entry in the release transaction', async () => {
+    const h = makeHarness()
+    h.setDetail(makeDetail({ status: 'held' }))
+
+    const result = await h.service.staffCancelBooking(REFERENCE, 'staff-1', {
+      reason: 'Customer request by phone',
+      waiveFee: true,
+    })
+
+    const options = h.release.releaseBooking.mock.calls[0][1]
+    expect(options.onReleased).toBeInstanceOf(Function)
+    await options.onReleased(h.tx)
+
+    expect(h.audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: 'Customer request by phone',
+        before: { status: 'held', fee: 0, refund: 0 },
+        after: { status: 'expired', fee: 0, refund: 0, feeWaived: false, cancelReason: 'staff_request' },
+      }),
+      h.tx,
+    )
+    expect(result).toEqual({
+      reference: REFERENCE,
+      status: 'expired',
+      fee: 0,
+      refund: 0,
+      currency: 'USD',
+      milesReturned: null,
+      feeWaived: false,
+    })
+  })
+
+  it('does nothing for an already cancelled booking', async () => {
+    const h = makeHarness()
+    h.setDetail(makeDetail({ status: 'cancelled' }))
+
+    const result = await h.service.staffCancelBooking(REFERENCE, 'staff-1', {
+      reason: 'Customer request by phone',
+      waiveFee: true,
+    })
+
+    expect(h.db.$transaction).not.toHaveBeenCalled()
+    expect(h.audit.write).not.toHaveBeenCalled()
+    expect(h.refunds.record).not.toHaveBeenCalled()
+    expect(result.feeWaived).toBe(false)
+    expect(result.fee).toBe(0)
+    expect(result.refund).toBe(0)
+  })
+
+  it('refuses a customer token', async () => {
+    const h = makeHarness()
+    h.audit.resolveActor.mockResolvedValueOnce({ type: 'customer', id: 'user-1', role: null })
+
+    await expect(
+      h.service.staffCancelBooking(REFERENCE, 'user-1', { reason: 'Customer request by phone', waiveFee: true }),
+    ).rejects.toBeInstanceOf(ForbiddenException)
+    expect(h.audit.write).not.toHaveBeenCalled()
+    expect(h.db.$transaction).not.toHaveBeenCalled()
   })
 })

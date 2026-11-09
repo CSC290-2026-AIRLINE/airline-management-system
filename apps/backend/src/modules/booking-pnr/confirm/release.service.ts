@@ -43,6 +43,16 @@ function seatedPassengerCount(passengers: Array<{ passenger_type: string }>): nu
   return passengers.filter((passenger) => passenger.passenger_type !== 'infant').length
 }
 
+/** What the caller can add to a release. */
+export interface ReleaseOptions {
+  /**
+   * Called inside the release transaction, after the hold has been released. B7 uses it to write the Feature 15
+   * audit entry of a staff cancellation in the same transaction as the change, so the entry and the release are
+   * saved together or not at all. It is not called when the hold was already released by someone else.
+   */
+  onReleased?: (tx: Prisma.TransactionClient, bookingId: string) => Promise<void>
+}
+
 @Injectable()
 export class ReleaseService {
   private readonly logger = new Logger(ReleaseService.name)
@@ -56,7 +66,7 @@ export class ReleaseService {
   ) {}
 
   /** B2: Feature 5a calls this when the customer abandons payment, and B6 on a held cancel. Safe to repeat. */
-  async releaseBooking(reference: string): Promise<ReleaseBookingResult> {
+  async releaseBooking(reference: string, options: ReleaseOptions = {}): Promise<ReleaseBookingResult> {
     const now = this.clock.now()
     const outcome = await this.db.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
@@ -74,6 +84,7 @@ export class ReleaseService {
 
       const booking = await tx.booking.findUniqueOrThrow({ where: { id: locked.id }, select: RELEASE_SELECT })
       await this.performRelease(tx, booking, now)
+      await options.onReleased?.(tx, booking.id)
       return { bookingId: booking.id, released: true }
     })
 

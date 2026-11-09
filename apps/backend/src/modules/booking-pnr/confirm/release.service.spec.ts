@@ -116,6 +116,25 @@ describe('ReleaseService.releaseBooking', () => {
 
     await expect(h.service.releaseBooking('NOPE00')).rejects.toBeInstanceOf(NotFoundException)
   })
+
+  it('calls onReleased inside the release transaction', async () => {
+    const h = makeHarness()
+    const onReleased = jest.fn().mockResolvedValue(undefined)
+
+    await h.service.releaseBooking('ABC123', { onReleased })
+
+    expect(onReleased).toHaveBeenCalledWith(h.tx, 'booking-1')
+  })
+
+  it('does not call onReleased when the hold was already released', async () => {
+    const h = makeHarness()
+    h.setLockStatus('expired')
+    const onReleased = jest.fn().mockResolvedValue(undefined)
+
+    await h.service.releaseBooking('ABC123', { onReleased })
+
+    expect(onReleased).not.toHaveBeenCalled()
+  })
 })
 
 describe('ReleaseService.releaseStale', () => {

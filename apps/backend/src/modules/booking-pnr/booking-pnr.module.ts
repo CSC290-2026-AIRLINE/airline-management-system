@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { APP_FILTER } from '@nestjs/core'
+import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { BookingProviderAdapter, BOOKING_PROVIDER } from './providers/booking-provider.adapter'
 import { CancelController } from './cancel/cancel.controller'
 import { CancelForFlightService } from './cancel/cancel-for-flight.service'
@@ -43,6 +44,8 @@ import { SeatStub } from './stubs/seat.stub'
 import { ServiceRequestStub } from './stubs/service-request.stub'
 
 @Module({
+  // Feature 15's audit writer, for the staff cancellation entry (B7).
+  imports: [AuditModule],
   controllers: [DevConfirmController, BookingsController, CustomerBookingsController, CancelController],
   providers: [
     BookingStatusService,
