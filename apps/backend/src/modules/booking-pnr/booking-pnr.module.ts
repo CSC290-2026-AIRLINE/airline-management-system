@@ -1,4 +1,12 @@
+import { StaffBookingLookupService } from './staff/staff-booking-lookup.service'
+import { DemoBookingCustomerController } from './staff/demo-booking-customer.controller'
+import { DemoBookingCustomerService } from './staff/demo-booking-customer.service'
+import { StaffBookingController } from './staff/staff-booking.controller'
+import { DemoPassengerController } from './hold/demo-passenger.controller'
+import { DemoPassengerService } from './hold/demo-passenger.service'
 import { Module } from '@nestjs/common'
+import { HoldController } from './hold/hold.controller'
+import { HoldService } from './hold/hold.service'
 import { APP_FILTER } from '@nestjs/core'
 import { BookingProviderAdapter, BOOKING_PROVIDER } from './providers/booking-provider.adapter'
 import { BookingStatusService } from './common/booking-status.service'
@@ -23,7 +31,7 @@ import { BookingReadStub } from './stubs/booking-read.stub'
 import { CancelForFlightStub } from './stubs/cancel-for-flight.stub'
 import { CheckoutStub } from './stubs/checkout.stub'
 import { LocalFlightEventBus } from './stubs/flight-event-bus.stub'
-import { InventoryStub } from './stubs/inventory.stub'
+import { InventoryService } from './inventory/inventory.service'
 import { LoyaltyStub } from './stubs/loyalty.stub'
 import { PricingStub } from './stubs/pricing.stub'
 import { RefundStub } from './stubs/refund.stub'
@@ -33,12 +41,17 @@ import { SeatStub } from './stubs/seat.stub'
 import { ServiceRequestStub } from './stubs/service-request.stub'
 
 @Module({
+  controllers: [HoldController, DemoPassengerController, StaffBookingController, DemoBookingCustomerController],
   providers: [
+    HoldService,
+    StaffBookingLookupService,
+    DemoBookingCustomerService,
+    DemoPassengerService,
     BookingStatusService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },
     { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
-    { provide: INVENTORY_PORT, useClass: InventoryStub },
+    { provide: INVENTORY_PORT, useClass: InventoryService },
     { provide: SEAT_PORT, useClass: SeatStub },
     { provide: SERVICE_REQUEST_PORT, useClass: ServiceRequestStub },
     { provide: PRICING_PORT, useClass: PricingStub },
