@@ -20,7 +20,7 @@ import {
   LoggerAudit,
   LoggerNotify,
 } from './providers/fixture-providers'
-import type { BookingPassenger, FlightRecord, PassengerProfile } from './providers/providers'
+import type { BookingPassenger, FlightRecord, PassengerProfile, PoliceProvider } from './providers/providers'
 import type { CheckInRecord } from './store/checkin-store'
 import { CheckInStore } from './store/checkin-store'
 
@@ -46,7 +46,11 @@ class PassengersWithExtra extends FixturePassengers {
   }
 }
 
-function build() {
+/** The passport of the demo air marshal Narong Sukjai. */
+const NARONG_LINE1 = 'P<THA' + 'SUKJAI<<NARONG'.padEnd(39, '<')
+const NARONG_LINE2 = buildLine2({ number: 'TH1234567', nationality3: 'THA', dob: '850312', sex: 'M', expiry: '300415' })
+
+function build(over: { police?: PoliceProvider } = {}) {
   const clock = new FixtureClock()
   const store = new CheckInStore(clock)
   const passengers = new PassengersWithExtra()
@@ -63,7 +67,7 @@ function build() {
     new FixturePricing(),
     payments,
     new FixtureScreening(),
-    new FixturePolice(),
+    over.police ?? new FixturePolice(),
     new FixtureTiers(),
     notify,
     audit,
@@ -636,6 +640,19 @@ describe('CheckInService.complete', () => {
     const [a, b] = await Promise.all([svc.complete(cust, c.id), svc.complete(cust, c.id)])
     expect(b.reference).toBe(a.reference)
     expect(await store.passesForCheckIn(c.id)).toHaveLength(1)
+  })
+
+  it('the air marshal boards first, also when the police service knows nothing', async () => {
+    const { svc, store } = build({ police: { policePassengerIds: () => Promise.resolve([]) } })
+    // The memory mode seeds a pass for every demo booking, the database demo seeds none: the marshal cancels his
+    // first check-in and starts a new one, the way the demo of the database goes.
+    const seeded = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-pl224a')
+    if (!seeded) throw new Error('the air marshal is not seeded')
+    await store.cancelCheckIn(seeded.id)
+    const c = await svc.start(cust, { pnr: 'PL224A', lastName: 'Sukjai' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: NARONG_LINE1, mrzLine2: NARONG_LINE2 })
+    const pass = await svc.complete(cust, c.id)
+    expect(pass.boardingGroup).toBe(1)
   })
 
   it('without a document is INVALID_STATE', async () => {

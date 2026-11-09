@@ -312,7 +312,7 @@ export class CheckInService {
         avoidExitRow: booking.specialAssistance.length > 0,
       }))
     const tier = await this.tiers.tier(record.passenger_id)
-    const police = (await this.police.policePassengerIds(flight.id)).includes(record.passenger_id)
+    const police = booking.isPolice || (await this.police.policePassengerIds(flight.id)).includes(record.passenger_id)
     const group = police
       ? 1
       : boardingGroup({ specialAssistance: booking.specialAssistance, cabin: booking.cabin, tier: tier?.level ?? null })
