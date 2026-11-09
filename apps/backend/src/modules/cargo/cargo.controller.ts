@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UsePipes, ValidationPipe } from '@nestjs/common'
 import { CargoService } from './cargo.service'
-import type { CreateCommodityTypeDto } from './dto/create-commodity-type.dto'
-import type { UpdateCommodityTypeDto } from './dto/update-commodity-type.dto'
-import type { CreateRateDto } from './dto/create-rate.dto'
-import type { UpdateRateDto } from './dto/update-rate.dto'
+import { CreateCommodityTypeDto } from './dto/create-commodity-type.dto'
+import { UpdateCommodityTypeDto } from './dto/update-commodity-type.dto'
+import { CreateRateDto } from './dto/create-rate.dto'
+import { UpdateRateDto } from './dto/update-rate.dto'
 
 // TODO: replace with a proper StaffCargoGuard once staff role guards exist
 @Controller('staff/cargo')

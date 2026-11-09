@@ -19,10 +19,13 @@ async function readError(res: Response): Promise<CargoApiError> {
   } catch {
     // Not JSON — fall back to the status line below.
   }
-  const err = (body as { error?: { code?: string; message?: string } } | null)?.error
+  const obj = body as Record<string, unknown> | null
+  const err = (obj?.error as { code?: string; message?: string } | undefined) ?? undefined
   if (err?.code) return new CargoApiError(res.status, err.code, err.message ?? res.statusText)
-  const message = (body as { message?: unknown } | null)?.message
-  return new CargoApiError(res.status, `HTTP_${res.status}`, typeof message === 'string' ? message : res.statusText || 'Request failed')
+  const message = obj?.message
+  if (Array.isArray(message)) return new CargoApiError(res.status, `HTTP_${res.status}`, message.join(', '))
+  if (typeof message === 'string') return new CargoApiError(res.status, `HTTP_${res.status}`, message)
+  return new CargoApiError(res.status, `HTTP_${res.status}`, res.statusText || 'Request failed')
 }
 
 /* ── Types ─────────────────────────────────────────────────────────── */
