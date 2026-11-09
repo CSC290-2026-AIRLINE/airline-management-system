@@ -1,3 +1,14 @@
+/* The fixed sidebar reserves its width inside the workspace. Match its root to the viewport. */
+#root:has(.f3-staff-workspace) {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  text-align: left;
+}
+.f3-staff-workspace {
+  min-width: 0;
+}
 .f3-staff-workspace-header {
   display: flex;
   align-items: center;
