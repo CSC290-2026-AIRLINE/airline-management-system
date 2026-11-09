@@ -25,6 +25,8 @@ export function useAuditLog(
      page can render "Showing 26–50 of N entries" without a total-count endpoint. */
   const [request, setRequest] = useState({ filtersKey, cursor: null as string | null, limit, pageIndex: 0, rowsBefore: 0 })
   const [state, setState] = useState<UseAuditLogState>({ loading: true, error: null, page: null })
+  /** Bumped by `reload()` so Retry refetches in place instead of reloading the whole page. */
+  const [reloadKey, setReloadKey] = useState(0)
 
   // Render-time comparison — see hook header. If inputs drifted, schedule a fresh request and let React re-render
   // with the new request before the effect below fetches.
@@ -48,7 +50,7 @@ export function useAuditLog(
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request.filtersKey, request.cursor, request.limit])
+  }, [request.filtersKey, request.cursor, request.limit, reloadKey])
 
   const nextPage = useCallback(() => {
     const next = state.page?.next_cursor
@@ -66,11 +68,17 @@ export function useAuditLog(
 
   const hasPrev = request.cursor !== null
 
+  const reload = useCallback(() => {
+    setState((prev) => ({ ...prev, loading: true, error: null }))
+    setReloadKey((k) => k + 1)
+  }, [])
+
   return useMemo(
     () => ({
       ...state,
       nextPage,
       prevPage,
+      reload,
       hasPrev,
       pageIndex: request.pageIndex,
       rowsBefore: request.rowsBefore,

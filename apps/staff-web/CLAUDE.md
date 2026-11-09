@@ -15,7 +15,7 @@ There is no test runner yet. Run lint, format:check and build before declaring w
 
 ## Stack (installed)
 
-React 19, Vite, TypeScript, TanStack Router, Clerk React SDK. **Not installed yet:** Tailwind, shadcn/ui, Lucide, TanStack Query. Check `package.json` before importing anything, and ask before adding dependencies.
+React 19, Vite, TypeScript, TanStack Router, Clerk React SDK, Tailwind CSS 4, shadcn/ui (new-york style, components in `src/components/ui/`, built on the `radix-ui` package) and Lucide icons. Prefer the shadcn components over raw `<button>`, `<input>`, `<label>` etc. **Not installed yet:** TanStack Query. Check `package.json` before importing anything, and ask before adding dependencies.
 
 ## Layout
 
