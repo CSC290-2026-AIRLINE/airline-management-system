@@ -25,6 +25,17 @@ const TEST_HOST = '127.0.0.1'
 const TEST_PORT = '55432'
 const RUN_TAG = `f10manual_${randomUUID().replaceAll('-', '').slice(0, 12)}`
 const SIMULATION_NOW = new Date('2026-11-08T04:00:00.000Z')
+const unusedPhotoStorage = {
+  upload() {
+    return Promise.reject(new Error('Photo storage is not used by this integration runner'))
+  },
+  remove() {
+    return Promise.resolve()
+  },
+  retrieve() {
+    return Promise.reject(new Error('Photo storage is not used by this integration runner'))
+  },
+}
 
 class FixedSimulationClock extends SimulationClock {
   override now(): Date {
@@ -407,6 +418,7 @@ async function main(): Promise<void> {
       new PrismaCheckedBagLookup(db),
       new PrismaCaseNumberSequence(db),
       clock,
+      unusedPhotoStorage,
     ).create({
       reportedByCustomerId: fixture.customerId,
       flightId: fixture.flightId,
