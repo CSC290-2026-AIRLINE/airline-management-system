@@ -1,5 +1,13 @@
 import { Logger } from '@nestjs/common'
-import { AuditService, MASKED, maskValue, type AuditWriteInput } from './audit.service'
+import {
+  AuditService,
+  DEFAULT_SENSITIVE_KEYS,
+  MASKED,
+  maskValue,
+  sensitiveKeySet,
+  stableAuditId,
+  type AuditWriteInput,
+} from './audit.service'
 import { SimulationClock } from '../simulation-clock'
 
 // The service only uses Prisma as types, so DbService is the only mock needed (same as the other admin-console specs).
@@ -9,6 +17,8 @@ function makeSvc() {
   const db = {
     audit_log: {
       create: jest.fn().mockResolvedValue({ id: 'a1', seq: 7n }),
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUnique: jest.fn().mockResolvedValue({ id: 'b1', seq: 8n }),
       findFirst: jest.fn().mockResolvedValue(null),
     },
     user: { findUnique: jest.fn() },
@@ -37,6 +47,28 @@ describe('maskValue', () => {
     expect(out).toEqual({ name: 'Ann', card: { number: MASKED, exp: '12/28' }, cards: [{ number: MASKED }] })
     expect(input.card.number).toBe('4111')
   })
+
+  it('matches a key in any spelling, and masks a whole value under it', () => {
+    const out = maskValue(
+      { passportNo: 'A1', Passport_Number: 'A2', 'date-of-birth': '1991-04-02', cardNumber: { last4: '1111' }, seat: '12A' },
+      sensitiveKeySet(),
+    )
+    expect(out).toEqual({ passportNo: MASKED, Passport_Number: MASKED, 'date-of-birth': MASKED, cardNumber: MASKED, seat: '12A' })
+  })
+
+  it('has a default list that covers passports, cards and dates of birth', () => {
+    expect(DEFAULT_SENSITIVE_KEYS).toEqual(expect.arrayContaining(['passport_no', 'card_number', 'cvv', 'date_of_birth']))
+  })
+})
+
+describe('stableAuditId', () => {
+  it('gives the same UUID for the same parts and a different one otherwise', () => {
+    const a = stableAuditId('sign_in', 'sess_123')
+    expect(a).toBe(stableAuditId('sign_in', 'sess_123'))
+    expect(a).not.toBe(stableAuditId('sign_in', 'sess_124'))
+    expect(a).not.toBe(stableAuditId('sign_out', 'sess_123'))
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
 })
 
 describe('AuditService.write', () => {
@@ -44,7 +76,7 @@ describe('AuditService.write', () => {
     const { svc, db, clock } = makeSvc()
     clock.shift(60_000)
     const res = await svc.write({ ...base, before: { first_name: 'Anne' }, after: { first_name: 'Ann' } })
-    expect(res).toEqual({ id: 'a1', seq: '7' })
+    expect(res).toEqual({ id: 'a1', seq: '7', created: true })
     const data = db.audit_log.create.mock.calls[0][0].data
     expect(data).toMatchObject({
       actor_type: 'staff',
@@ -71,6 +103,32 @@ describe('AuditService.write', () => {
     expect(data.is_sensitive).toBe(true)
   })
 
+  it('masks the default sensitive keys even when the caller passes no maskFields', async () => {
+    const { svc, db } = makeSvc()
+    await svc.write({ ...base, before: { dateOfBirth: '1991-04-02', seat: '12A' }, after: { seat: '14C' } })
+    const data = db.audit_log.create.mock.calls[0][0].data
+    expect(data.before).toEqual({ dateOfBirth: MASKED, seat: '12A' })
+    expect(data.is_sensitive).toBe(true)
+  })
+
+  it('does not flag a row sensitive when nothing in it was masked', async () => {
+    const { svc, db } = makeSvc()
+    await svc.write({ ...base, after: { first_name: 'Ann' } })
+    expect(db.audit_log.create.mock.calls[0][0].data.is_sensitive).toBe(false)
+  })
+
+  it('writes a caller-supplied id retry-safely and ignores a repeat', async () => {
+    const { svc, db } = makeSvc()
+    const id = stableAuditId('sign_in', 'sess_1')
+    db.audit_log.findUnique.mockResolvedValue({ id, seq: 8n })
+    await expect(svc.write({ ...base, id })).resolves.toEqual({ id, seq: '8', created: true })
+    expect(db.audit_log.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ id })], skipDuplicates: true })
+    expect(db.audit_log.create).not.toHaveBeenCalled()
+
+    db.audit_log.createMany.mockResolvedValue({ count: 0 })
+    await expect(svc.write({ ...base, id })).resolves.toEqual({ id, seq: '8', created: false })
+  })
+
   it('leaves before/after out entirely when not given', async () => {
     const { svc, db } = makeSvc()
     await svc.write(base)
@@ -82,7 +140,7 @@ describe('AuditService.write', () => {
   it('writes through the caller transaction when one is passed', async () => {
     const { svc, db } = makeSvc()
     const tx = { audit_log: { create: jest.fn().mockResolvedValue({ id: 't1', seq: 9n }) } }
-    await expect(svc.write(base, tx as never)).resolves.toEqual({ id: 't1', seq: '9' })
+    await expect(svc.write(base, tx as never)).resolves.toEqual({ id: 't1', seq: '9', created: true })
     expect(db.audit_log.create).not.toHaveBeenCalled()
   })
 
