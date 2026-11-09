@@ -1,0 +1,152 @@
+import { Type } from 'class-transformer'
+import {
+  IsBoolean,
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator'
+import type { Insurance, TransactionType } from '../domain/types'
+
+const TRANSACTION_TYPES: TransactionType[] = ['earn', 'redeem', 'redeem_reversal', 'expire', 'adjust']
+
+/** `GET /loyalty/members/me/transactions?type=&from=&to=`. `from` and `to` are dates or timestamps; `to` is inclusive. */
+export class StatementQueryDto {
+  @IsOptional()
+  @IsIn(TRANSACTION_TYPES)
+  type?: TransactionType
+
+  @IsOptional()
+  @IsDateString()
+  from?: string
+
+  @IsOptional()
+  @IsDateString()
+  to?: string
+}
+
+/** `GET /staff/loyalty/members?q=`: member number, name or email. Empty lists the newest members. */
+export class MemberSearchDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string
+}
+
+/** `POST /staff/loyalty/members/:id/adjustments`. */
+export class AdjustmentDto {
+  @IsInt()
+  @Min(-10_000_000)
+  @Max(10_000_000)
+  miles!: number
+
+  @IsString()
+  @Matches(/\S/, { message: 'A reason is required.' })
+  @MaxLength(500)
+  reason!: string
+}
+
+/** `PUT /staff/loyalty/tier-rules/:code`. */
+export class TierRuleDto {
+  @IsInt()
+  @Min(1)
+  minMiles!: number
+
+  @IsInt()
+  @Min(1)
+  minFlights!: number
+
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  validMonths!: number
+}
+
+/** `PUT /staff/loyalty/earn-rules/:fareClassId`. NUMERIC(4, 2) as text, e.g. "1.25"; "0" earns nothing. */
+export class EarnRuleDto {
+  @IsString()
+  @Matches(/^\d{1,2}(\.\d{1,2})?$/, { message: 'Enter a multiplier from 0 to 99.99, e.g. 1.25.' })
+  multiplier!: string
+}
+
+/** `PUT /staff/loyalty/settings/:key`. */
+export class SettingDto {
+  @IsInt()
+  value!: number
+}
+
+/** `POST /staff/loyalty/lounge-visits`: a member number (FL…) or a booking reference, and the guests coming in. */
+export class LoungeVisitDto {
+  @IsString()
+  @Matches(/\S/, { message: 'Enter a member number or booking reference.' })
+  @MaxLength(20)
+  query!: string
+
+  @IsInt()
+  @Min(0)
+  @Max(9)
+  guests!: number
+}
+
+/** `GET /loyalty/award-flights?origin=BKK&destination=NRT&date=2026-11-12&seats=2`. */
+export class AwardSearchQueryDto {
+  @Matches(/^[A-Za-z]{3}$/, { message: 'Choose where you fly from.' })
+  origin!: string
+
+  @Matches(/^[A-Za-z]{3}$/, { message: 'Choose where you fly to.' })
+  destination!: string
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Choose a date.' })
+  date!: string
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(9)
+  seats!: number
+}
+
+export class InsuranceDto {
+  @IsIn(['none', 'included', 'member_price'])
+  kind!: Insurance['kind']
+
+  @ValidateIf((o: InsuranceDto) => o.kind === 'member_price')
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  priceThb?: number
+}
+
+/** `PUT /staff/loyalty/tier-benefits/:code`. `loungeGuests` null = no lounge access, 0 = member only. */
+export class TierBenefitsDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(9)
+  loungeGuests!: number | null
+
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(0)
+  @Max(9999.9)
+  extraBaggageKg!: number
+
+  @IsBoolean()
+  priorityCheckIn!: boolean
+
+  @IsBoolean()
+  priorityBoarding!: boolean
+
+  @IsBoolean()
+  upgradeEligible!: boolean
+
+  @ValidateNested()
+  @Type(() => InsuranceDto)
+  insurance!: InsuranceDto
+}
