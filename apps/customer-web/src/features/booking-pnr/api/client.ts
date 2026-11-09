@@ -1,5 +1,13 @@
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
-import type { ApiErrorBody, BookingDetail, CancelPreview, ConfirmBookingResult, HoldBookingRequest, HoldBookingResponse } from './types'
+import type {
+  ApiErrorBody,
+  BookingDetail,
+  CancelPreview,
+  ConfirmBookingResult,
+  CustomerTrips,
+  HoldBookingRequest,
+  HoldBookingResponse,
+} from './types'
 
 export class ApiError extends Error {
   readonly code: string
@@ -70,5 +78,13 @@ export function useBookingPnrApi() {
     }
   }
 
-  return { getBooking, holdBooking, devConfirmBooking, getCancelPreview, cancelBooking }
+  async function getCustomerTrips(): Promise<CustomerTrips> {
+    const response = await fetchWithAuth('/api/customers/me/bookings')
+    if (!response.ok) {
+      throw await readError(response)
+    }
+    return (await response.json()) as CustomerTrips
+  }
+
+  return { getBooking, holdBooking, devConfirmBooking, getCancelPreview, cancelBooking, getCustomerTrips }
 }

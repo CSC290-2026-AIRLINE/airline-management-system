@@ -102,7 +102,28 @@ export interface BookingListItem extends BookingSummary {
   leadPassengerName: string
   trip: string
   travelDate: string | null
+  // Last departure of the booking (the return leg).
+  travelEndDate: string | null
+  passengerCounts: PassengerCounts
+  // The flights of the booking, in segment order.
+  flightNumbers: string[]
+  flightCount: number
   openServiceRequests: number
+}
+
+// The passengers of a booking, by type.
+export interface PassengerCounts {
+  adults: number
+  children: number
+  infants: number
+}
+
+// GET /customers/me/bookings: the Upcoming and Past tabs.
+export interface CustomerTrips {
+  upcoming: BookingListItem[]
+  past: BookingListItem[]
+  // The simulation clock's now, so the page can count down a hold.
+  serverNow: string
 }
 
 // One seat of GET /flights/:id/seat-map (C1).
