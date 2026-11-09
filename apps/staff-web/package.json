@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "preview": "vite preview",
+    "test": "node --test",
     "format": "prettier --write . --ignore-path ../../.gitignore --ignore-path .prettierignore",
     "format:check": "prettier --check . --ignore-path ../../.gitignore --ignore-path .prettierignore"
   },

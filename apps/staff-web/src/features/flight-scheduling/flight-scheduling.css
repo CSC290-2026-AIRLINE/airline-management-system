@@ -1,0 +1,2368 @@
+/*
+ * Feature 2 styles. Every colour, radius and type size comes from the Figma file
+ * (vh4YapGP8tVxXtbVp3MrJO, "F2 / Components · Flight scheduling"); see CLAUDE.md in this folder.
+ * Use the --fs-* tokens below; do not write hex values in rules.
+ */
+.fs-shell {
+  /* colour */
+  --fs-navy: #102544;
+  --fs-navy-hover: #293d61;
+  --fs-ink: #0a1424;
+  --fs-sidebar: #14213d;
+  --fs-sidebar-text: #b7c1d1;
+  --fs-accent: #f2a800;
+  --fs-page: #f7f9fc;
+  --fs-muted: #677287;
+  --fs-slate: #455473;
+  --fs-border: #cbd5e1;
+  --fs-divider: #e2e8f0;
+  --fs-head: #e8edf5;
+  --fs-tint: #eef3ff;
+  --fs-yellow: #fff1c7;
+  --fs-good-bg: #e3f2ea;
+  --fs-good: #1f7a4d;
+  --fs-warn-bg: #fcefd9;
+  --fs-warn: #b45309;
+  --fs-crit-bg: #fdecec;
+  --fs-crit: #b42318;
+  --fs-crit-line: #db1f29;
+  --fs-info-bg: #dde6f7;
+  /* radius */
+  --fs-radius-xs: 2px;
+  --fs-radius-sm: 6px;
+  --fs-radius: 8px;
+  --fs-radius-lg: 10px;
+  /* type */
+  --fs-font: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --fs-font-brand: Merriweather, Georgia, 'Times New Roman', serif;
+  /* type scale, desktop (base 16px): H1 48/800, H2 36/800, H3 28/700, H4 22/600, body-lg 18, body 16, label 14/500 */
+  --fs-text-h1: 48px;
+  --fs-text-h2: 36px;
+  --fs-text-h3: 28px;
+  --fs-text-h4: 22px;
+  --fs-text-lg: 18px;
+  --fs-text-body: 16px;
+  --fs-text-label: 14px;
+  --fs-text-title-sm: 32px; /* page title on a phone, from the Figma mobile frames */
+  --fs-text-caption: 12px; /* Figma caption style */
+  --fs-text-action: 14px; /* buttons; Semi Bold. ponytail: size assumed, the shared type rules were cut off at this row */
+  --fs-text-brand: 40px;
+
+  /* The staff design is light only; the scaffold's dark scheme would put navy text on a dark page. */
+  color-scheme: light;
+  display: grid;
+  flex: 1;
+  grid-template-columns: 260px minmax(0, 1fr);
+  font-family: var(--fs-font);
+  /* The scaffold sets 18px / 145% type with letter spacing on :root; the design uses fixed sizes. */
+  font-size: var(--fs-text-label);
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+/* The shell takes the whole window; the scaffold's #root is a 1126px column with side borders. */
+#root:has(.fs-shell) {
+  width: 100%;
+  border-inline: 0;
+  text-align: left;
+}
+
+/* sidebar */
+.fs-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  position: sticky;
+  top: 0;
+  box-sizing: border-box;
+  height: 100svh;
+  padding: 29px 22px 32px;
+  overflow-y: auto;
+  background: var(--fs-sidebar);
+  color: #fff;
+}
+
+.fs-brand {
+  position: relative;
+  margin: 0;
+  padding: 0 0 8px 6px;
+  font-family: var(--fs-font-brand);
+  font-size: var(--fs-text-brand);
+  font-weight: 900;
+  line-height: normal;
+  text-transform: uppercase;
+}
+
+.fs-brand::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 6px;
+  width: 52px;
+  height: 4px;
+  border-radius: var(--fs-radius-xs);
+  background: var(--fs-accent);
+}
+
+.fs-brand-sub {
+  margin: -24px 0 0 6px;
+  color: var(--fs-sidebar-text);
+  font-size: var(--fs-text-caption);
+}
+
+.fs-nav-heading {
+  margin: 0;
+  padding: 0 0 6px 12px;
+  color: var(--fs-sidebar-text);
+  font-size: var(--fs-text-caption);
+  font-weight: 600;
+  letter-spacing: 0.88px;
+  text-transform: uppercase;
+}
+
+.fs-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  padding: 8px 12px;
+  border-radius: var(--fs-radius-sm);
+  color: #fff;
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.fs-nav-badge {
+  min-width: 18px;
+  padding: 1px 0;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--fs-crit);
+  font-size: var(--fs-text-caption);
+  font-weight: 600;
+  text-align: center;
+}
+
+.fs-nav-open,
+.fs-menu-check {
+  display: none;
+}
+
+.fs-nav-active {
+  background: var(--fs-navy-hover);
+}
+
+.fs-nav-soon {
+  color: var(--fs-sidebar-text);
+  cursor: default;
+}
+
+.fs-sidebar-foot {
+  margin-top: auto;
+  padding-left: 14px;
+  color: var(--fs-sidebar-text);
+  font-size: var(--fs-text-caption);
+}
+
+.fs-sidebar-foot p {
+  margin: 0;
+}
+
+.fs-sidebar-foot .fs-foot-title {
+  margin-bottom: 8px;
+  color: #fff;
+  font-size: var(--fs-text-h4);
+  font-weight: 600;
+}
+
+/* page */
+.fs-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--fs-page);
+}
+
+.fs-page {
+  flex: 1;
+  padding: 24px 60px 64px 40px;
+  color: var(--fs-navy);
+  text-align: left;
+}
+
+.fs-page h1 {
+  margin: 0;
+  color: var(--fs-ink);
+  font-size: var(--fs-text-h1);
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.fs-lede {
+  max-width: 840px;
+  margin: 8px 0 28px;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-body);
+  line-height: 1.5;
+}
+
+.fs-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  margin: 0 0 24px;
+}
+
+.fs-summary div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.fs-summary dd {
+  margin: 0;
+  font-size: var(--fs-text-h4);
+  font-weight: 700;
+}
+
+.fs-summary dt {
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+}
+
+/* filter box: a plain wrapper on desktop, a folding panel on a phone (see the 800px block) */
+.fs-filter-toggle,
+.fs-filter-clear,
+.fs-selectall {
+  display: none;
+}
+
+/* form controls */
+.fs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.fs-filters label,
+.fs-form-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-filters label {
+  width: 200px;
+}
+
+.fs-input,
+.fs-filters select,
+.fs-filters input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius-lg);
+  background: #fff;
+  color: var(--fs-navy);
+  font: inherit;
+  font-size: var(--fs-text-label);
+  font-weight: 400;
+}
+
+/* A native date input is taller and wider than a select unless its size is fixed. */
+.fs-filters select,
+.fs-filters input {
+  height: 42px;
+  padding-block: 0;
+}
+
+.fs-filters select,
+.fs-select {
+  appearance: none;
+  padding-right: 36px;
+  background: #fff
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23677287' stroke-width='1.5'%3E%3Cpath d='m1 1 4 4 4-4'/%3E%3C/svg%3E")
+    no-repeat right 14px center;
+  cursor: pointer;
+}
+
+.fs-input:focus,
+.fs-filters select:focus,
+.fs-filters input:focus {
+  border-color: var(--fs-navy);
+  outline: none;
+  box-shadow:
+    0 0 0 0.5px var(--fs-navy),
+    0 0 0 3px rgb(16 37 68 / 12%);
+}
+
+.fs-input-narrow {
+  width: 72px;
+  padding: 6px 10px;
+}
+
+.fs-form-grid {
+  align-items: end;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.fs-field {
+  display: grid;
+  gap: 6px;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-invalid {
+  color: var(--fs-crit);
+}
+
+.fs-invalid .fs-input {
+  border-color: var(--fs-crit-line);
+  box-shadow: 0 0 0 0.5px var(--fs-crit-line);
+}
+
+.fs-error {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: var(--fs-radius);
+  background: var(--fs-crit-bg);
+  color: var(--fs-crit);
+  font-size: var(--fs-text-label);
+}
+
+/* buttons */
+.fs-button,
+.fs-button-light {
+  border: 1px solid var(--fs-navy);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fs-button {
+  padding: 12px 16px;
+  border-radius: var(--fs-radius);
+  background: var(--fs-navy);
+  color: #fff;
+  font-size: var(--fs-text-action);
+}
+
+.fs-button:hover {
+  border-color: var(--fs-navy-hover);
+  background: var(--fs-navy-hover);
+}
+
+.fs-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fs-button-light {
+  padding: 6px 12px;
+  border-radius: var(--fs-radius-sm);
+  background: #fff;
+  color: var(--fs-navy);
+  font-size: var(--fs-text-action);
+}
+
+.fs-button-light:hover {
+  background: var(--fs-tint);
+}
+
+/* table */
+.fs-empty {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 48px 24px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  background: #fff;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+  text-align: center;
+}
+
+.fs-empty p {
+  margin: 0;
+}
+
+.fs-table-wrap {
+  margin-bottom: 16px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  overflow-x: auto;
+  background: #fff;
+}
+
+.fs-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: var(--fs-text-label);
+}
+
+.fs-table th,
+.fs-table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--fs-divider);
+  text-align: left;
+}
+
+.fs-table th {
+  padding-block: 12px;
+  background: var(--fs-head);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.fs-table tbody tr:hover {
+  background: rgb(16 37 68 / 5%);
+  box-shadow: inset 3px 0 0 var(--fs-navy);
+}
+
+.fs-table b {
+  font-weight: 600;
+}
+
+.fs-flight {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.fs-to,
+.fs-was {
+  color: var(--fs-muted);
+}
+
+.fs-sub {
+  margin: 2px 0 0;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-caption);
+  font-weight: 400;
+}
+
+/* status pill: neutral by default, tone by status */
+.fs-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--fs-head);
+  color: var(--fs-slate);
+  font-size: var(--fs-text-caption);
+  font-weight: 500;
+}
+
+.fs-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.fs-status-departed,
+.fs-status-arrived {
+  background: var(--fs-info-bg);
+  color: var(--fs-navy);
+}
+
+.fs-status-delayed,
+.fs-status-holding,
+.fs-status-diverted {
+  background: var(--fs-warn-bg);
+  color: var(--fs-warn);
+}
+
+.fs-status-cancelled {
+  background: var(--fs-crit-bg);
+  color: var(--fs-crit);
+}
+
+.fs-status-active {
+  background: var(--fs-good-bg);
+  color: var(--fs-good);
+}
+
+/* card and toast */
+.fs-card {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  background: #fff;
+}
+
+.fs-card h2 {
+  margin: 0 0 16px;
+  color: var(--fs-ink);
+  font-size: var(--fs-text-h4);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.fs-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--fs-radius);
+  background: var(--fs-ink);
+  box-shadow: 0 4px 9px rgb(0 0 0 / 25%);
+  color: #fff;
+  font-size: var(--fs-text-label);
+  transform: translateX(-50%);
+}
+
+.fs-nav-link:focus-visible,
+.fs-button:focus-visible,
+.fs-button-light:focus-visible {
+  outline: 2px solid var(--fs-accent);
+  outline-offset: 2px;
+}
+
+/* generate flights page */
+.fs-title-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.fs-title-row .fs-lede {
+  margin-bottom: 0;
+}
+
+.fs-title-row > div {
+  flex: 1;
+  min-width: 0;
+}
+
+a.fs-button,
+a.fs-button-light {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.fs-button-lg {
+  padding: 12px 16px;
+  border-radius: var(--fs-radius);
+  font-size: var(--fs-text-action);
+}
+
+.fs-align-end {
+  align-self: flex-end;
+}
+
+.fs-field-label {
+  margin: 16px 0 8px;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-patterns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.fs-pattern {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  background: #fff;
+  font-size: var(--fs-text-label);
+  cursor: pointer;
+}
+
+.fs-pattern-on {
+  border: 1.5px solid var(--fs-navy);
+  padding: 9.5px 13.5px;
+}
+
+.fs-pattern input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fs-navy);
+}
+
+.fs-callout {
+  margin: 16px 0;
+  padding: 10px 14px;
+  border-radius: var(--fs-radius);
+  font-size: var(--fs-text-label);
+}
+
+.fs-callout-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.fs-callout-action a {
+  color: var(--fs-navy);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.fs-callout-info {
+  background: var(--fs-tint);
+  color: var(--fs-navy);
+}
+
+.fs-callout-warn {
+  background: var(--fs-warn-bg);
+  color: var(--fs-warn);
+}
+
+.fs-callout-crit {
+  background: var(--fs-crit-bg);
+  color: var(--fs-crit);
+}
+
+.fs-callout-good {
+  background: var(--fs-good-bg);
+  color: var(--fs-good);
+}
+
+.fs-section-title {
+  margin: 24px 0 12px;
+  color: var(--fs-ink);
+  font-size: var(--fs-text-h4);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* patterns page */
+.fs-days {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.fs-day-badge {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--fs-navy);
+  color: #fff;
+  font-size: var(--fs-text-caption);
+  font-weight: 600;
+}
+
+.fs-day-off {
+  background: var(--fs-head);
+  color: var(--fs-muted);
+}
+
+.fs-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fs-row-on {
+  background: var(--fs-tint);
+}
+
+.fs-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.fs-button-ghost {
+  padding: 12px 16px;
+  border: 0;
+  background: none;
+  color: var(--fs-navy);
+  font: inherit;
+  font-size: var(--fs-text-action);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fs-input:disabled {
+  background: var(--fs-head);
+  color: var(--fs-muted);
+  cursor: not-allowed;
+}
+
+/* top bar, batch actions, demo notice */
+.fs-topbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 24px 60px 0 40px;
+}
+
+.fs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius-sm);
+  background: #fff;
+  color: var(--fs-navy);
+  font-size: var(--fs-text-caption);
+}
+
+.fs-chip-label {
+  color: var(--fs-muted);
+  font-weight: 500;
+}
+
+.fs-chip-check {
+  cursor: pointer;
+}
+
+.fs-chip-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--fs-navy);
+  cursor: pointer;
+}
+
+.fs-toast-warn {
+  background: var(--fs-warn);
+}
+
+.fs-status-ok {
+  background: var(--fs-good-bg);
+  color: var(--fs-good);
+}
+
+.fs-status-failed {
+  background: var(--fs-crit-bg);
+  color: var(--fs-crit);
+}
+
+.fs-batch {
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  border: 1px solid var(--fs-navy);
+  border-radius: var(--fs-radius);
+  background: var(--fs-tint);
+}
+
+.fs-batch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.fs-batch-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fs-batch-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 200px;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-batch .fs-sub {
+  margin: 0;
+}
+
+.fs-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.fs-result-head h2 {
+  margin: 0;
+}
+
+.fs-table .fs-check {
+  width: 52px;
+  padding-left: 16px;
+}
+
+.fs-table input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fs-navy);
+}
+
+.fs-table tr.fs-row-picked {
+  background: var(--fs-tint);
+}
+
+.fs-form-grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+/* flight detail */
+.fs-back {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: var(--fs-navy);
+  font-size: var(--fs-text-caption);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.fs-card-first {
+  margin-top: 0;
+}
+
+.fs-flight-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.fs-flight-no {
+  color: var(--fs-ink);
+  font-size: var(--fs-text-h3);
+  font-weight: 800;
+}
+
+.fs-flight-route {
+  color: var(--fs-slate);
+  font-size: var(--fs-text-h4);
+}
+
+.fs-kv {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 8px 0;
+  margin: 0;
+  font-size: var(--fs-text-label);
+}
+
+.fs-kv dt {
+  color: var(--fs-muted);
+}
+
+.fs-kv dd {
+  margin: 0;
+}
+
+.fs-kv-pairs > div {
+  display: contents;
+}
+
+.fs-fold-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fs-fold-toggle {
+  display: none;
+}
+
+.fs-num {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.fs-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  align-items: start;
+  gap: 24px;
+}
+
+.fs-two .fs-card {
+  margin-top: 24px;
+}
+
+.fs-form-grid-2 {
+  grid-template-columns: 2fr 1fr;
+}
+
+.fs-mt {
+  margin-top: 16px;
+}
+
+.fs-seg {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+.fs-seg button {
+  padding: 8px 14px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius-sm);
+  background: #fff;
+  color: var(--fs-navy);
+  font: inherit;
+  font-size: var(--fs-text-action);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fs-seg .fs-seg-on {
+  border-color: var(--fs-navy);
+  background: var(--fs-navy);
+  color: #fff;
+}
+
+.fs-button-danger {
+  padding: 12px 16px;
+  border: 1px solid var(--fs-crit-line);
+  border-radius: var(--fs-radius);
+  background: #fff;
+  color: var(--fs-crit-line);
+  font: inherit;
+  font-size: var(--fs-text-action);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fs-button-danger:hover {
+  background: var(--fs-crit-bg);
+}
+
+.fs-button-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fs-checks,
+.fs-events {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-text-label);
+}
+
+.fs-checks li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* conflicts */
+.fs-button-sm {
+  padding: 6px 12px;
+  border-radius: var(--fs-radius-sm);
+  font-size: var(--fs-text-caption);
+}
+
+.fs-impact {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border-radius: var(--fs-radius);
+  background: var(--fs-tint);
+}
+
+.fs-impact .fs-summary {
+  margin-bottom: 8px;
+}
+
+.fs-reason {
+  max-width: 320px;
+  margin-bottom: 16px;
+}
+
+.fs-options {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.fs-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  background: #fff;
+  font-size: var(--fs-text-label);
+  cursor: pointer;
+}
+
+.fs-option input {
+  margin-top: 3px;
+  accent-color: var(--fs-navy);
+}
+
+.fs-option .fs-sub {
+  display: block;
+  margin-top: 4px;
+}
+
+.fs-option-off {
+  background: var(--fs-page);
+  color: var(--fs-muted);
+  cursor: not-allowed;
+}
+
+.fs-sub-crit {
+  color: var(--fs-crit);
+}
+
+.fs-between {
+  justify-content: space-between;
+}
+
+/* tabs, settings rows, small helpers */
+.fs-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.fs-tab {
+  padding: 10px 16px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  background: #fff;
+  color: var(--fs-navy);
+  font-size: var(--fs-text-action);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.fs-tab-on {
+  border-color: var(--fs-navy);
+  background: var(--fs-navy);
+  color: #fff;
+}
+
+.fs-setting {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  align-items: end;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.fs-setting .fs-sub {
+  margin: 0 0 12px;
+  font-size: var(--fs-text-label);
+}
+
+.fs-flush {
+  margin: 0 0 6px;
+}
+
+.fs-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fs-navy);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.fs-payload {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--fs-radius-sm);
+  background: var(--fs-head);
+  color: var(--fs-navy);
+  font-size: var(--fs-text-caption);
+  white-space: pre-wrap;
+}
+
+.fs-table .fs-plain {
+  text-decoration: none;
+}
+
+.fs-oneoff {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--fs-navy);
+  border-radius: var(--fs-radius);
+  background: var(--fs-tint);
+}
+
+.fs-oneoff h3 {
+  margin: 0 0 12px;
+  color: var(--fs-ink);
+  font-size: var(--fs-text-lg);
+  font-weight: 600;
+}
+
+.fs-mt-lg {
+  margin-top: 28px;
+}
+
+.fs-title-row .fs-section-title {
+  margin: 0;
+}
+
+/* polish found by looking at every page */
+.fs-page a {
+  color: var(--fs-navy);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.fs-page a.fs-button,
+.fs-page a.fs-button-light,
+.fs-page a.fs-back,
+.fs-page a.fs-tab {
+  text-decoration: none;
+}
+
+.fs-page a.fs-button,
+.fs-page a.fs-tab-on {
+  color: #fff;
+}
+
+.fs-button,
+.fs-button-light,
+.fs-button-danger,
+.fs-status {
+  white-space: nowrap;
+}
+
+.fs-nowrap {
+  white-space: nowrap;
+}
+
+.fs-card > .fs-sub {
+  margin: 0 0 12px;
+}
+
+.fs-card .fs-filters {
+  margin-top: 16px;
+}
+
+.fs-card > .fs-field {
+  margin-top: 12px;
+}
+
+.fs-sub + .fs-button,
+.fs-sub + .fs-button-danger {
+  margin-top: 12px;
+}
+
+.fs-title-row > .fs-section-title {
+  flex: 1;
+}
+
+/* dialog */
+.fs-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgb(10 20 36 / 45%);
+}
+
+.fs-modal {
+  width: min(560px, calc(100vw - 32px));
+  padding: 24px;
+  border-radius: var(--fs-radius);
+  background: #fff;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 25%);
+}
+
+.fs-modal h2 {
+  margin: 0 0 8px;
+  color: var(--fs-ink);
+  font-size: var(--fs-text-h4);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.fs-end {
+  justify-content: flex-end;
+}
+
+.fs-start {
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+/* mobile bar and menu button are phone-only */
+.fs-mobilebar,
+.fs-menu-close {
+  display: none;
+}
+
+.fs-menu-button {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--fs-radius);
+  background: var(--fs-navy);
+  color: #fff;
+  cursor: pointer;
+}
+
+.fs-mobile-brand {
+  color: var(--fs-navy);
+  font-family: var(--fs-font-brand);
+  font-size: 32px;
+  font-weight: 900;
+}
+
+/* tablet */
+@media (max-width: 1100px) {
+  .fs-shell {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .fs-page {
+    padding: 24px 24px 48px;
+  }
+
+  .fs-topbar {
+    padding: 16px 24px 0;
+  }
+
+  .fs-brand {
+    font-size: 34px;
+  }
+}
+
+/* phone */
+@media (max-width: 800px) {
+  .fs-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fs-sidebar {
+    display: none;
+  }
+
+  .fs-sidebar-open {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    height: 100svh;
+    padding-top: 20px;
+  }
+
+  /* menu: Figma drops the gold bar, the all-caps wordmark and the role note, and counts conflicts in words */
+  .fs-sidebar-open {
+    padding-inline: 16px;
+  }
+
+  .fs-brand {
+    padding-left: 0;
+    text-transform: none;
+  }
+
+  .fs-brand::after,
+  .fs-sidebar-foot,
+  .fs-nav-badge {
+    display: none;
+  }
+
+  .fs-brand-sub {
+    margin: -20px 0 0;
+  }
+
+  .fs-nav-heading {
+    padding-left: 0;
+  }
+
+  .fs-nav-link {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .fs-nav-open {
+    display: inline;
+  }
+
+  .fs-menu-check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border-radius: var(--fs-radius);
+    background: var(--fs-navy-hover);
+    font-size: var(--fs-text-label);
+    cursor: pointer;
+  }
+
+  .fs-menu-check input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--fs-accent);
+  }
+
+  .fs-menu-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    display: inline-grid;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    border: 0;
+    border-radius: var(--fs-radius);
+    background: var(--fs-navy-hover);
+    color: #fff;
+    font-size: var(--fs-text-lg);
+    cursor: pointer;
+  }
+
+  .fs-mobilebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 16px 16px 0;
+    padding: 8px 8px 8px 16px;
+    border: 1px solid var(--fs-border);
+    border-radius: var(--fs-radius-lg);
+    background: #fff;
+  }
+
+  /* the chips share one grey strip; the congestion switch is not in the phone design */
+  .fs-topbar {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin: 12px 16px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--fs-border);
+    border-radius: var(--fs-radius-sm);
+    background: var(--fs-head);
+  }
+
+  .fs-chip {
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .fs-chip-who {
+    order: -1;
+  }
+
+  .fs-chip-check {
+    display: none;
+  }
+
+  .fs-page {
+    padding: 16px 16px 40px;
+  }
+
+  .fs-page h1 {
+    font-size: var(--fs-text-title-sm);
+  }
+
+  .fs-lede {
+    font-size: var(--fs-text-label);
+  }
+
+  .fs-title-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .fs-title-row > a,
+  .fs-title-row > button {
+    box-sizing: border-box;
+    width: 100%;
+    text-align: center;
+  }
+
+  .fs-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .fs-summary div {
+    display: grid;
+    gap: 2px;
+    padding: 14px;
+    border: 1px solid var(--fs-border);
+    border-radius: var(--fs-radius-lg);
+    background: #fff;
+  }
+
+  .fs-filters {
+    flex-direction: column;
+  }
+
+  .fs-filterbox {
+    margin-bottom: 16px;
+    border: 1px solid var(--fs-border);
+    border-radius: var(--fs-radius-lg);
+    background: #fff;
+  }
+
+  .fs-filterbox.is-open {
+    border-color: var(--fs-navy);
+  }
+
+  .fs-callout-action {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fs-callout-action a {
+    text-align: center;
+  }
+
+  .fs-filter-toggle {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 14px 36px 14px 14px;
+    border: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23677287' stroke-width='1.5'%3E%3Cpath d='m1 1 4 4 4-4'/%3E%3C/svg%3E")
+      no-repeat right 14px center;
+    color: var(--fs-navy);
+    font: inherit;
+    font-size: var(--fs-text-label);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .fs-filterbox.is-open .fs-filter-toggle {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23677287' stroke-width='1.5'%3E%3Cpath d='m1 5 4-4 4 4'/%3E%3C/svg%3E");
+  }
+
+  .fs-filter-toggle strong {
+    flex: none;
+    font-weight: 700;
+  }
+
+  .fs-filter-toggle span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--fs-muted);
+    font-size: var(--fs-text-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .fs-filterbox .fs-filters {
+    display: none;
+    margin: 0;
+    padding: 0 14px 14px;
+  }
+
+  .fs-filterbox.is-open .fs-filters {
+    display: flex;
+  }
+
+  .fs-filter-clear {
+    display: block;
+    padding: 10px;
+    border: 0;
+    background: none;
+    color: var(--fs-navy);
+    font: inherit;
+    font-size: var(--fs-text-label);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .fs-selectall {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    color: var(--fs-muted);
+    font-size: var(--fs-text-label);
+  }
+
+  .fs-filters label,
+  .fs-reason {
+    width: 100%;
+    max-width: none;
+  }
+
+  .fs-form-grid,
+  .fs-form-grid-2,
+  .fs-form-grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .fs-setting {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+
+  .fs-setting .fs-sub {
+    margin-bottom: 8px;
+    font-size: var(--fs-text-caption);
+  }
+
+  /* a control with two options fills the row */
+  .fs-seg:has(> :nth-child(2):last-child) {
+    margin-bottom: 8px;
+    overflow: visible;
+  }
+
+  .fs-seg:has(> :nth-child(2):last-child) button {
+    flex: 1;
+  }
+
+  .fs-wide-only {
+    display: none;
+  }
+
+  .fs-kv-pairs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+  }
+
+  .fs-kv-pairs > div {
+    display: block;
+    min-width: 0;
+  }
+
+  .fs-kv-pairs dt {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .fs-fold-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--fs-navy);
+    font: inherit;
+    font-size: var(--fs-text-label);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .fs-fold-toggle::after {
+    content: '';
+    width: 10px;
+    height: 6px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23677287' stroke-width='1.5'%3E%3Cpath d='m1 1 4 4 4-4'/%3E%3C/svg%3E")
+      no-repeat;
+  }
+
+  .fs-fold.is-open .fs-fold-toggle::after {
+    transform: rotate(180deg);
+  }
+
+  .fs-fold:not(.is-open) .fs-fold-body {
+    display: none;
+  }
+
+  .fs-kv {
+    grid-template-columns: 110px 1fr;
+  }
+
+  .fs-two {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .fs-card,
+  .fs-two .fs-card {
+    margin-top: 16px;
+  }
+
+  .fs-card.fs-card-first {
+    margin-top: 0;
+  }
+
+  .fs-fold:not(.is-open) .fs-fold-head h2 {
+    margin-bottom: 0;
+  }
+
+  .fs-fold > .fs-callout {
+    margin-bottom: 0;
+  }
+
+  .fs-batch-head,
+  .fs-between {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fs-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .fs-tabs,
+  .fs-seg {
+    flex-wrap: wrap;
+  }
+
+  .fs-card {
+    padding: 16px;
+  }
+
+  .fs-toast {
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    text-align: center;
+  }
+
+  /* ---- tables become cards, laid out like the Figma mobile frames ---- */
+  .fs-table-wrap {
+    border: 0;
+    background: none;
+    overflow: visible;
+  }
+
+  .fs-table {
+    min-width: 0;
+    background: none;
+  }
+
+  .fs-table thead {
+    display: none;
+  }
+
+  .fs-table,
+  .fs-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .fs-table tr {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: start;
+    gap: 6px 8px;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--fs-border);
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .fs-table tbody tr:hover {
+    box-shadow: none;
+  }
+
+  /* the cost lines are a plain list with dividers, and an open cost card gets the navy outline */
+  .fs-t-cost tr {
+    margin-bottom: 0;
+    padding: 12px 0;
+    border: 0;
+    border-bottom: 1px solid var(--fs-divider);
+    border-radius: 0;
+    background: none;
+  }
+
+  .fs-t-cost tr:last-child {
+    border-bottom: 0;
+  }
+
+  .fs-card:has(> .fs-fold.is-open) {
+    border-color: var(--fs-navy);
+  }
+
+  .fs-table td {
+    display: block;
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  /* the column name sits above its value, small and upper case */
+  .fs-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    color: var(--fs-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .fs-table td[data-label='']::before,
+  .fs-table td:empty {
+    display: none;
+  }
+
+  .fs-table .fs-check {
+    width: auto;
+    padding: 0;
+  }
+
+  .fs-table .fs-num {
+    text-align: right !important;
+  }
+
+  .fs-table td.fs-flight {
+    text-decoration: none;
+  }
+
+  .fs-table td.fs-flight a {
+    text-decoration: underline;
+  }
+
+  /* buttons in a row's last cell fill the card */
+  .fs-table td[data-label=''] .fs-button,
+  .fs-table td[data-label=''] .fs-button-light {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    text-align: center;
+  }
+
+  .fs-table td[data-label=''] .fs-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    width: 100%;
+  }
+
+  .fs-table td[data-short]::before {
+    content: attr(data-short);
+  }
+
+  .fs-table td .fs-sub {
+    margin: 0;
+  }
+
+  /* placing cells: a row is 12 columns; cells without a column name carry the card's title row */
+  :is(.fs-t-board, .fs-t-generate) td[data-label='']:first-child {
+    grid-area: 1 / 1 / 2 / 2;
+    align-self: center;
+  }
+
+  :is(.fs-t-board, .fs-t-generate) td[data-label='Flight'] {
+    grid-area: 1 / 2 / 2 / 6;
+  }
+
+  :is(.fs-t-board, .fs-t-generate) td[data-label='Date'] {
+    grid-area: 1 / 6 / 2 / 13;
+    color: var(--fs-muted);
+  }
+
+  :is(.fs-t-board, .fs-t-generate) td[data-label='Status'] {
+    grid-area: 1 / 9 / 2 / 13;
+    justify-self: end;
+  }
+
+  :is(.fs-t-board, .fs-t-generate) td[data-label='Route'] {
+    grid-area: 2 / 1 / 3 / 13;
+  }
+
+  :is(.fs-t-board, .fs-t-generate) td[data-label='Departs'] {
+    grid-area: 3 / 1 / 4 / 5;
+  }
+
+  :is(.fs-t-board, .fs-t-generate) td[data-label='Arrives'] {
+    grid-area: 3 / 5 / 4 / 9;
+  }
+
+  :is(.fs-t-board, .fs-t-generate) td[data-label='Aircraft'] {
+    grid-area: 3 / 9 / 4 / 13;
+  }
+
+  .fs-t-generate td[data-label='Check result'] {
+    grid-area: 4 / 1 / 5 / 13;
+  }
+
+  .fs-t-generate td[data-label='Approval'] {
+    grid-area: 5 / 1 / 6 / 13;
+  }
+
+  .fs-t-board td[data-label='Flight']::before,
+  .fs-t-board td[data-label='Date']::before,
+  .fs-t-board td[data-label='Route']::before,
+  .fs-t-board td[data-label='Status']::before,
+  .fs-t-generate td[data-label='Flight']::before,
+  .fs-t-generate td[data-label='Date']::before,
+  .fs-t-generate td[data-label='Route']::before {
+    display: none;
+  }
+
+  .fs-t-airports td[data-label='IATA'] {
+    grid-area: 1 / 1 / 2 / 4;
+    font-size: var(--fs-text-lg);
+    font-weight: 700;
+  }
+
+  .fs-t-airports td[data-label='ICAO'] {
+    grid-area: 1 / 4 / 2 / 9;
+    color: var(--fs-muted);
+  }
+
+  .fs-t-airports td[data-label='Status'] {
+    grid-area: 1 / 9 / 2 / 13;
+    justify-self: end;
+  }
+
+  .fs-t-airports td[data-label='Airport'] {
+    grid-area: 2 / 1 / 3 / 13;
+  }
+
+  .fs-t-airports td[data-label='Time zone'] {
+    grid-area: 3 / 1 / 4 / 7;
+  }
+
+  .fs-t-airports td[data-label='Min turnaround (min)'] {
+    grid-area: 3 / 7 / 4 / 13;
+  }
+
+  .fs-t-airports td:last-child {
+    grid-area: 4 / 1 / 5 / 13;
+  }
+
+  .fs-t-airports td[data-label='IATA']::before,
+  .fs-t-airports td[data-label='ICAO']::before,
+  .fs-t-airports td[data-label='Airport']::before,
+  .fs-t-airports td[data-label='Status']::before {
+    display: none;
+  }
+
+  .fs-t-routes td[data-label='Route'] {
+    grid-area: 1 / 1 / 2 / 9;
+  }
+
+  .fs-t-routes td[data-label='Status'] {
+    grid-area: 1 / 9 / 2 / 13;
+    justify-self: end;
+  }
+
+  .fs-t-routes td[data-label='Distance (km)'] {
+    grid-area: 2 / 1 / 3 / 7;
+  }
+
+  .fs-t-routes td[data-label='Block time (min)'] {
+    grid-area: 2 / 7 / 3 / 13;
+  }
+
+  .fs-t-routes td[data-label='Partner airlines'] {
+    grid-area: 3 / 1 / 4 / 7;
+  }
+
+  .fs-t-routes td[data-label='Used by'] {
+    grid-area: 3 / 7 / 4 / 13;
+  }
+
+  .fs-t-routes td[data-label='Route']::before,
+  .fs-t-routes td[data-label='Status']::before {
+    display: none;
+  }
+
+  .fs-t-patterns td[data-label='Flight'] {
+    grid-area: 1 / 1 / 2 / 4;
+  }
+
+  .fs-t-patterns td[data-label='Route'] {
+    grid-area: 1 / 4 / 2 / 10;
+  }
+
+  .fs-t-patterns td[data-label='Departs (local)'] {
+    grid-area: 1 / 10 / 2 / 13;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .fs-t-patterns td[data-label='Days'] {
+    grid-area: 2 / 1 / 3 / 7;
+  }
+
+  .fs-t-patterns td[data-label='Valid'] {
+    grid-area: 2 / 7 / 3 / 13;
+  }
+
+  .fs-t-patterns td[data-label='Generated'] {
+    grid-area: 3 / 1 / 4 / 13;
+  }
+
+  .fs-t-patterns td[data-label='Flight']::before,
+  .fs-t-patterns td[data-label='Route']::before,
+  .fs-t-patterns td[data-label='Departs (local)']::before {
+    display: none;
+  }
+
+  .fs-t-approvals td[data-label='Flight'],
+  .fs-t-requests td[data-label='Flight'] {
+    grid-row: 1;
+    grid-column: 1 / 4;
+  }
+
+  .fs-t-approvals td[data-label='Service date'],
+  .fs-t-requests td[data-label='Service date'] {
+    grid-row: 1;
+    grid-column: 4 / 9;
+    color: var(--fs-muted);
+  }
+
+  .fs-t-approvals td[data-label='Purpose'],
+  .fs-t-requests td[data-label='Purpose'] {
+    grid-row: 1;
+    grid-column: 9 / 13;
+    justify-self: end;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--fs-head);
+    color: var(--fs-slate);
+    font-size: var(--fs-text-caption);
+    font-weight: 500;
+  }
+
+  .fs-t-approvals td[data-label='Proposed'],
+  .fs-t-requests td[data-label='Proposed'] {
+    grid-row: 2;
+    grid-column: 1 / 7;
+  }
+
+  .fs-t-approvals td[data-label='Aircraft'],
+  .fs-t-requests td[data-label='Aircraft'] {
+    grid-row: 2;
+    grid-column: 7 / 13;
+  }
+
+  .fs-t-approvals td[data-label='Status'] {
+    grid-row: 3;
+  }
+
+  .fs-t-approvals td[data-label='Answer'] {
+    grid-row: 4;
+  }
+
+  .fs-t-approvals td:last-child {
+    grid-row: 5;
+  }
+
+  /* approver console card: who answers and when it was asked share a row, then the navy Answer button */
+  .fs-t-requests td[data-label='Approver'] {
+    grid-area: 3 / 1 / 4 / 7;
+  }
+
+  .fs-t-requests td[data-label='Requested (simulation)'] {
+    grid-area: 3 / 7 / 4 / 13;
+  }
+
+  .fs-t-requests td:last-child {
+    grid-row: 4;
+  }
+
+  .fs-t-requests td:last-child .fs-button-light {
+    border-color: var(--fs-navy);
+    background: var(--fs-navy);
+    color: #fff;
+  }
+
+  .fs-t-requests td[data-label='Flight'] {
+    font-size: var(--fs-text-body);
+    font-weight: 700;
+    text-decoration: underline;
+  }
+
+  .fs-t-approvals td[data-label='Flight']::before,
+  .fs-t-approvals td[data-label='Service date']::before,
+  .fs-t-approvals td[data-label='Status']::before,
+  .fs-t-approvals td[data-label='Answer']::before,
+  .fs-t-requests td[data-label='Flight']::before,
+  .fs-t-requests td[data-label='Service date']::before {
+    display: none;
+  }
+
+  .fs-t-approvals td[data-label='Purpose']::before,
+  .fs-t-requests td[data-label='Purpose']::before {
+    content: '•';
+    display: inline;
+    margin: 0 6px 0 0;
+    color: inherit;
+    font-size: inherit;
+    text-transform: none;
+  }
+
+  .fs-t-conflicts td[data-label='Kind'] {
+    grid-area: 1 / 1 / 2 / 6;
+  }
+
+  .fs-t-conflicts td[data-label='Detected'] {
+    grid-area: 1 / 6 / 2 / 13;
+    color: var(--fs-muted);
+    font-size: var(--fs-text-caption);
+    text-align: right;
+  }
+
+  .fs-t-conflicts td[data-label='Flight'] {
+    grid-area: 2 / 1 / 3 / 13;
+  }
+
+  .fs-t-conflicts td[data-label='What failed'] {
+    grid-area: 3 / 1 / 4 / 13;
+  }
+
+  .fs-t-conflicts td:last-child {
+    grid-area: 4 / 1 / 5 / 13;
+  }
+
+  .fs-t-conflicts td[data-label='Detected']::before {
+    display: inline;
+    content: 'Detected ';
+    font-size: inherit;
+    font-weight: 400;
+    text-transform: none;
+  }
+
+  .fs-t-conflicts td[data-label='Kind']::before,
+  .fs-t-conflicts td[data-label='Flight']::before,
+  .fs-t-conflicts td[data-label='What failed']::before {
+    display: none;
+  }
+
+  .fs-t-congestion td[data-label='Airport'] {
+    grid-area: 1 / 1 / 2 / 3;
+    font-weight: 700;
+  }
+
+  .fs-t-congestion td[data-label='Window'] {
+    grid-area: 1 / 3 / 2 / 9;
+    color: var(--fs-muted);
+  }
+
+  .fs-t-congestion td[data-label='State'] {
+    grid-area: 1 / 9 / 2 / 13;
+    justify-self: end;
+  }
+
+  .fs-t-congestion td[data-label='Limit'] {
+    grid-area: 2 / 1 / 3 / 5;
+  }
+
+  .fs-t-congestion td[data-label='Movements'] {
+    grid-area: 2 / 5 / 3 / 9;
+  }
+
+  .fs-t-congestion td[data-label='Disruption reason'] {
+    grid-area: 2 / 9 / 3 / 13;
+  }
+
+  .fs-t-congestion td:last-child {
+    grid-area: 3 / 1 / 4 / 13;
+  }
+
+  .fs-t-congestion td[data-label='Airport']::before,
+  .fs-t-congestion td[data-label='Window']::before,
+  .fs-t-congestion td[data-label='State']::before {
+    display: none;
+  }
+
+  .fs-t-over td[data-label='Flight'] {
+    grid-area: 1 / 1 / 2 / 7;
+  }
+
+  .fs-t-over td[data-label='Movement'] {
+    grid-area: 1 / 7 / 2 / 13;
+    color: var(--fs-muted);
+    text-align: right;
+  }
+
+  .fs-t-over td[data-label='Proposed'] {
+    grid-area: 2 / 1 / 3 / 13;
+  }
+
+  .fs-t-over td:last-child {
+    grid-area: 3 / 1 / 4 / 13;
+  }
+
+  .fs-t-over td[data-label='Flight']::before,
+  .fs-t-over td[data-label='Movement']::before,
+  .fs-t-over td[data-label='Proposed']::before {
+    display: none;
+  }
+
+  .fs-t-dlog td[data-label='Event'] {
+    grid-area: 1 / 1 / 2 / 8;
+  }
+
+  .fs-t-dlog td[data-label='Occurred (simulation)'] {
+    grid-area: 1 / 8 / 2 / 13;
+    color: var(--fs-muted);
+    font-size: var(--fs-text-caption);
+    text-align: right;
+  }
+
+  .fs-t-dlog td[data-label='Flight'] {
+    grid-area: 2 / 1 / 3 / 13;
+  }
+
+  .fs-t-dlog td[data-label='Disruption reason'] {
+    grid-area: 3 / 1 / 4 / 5;
+  }
+
+  .fs-t-dlog td[data-label='Detail'] {
+    grid-area: 3 / 5 / 4 / 10;
+  }
+
+  .fs-t-dlog td[data-label='By'] {
+    grid-area: 3 / 10 / 4 / 13;
+  }
+
+  .fs-t-dlog td[data-label='Event']::before,
+  .fs-t-dlog td[data-label='Occurred (simulation)']::before,
+  .fs-t-dlog td[data-label='Flight']::before {
+    display: none;
+  }
+
+  /* title row: fee name, a pill for the movement, small Edit on the right */
+  .fs-t-fees td[data-label='Fee'] {
+    grid-area: 1 / 1 / 2 / 5;
+    align-self: center;
+    font-weight: 700;
+  }
+
+  .fs-t-fees td[data-label='Applies on'] {
+    grid-area: 1 / 5 / 2 / 10;
+    align-self: center;
+    justify-self: start;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--fs-head);
+    color: var(--fs-slate);
+    font-size: var(--fs-text-caption);
+  }
+
+  .fs-t-fees td[data-label='Applies on']::before {
+    content: '•';
+    display: inline;
+    margin: 0 6px 0 0;
+    color: inherit;
+    font-size: inherit;
+    text-transform: none;
+  }
+
+  .fs-t-fees td:last-child {
+    grid-area: 1 / 10 / 2 / 13;
+    justify-self: end;
+  }
+
+  :is(.fs-t-fees, .fs-t-policy) td:last-child .fs-button-light {
+    display: inline-block;
+    width: auto;
+    padding: 4px 12px;
+    font-size: var(--fs-text-caption);
+  }
+
+  .fs-t-fees td[data-label='Amount'] {
+    grid-area: 2 / 1 / 3 / 7;
+  }
+
+  .fs-t-fees td[data-label='Unit'] {
+    grid-area: 2 / 7 / 3 / 13;
+  }
+
+  .fs-t-fees td[data-label='Effective'] {
+    grid-area: 3 / 1 / 4 / 13;
+  }
+
+  .fs-t-fees td[data-label='Fee']::before {
+    display: none;
+  }
+
+  .fs-t-policy td[data-label='Airport'] {
+    grid-area: 1 / 1 / 2 / 10;
+    align-self: center;
+    font-size: var(--fs-text-body);
+    font-weight: 700;
+  }
+
+  .fs-t-policy td[data-label='Curfew (local)'] {
+    grid-area: 2 / 1 / 3 / 7;
+  }
+
+  .fs-t-policy td[data-label='Max departures per hour'] {
+    grid-area: 2 / 7 / 3 / 13;
+  }
+
+  .fs-t-policy td[data-label='Offers other times as'] {
+    grid-area: 3 / 1 / 4 / 13;
+  }
+
+  .fs-t-policy td:last-child {
+    grid-area: 1 / 10 / 2 / 13;
+    justify-self: end;
+  }
+
+  .fs-t-policy td[data-label='Airport']::before {
+    display: none;
+  }
+
+  .fs-t-cost td[data-label='Item'] {
+    grid-area: 1 / 1 / 2 / 9;
+  }
+
+  .fs-t-cost td[data-label='Amount'] {
+    grid-area: 1 / 9 / 2 / 13;
+    font-weight: 600;
+  }
+
+  .fs-t-cost td[data-label='Basis'] {
+    grid-area: 2 / 1 / 3 / 13;
+    color: var(--fs-muted);
+    font-size: var(--fs-text-caption);
+  }
+
+  .fs-t-cost td::before {
+    display: none;
+  }
+
+  .fs-t-result td[data-label='Flight'] {
+    grid-area: 1 / 1 / 2 / 8;
+  }
+
+  .fs-t-result td[data-label='Result'] {
+    grid-area: 1 / 8 / 2 / 13;
+    justify-self: end;
+  }
+
+  .fs-t-result td[data-label='Detail'] {
+    grid-area: 2 / 1 / 3 / 13;
+  }
+
+  .fs-t-result td::before {
+    display: none;
+  }
+
+  /* ---- forms and buttons ---- */
+  .fs-field,
+  .fs-form-grid label,
+  .fs-filters label,
+  .fs-field-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .fs-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fs-form-grid > * {
+    grid-column: 1 / -1;
+  }
+
+  .fs-form-grid > .fs-half {
+    grid-column: auto;
+  }
+
+  /* the fee form keeps the desktop order but pairs Amount with Currency and the two dates on a phone */
+  .fs-form-fee > :nth-child(4) {
+    order: 2;
+  }
+
+  .fs-form-fee > :nth-child(n + 6) {
+    order: 3;
+  }
+
+  .fs-form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fs-card .fs-form-actions .fs-button,
+  .fs-card > .fs-button,
+  .fs-card form > .fs-button,
+  .fs-card .fs-button-danger {
+    box-sizing: border-box;
+    width: 100%;
+    text-align: center;
+  }
+
+  .fs-seg {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .fs-seg button {
+    flex: none;
+  }
+
+  .fs-topbar .fs-chip-dot {
+    display: inline-block;
+  }
+
+  .fs-topbar .fs-chip-label.fs-long {
+    display: none;
+  }
+
+  .fs-topbar .fs-chip-label.fs-short {
+    display: inline;
+  }
+
+  .fs-align-end {
+    align-self: stretch;
+  }
+}
+
+/* clock chip: dot and the short text are phone-only */
+.fs-chip-dot,
+.fs-chip-label.fs-short {
+  display: none;
+}
+
+.fs-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fs-accent);
+}
