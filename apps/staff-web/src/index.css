@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import './features/loyalty/loyalty.css';
 
 /* The app is light-only. Tie `dark:` to a `.dark` class (nothing sets it) rather than the OS setting, otherwise the shadcn
    components' `dark:` styles override the admin console's light styles for anyone on a dark OS. */
