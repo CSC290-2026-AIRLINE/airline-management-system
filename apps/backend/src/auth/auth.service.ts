@@ -6,6 +6,7 @@ import { createClerkClient, verifyToken } from '@clerk/backend'
 import { DbService } from '@backend/db/db.service'
 import type { EnvConfig } from '@backend/config/env.validation'
 import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { stableAuditId } from '@backend/modules/admin-console/audit/stable-audit-id'
 import { Prisma, type user } from '../db/generated/prisma/client'
 import { getAppOriginConfig, type AppOriginConfig } from './auth.constants'
 
@@ -53,19 +54,21 @@ export class AuthService {
 
     const payload = await verifyToken(sessionToken, { secretKey: clerkSecretKey })
     const clerkUserId = payload.sub
+    // One Clerk session is one sign-in. Two tabs, a retry or a re-exchange of the same session all write a single row.
+    const clerkSessionId = typeof payload.sid === 'string' && payload.sid ? payload.sid : null
 
     let user: user
     try {
       user = await this.findOrCreateUser(clerkClient, clerkUserId, config.userType)
     } catch (error) {
       if (error instanceof AccountDisabledException) {
-        await this.recordAuthEvent(error.user.id, 'sign_in_blocked', 'Sign-in refused: account is disabled')
+        await this.recordAuthEvent(error.user.id, 'sign_in_blocked', 'Sign-in refused: account is disabled', clerkSessionId)
       }
       throw error
     }
     await this.recordStaffSignIn(user)
     const tokens = await this.issueTokenPair(user)
-    await this.recordAuthEvent(user.id, 'sign_in', 'Signed in')
+    await this.recordAuthEvent(user.id, 'sign_in', 'Signed in', clerkSessionId)
     return { user, tokens }
   }
 
@@ -204,10 +207,17 @@ export class AuthService {
 
   // sign_in / sign_out / sign_in_blocked rows for Feature 15's audit log. `tryWrite` never throws, so a failed audit
   // write is logged and the sign-in or sign-out still goes through. Refreshing a token is not a sign-in and writes nothing.
-  private async recordAuthEvent(userId: string, action: 'sign_in' | 'sign_out' | 'sign_in_blocked', summary: string): Promise<void> {
+  // With a Clerk session id the row's id is derived from it, so the same session exchanged twice is logged once.
+  private async recordAuthEvent(
+    userId: string,
+    action: 'sign_in' | 'sign_out' | 'sign_in_blocked',
+    summary: string,
+    clerkSessionId: string | null = null,
+  ): Promise<void> {
     try {
       const actor = await this.audit.resolveActor(userId)
-      await this.audit.tryWrite({ actor, sourceFeature: '15', action, entityType: 'user', entityId: userId, summary })
+      const id = clerkSessionId ? stableAuditId(action, clerkSessionId) : undefined
+      await this.audit.tryWrite({ id, actor, sourceFeature: '15', action, entityType: 'user', entityId: userId, summary })
     } catch (error) {
       this.logger.warn(`Could not audit ${action} for user ${userId}: ${error instanceof Error ? error.message : String(error)}`)
     }

@@ -2,6 +2,7 @@ import { ConflictException, Logger, UnauthorizedException } from '@nestjs/common
 import { verifyToken } from '@clerk/backend'
 import { Prisma } from '../db/generated/prisma/client'
 import { AuthService } from './auth.service'
+import { stableAuditId } from '@backend/modules/admin-console/audit/stable-audit-id'
 
 // ESM-only dependencies that Jest cannot load here; the service under test never calls into them.
 jest.mock('@nestjs/jwt', () => ({ JwtService: class {} }))
@@ -150,6 +151,20 @@ describe('AuthService audit rows (sign_in / sign_out / sign_in_blocked)', () => 
         actor: { type: 'staff', id: 'u1', role: 'admin' },
       }),
     )
+  })
+
+  it('derives the sign_in row id from the Clerk session, so the same session is logged once', async () => {
+    ;(verifyToken as jest.Mock).mockResolvedValue({ sub: 'clerk_1', sid: 'sess_abc' })
+    await service.exchangeClerkSession('session', STAFF_ORIGIN)
+    await service.exchangeClerkSession('session', STAFF_ORIGIN)
+    const ids = audit.tryWrite.mock.calls.map(([input]: [{ id?: string }]) => input.id)
+    expect(ids[0]).toBe(stableAuditId('sign_in', 'sess_abc'))
+    expect(ids[1]).toBe(ids[0])
+  })
+
+  it('writes an ordinary row when the token carries no session id', async () => {
+    await service.exchangeClerkSession('session', STAFF_ORIGIN)
+    expect(audit.tryWrite.mock.calls[0][0].id).toBeUndefined()
   })
 
   it('writes sign_in_blocked for a disabled account and still refuses it with the same 401', async () => {
