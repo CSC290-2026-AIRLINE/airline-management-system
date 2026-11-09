@@ -1,9 +1,20 @@
-import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { F15Audit, F15Clock, mapAction } from './f15-adapters'
 
 // The audit service pulls the database in, and the generated Prisma client is ESM only.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
+
+describe('dependency metadata', () => {
+  // A type-only import is erased, Nest then sees `Function` and cannot inject: the live backend failed to boot on it.
+  it('F15Audit asks Nest for the real AuditService class', () => {
+    expect(Reflect.getMetadata('design:paramtypes', F15Audit)).toEqual([AuditService])
+  })
+
+  it('F15Clock asks Nest for the real SimulationClock class', () => {
+    expect(Reflect.getMetadata('design:paramtypes', F15Clock)).toEqual([SimulationClock])
+  })
+})
 
 describe('mapAction', () => {
   it('maps F6 actions onto the F15 union', () => {

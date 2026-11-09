@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
-import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+// A value import on purpose: `import type` is erased and Nest would see `Function` instead of the class to inject.
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import type { AuditAction } from '@backend/modules/admin-console/dto/audit-query.dto'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import type { AuditProvider, ClockProvider } from './providers'
