@@ -9,6 +9,39 @@
   font-size: 0.8rem;
   margin-bottom: 1rem;
 }
+.seat-picker__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.seat-picker__swatch {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 1px solid #9aacc0;
+  border-radius: 0.2rem;
+  background: white;
+}
+.seat-picker__swatch--extra-legroom {
+  background: #fff2d6;
+  border-color: #d4982e;
+}
+.seat-picker__swatch--held {
+  background: #ffdd95;
+  border-color: #d4982e;
+}
+.seat-picker__swatch--exit {
+  border-color: #34789b;
+}
+.seat-picker__swatch--selected {
+  background: #102544;
+  border-color: #102544;
+}
+.seat-picker__swatch--taken {
+  background: #e5e7eb;
+}
+.seat-picker__swatch--blocked {
+  background: #465568;
+}
 .seat-picker__cabin {
   font-weight: 600;
   text-transform: capitalize;
@@ -27,6 +60,12 @@
   text-align: right;
   padding-right: 0.5rem;
   font-size: 0.8rem;
+}
+.seat-picker__exit-label {
+  color: #245e7c;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .seat-picker__seat {
   position: relative;
@@ -74,7 +113,7 @@
   cursor: not-allowed;
 }
 .seat-picker__seat--held:disabled {
-  background: #fff2d6;
+  background: #ffdd95;
   color: #805000;
 }
 .seat-picker__seat--blocked:disabled {

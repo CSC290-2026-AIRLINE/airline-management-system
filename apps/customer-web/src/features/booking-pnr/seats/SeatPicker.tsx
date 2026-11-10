@@ -4,6 +4,16 @@ import './seat-picker.css'
 
 type SeatPickerWithCabinProps = SeatPickerProps & { selectedCabin?: Cabin }
 
+const legend = [
+  { label: 'Available', style: 'available' },
+  { label: 'Extra legroom', style: 'extra-legroom' },
+  { label: 'Exit row', style: 'exit' },
+  { label: 'Selected', style: 'selected' },
+  { label: 'Held', style: 'held' },
+  { label: 'Taken', style: 'taken' },
+  { label: 'Blocked', style: 'blocked' },
+]
+
 export function SeatPicker({
   seats,
   selectedSeatCode,
@@ -20,13 +30,12 @@ export function SeatPicker({
     <section className="seat-picker" aria-label={passengerLabel ? `Seats for ${passengerLabel}` : 'Choose a seat'}>
       {selectedCabin && <p className="seat-picker__cabin">Your cabin: {selectedCabin.replace('_', ' ')}</p>}
       <div className="seat-picker__legend" aria-label="Seat legend">
-        <span>Available</span>
-        <span>Extra legroom</span>
-        <span>Exit row</span>
-        <span>Selected</span>
-        <span>Held</span>
-        <span>Taken</span>
-        <span>Blocked</span>
+        {legend.map((item) => (
+          <span className="seat-picker__legend-item" key={item.style}>
+            <span aria-hidden="true" className={`seat-picker__swatch seat-picker__swatch--${item.style}`} />
+            {item.label}
+          </span>
+        ))}
       </div>
       <div className="seat-picker__rows">
         {rows.map((row) => (
@@ -58,6 +67,7 @@ export function SeatPicker({
                   </button>
                 )
               })}
+            {seats.some((seat) => seat.row === row && seat.type === 'exit') && <span className="seat-picker__exit-label">Exit row</span>}
           </div>
         ))}
       </div>
