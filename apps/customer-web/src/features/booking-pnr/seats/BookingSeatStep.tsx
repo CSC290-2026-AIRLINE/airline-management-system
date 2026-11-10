@@ -132,6 +132,9 @@ export function BookingSeatStep({
                   </button>
                 ))}
               <p>Infants travel on an adult’s lap. Exit-row seats have eligibility rules.</p>
+              <button type="button" disabled={busy} onClick={() => onChange(choices.filter((choice) => choice.flightId !== flightId))}>
+                Choose seats later for this flight
+              </button>
             </aside>
           </div>
         </>

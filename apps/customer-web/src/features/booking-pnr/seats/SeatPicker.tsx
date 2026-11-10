@@ -49,7 +49,12 @@ export function SeatPicker({
                     aria-pressed={selected}
                     onClick={() => onSelect(seat.seatCode)}
                   >
-                    {seat.state === 'taken' || seat.state === 'blocked' ? '×' : seat.column}
+                    <span>{seat.state === 'taken' || seat.state === 'blocked' ? '×' : seat.column}</span>
+                    {seat.fee > 0 && (
+                      <span className="seat-picker__fee" aria-hidden="true">
+                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(seat.fee)}
+                      </span>
+                    )}
                   </button>
                 )
               })}

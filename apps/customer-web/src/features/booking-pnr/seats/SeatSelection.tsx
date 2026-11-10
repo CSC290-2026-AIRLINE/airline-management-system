@@ -49,9 +49,7 @@ export function SeatSelection({ passengers, segments, initialSeats = [], onConti
   }
 
   function skipSegment() {
-    const remaining = choices.filter((choice) => choice.flightId !== flightId)
-    setChoices(remaining)
-    onContinue(remaining)
+    setChoices((previous) => previous.filter((choice) => choice.flightId !== flightId))
   }
 
   return (
@@ -97,7 +95,7 @@ export function SeatSelection({ passengers, segments, initialSeats = [], onConti
             Continue to review
           </button>
           <button type="button" onClick={skipSegment}>
-            Skip, choose seats later
+            Choose seats later for this flight
           </button>
           <button type="button" onClick={onBack}>
             Back

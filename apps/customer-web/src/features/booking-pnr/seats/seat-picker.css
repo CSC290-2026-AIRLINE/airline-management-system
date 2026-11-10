@@ -29,6 +29,7 @@
   font-size: 0.8rem;
 }
 .seat-picker__seat {
+  position: relative;
   width: 2.5rem;
   height: 2.5rem;
   border: 1px solid #9aacc0;
@@ -36,6 +37,18 @@
   background: white;
   color: #14213d;
   cursor: pointer;
+}
+.seat-picker__fee {
+  position: absolute;
+  bottom: -0.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 0.2rem;
+  border-radius: 0.2rem;
+  background: #14213d;
+  color: white;
+  font-size: 0.55rem;
+  white-space: nowrap;
 }
 .seat-picker__seat--aisle {
   margin-left: 1rem;
