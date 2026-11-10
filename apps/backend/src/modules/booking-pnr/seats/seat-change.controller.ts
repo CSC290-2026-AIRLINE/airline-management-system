@@ -18,7 +18,8 @@ export class SeatChangeController {
   changeSeat(
     @CurrentUser() user: AuthenticatedUser,
     @Param('ref') reference: string,
-    @Param('id', ParseUUIDPipe) couponId: string,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: () => new BookingError('INVALID_BOOKING_STATE', 'Invalid booking coupon', 422) }))
+    couponId: string,
     @Body(
       new ValidationPipe({
         transform: true,

@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { BookingError } from '../common/booking-error'
 import { BOOKING_READ_PORT, type BookingReadPort, type BookingViewer } from '../contracts'
@@ -17,17 +17,18 @@ export class SeatChangeService {
       where: { user_id: userId, deleted_at: null, user: { type: 'customer', deleted_at: null, disabled_at: null } },
       select: { id: true },
     })
-    if (!customer) throw new NotFoundException('Booking not found')
+    if (!customer) throw new BookingError('INVALID_BOOKING_STATE', 'Booking not found', 404)
     return this.changeSeat(reference, couponId, seatCode, { customerId: customer.id })
   }
 
   // A route must derive the viewer from authenticated server-side identity; never accept it from a request body.
   async changeSeat(reference: string, couponId: string, seatCode: string, viewer: BookingViewer) {
     if ((!viewer.customerId && viewer.staff !== true) || (viewer.customerId && viewer.staff))
-      throw new NotFoundException('Booking not found')
+      throw new BookingError('INVALID_BOOKING_STATE', 'Booking not found', 404)
     const booking = await this.bookings.getBookingDetail(reference, viewer)
     const coupon = booking?.coupons.find((item) => item.couponId === couponId && item.status === 'confirmed')
-    if (!booking || booking.status !== 'confirmed' || !coupon) throw new NotFoundException('Booking or coupon not found')
+    if (!booking || booking.status !== 'confirmed' || !coupon)
+      throw new BookingError('INVALID_BOOKING_STATE', 'Booking or coupon not found', 404)
 
     const checkIn = await this.db.check_in.findFirst({
       where: {

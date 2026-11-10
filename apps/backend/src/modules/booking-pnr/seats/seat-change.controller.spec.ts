@@ -51,4 +51,14 @@ describe('SeatChangeController', () => {
     await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer token').send({ seatCode: '12A', staff: true }).expect(422)
     expect(changeSeatForCustomer).not.toHaveBeenCalled()
   })
+
+  it('returns the Feature 3 error format for an invalid coupon id', async () => {
+    const response = await request(app.getHttpServer())
+      .put('/api/bookings/ABC123/coupons/not-a-uuid/seat')
+      .set('Authorization', 'Bearer token')
+      .send({ seatCode: '12A' })
+      .expect(422)
+    expect(response.body).toMatchObject({ error: { code: 'INVALID_BOOKING_STATE' } })
+    expect(changeSeatForCustomer).not.toHaveBeenCalled()
+  })
 })
