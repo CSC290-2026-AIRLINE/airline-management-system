@@ -120,7 +120,7 @@ export class CheckinSeatProvider implements SeatProvider {
     })
   }
 
-  async confirm(lockId: string): Promise<{ seatCode: string; type: SeatType }> {
+  async confirm(lockId: string, options: { rejectCheckedIn?: boolean } = {}): Promise<{ seatCode: string; type: SeatType }> {
     const now = this.clock.now()
     return this.db.$transaction(async (tx) => {
       const reference = await tx.seat_assignment.findUnique({
@@ -136,8 +136,22 @@ export class CheckinSeatProvider implements SeatProvider {
       const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM seat_assignment WHERE id = ${lockId}::uuid FOR UPDATE`
       if (!rows.length) throw new NotFoundException('Seat hold not found')
       const held = await tx.seat_assignment.findUniqueOrThrow({ where: { id: lockId } })
-      const coupon = await tx.booking_coupon.findUnique({ where: { id: held.booking_coupon_id }, select: { status: true } })
+      const coupon = await tx.booking_coupon.findUnique({
+        where: { id: held.booking_coupon_id },
+        select: { status: true, booking_passenger_id: true, flight_id: true },
+      })
       if (coupon?.status !== 'confirmed') throw new BookingError('BOOKING_CLOSED', 'Flight coupon is no longer confirmed')
+      if (options.rejectCheckedIn) {
+        const checkIn = await tx.check_in.findFirst({
+          where: {
+            booking_passenger_id: coupon.booking_passenger_id,
+            flight_id: coupon.flight_id,
+            status: { in: ['checked_in', 'boarded', 'no_show'] },
+          },
+          select: { id: true },
+        })
+        if (checkIn) throw new BookingError('BOOKING_CLOSED', 'Seat changes after check-in are handled by check-in')
+      }
       const map = await this.layouts.getSeatMap(held.flight_id)
       const seat = map.rows.flatMap((row) => row.seats).find((item) => item.seatCode === held.seat_code)
       if (!seat || seat.blocked) throw new BookingError('SEAT_NOT_ALLOWED', 'Seat is no longer available on this aircraft')

@@ -38,7 +38,7 @@ describe('SeatChangeService', () => {
     })
     expect(bookings.getBookingDetail).toHaveBeenCalledWith('REF', viewer)
     expect(seats.hold).toHaveBeenCalledWith('flight', '12A', 'passenger', 300_000, { rejectCheckedIn: true })
-    expect(seats.confirm).toHaveBeenCalledWith('lock')
+    expect(seats.confirm).toHaveBeenCalledWith('lock', { rejectCheckedIn: true })
   })
 
   it('holds a paid seat without assigning it before payment', async () => {

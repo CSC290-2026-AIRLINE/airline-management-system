@@ -52,7 +52,7 @@ describe('CheckinSeatProvider', () => {
     create.mockResolvedValue({ id: 'lock' })
     query.mockResolvedValue([{ id: 'lock', status: 'confirmed' }])
     findUnique.mockResolvedValue({ booking_coupon: { booking_id: 'booking' } })
-    findCouponById.mockResolvedValue({ status: 'confirmed' })
+    findCouponById.mockResolvedValue({ status: 'confirmed', booking_passenger_id: 'passenger', flight_id: 'flight' })
     findUniqueOrThrow.mockResolvedValue({
       id: 'lock',
       flight_id: 'flight',
@@ -61,7 +61,6 @@ describe('CheckinSeatProvider', () => {
       hold_expires_at: new Date('2026-11-10T12:05:00Z'),
       fee_amount: 0,
       payment_id: null,
-      booking_coupon_id: 'coupon',
       booking_coupon_id: 'coupon',
     })
     updateMany.mockResolvedValue({ count: 1 })
@@ -120,6 +119,16 @@ describe('CheckinSeatProvider', () => {
       code: 'BOOKING_CLOSED',
     })
     expect(create).not.toHaveBeenCalled()
+  })
+
+  it('does not assign a post-booking seat if check-in happened after its hold', async () => {
+    findCheckIn.mockResolvedValue({ id: 'check-in' })
+    await expect(provider.confirm('lock', { rejectCheckedIn: true })).rejects.toMatchObject({ code: 'BOOKING_CLOSED' })
+    expect(findCheckIn).toHaveBeenCalledWith({
+      where: { booking_passenger_id: 'passenger', flight_id: 'flight', status: { in: ['checked_in', 'boarded', 'no_show'] } },
+      select: { id: true },
+    })
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('does not confirm a seat after its booking is cancelled', async () => {

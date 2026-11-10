@@ -39,7 +39,7 @@ export class SeatChangeService {
     if (lock.fee > 0) return { status: 'payment_required' as const, lock }
 
     try {
-      const seat = await this.seats.confirm(lock.id)
+      const seat = await this.seats.confirm(lock.id, { rejectCheckedIn: true })
       return { status: 'assigned' as const, seat }
     } catch (error) {
       await this.seats.release(lock.id)
