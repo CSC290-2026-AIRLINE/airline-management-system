@@ -7,8 +7,9 @@ describe('AssistanceService', () => {
   const segment = { findMany: jest.fn() }
   const flight = { findMany: jest.fn() }
   const seat = { findMany: jest.fn() }
-  const requests = { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() }
+  const requests = { create: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() }
   const tx = {
+    $queryRaw: jest.fn(),
     booking_passenger: passenger,
     booking_segment: segment,
     flight,
@@ -34,6 +35,7 @@ describe('AssistanceService', () => {
     ])
     seat.findMany.mockResolvedValue([])
     requests.create.mockResolvedValue({})
+    requests.findFirst.mockResolvedValue(null)
     requests.findUnique.mockResolvedValue({ id: 'request', status: 'requested' })
     requests.updateMany.mockResolvedValue({ count: 1 })
   })
@@ -75,6 +77,19 @@ describe('AssistanceService', () => {
   it('refuses requests for a passenger who is not part of the booking', async () => {
     passenger.findFirst.mockResolvedValue(null)
     await expect(service.createForHold(tx, [input])).rejects.toThrow('Passenger does not belong')
+    expect(requests.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects a live request that overlaps a booking-wide or segment-specific request', async () => {
+    requests.findFirst.mockResolvedValue({ id: 'existing' })
+    await expect(service.createForHold(tx, [input])).rejects.toThrow('already exists')
+    expect(requests.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        OR: [{ booking_segment_id: null }, { booking_segment_id: { in: ['segment'] } }],
+        status: { in: ['requested', 'accepted'] },
+      }),
+      select: { id: true },
+    })
     expect(requests.create).not.toHaveBeenCalled()
   })
 

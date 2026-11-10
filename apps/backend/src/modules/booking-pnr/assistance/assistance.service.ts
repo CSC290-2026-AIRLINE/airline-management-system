@@ -63,6 +63,8 @@ export class AssistanceService implements ServiceRequestPort {
       if (['UMNR', 'MEDA'].includes(request.serviceCode) && !request.note?.trim()) {
         throw new BadRequestException('A note is required for this assistance request')
       }
+      // Serialize overlapping booking-wide and segment-specific requests, including NULL segment IDs.
+      await tx.$queryRaw`SELECT id FROM booking WHERE id = ${request.bookingId}::uuid FOR UPDATE`
       const passenger = await tx.booking_passenger.findFirst({
         where: { id: request.bookingPassengerId, booking_id: request.bookingId },
         select: { passenger: { select: { date_of_birth: true } } },
@@ -73,6 +75,16 @@ export class AssistanceService implements ServiceRequestPort {
         select: { id: true, flight_id: true },
       })
       if (!segments.length) throw new BadRequestException('No matching booking segment')
+      const existing = await tx.booking_service_request.findFirst({
+        where: {
+          booking_passenger_id: request.bookingPassengerId,
+          service_code: request.serviceCode,
+          status: { in: ['requested', 'accepted'] },
+          OR: [{ booking_segment_id: null }, { booking_segment_id: { in: segments.map((segment) => segment.id) } }],
+        },
+        select: { id: true },
+      })
+      if (existing) throw new BadRequestException('An active assistance request already exists')
       const flights = await tx.flight.findMany({
         where: { id: { in: segments.map((segment) => segment.flight_id) } },
         select: { id: true, dep_at: true, service_date: true },
