@@ -11,11 +11,12 @@ import type { JobRunResultDto } from './dto/responses'
 import { LoyaltyAwardService } from './loyalty-award.service'
 import { LoyaltyError, isCheckViolation } from './loyalty-error'
 import { LoyaltyDataService } from './loyalty-data.service'
+import { LoyaltyUpgradeService } from './loyalty-upgrade.service'
 
-/** The jobs `POST /staff/loyalty/jobs/:name/run` accepts. upgrade waits on feature 3b's `upgradeCoupon`. */
+/** The jobs `POST /staff/loyalty/jobs/:name/run` accepts. */
 export const JOB_NAMES = ['earn', 'tier', 'expire', 'return-to-cash', 'upgrade'] as const
 export type JobName = (typeof JOB_NAMES)[number]
-const AVAILABLE_JOBS: readonly JobName[] = ['earn', 'tier', 'expire', 'return-to-cash']
+const AVAILABLE_JOBS: readonly JobName[] = ['earn', 'tier', 'expire', 'return-to-cash', 'upgrade']
 
 export const isJobName = (name: string): name is JobName => (JOB_NAMES as readonly string[]).includes(name)
 
@@ -60,6 +61,7 @@ const passengerName = (m: { customer: { passenger: { first_name: string; last_na
  *   - expire: one `expire` row per credit past its `expires_at` (UNIQUE (expired_transaction_id, member_id)), then one
  *             `miles_expiring` reminder per member and expiry date. Messages go through feature 13's `inbound_event`,
  *             whose UNIQUE (source, source_event_id) makes a repeat a no-op, so Feature 11 records nothing.
+ *   - upgrade: complimentary one-cabin upgrades for flights in the next 24 hours (`LoyaltyUpgradeService`).
  *
  *   - return-to-cash: inside `award_cutoff_hours` of departure, lowers `award_limit` to the award seats in use
  *             (`LoyaltyAwardService.returnToCash`), so unredeemed award seats sell for cash.
@@ -76,6 +78,7 @@ export class LoyaltyJobsService {
     private readonly data: LoyaltyDataService,
     private readonly clock: SimulationClock,
     private readonly awards: LoyaltyAwardService,
+    private readonly upgrades: LoyaltyUpgradeService,
   ) {}
 
   async run(name: JobName): Promise<JobRunResultDto> {
@@ -83,7 +86,7 @@ export class LoyaltyJobsService {
       throw new LoyaltyError(
         HttpStatus.NOT_IMPLEMENTED,
         'JOB_NOT_AVAILABLE',
-        `The ${name} job needs feature 3b's upgradeCoupon method, which is not built yet.`,
+        `The ${name} job needs a feature 3b method that is not built yet.`,
       )
     }
     if (this.running.has(name)) {
@@ -99,7 +102,9 @@ export class LoyaltyJobsService {
             ? await this.tier(now)
             : name === 'return-to-cash'
               ? await this.awards.returnToCash(now)
-              : await this.expire(now)
+              : name === 'upgrade'
+                ? await this.upgrades.run(now)
+                : await this.expire(now)
       this.logger.log(`${name} job at ${now.toISOString()}: ${JSON.stringify(counts)}`)
       return { job: name, ranAt: now.toISOString(), counts }
     } finally {

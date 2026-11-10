@@ -90,6 +90,83 @@ export interface EarnRuleDto {
 
 export type LoyaltySettingsDto = LoyaltySettings
 
+/** The member found at the lounge desk, with what their tier allows and the ticket that qualifies them. */
+export interface LoungeMemberDto {
+  name: string
+  memberNumber: string
+  tierName: string | null
+  guestsAllowed: number | null // null = no lounge access
+  ticket: string | null // e.g. "FY 308 · BKK → NRT · departs 09:10 · checked in"; null = none within 4 hours
+}
+
+/** `POST /staff/loyalty/lounge-visits`. A refusal is an answer, not an error: the desk shows the reason. */
+export type LoungeResultDto =
+  | { outcome: 'admitted'; member: LoungeMemberDto; flightNumber: string; guests: number }
+  | { outcome: 'refused'; reason: 'too_many_guests' | 'no_ticket' | 'no_tier' | 'already_visited'; member: LoungeMemberDto }
+
+/** `GET /staff/loyalty/lounge-visits`: visits on the current simulated day, newest first. */
+export interface LoungeVisitDto {
+  id: string
+  time: string // HH:mm, UTC
+  memberName: string
+  tierName: string
+  flightNumber: string
+  guests: number
+}
+
+/** One cabin of a flight with award seats released (`GET /loyalty/award-flights`). */
+export interface AwardCabinDto {
+  cabin: string
+  milesCost: number // per seat
+  seatsLeft: number // award_limit less award seats held or sold
+  totalMiles: number // milesCost × seats asked for
+  enoughSeats: boolean
+  balanceCovers: boolean | null // null when the caller is not a member
+}
+
+/** `GET /loyalty/award-flights`: one flight on the route and date, with its award cabins (empty when none released). */
+export interface AwardSearchFlightDto {
+  flightId: string
+  flightNumber: string
+  origin: string
+  originCity: string
+  destination: string
+  destinationCity: string
+  originTimeZone: string // IANA zone of each airport, so times show as local
+  destinationTimeZone: string
+  departsAt: string
+  arrivesAt: string
+  durationMin: number
+  cabins: AwardCabinDto[]
+  closed: boolean // inside award_cutoff_hours of departure: miles are no longer accepted
+}
+
+export interface AwardSearchDto {
+  asOf: string // the simulation clock's now
+  seats: number
+  milesBalance: number | null // null = not a member
+  awardCutoffHours: number
+  flights: AwardSearchFlightDto[]
+}
+
+/** `GET /loyalty/award-routes`: routes with flights ahead, for the search form. */
+export interface AwardRouteDto {
+  origin: string
+  originCity: string
+  destination: string
+  destinationCity: string
+}
+
+/** What `issueInsurancePolicy` and `cancelInsurancePolicy` hand back to feature 3b (and 5b for a refund). */
+export interface InsurancePolicyDto {
+  id: string
+  policyNumber: string
+  bookingId: string
+  price: number
+  currency: string
+  status: 'active' | 'cancelled'
+}
+
 /** `POST /staff/loyalty/jobs/:name/run`: what one job run did at the simulated time `ranAt`. */
 export interface JobRunResultDto {
   job: string

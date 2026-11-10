@@ -87,6 +87,56 @@ export interface BenefitUse {
   detail: string // e.g. "Member only", "Economy → Business", "Policy FLI-204815 · Included"
 }
 
+// GET /loyalty/award-routes: routes with flights ahead, for the search form.
+export interface AwardRoute {
+  origin: string
+  originCity: string
+  destination: string
+  destinationCity: string
+}
+
+// One released cabin of a flight. Seats left come from Feature 3b's seat inventory.
+export interface AwardCabin {
+  cabin: string
+  milesCost: number // per seat
+  seatsLeft: number
+  totalMiles: number // milesCost × seats searched for
+  enoughSeats: boolean
+  balanceCovers: boolean | null // null when not a member
+}
+
+export interface AwardFlight {
+  flightId: string
+  flightNumber: string
+  origin: string
+  originCity: string
+  destination: string
+  destinationCity: string
+  originTimeZone: string
+  destinationTimeZone: string
+  departsAt: string
+  arrivesAt: string
+  durationMin: number
+  cabins: AwardCabin[] // empty: nothing released, or closed
+  closed: boolean // inside the award cutoff: miles no longer accepted
+}
+
+// GET /loyalty/award-flights
+export interface AwardSearchResult {
+  asOf: string
+  seats: number
+  milesBalance: number | null // null = not a member
+  awardCutoffHours: number
+  flights: AwardFlight[]
+}
+
+export interface AwardSearchQuery {
+  origin: string
+  destination: string
+  date: string // yyyy-mm-dd, the flight's service date
+  seats: number
+}
+
 export interface LoyaltyApi {
   getTiers(): Promise<TierInfo[]>
   getMember(): Promise<MemberSummary | null> // null = not a member yet
@@ -94,4 +144,6 @@ export interface LoyaltyApi {
   getStatement(): Promise<StatementRow[]> // newest first
   getRedemptions(): Promise<RedemptionRow[]>
   getBenefitUses(): Promise<BenefitUse[]>
+  getAwardRoutes(): Promise<AwardRoute[]>
+  searchAwardFlights(query: AwardSearchQuery): Promise<AwardSearchResult>
 }

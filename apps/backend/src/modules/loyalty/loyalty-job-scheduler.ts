@@ -12,7 +12,8 @@ export const SCHEDULER_TICK_MS = 60_000
  * Runs the loyalty jobs on the simulation clock, with no extra package: a real-time timer ticks every minute and
  *
  *   - runs `earn` on every tick (it sweeps arrived flights, so a missed tick costs nothing),
- *   - runs `return-to-cash` once per simulated hour, the first tick after the simulated UTC hour changes, and
+ *   - runs `return-to-cash` then `upgrade` once per simulated hour, the first tick after the simulated UTC hour
+ *     changes, and
  *   - runs `tier` then `expire` once per simulated day, the first tick after the simulated UTC date changes.
  *
  * Shifting the simulation clock forward an hour or a day therefore triggers those jobs on the next tick. Off under
@@ -49,12 +50,14 @@ export class LoyaltyJobScheduler implements OnApplicationBootstrap, OnModuleDest
     this.ticking = true
     try {
       await this.runQuietly('earn')
-      const hour = this.clock.now().toISOString().slice(0, 13)
+      const now = this.clock.now()
+      const hour = now.toISOString().slice(0, 13)
       if (this.lastHourlyRun !== hour) {
         await this.runQuietly('return-to-cash')
+        await this.runQuietly('upgrade')
         this.lastHourlyRun = hour
       }
-      const today = utcDateKey(this.clock.now())
+      const today = utcDateKey(now)
       if (this.lastDailyRun !== today) {
         await this.runQuietly('tier')
         await this.runQuietly('expire')

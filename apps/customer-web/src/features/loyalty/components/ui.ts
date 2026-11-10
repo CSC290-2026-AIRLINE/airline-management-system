@@ -6,6 +6,8 @@ import type { BookingStatus, TierCode, TransactionType } from '../api/types'
 // Flight search and My Trips belong to Feature 3; point these at their routes once those pages exist.
 export const FLIGHT_SEARCH_PATH = '/'
 export const MY_TRIPS_PATH = '/'
+// Feature 11's Flight search with miles: award seats per flight, before Feature 3b's booking path.
+export const AWARD_SEARCH_PATH = '/loyalty/flights'
 
 export const cx = (...classes: (string | false | null | undefined)[]) => classes.filter(Boolean).join(' ')
 

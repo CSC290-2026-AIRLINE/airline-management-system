@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { createHttpStaffLoyaltyApi } from './http-staff-loyalty-api'
-import { createMockStaffLoyaltyApi } from './mock-staff-loyalty-api'
 import type { StaffLoyaltyApi } from './types'
 
 type FetchWithAuth = ReturnType<typeof useAppAuth>['fetchWithAuth']
@@ -10,13 +9,10 @@ type FetchWithAuth = ReturnType<typeof useAppAuth>['fetchWithAuth']
 // client to useLoad and useCallback, so its identity must not change between renders.
 let currentFetch: FetchWithAuth | null = null
 
-// The Lounge Desk still reads demo data: its backend routes come in a later Feature 11 change.
-const demo = createMockStaffLoyaltyApi()
-
 const api = createHttpStaffLoyaltyApi((path, init) => {
   if (!currentFetch) return Promise.reject(new Error('Not signed in.'))
   return currentFetch(path, init)
-}, demo)
+})
 
 export function useStaffLoyaltyApi(): StaffLoyaltyApi {
   const { fetchWithAuth } = useAppAuth()

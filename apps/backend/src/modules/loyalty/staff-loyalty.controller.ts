@@ -18,6 +18,7 @@ import {
   AdjustmentDto,
   AwardFlightsQueryDto,
   EarnRuleDto,
+  LoungeVisitDto,
   MemberSearchDto,
   ReleaseAwardDto,
   SettingDto,
@@ -29,6 +30,8 @@ import type {
   AwardFlightDto,
   EarnRuleDto as EarnRuleRow,
   JobRunResultDto,
+  LoungeResultDto,
+  LoungeVisitDto as LoungeVisitRow,
   LoyaltySettingsDto,
   MemberDetailDto,
   MemberListItemDto,
@@ -38,6 +41,7 @@ import { LoyaltyStaff, LoyaltyStaffGuard, type LoyaltyStaffPrincipal } from './g
 import { LoyaltyAwardService } from './loyalty-award.service'
 import { LoyaltyError, invalid, memberNotFound, toLoyaltyValidationError } from './loyalty-error'
 import { LoyaltyJobsService, isJobName } from './loyalty-jobs.service'
+import { LoyaltyLoungeService } from './loyalty-lounge.service'
 import { LoyaltyRulesService } from './loyalty-rules.service'
 import { LoyaltyStaffService } from './loyalty-staff.service'
 
@@ -51,7 +55,7 @@ const fareClassId = new ParseUUIDPipe({
   exceptionFactory: () => new LoyaltyError(HttpStatus.NOT_FOUND, 'FARE_CLASS_NOT_FOUND', 'No fare class with that id.'),
 })
 
-/** `/api/staff/loyalty/*`: Member Lookup, Loyalty Rules, Award Release and job runs. Loyalty staff only (see `LoyaltyStaffGuard`). */
+/** `/api/staff/loyalty/*`: Member Lookup, Loyalty Rules, Award Release, the Lounge Desk and job runs. Loyalty staff only (see `LoyaltyStaffGuard`). */
 @Controller('staff/loyalty')
 @UseGuards(LoyaltyStaffGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: toLoyaltyValidationError }))
@@ -61,6 +65,7 @@ export class StaffLoyaltyController {
     private readonly rules: LoyaltyRulesService,
     private readonly jobs: LoyaltyJobsService,
     private readonly awards: LoyaltyAwardService,
+    private readonly lounge: LoyaltyLoungeService,
   ) {}
 
   @Get('members')
@@ -165,8 +170,24 @@ export class StaffLoyaltyController {
   }
 
   /**
-   * Runs one background job now, at the current simulated time, for demos and tests: `earn`, `tier`, `expire` or
-   * `return-to-cash`. `upgrade` answers 501 until feature 3b ships `upgradeCoupon`.
+   * Admits a member to the lounge by member number or booking reference. A refusal (tier, ticket, guests, one visit
+   * per flight) answers 200 with the reason, so the desk can show it; 404 only when nothing matches.
+   */
+  @Post('lounge-visits')
+  @HttpCode(200)
+  admitToLounge(@LoyaltyStaff() who: LoyaltyStaffPrincipal, @Body() dto: LoungeVisitDto): Promise<LoungeResultDto> {
+    return this.lounge.admit(who, dto.query, dto.guests)
+  }
+
+  /** Lounge visits on the current simulated day, newest first. */
+  @Get('lounge-visits')
+  loungeVisits(): Promise<LoungeVisitRow[]> {
+    return this.lounge.visitsToday()
+  }
+
+  /**
+   * Runs one background job now, at the current simulated time, for demos and tests: `earn`, `tier`, `expire`,
+   * `return-to-cash` or `upgrade`.
    */
   @Post('jobs/:name/run')
   @HttpCode(200)

@@ -1,6 +1,8 @@
 import type {
   AwardFlight,
   EarnRuleRow,
+  LoungeResult,
+  LoungeVisit,
   LoyaltySettings,
   MemberDetail,
   MemberListItem,
@@ -78,13 +80,9 @@ const send = (method: 'POST' | 'PUT', body: unknown): RequestInit => ({
 const base = '/api/staff/loyalty'
 
 /**
- * Member Lookup, Loyalty Rules and Award Release over the Feature 11 staff routes. The Lounge Desk has no backend routes
- * yet, so its two methods come from `fallback` (the demo data) until they do.
+ * Member Lookup, Loyalty Rules, Award Release and the Lounge Desk over the Feature 11 staff routes.
  */
-export function createHttpStaffLoyaltyApi(
-  fetchWithAuth: FetchWithAuth,
-  fallback: Pick<StaffLoyaltyApi, 'checkInLounge' | 'getLoungeVisits'>,
-): StaffLoyaltyApi {
+export function createHttpStaffLoyaltyApi(fetchWithAuth: FetchWithAuth): StaffLoyaltyApi {
   const get = async <T>(path: string) => json<T>(await fetchWithAuth(`${base}${path}`))
 
   return {
@@ -145,7 +143,11 @@ export function createHttpStaffLoyaltyApi(
       }
       return json<AwardFlight>(res)
     },
-    checkInLounge: (query, guests) => fallback.checkInLounge(query, guests),
-    getLoungeVisits: () => fallback.getLoungeVisits(),
+
+    // A refusal (tier, ticket, guests, already visited) is a 200 with the reason; only "nothing matches" is an error.
+    checkInLounge: async (query, guests) =>
+      json<LoungeResult>(await fetchWithAuth(`${base}/lounge-visits`, send('POST', { query: query.trim(), guests }))),
+
+    getLoungeVisits: () => get<LoungeVisit[]>('/lounge-visits'),
   }
 }

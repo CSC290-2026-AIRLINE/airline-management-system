@@ -6,7 +6,7 @@ import { benefitSummary, nextTierAdds } from '../benefits'
 import { formatDate, formatMiles, toDateInput } from '../format'
 import { LoyaltyLayout } from './LoyaltyLayout'
 import { EmptyState, SearchFlightsLink, SignedMiles } from './parts'
-import { cx, NO_TIER_ART, TIER_BAND, TYPE_LABEL, ui } from './ui'
+import { AWARD_SEARCH_PATH, cx, NO_TIER_ART, TIER_BAND, TYPE_LABEL, ui } from './ui'
 
 // C03 Dashboard, C04 for a new member with no tier, and M1 on a phone.
 export function Dashboard({ member, tiers, activity }: { member: MemberSummary; tiers: TierInfo[]; activity: StatementRow[] }) {
@@ -58,7 +58,7 @@ function MemberCard({ member }: { member: MemberSummary }) {
             <span className="font-mono text-[30px] leading-tight font-bold sm:text-[44px]">{formatMiles(member.milesBalance)} miles</span>
           </div>
           <div className="hidden gap-3 sm:flex">
-            <SearchFlightsLink label="Spend miles" className={ui.buttonOnDark} />
+            <SearchFlightsLink to={AWARD_SEARCH_PATH} label="Spend miles" className={ui.buttonOnDark} />
             <Link to="/loyalty/statement" className={ui.buttonGhostOnDark}>
               View statement
             </Link>
@@ -67,7 +67,7 @@ function MemberCard({ member }: { member: MemberSummary }) {
       </section>
       {/* On a phone the actions sit under the card (M1). */}
       <div className="grid grid-cols-2 gap-2 sm:hidden">
-        <SearchFlightsLink label="Spend miles" className={ui.buttonPrimary} />
+        <SearchFlightsLink to={AWARD_SEARCH_PATH} label="Spend miles" className={ui.buttonPrimary} />
         <Link to="/loyalty/statement" className={ui.button}>
           Statement
         </Link>
@@ -189,7 +189,7 @@ function Updates({ member }: { member: MemberSummary }) {
           )}
         </ul>
       )}
-      <SearchFlightsLink label="Find award seats →" className={cx(ui.link, 'mt-auto self-end')} />
+      <SearchFlightsLink to={AWARD_SEARCH_PATH} label="Find award seats →" className={cx(ui.link, 'mt-auto self-end')} />
     </section>
   )
 }
