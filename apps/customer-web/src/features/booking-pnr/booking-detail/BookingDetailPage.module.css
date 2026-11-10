@@ -1,10 +1,11 @@
+/* The page shell comes from BookingLayout: the top bar owns the page background and the outer padding. */
 .page {
-  min-height: 100vh;
-  background: var(--f3-page);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1040px;
+  margin: 40px auto 0;
   color: var(--f3-ink);
   font-family: var(--f3-font);
-  padding: 40px 24px 64px;
-  box-sizing: border-box;
   text-align: left;
 }
 
@@ -242,10 +243,6 @@
 }
 
 @media (max-width: 700px) {
-  .page {
-    padding: 24px 16px 48px;
-  }
-
   .titleRow h1 {
     font-size: 24px;
   }
@@ -266,5 +263,13 @@
     flex: 1 1 auto;
     width: 100%;
     height: 140px;
+  }
+}
+
+@media (max-width: 600px) {
+  .page {
+    margin-top: 24px;
+    /* The layout drops its side padding on the 393 px frame, so the column keeps its own inset. */
+    padding: 0 16px;
   }
 }

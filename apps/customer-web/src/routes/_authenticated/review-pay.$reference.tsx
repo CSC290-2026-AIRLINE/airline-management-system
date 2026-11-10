@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { BookingLayout } from '../../features/booking-search/components/BookingLayout'
 import { ReviewPayPage } from '../../features/booking-pnr/review-pay/ReviewPayPage'
 
 export const Route = createFileRoute('/_authenticated/review-pay/$reference')({
@@ -7,5 +8,9 @@ export const Route = createFileRoute('/_authenticated/review-pay/$reference')({
 
 function ReviewPayRoute() {
   const { reference } = Route.useParams()
-  return <ReviewPayPage key={reference} reference={reference} />
+  return (
+    <BookingLayout>
+      <ReviewPayPage key={reference} reference={reference} />
+    </BookingLayout>
+  )
 }

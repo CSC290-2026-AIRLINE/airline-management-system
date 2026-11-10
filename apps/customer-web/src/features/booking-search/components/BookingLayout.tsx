@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { useUser } from '@clerk/clerk-react'
+import flythonMark from '../assets/flython-mark.svg'
 import './booking-navigation.css'
 
 // Feature-local until the platform provides a shared customer header.
@@ -16,10 +17,7 @@ export function BookingLayout({ children }: { children: ReactNode }) {
     <div className="f3-customer-layout">
       <header className="f3-customer-header">
         <Link to="/search" className="f3-customer-brand" aria-label="Flython home">
-          <svg className="f3-customer-mark" viewBox="0 0 56 28" aria-hidden="true" focusable="false">
-            <path d="M3 15C16 15 30 10 44 3L52 2C44 10 30 17 16 19L3 19Z" fill="#fca311" />
-            <path d="M3 20C16 20 30 16 44 8L52 4C46 12 32 20 16 24L3 24Z" fill="#14213d" />
-          </svg>
+          <img src={flythonMark} alt="" className="f3-customer-mark" />
           <span className="f3-customer-wordmark">
             Flython
             <small>Airlines</small>

@@ -47,8 +47,8 @@
   gap: 10px;
 }
 .f3-customer-mark {
-  width: 46px;
-  height: 23px;
+  width: auto;
+  height: 24px;
   flex: none;
 }
 .f3-customer-wordmark {
@@ -107,8 +107,8 @@
     flex-wrap: wrap;
   }
   .f3-customer-mark {
-    width: 36px;
-    height: 18px;
+    width: auto;
+    height: 19px;
   }
   .f3-customer-wordmark {
     font-size: 21px;
