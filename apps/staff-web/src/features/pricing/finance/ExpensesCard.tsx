@@ -15,6 +15,10 @@ import {
   totalRowClass,
 } from './finance-styles'
 import { RecordExpenseDialog } from './RecordExpenseDialog'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Card, CardContent, CardDescription, CardTitle } from '@staff-web/components/ui/card'
+import { Notice } from '../components/Notice'
+import { CARD_BODY, CARD_TITLE } from '../components/card-styles'
 
 const NOTICE_MS = 3000
 
@@ -40,22 +44,24 @@ export function ExpensesCard({ month, unit, expenses }: ExpensesCardProps) {
   const total = list.reduce((sum, expense) => sum + Number(expense.amount), 0)
 
   const body = expenses.error ? (
-    <div className="pr-callout is-error" role="alert">
-      Could not load expenses: {expenses.error}{' '}
-      <button type="button" className="pr-link-button" onClick={expenses.reload}>
-        Retry
-      </button>
-    </div>
+    <Alert variant="destructive">
+      <AlertDescription className="block">
+        Could not load expenses: {expenses.error}{' '}
+        <Button variant="link" className="h-auto p-0" type="button" onClick={expenses.reload}>
+          Retry
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : !expenses.data ? (
-    <p className="pr-state">Loading expenses…</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Loading expenses…</p>
   ) : list.length === 0 ? (
-    <p className="pr-state">No expenses in {monthLabel(month)}.</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">No expenses in {monthLabel(month)}.</p>
   ) : (
     <>
       {/* Desktop: one table */}
       <div className={tableWrapClass}>
-        <Table className="text-(length:--pr-text-body)">
-          <TableHeader className="bg-(--pr-head)">
+        <Table className="text-[13px] text-(--pr-primary)">
+          <TableHeader className="[&_tr]:border-0">
             <TableRow className={headRowClass}>
               <TableHead className={headClass}>Date</TableHead>
               <TableHead className={headClass}>Category</TableHead>
@@ -103,41 +109,37 @@ export function ExpensesCard({ month, unit, expenses }: ExpensesCardProps) {
   )
 
   return (
-    <section className="pr-card" aria-labelledby="expenses-card-title">
-      <div className="flex flex-wrap items-start justify-between gap-3 max-[800px]:grid">
-        <div className="pr-card-head">
-          <h2 id="expenses-card-title" className="pr-card-title">
-            Expenses · {monthLabel(month)}
-          </h2>
-          <p className="pr-muted">Everything paid or incurred this month.</p>
+    <Card aria-labelledby="expenses-card-title">
+      <CardContent className={CARD_BODY}>
+        <div className="flex flex-wrap items-start justify-between gap-3 max-[800px]:grid">
+          <div className="grid gap-2">
+            <CardTitle id="expenses-card-title" role="heading" aria-level={2} className={CARD_TITLE}>
+              Expenses · {monthLabel(month)}
+            </CardTitle>
+            <CardDescription>Everything paid or incurred this month.</CardDescription>
+          </div>
+          <Button className={primaryButtonClass} onClick={() => setRecording(true)}>
+            + Record expense
+          </Button>
         </div>
-        <Button className={primaryButtonClass} onClick={() => setRecording(true)}>
-          + Record expense
-        </Button>
-      </div>
 
-      <p
-        role="status"
-        aria-live="polite"
-        className="m-0 rounded-(--pr-radius-lg) bg-(--pr-good-bg) px-4 py-2.5 text-(length:--pr-text-body) font-semibold text-(--pr-good) empty:hidden"
-      >
-        {notice}
-      </p>
+        <Notice text={notice ?? undefined} />
 
-      {body}
+        {body}
 
-      <RecordExpenseDialog
-        open={recording}
-        unit={unit}
-        onOpenChange={setRecording}
-        onRecorded={(expense) => {
-          setRecording(false)
-          // An expense dated in another month is saved but won't show in this list, so say where it went.
-          const expenseMonth = expense.incurred_on.slice(0, 7)
-          setNotice(expenseMonth === month ? 'Expense recorded' : `Expense recorded in ${monthLabel(expenseMonth)}`)
-          expenses.reload()
-        }}
-      />
-    </section>
+        <RecordExpenseDialog
+          open={recording}
+          unit={unit}
+          onOpenChange={setRecording}
+          onRecorded={(expense) => {
+            setRecording(false)
+            // An expense dated in another month is saved but won't show in this list, so say where it went.
+            const expenseMonth = expense.incurred_on.slice(0, 7)
+            setNotice(expenseMonth === month ? 'Expense recorded' : `Expense recorded in ${monthLabel(expenseMonth)}`)
+            expenses.reload()
+          }}
+        />
+      </CardContent>
+    </Card>
   )
 }

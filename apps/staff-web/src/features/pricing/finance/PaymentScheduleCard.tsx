@@ -19,6 +19,10 @@ import {
 } from './finance-styles'
 import { statusOf } from './bill-status'
 import { StatusBadge } from './StatusBadge'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Card, CardContent, CardDescription, CardTitle } from '@staff-web/components/ui/card'
+import { Notice } from '../components/Notice'
+import { CARD_BODY, CARD_TITLE } from '../components/card-styles'
 
 const NOTICE_MS = 3000
 
@@ -84,22 +88,24 @@ export function PaymentScheduleCard({ unit, onPaid }: PaymentScheduleCardProps) 
   }
 
   const body = schedules.error ? (
-    <div className="pr-callout is-error" role="alert">
-      Could not load the payment schedule: {schedules.error}{' '}
-      <button type="button" className="pr-link-button" onClick={schedules.reload}>
-        Retry
-      </button>
-    </div>
+    <Alert variant="destructive">
+      <AlertDescription className="block">
+        Could not load the payment schedule: {schedules.error}{' '}
+        <Button variant="link" className="h-auto p-0" type="button" onClick={schedules.reload}>
+          Retry
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : !schedules.data ? (
-    <p className="pr-state">Loading the payment schedule…</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Loading the payment schedule…</p>
   ) : list.length === 0 ? (
-    <p className="pr-state">Nothing scheduled to pay.</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Nothing scheduled to pay.</p>
   ) : (
     <>
       {/* Desktop: one table */}
       <div className={tableWrapClass}>
-        <Table className="text-(length:--pr-text-body)">
-          <TableHeader className="bg-(--pr-head)">
+        <Table className="text-[13px] text-(--pr-primary)">
+          <TableHeader className="[&_tr]:border-0">
             <TableRow className={headRowClass}>
               <TableHead className={headClass}>Payee</TableHead>
               <TableHead className={headClass}>Category</TableHead>
@@ -154,45 +160,41 @@ export function PaymentScheduleCard({ unit, onPaid }: PaymentScheduleCardProps) 
   )
 
   return (
-    <section className="pr-card" aria-labelledby="payment-schedule-title">
-      <div className="flex flex-wrap items-start justify-between gap-3 max-[800px]:grid">
-        <div className="pr-card-head">
-          <h2 id="payment-schedule-title" className="pr-card-title">
-            Payment schedule
-          </h2>
-          <p className="pr-muted">What is still to pay. Marking a payment as paid records it as an expense.</p>
+    <Card aria-labelledby="payment-schedule-title">
+      <CardContent className={CARD_BODY}>
+        <div className="flex flex-wrap items-start justify-between gap-3 max-[800px]:grid">
+          <div className="grid gap-2">
+            <CardTitle id="payment-schedule-title" role="heading" aria-level={2} className={CARD_TITLE}>
+              Payment schedule
+            </CardTitle>
+            <CardDescription>What is still to pay. Marking a payment as paid records it as an expense.</CardDescription>
+          </div>
+          <Button className={primaryButtonClass} onClick={() => setAdding(true)}>
+            + Add bill
+          </Button>
         </div>
-        <Button className={primaryButtonClass} onClick={() => setAdding(true)}>
-          + Add bill
-        </Button>
-      </div>
 
-      <p
-        role="status"
-        aria-live="polite"
-        className="m-0 rounded-(--pr-radius-lg) bg-(--pr-good-bg) px-4 py-2.5 text-(length:--pr-text-body) font-semibold text-(--pr-good) empty:hidden"
-      >
-        {notice}
-      </p>
+        <Notice text={notice ?? undefined} />
 
-      {body}
+        {body}
 
-      {error && (
-        <div className="pr-callout is-error" role="alert">
-          {error}
-        </div>
-      )}
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription className="block">{error}</AlertDescription>
+          </Alert>
+        )}
 
-      <AddBillDialog
-        open={adding}
-        unit={unit}
-        onOpenChange={setAdding}
-        onAdded={(bill) => {
-          setAdding(false)
-          setNotice(`Bill added: ${bill.payee}`)
-          schedules.reload()
-        }}
-      />
-    </section>
+        <AddBillDialog
+          open={adding}
+          unit={unit}
+          onOpenChange={setAdding}
+          onAdded={(bill) => {
+            setAdding(false)
+            setNotice(`Bill added: ${bill.payee}`)
+            schedules.reload()
+          }}
+        />
+      </CardContent>
+    </Card>
   )
 }

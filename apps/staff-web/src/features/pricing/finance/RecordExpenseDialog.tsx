@@ -19,8 +19,6 @@ import {
   dialogTitleClass,
 } from './finance-styles'
 
-const CATEGORY_ITEMS = Object.fromEntries(EXPENSE_CATEGORIES.map((category) => [category, categoryLabel(category)]))
-
 interface RecordExpenseDialogProps {
   open: boolean
   unit: string // base currency code
@@ -97,8 +95,8 @@ export function RecordExpenseDialog({ open, unit, onOpenChange, onRecorded }: Re
 
           <div className="grid gap-1.5">
             <Label className={dialogLabelClass}>Category</Label>
-            <Select items={CATEGORY_ITEMS} value={category} onValueChange={(value) => setCategory(value as ExpenseCategory | null)}>
-              <SelectTrigger aria-label="Category" className={`${dialogFieldClass} justify-between data-placeholder:text-[#677287]`}>
+            <Select value={category ?? ''} onValueChange={(value) => setCategory(value as ExpenseCategory)}>
+              <SelectTrigger aria-label="Category" className={`${dialogFieldClass} justify-between data-[placeholder]:text-[#677287]`}>
                 <SelectValue placeholder="Choose a category" />
               </SelectTrigger>
               <SelectContent>

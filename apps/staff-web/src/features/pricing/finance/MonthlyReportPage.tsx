@@ -11,6 +11,7 @@ import { dateTime, monthLabel, shiftMonth, todayKey } from './finance-format'
 import { primaryButtonClass } from './finance-styles'
 import { MonthsCard } from './MonthsCard'
 import { StillToPayCard } from './StillToPayCard'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 
 const MONTHS_SHOWN = 5 // this month and the 4 before it, like the design (Jun–Oct)
 const TITLE = 'Monthly report'
@@ -27,11 +28,11 @@ export function MonthlyReportPage() {
     return (
       <PricingShell title={TITLE} description={DESCRIPTION}>
         {isLoading ? (
-          <p className="pr-state">Signing in…</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">Signing in…</p>
         ) : (
-          <div className="pr-callout is-error" role="alert">
-            Your session could not be started. Sign out and sign in again.
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription className="block">Your session could not be started. Sign out and sign in again.</AlertDescription>
+          </Alert>
         )}
       </PricingShell>
     )
@@ -98,9 +99,9 @@ function MonthlyReport() {
     >
       <div className="pr-stack">
         {error && (
-          <div className="pr-callout is-error" role="alert">
-            Could not recompute: {error}
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription className="block">Could not recompute: {error}</AlertDescription>
+          </Alert>
         )}
 
         <ErrorBoundary>

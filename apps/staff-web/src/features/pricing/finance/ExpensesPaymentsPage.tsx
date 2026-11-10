@@ -10,6 +10,7 @@ import { ExpensesCard } from './ExpensesCard'
 import { useFinanceApi } from './finance-api'
 import { monthLabel, todayKey } from './finance-format'
 import { PaymentScheduleCard } from './PaymentScheduleCard'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 
 const MONTHS_BACK = 12
 
@@ -20,11 +21,11 @@ export function ExpensesPaymentsPage() {
   return (
     <PricingShell title="Expenses & payments" description="Record what the airline spends and schedule what it still has to pay.">
       {isLoading ? (
-        <p className="pr-state">Signing in…</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">Signing in…</p>
       ) : !accessToken ? (
-        <div className="pr-callout is-error" role="alert">
-          Your session could not be started. Sign out and sign in again.
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="block">Your session could not be started. Sign out and sign in again.</AlertDescription>
+        </Alert>
       ) : (
         <ExpensesPaymentsContent />
       )}
@@ -48,11 +49,7 @@ function ExpensesPaymentsContent() {
         <span id="month-label" className="text-(length:--pr-text-caption) font-semibold tracking-wide text-(--pr-muted) uppercase">
           Month
         </span>
-        <Select
-          items={Object.fromEntries(months.map((m) => [m.value, m.label]))}
-          value={month}
-          onValueChange={(value) => value && setMonth(value)}
-        >
+        <Select value={month} onValueChange={(value) => value && setMonth(value)}>
           <SelectTrigger
             aria-labelledby="month-label"
             className="h-10 w-full justify-between rounded-(--pr-radius-field) border-(--pr-border) bg-white text-(length:--pr-text-label) text-(--pr-ink)"

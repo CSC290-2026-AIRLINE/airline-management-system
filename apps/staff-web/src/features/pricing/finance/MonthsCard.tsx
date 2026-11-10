@@ -1,7 +1,11 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import type { FinanceSummary } from './finance-api'
 import { AMOUNT, monthLabel } from './finance-format'
-import { headRowClass, phoneListClass, tableWrapClass } from './finance-styles'
+import { cellClass as baseCell, headClass as baseHead, headRowClass, phoneListClass, rowClass, tableWrapClass } from './finance-styles'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Card, CardContent, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { CARD_BODY, CARD_TITLE } from '../components/card-styles'
 
 // Columns in the design's order. Pass-through is stored and subtracted from profit but, like the design, not shown.
 const COLUMNS = [
@@ -27,8 +31,8 @@ interface MonthsCardProps {
   onRetry: () => void
 }
 
-const headClass = 'h-10 px-3 text-right text-[11px] font-semibold text-[#102544] uppercase'
-const cellClass = 'h-12 px-3 text-right text-[13px] text-[#102544]'
+const headClass = `${baseHead} text-right`
+const cellClass = `${baseCell} text-right`
 
 // One row per month plus a total (design: Monthly report → Months).
 export function MonthsCard({ months, current, rows, error, status, footnote, unit, onRetry }: MonthsCardProps) {
@@ -37,22 +41,24 @@ export function MonthsCard({ months, current, rows, error, status, footnote, uni
   const show = (amounts: Amounts | undefined, key: AmountKey) => (amounts ? AMOUNT.format(amounts[key]) : '—')
 
   const body = error ? (
-    <div className="pr-callout is-error" role="alert">
-      Could not load the monthly summary: {error}{' '}
-      <button type="button" className="pr-link-button" onClick={onRetry}>
-        Retry
-      </button>
-    </div>
+    <Alert variant="destructive">
+      <AlertDescription className="block">
+        Could not load the monthly summary: {error}{' '}
+        <Button variant="link" className="h-auto p-0" type="button" onClick={onRetry}>
+          Retry
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : !rows ? (
-    <p className="pr-state">Loading the monthly summary…</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Loading the monthly summary…</p>
   ) : (
     <>
       {/* Desktop: one table */}
       <div className={tableWrapClass}>
-        <Table className="table-fixed">
-          <TableHeader className="bg-(--pr-head)">
+        <Table className="table-fixed text-[13px] text-(--pr-primary)">
+          <TableHeader className="[&_tr]:border-0">
             <TableRow className={headRowClass}>
-              <TableHead className={`${headClass} w-[110px] pl-4 text-left`}>Month</TableHead>
+              <TableHead className={`${headClass} w-[110px] text-left`}>Month</TableHead>
               {COLUMNS.map((column) => (
                 <TableHead key={column.key} className={`${headClass} ${column.width}`}>
                   {column.label}
@@ -65,11 +71,8 @@ export function MonthsCard({ months, current, rows, error, status, footnote, uni
             {months.map((month) => {
               const amounts = byMonth.get(month)
               return (
-                <TableRow
-                  key={month}
-                  className={`border-(--pr-divider) hover:bg-transparent ${month === current ? 'bg-(--pr-selected) hover:bg-(--pr-selected)' : ''}`}
-                >
-                  <TableCell className={`${cellClass} pl-4 text-left font-semibold`}>
+                <TableRow key={month} className={`${rowClass} ${month === current ? 'bg-(--pr-selected) hover:bg-(--pr-selected)' : ''}`}>
+                  <TableCell className={`${cellClass} text-left font-semibold`}>
                     {monthLabel(month)}
                     {month === current && '*'}
                   </TableCell>
@@ -82,8 +85,8 @@ export function MonthsCard({ months, current, rows, error, status, footnote, uni
                 </TableRow>
               )
             })}
-            <TableRow className="border-(--pr-divider) bg-(--pr-page) font-bold hover:bg-(--pr-page)">
-              <TableCell className={`${cellClass} pl-4 text-left`}>Total</TableCell>
+            <TableRow className={`${rowClass} bg-(--pr-page) font-bold hover:bg-(--pr-page)`}>
+              <TableCell className={`${cellClass} text-left`}>Total</TableCell>
               {COLUMNS.map((column) => (
                 <TableCell key={column.key} className={cellClass}>
                   {AMOUNT.format(total[column.key])}
@@ -112,11 +115,11 @@ export function MonthsCard({ months, current, rows, error, status, footnote, uni
   )
 
   return (
-    <section className="pr-card" aria-labelledby="months-card-title">
-      <div className="pr-card-head">
-        <h2 id="months-card-title" className="pr-card-title">
+    <Card aria-labelledby="months-card-title">
+      <CardHeader>
+        <CardTitle id="months-card-title" role="heading" aria-level={2} className={CARD_TITLE}>
           Months
-        </h2>
+        </CardTitle>
         <p
           role="status"
           aria-live="polite"
@@ -124,12 +127,13 @@ export function MonthsCard({ months, current, rows, error, status, footnote, uni
         >
           {status.text}
         </p>
-      </div>
+      </CardHeader>
+      <CardContent className={CARD_BODY}>
+        {body}
 
-      {body}
-
-      <p className="m-0 text-(length:--pr-text-small) text-(--pr-muted)">{footnote}</p>
-    </section>
+        <p className="m-0 text-(length:--pr-text-small) text-(--pr-muted)">{footnote}</p>
+      </CardContent>
+    </Card>
   )
 }
 
