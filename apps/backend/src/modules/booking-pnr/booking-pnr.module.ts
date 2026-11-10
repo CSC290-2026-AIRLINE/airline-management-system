@@ -53,6 +53,10 @@ import { AssistanceService } from './assistance/assistance.service'
 import { SeatMapController } from './seats/seat-map.controller'
 import { SeatMapService } from './seats/seat-map.service'
 import { SeatHoldExpiryService } from './seats/seat-hold-expiry.service'
+import { SeatChangeController } from './seats/seat-change.controller'
+import { SeatChangeService } from './seats/seat-change.service'
+import { CheckinSeatMapAdapter } from './providers/checkin-seat-map.adapter'
+import { CheckinSeatProvider } from './providers/checkin-seat.provider'
 
 @Module({
   // Feature 15's audit writer, for the staff cancellation entry (B7).
@@ -67,9 +71,13 @@ import { SeatHoldExpiryService } from './seats/seat-hold-expiry.service'
     StaffBookingController,
     DemoBookingCustomerController,
     SeatMapController,
+    SeatChangeController,
   ],
   providers: [
     SeatMapService,
+    SeatChangeService,
+    CheckinSeatMapAdapter,
+    CheckinSeatProvider,
     SeatHoldExpiryService,
     HoldService,
     StaffBookingLookupService,

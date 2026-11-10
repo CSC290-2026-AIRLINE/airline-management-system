@@ -12,6 +12,12 @@ export class SeatChangeService {
     @Inject(BOOKING_READ_PORT) private readonly bookings: BookingReadPort,
   ) {}
 
+  async changeSeatForCustomer(reference: string, couponId: string, seatCode: string, userId: string) {
+    const customer = await this.db.customer.findFirst({ where: { user_id: userId, deleted_at: null }, select: { id: true } })
+    if (!customer) throw new NotFoundException('Booking not found')
+    return this.changeSeat(reference, couponId, seatCode, { customerId: customer.id })
+  }
+
   // A route must derive the viewer from authenticated server-side identity; never accept it from a request body.
   async changeSeat(reference: string, couponId: string, seatCode: string, viewer: BookingViewer) {
     if ((!viewer.customerId && viewer.staff !== true) || (viewer.customerId && viewer.staff))

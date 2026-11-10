@@ -8,10 +8,11 @@ jest.mock('../providers/checkin-seat.provider', () => ({ CheckinSeatProvider: cl
 
 describe('SeatChangeService', () => {
   const checkIn = { findFirst: jest.fn() }
+  const customer = { findFirst: jest.fn() }
   const seats = { hold: jest.fn(), confirm: jest.fn(), release: jest.fn() }
   const bookings = { getBookingDetail: jest.fn() }
   const service = new SeatChangeService(
-    { check_in: checkIn } as unknown as DbService,
+    { check_in: checkIn, customer } as unknown as DbService,
     seats as unknown as CheckinSeatProvider,
     bookings as unknown as BookingReadPort,
   )
@@ -24,6 +25,7 @@ describe('SeatChangeService', () => {
       coupons: [{ couponId: 'coupon', status: 'confirmed', flightId: 'flight', bookingPassengerId: 'passenger' }],
     })
     checkIn.findFirst.mockResolvedValue(null)
+    customer.findFirst.mockResolvedValue({ id: 'customer' })
     seats.hold.mockResolvedValue({ id: 'lock', fee: 0 })
     seats.confirm.mockResolvedValue({ seatCode: '12A', type: 'standard' })
     seats.release.mockResolvedValue(undefined)
@@ -62,6 +64,18 @@ describe('SeatChangeService', () => {
 
   it('does not look up a booking for an unidentified viewer', async () => {
     await expect(service.changeSeat('REF', 'coupon', '12A', {})).rejects.toThrow('Booking not found')
+    expect(bookings.getBookingDetail).not.toHaveBeenCalled()
+  })
+
+  it('derives the customer from the signed-in user', async () => {
+    await service.changeSeatForCustomer('REF', 'coupon', '12A', 'user')
+    expect(customer.findFirst).toHaveBeenCalledWith({ where: { user_id: 'user', deleted_at: null }, select: { id: true } })
+    expect(bookings.getBookingDetail).toHaveBeenCalledWith('REF', { customerId: 'customer' })
+  })
+
+  it('refuses to change a seat without a customer profile', async () => {
+    customer.findFirst.mockResolvedValue(null)
+    await expect(service.changeSeatForCustomer('REF', 'coupon', '12A', 'user')).rejects.toThrow('Booking not found')
     expect(bookings.getBookingDetail).not.toHaveBeenCalled()
   })
 })
