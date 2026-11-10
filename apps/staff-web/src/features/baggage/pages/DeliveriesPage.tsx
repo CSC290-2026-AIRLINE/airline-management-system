@@ -1,7 +1,7 @@
 import { AirportContactsCard } from '../components/AirportContactsCard'
 import { DeliveriesListCard } from '../components/DeliveriesListCard'
 import { DeliveryDetailCard } from '../components/DeliveryDetailCard'
-import { Chip, F10Card } from '../components/primitives'
+import { BackLink, Chip, F10Card, FilterRow, SimulatedToday } from '../components/primitives'
 import { DELIVERY_FILTERS, DELIVERY_FILTER_LABELS, type DeliveryFilter } from '../constants'
 import { useBagDeliveries } from '../hooks/useBagDeliveries'
 import { useCaseCosts } from '../hooks/useLostReports'
@@ -35,34 +35,37 @@ export function DeliveriesPage({
   const shown = deliveries.deliveries.filter((d) =>
     filter === 'all' ? true : filter === 'delivered' ? d.status === 'delivered' : d.status !== 'delivered',
   )
+  // Phones show the list or the picked delivery, not both.
+  const listOnly = selectedCaseId ? 'max-md:hidden' : ''
   const meta = `${shown.length} ${shown.length === 1 ? 'confirmed bag' : 'confirmed bags'}`
 
   return (
     <>
-      <header className="flex flex-col gap-2">
+      <header className={`flex flex-col gap-2 ${listOnly}`}>
         <h1 className="m-0 font-sans text-[48px] leading-none font-extrabold tracking-[-2.4px] text-[#14213d] max-md:text-[36px]">
           Deliveries
         </h1>
         <p className="text-lg tracking-[-0.9px] text-[#677287]">
           Confirmed bags on their way back. The airline covers every cost; the passenger never pays.
         </p>
+        <SimulatedToday />
       </header>
 
-      <F10Card aria-label="Filters" className="gap-3 py-4">
-        <div role="group" aria-label="Status" className="flex flex-wrap items-center gap-2">
-          <span className="w-[90px] text-sm font-medium text-[#677287]">Status</span>
+      <F10Card aria-label="Filters" className={`gap-3 py-4 ${listOnly}`}>
+        <FilterRow label="Status">
           {DELIVERY_FILTERS.map((f) => (
             <Chip key={f} active={filter === f} onClick={() => onFilterChange(f)}>
               {DELIVERY_FILTER_LABELS[f]}
             </Chip>
           ))}
-        </div>
+        </FilterRow>
       </F10Card>
 
       <div className="flex items-start gap-6 max-xl:flex-col">
-        <div className="min-w-0 flex-1 max-xl:w-full">
+        <div className={`min-w-0 flex-1 max-xl:w-full ${listOnly}`}>
           <DeliveriesListCard
             deliveries={shown}
+            pageKey={filter}
             title={LIST_TITLES[filter]}
             meta={meta}
             loading={deliveries.loading}
@@ -72,7 +75,8 @@ export function DeliveriesPage({
           />
         </div>
         {selectedCaseId && (
-          <div className="w-[420px] shrink-0 max-xl:w-full">
+          <div className="flex w-[420px] shrink-0 flex-col gap-4 max-xl:w-full">
+            <BackLink label="Deliveries" onBack={() => onSelect(undefined)} />
             <DeliveryDetailCard
               delivery={deliveries.detail}
               loading={deliveries.detailLoading}
@@ -96,7 +100,9 @@ export function DeliveriesPage({
         )}
       </div>
 
-      <AirportContactsCard contacts={contacts.contacts} loading={contacts.loading} error={contacts.error} onSave={contacts.save} />
+      <div className={listOnly}>
+        <AirportContactsCard contacts={contacts.contacts} loading={contacts.loading} error={contacts.error} onSave={contacts.save} />
+      </div>
     </>
   )
 }

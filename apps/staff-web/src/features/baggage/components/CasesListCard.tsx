@@ -3,11 +3,13 @@ import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { cn } from '@staff-web/lib/utils'
 import type { LostReportCase } from '../api/lost-reports'
 import { REPORT_STATUS_LABELS, REPORT_STATUS_TONES, bagSummary, caseAge, caseShortNumber } from '../constants'
-import { F10Card, FormError, Pill } from './primitives'
+import { PAGE_SIZE, usePage } from '../hooks/usePage'
+import { F10Card, FormError, LIST_CARD, LIST_PAD, MobileList, MobileRow, Pager, Pill } from './primitives'
 
 /** "Card / Cases": newest first. Rows select a case for the detail card. */
 export function CasesListCard({
   cases,
+  pageKey,
   meta,
   loading,
   error,
@@ -15,6 +17,8 @@ export function CasesListCard({
   onSelect,
 }: {
   cases: LostReportCase[]
+  /** The filter shown; a new one goes back to the first page. */
+  pageKey: string
   /** "3 active · newest first" */
   meta: string
   loading: boolean
@@ -22,12 +26,13 @@ export function CasesListCard({
   selectedId: string | undefined
   onSelect: (id: string) => void
 }) {
+  const paged = usePage(cases, pageKey)
   // Ages are counted from when the page opened, which is close enough for "2 d".
   const [now] = useState(Date.now)
 
   return (
-    <F10Card aria-labelledby="cases-list" className="gap-3 px-0 pt-5 pb-2">
-      <div className="flex items-center gap-3 px-5">
+    <F10Card aria-labelledby="cases-list" className={LIST_CARD}>
+      <div className={cn('flex items-center gap-3', LIST_PAD)}>
         <h2 id="cases-list" className="m-0 flex-1 font-sans text-[22px] font-semibold text-[#14213d]">
           Cases
         </h2>
@@ -35,12 +40,12 @@ export function CasesListCard({
       </div>
 
       {error && (
-        <div className="px-5">
+        <div className={LIST_PAD}>
           <FormError message={error} />
         </div>
       )}
 
-      <table className="w-full table-fixed border-collapse text-left">
+      <table className="w-full table-fixed border-collapse text-left max-md:hidden">
         <thead>
           <tr className="border-b border-[#d8dce6] text-sm font-medium text-[#677287]">
             <th scope="col" className="w-[122px] py-2.5 pr-3 pl-5 font-medium max-md:w-[96px]">
@@ -74,7 +79,7 @@ export function CasesListCard({
             </tr>
           )}
           {!loading &&
-            cases.map((c) => {
+            paged.items.map((c) => {
               const selected = c.id === selectedId
               return (
                 <tr
@@ -105,7 +110,7 @@ export function CasesListCard({
                     <p className="truncate text-base text-[#14213d]">
                       {c.passengerFirstName} {c.passengerLastName}
                     </p>
-                    <p className="truncate text-xs text-[#677287]">{c.flightNumber}</p>
+                    <p className="truncate text-xs text-[#677287]">{`${c.flightNumber} · ${c.flightOrigin} to ${c.flightDestination}`}</p>
                   </td>
                   <td className="py-3 pr-3 text-base text-[#14213d] max-md:hidden">{bagSummary(c)}</td>
                   <td className="py-3 pr-5">
@@ -116,6 +121,29 @@ export function CasesListCard({
             })}
         </tbody>
       </table>
+      <MobileList label="Cases" loading={loading} empty={cases.length === 0 && !error ? 'No cases here.' : null}>
+        {paged.items.map((c) => (
+          <MobileRow
+            key={c.id}
+            title={`${caseShortNumber(c.caseNumber)} · ${c.passengerFirstName} ${c.passengerLastName}`}
+            pill={<Pill tone={REPORT_STATUS_TONES[c.status]}>{REPORT_STATUS_LABELS[c.status]}</Pill>}
+            line={bagSummary(c)}
+            meta={`${c.flightNumber} · ${c.flightOrigin} to ${c.flightDestination} · ${caseAge(c.reportedAt, now)}`}
+            selected={c.id === selectedId}
+            onSelect={() => onSelect(c.id)}
+          />
+        ))}
+      </MobileList>
+      {!loading && (
+        <Pager
+          page={paged.page}
+          pageCount={paged.pageCount}
+          total={paged.total}
+          pageSize={PAGE_SIZE}
+          label="Cases pages"
+          onPage={paged.setPage}
+        />
+      )}
     </F10Card>
   )
 }

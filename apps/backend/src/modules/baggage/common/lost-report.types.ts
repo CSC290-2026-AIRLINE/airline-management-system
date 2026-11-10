@@ -17,6 +17,9 @@ export interface LostReportCase {
   passengerLastName: string
   flightNumber: string
   flightDate: Date
+  flightOrigin: string
+  /** Where the flight landed: the diversion airport when it was diverted. */
+  flightDestination: string
 
   reportedByCustomerId: string | null
   reportedByStaffId: string | null

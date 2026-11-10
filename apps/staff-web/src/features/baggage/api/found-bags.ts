@@ -20,6 +20,12 @@ export interface FoundBag {
   updatedAt: string
 }
 
+/** A row of `GET /api/staff/found-bags`: the bag and the airport it is at now. */
+export interface FoundBagListItem extends FoundBag {
+  /** Airport of the latest location event, or the found airport. A bag in transit counts where it was sent from. */
+  nowAt: string
+}
+
 export type BagLocationAction = 'found' | 'held' | 'sent' | 'arrived' | 'at_diverted_airport' | 'out_for_delivery' | 'delivered'
 
 export interface BagLocationEvent {
@@ -101,6 +107,29 @@ export interface BaggageFlight {
   departsAt: string
 }
 
+/** An airport from Feature 2's airport table (backend `BaggageAirport`). */
+export interface BaggageAirport {
+  code: string
+  name: string
+  city: string
+}
+
+/** What `POST /api/staff/found-bags/diversions/:flightId` answers. */
+export interface DiversionResult {
+  flightId: string
+  divertedTo: string
+  created: FoundBag[]
+  /** Bags in the hold that already had a found bag row. */
+  skipped: number
+}
+
+/** `GET /api/staff/baggage-desk`: the simulation time and the signed-in role. */
+export interface BaggageDesk {
+  now: string
+  roleCode: string
+  roleName: string
+}
+
 /** Any non-2xx answer from `/api/staff/*`. The baggage endpoints answer `{ code, message }`. */
 export class BaggageApiError extends Error {
   readonly status: number
@@ -152,7 +181,7 @@ export function useFoundBagApi() {
   const send = useBaggageSend()
 
   return {
-    list: (status?: FoundBagStatus) => send<FoundBag[]>(`/api/staff/found-bags${status ? `?status=${status}` : ''}`),
+    list: (status?: FoundBagStatus) => send<FoundBagListItem[]>(`/api/staff/found-bags${status ? `?status=${status}` : ''}`),
     get: (id: string) => send<FoundBag>(`/api/staff/found-bags/${id}`),
     record: (body: RecordFoundBagBody) => send<FoundBag>('/api/staff/found-bags', { method: 'POST', body: JSON.stringify(body) }),
     history: (id: string) => send<BagTrackingHistory>(`/api/staff/found-bags/${id}/locations`),
@@ -165,6 +194,10 @@ export function useFoundBagApi() {
     departures: (from: string, to: string) =>
       send<BaggageFlight[]>(`/api/staff/baggage-flights/departures?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     flight: (id: string) => send<BaggageFlight>(`/api/staff/baggage-flights/${id}`),
+    divertedFlights: () => send<BaggageFlight[]>('/api/staff/baggage-flights/diverted'),
+    recordDiversion: (flightId: string) => send<DiversionResult>(`/api/staff/found-bags/diversions/${flightId}`, { method: 'POST' }),
+    airports: () => send<BaggageAirport[]>('/api/staff/baggage-flights/airports'),
+    desk: () => send<BaggageDesk>('/api/staff/baggage-desk'),
     stations: () => send<StationContact[]>('/api/staff/station-contacts'),
     saveStation: (airportCode: string, body: SaveStationContactBody) =>
       send<StationContact>(`/api/staff/station-contacts/${encodeURIComponent(airportCode)}`, { method: 'PUT', body: JSON.stringify(body) }),

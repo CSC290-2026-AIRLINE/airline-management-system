@@ -7,6 +7,7 @@ import {
   type HandOverBody,
 } from '../api/bag-deliveries'
 import { errorMessage } from './useFoundBags'
+import { usePoll } from './usePoll'
 
 interface ListState {
   /** Which reload the data belongs to; while it differs from the current one, the list is loading. */
@@ -51,6 +52,12 @@ export function useBagDeliveries(selectedCaseId: string | undefined) {
     // The API functions close over `fetchWithAuth`, which is recreated every render; see `useFoundBagApi`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadKey])
+
+  // Quiet refresh of the list only; the open delivery keeps its form state.
+  usePoll(async () => {
+    const deliveries = await api.list()
+    setList((prev) => (prev.forKey === reloadKey ? { ...prev, error: null, deliveries } : prev))
+  })
 
   useEffect(() => {
     if (!selectedId) return

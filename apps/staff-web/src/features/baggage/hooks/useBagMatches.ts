@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useBagMatchApi, type BagMatch } from '../api/bag-matches'
 import { useFoundBagApi, type FoundBag } from '../api/found-bags'
 import { errorMessage } from './useFoundBags'
+import { usePoll } from './usePoll'
 
 interface ListState {
   /** Which reload the data belongs to; while it differs from the current one, the list is loading. */
@@ -35,6 +36,12 @@ export function useBagMatches() {
     // The API functions close over `fetchWithAuth`, which is recreated every render; see `useFoundBagApi`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadKey])
+
+  // Quiet refresh: swap in fresh rows only when no reload is in flight, so nothing flashes.
+  usePoll(async () => {
+    const matches = await api.list()
+    setState((prev) => (prev.forKey === reloadKey ? { ...prev, error: null, matches } : prev))
+  })
 
   const reload = () => setReloadKey((k) => k + 1)
 

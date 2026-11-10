@@ -24,6 +24,9 @@ function makeSvc() {
       findMany: jest.fn().mockResolvedValue([row()]),
       findUnique: jest.fn().mockResolvedValue(row()),
     },
+    airport: {
+      findMany: jest.fn().mockResolvedValue([{ iata_code: 'BKK', name: 'Suvarnabhumi', city: 'Bangkok' }]),
+    },
   }
 
   return { svc: new BaggageFlightService(db as unknown as DbService, { now: () => NOW }), db }
@@ -92,5 +95,29 @@ describe('BaggageFlightService', () => {
     await expect(svc.get(FLIGHT_ID)).rejects.toMatchObject({ code: 'FLIGHT_NOT_FOUND', status: 404 })
     await expect(svc.get('FY204')).rejects.toMatchObject({ code: 'FLIGHT_NOT_FOUND' })
     expect(db.flight.findUnique).toHaveBeenCalledTimes(1)
+  })
+
+  it('lists diverted flights of the last few days that still have bags to add, newest first', async () => {
+    const { svc, db } = makeSvc()
+    db.flight.findMany.mockResolvedValue([row('CNX')])
+
+    await expect(svc.divertedRecently()).resolves.toEqual([expect.objectContaining({ id: FLIGHT_ID, destination: 'CNX' })])
+
+    const query = db.flight.findMany.mock.calls[0][0]
+    expect(query.where.status).toBe('diverted')
+    expect(query.where.actual_destination).toEqual({ not: null })
+    expect(query.where.arr_at.gte).toEqual(new Date('2026-10-18T00:00:00Z'))
+    expect(query.where.check_in.some.checked_bag.some).toMatchObject({
+      status: 'tagged',
+      found_bag: { none: { status: { not: 'continued_with_flight' } } },
+    })
+    expect(query.orderBy).toEqual({ arr_at: 'desc' })
+  })
+
+  it('lists active airports by code', async () => {
+    const { svc, db } = makeSvc()
+
+    await expect(svc.airports()).resolves.toEqual([{ code: 'BKK', name: 'Suvarnabhumi', city: 'Bangkok' }])
+    expect(db.airport.findMany.mock.calls[0][0]).toMatchObject({ where: { is_active: true }, orderBy: { iata_code: 'asc' } })
   })
 })

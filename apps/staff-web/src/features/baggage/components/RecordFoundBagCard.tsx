@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
+import { Minus, Plus } from 'lucide-react'
+import { cn } from '@staff-web/lib/utils'
 import type { FoundBag, RecordFoundBagBody } from '../api/found-bags'
 import {
   BAG_COLOURS,
@@ -36,6 +38,8 @@ export function RecordFoundBagCard({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tagError, setTagError] = useState<string | null>(null)
+  // Phones start with the form folded so the list is in view; wider screens always show it.
+  const [open, setOpen] = useState(false)
 
   const airport = foundAirport || airports[0]?.code || ''
   const flights = useFlightsInto(airport)
@@ -77,10 +81,34 @@ export function RecordFoundBagCard({
 
   return (
     <F10Card aria-labelledby="record-found-bag">
-      <h2 id="record-found-bag" className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d]">
-        Record a found bag
-      </h2>
-      <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate>
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h2
+            id="record-found-bag"
+            className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+          >
+            Record a found bag
+          </h2>
+          <p className="text-sm text-[#677287] md:hidden">Add every bag nobody collected; matching runs on save.</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          aria-label={open ? 'Hide the form' : 'Show the form'}
+          aria-expanded={open}
+          aria-controls="record-found-bag-form"
+          onClick={() => setOpen((o) => !o)}
+          className="size-9 shrink-0 rounded-full border-[#d8dce6] p-0 text-[#14213d] md:hidden"
+        >
+          {open ? <Minus aria-hidden className="size-4" /> : <Plus aria-hidden className="size-4" />}
+        </Button>
+      </div>
+      <form
+        id="record-found-bag-form"
+        onSubmit={(e) => void submit(e)}
+        className={cn('flex flex-col gap-4', !open && 'max-md:hidden')}
+        noValidate
+      >
         <div className="flex flex-col gap-3">
           <div className="flex gap-3 max-md:flex-col">
             <Field label="Found at" htmlFor="fb-found-at">

@@ -67,9 +67,9 @@ export function CaseMatches({
       ) : (
         <ul className="flex flex-col gap-2">
           {shown.map((m) => (
-            <li key={m.id} className="flex items-center gap-2 rounded-lg border border-[#d8dce6] px-3 py-2.5">
+            <li key={m.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-[#d8dce6] px-3 py-2.5">
               <Pill tone={MATCH_LEVEL_TONES[m.level]}>{MATCH_LEVEL_LABELS[m.level]}</Pill>
-              <span className="min-w-0 flex-1 text-base break-words text-[#14213d]">
+              <span className="min-w-[8rem] flex-1 text-base break-words text-[#14213d]">
                 {bagRef(m.foundBag.id)} at {m.foundBag.currentAirport}
               </span>
               <Pill tone={MATCH_STATUS_TONES[m.status]}>{MATCH_STATUS_LABELS[m.status]}</Pill>

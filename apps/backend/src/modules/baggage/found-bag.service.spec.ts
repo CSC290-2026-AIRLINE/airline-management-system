@@ -223,7 +223,25 @@ describe('FoundBagService.list', () => {
       where: { tag_number: '0123456789', found_airport: 'BKK', status: 'held', flight_id: FLIGHT_ID },
       orderBy: [{ found_at: 'desc' }, { id: 'asc' }],
       take: 500,
+      include: {
+        bag_location_event: { orderBy: [{ occurred_at: 'desc' }, { created_at: 'desc' }], take: 1, select: { airport_code: true } },
+      },
     })
+  })
+
+  it('adds where each bag is now: its latest event, or the found airport', async () => {
+    const { svc, db } = makeSvc()
+    db.found_bag.findMany.mockResolvedValue([
+      { id: 'a', found_airport: 'BKK', bag_location_event: [{ airport_code: 'CNX' }] },
+      { id: 'b', found_airport: 'HKT', bag_location_event: [] },
+    ])
+
+    const bags = await svc.list()
+
+    expect(bags.map((b) => [b.id, b.nowAt])).toEqual([
+      ['a', 'CNX'],
+      ['b', 'HKT'],
+    ])
   })
 
   it('returns nothing for a flight id that is not a UUID', async () => {

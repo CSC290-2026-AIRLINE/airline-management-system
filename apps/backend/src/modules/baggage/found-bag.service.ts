@@ -5,7 +5,7 @@ import { BAG_TYPES, BAG_COLOURS, MAX_LIST_ROWS, type BagType, type BagColour } f
 import { isValidBaggageTag } from './common/baggage-tag.util'
 import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/patterns'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
-import type { FoundBag, FoundBagSource, FoundBagStatus } from './common/found-bag.types'
+import type { FoundBag, FoundBagListItem, FoundBagSource, FoundBagStatus } from './common/found-bag.types'
 import {
   FOUND_BAG_CLOCK,
   FOUND_BAG_RECORDED_LISTENERS,
@@ -173,7 +173,8 @@ export class FoundBagService {
     return toFoundBag(row)
   }
 
-  async list(filter: FoundBagFilter = {}): Promise<FoundBag[]> {
+  /** Newest first, at most MAX_LIST_ROWS, each with where it is now so the list needs no call per bag. */
+  async list(filter: FoundBagFilter = {}): Promise<FoundBagListItem[]> {
     const where: Prisma.found_bagWhereInput = {}
     const tagNumber = filter.tagNumber?.trim()
     const foundAirport = filter.foundAirport?.trim().toUpperCase()
@@ -187,9 +188,17 @@ export class FoundBagService {
       where.flight_id = flightId
     }
 
-    const rows = await this.db.found_bag.findMany({ where, orderBy: [{ found_at: 'desc' }, { id: 'asc' }], take: MAX_LIST_ROWS })
+    const rows = await this.db.found_bag.findMany({
+      where,
+      orderBy: [{ found_at: 'desc' }, { id: 'asc' }],
+      take: MAX_LIST_ROWS,
+      // Same order as BagTrackingService's history, newest first, so the first row is the current place.
+      include: {
+        bag_location_event: { orderBy: [{ occurred_at: 'desc' }, { created_at: 'desc' }], take: 1, select: { airport_code: true } },
+      },
+    })
 
-    return rows.map(toFoundBag)
+    return rows.map((row) => ({ ...toFoundBag(row), nowAt: row.bag_location_event[0]?.airport_code ?? row.found_airport }))
   }
 
   private async findCheckedBag(tagNumber: string): Promise<CheckedBagRecord | null> {

@@ -32,7 +32,7 @@ function reportRow(data: Record<string, unknown>) {
     updated_at: SIM_NOW,
     ...data,
     passenger: { first_name: 'Somchai', last_name: 'Jaidee' },
-    flight: { flight_number: 'FT101', service_date: FLIGHT_DATE },
+    flight: { flight_number: 'FT101', service_date: FLIGHT_DATE, actual_destination: null, route: { origin: 'BKK', destination: 'HKT' } },
     booking_coupon: { booking_passenger: { booking: { booking_reference: 'ABC234' } } },
   }
 }
@@ -113,6 +113,8 @@ describe('StaffLostReportService.createAtDesk', () => {
       bookingReference: 'ABC234',
       passengerLastName: 'Jaidee',
       flightNumber: 'FT101',
+      flightOrigin: 'BKK',
+      flightDestination: 'HKT',
       reportedByStaffId: STAFF_ID,
     })
   })

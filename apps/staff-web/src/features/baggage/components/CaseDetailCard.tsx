@@ -18,7 +18,7 @@ function Fact({ label, children }: { label: string; children: string }) {
 
 /**
  * "Card / Case detail" (frame 01b), with the case's matches and the "Link a found bag by hand" picker. The costs
- * section is frame 06's; it lives here until the Deliveries list exists.
+ * section is frame 06's, shown here as well as on Deliveries so a case's costs can be entered before it has a delivery.
  */
 export function CaseDetailCard({
   report,
@@ -44,7 +44,10 @@ export function CaseDetailCard({
   return (
     <F10Card aria-labelledby="case-detail-title">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 id="case-detail-title" className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d]">
+        <h2
+          id="case-detail-title"
+          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+        >
           {report.caseNumber}
         </h2>
         <Pill tone={REPORT_STATUS_TONES[report.status]}>{REPORT_STATUS_LABELS[report.status]}</Pill>
@@ -53,8 +56,7 @@ export function CaseDetailCard({
       <dl className="flex flex-col gap-2.5">
         <Fact label="Passenger">{`${report.passengerFirstName} ${report.passengerLastName}`}</Fact>
         <Fact label="Contact">{contact}</Fact>
-        {/* The API has no route for the flight yet, so this is "FY 117 · 18 Oct" without "BKK to SIN". */}
-        <Fact label="Flight">{`${report.flightNumber} · ${formatFlightDate(report.flightDate)}`}</Fact>
+        <Fact label="Flight">{`${report.flightNumber} · ${report.flightOrigin} to ${report.flightDestination} · ${formatFlightDate(report.flightDate)}`}</Fact>
         <Fact label="Bag">{bagSummary(report)}</Fact>
         <Fact label="Tag">{report.tagNumber ?? 'No tag'}</Fact>
         <Fact label="Reported">{`${formatEventTime(report.reportedAt)} · by ${report.reportedByStaffId ? 'staff' : 'customer'}`}</Fact>

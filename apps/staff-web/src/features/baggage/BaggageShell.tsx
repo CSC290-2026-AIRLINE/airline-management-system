@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { Link, Outlet } from '@tanstack/react-router'
 import { useUser } from '@clerk/clerk-react'
+import { Menu, X } from 'lucide-react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { cn } from '@staff-web/lib/utils'
 import sidebarPattern from './assets/sidebar-pattern.jpg'
 import { NotificationsButton } from './components/NotificationsButton'
+import { BaggageDeskContext, useBaggageDesk } from './hooks/useBaggageDesk'
 import { useStaffNotifications } from './hooks/useStaffNotifications'
 
 /** Pages in the "Lost and found" nav, in Figma order. An item without a route shows as not ready. */
@@ -49,15 +52,25 @@ function SidebarBox({ label, dot, children }: { label: string; dot: string; chil
   )
 }
 
+function initials(name: string): string {
+  const parts = name.split(/[\s@.]+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'S'
+}
+
+const PILL_LINK =
+  'shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
+
 /**
  * Layout of the Feature 10 staff screens: the 260px "Sidebar / Staff" from Figma and the page on the right. Below the
- * `md` breakpoint the sidebar turns into a top bar with the same links (the F10 mobile frames come later).
+ * `md` breakpoint it follows the mobile frames: a navy top bar, the pages as pills under it, and a full-screen menu.
  */
 export function BaggageShell() {
   const { user: clerkUser } = useUser()
   const { user, logout } = useAppAuth()
   const name = clerkUser?.fullName || user?.email || 'Staff member'
   const notifications = useStaffNotifications()
+  const desk = useBaggageDesk()
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const links = NAV.map((item) =>
     item.to ? (
@@ -97,10 +110,10 @@ export function BaggageShell() {
         </nav>
         <div className="flex-1" />
         <SidebarBox label="SIMULATION CLOCK" dot="bg-[#fca311]">
-          {CLOCK.format(new Date()).replace(',', '')}
+          {desk.now ? CLOCK.format(desk.now).replace(',', '') : '–'}
         </SidebarBox>
         <SidebarBox label="SIGNED IN AS" dot="bg-[#2fa568]">
-          Staff
+          {desk.roleName ?? '–'}
         </SidebarBox>
         <div className="flex flex-col gap-1.5">
           <p className="truncate text-[22px] font-semibold text-white">{name}</p>
@@ -115,24 +128,98 @@ export function BaggageShell() {
         </div>
       </aside>
 
-      <header className="sticky top-0 z-10 isolate flex flex-col gap-2 px-4 py-3 md:hidden">
-        <SidebarBackground />
-        <div className="flex items-center justify-between">
-          <span className="font-heading text-xl font-black text-white uppercase">Flython</span>
-          <div className="flex items-center gap-4">
-            <NotificationsButton notifications={notifications} className="p-1" />
-            <button type="button" onClick={() => void logout()} className="text-sm font-medium text-white">
+      <header className="sticky top-0 z-20 md:hidden">
+        <div className="flex items-center gap-3 bg-[#14213d] px-4 py-3">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="font-heading text-xl leading-tight font-black text-white">Flython</span>
+            <span className="text-[10.5px] tracking-[0.63px] text-[#b7c1d1]">STAFF · BAGGAGE SERVICE</span>
+          </div>
+          <NotificationsButton notifications={notifications} className="p-1" />
+          <span
+            aria-hidden
+            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#fca311] text-xs font-bold text-[#14213d]"
+          >
+            {initials(name)}
+          </span>
+          <button
+            type="button"
+            aria-label="Open menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+            className="rounded p-1 text-white outline-none focus-visible:ring-[3px] focus-visible:ring-gold/60"
+          >
+            <Menu aria-hidden className="size-6" />
+          </button>
+        </div>
+        <nav aria-label="Lost and found pages" className="flex gap-2 overflow-x-auto border-b border-[#e6eaf2] bg-white px-4 py-2.5">
+          {NAV.map(
+            (item) =>
+              item.to && (
+                <Link
+                  key={item.label}
+                  to={item.to}
+                  className={PILL_LINK}
+                  activeProps={{ className: 'border-[#14213d] bg-[#14213d] text-white', 'aria-current': 'page' }}
+                  inactiveProps={{ className: 'border-[#d8dce6] bg-white text-[#14213d]' }}
+                >
+                  {item.label}
+                </Link>
+              ),
+          )}
+        </nav>
+      </header>
+
+      {menuOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+          className="fixed inset-0 z-30 isolate flex flex-col gap-3 overflow-y-auto px-[22px] py-6 md:hidden"
+        >
+          <SidebarBackground />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-heading text-[32px] leading-none font-black text-white uppercase">Flython</p>
+              <p className="mt-2 text-xs text-[#b7c1d1]">STAFF · BAGGAGE SERVICE</p>
+            </div>
+            <button
+              type="button"
+              aria-label="Close menu"
+              onClick={() => setMenuOpen(false)}
+              className="rounded p-1 text-white outline-none focus-visible:ring-[3px] focus-visible:ring-gold/60"
+            >
+              <X aria-hidden className="size-6" />
+            </button>
+          </div>
+          {/* Picking a page closes the menu. */}
+          <nav aria-label="Lost and found" className="flex flex-col gap-1 pt-4" onClick={() => setMenuOpen(false)}>
+            <p className="text-xs text-[#b7c1d1]">LOST AND FOUND</p>
+            {links}
+          </nav>
+          <div className="flex-1" />
+          <SidebarBox label="SIMULATION CLOCK" dot="bg-[#fca311]">
+            {desk.now ? CLOCK.format(desk.now).replace(',', '') : '–'}
+          </SidebarBox>
+          <SidebarBox label="SIGNED IN AS" dot="bg-[#2fa568]">
+            {desk.roleName ?? '–'}
+          </SidebarBox>
+          <div className="flex flex-col gap-1.5">
+            <p className="truncate text-[22px] font-semibold text-white">{name}</p>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="self-start text-sm font-medium text-white outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-gold/60"
+            >
               Sign out
             </button>
           </div>
         </div>
-        <nav aria-label="Lost and found" className="flex gap-1 overflow-x-auto [&>*]:w-auto [&>*]:shrink-0 [&>*]:pr-3.5">
-          {links}
-        </nav>
-      </header>
+      )}
 
-      <main className="flex min-w-0 flex-1 flex-col gap-6 px-14 pt-12 pb-16 max-lg:px-6 max-lg:pt-8">
-        <Outlet />
+      <main className="flex min-w-0 flex-1 flex-col gap-6 px-14 pt-12 pb-16 max-lg:px-6 max-lg:pt-8 max-md:gap-4 max-md:px-4 max-md:pt-5">
+        <BaggageDeskContext.Provider value={desk}>
+          <Outlet />
+        </BaggageDeskContext.Provider>
       </main>
     </div>
   )
