@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
-import type { BookingDetail, SeatMap } from '../api/types'
+import { ApiError } from '../api/client'
+import type { ApiErrorBody, BookingDetail, SeatMap } from '../api/types'
 import { BookingSeatChange } from './BookingSeatChange'
 import './seat-selection.css'
 
@@ -91,8 +92,16 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
                 body: JSON.stringify({ seatCode }),
               },
             )
-            if (!response.ok) throw new Error('Seat change failed')
+            if (!response.ok) {
+              const body = (await response.json().catch(() => null)) as ApiErrorBody | null
+              throw new ApiError(body?.error?.code ?? 'REQUEST_FAILED', body?.error?.message ?? 'Seat change failed', response.status)
+            }
             return (await response.json()) as { status: 'assigned' | 'payment_required' }
+          }}
+          onRefresh={async () => {
+            const response = await fetchWithAuth(`/api/flights/${encodeURIComponent(coupon.flightId)}/seat-map`)
+            if (!response.ok) throw new Error('Seat map unavailable')
+            setMap((await response.json()) as SeatMap)
           }}
           onClose={() => {
             setSelectedCoupon(null)

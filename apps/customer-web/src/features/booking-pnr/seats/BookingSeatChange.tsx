@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { ApiError } from '../api/client'
 import type { Cabin, SeatMap } from '../api/types'
 import { SeatPicker } from './SeatPicker'
+import { SeatTakenDialog } from './SeatTakenDialog'
 import './seat-selection.css'
 
 interface BookingSeatChangeProps {
@@ -9,17 +11,36 @@ interface BookingSeatChangeProps {
   passengerName: string
   currentSeat: string | null
   onChangeSeat: (seatCode: string) => Promise<{ status: 'assigned' | 'payment_required' }>
+  onRefresh: () => Promise<void>
   onClose: () => void
 }
 
 // Booking Detail supplies the authorized API callback after the seat-change route is connected.
-export function BookingSeatChange({ seatMap, cabin, passengerName, currentSeat, onChangeSeat, onClose }: BookingSeatChangeProps) {
+export function BookingSeatChange({
+  seatMap,
+  cabin,
+  passengerName,
+  currentSeat,
+  onChangeSeat,
+  onRefresh,
+  onClose,
+}: BookingSeatChangeProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [paymentRequired, setPaymentRequired] = useState(false)
   const [assigned, setAssigned] = useState(false)
+  const [taken, setTaken] = useState(false)
   const seats = seatMap.rows.flatMap((row) => row.seats)
+
+  function chooseAnother() {
+    setTaken(false)
+    setSelected(null)
+    setSaving(true)
+    void onRefresh()
+      .catch(() => setMessage('Could not refresh the seat map. Please close and try again.'))
+      .finally(() => setSaving(false))
+  }
 
   async function submit() {
     if (!selected || saving) return
@@ -34,8 +55,9 @@ export function BookingSeatChange({ seatMap, cabin, passengerName, currentSeat, 
         setAssigned(true)
         setMessage(`Seat ${selected} has been assigned.`)
       }
-    } catch {
-      setMessage('Could not change your seat. Refresh the seat map and try again.')
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'SEAT_UNAVAILABLE') setTaken(true)
+      else setMessage('Could not change your seat. Refresh the seat map and try again.')
     } finally {
       setSaving(false)
     }
@@ -46,6 +68,7 @@ export function BookingSeatChange({ seatMap, cabin, passengerName, currentSeat, 
       <h2>Choose a seat for {passengerName}</h2>
       <p>Current seat: {currentSeat ?? 'Not chosen'}</p>
       <p>Exit-row seats are subject to eligibility rules.</p>
+      <SeatTakenDialog open={taken} seatCode={selected} onClose={chooseAnother} onChooseAnother={chooseAnother} />
       <SeatPicker
         seats={seats}
         selectedCabin={cabin}
