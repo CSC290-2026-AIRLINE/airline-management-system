@@ -1,12 +1,25 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { PAYMENT_REPOSITORY, type PaymentRepository } from './payment.repository'
 import { PAYMENT_GATEWAY, type PaymentGateway } from './payment.gateway'
-import { matchesStaffFilter, STATUS_LABELS, SOURCE_FEATURE_LABELS, toCustomerState } from './payment-status'
 import {
+  matchesStaffFilter,
+  paymentReference,
+  RECEIPT_FILTERS,
+  SOURCE_FEATURE_LABELS,
+  STAFF_PAYMENT_FILTERS,
+  stateHistoryFor,
+  STATUS_LABELS,
+  toCustomerState,
+} from './payment-status'
+import type { ReceiptFilter } from './payment-status'
+import {
+  bookingFlight,
+  customerEmail,
   customerName,
+  MOCK_BOOKING_FLOWN,
   MOCK_BOOKING_REFERENCE,
   MOCK_CARGO_REFERENCE,
   MOCK_BOOKING_REFUND_STATE,
@@ -27,13 +40,17 @@ import type { ReceiptQueryDto } from './dto/receipt-query.dto'
 import type { StaffPaymentQueryDto } from './dto/staff-payment-query.dto'
 import type { PaymentExceptionTab } from './dto/payment-exceptions-query.dto'
 import type {
-  ListDto,
   PaymentLineDto,
+  PaymentProblemDto,
+  PaymentProblemListDto,
   PaymentStatusDto,
   ReceiptDetailDto,
+  ReceiptListDto,
+  ReceiptStatus,
   ReceiptSummaryDto,
   RefundState,
   StaffPaymentDetailDto,
+  StaffPaymentListDto,
   StaffPaymentSummaryDto,
 } from './dto/payments-checkout.types'
 
@@ -50,9 +67,24 @@ const BASE_CURRENCY = 'USD'
 /** The default number of rows a list endpoint returns. */
 const DEFAULT_LIMIT = 50
 
+/** How many rows the staff lookup shows on a page, as the frames show. */
+const DEFAULT_PAGE_SIZE = 10
+
+/**
+ * How long a payment may sit without a provider event before the staff list calls it a problem.
+ *
+ * The frames say 30 minutes.
+ */
+const PROVIDER_EVENT_TIMEOUT_MS = 30 * 60 * 1000
+
 /** Money is a JS number rounded to two decimals in the mock; the real implementation uses Prisma `Decimal`. */
 function round2(value: number): number {
   return Math.round(value * 100) / 100
+}
+
+/** `40000` → `40,000`, the way the frames write miles. */
+function formatMiles(miles: number): string {
+  return new Intl.NumberFormat('en-US').format(miles)
 }
 
 /** What a selling feature hands to 5a when it starts a payment. */
@@ -107,6 +139,8 @@ export interface CreatePaymentInput {
  */
 @Injectable()
 export class PaymentsCheckoutService {
+  private readonly logger = new Logger(PaymentsCheckoutService.name)
+
   constructor(
     @Inject(PAYMENT_REPOSITORY) private readonly repo: PaymentRepository,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
@@ -154,10 +188,10 @@ export class PaymentsCheckoutService {
       throw new BadRequestException(`Payment lines add up to ${linesTotal}, not ${amountTotal}`)
     }
 
-    const replay = this.repo.findByIdempotencyKey(input.payer_customer_id, input.idempotency_key)
+    const replay = await this.repo.findByIdempotencyKey(input.payer_customer_id, input.idempotency_key)
     if (replay) return replay
 
-    const live = this.repo.findLiveByPurchaseRef(input.source_feature, input.purchase_ref)
+    const live = await this.repo.findLiveByPurchaseRef(input.source_feature, input.purchase_ref)
     if (live) {
       throw new ConflictException(`Purchase ${input.purchase_ref} already has a live payment (${live.id})`)
     }
@@ -183,6 +217,7 @@ export class PaymentsCheckoutService {
       started_at: startedAt,
       expires_at: input.expires_at,
       authorised_at: null,
+      confirmed_at: null,
       captured_at: null,
       voided_at: null,
       capture_stalled_at: null,
@@ -215,7 +250,7 @@ export class PaymentsCheckoutService {
    * confirms the cargo. A `false` from it means the sale did not happen.
    */
   async confirmAndSettle(paymentId: string, confirm: () => Promise<boolean>): Promise<PaymentRecord> {
-    const payment = this.requirePayment(paymentId)
+    const payment = await this.requirePayment(paymentId)
     if (payment.status !== 'created') {
       throw new ConflictException(`Payment ${paymentId} is ${payment.status}; it is not waiting for confirmation`)
     }
@@ -233,9 +268,10 @@ export class PaymentsCheckoutService {
       }
       payment.status = 'captured'
       payment.authorised_at = now
+      payment.confirmed_at = now
       payment.captured_at = now
       payment.updated_at = now
-      this.issueReceipt(payment)
+      await this.issueReceipt(payment)
       return this.repo.update(payment)
     }
 
@@ -256,23 +292,24 @@ export class PaymentsCheckoutService {
 
     payment.status = 'authorised'
     payment.authorised_at = now
-    this.repo.update(payment)
+    await this.repo.update(payment)
 
     const confirmed = await confirm()
     if (!confirmed) {
       return this.voidPayment(payment.id, 'seller_declined')
     }
+    payment.confirmed_at = this.clock.now()
     return this.capturePayment(payment)
   }
 
   /**
-   * Captures an authorised payment. Staff call this to retry a capture that stalled.
+   * Captures an authorised payment. Staff call this to retry a capture that stalled, from the exception list.
    *
    * The payment stays `authorised` when the capture fails. Once it has failed `capture_retry_limit` times the payment
    * is capture-stalled: it stays `authorised`, gets a `capture_stalled_at`, and lands on the staff exception list.
    */
   async retryCapture(paymentId: string, actor?: string | null, note?: string | null): Promise<PaymentRecord> {
-    const payment = this.requirePayment(paymentId)
+    const payment = await this.requirePayment(paymentId)
     if (payment.status !== 'authorised') {
       throw new ConflictException(`Only an authorised payment can be captured; ${paymentId} is ${payment.status}`)
     }
@@ -283,11 +320,14 @@ export class PaymentsCheckoutService {
   }
 
   /**
-   * Releases an authorisation without charging. Feature 3b calls this when it cancels a booking, and staff call it
-   * when they cancel a capture-stalled purchase.
+   * Releases an authorisation without charging.
+   *
+   * Feature 3b calls this in process when it cancels a booking. The staff screens do not offer it: the frames say
+   * staff cannot edit a payment's state by hand, and the "authorisation voided" problem is one the system reaches on
+   * its own.
    */
   async voidPayment(paymentId: string, reason: string, actor?: string | null): Promise<PaymentRecord> {
-    const payment = this.requirePayment(paymentId)
+    const payment = await this.requirePayment(paymentId)
     if (payment.status === 'voided' || payment.status === 'expired') return payment
     if (payment.status !== 'authorised') {
       throw new ConflictException(`Only an authorised payment can be voided; ${paymentId} is ${payment.status}`)
@@ -298,8 +338,8 @@ export class PaymentsCheckoutService {
     payment.voided_at = now
     payment.last_error = reason
     payment.updated_at = now
-    this.closeException(payment, 'voided', actor, reason)
-    const updated = this.repo.update(payment)
+    await this.closeException(payment, 'voided', actor, reason)
+    const updated = await this.repo.update(payment)
     await this.recordStatusChange(updated, before, `Payment ${payment.purchase_ref} voided`, reason, actor)
     return updated
   }
@@ -312,7 +352,7 @@ export class PaymentsCheckoutService {
    * `voided` and the customer was never charged.
    */
   async expireIfPastDeadline(paymentId: string): Promise<PaymentRecord> {
-    const payment = this.requirePayment(paymentId)
+    const payment = await this.requirePayment(paymentId)
     const now = this.clock.now()
     if (now <= payment.expires_at) return payment
 
@@ -320,15 +360,14 @@ export class PaymentsCheckoutService {
       payment.status = 'expired'
       payment.last_error = 'hold_expired'
       payment.updated_at = now
-      this.closeException(payment, 'expired')
+      await this.closeException(payment, 'expired')
       return this.repo.update(payment)
     }
     if (payment.status === 'authorised') {
       payment.status = 'voided'
       payment.voided_at = now
       payment.last_error = 'hold_expired'
-      payment.updated_at = now
-      this.closeException(payment, 'voided', null, 'The booking hold expired before the capture.')
+      await this.closeException(payment, 'voided', null, 'The booking hold expired before the capture.')
       return this.repo.update(payment)
     }
     return payment
@@ -339,13 +378,14 @@ export class PaymentsCheckoutService {
   /* ──────────────────────────────────────────────────────────────────────────── */
 
   /** The payment status a selling feature's confirmation page polls. */
-  getPaymentStatus(userId: string, paymentId: string): PaymentStatusDto {
-    const payment = this.requirePayment(paymentId)
+  async getPaymentStatus(userId: string, paymentId: string): Promise<PaymentStatusDto> {
+    const payment = await this.requirePayment(paymentId)
     // A payment with no payer (an onboard sale) can be read by whoever holds the link; one with a payer can only be
     // read by that payer. TODO(F5a): the real check is "the signed-in customer owns this payment".
     if (payment.payer_customer_id && payment.payer_customer_id !== resolveCustomerId(userId)) {
       throw new NotFoundException(`Payment ${paymentId} not found`)
     }
+    const receipt = await this.repo.findReceiptByPaymentId(payment.id)
     return {
       id: payment.id,
       status: payment.status,
@@ -355,40 +395,49 @@ export class PaymentsCheckoutService {
       card_amount: payment.card_amount,
       currency: payment.currency,
       capture_stalled: payment.capture_stalled_at !== null,
-      receipt_id: this.repo.findReceiptByPaymentId(payment.id)?.id ?? null,
+      expires_at: payment.expires_at.toISOString(),
+      receipt_id: receipt?.id ?? null,
       updated_at: payment.updated_at.toISOString(),
     }
   }
 
   /** The signed-in customer's receipts, newest first. */
-  listCustomerReceipts(userId: string, query: ReceiptQueryDto): ListDto<ReceiptSummaryDto> {
+  async listCustomerReceipts(userId: string, query: ReceiptQueryDto): Promise<ReceiptListDto> {
     const customerId = resolveCustomerId(userId)
     const limit = query.limit ?? DEFAULT_LIMIT
-    const rows = this.repo
-      .listReceipts()
+    const receipts = await this.repo.listReceipts()
+    const payments = await this.repo.listPayments()
+    const paymentById = new Map(payments.map((payment) => [payment.id, payment]))
+
+    const rows = receipts
       .filter((receipt) => receipt.refund_id === null && receipt.document_type !== 'credit_note')
-      .map((receipt) => ({ receipt, payment: this.repo.findById(receipt.payment_id) }))
+      .map((receipt) => ({ receipt, payment: paymentById.get(receipt.payment_id) }))
       .filter((row): row is { receipt: ReceiptRecord; payment: PaymentRecord } => row.payment !== undefined)
       .filter((row) => row.payment.payer_customer_id === customerId)
       .sort((a, b) => b.receipt.issued_at.getTime() - a.receipt.issued_at.getTime())
 
-    const items = rows.slice(0, limit).map((row) => this.toReceiptSummary(row.receipt, row.payment))
-    return { items, total: rows.length }
+    const summaries = await Promise.all(rows.map((row) => this.toReceiptSummary(row.receipt, row.payment)))
+
+    const counts = this.countReceipts(summaries)
+    const searched = summaries.filter((summary) => this.matchesReceiptSearch(summary, query.search))
+    const filtered = searched.filter((summary) => query.filter === undefined || this.matchesReceiptFilter(summary, query.filter))
+
+    return { items: filtered.slice(0, limit), total: filtered.length, counts }
   }
 
   /** One of the signed-in customer's receipts. 404 when the receipt is not theirs. */
-  getCustomerReceipt(userId: string, receiptId: string): ReceiptDetailDto {
+  async getCustomerReceipt(userId: string, receiptId: string): Promise<ReceiptDetailDto> {
     const customerId = resolveCustomerId(userId)
-    const receipt = this.repo.findReceiptById(receiptId)
+    const receipt = await this.repo.findReceiptById(receiptId)
     if (!receipt) throw new NotFoundException(`Receipt ${receiptId} not found`)
-    const payment = this.repo.findById(receipt.payment_id)
+    const payment = await this.repo.findById(receipt.payment_id)
     if (!payment) throw new NotFoundException(`Receipt ${receiptId} has no payment`)
     if (payment.payer_customer_id !== customerId) throw new NotFoundException(`Receipt ${receiptId} not found`)
 
     const attempt = payment.attempts[payment.attempts.length - 1]
-    const creditNote = this.repo.findCreditNoteByPaymentId(payment.id)
+    const creditNote = await this.repo.findCreditNoteByPaymentId(payment.id)
     return {
-      ...this.toReceiptSummary(receipt, payment),
+      ...(await this.toReceiptSummary(receipt, payment)),
       billing_name: receipt.billing_name,
       card_brand: attempt?.card_brand ?? null,
       card_last4: attempt?.card_last4 ?? null,
@@ -403,25 +452,127 @@ export class PaymentsCheckoutService {
     }
   }
 
-  /** The staff payment lookup, with the frames' status filters. */
-  listStaffPayments(query: StaffPaymentQueryDto): ListDto<StaffPaymentSummaryDto> {
-    const limit = query.limit ?? DEFAULT_LIMIT
-    const rows = this.repo
-      .listPayments()
+  /** The staff payment lookup, with the frames' status filters, search box and filter counts. */
+  async listStaffPayments(query: StaffPaymentQueryDto): Promise<StaffPaymentListDto> {
+    const payments = await this.repo.listPayments()
+    const searched = payments.filter((payment) => this.matchesPaymentSearch(payment, query.search))
+
+    const counts: Record<'all' | StaffPaymentFilterKey, number> = {
+      all: searched.length,
+      captured: 0,
+      failed: 0,
+      capture_stalled: 0,
+      voided: 0,
+      refunded: 0,
+    }
+    for (const payment of searched) {
+      for (const filter of STAFF_PAYMENT_FILTERS) {
+        if (matchesStaffFilter(payment, filter)) counts[filter] += 1
+      }
+    }
+
+    const filtered = searched
       .filter((payment) => query.status === undefined || matchesStaffFilter(payment, query.status))
       .filter((payment) => query.source_feature === undefined || payment.source_feature === query.source_feature)
       .sort((a, b) => b.started_at.getTime() - a.started_at.getTime())
 
-    const items = rows.slice(0, limit).map((payment) => this.toStaffPaymentSummary(payment))
-    return { items, total: rows.length }
+    const pageSize = query.limit ?? DEFAULT_PAGE_SIZE
+    const page = query.page ?? 1
+    const items = await Promise.all(
+      filtered.slice((page - 1) * pageSize, page * pageSize).map((payment) => this.toStaffPaymentSummary(payment)),
+    )
+    return { items, total: filtered.length, counts }
   }
 
-  /** One payment, with the capture-stalled panel the staff frames show. */
-  getStaffPayment(paymentId: string): StaffPaymentDetailDto {
-    const payment = this.requirePayment(paymentId)
-    const exception = this.repo.findException(payment.id)
+  /**
+   * One payment, with the capture-stalled panel and the state history the frames show.
+   *
+   * `actorId` is the staff member who opened it. A payment record carries a customer's name, email and the last four
+   * digits of their card, so opening one is written to `audit_log` as `view_sensitive`.
+   *
+   * The action endpoints read the payment back after a change; they call this without an actor, so a retry is not
+   * counted as a view on top of the status change it already recorded.
+   */
+  async getStaffPayment(paymentId: string, actorId?: string | null): Promise<StaffPaymentDetailDto> {
+    const payment = await this.requirePayment(paymentId)
+    if (actorId) {
+      await this.recordPaymentView(payment, actorId)
+    }
+    return this.toStaffPaymentDetail(payment)
+  }
+
+  /**
+   * The staff exception list — a list of *problems*, as the frames show it.
+   *
+   * Each row says what went wrong, which reference it belongs to, when it started and what a staff member can do about
+   * it. A payment that is simply in flight is not a problem, so it is not on this list.
+   *
+   * - `needs_action` — a person has to decide now.
+   * - `queued` — a job or a retry is already running; nothing to do yet.
+   * - `resolved` — it is closed, and stays on the record.
+   * - `all` — every one of those.
+   */
+  async listPaymentProblems(tab: PaymentExceptionTab): Promise<PaymentProblemListDto> {
+    const now = this.clock.now()
+    const payments = await this.repo.listPayments()
+    const rows: PaymentProblemDto[] = []
+    for (const payment of payments) {
+      const problem = await this.problemFor(payment, now)
+      if (problem) rows.push(problem)
+    }
+
+    const counts: Record<PaymentExceptionState | 'all', number> = { all: rows.length, needs_action: 0, queued: 0, resolved: 0 }
+    for (const row of rows) counts[row.state] += 1
+
+    const filtered = rows.filter((row) => tab === 'all' || row.state === tab).sort((a, b) => Date.parse(b.since) - Date.parse(a.since))
+
+    return { items: filtered, total: filtered.length, counts }
+  }
+
+  /**
+   * Sends a payment to the finance ledger, for a payment whose posting did not go through.
+   *
+   * The frames' button is "Send now". In the mock the ledger answers straight away, so the problem is closed; the real
+   * implementation moves the row to "Queued" until the ledger answers.
+   *
+   * The note the staff member typed is kept on the exception row and on the audit trail.
+   */
+  async sendFinancePosting(paymentId: string, actor?: string | null, note?: string | null): Promise<PaymentRecord> {
+    const payment = await this.requirePayment(paymentId)
+    if (payment.last_error !== 'finance_posting_failed') {
+      throw new ConflictException(`Payment ${paymentId} is not waiting on the finance ledger`)
+    }
+    const now = this.clock.now()
+    payment.last_error = null
+    payment.updated_at = now
+    await this.repo.saveException({
+      payment_id: payment.id,
+      state: 'resolved',
+      detected_at: now,
+      resolved_at: now,
+      resolved_by: actor ?? null,
+      resolution: 'posted',
+      note: note ?? 'The payment was sent to the finance ledger.',
+    })
+    await this.recordStatusChange(payment, 'captured', `Payment ${payment.purchase_ref} posted to the finance ledger`, note ?? null, actor)
+    return this.repo.update(payment)
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  Internals                                                                  */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  private async requirePayment(paymentId: string): Promise<PaymentRecord> {
+    const payment = await this.repo.findById(paymentId)
+    if (!payment) throw new NotFoundException(`Payment ${paymentId} not found`)
+    return payment
+  }
+
+  /** The staff detail page's body: the summary plus everything only the detail page shows. */
+  private async toStaffPaymentDetail(payment: PaymentRecord): Promise<StaffPaymentDetailDto> {
+    const exception = await this.repo.findException(payment.id)
     return {
-      ...this.toStaffPaymentSummary(payment),
+      ...(await this.toStaffPaymentSummary(payment)),
       idempotency_key: payment.idempotency_key,
       provider: payment.provider,
       provider_fee: payment.provider_fee,
@@ -429,6 +580,11 @@ export class PaymentsCheckoutService {
       authorised_at: payment.authorised_at?.toISOString() ?? null,
       voided_at: payment.voided_at?.toISOString() ?? null,
       lines: payment.lines.map((line) => this.toLineDto(line)),
+      state_history: stateHistoryFor(payment).map((step) => ({
+        key: step.key,
+        label: step.label,
+        at: step.at?.toISOString() ?? null,
+      })),
       exception: exception
         ? {
             state: exception.state,
@@ -443,34 +599,28 @@ export class PaymentsCheckoutService {
   }
 
   /**
-   * The staff exception list.
+   * Writes the `view_sensitive` row for a staff member opening a payment.
    *
-   * - `needs_action` — the payment needs a decision now: the capture stalled, or the deadline passed while it was open.
-   * - `queued` — the payment is in flight and still inside its deadline.
-   * - `resolved` — the payment was on the list and has since been closed.
-   * - `all` — every one of those.
+   * The row carries no before/after, so it is not itself a sensitive row. A failure is only logged: refusing to show
+   * a payment because the audit table was briefly unavailable would be worse than the missing row.
+   *
+   * TODO(F5a): the real implementation writes this row in the same transaction as the read, so the view and its row
+   * commit together.
    */
-  listPaymentExceptions(tab: PaymentExceptionTab): ListDto<StaffPaymentSummaryDto> {
-    const now = this.clock.now()
-    const rows = this.repo
-      .listPayments()
-      .map((payment) => ({ payment, state: this.exceptionStateFor(payment, now) }))
-      .filter((row): row is { payment: PaymentRecord; state: PaymentExceptionState } => row.state !== null)
-      .filter((row) => tab === 'all' || row.state === tab)
-      .sort((a, b) => b.payment.started_at.getTime() - a.payment.started_at.getTime())
-
-    const items = rows.map((row) => this.toStaffPaymentSummary(row.payment))
-    return { items, total: items.length }
-  }
-
-  /* ──────────────────────────────────────────────────────────────────────────── */
-  /*  Internals                                                                  */
-  /* ──────────────────────────────────────────────────────────────────────────── */
-
-  private requirePayment(paymentId: string): PaymentRecord {
-    const payment = this.repo.findById(paymentId)
-    if (!payment) throw new NotFoundException(`Payment ${paymentId} not found`)
-    return payment
+  private async recordPaymentView(payment: PaymentRecord, actorId: string): Promise<void> {
+    try {
+      const actor = await this.audit.resolveActor(actorId).catch(() => AuditService.systemActor())
+      await this.audit.recordSensitiveView(actor, {
+        sourceFeature: '5',
+        entityType: 'payment',
+        entityId: payment.id,
+        summary: `Opened payment ${paymentReference(payment)}`,
+        reason: 'A staff member opened the payment record from the payment lookup.',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.logger.warn(`Audit view_sensitive write failed (payment ${payment.id}): ${message}`)
+    }
   }
 
   /**
@@ -486,8 +636,8 @@ export class PaymentsCheckoutService {
     payment: PaymentRecord,
     before: PaymentStatus,
     summary: string,
-    reason: string | null,
-    actorId: string | null,
+    reason: string | null | undefined,
+    actorId: string | null | undefined,
   ): Promise<void> {
     if (!actorId) return
     const actor = await this.audit.resolveActor(actorId).catch(() => AuditService.systemActor())
@@ -521,7 +671,7 @@ export class PaymentsCheckoutService {
       payment.last_error = result.failure_code ?? 'capture_failed'
       if (payment.capture_attempts >= CAPTURE_RETRY_LIMIT) {
         payment.capture_stalled_at = now
-        this.openException(payment, `Capture failed ${payment.capture_attempts} times: ${payment.last_error}`)
+        await this.openException(payment, `Capture failed ${payment.capture_attempts} times: ${payment.last_error}`)
       }
       return this.repo.update(payment)
     }
@@ -531,14 +681,14 @@ export class PaymentsCheckoutService {
     payment.provider_fee = result.provider_fee ?? null
     payment.last_error = null
     payment.capture_stalled_at = null
-    this.issueReceipt(payment)
-    this.closeException(payment, 'captured', actor, note ?? undefined)
+    await this.issueReceipt(payment)
+    await this.closeException(payment, 'captured', actor, note ?? undefined)
     return this.repo.update(payment)
   }
 
   /** Issues the receipt for a captured payment. One receipt per payment, as the schema's partial unique index says. */
-  private issueReceipt(payment: PaymentRecord): ReceiptRecord {
-    const existing = this.repo.findReceiptByPaymentId(payment.id)
+  private async issueReceipt(payment: PaymentRecord): Promise<ReceiptRecord> {
+    const existing = await this.repo.findReceiptByPaymentId(payment.id)
     if (existing) return existing
 
     const now = this.clock.now()
@@ -573,9 +723,9 @@ export class PaymentsCheckoutService {
   }
 
   /** Flags a payment for staff. The list has no table of its own yet, so the row lives in the mock repository. */
-  private openException(payment: PaymentRecord, note: string): void {
-    const existing = this.repo.findException(payment.id)
-    this.repo.saveException({
+  private async openException(payment: PaymentRecord, note: string): Promise<void> {
+    const existing = await this.repo.findException(payment.id)
+    await this.repo.saveException({
       payment_id: payment.id,
       state: 'needs_action',
       detected_at: existing?.detected_at ?? this.clock.now(),
@@ -586,10 +736,15 @@ export class PaymentsCheckoutService {
     })
   }
 
-  private closeException(payment: PaymentRecord, resolution: PaymentExceptionResolution, actor?: string | null, note?: string): void {
-    const existing = this.repo.findException(payment.id)
+  private async closeException(
+    payment: PaymentRecord,
+    resolution: PaymentExceptionResolution,
+    actor?: string | null,
+    note?: string,
+  ): Promise<void> {
+    const existing = await this.repo.findException(payment.id)
     const now = this.clock.now()
-    this.repo.saveException({
+    await this.repo.saveException({
       payment_id: payment.id,
       state: 'resolved',
       detected_at: existing?.detected_at ?? now,
@@ -601,25 +756,122 @@ export class PaymentsCheckoutService {
   }
 
   /**
-   * Where a payment sits on the exception list.
+   * The problem a payment is, if it is one.
    *
-   * A resolved exception keeps its row, so the payment stays on the "resolved" tab. A payment that was never flagged
-   * is only on the list while it is open — a settled payment is not an exception, however long ago its deadline was.
+   * A payment that is simply in flight is not a problem: it is not on the list. The frames' problems are a capture
+   * that stopped, a provider event that never arrived, a posting the ledger did not accept, and an authorisation the
+   * system released on its own.
    */
-  private exceptionStateFor(payment: PaymentRecord, now: Date): PaymentExceptionState | null {
-    const exception = this.repo.findException(payment.id)
-    if (exception?.state === 'resolved') return 'resolved'
-    const stillOpen = payment.status === 'created' || payment.status === 'authorised'
-    if (!stillOpen) return null
-    if (payment.capture_stalled_at !== null || now > payment.expires_at) return 'needs_action'
-    return 'queued'
+  private async problemFor(payment: PaymentRecord, now: Date): Promise<PaymentProblemDto | null> {
+    const exception = await this.repo.findException(payment.id)
+    const reference = paymentReference(payment)
+    const bookingReference = this.bookingReference(payment)
+
+    if (payment.capture_stalled_at) {
+      const cargo = payment.source_feature === 17
+      return {
+        id: payment.id,
+        type: cargo ? 'cargo_capture_stalled' : 'ticket_capture_stalled',
+        title: cargo ? 'Cargo capture stalled' : 'Ticket capture stalled',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: cargo
+          ? 'The cargo booking is confirmed, but the card has not been charged. No Air Waybill is issued until it is.'
+          : 'The booking is confirmed and the ticket is live, but the card has not been charged.',
+        what_to_do: cargo
+          ? 'Retry the capture. If it keeps failing, cancel the cargo booking.'
+          : 'Retry the capture. If it keeps failing, decide whether to cancel the ticket.',
+        action: 'retry_capture',
+        action_label: 'Retry capture',
+        since: payment.capture_stalled_at.toISOString(),
+        state: 'needs_action',
+        payment_id: payment.id,
+      }
+    }
+
+    if (payment.last_error === 'finance_posting_failed') {
+      return {
+        id: payment.id,
+        type: 'finance_posting_delayed',
+        title: 'Finance posting delayed',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: 'The finance ledger did not answer (503). The payment itself is complete.',
+        what_to_do: 'Send the payment to the finance ledger now.',
+        action: 'send_posting',
+        action_label: 'Send now',
+        since: payment.updated_at.toISOString(),
+        state: 'queued',
+        payment_id: payment.id,
+      }
+    }
+
+    if (exception?.resolution === 'posted') {
+      return {
+        id: payment.id,
+        type: 'finance_posting_delayed',
+        title: 'Finance posting delayed',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: 'The finance ledger did not answer (503). The payment itself is complete.',
+        what_to_do: 'No action — the payment is in the ledger.',
+        action: 'none',
+        action_label: null,
+        since: exception.detected_at.toISOString(),
+        state: 'resolved',
+        payment_id: payment.id,
+      }
+    }
+
+    if (payment.status === 'voided' && payment.last_error === 'booking_confirm_failed') {
+      return {
+        id: payment.id,
+        type: 'authorisation_voided',
+        title: 'Authorisation voided',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: 'The card was authorised, but the booking confirm failed twice. The hold was released automatically.',
+        what_to_do: 'No action — the customer was not charged.',
+        action: 'none',
+        action_label: null,
+        since: (payment.voided_at ?? payment.updated_at).toISOString(),
+        state: 'resolved',
+        payment_id: payment.id,
+      }
+    }
+
+    const waitingForProvider =
+      payment.status === 'authorised' &&
+      payment.capture_attempts === 0 &&
+      now.getTime() - payment.started_at.getTime() > PROVIDER_EVENT_TIMEOUT_MS
+    if (waitingForProvider) {
+      return {
+        id: payment.id,
+        type: 'waiting_for_provider',
+        title: 'Waiting for the provider',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: 'No provider event for 30 minutes.',
+        what_to_do: 'Nothing yet — the reconciliation job is checking.',
+        action: 'none',
+        action_label: null,
+        since: payment.started_at.toISOString(),
+        state: 'queued',
+        payment_id: payment.id,
+      }
+    }
+
+    return null
   }
 
   private toLineDto(line: PaymentLineRecord): PaymentLineDto {
     return { line_type: line.line_type, description: line.description, amount: line.amount }
   }
 
-  private toReceiptSummary(receipt: ReceiptRecord, payment: PaymentRecord): ReceiptSummaryDto {
+  private async toReceiptSummary(receipt: ReceiptRecord, payment: PaymentRecord): Promise<ReceiptSummaryDto> {
+    const creditNote = await this.repo.findCreditNoteByPaymentId(payment.id)
+    const flight = bookingFlight(payment.booking_id)
+    const miles = this.milesRedeemed(payment)
     return {
       id: receipt.id,
       document_number: receipt.document_number,
@@ -628,6 +880,7 @@ export class PaymentsCheckoutService {
       source_feature: payment.source_feature,
       source_feature_label: SOURCE_FEATURE_LABELS[payment.source_feature],
       status: payment.status,
+      receipt_status: this.receiptStatusFor(payment, miles),
       title: this.receiptTitle(payment),
       amount: receipt.amount,
       voucher_amount: payment.voucher_amount,
@@ -635,15 +888,23 @@ export class PaymentsCheckoutService {
       currency: payment.currency,
       issued_at: receipt.issued_at.toISOString(),
       booking_reference: this.bookingReference(payment),
+      route: flight?.route ?? null,
+      flight_number: flight?.flight_number ?? null,
+      flight_date: flight?.flight_date ?? null,
       refund_state: this.refundStateFor(payment),
-      has_credit_note: this.repo.findCreditNoteByPaymentId(payment.id) !== undefined,
-      miles_redeemed: this.milesRedeemed(payment),
+      has_credit_note: creditNote !== undefined,
+      miles_redeemed: miles,
+      paid_with: this.paidWith(payment, miles, true),
     }
   }
 
-  private toStaffPaymentSummary(payment: PaymentRecord): StaffPaymentSummaryDto {
+  private async toStaffPaymentSummary(payment: PaymentRecord): Promise<StaffPaymentSummaryDto> {
+    const receipt = await this.repo.findReceiptByPaymentId(payment.id)
+    const attempt = payment.attempts[payment.attempts.length - 1]
+    const miles = this.milesRedeemed(payment)
     return {
       id: payment.id,
+      reference: paymentReference(payment),
       purchase_ref: payment.purchase_ref,
       source_feature: payment.source_feature,
       source_feature_label: SOURCE_FEATURE_LABELS[payment.source_feature],
@@ -651,6 +912,12 @@ export class PaymentsCheckoutService {
       status_label: STATUS_LABELS[payment.status],
       payer_customer_id: payment.payer_customer_id,
       customer_name: customerName(payment.payer_customer_id),
+      customer_email: customerEmail(payment.payer_customer_id),
+      booking_reference: this.bookingReference(payment),
+      paid_with: this.paidWith(payment, miles),
+      card_brand: attempt?.card_brand ?? null,
+      card_last4: attempt?.card_last4 ?? null,
+      miles_redeemed: miles,
       amount_total: payment.amount_total,
       voucher_amount: payment.voucher_amount,
       card_amount: payment.card_amount,
@@ -660,8 +927,99 @@ export class PaymentsCheckoutService {
       captured_at: payment.captured_at?.toISOString() ?? null,
       capture_stalled_at: payment.capture_stalled_at?.toISOString() ?? null,
       last_error: payment.last_error,
-      receipt_id: this.repo.findReceiptByPaymentId(payment.id)?.id ?? null,
+      receipt_id: receipt?.id ?? null,
     }
+  }
+
+  /**
+   * What the customer paid with, in the words the frames use.
+   *
+   * "Card ending 4242", "24,000 miles + card", "18,000 miles only". Miles are not money, so they sit next to the cash
+   * rather than inside it.
+   *
+   * The customer's receipt spells the card out in full — "24,000 miles + card ending 4242" — while the staff lookup
+   * keeps it short.
+   */
+  private paidWith(payment: PaymentRecord, miles: number | null, cardDigits = false): string {
+    const ending = this.cardEnding(payment)
+    const card = cardDigits ? (ending ? `card ending ${ending}` : 'card') : 'card'
+    if (miles !== null && miles > 0 && payment.card_amount > 0) return `${formatMiles(miles)} miles + ${card}`
+    if (miles !== null && miles > 0) return `${formatMiles(miles)} miles only`
+    if (payment.voucher_amount > 0 && payment.card_amount === 0) return 'Voucher'
+    if (ending) return `Card ending ${ending}`
+    return '—'
+  }
+
+  /** The last four digits of the card the payment was made with, when the provider told us. */
+  private cardEnding(payment: PaymentRecord): string | null {
+    const attempt = payment.attempts[payment.attempts.length - 1]
+    return attempt?.card_last4 ?? null
+  }
+
+  /**
+   * The customer's word for a receipt's state, from the frames.
+   *
+   * The frames show three: "Paid", "Miles + cash" and "Flown". A receipt that was refunded in full still shows "Paid",
+   * because a credit note is a separate document and the original receipt never changes.
+   *
+   * The flight's flown state and the miles both live outside the payment row — Feature 3b and Feature 11 own them — so
+   * the mock reads them from its own maps.
+   */
+  private receiptStatusFor(payment: PaymentRecord, miles: number | null): ReceiptStatus {
+    if (payment.booking_id && MOCK_BOOKING_FLOWN[payment.booking_id]) return 'flown'
+    if (miles !== null && miles > 0 && payment.card_amount > 0) return 'miles_and_cash'
+    return 'paid'
+  }
+
+  private countReceipts(summaries: ReceiptSummaryDto[]): Record<ReceiptFilter, number> {
+    const counts = { all: summaries.length, flights: 0, miles_and_cash: 0, cargo: 0, credit_note: 0 }
+    for (const filter of RECEIPT_FILTERS) {
+      if (filter === 'all') continue
+      counts[filter] = summaries.filter((summary) => this.matchesReceiptFilter(summary, filter)).length
+    }
+    return counts
+  }
+
+  /**
+   * Whether a receipt belongs on a filter chip.
+   *
+   * The frames' chips cut across the status: "Flights" is every flight receipt, "Cargo" every cargo invoice, "Miles +
+   * cash" the split ones, and "With credit note" the receipts a credit note is attached to.
+   */
+  private matchesReceiptFilter(summary: ReceiptSummaryDto, filter: ReceiptFilter): boolean {
+    if (filter === 'all') return true
+    if (filter === 'flights') return summary.source_feature === 3
+    if (filter === 'cargo') return summary.source_feature === 17
+    if (filter === 'credit_note') return summary.has_credit_note
+    return summary.receipt_status === filter
+  }
+
+  /** The receipts search box takes a booking reference, a receipt number or a city. */
+  private matchesReceiptSearch(summary: ReceiptSummaryDto, search: string | undefined): boolean {
+    if (!search) return true
+    const needle = search.trim().toLowerCase()
+    if (!needle) return true
+    return [summary.document_number, summary.booking_reference, summary.route, summary.title]
+      .filter((value): value is string => typeof value === 'string')
+      .some((value) => value.toLowerCase().includes(needle))
+  }
+
+  /** The staff lookup's search box takes a reference, a booking, a customer or the last four digits of a card. */
+  private matchesPaymentSearch(payment: PaymentRecord, search: string | undefined): boolean {
+    if (!search) return true
+    const needle = search.trim().toLowerCase()
+    if (!needle) return true
+    const attempt = payment.attempts[payment.attempts.length - 1]
+    return [
+      paymentReference(payment),
+      payment.purchase_ref,
+      this.bookingReference(payment),
+      customerName(payment.payer_customer_id),
+      customerEmail(payment.payer_customer_id),
+      attempt?.card_last4,
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .some((value) => value.toLowerCase().includes(needle))
   }
 
   private bookingReference(payment: PaymentRecord): string | null {
@@ -692,12 +1050,17 @@ export class PaymentsCheckoutService {
   /**
    * Whether the customer can ask for a refund, and whether a staff member has to decide.
    *
+   * A cargo invoice or an onboard order is not refundable by the customer — the money goes back through the seller.
+   *
    * TODO(F5a): the refundable state is the booking's, and the "flown" state is the flight's — both belong to Feature
    * 3b. The mock keeps them in `mock-booking-state.ts`.
    */
   private refundStateFor(payment: PaymentRecord): RefundState {
     if (payment.status === 'reversed') return 'not_refundable'
-    if (!payment.booking_id) return 'ask_staff'
+    if (!payment.booking_id) return 'not_refundable'
     return MOCK_BOOKING_REFUND_STATE[payment.booking_id] ?? 'ask_staff'
   }
 }
+
+/** The staff lookup's filter keys, as the chips on the page. */
+type StaffPaymentFilterKey = (typeof STAFF_PAYMENT_FILTERS)[number]

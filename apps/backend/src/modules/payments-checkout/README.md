@@ -7,6 +7,9 @@ buys something, and the REST surface the two frontends read.
 `PAYMENT_REPOSITORY`, and the provider is a fake one behind `PAYMENT_GATEWAY`. Both seams are one line in
 `payments-checkout.module.ts`; when the real implementations land, nothing else in the module changes.
 
+The repository's methods are asynchronous, because Prisma's are: the mock resolves immediately, so the service awaits it
+exactly as it will await the database later.
+
 Every mock spot carries a `TODO(F5a)` saying what replaces it.
 
 ## How another backend module calls it
@@ -75,30 +78,90 @@ to void: the seller's confirmation is all there is, and the payment goes straigh
 ### The rest of the service
 
 - `getPaymentStatus(userId, paymentId)` — the seller polls it for its own confirmation page. It returns the stored
-  status, the screen state and whether a receipt exists.
+  status, the screen state, the deadline and whether a receipt exists.
 - `expireIfPastDeadline(paymentId)` — the seller, on a timer. Voids a payment whose hold ran out.
 - `retryCapture(paymentId, actor, note)` — staff, on the exception list. Captures an authorisation whose capture
   stalled.
-- `voidPayment(paymentId, reason, actor)` — staff, and 3b when it cancels a booking. Releases an authorisation without
-  charging.
+- `voidPayment(paymentId, reason, actor)` — **3b only**, when it cancels a booking. Releases an authorisation without
+  charging. The frames have no staff void button, so there is no route for it.
+- `sendFinancePosting(paymentId, actor)` — staff, on the exception list. Sends a payment the finance ledger did not
+  accept.
 
 ## The REST surface
 
-Everything is under the global `/api` prefix and behind the global `JwtAuthGuard` (a bearer token is required; there is
-no role check yet — see "Open questions").
+Everything is under the global `/api` prefix and behind the global `JwtAuthGuard` (a bearer token is required). The
+staff routes add one more gate — the admin console's screen grant (see "Who can open the staff screens").
 
 - `GET /api/payments/:id` — the selling feature's confirmation page polls this and renders the state.
-- `GET /api/receipts` — customer-web, the receipts list. Takes `limit`.
+- `GET /api/receipts` — customer-web, the receipts list. Takes `search`, `filter` and `limit`, and returns the counts
+  the filter chips show.
 - `GET /api/receipts/:id` — customer-web, one receipt with its lines and any credit note.
-- `GET /api/staff/payments` — staff-web, the payment lookup. Takes `status`, `source_feature` and `limit`.
-- `GET /api/staff/payments/:id` — staff-web, one payment with the capture-stalled panel.
+- `GET /api/staff/payments` — staff-web, the payment lookup. Takes `status`, `source_feature`, `search`, `page` and
+  `limit`, and returns the counts the filter chips show. **Read only.**
+- `GET /api/staff/payments/:id` — staff-web, one payment with its state history.
 - `GET /api/staff/payment-exceptions` — staff-web, the exception tabs. Takes `tab`, one of `needs_action`, `queued`,
-  `resolved` or `all`.
-- `POST /api/staff/payments/:id/retry-capture` — staff-web, "Retry capture".
-- `POST /api/staff/payments/:id/void` — staff-web, "Void the authorisation".
+  `resolved` or `all`. Returns a list of **problems**, not of payments: each row says what happened, what to do about
+  it and when it started.
+- `POST /api/staff/payment-exceptions/:id/retry-capture` — staff-web, "Retry capture".
+- `POST /api/staff/payment-exceptions/:id/send-posting` — staff-web, "Send now".
 
 The `Payment result` page the frames show is **not** here: the frames say it is the selling feature's own confirmation
 page, which polls `GET /api/payments/:id` and renders the state itself.
+
+## Who can open the staff screens
+
+The access token carries no user type — the backend cannot tell a staff member from a customer by reading it. So the
+staff routes do not ask the token; they ask the **admin console**, which owns the Role access matrix.
+
+The chain, in the order it happens:
+
+1. **Register.** On boot, the module calls `AdminConsoleService.registerSelfScreens` with the two screens:
+   `f5.payment_lookup` and `f5.payment_exceptions`, both `kind: 'assignable'` and `feature_no: '5'`.
+2. **Grant.** An Admin opens the Role access tab (`/admin/roles`), ticks the two screens for a role, and saves.
+   `PUT /api/admin/roles/:id/screens` writes the `role_screen` rows and the `screen_access_change` audit row.
+3. **Ask.** `GET /api/me/screens` answers with the codes the signed-in caller may open. staff-web calls it through
+   `useScreenAccess()`, and the pages hide themselves with `NoAccessScreen` when the code is missing.
+4. **Refuse.** `ScreenAccessGuard` asks the same question on the server, through the same `getMyScreens`, so the API
+   answers the same way the page does. A caller with no staff account holds no grants, so a customer's token is refused
+   here too. The refusal is written to `audit_log` as `access_denied`, and the write can never change the answer: if it
+   fails, the request is still refused.
+5. **Record the read.** Opening a payment is written to `audit_log` as `view_sensitive`, because a payment record
+   carries a customer's name, email and the last four digits of their card.
+
+```ts
+@Controller('staff')
+export class StaffPaymentsController {
+  @Get('payments')
+  @RequireScreen('f5.payment_lookup')
+  listPayments(@Query() query: StaffPaymentQueryDto): Promise<StaffPaymentListDto> {
+    return this.svc.listStaffPayments(query)
+  }
+}
+```
+
+`@RequireScreen` puts the code on the route; `ScreenAccessGuard` reads it. A route with no code is a wiring mistake
+and fails with a 500 rather than an open door.
+
+The frontend's `NoAccessScreen` passes `recorded={false}`, because the page is refused before any API call — so there
+is no row for *that* attempt. The rows are written by the backend guard for the requests that reach it.
+
+## The exception list is a list of problems
+
+The frames' "Payment exceptions" page does not list payments. It lists **what went wrong**: the headline, the
+reference it belongs to, "what happened", "what to do" and "since". A payment that is simply in flight is not on the
+list.
+
+The five problems 5a can raise are in `payment.types.ts` (`PAYMENT_PROBLEM_TYPES`):
+
+| Problem                  | State       | Action                                    |
+| ------------------------ | ----------- | ----------------------------------------- |
+| Ticket capture stalled   | needs action | Retry capture                             |
+| Cargo capture stalled    | needs action | Retry capture                             |
+| Waiting for the provider | queued      | none — the reconciliation job is checking |
+| Finance posting delayed  | queued      | Send now                                  |
+| Authorisation voided     | resolved    | none — the customer was not charged       |
+
+Feature 5c's "Crew payout failed" belongs to the same page in the frames, but it is 5c's row and 5a does not raise it.
 
 ## Statuses
 
@@ -129,8 +192,8 @@ gateway.queueOutcome('decline') // the next call only, then back to the standing
 ## When the real implementation lands
 
 - **The repository** — swap `InMemoryPaymentRepository` for a Prisma-backed one that reads the `payment`,
-  `payment_line`, `payment_attempt`, `receipt` and `payment_event_receipt` tables. The row shapes in `payment.types.ts`
-  already mirror those columns.
+  `payment_line`, `payment_attempt`, `receipt` and `payment_event_receipt` tables. The interface is already async and
+  the row shapes in `payment.types.ts` already mirror those columns, so the service does not change.
 - **The provider** — add a `StripePaymentGateway` implementing `authorise` and `capture`. Stripe builds, hosts and
   serves the checkout page, so 5a only creates the session and reads the result back through the webhook. Only this
   adapter converts money to cents; the database keeps `NUMERIC(12, 2)`.
@@ -147,11 +210,16 @@ For the Database Team:
 
 For the Dev Leads:
 
-- who owns the `Payment result` page? The frames say the selling feature does.
-- the frames say a 15-minute seat hold; `payment_setting.min_hold_minutes` is 3. Which one is the deadline?
+- who owns the `Payment result` page? The frames answer it: every payment-result frame is the selling feature's own
+  confirmation page (3 booking, 6 excess baggage, 12 onboard, 17 cargo), so 5a only exposes the polled state.
+- the frames say a 15-minute seat hold; `payment_setting.min_hold_minutes` is 3. Which one is the deadline? The frames'
+  countdown (`02e`, `09:12` left) and the hold in `02f` are 15 minutes, so `min_hold_minutes` is not the seat hold.
+- the frames say the staff payment lookup is **read only** ("staff cannot edit a state by hand"), and `Retry capture`
+  lives on **Payment exceptions**. There is no staff void button anywhere in the frames — `Authorisation voided` is a
+  resolved problem the system reaches on its own.
 - is the feature number `05` or `5`? The screens are registered as `f5.payment_lookup` and `f5.payment_exceptions`.
 - `apps/staff-web/src/features/admin-console/contracts/README.md` says feature numbers are zero-padded, but the schema,
   the admin console and this module all use the unpadded number.
-- the staff routes have no role check: the access token carries no user type, so the backend cannot tell staff from
-  customer. The admin console's role access matrix hides the screens in the UI, but the route itself is open to any
-  signed-in user until the Dev Leads decide how it is protected.
+- the two screens need a grant before anyone can use them: the Role access matrix has no default grant for them, so a
+  new role has to be given `f5.payment_lookup` / `f5.payment_exceptions` by an Admin. Should 5a ask the Dev Leads to
+  add them to the default staff role?

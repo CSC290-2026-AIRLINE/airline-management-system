@@ -107,6 +107,16 @@ export interface PaymentRecord {
   started_at: Date
   expires_at: Date
   authorised_at: Date | null
+  /**
+   * When the selling feature confirmed the purchase.
+   *
+   * The schema has no column for this: the confirmation belongs to the booking (Feature 3b owns it), but the staff
+   * frames show it in the payment's state history, so the mock keeps it on the row.
+   *
+   * TODO(F5a): the Database Team decides — either a `payment.confirmed_at` column, or the state history reads the
+   * booking's confirmation time from Feature 3b.
+   */
+  confirmed_at: Date | null
   captured_at: Date | null
   voided_at: Date | null
   capture_stalled_at: Date | null
@@ -134,5 +144,25 @@ export interface PaymentExceptionRecord {
 export const PAYMENT_EXCEPTION_STATES = ['needs_action', 'queued', 'resolved'] as const
 export type PaymentExceptionState = (typeof PAYMENT_EXCEPTION_STATES)[number]
 
-/** How a staff member closed an exception. */
-export type PaymentExceptionResolution = 'captured' | 'voided' | 'expired'
+/** How a staff member closed an exception. `posted` = the payment reached the finance ledger. */
+export type PaymentExceptionResolution = 'captured' | 'voided' | 'expired' | 'posted'
+
+/**
+ * The kinds of problem the staff "Payment exceptions" page lists.
+ *
+ * The frames' list is a list of *problems*, not a list of payments: one row says what went wrong, which reference it
+ * belongs to, and what a staff member can do about it. Feature 5c's "Crew payout failed" is not here — that is 5c's
+ * row, on the same page.
+ */
+export const PAYMENT_PROBLEM_TYPES = [
+  'ticket_capture_stalled',
+  'cargo_capture_stalled',
+  'waiting_for_provider',
+  'finance_posting_delayed',
+  'authorisation_voided',
+] as const
+export type PaymentProblemType = (typeof PAYMENT_PROBLEM_TYPES)[number]
+
+/** What a staff member can do about a problem, if anything. */
+export const PAYMENT_PROBLEM_ACTIONS = ['retry_capture', 'send_posting', 'none'] as const
+export type PaymentProblemAction = (typeof PAYMENT_PROBLEM_ACTIONS)[number]

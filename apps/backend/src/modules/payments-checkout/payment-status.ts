@@ -22,6 +22,15 @@ export const STAFF_PAYMENT_FILTERS = ['captured', 'failed', 'capture_stalled', '
 export type StaffPaymentFilter = (typeof STAFF_PAYMENT_FILTERS)[number]
 
 /**
+ * The customer's receipts list filters, from the Figma frames.
+ *
+ * The frames' chips are "All receipts", "Flights", "Miles + cash", "Cargo" and "With credit note" — they cut across
+ * the receipt's status, so they are not the same vocabulary as `ReceiptStatus`.
+ */
+export const RECEIPT_FILTERS = ['all', 'flights', 'miles_and_cash', 'cargo', 'credit_note'] as const
+export type ReceiptFilter = (typeof RECEIPT_FILTERS)[number]
+
+/**
  * The customer state for one payment.
  *
  * - `created` is still waiting for the customer to pay on the provider's page → "Confirming your booking".
@@ -75,4 +84,64 @@ export const SOURCE_FEATURE_LABELS: Record<PaymentRecord['source_feature'], stri
   6: 'Excess baggage',
   12: 'Onboard sale',
   17: 'Cargo',
+}
+
+/**
+ * The human-readable payment reference the staff frames show, e.g. `PAY-20261104-0042`.
+ *
+ * The schema has no column for it — `receipt.document_number` is the only human-readable number the database keeps —
+ * so the mock derives one from the payment's own id and start date.
+ *
+ * TODO(F5a): the Database Team adds `payment.reference` (unique) and this becomes a column read.
+ */
+export function paymentReference(payment: Pick<PaymentRecord, 'id' | 'started_at'>): string {
+  const day = payment.started_at.toISOString().slice(0, 10).replace(/-/g, '')
+  const suffix = payment.id
+    .replace(/[^0-9A-Za-z]/g, '')
+    .slice(-4)
+    .toUpperCase()
+  return `PAY-${day}-${suffix}`
+}
+
+/** One step of the state history the staff payment detail shows. */
+export interface PaymentStateStep {
+  /** A stable key for the step, so a frontend can key its list without matching on the label. */
+  key: 'created' | 'authorised' | 'confirmed' | 'stalled' | 'captured' | 'failed' | 'voided' | 'expired'
+  label: string
+  /** When it happened, or `null` when the step has not happened. */
+  at: Date | null
+}
+
+/**
+ * The state history of one payment, in the order the frames show it.
+ *
+ * Only the steps that actually happened are listed, so a stalled capture ends at "capture stalled" and a captured
+ * payment ends at "captured". The labels are the frames' own words.
+ *
+ * TODO(F5a): the real implementation reads a `payment_event` table. `payment_event_receipt` is not it — that table
+ * exists to deduplicate webhook deliveries, not to keep a timeline.
+ */
+export function stateHistoryFor(
+  payment: Pick<
+    PaymentRecord,
+    | 'status'
+    | 'started_at'
+    | 'authorised_at'
+    | 'confirmed_at'
+    | 'capture_stalled_at'
+    | 'captured_at'
+    | 'voided_at'
+    | 'expires_at'
+    | 'updated_at'
+  >,
+): PaymentStateStep[] {
+  const steps: PaymentStateStep[] = [{ key: 'created', label: 'created', at: payment.started_at }]
+  if (payment.authorised_at) steps.push({ key: 'authorised', label: 'authorised', at: payment.authorised_at })
+  if (payment.confirmed_at) steps.push({ key: 'confirmed', label: 'booking confirmed', at: payment.confirmed_at })
+  if (payment.capture_stalled_at) steps.push({ key: 'stalled', label: 'capture stalled', at: payment.capture_stalled_at })
+  if (payment.captured_at) steps.push({ key: 'captured', label: 'captured', at: payment.captured_at })
+  if (payment.status === 'failed') steps.push({ key: 'failed', label: 'card declined', at: payment.updated_at })
+  if (payment.voided_at) steps.push({ key: 'voided', label: 'authorisation released', at: payment.voided_at })
+  if (payment.status === 'expired') steps.push({ key: 'expired', label: 'hold expired', at: payment.expires_at })
+  return steps
 }

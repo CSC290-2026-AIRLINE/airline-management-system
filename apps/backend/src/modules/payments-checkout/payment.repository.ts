@@ -14,28 +14,31 @@ export const PAYMENT_REPOSITORY = 'PAYMENT_REPOSITORY'
  * rows in memory, so swapping in Prisma means writing one new class and changing one line in the module's providers
  * array — no service, controller or DTO changes.
  *
+ * Every method is asynchronous, because Prisma's are: the mock resolves immediately, so the service awaits it exactly
+ * as it will await the database later.
+ *
  * TODO(F5a): replace `InMemoryPaymentRepository` with a Prisma-backed implementation over `payment`, `payment_line`,
  * `payment_attempt` and `receipt`. The Database Team owns the schema; this interface is shaped to match it exactly.
  */
 export interface PaymentRepository {
-  insert(payment: PaymentRecord): PaymentRecord
-  update(payment: PaymentRecord): PaymentRecord
-  findById(id: string): PaymentRecord | undefined
+  insert(payment: PaymentRecord): Promise<PaymentRecord>
+  update(payment: PaymentRecord): Promise<PaymentRecord>
+  findById(id: string): Promise<PaymentRecord | undefined>
   /** The one live payment for a purchase, if any. `created | authorised | captured | reversed` count as live. */
-  findLiveByPurchaseRef(sourceFeature: PaymentSourceFeature, purchaseRef: string): PaymentRecord | undefined
+  findLiveByPurchaseRef(sourceFeature: PaymentSourceFeature, purchaseRef: string): Promise<PaymentRecord | undefined>
   /** The payment made with an idempotency key, whatever its status. Replaying a key returns the same payment. */
-  findByIdempotencyKey(payerCustomerId: string | null, idempotencyKey: string): PaymentRecord | undefined
-  listPayments(): PaymentRecord[]
-  insertReceipt(receipt: ReceiptRecord): ReceiptRecord
-  listReceipts(): ReceiptRecord[]
-  findReceiptById(id: string): ReceiptRecord | undefined
-  findReceiptByPaymentId(paymentId: string): ReceiptRecord | undefined
+  findByIdempotencyKey(payerCustomerId: string | null, idempotencyKey: string): Promise<PaymentRecord | undefined>
+  listPayments(): Promise<PaymentRecord[]>
+  insertReceipt(receipt: ReceiptRecord): Promise<ReceiptRecord>
+  listReceipts(): Promise<ReceiptRecord[]>
+  findReceiptById(id: string): Promise<ReceiptRecord | undefined>
+  findReceiptByPaymentId(paymentId: string): Promise<ReceiptRecord | undefined>
   /** The credit note attached to a payment, if the payment was reversed. Feature 5b owns the refund itself. */
-  findCreditNoteByPaymentId(paymentId: string): ReceiptRecord | undefined
+  findCreditNoteByPaymentId(paymentId: string): Promise<ReceiptRecord | undefined>
   /** The staff exception row for a payment, if it has ever been on the list. */
-  findException(paymentId: string): PaymentExceptionRecord | undefined
-  saveException(exception: PaymentExceptionRecord): PaymentExceptionRecord
-  listExceptions(): PaymentExceptionRecord[]
+  findException(paymentId: string): Promise<PaymentExceptionRecord | undefined>
+  saveException(exception: PaymentExceptionRecord): Promise<PaymentExceptionRecord>
+  listExceptions(): Promise<PaymentExceptionRecord[]>
 }
 
 /** The statuses that hold the `payment_one_live_per_purchase_uq` slot for a purchase. */
@@ -53,66 +56,81 @@ export class InMemoryPaymentRepository implements PaymentRepository {
   private readonly receipts = new Map<string, ReceiptRecord>()
   private readonly exceptions = new Map<string, PaymentExceptionRecord>()
 
-  insert(payment: PaymentRecord): PaymentRecord {
+  insert(payment: PaymentRecord): Promise<PaymentRecord> {
     this.payments.set(payment.id, payment)
-    return payment
+    return Promise.resolve(payment)
   }
 
-  update(payment: PaymentRecord): PaymentRecord {
+  update(payment: PaymentRecord): Promise<PaymentRecord> {
     this.payments.set(payment.id, payment)
-    return payment
+    return Promise.resolve(payment)
   }
 
-  findById(id: string): PaymentRecord | undefined {
-    return this.payments.get(id)
+  findById(id: string): Promise<PaymentRecord | undefined> {
+    return Promise.resolve(this.payments.get(id))
   }
 
-  findLiveByPurchaseRef(sourceFeature: PaymentSourceFeature, purchaseRef: string): PaymentRecord | undefined {
-    return this.listPayments().find(
-      (p) => p.source_feature === sourceFeature && p.purchase_ref === purchaseRef && isLiveStatus(p),
-    )
+  findLiveByPurchaseRef(sourceFeature: PaymentSourceFeature, purchaseRef: string): Promise<PaymentRecord | undefined> {
+    const live = this.allPayments().find((p) => this.matchesPurchase(p, sourceFeature, purchaseRef) && isLiveStatus(p))
+    return Promise.resolve(live)
   }
 
-  findByIdempotencyKey(payerCustomerId: string | null, idempotencyKey: string): PaymentRecord | undefined {
-    return this.listPayments().find((p) => p.payer_customer_id === payerCustomerId && p.idempotency_key === idempotencyKey)
+  findByIdempotencyKey(payerCustomerId: string | null, idempotencyKey: string): Promise<PaymentRecord | undefined> {
+    const payment = this.allPayments().find((p) => p.payer_customer_id === payerCustomerId && p.idempotency_key === idempotencyKey)
+    return Promise.resolve(payment)
   }
 
-  listPayments(): PaymentRecord[] {
+  listPayments(): Promise<PaymentRecord[]> {
+    return Promise.resolve(this.allPayments())
+  }
+
+  insertReceipt(receipt: ReceiptRecord): Promise<ReceiptRecord> {
+    this.receipts.set(receipt.id, receipt)
+    return Promise.resolve(receipt)
+  }
+
+  listReceipts(): Promise<ReceiptRecord[]> {
+    return Promise.resolve(this.allReceipts())
+  }
+
+  findReceiptById(id: string): Promise<ReceiptRecord | undefined> {
+    return Promise.resolve(this.receipts.get(id))
+  }
+
+  findReceiptByPaymentId(paymentId: string): Promise<ReceiptRecord | undefined> {
+    const receipt = this.allReceipts().find((r) => r.payment_id === paymentId && r.refund_id === null)
+    return Promise.resolve(receipt)
+  }
+
+  findCreditNoteByPaymentId(paymentId: string): Promise<ReceiptRecord | undefined> {
+    const note = this.allReceipts().find((r) => r.payment_id === paymentId && r.document_type === 'credit_note')
+    return Promise.resolve(note)
+  }
+
+  findException(paymentId: string): Promise<PaymentExceptionRecord | undefined> {
+    return Promise.resolve(this.exceptions.get(paymentId))
+  }
+
+  saveException(exception: PaymentExceptionRecord): Promise<PaymentExceptionRecord> {
+    this.exceptions.set(exception.payment_id, exception)
+    return Promise.resolve(exception)
+  }
+
+  listExceptions(): Promise<PaymentExceptionRecord[]> {
+    return Promise.resolve([...this.exceptions.values()])
+  }
+
+  /** The rows as a plain array, so the lookups above stay one-liners. */
+  private allPayments(): PaymentRecord[] {
     return [...this.payments.values()]
   }
 
-  insertReceipt(receipt: ReceiptRecord): ReceiptRecord {
-    this.receipts.set(receipt.id, receipt)
-    return receipt
-  }
-
-  listReceipts(): ReceiptRecord[] {
+  private allReceipts(): ReceiptRecord[] {
     return [...this.receipts.values()]
   }
 
-  findReceiptById(id: string): ReceiptRecord | undefined {
-    return this.receipts.get(id)
-  }
-
-  findReceiptByPaymentId(paymentId: string): ReceiptRecord | undefined {
-    return this.listReceipts().find((r) => r.payment_id === paymentId && r.refund_id === null)
-  }
-
-  findCreditNoteByPaymentId(paymentId: string): ReceiptRecord | undefined {
-    return this.listReceipts().find((r) => r.payment_id === paymentId && r.document_type === 'credit_note')
-  }
-
-  findException(paymentId: string): PaymentExceptionRecord | undefined {
-    return this.exceptions.get(paymentId)
-  }
-
-  saveException(exception: PaymentExceptionRecord): PaymentExceptionRecord {
-    this.exceptions.set(exception.payment_id, exception)
-    return exception
-  }
-
-  listExceptions(): PaymentExceptionRecord[] {
-    return [...this.exceptions.values()]
+  private matchesPurchase(payment: PaymentRecord, sourceFeature: PaymentSourceFeature, purchaseRef: string): boolean {
+    return payment.source_feature === sourceFeature && payment.purchase_ref === purchaseRef
   }
 }
 
@@ -158,6 +176,8 @@ export interface SeedPayment {
   started_at: Date
   expires_at: Date
   authorised_at?: Date | null
+  /** When the selling feature confirmed the purchase. See `PaymentRecord.confirmed_at`. */
+  confirmed_at?: Date | null
   captured_at?: Date | null
   voided_at?: Date | null
   capture_stalled_at?: Date | null
@@ -364,6 +384,7 @@ export function buildSeedPayments(): SeedPayment[] {
       started_at: new Date(now - 40 * 60 * 1000),
       expires_at: new Date(now + 5 * 60 * 1000),
       authorised_at: new Date(now - 38 * 60 * 1000),
+      confirmed_at: new Date(now - 25 * 60 * 1000),
       capture_stalled_at: new Date(now - 20 * 60 * 1000),
       capture_attempts: 5,
       last_error: 'capture_retry_limit_reached',
@@ -432,14 +453,114 @@ export function buildSeedPayments(): SeedPayment[] {
       expires_at: new Date(now - 5 * day + 10 * 60 * 1000),
       authorised_at: new Date(now - 5 * day + 30 * 1000),
       voided_at: new Date(now - 5 * day + 90 * 1000),
-      last_error: 'seller_declined',
+      last_error: 'booking_confirm_failed',
       lines: [{ line_type: 'onboard_order', description: 'Onboard order — 1 item', amount: 18.5, source_ref: 'product_order:po_88c2a0' }],
+    },
+    {
+      /* A second capture that stalled: the booking is confirmed and the ticket is live, but the card was never charged. */
+      id: 'pay_00000000-0000-4000-8000-000000000011',
+      source_feature: 3,
+      purchase_ref: 'booking:bk_2c8f55',
+      payer_customer_id: DEMO_CUSTOMER_ID,
+      booking_id: 'bk_2c8f55',
+      idempotency_key: 'demo-idem-11',
+      status: 'authorised',
+      provider: 'fake',
+      currency: 'USD',
+      amount_total: 342.1,
+      card_brand: 'Visa',
+      card_last4: '4242',
+      started_at: new Date(now - 25 * 60 * 1000),
+      expires_at: new Date(now - 10 * 60 * 1000),
+      authorised_at: new Date(now - 23 * 60 * 1000),
+      confirmed_at: new Date(now - 21 * 60 * 1000),
+      capture_stalled_at: new Date(now - 12 * 60 * 1000),
+      capture_attempts: 5,
+      last_error: 'capture_retry_limit_reached',
+      lines: [{ line_type: 'fare', description: 'Flight BKK → KIX, 1 passenger', amount: 342.1, booking_coupon_id: 'cp_2c8f55' }],
+    },
+    {
+      /* A cargo capture that stalled: no Air Waybill is issued until the card is charged. */
+      id: 'pay_00000000-0000-4000-8000-000000000012',
+      source_feature: 17,
+      purchase_ref: 'cargo_booking:cb_3a77c1',
+      payer_customer_id: DEMO_CUSTOMER_ID,
+      cargo_booking_id: 'cb_3a77c1',
+      idempotency_key: 'demo-idem-12',
+      status: 'authorised',
+      provider: 'fake',
+      currency: 'USD',
+      amount_total: 820,
+      card_brand: 'Visa',
+      card_last4: '1881',
+      started_at: new Date(now - 70 * 60 * 1000),
+      expires_at: new Date(now - 40 * 60 * 1000),
+      authorised_at: new Date(now - 68 * 60 * 1000),
+      confirmed_at: new Date(now - 66 * 60 * 1000),
+      capture_stalled_at: new Date(now - 40 * 60 * 1000),
+      capture_attempts: 5,
+      last_error: 'capture_retry_limit_reached',
+      lines: [
+        { line_type: 'cargo_freight', description: 'Cargo freight — 30 kg', amount: 720, source_ref: 'cargo_freight:cb_3a77c1' },
+        { line_type: 'cargo_surcharge', description: 'Oversize surcharge', amount: 100, source_ref: 'cargo_surcharge:cb_3a77c1' },
+      ],
+    },
+    {
+      /* The provider event never arrived: the payment is authorised but the capture was never attempted. */
+      id: 'pay_00000000-0000-4000-8000-000000000013',
+      source_feature: 3,
+      purchase_ref: 'booking:bk_4e1d92',
+      payer_customer_id: DEMO_CUSTOMER_ID,
+      booking_id: 'bk_4e1d92',
+      idempotency_key: 'demo-idem-13',
+      status: 'authorised',
+      provider: 'fake',
+      currency: 'USD',
+      amount_total: 268.9,
+      card_brand: 'Visa',
+      card_last4: '1881',
+      started_at: new Date(now - 32 * 60 * 1000),
+      /* The seller's hold was extended while the provider event was missing. */
+      expires_at: new Date(now + 2 * 60 * 1000),
+      authorised_at: new Date(now - 31 * 60 * 1000),
+      confirmed_at: new Date(now - 30 * 60 * 1000),
+      lines: [{ line_type: 'fare', description: 'Flight BKK → SGN, 1 passenger', amount: 268.9, booking_coupon_id: 'cp_4e1d92' }],
+    },
+    {
+      /* The customer paid, but the finance ledger never answered. */
+      id: 'pay_00000000-0000-4000-8000-000000000014',
+      source_feature: 3,
+      purchase_ref: 'booking:bk_6b0a44',
+      payer_customer_id: DEMO_CUSTOMER_ID,
+      booking_id: 'bk_6b0a44',
+      idempotency_key: 'demo-idem-14',
+      status: 'captured',
+      provider: 'fake',
+      currency: 'USD',
+      amount_total: 156.2,
+      card_brand: 'Visa',
+      card_last4: '4242',
+      started_at: new Date(now - 3 * 60 * 60 * 1000),
+      expires_at: new Date(now - 3 * 60 * 60 * 1000 + 15 * 60 * 1000),
+      authorised_at: new Date(now - 3 * 60 * 60 * 1000 + 45 * 1000),
+      confirmed_at: new Date(now - 3 * 60 * 60 * 1000 + 60 * 1000),
+      captured_at: new Date(now - 3 * 60 * 60 * 1000 + 75 * 1000),
+      last_error: 'finance_posting_failed',
+      lines: [{ line_type: 'fare', description: 'Flight BKK → DMK, 1 passenger', amount: 156.2, booking_coupon_id: 'cp_6b0a44' }],
+      receipt: {
+        id: 'rc_00000000-0000-4000-8000-000000000014',
+        document_type: 'receipt',
+        document_number: 'RCPT-2026-000014',
+        amount: 156.2,
+        billing_name: 'Demo Customer',
+        issued_at: new Date(now - 3 * 60 * 60 * 1000 + 75 * 1000),
+      },
     },
   ]
 }
 
 /** Turn the seed rows into repository rows, filling in ids, timestamps and the money split. */
-export function seedRepository(repo: InMemoryPaymentRepository, seed: SeedPayment[], now: Date): void {
+export async function seedRepository(repo: InMemoryPaymentRepository, seed: SeedPayment[], now: Date): Promise<void> {
   for (const s of seed) {
     const voucherAmount = s.voucher_amount ?? 0
     const cardAmount = Math.round((s.amount_total - voucherAmount) * 100) / 100
@@ -477,6 +598,7 @@ export function seedRepository(repo: InMemoryPaymentRepository, seed: SeedPaymen
       started_at: s.started_at,
       expires_at: s.expires_at,
       authorised_at: s.authorised_at ?? null,
+      confirmed_at: s.confirmed_at ?? null,
       captured_at: s.captured_at ?? null,
       voided_at: s.voided_at ?? null,
       capture_stalled_at: s.capture_stalled_at ?? null,
@@ -505,11 +627,11 @@ export function seedRepository(repo: InMemoryPaymentRepository, seed: SeedPaymen
             ],
     }
 
-    repo.insert(payment)
+    await repo.insert(payment)
 
     for (const receipt of [s.receipt, s.creditNote]) {
       if (!receipt) continue
-      repo.insertReceipt({
+      await repo.insertReceipt({
         id: receipt.id,
         payment_id: s.id,
         refund_id: receipt.refund_id ?? null,
@@ -523,7 +645,7 @@ export function seedRepository(repo: InMemoryPaymentRepository, seed: SeedPaymen
     }
 
     if (s.exception) {
-      repo.saveException(s.exception)
+      await repo.saveException(s.exception)
     }
   }
 }

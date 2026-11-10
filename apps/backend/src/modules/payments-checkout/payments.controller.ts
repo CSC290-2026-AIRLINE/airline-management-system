@@ -20,7 +20,7 @@ export class PaymentsController {
 
   /** The payment's status, its screen state and whether a receipt exists yet. */
   @Get(':id')
-  getPaymentStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): PaymentStatusDto {
+  getPaymentStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<PaymentStatusDto> {
     return this.svc.getPaymentStatus(user.id, id)
   }
 }

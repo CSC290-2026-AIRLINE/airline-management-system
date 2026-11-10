@@ -1,5 +1,13 @@
-import type { CustomerPaymentState } from '../payment-status'
-import type { PaymentExceptionState, PaymentLineType, PaymentSourceFeature, PaymentStatus, ReceiptDocumentType } from '../payment.types'
+import type { CustomerPaymentState, ReceiptFilter, StaffPaymentFilter } from '../payment-status'
+import type {
+  PaymentExceptionState,
+  PaymentLineType,
+  PaymentProblemAction,
+  PaymentProblemType,
+  PaymentSourceFeature,
+  PaymentStatus,
+  ReceiptDocumentType,
+} from '../payment.types'
 
 /**
  * The response shapes of Feature 5a's REST surface.
@@ -10,6 +18,14 @@ import type { PaymentExceptionState, PaymentLineType, PaymentSourceFeature, Paym
 
 /** How a receipt can be treated by Feature 5b when the customer asks for a refund. */
 export type RefundState = 'refundable' | 'not_refundable' | 'ask_staff'
+
+/**
+ * The customer's word for a receipt's state, from the frames.
+ *
+ * The frames show exactly three: "Paid", "Miles + cash" and "Flown". A receipt that was refunded in full still shows
+ * "Paid" — a credit note is a separate document, and the original receipt never changes.
+ */
+export type ReceiptStatus = 'paid' | 'miles_and_cash' | 'flown'
 
 /** One line on a receipt. */
 export interface PaymentLineDto {
@@ -28,6 +44,8 @@ export interface PaymentStatusDto {
   card_amount: number
   currency: string
   capture_stalled: boolean
+  /** When the hold runs out. The countdown on the declined frame reads this. */
+  expires_at: string
   receipt_id: string | null
   updated_at: string
 }
@@ -41,6 +59,8 @@ export interface ReceiptSummaryDto {
   source_feature: PaymentSourceFeature
   source_feature_label: string
   status: PaymentStatus
+  /** The customer's word for the state, from the frames. */
+  receipt_status: ReceiptStatus
   title: string
   amount: number
   voucher_amount: number
@@ -48,10 +68,18 @@ export interface ReceiptSummaryDto {
   currency: string
   issued_at: string
   booking_reference: string | null
+  /** The route the customer flew, e.g. `BKK → CNX`. Null for a purchase that is not a flight. */
+  route: string | null
+  /** The flight number, e.g. `FY102`. */
+  flight_number: string | null
+  /** The day of the flight, as an ISO date. */
+  flight_date: string | null
   refund_state: RefundState
   has_credit_note: boolean
   /** The miles the booking was redeemed with. Miles are not money — the cash charged is in `amount`. */
   miles_redeemed: number | null
+  /** What the customer paid with, in words: "Card ending 4242", "24,000 miles + card". */
+  paid_with: string
 }
 
 /** The customer's receipt detail. */
@@ -70,9 +98,16 @@ export interface ListDto<T> {
   total: number
 }
 
+/** The customer's receipt list, with the counts the frames show on the filter chips. */
+export interface ReceiptListDto extends ListDto<ReceiptSummaryDto> {
+  counts: Record<ReceiptFilter, number>
+}
+
 /** One row of the staff payment lookup. */
 export interface StaffPaymentSummaryDto {
   id: string
+  /** The human-readable reference, e.g. `PAY-20261104-0042`. */
+  reference: string
   purchase_ref: string
   source_feature: PaymentSourceFeature
   source_feature_label: string
@@ -80,6 +115,14 @@ export interface StaffPaymentSummaryDto {
   status_label: string
   payer_customer_id: string | null
   customer_name: string | null
+  customer_email: string | null
+  /** The booking reference (PNR) behind the payment, when there is one. */
+  booking_reference: string | null
+  /** What the customer paid with, in words: "Card ending 4242", "24,000 miles + card", "18,000 miles only". */
+  paid_with: string
+  card_brand: string | null
+  card_last4: string | null
+  miles_redeemed: number | null
   amount_total: number
   voucher_amount: number
   card_amount: number
@@ -92,7 +135,14 @@ export interface StaffPaymentSummaryDto {
   receipt_id: string | null
 }
 
-/** The staff payment detail, with the capture-stalled panel the frames show. */
+/** One step of the state history the staff payment detail shows. */
+export interface PaymentStateStepDto {
+  key: string
+  label: string
+  at: string | null
+}
+
+/** The staff payment detail, with the capture-stalled panel and the state history the frames show. */
 export interface StaffPaymentDetailDto extends StaffPaymentSummaryDto {
   idempotency_key: string
   provider: string
@@ -101,6 +151,8 @@ export interface StaffPaymentDetailDto extends StaffPaymentSummaryDto {
   authorised_at: string | null
   voided_at: string | null
   lines: PaymentLineDto[]
+  /** The steps the payment went through, oldest first. */
+  state_history: PaymentStateStepDto[]
   exception: {
     state: PaymentExceptionState
     detected_at: string
@@ -109,4 +161,44 @@ export interface StaffPaymentDetailDto extends StaffPaymentSummaryDto {
     resolution: string | null
     note: string | null
   } | null
+}
+
+/**
+ * One row of the staff "Payment exceptions" page.
+ *
+ * The frames' list is a list of problems, not a list of payments: each row says what went wrong, which reference it
+ * belongs to, when it started, and what a staff member can do about it.
+ */
+export interface PaymentProblemDto {
+  id: string
+  type: PaymentProblemType
+  /** The headline, e.g. "Ticket capture stalled". */
+  title: string
+  /** The reference the row is about, e.g. `PAY-20261103-0027`. */
+  reference: string
+  /** The booking behind it, when there is one. */
+  booking_reference: string | null
+  /** "What happened" — one sentence, in the words the frames use. */
+  what_happened: string
+  /** "What to do" — the recommended action, in words. */
+  what_to_do: string
+  /** The action the row's button offers, if any. */
+  action: PaymentProblemAction
+  /** The button's label, so the wording lives with the problem, not with the screen. */
+  action_label: string | null
+  /** When the problem started. */
+  since: string
+  state: PaymentExceptionState
+  /** The payment behind the problem, when there is one. */
+  payment_id: string | null
+}
+
+/** The staff lookup's list, with the counts the frames show on the filter chips. */
+export interface StaffPaymentListDto extends ListDto<StaffPaymentSummaryDto> {
+  counts: Record<'all' | StaffPaymentFilter, number>
+}
+
+/** The staff exception list, with the counts the frames show on the tabs. */
+export interface PaymentProblemListDto extends ListDto<PaymentProblemDto> {
+  counts: Record<PaymentExceptionState | 'all', number>
 }

@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto'
-
 /**
  * The DI token for the payment provider. The module provides the fake gateway under this token; Stripe's gateway
  * replaces it in the same providers array.
@@ -96,25 +94,25 @@ export class FakePaymentGateway implements PaymentGateway {
     return this.queued[0] ?? this.standing
   }
 
-  async authorise(request: AuthoriseRequest): Promise<AuthoriseResult> {
+  authorise(request: AuthoriseRequest): Promise<AuthoriseResult> {
     const outcome = this.queued.shift() ?? this.standing
     if (outcome === 'decline') {
-      return { ok: false, failure_code: 'card_declined' }
+      return Promise.resolve({ ok: false, failure_code: 'card_declined' })
     }
-    return {
+    return Promise.resolve({
       ok: true,
-      provider_session_id: `cs_test_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
-      provider_intent_id: `pi_test_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
+      provider_session_id: `cs_test_${request.payment_id.replace(/-/g, '').slice(-12)}`,
+      provider_intent_id: `pi_test_${request.idempotency_key.replace(/[^a-zA-Z0-9]/g, '').slice(-12)}`,
       card_brand: 'Visa',
       card_last4: '4242',
-    }
+    })
   }
 
-  async capture(request: CaptureRequest): Promise<CaptureResult> {
+  capture(request: CaptureRequest): Promise<CaptureResult> {
     const outcome = this.queued.shift() ?? this.standing
     if (outcome === 'capture_fails') {
-      return { ok: false, failure_code: 'provider_error' }
+      return Promise.resolve({ ok: false, failure_code: 'provider_error' })
     }
-    return { ok: true, provider_fee: Math.round(request.amount * FAKE_PROVIDER_FEE_RATE * 100) / 100 }
+    return Promise.resolve({ ok: true, provider_fee: Math.round(request.amount * FAKE_PROVIDER_FEE_RATE * 100) / 100 })
   }
 }

@@ -6,6 +6,7 @@ import { PaymentsCheckoutService } from './payments-checkout.service'
 import { ReceiptsController } from './receipts.controller'
 import { PaymentsController } from './payments.controller'
 import { StaffPaymentsController } from './staff-payments.controller'
+import { ScreenAccessGuard } from './guards/screen-access.guard'
 import { buildSeedPayments, InMemoryPaymentRepository, PAYMENT_REPOSITORY, seedRepository } from './payment.repository'
 import { FakePaymentGateway, PAYMENT_GATEWAY } from './payment.gateway'
 
@@ -21,21 +22,27 @@ import { FakePaymentGateway, PAYMENT_GATEWAY } from './payment.gateway'
  * screens with the admin console's Role access matrix (the contract every feature team follows — see
  * `apps/staff-web/src/features/admin-console/contracts/README.md`), and `AuditModule` comes with it, which provides the
  * one shared `SimulationClock` and the audit writer.
+ *
+ * The same import is what lets `ScreenAccessGuard` ask the admin console whether the caller may open a screen: the
+ * grant an admin makes on the Role access tab is the only thing that decides, and it is read from one place.
  */
 @Module({
   imports: [AdminConsoleModule],
   controllers: [ReceiptsController, PaymentsController, StaffPaymentsController],
   providers: [
     PaymentsCheckoutService,
+    // The server half of the Role access matrix: it refuses a request whose caller was not granted the screen the
+    // route needs, and records the refusal in the audit log.
+    ScreenAccessGuard,
     // The fake provider, also exported so a demo or a test can force an outcome.
     FakePaymentGateway,
     { provide: PAYMENT_GATEWAY, useExisting: FakePaymentGateway },
     {
       provide: PAYMENT_REPOSITORY,
       inject: [SimulationClock],
-      useFactory: (clock: SimulationClock) => {
+      useFactory: async (clock: SimulationClock) => {
         const repo = new InMemoryPaymentRepository()
-        seedRepository(repo, buildSeedPayments(), clock.now())
+        await seedRepository(repo, buildSeedPayments(), clock.now())
         return repo
       },
     },

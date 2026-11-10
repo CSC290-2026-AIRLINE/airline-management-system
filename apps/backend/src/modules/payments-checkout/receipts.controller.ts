@@ -3,7 +3,7 @@ import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { PaymentsCheckoutService } from './payments-checkout.service'
 import { ReceiptQueryDto } from './dto/receipt-query.dto'
-import type { ListDto, ReceiptDetailDto, ReceiptSummaryDto } from './dto/payments-checkout.types'
+import type { ReceiptDetailDto, ReceiptListDto } from './dto/payments-checkout.types'
 
 /**
  * `/api/receipts` — the signed-in customer's own receipts.
@@ -25,9 +25,9 @@ import type { ListDto, ReceiptDetailDto, ReceiptSummaryDto } from './dto/payment
 export class ReceiptsController {
   constructor(private readonly svc: PaymentsCheckoutService) {}
 
-  /** The customer's receipts, newest first. */
+  /** The customer's receipts, newest first, with the counts the frames show on the filter chips. */
   @Get()
-  listReceipts(@CurrentUser() user: AuthenticatedUser, @Query() query: ReceiptQueryDto): Promise<ListDto<ReceiptSummaryDto>> {
+  listReceipts(@CurrentUser() user: AuthenticatedUser, @Query() query: ReceiptQueryDto): Promise<ReceiptListDto> {
     return this.svc.listCustomerReceipts(user.id, query)
   }
 
