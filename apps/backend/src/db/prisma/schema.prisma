@@ -471,23 +471,23 @@ model fare_class {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model fare_quote {
-  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  flight_id          String             @db.Uuid
-  fare_class_id      String             @db.Uuid
-  promo_code_id      String?            @db.Uuid
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  flight_id          String            @db.Uuid
+  fare_class_id      String            @db.Uuid
+  promo_code_id      String?           @db.Uuid
   seat_type          String?
   currency           String
-  total_amount       Decimal            @db.Decimal(12, 2)
-  seats_left_pct     Decimal            @db.Decimal(5, 2)
+  total_amount       Decimal           @db.Decimal(12, 2)
+  seats_left_pct     Decimal           @db.Decimal(5, 2)
   days_to_departure  Int
   fare_rule_snapshot Json
-  quoted_at          DateTime           @db.Timestamptz(6)
-  expires_at         DateTime           @db.Timestamptz(6)
-  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  quoted_at          DateTime          @db.Timestamptz(6)
+  expires_at         DateTime          @db.Timestamptz(6)
+  created_at         DateTime          @default(now()) @db.Timestamptz(6)
   booking_coupon     booking_coupon[]
-  fare_class         fare_class         @relation(fields: [fare_class_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  flight             flight             @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fare_quote_flight_fk")
-  promo_code         promo_code?        @relation(fields: [promo_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  fare_class         fare_class        @relation(fields: [fare_class_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  flight             flight            @relation(fields: [flight_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fare_quote_flight_fk")
+  promo_code         promo_code?       @relation(fields: [promo_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   fare_quote_line    fare_quote_line[]
   promo_redemption   promo_redemption[]
 
@@ -1918,16 +1918,16 @@ model boarding_event {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model boarding_pass {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  check_in_id    String           @unique @db.Uuid
-  reference      String           @unique
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  check_in_id    String          @unique @db.Uuid
+  reference      String          @unique
   seat_code      String
-  boarding_group Int              @db.SmallInt
-  printed_at     DateTime?        @db.Timestamptz(6)
-  created_at     DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime         @default(now()) @db.Timestamptz(6)
+  boarding_group Int             @db.SmallInt
+  printed_at     DateTime?       @db.Timestamptz(6)
+  created_at     DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime        @default(now()) @db.Timestamptz(6)
   boarding_event boarding_event[]
-  check_in       check_in         @relation(fields: [check_in_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  check_in       check_in        @relation(fields: [check_in_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -2059,7 +2059,7 @@ model booking_segment {
   fare_class_id                                                            String?                   @db.Uuid
   created_at                                                               DateTime                  @default(now()) @db.Timestamptz(6)
   booking_change_booking_change_new_segment_id_booking_idTobooking_segment booking_change?           @relation("booking_change_new_segment_id_booking_idTobooking_segment")
-  booking_change_booking_change_old_segment_id_booking_idTobooking_segment booking_change[]          @relation("booking_change_old_segment_id_booking_idTobooking_segment")
+  booking_change_booking_change_old_segment_id_booking_idTobooking_segment booking_change[]           @relation("booking_change_old_segment_id_booking_idTobooking_segment")
   booking_coupon                                                           booking_coupon[]
   booking                                                                  booking                   @relation(fields: [booking_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   fare_class                                                               fare_class?               @relation(fields: [fare_class_id, cabin], references: [id, cabin], onDelete: NoAction, onUpdate: NoAction, map: "booking_segment_fare_class_fk")
@@ -2100,48 +2100,48 @@ model booking_service_request {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model cargo_booking {
-  id                                              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  booking_ref                                     String                 @unique
-  customer_id                                     String                 @db.Uuid
-  route_id                                        String                 @db.Uuid
-  flight_id                                       String                 @db.Uuid
-  ship_date                                       DateTime               @db.Date
-  commodity_type_id                               String                 @db.Uuid
+  id                                              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_ref                                     String                @unique
+  customer_id                                     String                @db.Uuid
+  route_id                                        String                @db.Uuid
+  flight_id                                       String                @db.Uuid
+  ship_date                                       DateTime              @db.Date
+  commodity_type_id                               String                @db.Uuid
   handling_class                                  String
   goods_description                               String
   un_number                                       String?
   pieces                                          Int
-  declared_weight_kg                              Decimal                @db.Decimal(10, 1)
-  declared_volume_m3                              Decimal                @db.Decimal(8, 3)
+  declared_weight_kg                              Decimal               @db.Decimal(10, 1)
+  declared_volume_m3                              Decimal               @db.Decimal(8, 3)
   shipper_name                                    String
   shipper_phone                                   String?
   consignee_name                                  String
   consignee_address                               String
   consignee_phone                                 String?
   distance_km                                     Int
-  quoted_chargeable_kg                            Decimal                @db.Decimal(10, 1)
-  quoted_rate_id                                  String                 @db.Uuid
-  rate_per_kg                                     Decimal                @db.Decimal(10, 2)
-  min_charge                                      Decimal                @db.Decimal(10, 2)
-  quoted_charge                                   Decimal                @db.Decimal(12, 2)
+  quoted_chargeable_kg                            Decimal               @db.Decimal(10, 1)
+  quoted_rate_id                                  String                @db.Uuid
+  rate_per_kg                                     Decimal               @db.Decimal(10, 2)
+  min_charge                                      Decimal               @db.Decimal(10, 2)
+  quoted_charge                                   Decimal               @db.Decimal(12, 2)
   currency                                        String
-  booked_at                                       DateTime               @db.Timestamptz(6)
-  hold_expires_at                                 DateTime               @db.Timestamptz(6)
-  payment_id                                      String?                @unique @db.Uuid
-  awb_number                                      String?                @unique
-  awb_issued_at                                   DateTime?              @db.Timestamptz(6)
-  created_at                                      DateTime               @default(now()) @db.Timestamptz(6)
-  updated_at                                      DateTime               @default(now()) @db.Timestamptz(6)
-  cargo_commodity_type                            cargo_commodity_type   @relation(fields: [commodity_type_id, handling_class], references: [id, handling_class], onDelete: NoAction, onUpdate: NoAction)
-  customer                                        customer               @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_customer_fk")
-  flight                                          flight                 @relation(fields: [flight_id, route_id], references: [id, route_id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_flight_route_fk")
-  payment_cargo_booking_payment_idTopayment       payment?               @relation("cargo_booking_payment_idTopayment", fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_payment_fk")
-  cargo_rate                                      cargo_rate             @relation(fields: [quoted_rate_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  route                                           route                  @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_route_fk")
+  booked_at                                       DateTime              @db.Timestamptz(6)
+  hold_expires_at                                 DateTime              @db.Timestamptz(6)
+  payment_id                                      String?               @unique @db.Uuid
+  awb_number                                      String?               @unique
+  awb_issued_at                                   DateTime?             @db.Timestamptz(6)
+  created_at                                      DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at                                      DateTime              @default(now()) @db.Timestamptz(6)
+  cargo_commodity_type                            cargo_commodity_type  @relation(fields: [commodity_type_id, handling_class], references: [id, handling_class], onDelete: NoAction, onUpdate: NoAction)
+  customer                                        customer              @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_customer_fk")
+  flight                                          flight                @relation(fields: [flight_id, route_id], references: [id, route_id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_flight_route_fk")
+  payment_cargo_booking_payment_idTopayment       payment?              @relation("cargo_booking_payment_idTopayment", fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_payment_fk")
+  cargo_rate                                      cargo_rate            @relation(fields: [quoted_rate_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  route                                           route                 @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "cargo_booking_route_fk")
   cargo_claim                                     cargo_claim?
   cargo_notice                                    cargo_notice[]
   cargo_shipment_event                            cargo_shipment_event[]
-  payment_payment_cargo_booking_idTocargo_booking payment[]              @relation("payment_cargo_booking_idTocargo_booking")
+  payment_payment_cargo_booking_idTocargo_booking payment[]             @relation("payment_cargo_booking_idTocargo_booking")
 
   @@index([customer_id, booked_at(sort: Desc)], map: "cargo_booking_customer_idx")
   @@index([flight_id], map: "cargo_booking_flight_idx")
@@ -2419,23 +2419,23 @@ model check_in_setting {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model checked_bag {
-  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  check_in_id       String      @db.Uuid
-  tag_number        String?     @unique
-  weight_kg         Decimal     @db.Decimal(5, 1)
-  excess_kg         Decimal     @default(0) @db.Decimal(5, 1)
-  rate_per_kg       Decimal     @default(0) @db.Decimal(12, 2)
-  excess_fee        Decimal     @default(0) @db.Decimal(12, 2)
-  excess_payment_id String?     @db.Uuid
-  status            String      @default("weighed")
-  weighed_by        String      @db.Uuid
-  weighed_at        DateTime    @db.Timestamptz(6)
-  created_at        DateTime    @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime    @default(now()) @db.Timestamptz(6)
-  deleted_at        DateTime?   @db.Timestamptz(6)
-  check_in          check_in    @relation(fields: [check_in_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  payment           payment?    @relation(fields: [excess_payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "checked_bag_excess_payment_fk")
-  staff             staff       @relation(fields: [weighed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  check_in_id       String     @db.Uuid
+  tag_number        String?    @unique
+  weight_kg         Decimal    @db.Decimal(5, 1)
+  excess_kg         Decimal    @default(0) @db.Decimal(5, 1)
+  rate_per_kg       Decimal    @default(0) @db.Decimal(12, 2)
+  excess_fee        Decimal    @default(0) @db.Decimal(12, 2)
+  excess_payment_id String?    @db.Uuid
+  status            String     @default("weighed")
+  weighed_by        String     @db.Uuid
+  weighed_at        DateTime   @db.Timestamptz(6)
+  created_at        DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime   @default(now()) @db.Timestamptz(6)
+  deleted_at        DateTime?  @db.Timestamptz(6)
+  check_in          check_in   @relation(fields: [check_in_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment           payment?   @relation(fields: [excess_payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "checked_bag_excess_payment_fk")
+  staff             staff      @relation(fields: [weighed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   found_bag         found_bag[]
 
   @@index([check_in_id], map: "checked_bag_check_in_idx", where: raw("(deleted_at IS NULL)"))
