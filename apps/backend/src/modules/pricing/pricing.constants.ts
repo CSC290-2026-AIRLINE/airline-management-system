@@ -46,9 +46,3 @@ export type PromoKind = (typeof PROMO_KINDS)[number]
 
 // details.reason of a PROMO_INVALID error.
 export type PromoInvalidReason = 'unknown' | 'inactive' | 'not_yet_valid' | 'expired' | 'exhausted'
-
-export const TAX_FEE_KINDS = ['tax', 'surcharge', 'fee'] as const
-export type TaxFeeKind = (typeof TAX_FEE_KINDS)[number]
-
-export const TAX_FEE_CALC_TYPES = ['flat', 'pct'] as const
-export type TaxFeeCalcType = (typeof TAX_FEE_CALC_TYPES)[number]

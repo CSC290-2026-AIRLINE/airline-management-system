@@ -79,7 +79,7 @@ export class FareClassService {
     const liveBaseFares = await this.db.base_fare.count({ where: { fare_class_id: id, deleted_at: null } })
     if (liveBaseFares > 0) {
       throw new ConflictException(
-        pricingError(PricingErrorCode.FARE_CLASS_IN_USE, `Fare class ${id} still has ${liveBaseFares} base fare(s); delete them first`, {
+        pricingError(PricingErrorCode.FARE_CLASS_IN_USE, `This fare class still has ${liveBaseFares} base fare(s); delete them first`, {
           base_fare_count: liveBaseFares,
         }),
       )
