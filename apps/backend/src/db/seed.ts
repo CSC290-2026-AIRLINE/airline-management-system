@@ -336,12 +336,13 @@ async function main() {
 
   const roleIds = await seedRoles()
   await seedFlightNetwork()
+  // Pricing first: its fare classes feed the loyalty earn rules, and its baggage override needs the routes above.
+  await seedPricingSettings()
+  await seedPricingCatalog()
   await seedCheckIn()
   await seedLostAndFound()
   await seedLoyalty()
   await seedCrewPay()
-  await seedPricingSettings()
-  await seedPricingCatalog()
 
   for (let i = 0; i < CUSTOMER_COUNT; i++) {
     const user = await seedCustomer()
