@@ -19,8 +19,20 @@ export class FlightCancellationProcessor {
   async process(tx: BookingTransaction, event: FlightEvent) {
     if (event.type !== 'flight.cancelled') throw new BadRequestException('Expected a flight.cancelled event')
     // The receipt may not exist yet. Lock the event first so simultaneous deliveries cannot both apply the policy.
-    const events = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM flight_event WHERE id = ${event.id}::uuid FOR UPDATE`
+    const events = await tx.$queryRaw<
+      Array<{ id: string; flight_id: string; type: string; resolution: string | null; partner_airline: string | null }>
+    >`
+      SELECT id, flight_id, type, resolution, partner_airline FROM flight_event WHERE id = ${event.id}::uuid FOR UPDATE
+    `
     if (!events.length) throw new NotFoundException('Flight event not found')
+    if (
+      events[0].flight_id !== event.flightId ||
+      events[0].type !== 'cancelled' ||
+      events[0].resolution !== event.resolution ||
+      events[0].partner_airline !== event.partnerAirline
+    ) {
+      throw new BadRequestException('Flight event does not match the stored record')
+    }
     const receipt = await tx.flight_event_receipt.findUnique({ where: { event_id: event.id }, select: { event_id: true } })
     if (receipt) return null
 

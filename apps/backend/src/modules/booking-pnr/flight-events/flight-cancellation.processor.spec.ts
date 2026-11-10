@@ -29,7 +29,7 @@ describe('FlightCancellationProcessor', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
-    lockEvent.mockResolvedValue([{ id: 'event' }])
+    lockEvent.mockResolvedValue([{ id: 'event', flight_id: 'flight', type: 'cancelled', resolution: 'refund', partner_airline: null }])
     receipts.findUnique.mockResolvedValue(null)
     receipts.create.mockResolvedValue({})
     bookings.findMany.mockResolvedValue([{ id: 'expired-booking' }])
@@ -60,6 +60,17 @@ describe('FlightCancellationProcessor', () => {
     lockEvent.mockResolvedValue([])
     await expect(processor.process(tx, event)).rejects.toThrow('Flight event not found')
     expect(cancellation.cancelBookingsForFlight).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { id: 'event', flight_id: 'another-flight', type: 'cancelled', resolution: 'refund', partner_airline: null },
+    { id: 'event', flight_id: 'flight', type: 'created', resolution: 'refund', partner_airline: null },
+    { id: 'event', flight_id: 'flight', type: 'cancelled', resolution: 'rebook_partner', partner_airline: 'EX' },
+  ])('does not process an event that differs from the stored record', async (stored) => {
+    lockEvent.mockResolvedValue([stored])
+    await expect(processor.process(tx, event)).rejects.toThrow('does not match')
+    expect(cancellation.cancelBookingsForFlight).not.toHaveBeenCalled()
+    expect(receipts.create).not.toHaveBeenCalled()
   })
 
   it('skips an event that already has a receipt', async () => {
