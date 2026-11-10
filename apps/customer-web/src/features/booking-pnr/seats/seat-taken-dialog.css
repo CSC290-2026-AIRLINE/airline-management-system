@@ -8,11 +8,6 @@
 .seat-taken-dialog::backdrop {
   background: rgb(20 33 61 / 55%);
 }
-.seat-taken-dialog__code {
-  color: #a02525;
-  font-size: 0.75rem;
-  font-weight: 700;
-}
 .seat-taken-dialog__actions {
   display: flex;
   justify-content: flex-end;

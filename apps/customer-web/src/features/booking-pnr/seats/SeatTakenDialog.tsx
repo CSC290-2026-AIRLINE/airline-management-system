@@ -22,7 +22,6 @@ export function SeatTakenDialog({ open, seatCode, onChooseAnother, onClose }: Se
       }}
       aria-labelledby="seat-taken-title"
     >
-      <p className="seat-taken-dialog__code">409 SEAT_UNAVAILABLE</p>
       <h2 id="seat-taken-title">That seat was just taken</h2>
       <p>{seatCode ? `Seat ${seatCode} is no longer available.` : 'This seat is no longer available.'} Please choose another seat.</p>
       <div className="seat-taken-dialog__actions">
