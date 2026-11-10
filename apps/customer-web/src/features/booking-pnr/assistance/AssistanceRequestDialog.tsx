@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { ApiError } from '../api/client'
 import type { AssistanceValue } from '../components/contracts'
 import { AssistanceFields } from './AssistanceFields'
 import './assistance-request-dialog.css'
@@ -38,8 +39,14 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit }: AssistanceR
       await onSubmit({ ...value, note: value.note.trim() })
       setValue({ serviceCode: null, note: '' })
       onClose()
-    } catch {
-      setError('We could not submit your request. Please try again.')
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'ASSISTANCE_TOO_LATE') {
+        setError('This request is too close to departure. Please contact the airline for help.')
+      } else if (cause instanceof ApiError && cause.code === 'SEAT_NOT_ALLOWED') {
+        setError('Please choose a seat outside the exit row before requesting assistance.')
+      } else {
+        setError('We could not submit your request. Please check the details and try again.')
+      }
     } finally {
       setSaving(false)
     }
