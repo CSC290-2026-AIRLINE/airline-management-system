@@ -2,24 +2,46 @@ import { useState } from 'react'
 import { NoAccessScreen } from '@staff-web/features/admin-console/components/NoAccessScreen'
 import { useScreenAccess } from '@staff-web/features/admin-console/hooks/useScreenAccess'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
-import { PaymentLookupTable } from '../components/PaymentLookupTable'
+import { retryCapture, sendFinancePosting } from '../api/payments'
+import { FilterChips } from '../components/FilterChips'
+import { PaymentProblemTable } from '../components/PaymentProblemTable'
 import { PageMessage, PAYMENT_CARD, StaffPageShell } from '../components/StaffPageShell'
-import { usePaymentExceptions } from '../hooks/usePaymentExceptions'
+import { usePaymentProblems } from '../hooks/usePaymentProblems'
 import { EXCEPTION_TAB_LABELS } from '../payment-copy'
-import { PAYMENT_EXCEPTION_TABS, type PaymentExceptionTab } from '../types'
+import { PAYMENT_EXCEPTION_TABS, type PaymentExceptionTab, type PaymentProblemDto } from '../types'
 
 /**
  * The staff payment exception list.
  *
- * The tabs are the frames' own: needs action, queued, resolved and all. "Needs action" is the payments nobody has
- * touched yet — an authorisation past its deadline, or a capture that has stalled. "Queued" is the ones still inside
- * their deadline. "Resolved" keeps the closed ones on the record.
+ * The list is a list of *problems*, the way the frames show it: each row says what went wrong, which reference it
+ * belongs to, what a staff member should do about it and how long it has been standing. The tabs are the frames' own —
+ * needs action, queued, resolved and all — and each one carries the number of problems behind it.
  */
 export function PaymentExceptionsPage() {
-  const { loading, canOpen } = useScreenAccess()
+  const { loading, canOpen, role } = useScreenAccess()
   const [tab, setTab] = useState<PaymentExceptionTab>('needs_action')
-  const list = usePaymentExceptions(tab)
+  const list = usePaymentProblems(tab)
+  const [workingId, setWorkingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  /* Runs the action a problem offers, then reloads the list so the row moves to where it belongs. */
+  async function runAction(problem: PaymentProblemDto) {
+    if (!problem.payment_id) return
+    setWorkingId(problem.id)
+    setActionError(null)
+    try {
+      if (problem.action === 'retry_capture') {
+        await retryCapture(problem.payment_id)
+      } else if (problem.action === 'send_posting') {
+        await sendFinancePosting(problem.payment_id)
+      }
+      list.reload()
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setWorkingId(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -32,7 +54,9 @@ export function PaymentExceptionsPage() {
   if (!canOpen('f5.payment_exceptions')) {
     return (
       <StaffPageShell title="Payment exceptions">
-        <NoAccessScreen screenName="Payment exceptions" homeTo="/dashboard" />
+        {/* `recorded={false}`: the page is refused before any API call, so no `access_denied` row exists for this
+            attempt. The backend guard records the ones that reach it. */}
+        <NoAccessScreen screenName="Payment exceptions" roleName={role?.name} recorded={false} homeTo="/dashboard" />
       </StaffPageShell>
     )
   }
@@ -40,53 +64,53 @@ export function PaymentExceptionsPage() {
   return (
     <StaffPageShell
       title="Payment exceptions"
-      subtitle="Payments that need a person: an authorisation that ran out of time, or a capture that kept failing."
+      subtitle="Payments that need a person: a capture that kept failing, a provider that went quiet, a posting the ledger never took."
     >
       <Card className={PAYMENT_CARD}>
         <CardHeader>
           <CardTitle className="text-lg">Payment exceptions</CardTitle>
-          <CardDescription>Select a payment to see the whole record and the actions staff can take.</CardDescription>
+          <CardDescription>Select a reference to see the whole record. The actions here are the only ones staff can take.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs value={tab} onValueChange={(value) => setTab(value as PaymentExceptionTab)}>
-            <TabsList>
-              {PAYMENT_EXCEPTION_TABS.map((item) => (
-                <TabsTrigger key={item} value={item}>
-                  {EXCEPTION_TAB_LABELS[item]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+          {/* The tabs ------------------------------------------------------ */}
+          <div className="mb-4">
+            <FilterChips
+              ariaLabel="Filter problems by state"
+              value={tab}
+              onChange={setTab}
+              options={PAYMENT_EXCEPTION_TABS.map((item) => ({
+                value: item,
+                label: EXCEPTION_TAB_LABELS[item],
+                count: list.counts[item],
+              }))}
+            />
+          </div>
 
-            {PAYMENT_EXCEPTION_TABS.map((item) => (
-              <TabsContent key={item} value={item} className="mt-4">
-                {item === tab && list.error && (
-                  <PageMessage
-                    tone="danger"
-                    title="The exception list could not be loaded"
-                    body={list.error}
-                    className="mt-2"
-                  />
-                )}
+          {actionError && <PageMessage tone="danger" title="The action could not be completed" body={actionError} className="mb-4" />}
 
-                {item === tab && !list.error && list.loading && (
-                  <p className="py-8 text-center text-sm text-muted-foreground" role="status">
-                    Loading the exceptions…
-                  </p>
-                )}
+          {list.error && <PageMessage tone="danger" title="The exception list could not be loaded" body={list.error} className="mt-2" />}
 
-                {item === tab && !list.error && !list.loading && list.payments.length === 0 && (
-                  <PageMessage
-                    title={`Nothing under ${EXCEPTION_TAB_LABELS[item].toLowerCase()}`}
-                    body="There is no payment in this state right now."
-                  />
-                )}
+          {!list.error && list.loading && (
+            <p className="py-8 text-center text-sm text-muted-foreground" role="status">
+              Loading the exceptions…
+            </p>
+          )}
 
-                {item === tab && !list.error && !list.loading && list.payments.length > 0 && (
-                  <PaymentLookupTable payments={list.payments} />
-                )}
-              </TabsContent>
-            ))}
-          </Tabs>
+          {!list.error && !list.loading && list.problems.length === 0 && (
+            <PageMessage
+              title={`Nothing under ${EXCEPTION_TAB_LABELS[tab].toLowerCase()}`}
+              body="There is no problem in this state right now."
+            />
+          )}
+
+          {!list.error && !list.loading && list.problems.length > 0 && (
+            <PaymentProblemTable problems={list.problems} onAction={(problem) => void runAction(problem)} workingId={workingId} />
+          )}
+
+          {/* The note the frames put under the list ------------------------ */}
+          <p className="mt-4 mb-0 text-xs text-muted-foreground">
+            Cancelling a confirmed ticket after a permanent capture failure is not automated yet. Staff decide here.
+          </p>
         </CardContent>
       </Card>
     </StaffPageShell>

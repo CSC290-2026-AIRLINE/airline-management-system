@@ -1,36 +1,38 @@
 import { useState } from 'react'
+import { Search } from 'lucide-react'
 import { NoAccessScreen } from '@staff-web/features/admin-console/components/NoAccessScreen'
 import { useScreenAccess } from '@staff-web/features/admin-console/hooks/useScreenAccess'
+import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
+import { FilterChips } from '../components/FilterChips'
 import { PaymentLookupTable } from '../components/PaymentLookupTable'
 import { PageMessage, PAYMENT_CARD, StaffPageShell } from '../components/StaffPageShell'
 import { useStaffPayments } from '../hooks/useStaffPayments'
 import { FILTER_LABELS } from '../payment-copy'
-import { STAFF_PAYMENT_FILTERS, type PaymentSourceFeature, type StaffPaymentFilter } from '../types'
+import { STAFF_PAYMENT_FILTERS, type StaffPaymentFilter } from '../types'
 
-/** Radix `Select` items cannot have an empty value, so "no filter" gets its own sentinel. */
-const ALL = '__all__'
+/** The chips above the lookup, in the frames' order. */
+type LookupFilter = StaffPaymentFilter | 'all'
 
-const SOURCE_FEATURES: { value: PaymentSourceFeature; label: string }[] = [
-  { value: 3, label: 'Flight booking' },
-  { value: 6, label: 'Excess baggage' },
-  { value: 12, label: 'Onboard sale' },
-  { value: 17, label: 'Cargo' },
-]
+/** How many rows a page holds. */
+const PAGE_SIZE = 10
 
 /**
  * The staff payment lookup.
  *
- * The filters are the frames' own: captured, failed, capture stalled, voided and refunded. "Capture stalled" is a flag
- * rather than a status, and "refunded" is the `reversed` status — the labels are screen words, not database ones.
+ * The page is read only, the way the frames say it is: a staff member finds a payment and reads what happened to it.
+ * The chips are the frames' own — all, captured, failed, capture stalled, voided and refunded — and each one carries the
+ * number of rows behind it. "Capture stalled" is a flag rather than a status, and "refunded" is the `reversed` status:
+ * the labels are screen words, not database ones.
  */
 export function PaymentLookupPage() {
-  const { loading, canOpen } = useScreenAccess()
-  const [status, setStatus] = useState<StaffPaymentFilter | undefined>(undefined)
-  const [sourceFeature, setSourceFeature] = useState<PaymentSourceFeature | undefined>(undefined)
-  const list = useStaffPayments(status, sourceFeature)
+  const { loading, canOpen, role } = useScreenAccess()
+  const [filter, setFilter] = useState<LookupFilter>('all')
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const list = useStaffPayments(filter === 'all' ? undefined : filter, undefined, search, page)
 
   if (loading) {
     return (
@@ -43,10 +45,17 @@ export function PaymentLookupPage() {
   if (!canOpen('f5.payment_lookup')) {
     return (
       <StaffPageShell title="Payment lookup">
-        <NoAccessScreen screenName="Payment lookup" homeTo="/dashboard" />
+        {/* `recorded={false}`: the page is refused before any API call, so no `access_denied` row exists for this
+            attempt. The backend guard records the ones that reach it. */}
+        <NoAccessScreen screenName="Payment lookup" roleName={role?.name} recorded={false} homeTo="/dashboard" />
       </StaffPageShell>
     )
   }
+
+  const total = list.total
+  const firstOnPage = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const lastOnPage = Math.min(page * PAGE_SIZE, total)
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <StaffPageShell
@@ -59,63 +68,47 @@ export function PaymentLookupPage() {
           <CardDescription>Newest first. Select a payment to see the whole record.</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Filters ---------------------------------------------------- */}
-          <div className="mb-5 flex flex-wrap items-end gap-3">
-            <div className="flex min-w-44 flex-col gap-1.5">
-              <Label htmlFor="payment-status" className="text-xs text-muted-foreground">
-                Status
-              </Label>
-              <Select value={status ?? ALL} onValueChange={(v) => setStatus(v === ALL ? undefined : (v as StaffPaymentFilter))}>
-                <SelectTrigger id="payment-status" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper" className="font-sans">
-                  <SelectItem value={ALL}>All payments</SelectItem>
-                  {STAFF_PAYMENT_FILTERS.map((filter) => (
-                    <SelectItem key={filter} value={filter}>
-                      {FILTER_LABELS[filter]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* The search box --------------------------------------------- */}
+          <div className="mb-4 flex flex-col gap-1.5 max-tablet:mb-3">
+            <Label htmlFor="payment-search" className="text-xs text-muted-foreground">
+              Search
+            </Label>
+            <div className="relative max-w-xl">
+              <Search
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                id="payment-search"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value)
+                  setPage(1)
+                }}
+                placeholder="Filter by PNR, payment id or customer email (leave empty to see all)"
+                className="pl-9"
+              />
             </div>
-
-            <div className="flex min-w-44 flex-col gap-1.5">
-              <Label htmlFor="payment-feature" className="text-xs text-muted-foreground">
-                Feature
-              </Label>
-              <Select
-                value={sourceFeature === undefined ? ALL : String(sourceFeature)}
-                onValueChange={(v) => setSourceFeature(v === ALL ? undefined : (Number(v) as PaymentSourceFeature))}
-              >
-                <SelectTrigger id="payment-feature" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper" className="font-sans">
-                  <SelectItem value={ALL}>All features</SelectItem>
-                  {SOURCE_FEATURES.map((feature) => (
-                    <SelectItem key={feature.value} value={String(feature.value)}>
-                      {feature.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <p className="ml-auto text-sm text-muted-foreground" aria-live="polite">
-              {list.loading ? 'Loading…' : `${list.total} payment${list.total === 1 ? '' : 's'}`}
-            </p>
           </div>
 
-          {/* The list ---------------------------------------------------- */}
-          {list.error && (
-            <PageMessage
-              tone="danger"
-              title="The payment list could not be loaded"
-              body={list.error}
-              className="mt-2"
+          {/* The filter chips --------------------------------------------- */}
+          <div className="mb-4">
+            <FilterChips
+              ariaLabel="Filter payments by status"
+              value={filter}
+              onChange={(value) => {
+                setFilter(value)
+                setPage(1)
+              }}
+              options={[
+                { value: 'all' as const, label: 'All', count: list.counts.all },
+                ...STAFF_PAYMENT_FILTERS.map((item) => ({ value: item, label: FILTER_LABELS[item], count: list.counts[item] })),
+              ]}
             />
-          )}
+          </div>
+
+          {/* The list ----------------------------------------------------- */}
+          {list.error && <PageMessage tone="danger" title="The payment list could not be loaded" body={list.error} className="mt-2" />}
 
           {!list.error && list.loading && (
             <p className="py-8 text-center text-sm text-muted-foreground" role="status">
@@ -124,10 +117,40 @@ export function PaymentLookupPage() {
           )}
 
           {!list.error && !list.loading && list.payments.length === 0 && (
-            <PageMessage title="No payments match" body="Clear a filter to widen the search." />
+            <PageMessage title="No payments match" body="Clear the search box to see all payments." />
           )}
 
-          {!list.error && !list.loading && list.payments.length > 0 && <PaymentLookupTable payments={list.payments} />}
+          {!list.error && !list.loading && list.payments.length > 0 && (
+            <>
+              <PaymentLookupTable payments={list.payments} />
+
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+                <p className="m-0 text-sm text-muted-foreground" aria-live="polite">
+                  {total === 0 ? 'No payments' : `Showing ${firstOnPage}–${lastOnPage} of ${total}`}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((n) => Math.max(1, n - 1))}>
+                    Previous
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= pageCount}
+                    onClick={() => setPage((n) => Math.min(pageCount, n + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* The note the frames put under the list ------------------------ */}
+          <p className="mt-4 mb-0 text-xs text-muted-foreground">
+            Read only. State changes come only from verified Stripe events and booking confirmation. Staff cannot edit a state by hand.
+            Opening a payment is recorded in the audit trail.
+          </p>
         </CardContent>
       </Card>
     </StaffPageShell>

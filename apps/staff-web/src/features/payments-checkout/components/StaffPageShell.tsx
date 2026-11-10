@@ -26,9 +26,7 @@ export function StaffPageShell({ title, subtitle, action, children }: StaffPageS
   return (
     <div className="payment-shell min-h-svh bg-page font-sans text-foreground text-sm">
       <header className="bg-primary text-white">
-        <div
-          className="mx-auto flex max-w-260 flex-wrap items-center justify-between gap-3 px-4 py-3 max-tablet:flex-col max-tablet:items-start max-tablet:gap-2"
-        >
+        <div className="mx-auto flex max-w-260 flex-wrap items-center justify-between gap-3 px-4 py-3 max-tablet:flex-col max-tablet:items-start max-tablet:gap-2">
           <div className="flex items-baseline gap-3">
             <span className="text-lg font-bold tracking-wide">Airlines</span>
             <span className="text-sm text-white/70">{title}</span>
@@ -79,9 +77,7 @@ export function PageMessage({
       )}
       role={tone === 'danger' ? 'alert' : 'status'}
     >
-      <h2 className={cn('m-0 font-sans text-base font-semibold text-foreground', tone === 'danger' && 'text-danger')}>
-        {title}
-      </h2>
+      <h2 className={cn('m-0 font-sans text-base font-semibold text-foreground', tone === 'danger' && 'text-danger')}>{title}</h2>
       {body && <p className="mt-1 text-sm text-muted-foreground break-words">{body}</p>}
     </div>
   )

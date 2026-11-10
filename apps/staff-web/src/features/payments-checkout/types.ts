@@ -29,6 +29,25 @@ export type PaymentExceptionTab = (typeof PAYMENT_EXCEPTION_TABS)[number]
 /** Where a payment sits on the exception list. */
 export type PaymentExceptionState = 'needs_action' | 'queued' | 'resolved'
 
+/**
+ * The kinds of problem the staff "Payment exceptions" page lists.
+ *
+ * The frames' list is a list of *problems*, not a list of payments. Feature 5c's "Crew payout failed" belongs to the
+ * same page in the frames, but it is 5c's row and 5a does not raise it.
+ */
+export const PAYMENT_PROBLEM_TYPES = [
+  'ticket_capture_stalled',
+  'cargo_capture_stalled',
+  'waiting_for_provider',
+  'finance_posting_delayed',
+  'authorisation_voided',
+] as const
+export type PaymentProblemType = (typeof PAYMENT_PROBLEM_TYPES)[number]
+
+/** What a staff member can do about a problem, if anything. */
+export const PAYMENT_PROBLEM_ACTIONS = ['retry_capture', 'send_posting', 'none'] as const
+export type PaymentProblemAction = (typeof PAYMENT_PROBLEM_ACTIONS)[number]
+
 /** One line on a payment. */
 export interface PaymentLineDto {
   line_type: string
@@ -39,6 +58,8 @@ export interface PaymentLineDto {
 /** One row of the staff payment lookup. */
 export interface StaffPaymentSummaryDto {
   id: string
+  /** The human-readable reference, e.g. `PAY-20261104-0042`. */
+  reference: string
   purchase_ref: string
   source_feature: PaymentSourceFeature
   source_feature_label: string
@@ -46,6 +67,14 @@ export interface StaffPaymentSummaryDto {
   status_label: string
   payer_customer_id: string | null
   customer_name: string | null
+  customer_email: string | null
+  /** The booking reference (PNR) behind the payment, when there is one. */
+  booking_reference: string | null
+  /** What the customer paid with, in words: "Card ending 4242", "24,000 miles + card". */
+  paid_with: string
+  card_brand: string | null
+  card_last4: string | null
+  miles_redeemed: number | null
   amount_total: number
   voucher_amount: number
   card_amount: number
@@ -58,7 +87,14 @@ export interface StaffPaymentSummaryDto {
   receipt_id: string | null
 }
 
-/** The staff payment detail, with the capture-stalled panel the frames show. */
+/** One step of the state history the payment detail shows. */
+export interface PaymentStateStepDto {
+  key: string
+  label: string
+  at: string | null
+}
+
+/** The staff payment detail, with the state history the frames show. */
 export interface StaffPaymentDetailDto extends StaffPaymentSummaryDto {
   idempotency_key: string
   provider: string
@@ -67,6 +103,8 @@ export interface StaffPaymentDetailDto extends StaffPaymentSummaryDto {
   authorised_at: string | null
   voided_at: string | null
   lines: PaymentLineDto[]
+  /** The steps the payment went through, oldest first. */
+  state_history: PaymentStateStepDto[]
   exception: {
     state: PaymentExceptionState
     detected_at: string
@@ -77,8 +115,48 @@ export interface StaffPaymentDetailDto extends StaffPaymentSummaryDto {
   } | null
 }
 
+/**
+ * One row of the staff "Payment exceptions" page.
+ *
+ * The frames' list is a list of problems: each row says what went wrong, which reference it belongs to, when it
+ * started, and what a staff member can do about it.
+ */
+export interface PaymentProblemDto {
+  id: string
+  type: PaymentProblemType
+  /** The headline, e.g. "Ticket capture stalled". */
+  title: string
+  /** The reference the row is about, e.g. `PAY-20261103-0027`. */
+  reference: string
+  /** The booking behind it, when there is one. */
+  booking_reference: string | null
+  /** "What happened" — one sentence, in the words the frames use. */
+  what_happened: string
+  /** "What to do" — the recommended action, in words. */
+  what_to_do: string
+  /** The action the row's button offers, if any. */
+  action: PaymentProblemAction
+  /** The button's label, so the wording lives with the problem, not with the screen. */
+  action_label: string | null
+  /** When the problem started. */
+  since: string
+  state: PaymentExceptionState
+  /** The payment behind the problem, when there is one. */
+  payment_id: string | null
+}
+
 /** The list wrapper every list endpoint returns, so the frontend always reads `items` off one key. */
 export interface ListDto<T> {
   items: T[]
   total: number
+}
+
+/** The staff lookup's list, with the counts the frames show on the filter chips. */
+export interface StaffPaymentListDto extends ListDto<StaffPaymentSummaryDto> {
+  counts: Record<'all' | StaffPaymentFilter, number>
+}
+
+/** The staff exception list, with the counts the frames show on the tabs. */
+export interface PaymentProblemListDto extends ListDto<PaymentProblemDto> {
+  counts: Record<PaymentExceptionState | 'all', number>
 }
