@@ -1,0 +1,50 @@
+.card {
+  padding: 20px;
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+  background: var(--f3-card);
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: var(--f3-ink);
+}
+
+.rows {
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+  font-size: 14px;
+}
+
+.row dt {
+  color: var(--f3-ink);
+}
+
+.row dd {
+  margin: 0;
+  text-align: right;
+}
+
+.total {
+  padding-top: 10px;
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--f3-muted);
+}
+
+.note {
+  margin: 14px 0 0;
+  color: var(--f3-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}

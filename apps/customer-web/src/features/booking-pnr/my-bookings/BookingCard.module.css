@@ -1,0 +1,149 @@
+.card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'head actions'
+    'dates actions'
+    'meta actions';
+  column-gap: 20px;
+  row-gap: 4px;
+  padding: 20px;
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+  background: var(--f3-card);
+}
+
+.head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.route {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--f3-ink);
+}
+
+.dates {
+  grid-area: dates;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--f3-ink);
+}
+
+.meta {
+  grid-area: meta;
+  margin: 0;
+  font-size: 14px;
+  color: var(--f3-muted);
+}
+
+.actions {
+  grid-area: actions;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.viewTrip {
+  padding: 9px 16px;
+  font-size: 13px;
+}
+
+/* The 393 px card: the reference on top, then the route, the party, the dates and the note. */
+.mobileRow,
+.summary,
+.note {
+  display: none;
+}
+
+.reference {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--f3-ink);
+  text-decoration: none;
+}
+
+.reference:focus-visible {
+  outline: 2px solid var(--f3-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px;
+  }
+
+  .head {
+    order: 2;
+    gap: 4px;
+  }
+
+  /* The chip sits next to the reference on the 393 px card. */
+  .desktopChip {
+    display: none;
+  }
+
+  .route {
+    font-size: 17px;
+  }
+
+  .dates,
+  .meta {
+    display: none;
+  }
+
+  .mobileRow {
+    order: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .summary {
+    order: 3;
+    display: block;
+    margin: 0;
+    font-size: 13px;
+    color: var(--f3-muted);
+  }
+
+  .note {
+    order: 4;
+    display: block;
+    margin: 0;
+    font-size: 12px;
+    color: var(--f3-muted);
+  }
+
+  .actions {
+    order: 5;
+    align-items: flex-start;
+    margin-top: 4px;
+  }
+
+  /* The card itself opens the trip, so the button is not needed here. */
+  .viewTrip {
+    display: none;
+  }
+
+  /* The whole card is the tap target. */
+  .reference::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+}

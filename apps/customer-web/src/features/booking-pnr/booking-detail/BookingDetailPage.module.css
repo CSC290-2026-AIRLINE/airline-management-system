@@ -1,0 +1,270 @@
+.page {
+  min-height: 100vh;
+  background: var(--f3-page);
+  color: var(--f3-ink);
+  font-family: var(--f3-font);
+  padding: 40px 24px 64px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.backLink {
+  align-self: flex-start;
+  color: var(--f3-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.backLink:focus-visible {
+  outline: 2px solid var(--f3-primary);
+  outline-offset: 2px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.titleRow h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.15;
+  color: var(--f3-ink);
+}
+
+.muted {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.headerActions {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notice {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--f3-info-soft);
+  color: var(--f3-info);
+  font-size: 14px;
+}
+
+.expiredNotice {
+  padding: 16px 20px;
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+  background: var(--f3-card);
+}
+
+.expiredNotice .text {
+  margin: 0;
+}
+
+.expiredActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sectionTitle {
+  margin: 8px 0 10px;
+  font-size: 20px;
+  color: var(--f3-ink);
+}
+
+.card {
+  padding: 20px;
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+  background: var(--f3-card);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--f3-ink);
+}
+
+.featureChip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--f3-neutral-soft);
+  color: var(--f3-neutral);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.text {
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+
+.cardActions {
+  margin-top: 10px;
+}
+
+.boarding {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.boardingTitle {
+  margin: 0 0 6px;
+  font-size: 20px;
+  color: var(--f3-ink);
+}
+
+.boardingActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.qrPlaceholder {
+  flex: 0 0 190px;
+  height: 190px;
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+  background: var(--f3-selected);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.bottomCards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.mealButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.orderingOpen,
+.orderingClosed {
+  margin: 16px -20px -20px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.orderingOpen {
+  background: var(--f3-success-soft);
+  color: var(--f3-success);
+}
+
+.orderingClosed {
+  background: var(--f3-neutral-soft);
+  color: var(--f3-neutral);
+}
+
+.messageCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 28px;
+  border: 1px solid var(--f3-border);
+  border-radius: 12px;
+  background: var(--f3-card);
+  text-align: center;
+}
+
+.messageCard h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.messageActions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 24px 16px 48px;
+  }
+
+  .titleRow h1 {
+    font-size: 24px;
+  }
+
+  .headerActions {
+    width: 100%;
+  }
+
+  .bottomCards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .boarding {
+    flex-direction: column;
+  }
+
+  .qrPlaceholder {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 140px;
+  }
+}

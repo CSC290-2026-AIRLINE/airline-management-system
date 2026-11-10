@@ -1,0 +1,107 @@
+.primary,
+.secondary,
+.danger,
+.dangerOutline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 11px 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+  box-sizing: border-box;
+}
+
+.primary {
+  background: var(--f3-primary);
+  color: #ffffff;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--f3-primary-hover);
+}
+
+.secondary {
+  background: var(--f3-card);
+  color: var(--f3-ink);
+  border-color: var(--f3-border);
+}
+
+.secondary:hover:not(:disabled) {
+  border-color: var(--f3-primary);
+}
+
+.danger {
+  background: var(--f3-danger);
+  color: #ffffff;
+}
+
+.danger:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+/* The destructive outline of the design: red text and border ("Cancel booking" on Booking detail). */
+.dangerOutline {
+  background: var(--f3-card);
+  color: var(--f3-danger);
+  border-color: var(--f3-danger);
+}
+
+.dangerOutline:hover:not(:disabled) {
+  background: var(--f3-danger-soft);
+}
+
+.primary:disabled,
+.secondary:disabled,
+.danger:disabled,
+.dangerOutline:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.primary:focus-visible,
+.secondary:focus-visible,
+.danger:focus-visible,
+.dangerOutline:focus-visible {
+  outline: 2px solid var(--f3-primary);
+  outline-offset: 2px;
+}
+
+/* The text link under a primary button ("Add meals", "Report a problem"). */
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--f3-primary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.link:disabled {
+  color: var(--f3-muted);
+  cursor: not-allowed;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--f3-primary);
+  outline-offset: 2px;
+}

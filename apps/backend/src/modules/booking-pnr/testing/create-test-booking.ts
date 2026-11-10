@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@backend/db/generated/prisma/client'
 import { isUniqueConstraintError, newBookingReference } from '../common/booking-reference'
 import { nextTicketNumber } from '../common/ticket-number'
-import type { BookingStatus, Cabin, PassengerType } from '../contracts'
+import type { BookingStatus, PassengerType } from '../contracts'
 
 export interface CreateTestBookingPassenger {
   passengerId: string
@@ -11,7 +11,7 @@ export interface CreateTestBookingPassenger {
 
 export interface CreateTestBookingSegment {
   flightId: string
-  cabin: Cabin | string
+  cabin: string
   fareClassId?: string | null
   segmentOrder?: number
 }

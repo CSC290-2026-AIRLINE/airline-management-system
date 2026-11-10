@@ -102,7 +102,28 @@ export interface BookingListItem extends BookingSummary {
   leadPassengerName: string
   trip: string
   travelDate: string | null
+  // Last departure of the booking (the return leg).
+  travelEndDate: string | null
+  passengerCounts: PassengerCounts
+  // The flights of the booking, in segment order.
+  flightNumbers: string[]
+  flightCount: number
   openServiceRequests: number
+}
+
+// The passengers of a booking, by type.
+export interface PassengerCounts {
+  adults: number
+  children: number
+  infants: number
+}
+
+// GET /customers/me/bookings: the Upcoming and Past tabs.
+export interface CustomerTrips {
+  upcoming: BookingListItem[]
+  past: BookingListItem[]
+  // The simulation clock's now, so the page can count down a hold.
+  serverNow: string
 }
 
 // One seat of GET /flights/:id/seat-map (C1).
@@ -179,6 +200,16 @@ export interface HoldBookingResponse {
   holdExpiresAt: string
 }
 
+// POST /dev/bookings/:ref/confirm, B1's dev stand-in for checkout (Feature 5a).
+export interface ConfirmBookingResult {
+  bookingId: string
+  reference: string
+  status: 'confirmed'
+  total: number
+  holdExpiresAt: string
+  confirmedAt: string
+}
+
 // `details` of 409 PRICE_CHANGED: nothing is held; send the hold again with expectedTotal = newTotal.
 export interface PriceChangedDetails {
   previousTotal: number
@@ -198,6 +229,16 @@ export interface CancelPreview {
   refund: number
   currency: string
   // Miles that come back for a miles booking.
+  milesReturned?: number | null
+}
+
+// POST /bookings/:ref/cancel: what the cancellation did.
+export interface CancelBookingResult {
+  reference: string
+  status: 'cancelled' | 'expired'
+  fee: number
+  refund: number
+  currency: string
   milesReturned?: number | null
 }
 

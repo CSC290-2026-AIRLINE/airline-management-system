@@ -24,6 +24,7 @@ export const SEAT_MAP_PORT = Symbol('SEAT_MAP_PORT')
 export const BOOKING_READ_PORT = Symbol('BOOKING_READ_PORT')
 export const CANCEL_FOR_FLIGHT_PORT = Symbol('CANCEL_FOR_FLIGHT_PORT')
 export const FLIGHT_EVENT_BUS = Symbol('FLIGHT_EVENT_BUS')
+export const BOOKING_EVENT_BUS = Symbol('BOOKING_EVENT_BUS')
 export const BOOKING_PROVIDER = Symbol('BOOKING_PROVIDER')
 
 export interface BookingClock {
@@ -38,12 +39,12 @@ export interface Party {
 
 export interface InventoryKey {
   flightId: string
-  cabin: Cabin | string
+  cabin: string
 }
 
 export interface FlightAvailabilityRequest {
   flightId: string
-  cabin: Cabin | string
+  cabin: string
 }
 
 export interface FlightAvailability {
@@ -53,7 +54,7 @@ export interface FlightAvailability {
 }
 
 export interface InventoryCabin {
-  cabin: Cabin | string
+  cabin: string
   capacity: number
   awardLimit?: number
 }
@@ -65,9 +66,9 @@ export interface InventoryPort {
   release: (tx: BookingTransaction, keys: InventoryKey[], count: number, award?: boolean) => Promise<void>
   returnSold: (tx: BookingTransaction, keys: InventoryKey[], count: number, award?: boolean) => Promise<void>
   createForFlight: (flightId: string, cabins: InventoryCabin[]) => Promise<void>
-  setCapacity: (tx: BookingTransaction, flightId: string, cabin: Cabin | string, capacity: number) => Promise<void>
-  setAwardSeats: (flightId: string, cabin: Cabin | string, count: number) => Promise<void>
-  seatsLeft: (flightId: string, cabin: Cabin | string) => Promise<number>
+  setCapacity: (tx: BookingTransaction, flightId: string, cabin: string, capacity: number) => Promise<void>
+  setAwardSeats: (flightId: string, cabin: string, count: number) => Promise<void>
+  seatsLeft: (flightId: string, cabin: string) => Promise<number>
   availability: (flights: FlightAvailabilityRequest[], party: Party) => Promise<FlightAvailability[]>
 }
 
@@ -137,7 +138,7 @@ export interface CancelQuote {
 
 export interface SeatFeeRequest {
   flightId: string
-  cabin: Cabin | string
+  cabin: string
   seatType: string
 }
 
@@ -361,7 +362,30 @@ export interface BookingListItem extends BookingSummary {
   trip: string
   // First departure of the booking, used for upcoming/past and the "Travelling" column.
   travelDate: Date | null
+  // Last departure of the booking (the return leg); null for a booking without segments.
+  travelEndDate: Date | null
+  // Passengers on the booking, by type.
+  passengerCounts: PassengerCounts
+  // The flights of the booking, in segment order (for example ["FL203", "FL204"]).
+  flightNumbers: string[]
+  // Number of flights on the booking.
+  flightCount: number
   openServiceRequests: number
+}
+
+// The passengers of a booking, by type (B11).
+export interface PassengerCounts {
+  adults: number
+  children: number
+  infants: number
+}
+
+// My Trips, split into the Upcoming and Past tabs (B4, B11).
+export interface CustomerTrips {
+  upcoming: BookingListItem[]
+  past: BookingListItem[]
+  // The simulation clock's now, so the page can count down a hold without a second request (B11).
+  serverNow: Date
 }
 
 export interface BookingPage {
@@ -461,4 +485,41 @@ export interface CancelForFlightPort {
 export interface FlightEventBus {
   subscribe: (handler: (event: FlightEvent) => Promise<void>) => () => void
   publish: (event: FlightEvent) => Promise<void>
+}
+
+// Booking events are published after commit (B1, B6). Feature 13 is the consumer that notifies customers; it finds the
+// recipients from the reference or `listFlightPassengers(flightId)`, so the payload stays small. C6 extends the type
+// with `service_request.updated` when it publishes.
+export type BookingEventType = 'booking.confirmed' | 'booking.cancelled'
+
+export interface BookingEvent {
+  type: BookingEventType
+  bookingId: string
+  reference: string
+  customerId: string
+  flightIds: string[]
+  occurredAt: Date
+  cancelReason?: CouponCancelReason | null
+}
+
+export interface BookingEventBus {
+  subscribe: (handler: (event: BookingEvent) => Promise<void>) => () => void
+  publish: (event: BookingEvent) => Promise<void>
+}
+
+// Feature 5a calls confirmBooking and needs the total and hold expiry for its own records. Release has no payment to
+// reconcile, so it only reports the new status.
+export interface ConfirmBookingResult {
+  bookingId: string
+  reference: string
+  status: 'confirmed'
+  total: number
+  holdExpiresAt: Date
+  confirmedAt: Date
+}
+
+export interface ReleaseBookingResult {
+  bookingId: string
+  reference: string
+  status: 'expired'
 }

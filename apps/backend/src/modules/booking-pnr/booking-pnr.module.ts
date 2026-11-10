@@ -1,11 +1,32 @@
+import { StaffBookingLookupService } from './staff/staff-booking-lookup.service'
+import { DemoBookingCustomerController } from './staff/demo-booking-customer.controller'
+import { DemoBookingCustomerService } from './staff/demo-booking-customer.service'
+import { StaffBookingController } from './staff/staff-booking.controller'
+import { DemoPassengerController } from './hold/demo-passenger.controller'
+import { DemoPassengerService } from './hold/demo-passenger.service'
 import { Module } from '@nestjs/common'
+import { HoldController } from './hold/hold.controller'
+import { HoldService } from './hold/hold.service'
 import { APP_FILTER } from '@nestjs/core'
+import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { BookingProviderAdapter, BOOKING_PROVIDER } from './providers/booking-provider.adapter'
+import { CancelController } from './cancel/cancel.controller'
+import { CancelForFlightService } from './cancel/cancel-for-flight.service'
+import { CancelService } from './cancel/cancel.service'
 import { BookingStatusService } from './common/booking-status.service'
 import { BookingErrorFilter } from './common/booking-error.filter'
+import { LocalBookingEventBus } from './common/booking-event-bus'
 import { SystemBookingClock } from './common/booking-clock'
+import { ConfirmService } from './confirm/confirm.service'
+import { DevConfirmController } from './confirm/dev-confirm.controller'
+import { HoldExpiryJob } from './confirm/hold-expiry.job'
+import { ReleaseService } from './confirm/release.service'
+import { BookingReadService } from './manage/booking-read.service'
+import { BookingsController } from './manage/bookings.controller'
+import { CustomerBookingsController } from './manage/customer-bookings.controller'
 import {
   BOOKING_CLOCK,
+  BOOKING_EVENT_BUS,
   BOOKING_READ_PORT,
   CANCEL_FOR_FLIGHT_PORT,
   CHECKOUT_PORT,
@@ -19,11 +40,9 @@ import {
   SEAT_PORT,
   SERVICE_REQUEST_PORT,
 } from './contracts'
-import { BookingReadStub } from './stubs/booking-read.stub'
-import { CancelForFlightStub } from './stubs/cancel-for-flight.stub'
 import { CheckoutStub } from './stubs/checkout.stub'
 import { LocalFlightEventBus } from './stubs/flight-event-bus.stub'
-import { InventoryStub } from './stubs/inventory.stub'
+import { InventoryService } from './inventory/inventory.service'
 import { LoyaltyStub } from './stubs/loyalty.stub'
 import { PricingStub } from './stubs/pricing.stub'
 import { RefundStub } from './stubs/refund.stub'
@@ -36,15 +55,38 @@ import { SeatMapService } from './seats/seat-map.service'
 import { SeatHoldExpiryService } from './seats/seat-hold-expiry.service'
 
 @Module({
-  controllers: [SeatMapController],
+  // Feature 15's audit writer, for the staff cancellation entry (B7).
+  imports: [AuditModule],
+  controllers: [
+    DevConfirmController,
+    BookingsController,
+    CustomerBookingsController,
+    CancelController,
+    HoldController,
+    DemoPassengerController,
+    StaffBookingController,
+    DemoBookingCustomerController,
+    SeatMapController,
+  ],
   providers: [
     SeatMapService,
     SeatHoldExpiryService,
+    HoldService,
+    StaffBookingLookupService,
+    DemoBookingCustomerService,
+    DemoPassengerService,
     BookingStatusService,
+    ConfirmService,
+    ReleaseService,
+    CancelService,
+    CancelForFlightService,
+    HoldExpiryJob,
+    BookingReadService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },
     { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
-    { provide: INVENTORY_PORT, useClass: InventoryStub },
+    { provide: BOOKING_EVENT_BUS, useClass: LocalBookingEventBus },
+    { provide: INVENTORY_PORT, useClass: InventoryService },
     { provide: SEAT_PORT, useClass: SeatService },
     { provide: SERVICE_REQUEST_PORT, useClass: AssistanceService },
     { provide: PRICING_PORT, useClass: PricingStub },
@@ -53,14 +95,17 @@ import { SeatHoldExpiryService } from './seats/seat-hold-expiry.service'
     { provide: REFUND_PORT, useClass: RefundStub },
     { provide: SCREENING_PORT, useClass: ScreeningStub },
     { provide: SEAT_MAP_PORT, useClass: SeatMapStub },
-    { provide: BOOKING_READ_PORT, useClass: BookingReadStub },
-    { provide: CANCEL_FOR_FLIGHT_PORT, useClass: CancelForFlightStub },
+    { provide: BOOKING_READ_PORT, useExisting: BookingReadService },
+    { provide: CANCEL_FOR_FLIGHT_PORT, useExisting: CancelForFlightService },
     { provide: FLIGHT_EVENT_BUS, useClass: LocalFlightEventBus },
     { provide: BOOKING_PROVIDER, useClass: BookingProviderAdapter },
   ],
   exports: [
     BookingStatusService,
+    ConfirmService,
+    ReleaseService,
     BOOKING_CLOCK,
+    BOOKING_EVENT_BUS,
     INVENTORY_PORT,
     SEAT_PORT,
     SERVICE_REQUEST_PORT,

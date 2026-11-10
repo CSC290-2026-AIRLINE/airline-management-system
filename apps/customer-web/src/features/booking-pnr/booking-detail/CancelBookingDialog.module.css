@@ -1,0 +1,50 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table td {
+  padding: 7px 0;
+}
+
+.table td:first-child {
+  color: var(--f3-ink);
+}
+
+.table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fee {
+  color: var(--f3-danger);
+  font-weight: 600;
+}
+
+.refund {
+  font-weight: 700;
+}
+
+.note {
+  margin: 16px 0 0;
+  color: var(--f3-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.closed {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--f3-warning-soft);
+  color: var(--f3-warning);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.loading {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 14px;
+}

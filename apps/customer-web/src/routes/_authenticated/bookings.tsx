@@ -1,6 +1,10 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { MyTripsPage } from '../../features/booking-pnr/pages/MyTripsPage'
+import { createFileRoute, Outlet } from '@tanstack/react-router'
 
+// The layout of the bookings section: My Trips at /bookings and the booking detail at /bookings/$reference.
 export const Route = createFileRoute('/_authenticated/bookings')({
-  component: MyTripsPage,
+  component: BookingsLayout,
 })
+
+function BookingsLayout() {
+  return <Outlet />
+}

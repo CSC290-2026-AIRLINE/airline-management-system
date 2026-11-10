@@ -12,7 +12,8 @@ import { AppModule } from '../../../app.module'
 import { DbService } from '../../../db/db.service'
 import { FLIGHT_EVENT_BUS, type FlightEvent, type FlightEventBus } from '../contracts'
 
-const USAGE = 'Usage: npm run f03:event -w apps/backend -- <created|aircraft_changed|cancelled> <flightId> [refund|rebook_partner|newAircraftId] [partnerAirlineCode]'
+const USAGE =
+  'Usage: npm run f03:event -w apps/backend -- <created|aircraft_changed|cancelled> <flightId> [refund|rebook_partner|newAircraftId] [partnerAirlineCode]'
 
 async function main() {
   const [rawType, flightId, third, fourth] = process.argv.slice(2)

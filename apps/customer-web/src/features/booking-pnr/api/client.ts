@@ -1,5 +1,14 @@
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
-import type { ApiErrorBody, BookingDetail, CancelPreview, HoldBookingRequest, HoldBookingResponse } from './types'
+import type {
+  ApiErrorBody,
+  BookingDetail,
+  CancelBookingResult,
+  CancelPreview,
+  ConfirmBookingResult,
+  CustomerTrips,
+  HoldBookingRequest,
+  HoldBookingResponse,
+} from './types'
 
 export class ApiError extends Error {
   readonly code: string
@@ -47,6 +56,14 @@ export function useBookingPnrApi() {
     return (await response.json()) as HoldBookingResponse
   }
 
+  async function devConfirmBooking(reference: string): Promise<ConfirmBookingResult> {
+    const response = await fetchWithAuth(`/api/dev/bookings/${encodeURIComponent(reference)}/confirm`, { method: 'POST' })
+    if (!response.ok) {
+      throw await readError(response)
+    }
+    return (await response.json()) as ConfirmBookingResult
+  }
+
   async function getCancelPreview(reference: string): Promise<CancelPreview> {
     const response = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}/cancellation-preview`)
     if (!response.ok) {
@@ -55,12 +72,21 @@ export function useBookingPnrApi() {
     return (await response.json()) as CancelPreview
   }
 
-  async function cancelBooking(reference: string): Promise<void> {
+  async function cancelBooking(reference: string): Promise<CancelBookingResult> {
     const response = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}/cancel`, { method: 'POST' })
     if (!response.ok) {
       throw await readError(response)
     }
+    return (await response.json()) as CancelBookingResult
   }
 
-  return { getBooking, holdBooking, getCancelPreview, cancelBooking }
+  async function getCustomerTrips(): Promise<CustomerTrips> {
+    const response = await fetchWithAuth('/api/customers/me/bookings')
+    if (!response.ok) {
+      throw await readError(response)
+    }
+    return (await response.json()) as CustomerTrips
+  }
+
+  return { getBooking, holdBooking, devConfirmBooking, getCancelPreview, cancelBooking, getCustomerTrips }
 }

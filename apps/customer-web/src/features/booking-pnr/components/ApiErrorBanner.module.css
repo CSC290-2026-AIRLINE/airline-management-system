@@ -1,0 +1,19 @@
+.banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--f3-danger-soft);
+  color: var(--f3-danger);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}

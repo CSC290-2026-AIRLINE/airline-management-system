@@ -10,6 +10,8 @@ import type {
   ServiceRequestUpdate,
   StaffBookingPage,
   StaffBookingQuery,
+  StaffCancelRequest,
+  CancelPreview,
 } from './types'
 
 export class ApiError extends Error {
@@ -65,6 +67,26 @@ export function useBookingPnrApi() {
     return (await response.json()) as BookingDetail
   }
 
+  async function getStaffBooking(reference: string): Promise<BookingDetail> {
+    const response = await fetchWithAuth(`/api/staff/bookings/${encodeURIComponent(reference)}`)
+    if (!response.ok) throw await readError(response)
+    return (await response.json()) as BookingDetail
+  }
+
+  async function getStaffCancelPreview(reference: string): Promise<CancelPreview> {
+    const response = await fetchWithAuth(`/api/staff/bookings/${encodeURIComponent(reference)}/cancellation-preview`)
+    if (!response.ok) throw await readError(response)
+    return (await response.json()) as CancelPreview
+  }
+
+  async function cancelStaffBooking(reference: string, input: StaffCancelRequest): Promise<void> {
+    const response = await fetchWithAuth(`/api/staff/bookings/${encodeURIComponent(reference)}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    if (!response.ok) throw await readError(response)
+  }
   async function bookForCustomer(input: BookForCustomerRequest, idempotencyKey: string): Promise<HoldBookingResponse> {
     const response = await fetchWithAuth('/api/staff/bookings', {
       method: 'POST',
@@ -97,5 +119,14 @@ export function useBookingPnrApi() {
     return (await response.json()) as BookingServiceRequest
   }
 
-  return { searchBookings, getBooking, bookForCustomer, listServiceRequests, updateServiceRequest }
+  return {
+    searchBookings,
+    getBooking,
+    getStaffBooking,
+    getStaffCancelPreview,
+    cancelStaffBooking,
+    bookForCustomer,
+    listServiceRequests,
+    updateServiceRequest,
+  }
 }

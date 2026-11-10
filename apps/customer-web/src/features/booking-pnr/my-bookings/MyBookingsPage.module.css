@@ -1,0 +1,201 @@
+.page {
+  min-height: 100vh;
+  background: var(--f3-page);
+  color: var(--f3-ink);
+  font-family: var(--f3-font);
+  padding: 40px 24px 64px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'title book'
+    'tabs tabs'
+    'section section'
+    'cards cards'
+    'banner banner';
+  column-gap: 20px;
+  row-gap: 20px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.title {
+  grid-area: title;
+}
+
+.title h1 {
+  margin: 0 0 6px;
+  font-size: 30px;
+  line-height: 1.15;
+  color: var(--f3-ink);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 15px;
+}
+
+.bookButton {
+  grid-area: book;
+  align-self: start;
+}
+
+.tabs {
+  grid-area: tabs;
+  display: flex;
+  gap: 8px;
+}
+
+.tab {
+  padding: 9px 18px;
+  border: 1px solid var(--f3-border);
+  border-radius: 8px;
+  background: var(--f3-card);
+  color: var(--f3-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tab:hover {
+  border-color: var(--f3-primary);
+}
+
+.tabActive {
+  background: var(--f3-selected);
+  border-color: var(--f3-primary);
+  color: var(--f3-primary);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--f3-primary);
+  outline-offset: 2px;
+}
+
+.sectionTitle {
+  grid-area: section;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sectionTitle h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--f3-ink);
+}
+
+.countChip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--f3-neutral-soft);
+  color: var(--f3-neutral);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cards {
+  grid-area: cards;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.banner {
+  grid-area: banner;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--f3-info-soft);
+  color: var(--f3-info);
+  font-size: 14px;
+}
+
+.messageCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 28px;
+  border: 1px solid var(--f3-border);
+  border-radius: 12px;
+  background: var(--f3-card);
+  text-align: center;
+}
+
+.messageCard h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--f3-ink);
+}
+
+.muted {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 14px;
+}
+
+.messageActions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 24px 16px 48px;
+  }
+
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'title'
+      'tabs'
+      'cards'
+      'book'
+      'banner';
+    row-gap: 16px;
+  }
+
+  .title h1 {
+    font-size: 24px;
+  }
+
+  /* The 393 px frame has no subtitle and no section title. */
+  .subtitle,
+  .sectionTitle {
+    display: none;
+  }
+
+  .tabs {
+    gap: 8px;
+  }
+
+  .tab {
+    flex: 1;
+    text-align: center;
+  }
+
+  /* The selected tab is solid navy on the 393 px layout. */
+  .tabActive {
+    background: var(--f3-primary);
+    color: #ffffff;
+  }
+
+  .bookButton {
+    width: 100%;
+  }
+
+  .banner {
+    display: none;
+  }
+}

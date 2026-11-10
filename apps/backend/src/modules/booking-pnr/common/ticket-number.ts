@@ -1,5 +1,8 @@
 import type { BookingTransaction } from '../contracts'
 
+// The airline's three-digit ticket prefix. It is a fixed business value until the platform adds it to config.
+export const AIRLINE_TICKET_NUMBER = '999'
+
 export function formatTicketNumber(airlineNumber: string, sequence: bigint | number): string {
   if (!/^[0-9]{3}$/.test(airlineNumber)) {
     throw new Error('The airline number must be three digits')
