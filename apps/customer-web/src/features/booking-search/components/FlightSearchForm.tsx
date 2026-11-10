@@ -1,6 +1,7 @@
 import type { FormEvent, ReactNode } from 'react'
 import type { FlightSearchFormProps } from './contracts'
 import type { FlightSearchLeg, TripType } from '../api/types'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import { AIRPORTS } from './airports'
 
 function today() {
@@ -33,18 +34,19 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
     return (
       <label key={`${index}-${field}`}>
         {label}
-        <select
-          aria-label={field === 'origin' ? `Leg ${index + 1} origin` : `Leg ${index + 1} destination`}
-          value={leg[field]}
-          onChange={(event) => setLeg(index, { [field]: event.target.value })}
-        >
-          <option value="">Select airport</option>
-          {AIRPORTS.map((airport) => (
-            <option key={airport.code} value={airport.code}>
-              {airport.city} ({airport.code})
-            </option>
-          ))}
-        </select>
+        <Select value={leg[field]} onValueChange={(value) => setLeg(index, { [field]: value })}>
+          <SelectTrigger aria-label={field === 'origin' ? `Leg ${index + 1} origin` : `Leg ${index + 1} destination`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Select airport</SelectItem>
+            {AIRPORTS.map((airport) => (
+              <SelectItem key={airport.code} value={airport.code}>
+                {airport.city} ({airport.code})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </label>
     )
   }

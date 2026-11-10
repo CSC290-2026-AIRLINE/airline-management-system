@@ -1,6 +1,7 @@
 import type { DemoPassenger } from './demo-passengers'
 import type { FormEvent, ReactNode } from 'react'
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import { ageAt, passengerType, type BookingContact, type TravellerDraft } from '../flow/draft'
 
 interface Props {
@@ -65,12 +66,11 @@ export function PassengersPage({
               {demoProfiles && (
                 <label className="f3-demo-picker">
                   Fill from demo traveller
-                  <select
-                    required
+                  <Select
                     value={person.demoPassengerId ?? ''}
                     disabled={demoLoading}
-                    onChange={(event) => {
-                      const profile = demoProfiles.find((candidate) => candidate.id === event.target.value)
+                    onValueChange={(value) => {
+                      const profile = demoProfiles.find((candidate) => candidate.id === value)
                       onTravellerChange(person.key, {
                         demoPassengerId: profile?.id,
                         givenName: profile?.givenName ?? '',
@@ -80,19 +80,24 @@ export function PassengersPage({
                       })
                     }}
                   >
-                    <option value="">Choose a demo traveller</option>
-                    {demoProfiles
-                      .filter((profile) => passengerType(profile.dateOfBirth, departure) === person.expectedType)
-                      .map((profile) => (
-                        <option
-                          key={profile.id}
-                          value={profile.id}
-                          disabled={travellers.some((other) => other.key !== person.key && other.demoPassengerId === profile.id)}
-                        >
-                          {profile.givenName} {profile.familyName}
-                        </option>
-                      ))}
-                  </select>
+                    <SelectTrigger aria-label="Fill from demo traveller">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Choose a demo traveller</SelectItem>
+                      {demoProfiles
+                        .filter((profile) => passengerType(profile.dateOfBirth, departure) === person.expectedType)
+                        .map((profile) => (
+                          <SelectItem
+                            key={profile.id}
+                            value={profile.id}
+                            disabled={travellers.some((other) => other.key !== person.key && other.demoPassengerId === profile.id)}
+                          >
+                            {profile.givenName} {profile.familyName}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                 </label>
               )}
             </div>
@@ -149,20 +154,21 @@ export function PassengersPage({
             {(type ?? person.expectedType) === 'infant' && (
               <label className="f3-lap-field">
                 Travels on the lap of
-                <select
-                  value={person.lapOfKey}
-                  required
-                  onChange={(event) => onTravellerChange(person.key, { lapOfKey: event.target.value })}
-                >
-                  <option value="">Choose an adult</option>
-                  {travellers
-                    .filter((adult) => adult.expectedType === 'adult')
-                    .map((adult, adultIndex) => (
-                      <option key={adult.key} value={adult.key}>
-                        {[adult.givenName, adult.familyName].filter(Boolean).join(' ') || `Adult ${adultIndex + 1}`}
-                      </option>
-                    ))}
-                </select>
+                <Select value={person.lapOfKey} onValueChange={(value) => onTravellerChange(person.key, { lapOfKey: value })}>
+                  <SelectTrigger aria-label="Travels on the lap of">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Choose an adult</SelectItem>
+                    {travellers
+                      .filter((adult) => adult.expectedType === 'adult')
+                      .map((adult, adultIndex) => (
+                        <SelectItem key={adult.key} value={adult.key}>
+                          {[adult.givenName, adult.familyName].filter(Boolean).join(' ') || `Adult ${adultIndex + 1}`}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </label>
             )}
             {renderAssistance?.(person)}

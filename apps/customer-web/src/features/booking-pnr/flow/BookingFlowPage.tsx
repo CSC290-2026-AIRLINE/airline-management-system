@@ -45,6 +45,8 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   const { holdBooking } = useBookingPnrApi()
   const demo = useDemoPassengers(!resolvePassengers)
   const passengerResolver = resolvePassengers ?? demo.resolve
+  /** The demo picker is the only way to fill the passenger details while it is on, so it has to be used for everyone. */
+  const demoMode = !resolvePassengers && demo.enabled
 
   function updateTraveller(key: string, change: Partial<TravellerDraft>) {
     setTravellers((current) => current.map((person) => (person.key === key ? { ...person, ...change } : person)))
@@ -70,8 +72,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   function continueToSeats() {
     if (!itinerary) return
     const missingNote = Object.values(assistance).some((value) => ['UMNR', 'MEDA'].includes(value.serviceCode ?? '') && !value.note.trim())
+    const missingDemo = demoMode && travellers.some((person) => !person.demoPassengerId)
     const message =
-      validateTravellers(travellers, contact, itinerary) ?? (missingNote ? 'Add a note for each UMNR or MEDA assistance request.' : null)
+      (missingDemo ? 'Choose a demo traveller for every passenger.' : null) ??
+      validateTravellers(travellers, contact, itinerary) ??
+      (missingNote ? 'Add a note for each UMNR or MEDA assistance request.' : null)
     setError(message)
     if (!message) setStep(3)
   }

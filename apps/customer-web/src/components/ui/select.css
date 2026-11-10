@@ -1,0 +1,137 @@
+/*
+ * The customer-web dropdown. It mirrors the staff console's Radix Select (apps/staff-web/src/components/ui/select.tsx):
+ * a chevron on the trigger, a popover list, a tick on the chosen option.
+ *
+ * The trigger keeps the customer field metrics (40px high, 15px text) so it sits with the inputs next to it. The list is
+ * portalled to the body, so it cannot read the page-scoped `--f3-*` variables; every colour below falls back to the value
+ * the pages use.
+ */
+
+.cw-select-trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--f3-border, #d9dfe9);
+  border-radius: 8px;
+  appearance: none;
+  background: #fff;
+  color: var(--f3-ink, #0a1424);
+  text-align: left;
+}
+
+.cw-select-trigger:hover:not(:disabled) {
+  border-color: var(--f3-primary, #102544);
+}
+
+.cw-select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.cw-select-chevron {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--f3-muted, #677287);
+  opacity: 0.6;
+}
+
+/* The chosen text. The pages set `font: inherit` on buttons, so the size is set here rather than on the trigger. */
+.cw-select-value {
+  display: block;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cw-select-content {
+  z-index: 50;
+  min-width: 8rem;
+  border: 1px solid var(--f3-border, #d9dfe9);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--f3-ink, #0a1424);
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  font-size: 14px;
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.cw-select-content[data-state='open'] {
+  animation: cw-select-in 120ms ease-out;
+}
+
+.cw-select-viewport {
+  padding: 4px;
+  min-width: var(--radix-select-trigger-width, 8rem);
+  max-height: var(--radix-select-content-available-height, 20rem);
+}
+
+.cw-select-item {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 32px 6px 8px;
+  border-radius: 6px;
+  color: inherit;
+  cursor: default;
+  user-select: none;
+  outline: none;
+}
+
+.cw-select-item[data-highlighted] {
+  background: var(--f3-neutral-soft, #f4f6fa);
+  color: var(--f3-ink, #0a1424);
+}
+
+.cw-select-item[data-disabled] {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.cw-select-indicator {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+}
+
+.cw-select-check {
+  width: 16px;
+  height: 16px;
+}
+
+@keyframes cw-select-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-select-content[data-state='open'] {
+    animation: none;
+  }
+}

@@ -309,8 +309,10 @@
   .f3-passenger-card {
     padding: 18px 16px;
   }
-  .f3-passenger-card input,
-  .f3-passenger-card select {
+  .f3-passenger-card input {
+    min-height: 44px;
+  }
+  .cw-select-trigger {
     min-height: 44px;
   }
   .f3-flow-summary {

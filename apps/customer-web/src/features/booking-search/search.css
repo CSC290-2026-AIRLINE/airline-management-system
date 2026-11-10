@@ -47,8 +47,7 @@
   margin: 0;
 }
 .f3-search button,
-.f3-search input,
-.f3-search select {
+.f3-search input {
   font: inherit;
 }
 .f3-search button {
@@ -60,7 +59,7 @@
 .f3-search button:disabled {
   cursor: not-allowed;
 }
-.f3-search :is(button, input, select, a):focus-visible {
+.f3-search :is(button, input, a):focus-visible {
   outline: 3px solid #fca311;
   outline-offset: 3px;
 }
@@ -146,8 +145,7 @@
   font-size: 13px;
   color: var(--f3-navy);
 }
-.f3-search input,
-.f3-search select {
+.f3-search input {
   width: 100%;
   min-width: 0;
   min-height: 40px;
@@ -160,10 +158,6 @@
 }
 .f3-search input::placeholder {
   color: #7b8494;
-}
-/* The airport fields read as plain fields in the design, so they drop the native dropdown arrow. */
-.f3-search-leg-row select {
-  appearance: none;
 }
 .f3-search-route-fields {
   display: grid;
@@ -623,7 +617,7 @@
     align-items: flex-start;
   }
   .f3-search-input,
-  .f3-search select,
+  .cw-select-trigger,
   .f3-search-primary {
     min-height: 44px;
   }
