@@ -2,6 +2,12 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { errorMessage, usePricingApi, type NewPromoCode, type PromoCode, type PromoKind } from '../api'
 import { Dialog } from '../components/Dialog'
 import { kindLabel } from './promo-format'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { FormField } from './FormField'
+import { Input } from '@staff-web/components/ui/input'
+import { DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 
 // Limits mirror CreatePromoCodeDto and the service checks, which validate again.
 const CODE = /^[A-Z0-9_]{1,20}$/
@@ -93,15 +99,9 @@ export function NewPromoDialog({ currency, onClose, onCreated }: NewPromoDialogP
 
   function field(id: Field, label: string, input: ReactNode) {
     return (
-      <div className="pr-field">
-        <label htmlFor={`promo-${id}`}>{label}</label>
+      <FormField htmlFor={`promo-${id}`} label={label} error={errors[id]}>
         {input}
-        {errors[id] && (
-          <span id={`promo-${id}-error`} className="pr-field-error">
-            {errors[id]}
-          </span>
-        )}
-      </div>
+      </FormField>
     )
   }
 
@@ -115,21 +115,18 @@ export function NewPromoDialog({ currency, onClose, onCreated }: NewPromoDialogP
   }
 
   return (
-    <Dialog labelledBy="promo-title" className="pr-confirm pr-form-dialog pr-form-sheet" onClose={() => !saving && onClose()}>
-      <div className="pr-sheet-handle" aria-hidden="true" />
-      <form onSubmit={(e) => void handleSubmit(e)} noValidate>
-        <div className="pr-confirm-head">
-          <h2 id="promo-title">New promo or corporate code</h2>
-          <button type="button" className="pr-icon-button pr-phone-only" aria-label="Close" disabled={saving} onClick={onClose}>
-            ×
-          </button>
-        </div>
+    <Dialog onClose={() => !saving && onClose()}>
+      <form className="flex flex-col gap-3.5" onSubmit={(e) => void handleSubmit(e)} noValidate>
+        <DialogHeader>
+          <DialogTitle>New promo or corporate code</DialogTitle>
+        </DialogHeader>
 
         {field(
           'code',
           'Code',
-          <input
+          <Input
             {...inputProps('code')}
+            className="h-[42px]"
             value={form.code}
             maxLength={20}
             placeholder="e.g. SPRING15"
@@ -137,34 +134,40 @@ export function NewPromoDialog({ currency, onClose, onCreated }: NewPromoDialogP
           />,
         )}
 
-        <div className="pr-promo-row">
-          <div className="pr-field">
-            <label htmlFor="promo-kind">Kind</label>
-            <select id="promo-kind" value={form.kind} disabled={saving} onChange={(e) => set('kind', e.target.value as PromoKind)}>
+        <div className="grid grid-cols-3 gap-3 max-[800px]:grid-cols-1">
+          <FormField htmlFor="promo-kind" label="Kind">
+            <NativeSelect
+              id="promo-kind"
+              className="w-full [&_select]:h-[42px]"
+              value={form.kind}
+              disabled={saving}
+              onChange={(e) => set('kind', e.target.value as PromoKind)}
+            >
               {(['promo', 'corporate'] as const).map((kind) => (
-                <option key={kind} value={kind}>
+                <NativeSelectOption key={kind} value={kind}>
                   {kindLabel(kind)}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
-          </div>
-          <div className="pr-field">
-            <label htmlFor="promo-type">Discount type</label>
-            <select
+            </NativeSelect>
+          </FormField>
+          <FormField htmlFor="promo-type" label="Discount type">
+            <NativeSelect
               id="promo-type"
+              className="w-full [&_select]:h-[42px]"
               value={form.discountType}
               disabled={saving}
               onChange={(e) => set('discountType', e.target.value as DiscountType)}
             >
-              <option value="pct">Percentage</option>
-              <option value="amount">Fixed amount</option>
-            </select>
-          </div>
+              <NativeSelectOption value="pct">Percentage</NativeSelectOption>
+              <NativeSelectOption value="amount">Fixed amount</NativeSelectOption>
+            </NativeSelect>
+          </FormField>
           {field(
             'discount',
             `Discount (${form.discountType === 'pct' ? '%' : currency})`,
-            <input
+            <Input
               {...inputProps('discount')}
+              className="h-[42px]"
               inputMode="decimal"
               value={form.discount}
               onChange={(e) => set('discount', e.target.value)}
@@ -172,41 +175,61 @@ export function NewPromoDialog({ currency, onClose, onCreated }: NewPromoDialogP
           )}
         </div>
 
-        <div className="pr-sim-row">
+        <div className="grid grid-cols-2 gap-3">
           {field(
             'validFrom',
             'Valid from',
-            <input {...inputProps('validFrom')} type="date" value={form.validFrom} onChange={(e) => set('validFrom', e.target.value)} />,
+            <Input
+              {...inputProps('validFrom')}
+              className="h-[42px]"
+              type="date"
+              value={form.validFrom}
+              onChange={(e) => set('validFrom', e.target.value)}
+            />,
           )}
           {field(
             'validTo',
             'Valid to',
-            <input {...inputProps('validTo')} type="date" value={form.validTo} onChange={(e) => set('validTo', e.target.value)} />,
+            <Input
+              {...inputProps('validTo')}
+              className="h-[42px]"
+              type="date"
+              value={form.validTo}
+              onChange={(e) => set('validTo', e.target.value)}
+            />,
           )}
         </div>
 
         {field(
           'maxUses',
           'Max uses (empty = unlimited)',
-          <input {...inputProps('maxUses')} inputMode="numeric" value={form.maxUses} onChange={(e) => set('maxUses', e.target.value)} />,
+          <Input
+            {...inputProps('maxUses')}
+            className="h-[42px]"
+            inputMode="numeric"
+            value={form.maxUses}
+            onChange={(e) => set('maxUses', e.target.value)}
+          />,
         )}
 
-        <p className="pr-form-hint">New codes start active. A future start date shows as Not started.</p>
+        <p className="rounded-md bg-muted px-3 py-2.5 text-xs text-muted-foreground">
+          New codes start active. A future start date shows as Not started.
+        </p>
 
         {saveError && (
-          <div className="pr-callout is-error pr-confirm-error" role="alert">
-            {saveError}
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription className="block">{saveError}</AlertDescription>
+          </Alert>
         )}
 
-        <div className="pr-confirm-actions">
-          <button type="button" className="pr-button is-outline" disabled={saving} onClick={onClose}>
+        <DialogFooter>
+          <Button variant="outline" type="button" disabled={saving} onClick={onClose}>
             Cancel
-          </button>
-          <button type="submit" className="pr-button is-primary" disabled={saving}>
+          </Button>
+          <Button type="submit" disabled={saving}>
             {saving ? 'Saving…' : 'Save code'}
-          </button>
-        </div>
+          </Button>
+        </DialogFooter>
       </form>
     </Dialog>
   )

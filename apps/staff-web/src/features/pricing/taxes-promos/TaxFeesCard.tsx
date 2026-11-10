@@ -6,8 +6,12 @@ import { useAddOnChargesApi, type TaxFee } from '../add-on-charges/api'
 import { calcTypeShortLabel, taxKindLabel, taxValueLabel } from '../add-on-charges/labels'
 import { useLoad } from '../hooks/useLoad'
 import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
-import { OUTLINE_BUTTON } from './charge-styles'
+import { CARD_BODY, CARD_TITLE, OUTLINE_BUTTON, TABLE_HEAD, TABLE_HEAD_ROW, TABLE_WRAP } from './charge-styles'
+import { Notice } from '../components/Notice'
 import { TaxFeeDialog } from './TaxFeeDialog'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Badge } from '@staff-web/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 
 const NOTICE_MS = 2000
 
@@ -49,114 +53,107 @@ export function TaxFeesCard() {
   const unit = currency.data ?? ''
 
   return (
-    <section
-      className="flex flex-col gap-3.5 rounded-(--pr-radius-card) border border-(--pr-border) bg-(--pr-surface) p-5"
-      aria-labelledby="tax-fees-title"
-    >
-      {/* The h2 keeps its pr- class: the bare h2 rule in index.css is unlayered and beats Tailwind utilities. */}
-      <div className="pr-card-head">
-        <h2 id="tax-fees-title" className="pr-card-title">
+    <Card aria-labelledby="tax-fees-title">
+      <CardHeader>
+        <CardTitle id="tax-fees-title" role="heading" aria-level={2} className={CARD_TITLE}>
           Taxes, surcharges and fees
-        </h2>
-        <p className="pr-muted leading-[normal]">
+        </CardTitle>
+        <CardDescription>
           Added after the fare and any promo, each as its own line on the quote. {isPhone ? 'Tap' : 'Click'} a row to edit it.
-        </p>
-      </div>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className={CARD_BODY}>
+        <Notice text={notice?.text} />
 
-      <div role="status" aria-live="polite" className="empty:hidden">
-        {notice && (
-          <p className="rounded-(--pr-radius-lg) bg-(--pr-good-bg) px-3.5 py-2.5 text-xs leading-[normal] font-semibold text-(--pr-good)">
-            {notice.text}
-          </p>
-        )}
-      </div>
+        {loadError ? (
+          <Alert variant="destructive">
+            <AlertDescription className="block">
+              Could not load taxes and fees: {loadError}{' '}
+              <Button
+                variant="link"
+                className="h-auto p-0"
+                type="button"
 
-      {loadError ? (
-        <div className="pr-callout is-error" role="alert">
-          Could not load taxes and fees: {loadError}{' '}
-          <button
-            type="button"
-            className="pr-link-button"
-            onClick={() => {
-              list.reload()
-              currency.reload()
-            }}
-          >
-            Retry
-          </button>
-        </div>
-      ) : !list.data || !currency.data ? (
-        <p className="pr-state">Loading taxes and fees…</p>
-      ) : rows.length === 0 ? (
-        <p className="pr-state">No taxes or fees yet.</p>
-      ) : isPhone ? (
-        <ul className="flex flex-col gap-2.5">
-          {rows.map((taxFee) => (
-            <li key={taxFee.id}>
-              <TaxFeeRowCard taxFee={taxFee} unit={unit} onSelect={() => setSelection({ taxFee })} />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="border border-(--pr-border)">
-          <Table className="table-fixed text-[13px] text-(--pr-primary)">
-            <TableHeader className="[&_tr]:border-0">
-              <TableRow className="bg-(--pr-head) hover:bg-(--pr-head)">
-                {COLUMNS.map((column) => (
-                  <TableHead
-                    key={column.label}
-                    className={`h-10 px-3 text-[11px] font-semibold text-(--pr-primary) uppercase ${column.className ?? ''}`}
-                  >
-                    {column.label}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((taxFee) => (
-                <TableRow key={taxFee.id} className="relative h-14 border-(--pr-divider) hover:bg-(--pr-selected)">
-                  <TableCell className="py-0 pr-3 pl-4">
-                    {/* The whole row is the click target; the ::after stretches this button over it for mouse and keyboard. */}
-                    <button
-                      type="button"
-                      className="font-bold outline-none after:absolute after:inset-0 after:ring-(--pr-primary) after:ring-inset focus-visible:after:ring-2"
-                      aria-label={`Edit ${taxFee.code}, ${taxFee.name}`}
-                      onClick={() => setSelection({ taxFee })}
-                    >
-                      {taxFee.code}
-                    </button>
-                  </TableCell>
-                  <TableCell className="truncate px-3 py-0">{taxFee.name}</TableCell>
-                  <TableCell className="px-3 py-0">{taxKindLabel(taxFee.kind)}</TableCell>
-                  <TableCell className="px-3 py-0">{calcTypeShortLabel(taxFee.calc_type)}</TableCell>
-                  <TableCell className="px-3 py-0">{taxValueLabel(taxFee.calc_type, taxFee.value, unit)}</TableCell>
-                  <TableCell className="px-3 py-0">{taxFee.is_active ? 'Yes' : 'No'}</TableCell>
+                onClick={() => {
+                  list.reload()
+                  currency.reload()
+                }}
+              >
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : !list.data || !currency.data ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Loading taxes and fees…</p>
+        ) : rows.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No taxes or fees yet.</p>
+        ) : isPhone ? (
+          <ul className="flex flex-col gap-2.5">
+            {rows.map((taxFee) => (
+              <li key={taxFee.id}>
+                <TaxFeeRowCard taxFee={taxFee} unit={unit} onSelect={() => setSelection({ taxFee })} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className={TABLE_WRAP}>
+            <Table className="table-fixed text-[13px] text-(--pr-primary)">
+              <TableHeader className="[&_tr]:border-0">
+                <TableRow className={TABLE_HEAD_ROW}>
+                  {COLUMNS.map((column) => (
+                    <TableHead key={column.label} className={`${TABLE_HEAD} ${column.className ?? ''}`}>
+                      {column.label}
+                    </TableHead>
+                  ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+              </TableHeader>
+              <TableBody>
+                {rows.map((taxFee) => (
+                  <TableRow key={taxFee.id} className="relative h-14 border-(--pr-divider) hover:bg-(--pr-selected)">
+                    <TableCell className="py-0 pr-3 pl-4">
+                      {/* The whole row is the click target; the ::after stretches this button over it for mouse and keyboard. */}
+                      <Button
+                        variant="link"
+                        type="button"
+                        className="h-auto p-0 font-bold text-foreground after:absolute after:inset-0 focus-visible:ring-0 focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
+                        aria-label={`Edit ${taxFee.code}, ${taxFee.name}`}
+                        onClick={() => setSelection({ taxFee })}
+                      >
+                        {taxFee.code}
+                      </Button>
+                    </TableCell>
+                    <TableCell className="truncate px-3 py-0">{taxFee.name}</TableCell>
+                    <TableCell className="px-3 py-0">{taxKindLabel(taxFee.kind)}</TableCell>
+                    <TableCell className="px-3 py-0">{calcTypeShortLabel(taxFee.calc_type)}</TableCell>
+                    <TableCell className="px-3 py-0">{taxValueLabel(taxFee.calc_type, taxFee.value, unit)}</TableCell>
+                    <TableCell className="px-3 py-0">{taxFee.is_active ? 'Yes' : 'No'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
 
-      <Button
-        type="button"
-        variant="outline"
-        className={`self-start max-[800px]:self-stretch ${OUTLINE_BUTTON}`}
-        onClick={() => setSelection({ taxFee: null })}
-      >
-        +&nbsp;&nbsp;Add tax or fee
-      </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className={`self-start max-[800px]:self-stretch ${OUTLINE_BUTTON}`}
+          onClick={() => setSelection({ taxFee: null })}
+        >
+          +&nbsp;&nbsp;Add tax or fee
+        </Button>
 
-      {selection && (
-        <TaxFeeDialog
-          taxFee={selection.taxFee}
-          currency={unit}
-          onSaved={(saved) => done(`${saved.name} ${selection.taxFee ? 'saved' : 'added'}`)}
-          onRemoved={(removed) => done(`${removed.name} removed`)}
-          onClose={() => setSelection(null)}
-        />
-      )}
-    </section>
+        {selection && (
+          <TaxFeeDialog
+            taxFee={selection.taxFee}
+            currency={unit}
+            onSaved={(saved) => done(`${saved.name} ${selection.taxFee ? 'saved' : 'added'}`)}
+            onRemoved={(removed) => done(`${removed.name} removed`)}
+            onClose={() => setSelection(null)}
+          />
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -169,13 +166,14 @@ interface TaxFeeRowCardProps {
 // Phone: one tappable card per tax, in place of the table.
 function TaxFeeRowCard({ taxFee, unit, onSelect }: TaxFeeRowCardProps) {
   return (
-    <button
+    <Button
       type="button"
-      className="flex w-full flex-col items-start gap-1.5 rounded-(--pr-radius-field) border border-(--pr-divider) bg-(--pr-surface) p-3 text-left text-(--pr-primary) outline-none focus-visible:ring-2 focus-visible:ring-(--pr-primary)"
+      variant="outline"
+      className="h-auto w-full flex-col items-start gap-1.5 p-3 text-left whitespace-normal"
       onClick={onSelect}
     >
       <span className="flex w-full items-center gap-2.5">
-        <span className="rounded-(--pr-radius-lg) bg-(--pr-tint) px-2 py-1.5 text-xs leading-[normal] font-bold">{taxFee.code}</span>
+        <Badge variant="outline">{taxFee.code}</Badge>
         <span className="flex min-w-0 flex-1 flex-col gap-px leading-[normal]">
           <span className="truncate text-sm font-semibold">{taxFee.name}</span>
           <span className="text-xs text-(--pr-muted)">
@@ -186,13 +184,7 @@ function TaxFeeRowCard({ taxFee, unit, onSelect }: TaxFeeRowCardProps) {
           {taxValueLabel(taxFee.calc_type, taxFee.value, unit)}
         </span>
       </span>
-      <span
-        className={`rounded-full px-[9px] py-[3px] text-[11px] leading-[normal] font-semibold ${
-          taxFee.is_active ? 'bg-(--pr-good-bg) text-(--pr-good)' : 'bg-(--pr-tint) text-(--pr-muted)'
-        }`}
-      >
-        {taxFee.is_active ? 'Active' : 'Inactive'}
-      </span>
-    </button>
+      <Badge variant={taxFee.is_active ? 'default' : 'secondary'}>{taxFee.is_active ? 'Active' : 'Inactive'}</Badge>
+    </Button>
   )
 }

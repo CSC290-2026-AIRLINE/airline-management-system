@@ -4,6 +4,24 @@ import { useLoad } from '../hooks/useLoad'
 import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
 import { NewPromoDialog } from './NewPromoDialog'
 import { discountText, kindLabel, promoStatus, statusLabel, usesText, validText, type PromoStatus } from './promo-format'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Switch } from '@staff-web/components/ui/switch'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Badge } from '@staff-web/components/ui/badge'
+import {
+  CARD_BODY,
+  CARD_TITLE,
+  OUTLINE_BUTTON,
+  PHONE_SWITCH,
+  SWITCH,
+  TABLE_HEAD,
+  TABLE_HEAD_ROW,
+  TABLE_ROW,
+  TABLE_WRAP,
+} from './charge-styles'
+import { Notice } from '../components/Notice'
 
 const NOTICE_MS = 2000
 const PROMOS_PER_PAGE = 4 // phone only; the desktop table shows every code
@@ -52,50 +70,50 @@ export function PromoCodesCard({ refreshKey }: PromoCodesCardProps) {
 
   function activeSwitch(promo: PromoCode) {
     return (
-      <button
-        type="button"
-        role="switch"
-        className="pr-switch"
-        aria-checked={promo.is_active}
+      <Switch
+        className={isPhone ? PHONE_SWITCH : SWITCH}
+        checked={promo.is_active}
         aria-label={`${promo.code} active`}
         disabled={busy !== null}
         onClick={() => void setActive(promo)}
-      >
-        <span className="pr-switch-thumb" />
-      </button>
+      />
     )
   }
 
   function statusBadge(status: PromoStatus) {
-    return <span className={`pr-status is-${status}`}>{statusLabel(status)}</span>
+    return (
+      <Badge variant={status === 'active' ? 'default' : status === 'not_started' ? 'outline' : 'secondary'}>{statusLabel(status)}</Badge>
+    )
   }
 
   const now = new Date()
 
   const body = promos.error ? (
-    <div className="pr-callout is-error" role="alert">
-      Could not load promo codes: {promos.error}{' '}
-      <button type="button" className="pr-link-button" onClick={promos.reload}>
-        Retry
-      </button>
-    </div>
+    <Alert variant="destructive">
+      <AlertDescription className="block">
+        Could not load promo codes: {promos.error}{' '}
+        <Button variant="link" className="h-auto p-0" type="button" onClick={promos.reload}>
+          Retry
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : !promos.data ? (
-    <p className="pr-state">Loading promo codes…</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Loading promo codes…</p>
   ) : list.length === 0 ? (
-    <p className="pr-state">No promo or corporate codes yet.</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">No promo or corporate codes yet.</p>
   ) : isPhone ? (
-    <ul className="pr-promo-cards">
+    <ul className="flex flex-col gap-2.5">
       {list.slice(pageStart, pageStart + PROMOS_PER_PAGE).map((promo) => (
-        <li key={promo.id} className="pr-promo-card">
-          <span className="pr-promo-code">{promo.code}</span>
-          <div className="pr-promo-name">
-            <strong>
+        <li key={promo.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 rounded-lg border p-3">
+          <Badge variant="outline">{promo.code}</Badge>
+          <div className="grid min-w-0 gap-px text-xs text-muted-foreground">
+            <strong className="text-sm font-semibold text-foreground">
               {kindLabel(promo.kind)} · {validText(promo)}
             </strong>
             <span>{usesText(promo)} uses</span>
           </div>
-          <span className="pr-promo-discount">{discountText(promo, unit)}</span>
-          <div className="pr-promo-bottom">
+          <span className="text-[15px] font-bold">{discountText(promo, unit)}</span>
+          <div className="col-span-full flex items-center justify-between">
             {statusBadge(promoStatus(promo, now))}
             {activeSwitch(promo)}
           </div>
@@ -103,78 +121,80 @@ export function PromoCodesCard({ refreshKey }: PromoCodesCardProps) {
       ))}
     </ul>
   ) : (
-    <div className="pr-table-wrap">
-      <table className="pr-table pr-rules-table">
-        <thead>
-          <tr>
-            <th scope="col">Code</th>
-            <th scope="col">Kind</th>
-            <th scope="col">Discount</th>
-            <th scope="col">Valid</th>
-            <th scope="col">Uses</th>
-            <th scope="col">Status</th>
-            <th scope="col">Active</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className={TABLE_WRAP}>
+      <Table className="text-[13px] text-(--pr-primary)">
+        <TableHeader className="[&_tr]:border-0">
+          <TableRow className={TABLE_HEAD_ROW}>
+            {['Code', 'Kind', 'Discount', 'Valid', 'Uses', 'Status', 'Active'].map((label, index) => (
+              <TableHead key={label} scope="col" className={`${TABLE_HEAD}${index === 0 ? ' pl-4' : ''}`}>
+                {label}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {list.map((promo) => (
-            <tr key={promo.id}>
-              <td className="pr-mono">{promo.code}</td>
-              <td>{kindLabel(promo.kind)}</td>
-              <td>{discountText(promo, unit)}</td>
-              <td>{validText(promo)}</td>
-              <td>{usesText(promo)}</td>
-              <td>{statusBadge(promoStatus(promo, now))}</td>
-              <td>{activeSwitch(promo)}</td>
-            </tr>
+            <TableRow key={promo.id} className={TABLE_ROW}>
+              <TableCell className="py-0 pr-3 pl-4 font-bold">{promo.code}</TableCell>
+              <TableCell className="px-3 py-0">{kindLabel(promo.kind)}</TableCell>
+              <TableCell className="px-3 py-0">{discountText(promo, unit)}</TableCell>
+              <TableCell className="px-3 py-0">{validText(promo)}</TableCell>
+              <TableCell className="px-3 py-0">{usesText(promo)}</TableCell>
+              <TableCell className="px-3 py-0">{statusBadge(promoStatus(promo, now))}</TableCell>
+              <TableCell className="px-3 py-0">{activeSwitch(promo)}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 
   return (
     <>
-      <div role="status" aria-live="polite" className="pr-banner-slot">
-        {notice && <p className="pr-banner is-success">{notice.text}</p>}
-      </div>
-
-      <section className="pr-card" aria-labelledby="promo-card-title">
-        <div className="pr-card-head">
-          <h2 id="promo-card-title" className="pr-card-title">
+      <Card aria-labelledby="promo-card-title">
+        <CardHeader>
+          <CardTitle id="promo-card-title" role="heading" aria-level={2} className={CARD_TITLE}>
             Promo and corporate codes
-          </h2>
-          <p className="pr-muted">Applied after the pricing rules and before taxes.</p>
-        </div>
+          </CardTitle>
+          <CardDescription>Applied after the pricing rules and before taxes.</CardDescription>
+        </CardHeader>
+        <CardContent className={CARD_BODY}>
+          <Notice text={notice?.text} />
+          {body}
 
-        {body}
+          {actionError && (
+            <Alert variant="destructive">
+              <AlertDescription className="block">{actionError}</AlertDescription>
+            </Alert>
+          )}
 
-        {actionError && (
-          <div className="pr-callout is-error" role="alert">
-            {actionError}
-          </div>
-        )}
-
-        <button type="button" className="pr-button is-outline pr-add-button" disabled={!promos.data} onClick={() => setAdding(true)}>
-          + Add promo or corporate code
-        </button>
-      </section>
+          <Button
+            variant="outline"
+            type="button"
+            className={`self-start max-[800px]:self-stretch ${OUTLINE_BUTTON}`}
+            disabled={!promos.data}
+            onClick={() => setAdding(true)}
+          >
+            + Add promo or corporate code
+          </Button>
+        </CardContent>
+      </Card>
 
       {isPhone && promos.data && pageCount > 1 && (
-        <nav className="pr-pager" aria-label="Promo code pages">
-          <p aria-live="polite">
+        <nav className="flex items-center justify-between gap-3" aria-label="Promo code pages">
+          <p aria-live="polite" className="text-sm text-muted-foreground">
             Page {currentPage + 1} of {pageCount}
           </p>
-          <div className="pr-pager-buttons">
+          <div className="flex gap-2">
             {currentPage > 0 && (
-              <button type="button" className="pr-button is-outline" onClick={() => setPage(currentPage - 1)}>
+              <Button variant="outline" type="button" onClick={() => setPage(currentPage - 1)}>
                 ‹ Previous
-              </button>
+              </Button>
             )}
             {currentPage < pageCount - 1 && (
-              <button type="button" className="pr-button is-primary" onClick={() => setPage(currentPage + 1)}>
+              <Button type="button" onClick={() => setPage(currentPage + 1)}>
                 Next page ›
-              </button>
+              </Button>
             )}
           </div>
         </nav>

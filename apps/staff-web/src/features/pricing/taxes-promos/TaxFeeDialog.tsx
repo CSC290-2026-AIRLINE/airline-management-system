@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { X } from 'lucide-react'
+import { useConfirm } from '../hooks/useConfirm'
 import { Button } from '@staff-web/components/ui/button'
 import { Checkbox } from '@staff-web/components/ui/checkbox'
 import { Input } from '@staff-web/components/ui/input'
@@ -11,6 +11,8 @@ import { calcTypeLabel, taxKindLabel } from '../add-on-charges/labels'
 import { Dialog } from '../components/Dialog'
 import { DANGER_BUTTON, OUTLINE_BUTTON, PRIMARY_BUTTON } from './charge-styles'
 import { FormField } from './FormField'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 
 interface FormState {
   code: string
@@ -57,6 +59,7 @@ interface TaxFeeDialogProps {
 }
 
 export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: TaxFeeDialogProps) {
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const api = useAddOnChargesApi()
   const [form, setForm] = useState<FormState>(
     taxFee
@@ -99,7 +102,7 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
   }
 
   async function handleRemove() {
-    if (!taxFee || !window.confirm(`Remove ${taxFee.code} · ${taxFee.name}?`)) return
+    if (!taxFee || !(await confirm(`Remove ${taxFee.code} · ${taxFee.name}?`))) return
     setBusy(true)
     setServerError(null)
     try {
@@ -121,23 +124,11 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
   }
 
   return (
-    <Dialog labelledBy="tax-fee-title" className="pr-confirm pr-form-dialog" onClose={() => !busy && onClose()}>
-      <div className="pr-sheet-handle" aria-hidden="true" />
+    <Dialog onClose={() => !busy && onClose()}>
       <form className="flex flex-col gap-3.5" onSubmit={(event) => void handleSubmit(event)} noValidate>
-        <div className="pr-confirm-head mb-0!">
-          <h2 id="tax-fee-title">{taxFee ? `Edit ${taxFee.code}` : 'New tax, surcharge or fee'}</h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="pr-phone-only text-(--pr-muted)"
-            aria-label="Close"
-            disabled={busy}
-            onClick={onClose}
-          >
-            <X />
-          </Button>
-        </div>
+        <DialogHeader>
+          <DialogTitle>{taxFee ? `Edit ${taxFee.code}` : 'New tax, surcharge or fee'}</DialogTitle>
+        </DialogHeader>
 
         <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 max-[800px]:grid-cols-2">
           <FormField htmlFor="tax-fee-code" label="Code" error={errors.code}>
@@ -222,22 +213,20 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
 
         <Label className="w-fit text-[13px] leading-[normal] font-normal text-(--pr-primary)">
           <Checkbox
-            className="size-[18px] data-checked:border-(--pr-primary) data-checked:bg-(--pr-primary)"
+            className="size-[18px] data-[state=checked]:border-(--pr-primary) data-[state=checked]:bg-(--pr-primary)"
             checked={form.is_active}
             disabled={busy}
-            onCheckedChange={(checked) => set('is_active', checked)}
+            onCheckedChange={(checked) => set('is_active', checked === true)}
           />
           Active
         </Label>
 
         {serverError && (
-          <div className="pr-callout is-error" role="alert">
-            {serverError}
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription className="block">{serverError}</AlertDescription>
+          </Alert>
         )}
-
-        {/* pr-confirm-actions stacks these on phones, primary on top. */}
-        <div className="pr-confirm-actions">
+        <DialogFooter>
           {taxFee && (
             <Button type="button" variant="ghost" className={DANGER_BUTTON} disabled={busy} onClick={() => void handleRemove()}>
               Remove
@@ -249,8 +238,9 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
           <Button type="submit" className={PRIMARY_BUTTON} disabled={busy}>
             {busy ? 'Saving…' : taxFee ? 'Save' : 'Add'}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
+      {confirmDialog}
     </Dialog>
   )
 }

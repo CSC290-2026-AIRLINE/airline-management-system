@@ -11,8 +11,21 @@ import { routeLabel } from '../add-on-charges/labels'
 import { useLoad } from '../hooks/useLoad'
 import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
 import { BaggageRateDialog, KG, MONEY } from './BaggageRateDialog'
-import { OUTLINE_BUTTON } from './charge-styles'
+import {
+  CARD_BODY,
+  CARD_TITLE,
+  OUTLINE_BUTTON,
+  PHONE_SWITCH,
+  SWITCH,
+  TABLE_HEAD,
+  TABLE_HEAD_ROW,
+  TABLE_ROW,
+  TABLE_WRAP,
+} from './charge-styles'
+import { Notice } from '../components/Notice'
 import { TryFee } from './TryFee'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 
 const NOTICE_MS = 2000
 
@@ -25,12 +38,6 @@ const COLUMNS = [
   { label: 'Max bag (kg)', className: 'w-[140px]' },
   { label: 'Active' },
 ]
-
-// shadcn's switch resized to the design: 36×20 on desktop, 42×24 on phones. The thumb is its only child.
-const SWITCH =
-  'data-checked:bg-(--pr-good) data-unchecked:bg-(--pr-border) data-[size=default]:h-5 data-[size=default]:w-9 [&>span]:data-checked:translate-x-[18px]!'
-const PHONE_SWITCH =
-  'data-checked:bg-(--pr-good) data-unchecked:bg-(--pr-border) data-[size=default]:h-6 data-[size=default]:w-[42px] [&>span]:size-5! [&>span]:data-checked:translate-x-5!'
 
 type Patch = Partial<BaggageRateInput>
 type Selection = { rate: BaggageRate | null } | null // rate null = adding a new one
@@ -103,115 +110,107 @@ export function BaggageRatesCard() {
   })
 
   return (
-    <section
-      className="flex flex-col gap-3.5 rounded-(--pr-radius-card) border border-(--pr-border) bg-(--pr-surface) p-5"
-      aria-labelledby="baggage-rates-title"
-    >
-      {/* The h2 keeps its pr- class: the bare h2 rule in index.css is unlayered and beats Tailwind utilities. */}
-      <div className="pr-card-head">
-        <h2 id="baggage-rates-title" className="pr-card-title">
+    <Card aria-labelledby="baggage-rates-title">
+      <CardHeader>
+        <CardTitle id="baggage-rates-title" role="heading" aria-level={2} className={CARD_TITLE}>
           Overweight baggage rates
-        </h2>
-        <p className="pr-muted leading-[normal]">
+        </CardTitle>
+        <CardDescription>
           Free allowance and fee per extra kg, by fare class. A route row overrides the all-routes row. Feature 6 asks for the fee at bag
           drop; it is not taxed.
-        </p>
-      </div>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className={CARD_BODY}>
+        <Notice text={notice?.text} />
 
-      <div role="status" aria-live="polite" className="empty:hidden">
-        {notice && (
-          <p className="rounded-(--pr-radius-lg) bg-(--pr-good-bg) px-3.5 py-2.5 text-xs leading-[normal] font-semibold text-(--pr-good)">
-            {notice.text}
-          </p>
+        {rowError && (
+          <Alert variant="destructive">
+            <AlertDescription className="block">{rowError}</AlertDescription>
+          </Alert>
         )}
-      </div>
 
-      {rowError && (
-        <div className="pr-callout is-error" role="alert">
-          {rowError}
-        </div>
-      )}
+        {loadError ? (
+          <Alert variant="destructive">
+            <AlertDescription className="block">
+              Could not load baggage rates: {loadError}{' '}
+              <Button
+                variant="link"
+                className="h-auto p-0"
+                type="button"
 
-      {loadError ? (
-        <div className="pr-callout is-error" role="alert">
-          Could not load baggage rates: {loadError}{' '}
-          <button
-            type="button"
-            className="pr-link-button"
-            onClick={() => {
-              rates.reload()
-              fareClasses.reload()
-              routes.reload()
-              currency.reload()
-            }}
-          >
-            Retry
-          </button>
-        </div>
-      ) : !ready ? (
-        <p className="pr-state">Loading baggage rates…</p>
-      ) : fareClasses.data!.length === 0 ? (
-        <p className="pr-state">No fare classes yet. Add them on Fare Setup first.</p>
-      ) : rows.length === 0 ? (
-        <p className="pr-state">No baggage rates yet. Add a default rate for each fare class.</p>
-      ) : isPhone ? (
-        <ul className="flex flex-col gap-2.5">
-          {rows.map((rate) => (
-            <li key={rate.id}>
-              <RatePhoneCard {...rowProps(rate)} />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="border border-(--pr-border)">
-          <Table className="table-fixed text-[13px] text-(--pr-primary)">
-            <TableHeader className="[&_tr]:border-0">
-              <TableRow className="bg-(--pr-head) hover:bg-(--pr-head)">
-                {COLUMNS.map((column) => (
-                  <TableHead
-                    key={column.label}
-                    className={`h-10 px-3 text-[11px] font-semibold text-(--pr-primary) uppercase ${column.className ?? ''}`}
-                  >
-                    {column.label}
-                  </TableHead>
+                onClick={() => {
+                  rates.reload()
+                  fareClasses.reload()
+                  routes.reload()
+                  currency.reload()
+                }}
+              >
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : !ready ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Loading baggage rates…</p>
+        ) : fareClasses.data!.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No fare classes yet. Add them on Fare Setup first.</p>
+        ) : rows.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No baggage rates yet. Add a default rate for each fare class.</p>
+        ) : isPhone ? (
+          <ul className="flex flex-col gap-2.5">
+            {rows.map((rate) => (
+              <li key={rate.id}>
+                <RatePhoneCard {...rowProps(rate)} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className={TABLE_WRAP}>
+            <Table className="table-fixed text-[13px] text-(--pr-primary)">
+              <TableHeader className="[&_tr]:border-0">
+                <TableRow className={TABLE_HEAD_ROW}>
+                  {COLUMNS.map((column) => (
+                    <TableHead key={column.label} className={`${TABLE_HEAD} ${column.className ?? ''}`}>
+                      {column.label}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((rate) => (
+                  <RateTableRow key={rate.id} {...rowProps(rate)} />
                 ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((rate) => (
-                <RateTableRow key={rate.id} {...rowProps(rate)} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
 
-      {/* Not in the design, which has no way to create a rate; without this the table can only ever be empty. */}
-      {ready && fareClasses.data!.length > 0 && (
-        <Button
-          type="button"
-          variant="outline"
-          className={`self-start max-[800px]:self-stretch ${OUTLINE_BUTTON}`}
-          onClick={() => setSelection({ rate: null })}
-        >
-          +&nbsp;&nbsp;Add baggage rate
-        </Button>
-      )}
+        {/* Not in the design, which has no way to create a rate; without this the table can only ever be empty. */}
+        {ready && fareClasses.data!.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            className={`self-start max-[800px]:self-stretch ${OUTLINE_BUTTON}`}
+            onClick={() => setSelection({ rate: null })}
+          >
+            +&nbsp;&nbsp;Add baggage rate
+          </Button>
+        )}
 
-      {ready && <TryFee rates={rows} currency={currency.data!} />}
+        {ready && <TryFee rates={rows} currency={currency.data!} />}
 
-      {selection && ready && (
-        <BaggageRateDialog
-          rate={selection.rate}
-          fareClasses={fareClasses.data!}
-          routes={routes.data!}
-          currency={currency.data!}
-          onSaved={(saved) => done(`${rateName(saved)} ${selection.rate ? 'saved' : 'added'}`)}
-          onRemoved={(removed) => done(`${rateName(removed)} removed`)}
-          onClose={() => setSelection(null)}
-        />
-      )}
-    </section>
+        {selection && ready && (
+          <BaggageRateDialog
+            rate={selection.rate}
+            fareClasses={fareClasses.data!}
+            routes={routes.data!}
+            currency={currency.data!}
+            onSaved={(saved) => done(`${rateName(saved)} ${selection.rate ? 'saved' : 'added'}`)}
+            onRemoved={(removed) => done(`${rateName(removed)} removed`)}
+            onClose={() => setSelection(null)}
+          />
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -227,7 +226,7 @@ interface RowProps {
 function RateTableRow({ rate, toggling, onSave, onInvalid, onToggle, onEdit }: RowProps) {
   const name = rateName(rate)
   return (
-    <TableRow className="h-[52px] border-(--pr-divider) hover:bg-transparent">
+    <TableRow className={TABLE_ROW}>
       <TableCell className="py-0 pr-3 pl-4 font-bold">{rate.fare_class.code}</TableCell>
       <TableCell className="truncate px-3 py-0">{routeLabel(rate.route)}</TableCell>
       <TableCell className="px-3 py-0">
@@ -288,14 +287,9 @@ function RatePhoneCard({ rate, toggling, onSave, onInvalid, onToggle, onEdit }: 
 // Not in the design: the only way to change the route or max bag, or to remove a rate.
 function EditButton({ name, onEdit }: { name: string; onEdit: () => void }) {
   return (
-    <button
-      type="button"
-      className="rounded-(--pr-radius-sm) text-xs font-semibold text-(--pr-primary) underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-(--pr-primary)"
-      aria-label={`Edit ${name}`}
-      onClick={onEdit}
-    >
+    <Button variant="link" size="sm" type="button" className="h-auto p-0 text-xs" aria-label={`Edit ${name}`} onClick={onEdit}>
       Edit
-    </button>
+    </Button>
   )
 }
 

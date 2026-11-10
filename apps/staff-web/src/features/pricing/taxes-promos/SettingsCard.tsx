@@ -3,7 +3,10 @@ import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
 import { errorMessage, usePricingApi } from '../api'
 import { useLoad } from '../hooks/useLoad'
-import { PRIMARY_BUTTON } from './charge-styles'
+import { CARD_BODY, CARD_TITLE, PRIMARY_BUTTON } from './charge-styles'
+import { FormField } from './FormField'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 
 const NOTICE_MS = 3000
 const MAX_HOLD_MINUTES = 1440 // MAX_QUOTE_HOLD_MINUTES in the backend's pricing.constants.ts
@@ -50,25 +53,30 @@ export function SettingsCard() {
   }
 
   const body = settings.error ? (
-    <div className="pr-callout is-error" role="alert">
-      Could not load the pricing settings: {settings.error}{' '}
-      <button type="button" className="pr-link-button" onClick={settings.reload}>
-        Retry
-      </button>
-    </div>
+    <Alert variant="destructive">
+      <AlertDescription className="block">
+        Could not load the pricing settings: {settings.error}{' '}
+        <Button variant="link" className="h-auto p-0" type="button" onClick={settings.reload}>
+          Retry
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : !settings.data ? (
-    <p className="pr-state">Loading the pricing settings…</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Loading the pricing settings…</p>
   ) : (
     <form onSubmit={(e) => void save(e)} noValidate className="grid gap-3.5">
       <div className="grid max-w-[520px] grid-cols-2 items-start gap-3.5 max-[800px]:max-w-none max-[800px]:grid-cols-1">
-        <div className="pr-field">
-          <label htmlFor="setting-base-currency">Base currency</label>
-          <Input id="setting-base-currency" className="disabled:opacity-100" value={baseCurrency} disabled />
-        </div>
-        <div className="pr-field">
-          <label htmlFor="setting-quote-hold">Quote hold window (minutes)</label>
+        <FormField htmlFor="setting-base-currency" label="Base currency">
+          <Input id="setting-base-currency" className="h-[42px] disabled:opacity-100" value={baseCurrency} disabled />
+        </FormField>
+        <FormField
+          htmlFor="setting-quote-hold"
+          label="Quote hold window (minutes)"
+          error={invalid ? `A whole number from 1 to ${MAX_HOLD_MINUTES}` : undefined}
+        >
           <Input
             id="setting-quote-hold"
+            className="h-[42px]"
             inputMode="numeric"
             value={hold}
             disabled={saving}
@@ -80,18 +88,13 @@ export function SettingsCard() {
               setNotice(null)
             }}
           />
-          {invalid && (
-            <span id="setting-quote-hold-error" className="pr-field-error">
-              A whole number from 1 to {MAX_HOLD_MINUTES}
-            </span>
-          )}
-        </div>
+        </FormField>
       </div>
 
       {error && (
-        <div className="pr-callout is-error" role="alert">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="block">{error}</AlertDescription>
+        </Alert>
       )}
 
       <div className="flex flex-wrap items-center gap-3 max-[800px]:grid">
@@ -106,15 +109,14 @@ export function SettingsCard() {
   )
 
   return (
-    <section className="pr-card" aria-labelledby="settings-card-title">
-      <div className="pr-card-head">
-        <h2 id="settings-card-title" className="pr-card-title">
+    <Card aria-labelledby="settings-card-title">
+      <CardHeader>
+        <CardTitle id="settings-card-title" role="heading" aria-level={2} className={CARD_TITLE}>
           Pricing settings
-        </h2>
-        <p className="pr-muted">Every amount is stored in the base currency. Other currencies are display only.</p>
-      </div>
-
-      {body}
-    </section>
+        </CardTitle>
+        <CardDescription>Every amount is stored in the base currency. Other currencies are display only.</CardDescription>
+      </CardHeader>
+      <CardContent className={CARD_BODY}>{body}</CardContent>
+    </Card>
   )
 }

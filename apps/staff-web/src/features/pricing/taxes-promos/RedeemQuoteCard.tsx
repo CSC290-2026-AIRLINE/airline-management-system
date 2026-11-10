@@ -3,13 +3,12 @@ import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
-import { Label } from '@staff-web/components/ui/label'
+import { CARD_BODY, CARD_TITLE, OUTLINE_BUTTON, PRIMARY_BUTTON } from './charge-styles'
+import { FormField } from './FormField'
 import { errorMessage, usePricingApi, type PromoQuotes } from '../api'
 
 const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const DAY = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' })
-// Same size as the pr-button actions on the rest of the page.
-const BUTTON = 'h-auto rounded-lg px-6 py-3 text-[13px] font-semibold'
 
 interface RedeemQuoteCardProps {
   onRedeemed: () => void // the promo table reloads, so its Uses column follows
@@ -60,24 +59,24 @@ export function RedeemQuoteCard({ onRedeemed }: RedeemQuoteCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl font-bold text-primary">Redeem a promo</CardTitle>
+        <CardTitle className={CARD_TITLE}>Redeem a promo</CardTitle>
         <CardDescription>Search a code, then pick the quote to count one use on. Each quote only counts once.</CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3.5">
+      <CardContent className={CARD_BODY}>
         <form onSubmit={(e) => void findQuotes(e)} noValidate className="flex flex-col gap-3 min-[801px]:flex-row min-[801px]:items-end">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Label htmlFor="redeem-code" className="text-[11px] font-semibold text-muted-foreground uppercase">
-              Promo code
-            </Label>
-            <Input
-              id="redeem-code"
-              value={code}
-              placeholder="e.g. SPRING15"
-              aria-invalid={error ? true : undefined}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-            />
+          <div className="flex-1">
+            <FormField htmlFor="redeem-code" label="Promo code">
+              <Input
+                id="redeem-code"
+                className="h-[42px]"
+                value={code}
+                placeholder="e.g. SPRING15"
+                aria-invalid={error ? true : undefined}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+              />
+            </FormField>
           </div>
-          <Button type="submit" variant="outline" disabled={searching} className={`${BUTTON} border-primary text-primary`}>
+          <Button type="submit" variant="outline" disabled={searching} className={OUTLINE_BUTTON}>
             {searching ? 'Finding…' : 'Find quotes'}
           </Button>
         </form>
@@ -111,7 +110,7 @@ export function RedeemQuoteCard({ onRedeemed }: RedeemQuoteCardProps) {
                 {quote.redeemed_at ? (
                   <Badge variant="secondary">Redeemed {DAY.format(new Date(quote.redeemed_at))}</Badge>
                 ) : (
-                  <Button disabled={redeeming !== null} className={BUTTON} onClick={() => void redeem(quote.id, result.code)}>
+                  <Button disabled={redeeming !== null} className={PRIMARY_BUTTON} onClick={() => void redeem(quote.id, result.code)}>
                     {redeeming === quote.id ? 'Redeeming…' : 'Redeem'}
                   </Button>
                 )}

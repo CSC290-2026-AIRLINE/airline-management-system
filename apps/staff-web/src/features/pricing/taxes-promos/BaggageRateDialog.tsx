@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { X } from 'lucide-react'
+import { useConfirm } from '../hooks/useConfirm'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
@@ -9,6 +9,8 @@ import { routeLabel } from '../add-on-charges/labels'
 import { Dialog } from '../components/Dialog'
 import { DANGER_BUTTON, OUTLINE_BUTTON, PRIMARY_BUTTON } from './charge-styles'
 import { FormField } from './FormField'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 
 export const KG = /^\d+(\.\d)?$/ // NUMERIC(5,1)
 export const MONEY = /^\d+(\.\d{1,2})?$/
@@ -60,6 +62,7 @@ interface BaggageRateDialogProps {
 
 // The design has no add or edit form for baggage rates, so this follows the "New tax, surcharge or fee" dialog.
 export function BaggageRateDialog({ rate, fareClasses, routes, currency, onSaved, onRemoved, onClose }: BaggageRateDialogProps) {
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const api = useAddOnChargesApi()
   const [form, setForm] = useState<FormState>(
     rate
@@ -100,7 +103,7 @@ export function BaggageRateDialog({ rate, fareClasses, routes, currency, onSaved
   }
 
   async function handleRemove() {
-    if (!rate || !window.confirm(`Remove the ${rate.fare_class.code} baggage rate for ${routeLabel(rate.route)}?`)) return
+    if (!rate || !(await confirm(`Remove the ${rate.fare_class.code} baggage rate for ${routeLabel(rate.route)}?`))) return
     setBusy(true)
     setServerError(null)
     try {
@@ -122,23 +125,11 @@ export function BaggageRateDialog({ rate, fareClasses, routes, currency, onSaved
   }
 
   return (
-    <Dialog labelledBy="baggage-rate-title" className="pr-confirm pr-form-dialog" onClose={() => !busy && onClose()}>
-      <div className="pr-sheet-handle" aria-hidden="true" />
+    <Dialog onClose={() => !busy && onClose()}>
       <form className="flex flex-col gap-3.5" onSubmit={(event) => void handleSubmit(event)} noValidate>
-        <div className="pr-confirm-head mb-0!">
-          <h2 id="baggage-rate-title">{rate ? `Edit ${rate.fare_class.code} · ${routeLabel(rate.route)}` : 'New baggage rate'}</h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="pr-phone-only text-(--pr-muted)"
-            aria-label="Close"
-            disabled={busy}
-            onClick={onClose}
-          >
-            <X />
-          </Button>
-        </div>
+        <DialogHeader>
+          <DialogTitle>{rate ? `Edit ${rate.fare_class.code} · ${routeLabel(rate.route)}` : 'New baggage rate'}</DialogTitle>
+        </DialogHeader>
 
         <div className="grid grid-cols-2 gap-3">
           <FormField htmlFor="baggage-fare_class_id" label="Class" error={errors.fare_class_id}>
@@ -209,13 +200,11 @@ export function BaggageRateDialog({ rate, fareClasses, routes, currency, onSaved
         </p>
 
         {serverError && (
-          <div className="pr-callout is-error" role="alert">
-            {serverError}
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription className="block">{serverError}</AlertDescription>
+          </Alert>
         )}
-
-        {/* pr-confirm-actions stacks these on phones, primary on top. */}
-        <div className="pr-confirm-actions">
+        <DialogFooter>
           {rate && (
             <Button type="button" variant="ghost" className={DANGER_BUTTON} disabled={busy} onClick={() => void handleRemove()}>
               Remove
@@ -227,8 +216,9 @@ export function BaggageRateDialog({ rate, fareClasses, routes, currency, onSaved
           <Button type="submit" className={PRIMARY_BUTTON} disabled={busy}>
             {busy ? 'Saving…' : rate ? 'Save' : 'Add'}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
+      {confirmDialog}
     </Dialog>
   )
 }
