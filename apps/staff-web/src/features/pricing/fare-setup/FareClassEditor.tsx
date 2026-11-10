@@ -2,6 +2,13 @@ import { useState, type FormEvent } from 'react'
 import { CABINS, errorMessage, usePricingApi, type FareClass, type FareClassInput } from '../api'
 import { cabinLabel } from '../format'
 import { RemoveFareClassDialog } from './RemoveFareClassDialog'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Label } from '@staff-web/components/ui/label'
+import { Input } from '@staff-web/components/ui/input'
+import { Checkbox } from '@staff-web/components/ui/checkbox'
+import { DialogFooter, DialogTitle } from '@staff-web/components/ui/dialog'
 
 // Form state keeps raw input text so a half-typed number is not lost; it is parsed on submit.
 interface FormState {
@@ -85,8 +92,8 @@ function validate(form: FormState): { input?: FareClassInput; errors: FieldError
   }
 }
 
-// panel: desktop side panel. page: phone, the editor replaces the list. dialog / sheet: the add pop-up on desktop / phone.
-export type EditorVariant = 'panel' | 'page' | 'dialog' | 'sheet'
+// Both live in a dialog; the phone sheet adds its own close button.
+export type EditorVariant = 'dialog' | 'sheet'
 
 interface FareClassEditorProps {
   fareClass: FareClass | null // null = adding a new class
@@ -149,9 +156,9 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
 
   const title = fareClass ? `${fareClass.code} · ${fareClass.name}` : 'New fare class'
   const closeButton = (
-    <button type="button" className="pr-icon-button" onClick={onClose} aria-label={fareClass ? 'Close editor' : 'Close dialog'}>
+    <Button variant="ghost" size="icon" type="button" onClick={onClose} aria-label="Close dialog">
       ×
-    </button>
+    </Button>
   )
 
   const formBody = (
@@ -159,32 +166,32 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
       {/* The add pop-up puts code and name on one row; the editor stacks them. */}
       <div className={fareClass ? undefined : 'pr-code-name-row'}>
         <div className="pr-field">
-          <label htmlFor="fc-code">{fareClass ? 'Code (unique, e.g. Y, M, J)' : 'Code'}</label>
-          <input {...fieldProps('code')} value={form.code} maxLength={3} onChange={(e) => set('code', e.target.value.toUpperCase())} />
+          <Label htmlFor="fc-code">{fareClass ? 'Code (unique, e.g. Y, M, J)' : 'Code'}</Label>
+          <Input {...fieldProps('code')} value={form.code} maxLength={3} onChange={(e) => set('code', e.target.value.toUpperCase())} />
           {fieldError('code')}
         </div>
 
         <div className="pr-field">
-          <label htmlFor="fc-name">Name</label>
-          <input {...fieldProps('name')} value={form.name} maxLength={100} onChange={(e) => set('name', e.target.value)} />
+          <Label htmlFor="fc-name">Name</Label>
+          <Input {...fieldProps('name')} value={form.name} maxLength={100} onChange={(e) => set('name', e.target.value)} />
           {fieldError('name')}
         </div>
       </div>
 
       <div className="pr-field">
-        <label htmlFor="fc-cabin">Cabin</label>
-        <select id="fc-cabin" value={form.cabin} onChange={(e) => set('cabin', e.target.value as FormState['cabin'])}>
+        <Label htmlFor="fc-cabin">Cabin</Label>
+        <NativeSelect id="fc-cabin" value={form.cabin} onChange={(e) => set('cabin', e.target.value as FormState['cabin'])}>
           {CABINS.map((cabin) => (
-            <option key={cabin} value={cabin}>
+            <NativeSelectOption key={cabin} value={cabin}>
               {cabinLabel(cabin)}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       <div className="pr-field">
-        <label htmlFor="fc-min_advance_purchase_days">Minimum advance purchase (days)</label>
-        <input
+        <Label htmlFor="fc-min_advance_purchase_days">Minimum advance purchase (days)</Label>
+        <Input
           {...fieldProps('min_advance_purchase_days')}
           inputMode="numeric"
           value={form.min_advance_purchase_days}
@@ -194,18 +201,18 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
       </div>
 
       <div className="pr-checks">
-        <label>
-          <input type="checkbox" checked={form.refundable} onChange={(e) => setAllowed('refundable', e.target.checked)} />
+        <Label>
+          <Checkbox checked={form.refundable} onCheckedChange={(checked) => setAllowed('refundable', checked === true)} />
           Refundable
-        </label>
-        <label>
-          <input type="checkbox" checked={form.changeable} onChange={(e) => setAllowed('changeable', e.target.checked)} />
+        </Label>
+        <Label>
+          <Checkbox checked={form.changeable} onCheckedChange={(checked) => setAllowed('changeable', checked === true)} />
           Changeable
-        </label>
-        <label>
-          <input type="checkbox" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
+        </Label>
+        <Label>
+          <Checkbox checked={form.is_active} onCheckedChange={(checked) => set('is_active', checked === true)} />
           Active
-        </label>
+        </Label>
       </div>
 
       <div className="pr-fee-grid">
@@ -218,8 +225,8 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
           ] as const
         ).map(([field, label, enabled]) => (
           <div key={field} className="pr-field">
-            <label htmlFor={`fc-${field}`}>{label}</label>
-            <input
+            <Label htmlFor={`fc-${field}`}>{label}</Label>
+            <Input
               {...fieldProps(field)}
               inputMode="decimal"
               value={form[field]}
@@ -240,81 +247,38 @@ export function FareClassEditor({ fareClass, variant, onSaved, onRemoved, onClos
       )}
 
       {serverError && (
-        <div className="pr-callout is-error" role="alert">
-          {serverError}
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="block">{serverError}</AlertDescription>
+        </Alert>
       )}
 
-      {fareClass ? (
-        <div className="pr-actions">
-          <button type="submit" className="pr-button is-primary" disabled={busy}>
-            {busy ? 'Saving…' : 'Save fare class'}
-          </button>
-          <button type="button" className="pr-button is-danger" disabled={busy} onClick={() => setRemoving(true)}>
+      <DialogFooter>
+        {fareClass && (
+          <Button variant="ghost" className="mr-auto text-destructive" type="button" disabled={busy} onClick={() => setRemoving(true)}>
             Remove fare class
-          </button>
-        </div>
-      ) : (
-        <div className="pr-confirm-actions">
-          <button type="button" className="pr-button is-outline" disabled={busy} onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="pr-button is-primary" disabled={busy}>
-            {busy ? 'Saving…' : 'Add fare class'}
-          </button>
-        </div>
-      )}
+          </Button>
+        )}
+        <Button variant="outline" type="button" disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={busy}>
+          {busy ? 'Saving…' : fareClass ? 'Save fare class' : 'Add fare class'}
+        </Button>
+      </DialogFooter>
 
       {removing && fareClass && <RemoveFareClassDialog fareClass={fareClass} onClose={() => setRemoving(false)} onRemoved={onRemoved} />}
     </form>
   )
 
-  switch (variant) {
-    case 'panel':
-      return (
-        <section className="pr-card pr-editor" aria-labelledby="fc-editor-title">
-          <div className="pr-editor-head">
-            <div>
-              <p className="pr-eyebrow">{fareClass ? 'Editing' : 'New fare class'}</p>
-              <h2 id="fc-editor-title" className="pr-editor-title">
-                {title}
-              </h2>
-            </div>
-            {closeButton}
-          </div>
-          {formBody}
-        </section>
-      )
-    case 'page':
-      return (
-        <section className="pr-editor-page" aria-labelledby="fc-editor-title">
-          <button type="button" className="pr-back-link" onClick={onClose}>
-            ‹ Fare classes
-          </button>
-          <p className="pr-eyebrow">{fareClass ? 'Editing' : 'New fare class'}</p>
-          <h2 id="fc-editor-title" className="pr-editor-page-title">
-            {title}
-          </h2>
-          <div className="pr-card pr-editor">{formBody}</div>
-        </section>
-      )
-    case 'dialog':
-    case 'sheet':
-      return (
-        <div className="pr-editor">
-          <div className="pr-sheet-handle" aria-hidden="true" />
-          <div className="pr-editor-head">
-            <h2 id="fc-editor-title" className="pr-editor-title">
-              {title}
-            </h2>
-            {variant === 'sheet' && closeButton}
-          </div>
-          {formBody}
-        </div>
-      )
-    default: {
-      const unknown: never = variant
-      return unknown
-    }
-  }
+  return (
+    <div className="pr-editor">
+      <div className="pr-editor-head">
+        <DialogTitle id="fc-editor-title" className="pr-editor-title">
+          {title}
+        </DialogTitle>
+        {variant === 'sheet' && closeButton}
+      </div>
+      {formBody}
+    </div>
+  )
 }

@@ -4,6 +4,8 @@ import { PricingShell } from '../components/PricingShell'
 import { SeatFeesTab } from './SeatFeesTab'
 import { ADD_ON_TABS, type AddOnTab } from './tabs'
 import './add-on-charges.css'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 
 const TAB_LABELS: Record<AddOnTab, string> = { 'seat-fees': 'Seat fees' }
 
@@ -29,34 +31,27 @@ export function AddOnChargesPage({ tab, onTabChange }: AddOnChargesPageProps) {
 
   return (
     <PricingShell title="Add-on Charges" description="Seat fees for every cabin.">
-      <div className="pr-tabs" role="tablist" aria-label="Add-on charge sections">
-        {ADD_ON_TABS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            id={`tab-${id}`}
-            aria-selected={tab === id}
-            aria-controls={`panel-${id}`}
-            className={`pr-button ${tab === id ? 'is-primary' : 'is-outline'}`}
-            onClick={() => onTabChange(id)}
-          >
-            {TAB_LABELS[id]}
-          </button>
-        ))}
-      </div>
+      <Tabs value={tab} onValueChange={(next) => onTabChange(next as AddOnTab)}>
+        <TabsList aria-label="Add-on charge sections">
+          {ADD_ON_TABS.map((id) => (
+            <TabsTrigger key={id} value={id}>
+              {TAB_LABELS[id]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {isLoading ? (
-          <p className="pr-state">Signing in…</p>
-        ) : !accessToken ? (
-          <div className="pr-callout is-error" role="alert">
-            Your session could not be started. Sign out and sign in again.
-          </div>
-        ) : (
-          <ErrorBoundary key={tab}>{tabPanel(tab)}</ErrorBoundary>
-        )}
-      </div>
+        <TabsContent value={tab}>
+          {isLoading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Signing in…</p>
+          ) : !accessToken ? (
+            <Alert variant="destructive">
+              <AlertDescription className="block">Your session could not be started. Sign out and sign in again.</AlertDescription>
+            </Alert>
+          ) : (
+            <ErrorBoundary key={tab}>{tabPanel(tab)}</ErrorBoundary>
+          )}
+        </TabsContent>
+      </Tabs>
     </PricingShell>
   )
 }

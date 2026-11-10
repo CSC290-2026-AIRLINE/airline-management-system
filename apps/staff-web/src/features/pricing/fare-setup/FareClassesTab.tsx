@@ -5,7 +5,16 @@ import { ErrorBoundary } from '../components/ErrorBoundary'
 import { cabinLabel, yesNo } from '../format'
 import { useLoad } from '../hooks/useLoad'
 import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
-import { FareClassEditor, type EditorVariant } from './FareClassEditor'
+import { FareClassEditor } from './FareClassEditor'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Label } from '@staff-web/components/ui/label'
+import { Checkbox } from '@staff-web/components/ui/checkbox'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Notice } from '../components/Notice'
+import { CARD_BODY, CARD_TITLE, TABLE_HEAD, TABLE_HEAD_ROW, TABLE_WRAP } from '../components/card-styles'
+import { Badge } from '@staff-web/components/ui/badge'
 
 type Selection = { mode: 'edit'; id: string } | { mode: 'new' } | null
 
@@ -58,13 +67,13 @@ export function FareClassesTab() {
     list.reload()
   }
 
-  function editor(variant: EditorVariant) {
+  function editor() {
     return (
       <ErrorBoundary>
         <FareClassEditor
           key={selection?.mode === 'edit' ? selection.id : 'new'}
           fareClass={selected}
-          variant={variant}
+          variant={isPhone ? 'sheet' : 'dialog'}
           onSaved={handleSaved}
           onRemoved={handleRemoved}
           onClose={() => setSelection(null)}
@@ -73,67 +82,68 @@ export function FareClassesTab() {
     )
   }
 
-  // Phone: editing replaces the list with a full page (the "‹ Fare classes" link goes back).
-  if (isPhone && selected) {
-    return editor('page')
-  }
-
   const body = list.error ? (
-    <div className="pr-callout is-error" role="alert">
-      Could not load fare classes: {list.error}{' '}
-      <button type="button" className="pr-link-button" onClick={list.reload}>
-        Retry
-      </button>
-    </div>
+    <Alert variant="destructive">
+      <AlertDescription className="block">
+        Could not load fare classes: {list.error}{' '}
+        <Button variant="link" className="h-auto p-0" type="button" onClick={list.reload}>
+          Retry
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : list.loading && !list.data ? (
-    <p className="pr-state">Loading fare classes…</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Loading fare classes…</p>
   ) : fareClasses.length === 0 ? (
-    <p className="pr-state">No fare classes yet. Add one to start pricing routes.</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">No fare classes yet. Add one to start pricing routes.</p>
   ) : isPhone ? (
     <ul className="pr-class-cards">
       {fareClasses.map((fc) => (
         <li key={fc.id}>
-          <button
+          <Button
+            variant="outline"
             type="button"
-            className={`pr-class-card${notice?.highlightId === fc.id ? ' is-highlighted' : ''}${fc.is_active ? '' : ' is-inactive'}`}
+            className={`h-auto w-full flex-col items-stretch gap-2 p-3 text-left whitespace-normal${notice?.highlightId === fc.id ? ' border-ring bg-accent' : ''}${fc.is_active ? '' : ' opacity-60'}`}
             onClick={() => open({ mode: 'edit', id: fc.id })}
           >
-            <span className="pr-code-badge">{fc.code}</span>
-            <span className="pr-class-card-name">
-              <strong>{fc.name}</strong>
-              <span>
-                {cabinLabel(fc.cabin)}
-                {!fc.is_active && <span className="pr-pill is-inactive">Inactive</span>}
+            <span className="flex items-center gap-3">
+              <Badge variant="outline">{fc.code}</Badge>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <strong>{fc.name}</strong>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {cabinLabel(fc.cabin)}
+                  {!fc.is_active && (
+                    <Badge variant="secondary" className="ml-2">
+                      Inactive
+                    </Badge>
+                  )}
+                </span>
               </span>
+              <span aria-hidden="true">›</span>
             </span>
-            <span className="pr-chevron" aria-hidden="true">
-              ›
-            </span>
-            <span className="pr-class-card-meta">
+            <span className="flex flex-wrap gap-x-3 text-xs font-normal text-muted-foreground">
               <span>Advance buy {advanceBuy(fc)}</span>
               <span>Refund {yesNo(fc.refundable)}</span>
               <span>Change {yesNo(fc.changeable)}</span>
             </span>
-          </button>
+          </Button>
         </li>
       ))}
     </ul>
   ) : (
-    <div className="pr-table-wrap">
-      <table className="pr-table">
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Name</th>
-            <th>Cabin</th>
-            <th>Advance buy</th>
-            <th>Refund</th>
-            <th>Change</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className={TABLE_WRAP}>
+      <Table className="text-[13px] text-(--pr-primary)">
+        <TableHeader className="[&_tr]:border-0">
+          <TableRow className={TABLE_HEAD_ROW}>
+            {['Code', 'Name', 'Cabin', 'Advance buy', 'Refund', 'Change'].map((label, index) => (
+              <TableHead key={label} className={`${TABLE_HEAD}${index === 0 ? ' pl-4' : ''}`}>
+                {label}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {fareClasses.map((fc) => (
-            <tr
+            <TableRow
               key={fc.id}
               tabIndex={0}
               aria-selected={selected?.id === fc.id}
@@ -146,71 +156,61 @@ export function FareClassesTab() {
                 }
               }}
             >
-              <td className="pr-mono">{fc.code}</td>
-              <td>
+              <TableCell className="py-3 pr-3 pl-4 font-bold">{fc.code}</TableCell>
+              <TableCell className="px-3 py-3">
                 {fc.name}
-                {!fc.is_active && <span className="pr-pill is-inactive">Inactive</span>}
-              </td>
-              <td>{cabinLabel(fc.cabin)}</td>
-              <td>{advanceBuy(fc)}</td>
-              <td>{yesNo(fc.refundable)}</td>
-              <td>{yesNo(fc.changeable)}</td>
-            </tr>
+                {!fc.is_active && (
+                  <Badge variant="secondary" className="ml-2">
+                    Inactive
+                  </Badge>
+                )}
+              </TableCell>
+              <TableCell className="px-3 py-3">{cabinLabel(fc.cabin)}</TableCell>
+              <TableCell className="px-3 py-3">{advanceBuy(fc)}</TableCell>
+              <TableCell className="px-3 py-3">{yesNo(fc.refundable)}</TableCell>
+              <TableCell className="px-3 py-3">{yesNo(fc.changeable)}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 
   return (
     <>
-      {/* Above the table card, not inside it. The live region stays mounted so screen readers announce each message. */}
-      <div role="status" aria-live="polite" className="pr-banner-slot">
-        {notice && (
-          <p key={notice.text + (notice.highlightId ?? '')} className="pr-banner is-success">
-            {notice.text}
-          </p>
-        )}
-      </div>
-
-      {/* Split only while the side panel is actually shown, not while a selected class is missing from the loaded list. */}
-      <div className={`pr-split${!isPhone && selected ? ' has-editor' : ''}`}>
-        <section className="pr-card" aria-labelledby="fc-list-title">
-          <div className="pr-card-head has-action">
+      <div className="pr-split">
+        <Card aria-labelledby="fc-list-title">
+          <CardHeader className="flex items-start justify-between gap-4">
             <div>
-              <h2 id="fc-list-title" className="pr-card-title">
+              <CardTitle id="fc-list-title" role="heading" aria-level={2} className={CARD_TITLE}>
                 Fare classes
-              </h2>
-              <p className="pr-muted">Select a class to edit it. Quotes keep a frozen copy of these rules.</p>
+              </CardTitle>
+              <CardDescription>Select a class to edit it. Quotes keep a frozen copy of these rules.</CardDescription>
             </div>
-            <label className="pr-toggle">
-              <input
-                type="checkbox"
+            <Label>
+              <Checkbox
                 checked={includeInactive}
-                onChange={(e) => {
+                onCheckedChange={(checked) => {
                   // Filtering the list closes any open editor instead of reopening it once the new list loads.
-                  setIncludeInactive(e.target.checked)
+                  setIncludeInactive(checked === true)
                   setSelection(null)
                 }}
               />
               Include inactive
-            </label>
-          </div>
+            </Label>
+          </CardHeader>
+          <CardContent className={CARD_BODY}>
+            <Notice text={notice?.text} />
+            {body}
 
-          {body}
+            <Button variant="outline" className="self-start" type="button" onClick={() => open({ mode: 'new' })}>
+              + Add fare class
+            </Button>
+          </CardContent>
+        </Card>
 
-          <button type="button" className="pr-button is-outline pr-add-button" onClick={() => open({ mode: 'new' })}>
-            + Add fare class
-          </button>
-        </section>
-
-        {selection?.mode === 'new' ? (
-          <Dialog labelledBy="fc-editor-title" className="pr-form-sheet" onClose={() => setSelection(null)}>
-            {editor(isPhone ? 'sheet' : 'dialog')}
-          </Dialog>
-        ) : (
-          selected && editor('panel')
-        )}
+        {/* Adding and editing share one dialog. An id missing from the loaded list opens nothing. */}
+        {(selection?.mode === 'new' || selected) && <Dialog onClose={() => setSelection(null)}>{editor()}</Dialog>}
       </div>
     </>
   )

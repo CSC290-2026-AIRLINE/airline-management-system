@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
 import { errorMessage, usePricingApi, type BaseFare, type FareClass, type RouteOption } from '../api'
+import { useConfirm } from '../hooks/useConfirm'
 import { useLoad } from '../hooks/useLoad'
 import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Label } from '@staff-web/components/ui/label'
+import { Input } from '@staff-web/components/ui/input'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Notice } from '../components/Notice'
+import { CARD_BODY, CARD_TITLE, TABLE_HEAD, TABLE_HEAD_ROW, TABLE_WRAP } from '../components/card-styles'
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/
 const MAX_AMOUNT = 9_999_999_999.99 // NUMERIC(12,2)
@@ -23,6 +32,7 @@ type Change =
   | { kind: 'delete'; key: string; baseFare: BaseFare }
 
 export function BaseFaresTab() {
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const api = usePricingApi()
   const isPhone = useMediaQuery(PHONE_QUERY)
   const routes = useLoad(() => api.listRouteOptions(), 'routes')
@@ -119,7 +129,7 @@ export function BaseFaresTab() {
       return
     }
     const removals = changes.filter((change) => change.kind === 'delete').length
-    if (removals && !window.confirm(`Remove ${removals} base fare${removals === 1 ? '' : 's'}? Cleared cells delete the saved amount.`)) {
+    if (removals && !(await confirm(`Remove ${removals} base fare${removals === 1 ? '' : 's'}? Cleared cells delete the saved amount.`))) {
       return
     }
 
@@ -150,7 +160,7 @@ export function BaseFaresTab() {
     const error = cellErrors[key]
     const inputId = `bf-${key}`
     const input = (
-      <input
+      <Input
         id={inputId}
         className={`${isPhone ? 'pr-fare-input' : 'pr-matrix-input'}${changedKeys.includes(key) ? ' is-changed' : ''}`}
         inputMode="decimal"
@@ -164,13 +174,13 @@ export function BaseFaresTab() {
     )
     return (
       <>
-        <label htmlFor={inputId} className={isPhone ? 'pr-fare-label' : 'pr-visually-hidden'}>
+        <Label htmlFor={inputId} className={isPhone ? 'pr-fare-label' : 'pr-visually-hidden'}>
           <span className="pr-visually-hidden">
             {route.origin} to {route.destination},{' '}
           </span>
           {fc.code} · {fc.name}
           <span className="pr-visually-hidden">, in {currency.data}</span>
-        </label>
+        </Label>
         {isPhone ? (
           <span className="pr-amount-field">
             {input}
@@ -207,27 +217,33 @@ export function BaseFaresTab() {
 
   const ready = !loadError && routes.data && fareClasses.data && currency.data && baseFares.data
   const body = loadError ? (
-    <div className="pr-callout is-error" role="alert">
-      Could not load base fares: {loadError}{' '}
-      <button
-        type="button"
-        className="pr-link-button"
-        onClick={() => {
-          routes.reload()
-          fareClasses.reload()
-          currency.reload()
-          baseFares.reload()
-        }}
-      >
-        Retry
-      </button>
-    </div>
+    <Alert variant="destructive">
+      <AlertDescription className="block">
+        Could not load base fares: {loadError}{' '}
+        <Button
+          variant="link"
+          className="h-auto p-0"
+          type="button"
+
+          onClick={() => {
+            routes.reload()
+            fareClasses.reload()
+            currency.reload()
+            baseFares.reload()
+          }}
+        >
+          Retry
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : !routes.data || !fareClasses.data || !currency.data || !baseFares.data ? (
-    <p className="pr-state">Loading base fares…</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Loading base fares…</p>
   ) : routeList.length === 0 ? (
-    <p className="pr-state">No routes yet. Routes come from Feature 2 (flight scheduling); prices can be set once they exist.</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">
+      No routes yet. Routes come from Feature 2 (flight scheduling); prices can be set once they exist.
+    </p>
   ) : classList.length === 0 ? (
-    <p className="pr-state">No active fare classes yet. Add them on the Fare classes tab first.</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">No active fare classes yet. Add them on the Fare classes tab first.</p>
   ) : isPhone ? (
     <div className="pr-fare-routes">
       {pageRoutes.map((route) => (
@@ -244,70 +260,70 @@ export function BaseFaresTab() {
       ))}
     </div>
   ) : (
-    <div className="pr-table-wrap pr-matrix-wrap">
-      <table className="pr-table pr-matrix">
-        <thead>
-          <tr>
-            <th scope="col">Route</th>
+    <div className={TABLE_WRAP}>
+      <Table className="pr-matrix text-[13px] text-(--pr-primary)">
+        <TableHeader className="[&_tr]:border-0">
+          <TableRow className={TABLE_HEAD_ROW}>
+            <TableHead scope="col" className={TABLE_HEAD}>
+              Route
+            </TableHead>
             {classList.map((fc) => (
-              <th key={fc.id} scope="col">
+              <TableHead key={fc.id} scope="col" className={TABLE_HEAD}>
                 {fc.code} · {fc.name}
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {routeList.map((route) => (
-            <tr key={route.id}>
-              <th scope="row" className="pr-matrix-route">
+            <TableRow key={route.id}>
+              <TableHead scope="row" className="pr-matrix-route">
                 {routeLabel(route)}
-              </th>
+              </TableHead>
               {classList.map((fc) => (
-                <td key={fc.id}>{amountField(route, fc)}</td>
+                <TableCell key={fc.id}>{amountField(route, fc)}</TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 
   return (
     <>
-      <div role="status" aria-live="polite" className="pr-banner-slot">
-        {notice && <p className="pr-banner is-success">{notice.text}</p>}
-      </div>
-
-      <section className="pr-card" aria-labelledby="bf-title">
-        <div className="pr-card-head">
-          <h2 id="bf-title" className="pr-card-title">
+      <Card aria-labelledby="bf-title">
+        <CardHeader>
+          <CardTitle id="bf-title" role="heading" aria-level={2} className={CARD_TITLE}>
             Base fares
-          </h2>
-          <p className="pr-muted">
+          </CardTitle>
+          <CardDescription>
             One amount per route and fare class, in the base currency ({currency.data ?? '…'}). Rules, seat fees, promos and taxes are added
             on top.
-          </p>
-        </div>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className={CARD_BODY}>
+          <Notice text={notice?.text} />
+          <div className="pr-matrix-body">{body}</div>
 
-        <div className="pr-matrix-body">{body}</div>
-
-        <div className="pr-card-footer pr-matrix-footer">
-          <p className="pr-muted">Changes apply to new quotes only. Existing quotes keep their frozen fare.</p>
-          {saveError && (
-            <p className="pr-field-error" role="alert">
-              {saveError}
-            </p>
-          )}
-          <div className="pr-actions">
-            <button type="button" className="pr-button is-outline" disabled={saving || !changedKeys.length} onClick={discard}>
-              Discard changes
-            </button>
-            <button type="button" className="pr-button is-primary" disabled={saving || !changedKeys.length} onClick={() => void save()}>
-              {saving ? 'Saving…' : 'Save base fares'}
-            </button>
+          <div className="pr-card-footer pr-matrix-footer">
+            <p className="pr-muted">Changes apply to new quotes only. Existing quotes keep their frozen fare.</p>
+            {saveError && (
+              <p className="pr-field-error" role="alert">
+                {saveError}
+              </p>
+            )}
+            <div className="pr-actions">
+              <Button variant="outline" type="button" disabled={saving || !changedKeys.length} onClick={discard}>
+                Discard changes
+              </Button>
+              <Button type="button" disabled={saving || !changedKeys.length} onClick={() => void save()}>
+                {saving ? 'Saving…' : 'Save base fares'}
+              </Button>
+            </div>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
       {isPhone && ready && pageCount > 1 && (
         <nav className="pr-pager" aria-label="Base fare pages">
@@ -316,18 +332,19 @@ export function BaseFaresTab() {
           </p>
           <div className="pr-pager-buttons">
             {currentPage > 0 && (
-              <button type="button" className="pr-button is-outline" onClick={() => setPage(currentPage - 1)}>
+              <Button variant="outline" type="button" onClick={() => setPage(currentPage - 1)}>
                 ‹ Previous
-              </button>
+              </Button>
             )}
             {currentPage < pageCount - 1 && (
-              <button type="button" className="pr-button is-primary" onClick={() => setPage(currentPage + 1)}>
+              <Button type="button" onClick={() => setPage(currentPage + 1)}>
                 Next page ›
-              </button>
+              </Button>
             )}
           </div>
         </nav>
       )}
+      {confirmDialog}
     </>
   )
 }

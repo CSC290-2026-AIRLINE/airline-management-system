@@ -4,6 +4,8 @@ import { PricingShell } from '../components/PricingShell'
 import { BaseFaresTab } from './BaseFaresTab'
 import { FareClassesTab } from './FareClassesTab'
 import { FARE_SETUP_TABS, type FareSetupTab } from './tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 
 const TAB_LABELS: Record<FareSetupTab, string> = { 'fare-classes': 'Fare classes', 'base-fares': 'Base fares' }
 
@@ -18,34 +20,27 @@ export function FareSetupPage({ tab, onTabChange }: FareSetupPageProps) {
 
   return (
     <PricingShell title="Fare setup" description="Define fare classes, their cabin, advance-purchase rule and refund / change fees.">
-      <div className="pr-tabs" role="tablist" aria-label="Fare setup sections">
-        {FARE_SETUP_TABS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            id={`tab-${id}`}
-            aria-selected={tab === id}
-            aria-controls={`panel-${id}`}
-            className={`pr-button ${tab === id ? 'is-primary' : 'is-outline'}`}
-            onClick={() => onTabChange(id)}
-          >
-            {TAB_LABELS[id]}
-          </button>
-        ))}
-      </div>
+      <Tabs value={tab} onValueChange={(next) => onTabChange(next as FareSetupTab)}>
+        <TabsList aria-label="Fare setup sections">
+          {FARE_SETUP_TABS.map((id) => (
+            <TabsTrigger key={id} value={id}>
+              {TAB_LABELS[id]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {isLoading ? (
-          <p className="pr-state">Signing in…</p>
-        ) : !accessToken ? (
-          <div className="pr-callout is-error" role="alert">
-            Your session could not be started. Sign out and sign in again.
-          </div>
-        ) : (
-          <ErrorBoundary key={tab}>{tab === 'fare-classes' ? <FareClassesTab /> : <BaseFaresTab />}</ErrorBoundary>
-        )}
-      </div>
+        <TabsContent value={tab}>
+          {isLoading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Signing in…</p>
+          ) : !accessToken ? (
+            <Alert variant="destructive">
+              <AlertDescription className="block">Your session could not be started. Sign out and sign in again.</AlertDescription>
+            </Alert>
+          ) : (
+            <ErrorBoundary key={tab}>{tab === 'fare-classes' ? <FareClassesTab /> : <BaseFaresTab />}</ErrorBoundary>
+          )}
+        </TabsContent>
+      </Tabs>
     </PricingShell>
   )
 }

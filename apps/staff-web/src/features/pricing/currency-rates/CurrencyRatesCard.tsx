@@ -5,17 +5,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { errorMessage, usePricingApi } from '../api'
 import { useLoad } from '../hooks/useLoad'
 import { useCurrencyRateApi, type CurrencyRate } from './currency-api'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Label } from '@staff-web/components/ui/label'
+import {
+  CARD_BODY,
+  CARD_TITLE,
+  OUTLINE_BUTTON,
+  PRIMARY_BUTTON,
+  TABLE_HEAD,
+  TABLE_HEAD_ROW,
+  TABLE_ROW,
+  TABLE_WRAP,
+} from '../taxes-promos/charge-styles'
+import { Notice } from '../components/Notice'
 
 const NOTICE_MS = 3000
 const CODE_PATTERN = /^[A-Z]{3}$/
 const AMOUNT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const RATE = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6, useGrouping: false })
 const DAY = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-
-// Shared look for the pricing pages: colours come from the --pr-* tokens on PricingShell.
-const fieldClass =
-  'h-10 rounded-(--pr-radius-field) border-(--pr-border) bg-white text-(length:--pr-text-label) focus-visible:ring-(--pr-primary)/20'
-const primaryClass = 'h-10 rounded-(--pr-radius-lg) bg-(--pr-primary) px-5 text-white hover:bg-(--pr-primary-hover)'
 
 // Display-only rates (design: Taxes, currency & promos → Currency rates). Shown amount = base amount × rate.
 export function CurrencyRatesCard() {
@@ -67,36 +76,38 @@ export function CurrencyRatesCard() {
   }
 
   const body = rates.error ? (
-    <div className="pr-callout is-error" role="alert">
-      Could not load currency rates: {rates.error}{' '}
-      <button type="button" className="pr-link-button" onClick={rates.reload}>
-        Retry
-      </button>
-    </div>
+    <Alert variant="destructive">
+      <AlertDescription className="block">
+        Could not load currency rates: {rates.error}{' '}
+        <Button variant="link" className="h-auto p-0" type="button" onClick={rates.reload}>
+          Retry
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : !rates.data || !base.data ? (
-    <p className="pr-state">Loading currency rates…</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Loading currency rates…</p>
   ) : list.length === 0 ? (
-    <p className="pr-state">No currency rates yet. Add one below.</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">No currency rates yet. Add one below.</p>
   ) : (
     <>
       {/* Desktop: one table */}
-      <div className="overflow-hidden rounded-(--pr-radius-lg) border border-(--pr-border) max-[800px]:hidden">
-        <Table className="text-(length:--pr-text-body)">
-          <TableHeader className="bg-(--pr-head)">
-            <TableRow className="border-(--pr-border) hover:bg-transparent">
-              <TableHead className={headClass}>Currency</TableHead>
-              <TableHead className={headClass}>Per 1 {unit}</TableHead>
-              <TableHead className={headClass}>Example</TableHead>
-              <TableHead className={headClass}>Updated</TableHead>
+      <div className={`${TABLE_WRAP} max-[800px]:hidden`}>
+        <Table className="text-[13px] text-(--pr-primary)">
+          <TableHeader className="[&_tr]:border-0">
+            <TableRow className={TABLE_HEAD_ROW}>
+              <TableHead className={`${TABLE_HEAD} pl-4`}>Currency</TableHead>
+              <TableHead className={TABLE_HEAD}>Per 1 {unit}</TableHead>
+              <TableHead className={TABLE_HEAD}>Example</TableHead>
+              <TableHead className={TABLE_HEAD}>Updated</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {list.map((rate) => (
-              <TableRow key={rate.currency_code} className="border-(--pr-divider) hover:bg-transparent">
-                <TableCell className="px-4 py-2.5 font-semibold text-(--pr-ink)">{rate.currency_code}</TableCell>
-                <TableCell className="px-4 py-2.5">{rateInput(rate, 'w-28')}</TableCell>
-                <TableCell className="px-4 py-2.5">{example(rate)}</TableCell>
-                <TableCell className="px-4 py-2.5">{updated(rate)}</TableCell>
+              <TableRow key={rate.currency_code} className={TABLE_ROW}>
+                <TableCell className="py-0 pr-3 pl-4 font-bold">{rate.currency_code}</TableCell>
+                <TableCell className="px-3 py-0">{rateInput(rate, 'w-28')}</TableCell>
+                <TableCell className="px-3 py-0">{example(rate)}</TableCell>
+                <TableCell className="px-3 py-1.5">{updated(rate)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -127,7 +138,7 @@ export function CurrencyRatesCard() {
         inputMode="decimal"
         aria-label={`${rate.currency_code} per 1 ${unit}`}
         aria-invalid={!isPositive(value) || undefined}
-        className={`${fieldClass} ${width} text-right max-[800px]:text-left`}
+        className={`h-9 ${width} text-right tabular-nums max-[800px]:text-left`}
         value={value}
         disabled={saving}
         onChange={(e) => setDrafts({ ...drafts, [rate.currency_code]: e.target.value })}
@@ -142,48 +153,45 @@ export function CurrencyRatesCard() {
   }
 
   return (
-    <section className="pr-card" aria-labelledby="currency-card-title">
-      <div className="pr-card-head">
-        <h2 id="currency-card-title" className="pr-card-title">
+    <Card aria-labelledby="currency-card-title">
+      <CardHeader>
+        <CardTitle id="currency-card-title" role="heading" aria-level={2} className={CARD_TITLE}>
           Currency rates (display only)
-        </h2>
-        <p className="pr-muted">Typed in by hand. Shown amount = base amount × rate. Never used for charging or storage.</p>
-      </div>
+        </CardTitle>
+        <CardDescription>Typed in by hand. Shown amount = base amount × rate. Never used for charging or storage.</CardDescription>
+      </CardHeader>
+      <CardContent className={CARD_BODY}>
+        <Notice text={notice ?? undefined} />
+        {body}
 
-      {body}
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription className="block">{error}</AlertDescription>
+          </Alert>
+        )}
 
-      {error && (
-        <div className="pr-callout is-error" role="alert">
-          {error}
-        </div>
-      )}
+        {rates.data && list.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 max-[800px]:grid">
+            <Button className={PRIMARY_BUTTON} disabled={saving || changed.length === 0} onClick={() => void saveRates()}>
+              {saving ? 'Saving…' : 'Save rates'}
+            </Button>
+          </div>
+        )}
 
-      {rates.data && list.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 max-[800px]:grid">
-          <Button className={primaryClass} disabled={saving || changed.length === 0} onClick={() => void saveRates()}>
-            {saving ? 'Saving…' : 'Save rates'}
-          </Button>
-          <p role="status" aria-live="polite" className="m-0 text-(length:--pr-text-body) font-semibold text-(--pr-good) empty:hidden">
-            {notice}
-          </p>
-        </div>
-      )}
-
-      {rates.data && base.data && (
-        <AddCurrencyForm
-          base={unit}
-          disabled={saving}
-          onAdded={(code) => {
-            setNotice(`${code} added`)
-            rates.reload()
-          }}
-        />
-      )}
-    </section>
+        {rates.data && base.data && (
+          <AddCurrencyForm
+            base={unit}
+            disabled={saving}
+            onAdded={(code) => {
+              setNotice(`${code} added`)
+              rates.reload()
+            }}
+          />
+        )}
+      </CardContent>
+    </Card>
   )
 }
-
-const headClass = 'h-10 px-4 text-(length:--pr-text-caption) font-semibold tracking-wide text-(--pr-text) uppercase'
 
 function updated(rate: CurrencyRate) {
   return (
@@ -243,14 +251,14 @@ function AddCurrencyForm({ base, disabled, onAdded }: AddCurrencyFormProps) {
   }
 
   return (
-    <form className="grid gap-2 border-t border-(--pr-divider) pt-3.5" onSubmit={(e) => void submit(e)}>
-      <span className="text-(length:--pr-text-caption) font-semibold tracking-wide text-(--pr-muted) uppercase">Add a currency</span>
+    <form className="grid gap-2.5 border-t pt-4" onSubmit={(e) => void submit(e)}>
+      <Label>Add a currency</Label>
       <div className="flex flex-wrap items-end gap-2.5 max-[800px]:grid max-[800px]:grid-cols-2">
         <Input
           aria-label="New currency code"
           placeholder="Code, e.g. GBP"
           maxLength={3}
-          className={`${fieldClass} w-36 uppercase max-[800px]:w-full`}
+          className="h-[42px] w-36 uppercase max-[800px]:w-full"
           value={code}
           disabled={disabled || busy}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
@@ -259,24 +267,19 @@ function AddCurrencyForm({ base, disabled, onAdded }: AddCurrencyFormProps) {
           aria-label={`New rate per 1 ${base}`}
           placeholder={`Per 1 ${base}`}
           inputMode="decimal"
-          className={`${fieldClass} w-36 max-[800px]:w-full`}
+          className="h-[42px] w-36 max-[800px]:w-full"
           value={rate}
           disabled={disabled || busy}
           onChange={(e) => setRate(e.target.value)}
         />
-        <Button
-          type="submit"
-          variant="outline"
-          className="h-10 rounded-(--pr-radius-lg) border-(--pr-primary) px-5 text-(--pr-primary) max-[800px]:col-span-2"
-          disabled={disabled || busy}
-        >
+        <Button type="submit" variant="outline" className={`${OUTLINE_BUTTON} max-[800px]:col-span-2`} disabled={disabled || busy}>
           {busy ? 'Adding…' : '+ Add currency'}
         </Button>
       </div>
       {error && (
-        <div className="pr-callout is-error" role="alert">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="block">{error}</AlertDescription>
+        </Alert>
       )}
     </form>
   )

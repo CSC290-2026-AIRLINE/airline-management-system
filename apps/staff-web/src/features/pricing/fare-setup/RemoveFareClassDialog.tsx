@@ -3,6 +3,9 @@ import { errorMessage, usePricingApi, type FareClass } from '../api'
 import { Dialog } from '../components/Dialog'
 import { cabinLabel } from '../format'
 import { useLoad } from '../hooks/useLoad'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
+import { DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 
 // "20 USD + 10%", "20 USD", "10%" or "Free": the parts of a fee that are set.
 function feeText(flat: FareClass['cancel_fee_flat'], pct: FareClass['cancel_fee_pct'], currency: string): string {
@@ -38,19 +41,15 @@ export function RemoveFareClassDialog({ fareClass, onClose, onRemoved }: RemoveF
   }
 
   return (
-    <Dialog labelledBy="remove-class-title" className="pr-confirm" onClose={() => !busy && onClose()}>
-      <div className="pr-sheet-handle" aria-hidden="true" />
-      <div className="pr-confirm-head">
-        <h2 id="remove-class-title">Remove {label}?</h2>
-        <button type="button" className="pr-icon-button is-plain" aria-label="Close" disabled={busy} onClick={onClose}>
-          ×
-        </button>
-      </div>
-      <div className="pr-warning">
-        <strong>Removing hides the class from new quotes.</strong>
-        <span>Existing bookings keep their frozen rules. You can add the class again at any time.</span>
-      </div>
-      <div className="pr-confirm-summary">
+    <Dialog onClose={() => !busy && onClose()}>
+      <DialogHeader>
+        <DialogTitle>Remove {label}?</DialogTitle>
+      </DialogHeader>
+      <Alert>
+        <AlertTitle>Removing hides the class from new quotes.</AlertTitle>
+        <AlertDescription>Existing bookings keep their frozen rules. You can add the class again at any time.</AlertDescription>
+      </Alert>
+      <div className="grid gap-1 rounded-md border bg-muted/50 p-3 text-sm [&>span]:text-muted-foreground">
         <strong>{label}</strong>
         <span>
           {cabinLabel(fareClass.cabin)} •{' '}
@@ -59,18 +58,18 @@ export function RemoveFareClassDialog({ fareClass, onClose, onRemoved }: RemoveF
         </span>
       </div>
       {error && (
-        <div className="pr-callout is-error pr-confirm-error" role="alert">
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="block">{error}</AlertDescription>
+        </Alert>
       )}
-      <div className="pr-confirm-actions">
-        <button type="button" className="pr-button is-outline" disabled={busy} onClick={onClose}>
+      <DialogFooter>
+        <Button variant="outline" type="button" disabled={busy} onClick={onClose}>
           Cancel
-        </button>
-        <button type="button" className="pr-button is-danger-solid" disabled={busy} onClick={() => void confirmRemove()}>
+        </Button>
+        <Button variant="destructive" type="button" disabled={busy} onClick={() => void confirmRemove()}>
           {busy ? 'Removing…' : 'Remove fare class'}
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </Dialog>
   )
 }
