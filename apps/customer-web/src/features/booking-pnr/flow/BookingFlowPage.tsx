@@ -17,6 +17,8 @@ import {
 import { priceChangedDetails, validateSeatChoices, type FlowComponents, type SeatChoice } from './integration'
 import type { AssistanceValue } from '../components/contracts'
 import type { PriceChangedDetails } from '../api/types'
+import controls from '../styles/controls.module.css'
+import '../styles/tokens.css'
 import './flow.css'
 
 export interface FlowProps extends FlowComponents {
@@ -340,7 +342,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                 Hold expires:{' '}
                 {new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(held.holdExpiresAt))}
               </p>
-              <Link to="/bookings">Go to My Trips</Link>
+              <div className="f3-flow-receipt-actions">
+                <Link to="/bookings" className={controls.secondary}>
+                  Go to My Trips
+                </Link>
+              </div>
             </section>
           )}
         </div>
