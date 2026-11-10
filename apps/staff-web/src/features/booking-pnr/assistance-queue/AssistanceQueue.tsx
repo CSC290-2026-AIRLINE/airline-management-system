@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { Button } from '@staff-web/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 import type { ServiceRequestQueueItem, ServiceRequestStatus } from '../api/types'
 
 interface AssistanceQueueProps {
@@ -12,6 +14,12 @@ const tabs: Array<{ label: string; value: ServiceRequestStatus | 'all' }> = [
   { label: 'Rejected', value: 'rejected' },
   { label: 'All', value: 'all' },
 ]
+
+function departureTime(value: string | null): number {
+  if (!value) return Number.POSITIVE_INFINITY
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed
+}
 
 export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
   const [status, setStatus] = useState<ServiceRequestStatus | 'all'>('requested')
@@ -30,7 +38,7 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
             (status === 'all' || request.status === status) &&
             (!flight || request.flightNumber?.toLowerCase().includes(flight.toLowerCase())),
         )
-        .toSorted((a, b) => (a.depAt ?? '\uffff').localeCompare(b.depAt ?? '\uffff')),
+        .toSorted((a, b) => departureTime(a.depAt) - departureTime(b.depAt)),
     [requests, status, flight],
   )
 
@@ -99,18 +107,7 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
             {selected.status === 'requested' ? 'Pending' : selected.status}
           </p>
           {selected.note && <p>{selected.note}</p>}
-          {error && <p role="alert">{error}</p>}
-          {rejecting && (
-            <label className="block">
-              Reason for rejection{' '}
-              <textarea
-                className="block w-full rounded border p-2"
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                required
-              />
-            </label>
-          )}
+          {error && !rejecting && <p role="alert">{error}</p>}
           <div className="flex flex-wrap gap-2">
             {selected.status === 'requested' && (
               <>
@@ -119,10 +116,14 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
                 </button>
                 <button
                   type="button"
-                  disabled={working || (rejecting && !reason.trim())}
-                  onClick={() => (rejecting ? void update('rejected') : setRejecting(true))}
+                  disabled={working}
+                  onClick={() => {
+                    setReason('')
+                    setError(null)
+                    setRejecting(true)
+                  }}
                 >
-                  {rejecting ? 'Confirm rejection' : 'Reject'}
+                  Reject
                 </button>
               </>
             )}
@@ -145,6 +146,49 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
           </div>
         </section>
       )}
+      <Dialog
+        open={rejecting}
+        onOpenChange={(next) => {
+          if (!working) {
+            setRejecting(next)
+            if (!next) setReason('')
+          }
+        }}
+      >
+        <DialogContent showCloseButton={!working}>
+          <DialogHeader>
+            <DialogTitle>Reject assistance request</DialogTitle>
+            <DialogDescription>Give a reason for rejecting the request. The passenger will be able to see it.</DialogDescription>
+          </DialogHeader>
+          <label className="block">
+            Reason for rejection
+            <textarea
+              className="mt-2 block w-full rounded border p-2"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              disabled={working}
+              required
+            />
+          </label>
+          {error && <p role="alert">{error}</p>}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={working}
+              onClick={() => {
+                setRejecting(false)
+                setReason('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" disabled={working || !reason.trim()} onClick={() => void update('rejected')}>
+              {working ? 'Submitting…' : 'Reject request'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
