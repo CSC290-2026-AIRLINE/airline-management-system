@@ -4,7 +4,6 @@ import {
   Calendar,
   ChartColumn,
   ChevronRight,
-  CirclePlus,
   CreditCard,
   FileText,
   KeyRound,
@@ -107,7 +106,6 @@ const PRICING_ITEMS = [
   { to: '/pricing/fare-setup', label: 'Fare Setup', icon: Tag },
   { to: '/pricing/pricing-rules', label: 'Pricing Rules', icon: SlidersHorizontal },
   { to: '/pricing/taxes-promos', label: 'Taxes, Currency & Promos', icon: Percent },
-  { to: '/pricing/add-on-charges', label: 'Add-on Charges', icon: CirclePlus },
   { to: '/pricing/expenses-payments', label: 'Expenses & Payments', icon: Receipt },
   { to: '/pricing/monthly-report', label: 'Monthly Report', icon: FileText },
 ] as const

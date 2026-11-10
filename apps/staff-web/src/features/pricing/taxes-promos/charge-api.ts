@@ -65,7 +65,7 @@ export interface BaggageCharge {
   charge: number
 }
 
-// Same fetchWithAuth path as usePricingApi; the baggage charge lookup lives outside /api/staff.
+// Same fetchWithAuth path as usePricingApi; the overweight baggage fee lookup lives outside /api/staff.
 export function useAddOnChargesApi() {
   const { fetchWithAuth } = useAppAuth()
 
@@ -77,21 +77,22 @@ export function useAddOnChargesApi() {
     listSeatFees: () => request<SeatFee[]>('/staff/seat-fees'),
     createSeatFee: (cabin: Cabin, seatType: SeatType, amount: number) =>
       request<SeatFee>('/staff/seat-fees', 'POST', { cabin, seat_type: seatType, amount }),
-    updateSeatFee: (id: string, amount: number) => request<SeatFee>(`/staff/seat-fees/${id}`, 'PATCH', { amount }),
+    updateSeatFee: (id: string, amount: number) => request<SeatFee>(`/staff/seat-fees/${id}`, 'PUT', { amount }),
     deleteSeatFee: (id: string) => request<void>(`/staff/seat-fees/${id}`, 'DELETE'),
 
     listTaxFees: () => request<TaxFee[]>('/staff/tax-fees?include_inactive=true'),
     createTaxFee: (input: TaxFeeInput) => request<TaxFee>('/staff/tax-fees', 'POST', input),
-    updateTaxFee: (id: string, input: Partial<TaxFeeInput>) => request<TaxFee>(`/staff/tax-fees/${id}`, 'PATCH', input),
+    updateTaxFee: (id: string, input: Partial<TaxFeeInput>) => request<TaxFee>(`/staff/tax-fees/${id}`, 'PUT', input),
     deleteTaxFee: (id: string) => request<void>(`/staff/tax-fees/${id}`, 'DELETE'),
 
-    listBaggageRates: () => request<BaggageRate[]>('/staff/baggage-rates'),
-    createBaggageRate: (input: BaggageRateInput) => request<BaggageRate>('/staff/baggage-rates', 'POST', input),
-    updateBaggageRate: (id: string, input: Partial<BaggageRateInput>) => request<BaggageRate>(`/staff/baggage-rates/${id}`, 'PATCH', input),
-    deleteBaggageRate: (id: string) => request<void>(`/staff/baggage-rates/${id}`, 'DELETE'),
+    listBaggageRates: () => request<BaggageRate[]>('/staff/overweight-baggage-rates'),
+    createBaggageRate: (input: BaggageRateInput) => request<BaggageRate>('/staff/overweight-baggage-rates', 'POST', input),
+    updateBaggageRate: (id: string, input: Partial<BaggageRateInput>) =>
+      request<BaggageRate>(`/staff/overweight-baggage-rates/${id}`, 'PUT', input),
+    deleteBaggageRate: (id: string) => request<void>(`/staff/overweight-baggage-rates/${id}`, 'DELETE'),
     baggageCharge: (fareClassId: string, weightKg: number, routeId?: string) => {
       const params = new URLSearchParams({ fare_class_id: fareClassId, weight_kg: String(weightKg), ...(routeId && { route_id: routeId }) })
-      return request<BaggageCharge>(`/baggage-charge?${params.toString()}`)
+      return request<BaggageCharge>(`/overweight-baggage-fee?${params.toString()}`)
     },
   }
 }

@@ -61,9 +61,9 @@ export function CurrencyRatesCard() {
     setSaving(true)
     setError(null)
     try {
-      // One PATCH per changed row; the backend has no bulk endpoint.
+      // One PUT per changed row; the backend has no bulk endpoint.
       for (const rate of changed) {
-        await api.update(rate.currency_code, Number(drafts[rate.currency_code]))
+        await api.set(rate.currency_code, Number(drafts[rate.currency_code]))
       }
       setDrafts({})
       setNotice(changed.length === 1 ? 'Rate saved' : `${changed.length} rates saved`)
@@ -239,7 +239,7 @@ function AddCurrencyForm({ base, disabled, onAdded }: AddCurrencyFormProps) {
     setBusy(true)
     setError(null)
     try {
-      await api.create(code, Number(rate))
+      await api.set(code, Number(rate))
       setCode('')
       setRate('')
       onAdded(code)

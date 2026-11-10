@@ -18,7 +18,7 @@ export function useCurrencyRateApi() {
 
   return {
     list: () => request<CurrencyRate[]>(''),
-    create: (code: string, rate: number) => request<CurrencyRate>('', 'POST', { currency_code: code, rate_per_base: rate }),
-    update: (code: string, rate: number) => request<CurrencyRate>(`/${code}`, 'PATCH', { rate_per_base: rate }),
+    // One call creates or updates: the code in the URL is the key.
+    set: (code: string, rate: number) => request<CurrencyRate>(`/${code}`, 'PUT', { rate_per_base: rate }),
   }
 }

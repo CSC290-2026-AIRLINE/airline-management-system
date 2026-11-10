@@ -56,14 +56,12 @@ function MonthlyReport() {
   const [recomputedAt, setRecomputedAt] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // The backend recomputes one month at a time, so the button walks through every month shown.
+  // One call rebuilds every month shown.
   async function recompute() {
     setRecomputing(true)
     setError(null)
     try {
-      for (const month of months) {
-        await api.recomputeSummary(month)
-      }
+      await api.recomputeSummaries(from, to)
       setRecomputedAt(new Date())
     } catch (e) {
       setError(errorMessage(e))

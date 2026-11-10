@@ -132,7 +132,7 @@ export interface PriceSimulationInput {
   promo_code?: string
 }
 
-// Response of POST /staff/pricing-rules/simulate. Dry run: the backend saves nothing.
+// Response of POST /staff/pricing-simulations. Dry run: the backend saves nothing.
 export interface PriceSimulation {
   today: string // YYYY-MM-DD
   days_to_departure: number
@@ -159,7 +159,7 @@ export interface PricingSetting {
   value: string
 }
 
-// Body of every pricing error is { code, message, details? }; ValidationPipe errors carry message: string[].
+// Body of every pricing error is { error: { code, message, details? } }; ValidationPipe errors carry message: string[].
 export class ApiError extends Error {
   readonly status: number
   readonly code?: string
@@ -175,7 +175,7 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong'
 }
 
-export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
 export function jsonInit(method: Method, body?: unknown): RequestInit {
   return { method, ...(body !== undefined && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) }
@@ -186,10 +186,14 @@ export async function readResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) {
     return undefined as T
   }
-  const data = (await res.json().catch(() => null)) as { message?: string | string[]; code?: string } | null
+  const data = (await res.json().catch(() => null)) as {
+    message?: string | string[]
+    error?: { code?: string; message?: string }
+  } | null
   if (!res.ok) {
-    const message = Array.isArray(data?.message) ? data.message.join('; ') : (data?.message ?? `Request failed (${res.status})`)
-    throw new ApiError(message, res.status, data?.code)
+    const message =
+      data?.error?.message ?? (Array.isArray(data?.message) ? data.message.join('; ') : data?.message) ?? `Request failed (${res.status})`
+    throw new ApiError(message, res.status, data?.error?.code)
   }
   return data as T
 }
@@ -206,27 +210,27 @@ export function usePricingApi() {
   return {
     listFareClasses: (includeInactive: boolean) => request<FareClass[]>(`/fare-classes${includeInactive ? '?include_inactive=true' : ''}`),
     createFareClass: (input: FareClassInput) => request<FareClass>('/fare-classes', 'POST', input),
-    updateFareClass: (id: string, input: FareClassInput) => request<FareClass>(`/fare-classes/${id}`, 'PATCH', input),
+    updateFareClass: (id: string, input: FareClassInput) => request<FareClass>(`/fare-classes/${id}`, 'PUT', input),
     deleteFareClass: (id: string) => request<void>(`/fare-classes/${id}`, 'DELETE'),
 
     listRouteOptions: () => request<RouteOption[]>('/base-fares/route-options'),
     listBaseFares: () => request<BaseFare[]>('/base-fares'),
     createBaseFare: (routeId: string, fareClassId: string, amount: number) =>
       request<BaseFare>('/base-fares', 'POST', { route_id: routeId, fare_class_id: fareClassId, amount }),
-    updateBaseFare: (id: string, amount: number) => request<BaseFare>(`/base-fares/${id}`, 'PATCH', { amount }),
+    updateBaseFare: (id: string, amount: number) => request<BaseFare>(`/base-fares/${id}`, 'PUT', { amount }),
     deleteBaseFare: (id: string) => request<void>(`/base-fares/${id}`, 'DELETE'),
 
     listPricingRules: () => request<PricingRule[]>('/pricing-rules'),
     createPricingRule: (input: NewPricingRule) => request<PricingRule>('/pricing-rules', 'POST', input),
-    simulatePrice: (input: PriceSimulationInput) => request<PriceSimulation>('/pricing-rules/simulate', 'POST', input),
-    setPricingRuleActive: (id: string, isActive: boolean) => request<PricingRule>(`/pricing-rules/${id}`, 'PATCH', { is_active: isActive }),
+    simulatePrice: (input: PriceSimulationInput) => request<PriceSimulation>('/pricing-simulations', 'POST', input),
+    setPricingRuleActive: (id: string, isActive: boolean) => request<PricingRule>(`/pricing-rules/${id}`, 'PUT', { is_active: isActive }),
     reorderPricingRules: (group: RuleGroup, ids: string[]) =>
-      request<PricingRule[]>('/pricing-rules/reorder', 'POST', { rule_group: group, ids }),
+      request<PricingRule[]>('/pricing-rule-order', 'PUT', { rule_group: group, ids }),
     deletePricingRule: (id: string) => request<void>(`/pricing-rules/${id}`, 'DELETE'),
 
     listPromoCodes: () => request<PromoCode[]>('/promo-codes?include_inactive=true'),
     createPromoCode: (input: NewPromoCode) => request<PromoCode>('/promo-codes', 'POST', input),
-    setPromoCodeActive: (id: string, isActive: boolean) => request<PromoCode>(`/promo-codes/${id}`, 'PATCH', { is_active: isActive }),
+    setPromoCodeActive: (id: string, isActive: boolean) => request<PromoCode>(`/promo-codes/${id}`, 'PUT', { is_active: isActive }),
 
     listPromoQuotes: (code: string) => request<PromoQuotes>(`/promo-codes/quotes?code=${encodeURIComponent(code.trim())}`),
     // Not under /api/staff: Feature 3b calls this route too.
@@ -236,13 +240,13 @@ export function usePricingApi() {
     listSeatFees: () => request<SeatFee[]>('/seat-fees'),
     createSeatFee: (cabin: Cabin, seatType: SeatType, amount: number) =>
       request<SeatFee>('/seat-fees', 'POST', { cabin, seat_type: seatType, amount }),
-    updateSeatFee: (id: string, amount: number) => request<SeatFee>(`/seat-fees/${id}`, 'PATCH', { amount }),
+    updateSeatFee: (id: string, amount: number) => request<SeatFee>(`/seat-fees/${id}`, 'PUT', { amount }),
 
     listSettings: () => request<PricingSetting[]>('/settings'),
     updateSetting: (key: string, value: string) => request<PricingSetting>(`/settings/${key}`, 'PUT', { value }),
     getBaseCurrency: async () => {
       const settings = await request<PricingSetting[]>('/settings')
-      return settings.find((setting) => setting.key === 'base_currency')?.value ?? 'THB'
+      return settings.find((setting) => setting.key === 'base_currency')?.value ?? 'USD'
     },
   }
 }

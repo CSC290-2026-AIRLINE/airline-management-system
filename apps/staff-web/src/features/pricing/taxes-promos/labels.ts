@@ -1,4 +1,4 @@
-import type { SeatType, TaxFeeCalcType, TaxFeeKind } from './api'
+import type { SeatType, TaxFeeCalcType, TaxFeeKind } from './charge-api'
 
 export function seatTypeLabel(seatType: SeatType): string {
   switch (seatType) {

@@ -27,7 +27,7 @@ export interface Expense {
   payment_schedule_id: string | null
 }
 
-// One row of GET /api/staff/finance/summary (Step 4). Money columns are NUMERIC strings.
+// One row of GET /api/staff/finance/monthly. Money columns are NUMERIC strings.
 export interface FinanceSummary {
   month: string // first day, sent as midnight UTC: "2026-10-01T00:00:00.000Z"
   revenue_amount: string
@@ -73,7 +73,8 @@ export function useFinanceApi() {
     createExpense: (input: NewExpense) => request<Expense>('/expenses', 'POST', input),
 
     // Months that were never recomputed have no row, so the list can have gaps.
-    listSummaries: (from: string, to: string) => request<FinanceSummary[]>(`/finance/summary?from=${from}&to=${to}`),
-    recomputeSummary: (month: string) => request<FinanceSummary>(`/finance/summary/${month}/recompute`, 'POST'),
+    listSummaries: (from: string, to: string) => request<FinanceSummary[]>(`/finance/monthly?from=${from}&to=${to}`),
+    // Rebuilds every month from `from` to `to` (YYYY-MM), at most 36 at a time.
+    recomputeSummaries: (from: string, to: string) => request<FinanceSummary[]>('/finance/recompute', 'POST', { from, to }),
   }
 }
