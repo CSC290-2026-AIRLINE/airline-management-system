@@ -1,13 +1,11 @@
 /* Pricing & Finance (G12) staff pages. Values read from the Fare Setup design; every colour, radius and size is a
    --pr-* token, so change the token, not a rule. Class names are prefixed pr- to stay out of other features' way. */
-
-.pr-shell {
+/* Dialogs render in a portal outside .pr-shell, so they carry the tokens through .pr-dialog. */
+:is(.pr-shell, .pr-dialog) {
   /* shadcn components read these, so they take the pricing colours on these pages only */
   --primary: #14213d;
   --ring: #14213d;
-  --pr-sidebar: #14213d;
   --pr-sidebar-text: #b7c1d1;
-  --pr-sidebar-active: #293d61;
   --pr-page: #f7f9fc;
   --pr-surface: #ffffff;
   --pr-ink: #0a1424;
@@ -44,7 +42,6 @@
 
   --pr-font: 'Inter', system-ui, 'Segoe UI', sans-serif;
   --pr-font-mono: var(--pr-font); /* codes like Y or BKK also use Inter */
-  --pr-font-brand: 'Merriweather', Georgia, serif; /* Flython logo only */
   --pr-text-caption: 11px;
   --pr-text-small: 12px;
   --pr-text-body: 13px;
@@ -52,17 +49,17 @@
   --pr-text-title: 36px;
   --pr-text-subtitle: 16px;
   --pr-text-card-title: 20px;
-  --pr-text-brand: 40px; /* Flython logo on desktop; phones use --pr-text-sheet-title */
-  --pr-text-sheet-title: 22px; /* Flython logo on phones */
   --pr-text-page-title: 27px;
-  --pr-topbar: 72px; /* phone top bar height; the full-screen menu starts below it */
-
-  /* The app's global #root is a centred 1126px column; the staff shell takes the whole viewport instead. */
-  position: fixed;
-  inset: 0;
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  overflow: hidden;
+}
+.pr-dialog {
+  color: var(--pr-text);
+}
+/* The global h2 rule uses --text-h, which is near-white here, so a dialog title would vanish on the white panel. */
+.pr-dialog h2 {
+  color: var(--pr-ink);
+}
+.pr-shell {
+  /* Sits inside the global staff shell's main area, which scrolls. */
   color-scheme: light;
   background: var(--pr-page);
   color: var(--pr-text);
@@ -70,170 +67,19 @@
   letter-spacing: normal;
   text-align: left;
 }
-
 .pr-shell *,
 .pr-shell *::before,
 .pr-shell *::after {
   box-sizing: border-box;
 }
 
-/* Sidebar ---------------------------------------------------------------------------------------- */
-
-.pr-sidebar {
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 29px 22px 24px;
-  background: var(--pr-sidebar);
-  color: var(--pr-sidebar-text);
-}
-
-/* Nav on top, account block pushed to the bottom of the sidebar */
-.pr-sidebar-menu {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-}
-
-.pr-account {
-  display: grid;
-  gap: 4px;
-  margin-top: auto;
-  padding: 16px 12px 0;
-}
-
-.pr-account strong {
-  overflow: hidden;
-  color: #fff;
-  font-size: 22px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pr-account span {
-  overflow: hidden;
-  font-size: var(--pr-text-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pr-sign-out {
-  justify-self: start;
-  margin-top: 8px;
-  padding: 8px 0;
-  border: 0;
-  background: none;
-  color: #fff;
-  font: 500 var(--pr-text-label) var(--pr-font);
-  cursor: pointer;
-}
-
-.pr-sign-out:hover {
-  text-decoration: underline;
-}
-
-.pr-sign-out:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-}
-
-.pr-sign-out:disabled {
-  cursor: wait;
-  opacity: 0.7;
-}
-
-.pr-brand {
-  display: grid;
-  padding: 0 6px 24px;
-}
-
-.pr-brand strong {
-  color: #fff;
-  font-family: var(--pr-font-brand);
-  font-size: var(--pr-text-brand);
-  font-weight: 900;
-  line-height: 1.1;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-/* Short yellow bar under the logo */
-.pr-brand strong::after {
-  content: '';
-  display: block;
-  width: 52px;
-  height: 4px;
-  margin: 6px 0 10px;
-  border-radius: 2px;
-  background: var(--pr-accent);
-}
-
-.pr-brand span {
-  font-size: var(--pr-text-small);
-  text-transform: uppercase;
-}
-
-.pr-nav-group + .pr-nav-group {
-  margin-top: 20px;
-}
-
-.pr-nav-heading {
-  margin: 0 0 8px;
-  padding: 0 12px;
-  font-size: var(--pr-text-caption);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.pr-nav-group ul {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pr-nav-item {
-  display: block;
-  padding: 8px 12px;
-  border-radius: var(--pr-radius-lg);
-  color: #fff;
-  font-size: var(--pr-text-label);
-  font-weight: 500;
-  line-height: 20px;
-  text-decoration: none;
-}
-
-a.pr-nav-item:hover {
-  background: var(--pr-sidebar-active);
-}
-
-.pr-nav-item.is-active {
-  background: var(--pr-sidebar-active);
-}
-
-.pr-nav-item.is-disabled {
-  cursor: not-allowed;
-}
-
-.pr-nav-item:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 1px;
-}
-
 /* Main area -------------------------------------------------------------------------------------- */
-
 .pr-main > * {
   max-width: 997px;
 }
-
 .pr-main {
-  overflow-y: auto;
   padding: 24px 63px 40px;
 }
-
 .pr-header {
   display: flex;
   flex-wrap: wrap;
@@ -242,7 +88,6 @@ a.pr-nav-item:hover {
   gap: 12px;
   margin-bottom: 24px;
 }
-
 .pr-title {
   margin: 0 0 4px;
   color: var(--pr-ink);
@@ -252,178 +97,36 @@ a.pr-nav-item:hover {
   letter-spacing: normal;
   line-height: 1.2;
 }
-
 .pr-subtitle,
 .pr-muted {
   color: var(--pr-muted);
 }
-
 .pr-subtitle {
   max-width: 700px;
   margin: 0;
   font-size: var(--pr-text-subtitle);
 }
-
 .pr-muted {
   margin: 0;
 }
-
-.pr-tabs .pr-button {
-  padding: 9px 18px;
-}
-
-.pr-tabs .pr-button.is-outline {
-  border-color: var(--pr-border);
-}
-
-.pr-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
 .pr-split {
   display: grid;
   align-items: start;
   gap: 20px;
 }
-
 .pr-split.has-editor {
   grid-template-columns: minmax(0, 1fr) 380px;
 }
 
 /* Cards and tables ------------------------------------------------------------------------------- */
-
-.pr-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 20px;
-  border: 1px solid var(--pr-border);
-  border-radius: var(--pr-radius-card);
-  background: var(--pr-surface);
-}
-
 .pr-card-footer {
   margin: 0;
-}
-
-.pr-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--pr-border);
-}
-
-.pr-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.pr-table th {
-  height: 40px;
-  padding: 0 12px;
-  background: var(--pr-head);
-  color: var(--pr-primary);
-  font-size: var(--pr-text-caption);
-  font-weight: 600;
-  text-align: left;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.pr-table td {
-  height: 56px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--pr-divider);
-  color: var(--pr-primary);
-  vertical-align: middle;
-}
-
-.pr-table th:first-child,
-.pr-table td:first-child {
-  padding-left: 16px;
-}
-
-.pr-table tr.is-clickable {
-  cursor: pointer;
-}
-
-.pr-table tr.is-clickable:hover,
-.pr-table tr.is-selected {
-  background: var(--pr-selected);
-}
-
-.pr-table tr.is-selected td:first-child {
-  box-shadow: inset 3px 0 0 var(--pr-primary);
-}
-
-.pr-table tr.is-clickable:focus-visible {
-  outline: 2px solid var(--pr-primary);
-  outline-offset: -2px;
-}
-
-.pr-table tr.is-inactive td {
-  color: var(--pr-muted);
-}
-
-.pr-mono {
-  font-family: var(--pr-font-mono);
-  font-weight: 700;
-}
-
-.pr-pill {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--pr-head);
-  color: var(--pr-muted);
-  font-size: var(--pr-text-caption);
-}
-
-.pr-pill.is-inactive {
-  border: 1px solid rgb(155 59 52 / 25%);
-  background: var(--pr-inactive-bg);
-  color: var(--pr-inactive);
-  font-weight: 600;
-}
-
-.pr-state {
-  margin: 0;
-  padding: 28px 14px;
-  color: var(--pr-muted);
-  text-align: center;
-}
-
-.pr-callout {
-  padding: 10px 12px;
-  border-radius: var(--pr-radius);
-}
-
-.pr-callout.is-error {
-  border: 1px solid var(--pr-danger);
-  background: var(--pr-danger-bg);
-  color: var(--pr-danger);
 }
 
 /* Success banner above a list: fades in, then out just before FareClassesTab removes it (NOTICE_MS = 2s). */
 .pr-banner-slot:empty {
   display: none;
 }
-
-.pr-banner {
-  margin: 0 0 12px;
-  padding: 12px 16px;
-  border-radius: var(--pr-radius-lg);
-  font-weight: 600;
-}
-
-.pr-banner.is-success {
-  background: var(--pr-good-bg);
-  color: var(--pr-good);
-  animation: pr-banner-life 2s ease forwards;
-}
-
 @keyframes pr-banner-life {
   0% {
     opacity: 0;
@@ -440,132 +143,19 @@ a.pr-nav-item:hover {
 }
 
 /* The row just added or saved, while its banner shows */
-.pr-table tr.is-highlighted {
-  background: var(--pr-highlight);
-}
-
-.pr-table tr.is-highlighted td:first-child {
-  box-shadow: inset 3px 0 0 var(--pr-ink);
-}
-
-.pr-class-card.is-highlighted {
-  border-color: var(--pr-ink);
-  background: var(--pr-highlight);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pr-banner.is-success {
-    animation: none;
-  }
-}
 
 /* Buttons ---------------------------------------------------------------------------------------- */
 
-.pr-button {
-  padding: 12px 24px;
-  border: 1px solid transparent;
-  border-radius: var(--pr-radius-lg);
-  font: 600 var(--pr-text-body) var(--pr-font);
-  cursor: pointer;
-}
-
-.pr-button:focus-visible,
-.pr-icon-button:focus-visible,
-.pr-link-button:focus-visible {
-  outline: none;
-  box-shadow: var(--pr-focus);
-}
-
-.pr-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.pr-button.is-primary {
-  background: var(--pr-primary);
-  color: #fff;
-}
-
-.pr-button.is-primary:not(:disabled):hover {
-  background: var(--pr-primary-hover);
-}
-
-.pr-button.is-outline {
-  border-color: var(--pr-primary);
-  background: var(--pr-surface);
-  color: var(--pr-primary);
-}
-
-.pr-button.is-outline:not(:disabled):hover {
-  background: var(--pr-tint);
-}
-
-.pr-button.is-danger {
-  border-color: var(--pr-danger-strong);
-  background: var(--pr-surface);
-  color: var(--pr-danger-strong);
-}
-
-.pr-button.is-danger:not(:disabled):hover {
-  background: var(--pr-danger-bg);
-}
-
-.pr-button.is-small {
-  min-height: 28px;
-  padding: 4px 10px;
-  font-size: var(--pr-text-small);
-}
-
-.pr-icon-button {
-  display: inline-grid;
-  flex: none;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid var(--pr-border);
-  border-radius: var(--pr-radius);
-  background: var(--pr-surface);
-  color: var(--pr-ink);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.pr-icon-button.is-plain {
-  border: 0;
-  background: none;
-  color: var(--pr-muted);
-}
-
-.pr-add-button {
-  align-self: flex-start;
-}
-
-.pr-link-button {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
 /* Forms ------------------------------------------------------------------------------------------ */
-
 .pr-editor {
   padding: 20px;
 }
-
 .pr-editor-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
 }
-
 .pr-eyebrow {
   margin: 0 0 2px;
   color: var(--pr-muted);
@@ -573,81 +163,28 @@ a.pr-nav-item:hover {
   font-weight: 600;
   text-transform: uppercase;
 }
-
 .pr-editor-title {
   margin: 0;
   color: var(--pr-primary);
   font: 700 var(--pr-text-card-title) / 1.25 var(--pr-font);
   letter-spacing: normal;
 }
-
 .pr-field {
   display: grid;
   gap: 6px;
   margin-bottom: 14px;
 }
-
 .pr-field.is-inline {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0;
 }
-
-.pr-field label {
-  color: var(--pr-muted);
-  font-size: var(--pr-text-caption);
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.pr-shell input:not([type='checkbox']),
-.pr-shell select {
-  width: 100%;
-  padding: 12px 14px;
-  border: 1px solid var(--pr-border);
-  border-radius: var(--pr-radius-field);
-  background: var(--pr-surface);
-  color: var(--pr-primary);
-  font: var(--pr-text-body) var(--pr-font);
-}
-
-.pr-field.is-inline select {
-  width: auto;
-  min-width: 220px;
-}
-
-.pr-shell input:disabled,
-.pr-shell select:disabled {
-  background: var(--pr-page);
-  color: var(--pr-muted);
-}
-
-.pr-shell input:focus-visible,
-.pr-shell select:focus-visible {
-  border-color: var(--pr-primary);
-  outline: none;
-  box-shadow: var(--pr-focus);
-}
-
-.pr-shell input[aria-invalid='true'] {
-  border-color: var(--pr-danger);
-}
-
-.pr-shell input[type='checkbox'] {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  accent-color: var(--pr-primary);
-}
-
 .pr-field-error {
   color: var(--pr-danger);
   font-size: var(--pr-text-small);
 }
-
-.pr-checks,
-.pr-toggle {
+.pr-checks {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -655,37 +192,17 @@ a.pr-nav-item:hover {
   margin-bottom: 14px;
 }
 
-.pr-checks label,
-.pr-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--pr-primary);
-  font-size: var(--pr-text-body);
-}
-
-.pr-toggle {
-  flex: none;
-  margin: 0;
-}
-
 /* Add pop-up: a short code box beside the name */
-.pr-sheet .pr-fee-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
 .pr-code-name-row {
   display: grid;
   grid-template-columns: 100px minmax(0, 1fr);
   gap: 12px;
 }
-
 .pr-fee-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 10px;
 }
-
 .pr-help {
   margin: 0 0 14px;
   color: var(--pr-muted);
@@ -693,49 +210,17 @@ a.pr-nav-item:hover {
 }
 
 /* Side panel: Save takes the spare width, Remove keeps its text width */
-.pr-actions .pr-button.is-primary {
-  flex: 1;
-}
-
 .pr-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.pr-table .pr-row-actions {
-  text-align: right;
-}
-
 /* Card heading and base fares grid ---------------------------------------------------------------- */
-
-.pr-card-head {
-  padding: 0;
-}
-
-.pr-card-head.has-action {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.pr-card-head .pr-card-title {
-  margin: 0 0 2px;
-  color: var(--pr-primary);
-  font: 700 var(--pr-text-card-title) / 1.25 var(--pr-font);
-}
-
-.pr-card-head .pr-muted {
-  margin: 0;
-  font-size: var(--pr-text-body);
-}
-
 .pr-matrix th,
 .pr-matrix td {
   white-space: nowrap;
 }
-
 .pr-matrix tbody th {
   height: 60px;
   padding: 0 12px 0 16px;
@@ -753,46 +238,26 @@ a.pr-nav-item:hover {
   left: 0;
   z-index: 1;
 }
-
 .pr-matrix td {
   height: 60px;
 }
-
 .pr-matrix-route strong,
 .pr-matrix-route span {
   display: block;
 }
-
 .pr-matrix-route strong {
   color: var(--pr-primary);
   font-size: var(--pr-text-body);
   font-weight: 600;
 }
-
 .pr-matrix-route span {
   color: var(--pr-muted);
   font-size: var(--pr-text-caption);
 }
-
-.pr-shell input.pr-matrix-input {
-  width: 88px;
-  padding: 7px 10px;
-  border-radius: var(--pr-radius-lg);
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  text-align: right;
-}
-
-.pr-shell input.is-changed:not([aria-invalid='true']) {
-  border-color: var(--pr-primary);
-  background: var(--pr-highlight);
-}
-
 .pr-matrix-error {
   display: block;
   margin-top: 4px;
 }
-
 .pr-matrix-footer {
   display: flex;
   flex-wrap: wrap;
@@ -800,7 +265,6 @@ a.pr-nav-item:hover {
   justify-content: space-between;
   gap: 12px;
 }
-
 .pr-matrix-footer .pr-muted {
   font-size: var(--pr-text-small);
 }
@@ -817,19 +281,10 @@ a.pr-nav-item:hover {
   text-transform: uppercase;
   white-space: nowrap;
 }
-
 .pr-amount-field {
   position: relative;
   display: block;
 }
-
-.pr-shell input.pr-fare-input {
-  width: 100%;
-  min-height: 44px;
-  padding-right: 48px;
-  font-variant-numeric: tabular-nums;
-}
-
 .pr-amount-suffix {
   position: absolute;
   top: 50%;
@@ -841,61 +296,22 @@ a.pr-nav-item:hover {
 }
 
 /* Pricing rules page ----------------------------------------------------------------------------- */
-
 .pr-stack {
   display: grid;
   gap: 20px;
 }
-
-.pr-card-tabs {
-  margin: 0;
-}
-
 .pr-rules-table td {
   height: 52px;
 }
-
 .pr-priority {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
-
 .pr-priority strong {
   min-width: 14px;
   color: var(--pr-ink);
 }
-
-.pr-step-button {
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid var(--pr-border);
-  border-radius: var(--pr-radius-sm);
-  background: var(--pr-surface);
-  color: var(--pr-primary);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.pr-step-button:not(:disabled):hover {
-  background: var(--pr-tint);
-}
-
-.pr-step-button:disabled {
-  color: var(--pr-sidebar-text);
-  cursor: not-allowed;
-}
-
-.pr-step-button:focus-visible,
-.pr-switch:focus-visible {
-  outline: none;
-  box-shadow: var(--pr-focus);
-}
-
 .pr-adjust {
   color: var(--pr-primary);
   font-weight: 700;
@@ -903,102 +319,21 @@ a.pr-nav-item:hover {
 }
 
 /* On/off switch (a button with role="switch") */
-.pr-switch {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: var(--pr-border);
-  vertical-align: middle;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.pr-switch[aria-checked='true'] {
-  background: var(--pr-good);
-}
-
-.pr-switch:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.pr-switch-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
-  transition: transform 0.15s;
-}
-
-.pr-switch[aria-checked='true'] .pr-switch-thumb {
-  transform: translateX(16px);
-}
-
-.pr-link-button.is-danger {
-  color: var(--pr-danger);
-  font-size: var(--pr-text-small);
-  text-decoration: none;
-}
-
-.pr-link-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
 .pr-rules-footer {
   display: grid;
   justify-items: start;
   gap: 14px;
 }
-
 .pr-rules-footer .pr-muted {
   font-size: var(--pr-text-small);
 }
 
 /* Promo codes */
-.pr-status {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: var(--pr-text-caption);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.pr-status.is-active {
-  background: var(--pr-good-bg);
-  color: var(--pr-good);
-}
-
-.pr-status.is-not_started {
-  background: #fff1c7;
-  color: #8a5a00;
-}
-
-.pr-status.is-expired {
-  background: var(--pr-head);
-  color: var(--pr-muted);
-}
-
-.pr-status.is-used_up,
-.pr-status.is-inactive {
-  background: var(--pr-inactive-bg);
-  color: var(--pr-inactive);
-}
-
 .pr-promo-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
-
 .pr-promo-cards {
   display: grid;
   gap: 10px;
@@ -1006,7 +341,6 @@ a.pr-nav-item:hover {
   padding: 0;
   list-style: none;
 }
-
 .pr-promo-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1016,7 +350,6 @@ a.pr-nav-item:hover {
   border: 1px solid var(--pr-divider);
   border-radius: var(--pr-radius-field);
 }
-
 .pr-promo-code {
   padding: 6px 8px;
   border-radius: var(--pr-radius-lg);
@@ -1025,49 +358,30 @@ a.pr-nav-item:hover {
   font-size: var(--pr-text-small);
   font-weight: 700;
 }
-
 .pr-promo-name {
   display: grid;
   gap: 1px;
   min-width: 0;
 }
-
 .pr-promo-name strong {
   color: var(--pr-primary);
   font-size: var(--pr-text-label);
   font-weight: 600;
 }
-
 .pr-promo-name span {
   color: var(--pr-muted);
   font-size: var(--pr-text-small);
 }
-
 .pr-promo-discount {
   color: var(--pr-primary);
   font-size: 15px;
   font-weight: 700;
 }
-
 .pr-promo-bottom {
   display: flex;
   grid-column: 1 / -1;
   align-items: center;
   justify-content: space-between;
-}
-
-.pr-promo-bottom .pr-switch {
-  width: 42px;
-  height: 24px;
-}
-
-.pr-promo-bottom .pr-switch-thumb {
-  width: 20px;
-  height: 20px;
-}
-
-.pr-promo-bottom .pr-switch[aria-checked='true'] .pr-switch-thumb {
-  transform: translateX(18px);
 }
 
 /* Price simulator: beside the rules on desktop, its own page on a phone */
@@ -1077,40 +391,26 @@ a.pr-nav-item:hover {
   align-items: start;
   gap: 20px;
 }
-
 .pr-sim-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
-
-.pr-card > .pr-sim-row .pr-field,
-.pr-card > .pr-field {
-  margin: 0;
-}
-
-.pr-shell input.pr-fare-input[aria-invalid='true'] {
-  border-color: var(--pr-danger);
-}
-
 .pr-sim-note {
   margin: 0;
   color: var(--pr-muted);
   font-size: var(--pr-text-small);
 }
-
 .pr-sim-lead {
   margin: 0 0 14px;
   color: var(--pr-muted);
   font-size: var(--pr-text-label);
 }
-
 .pr-sim-lines {
   margin: 0;
   padding: 0;
   list-style: none;
 }
-
 .pr-sim-lines li {
   display: flex;
   align-items: center;
@@ -1120,19 +420,16 @@ a.pr-nav-item:hover {
   border-bottom: 1px solid var(--pr-divider);
   color: var(--pr-primary);
 }
-
 .pr-sim-lines small {
   margin-left: 6px;
   color: var(--pr-muted);
   font-size: var(--pr-text-caption);
 }
-
 .pr-sim-lines strong {
   flex: none;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-
 .pr-sim-total {
   display: flex;
   align-items: center;
@@ -1144,20 +441,11 @@ a.pr-nav-item:hover {
   color: var(--pr-primary);
   font-weight: 600;
 }
-
 .pr-sim-total strong {
   font-size: 18px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .pr-switch,
-  .pr-switch-thumb {
-    transition: none;
-  }
-}
-
 .pr-visually-hidden {
   position: absolute;
   width: 1px;
@@ -1168,26 +456,6 @@ a.pr-nav-item:hover {
 }
 
 /* Phone-only pieces (hidden on desktop) ---------------------------------------------------------- */
-
-.pr-menu-button {
-  display: none;
-}
-
-.pr-back-link {
-  margin-bottom: 14px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--pr-muted);
-  font: 600 var(--pr-text-label) var(--pr-font);
-  cursor: pointer;
-}
-
-.pr-back-link:focus-visible {
-  outline: none;
-  box-shadow: var(--pr-focus);
-}
-
 .pr-editor-page-title {
   margin: 0 0 14px;
   color: var(--pr-ink);
@@ -1198,7 +466,6 @@ a.pr-nav-item:hover {
 }
 
 /* Fare class cards (phone list) */
-
 .pr-class-cards {
   display: grid;
   gap: 10px;
@@ -1207,186 +474,11 @@ a.pr-nav-item:hover {
   list-style: none;
 }
 
-.pr-class-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px 10px;
-  width: 100%;
-  padding: 12px;
-  border: 1px solid var(--pr-divider);
-  border-radius: var(--pr-radius-field);
-  background: var(--pr-surface);
-  color: var(--pr-text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.pr-class-card:focus-visible {
-  border-color: var(--pr-primary);
-  outline: none;
-  box-shadow: var(--pr-focus);
-}
-
-.pr-class-card.is-inactive {
-  color: var(--pr-muted);
-}
-
-.pr-code-badge {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--pr-radius-lg);
-  background: #eef2f7;
-  color: var(--pr-primary);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.pr-class-card-name {
-  display: grid;
-}
-
-.pr-class-card-name strong {
-  color: var(--pr-primary);
-  font-size: var(--pr-text-label);
-  font-weight: 600;
-}
-
-.pr-class-card-name span,
-.pr-class-card-meta {
-  color: var(--pr-muted);
-  font-size: var(--pr-text-small);
-}
-
-.pr-chevron {
-  color: var(--pr-muted);
-  font-size: 20px;
-}
-
-.pr-class-card-meta span + span::before {
-  content: '·';
-  margin-right: 8px;
-}
-
-.pr-class-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  grid-column: 1 / -1;
-  gap: 4px 8px;
-}
-
 /* Add dialog: a centred modal, and a bottom sheet on phones */
 
-.pr-sheet {
-  width: min(440px, calc(100% - 32px));
-  max-height: calc(100% - 32px);
-  /* Tailwind's reset zeroes margins, which would pin a native <dialog> to the top-left corner */
-  margin: auto;
-  padding: 0;
-  border: 0;
-  border-radius: var(--pr-radius-dialog);
-  background: var(--pr-surface);
-  color: var(--pr-text);
-  box-shadow: var(--pr-shadow);
-}
-
-.pr-sheet::backdrop {
-  background: rgb(16 37 68 / 55%);
-}
-
-.pr-sheet .pr-editor {
-  padding: 24px;
-}
-
-.pr-sheet-handle {
-  display: none;
-}
-
 /* Small centred confirmation, e.g. "Remove rule H-7?" */
-.pr-sheet.pr-confirm {
-  width: min(480px, calc(100% - 32px));
-  padding: 24px;
-}
-
-.pr-sheet.pr-form-sheet {
-  width: min(520px, calc(100% - 32px));
-}
-
-.pr-confirm-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.pr-confirm-head h2 {
-  margin: 0;
-  color: var(--pr-primary);
-  font: 700 var(--pr-text-card-title) / 1.25 var(--pr-font);
-}
-
-.pr-warning {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 16px;
-  padding: 14px;
-  border-radius: var(--pr-radius-field);
-  background: var(--pr-warn-bg);
-  color: var(--pr-warn);
-  font-size: var(--pr-text-small);
-}
-
-.pr-warning strong {
-  font-size: var(--pr-text-body);
-}
-
-.pr-confirm-summary {
-  display: grid;
-  gap: 2px;
-  margin-bottom: 16px;
-  padding: 20px;
-  border: 1px solid var(--pr-border);
-  border-radius: var(--pr-radius-field);
-  background: #f5f7fa;
-}
-
-.pr-confirm-summary strong {
-  color: var(--pr-primary);
-  font-weight: 600;
-}
-
-.pr-confirm-summary span {
-  color: var(--pr-muted);
-  font-size: var(--pr-text-small);
-}
-
-.pr-confirm .pr-confirm-error {
-  margin: 0 0 16px;
-}
-
-.pr-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.pr-confirm-actions .pr-button {
-  min-width: 100px;
-}
 
 /* Form in a confirmation-sized dialog, e.g. "New period rule" */
-.pr-form-dialog .pr-confirm-head {
-  margin-bottom: 12px;
-}
-
-.pr-form-dialog .pr-field {
-  margin-bottom: 12px;
-}
-
 .pr-form-hint {
   margin: 0 0 14px;
   padding: 10px 12px;
@@ -1396,32 +488,13 @@ a.pr-nav-item:hover {
   font-size: var(--pr-text-small);
 }
 
-.pr-phone-only {
-  display: none;
-}
-
-.pr-confirm .pr-button.is-outline {
-  border-color: var(--pr-border);
-}
-
-.pr-button.is-danger-solid {
-  background: var(--pr-danger-strong);
-  color: #fff;
-}
-
-.pr-button.is-danger-solid:not(:disabled):hover {
-  background: #b81821;
-}
-
 /* Responsive ------------------------------------------------------------------------------------- */
-
 @media (max-width: 1280px) {
   .pr-main {
     padding-right: 24px;
     padding-left: 24px;
   }
 }
-
 @media (max-width: 1100px) {
   .pr-split.has-editor,
   .pr-rules-layout.has-simulator {
@@ -1431,102 +504,13 @@ a.pr-nav-item:hover {
 
 /* Phone: from the mobile frames of the Fare Setup design (393px wide) */
 @media (max-width: 800px) {
-  .pr-shell {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  /* Sidebar becomes the top bar; its menu drops down below it */
-  .pr-sidebar {
-    position: relative;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    height: var(--pr-topbar);
-    overflow: visible;
-    padding: 0 20px;
-    background: var(--pr-primary);
-  }
-
-  .pr-brand {
-    padding: 0;
-  }
-
-  .pr-brand strong {
-    font-size: var(--pr-text-sheet-title);
-    text-transform: none;
-    justify-self: start;
-  }
-
-  .pr-brand strong::after {
-    width: 40px;
-    height: 3px;
-    margin: 3px 0 0;
-    border-radius: 0;
-  }
-
-  .pr-brand span {
-    display: none;
-  }
-
-  .pr-menu-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: auto; /* always the right-hand end of the top bar */
-    padding: 6px 4px;
-    border: 0;
-    background: none;
-    color: #fff;
-    font: 600 var(--pr-text-small) var(--pr-font);
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-
-  .pr-menu-button span {
-    font-size: 16px;
-  }
-
-  .pr-menu-button:focus-visible {
-    outline: 2px solid #fff;
-    outline-offset: 2px;
-  }
-
-  /* "M / Menu" frame: the menu covers the whole screen under the top bar */
-  .pr-sidebar-menu {
-    position: fixed;
-    inset: var(--pr-topbar) 0 0;
-    z-index: 10;
-    display: none;
-    overflow-y: auto;
-    padding: 20px 16px 24px;
-    background: var(--pr-primary);
-  }
-
-  .pr-shell.is-menu-open .pr-sidebar-menu {
-    display: flex;
-  }
-
-  .pr-sidebar-menu .pr-nav-item {
-    padding: 12px;
-    font-size: 16px;
-  }
-
-  .pr-account {
-    margin-top: 16px;
-    padding: 16px 12px 0;
-  }
-
   .pr-main {
     padding: 16px 20px 32px;
   }
-
   .pr-header {
     gap: 14px;
     margin-bottom: 14px;
   }
-
   .pr-title {
     margin-bottom: 14px;
     color: var(--pr-primary);
@@ -1534,136 +518,46 @@ a.pr-nav-item:hover {
   }
 
   /* The edit page shows only its own back link and title */
-  .pr-main:has(.pr-editor-page) > .pr-header,
-  .pr-main:has(.pr-editor-page) .pr-tabs {
+  .pr-main:has(.pr-editor-page) > .pr-header {
     display: none;
   }
 
-  .pr-tabs {
-    margin-bottom: 14px;
-  }
-
-  .pr-add-button {
-    align-self: stretch;
-    width: 100%;
-    min-height: 44px;
-    font-size: var(--pr-text-label);
-  }
-
   /* Forms: small uppercase labels, taller fields, full-width stacked actions */
-  .pr-field label {
-    font-size: 10px;
-    letter-spacing: 0.04em;
-  }
-
-  .pr-shell input:not([type='checkbox']),
-  .pr-shell select {
-    min-height: 42px;
-    padding: 0 12px;
-    border-radius: var(--pr-radius-lg);
-    font-size: var(--pr-text-label);
-  }
-
   .pr-editor {
     padding: 14px;
   }
-
   .pr-actions {
     flex-direction: column;
   }
-
-  .pr-actions .pr-button {
-    width: 100%;
-    min-height: 44px;
-    font-size: var(--pr-text-label);
-  }
-
   .pr-field.is-inline {
     flex-wrap: wrap;
   }
 
-  .pr-field.is-inline select {
-    min-width: 0;
-    width: 100%;
-  }
-
   /* Bottom sheet */
-  .pr-sheet {
-    width: 100%;
-    max-width: none;
-    max-height: 92%;
-    margin: auto 0 0;
-    border-radius: 16px 16px 0 0;
-  }
-
-  .pr-sheet-handle {
-    display: block;
-    width: 36px;
-    height: 4px;
-    margin: -4px auto 12px;
-    border-radius: 999px;
-    background: var(--pr-border);
-  }
-
-  .pr-sheet .pr-fee-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 
   /* Kind and type share a row; the discount takes its own */
   .pr-promo-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 0; /* each field already has its own bottom margin */
   }
-
   .pr-promo-row > :last-child {
     grid-column: 1 / -1;
   }
 
   /* Cards are tighter on a phone */
-  .pr-card {
-    gap: 10px;
-    padding: 14px;
-    border-color: var(--pr-divider);
-  }
-
-  .pr-card-head.has-action {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .pr-card-head .pr-card-title {
-    margin-bottom: 10px;
-    font-size: 17px;
-  }
-
-  .pr-card-head .pr-muted {
-    font-size: var(--pr-text-small);
-  }
-
-  .pr-sheet .pr-editor {
-    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
-  }
-
-  .pr-sheet.pr-form-sheet {
-    width: 100%;
-  }
 
   /* Base fares: one block per route with a 2-column grid of amounts, paged (Previous / Next page) */
-
   .pr-fare-route {
     padding: 4px 0 14px;
   }
-
   .pr-fare-route + .pr-fare-route {
     padding-top: 14px;
     border-top: 1px solid var(--pr-divider);
   }
-
   .pr-fare-route .pr-matrix-route {
     margin: 0 0 10px;
     font-weight: 400;
   }
-
   .pr-fare-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1671,34 +565,10 @@ a.pr-nav-item:hover {
   }
 
   /* Phone: the confirmation is a full-width bottom sheet like the other dialogs */
-  .pr-sheet.pr-confirm {
-    width: 100%;
-    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
-  }
-
-  .pr-confirm-actions .pr-button {
-    flex: 1;
-  }
-
-  .pr-phone-only {
-    display: inline-grid;
-    place-items: center;
-  }
 
   /* Phone form dialogs: Save on top, Cancel under it, both full width */
-  .pr-form-dialog .pr-confirm-actions {
-    flex-direction: column-reverse;
-  }
-
-  .pr-form-dialog .pr-confirm-actions .pr-button {
-    min-height: 44px;
-  }
 
   /* Header buttons (e.g. Open price simulator) go full width under the title */
-  .pr-header > .pr-button {
-    width: 100%;
-    min-height: 44px;
-  }
 
   /* Pricing rules: one card per rule, paged like Base fares */
   .pr-rule-cards {
@@ -1708,7 +578,6 @@ a.pr-nav-item:hover {
     padding: 0;
     list-style: none;
   }
-
   .pr-rule-card {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1719,7 +588,6 @@ a.pr-nav-item:hover {
     border-radius: var(--pr-radius-lg);
     background: var(--pr-surface);
   }
-
   .pr-rule-number {
     display: grid;
     place-items: center;
@@ -1731,33 +599,27 @@ a.pr-nav-item:hover {
     font-size: var(--pr-text-small);
     font-weight: 700;
   }
-
   .pr-rule-card-name {
     display: grid;
     gap: 2px;
     min-width: 0;
   }
-
   .pr-rule-card-name strong {
     color: var(--pr-ink);
     font-size: var(--pr-text-label);
     font-weight: 600;
   }
-
   .pr-rule-card-name > span {
     color: var(--pr-muted);
     font-size: var(--pr-text-small);
   }
-
   .pr-rule-card-adjust {
     font-size: 17px;
   }
-
   .pr-rule-card.is-inactive .pr-rule-card-name strong,
   .pr-rule-card.is-inactive .pr-rule-card-adjust {
     color: var(--pr-muted);
   }
-
   .pr-rule-card-actions {
     display: flex;
     grid-column: 1 / -1;
@@ -1766,7 +628,6 @@ a.pr-nav-item:hover {
     gap: 8px;
     margin-top: 6px;
   }
-
   .pr-switch-label {
     display: inline-flex;
     align-items: center;
@@ -1774,7 +635,6 @@ a.pr-nav-item:hover {
     color: var(--pr-muted);
     font-size: var(--pr-text-small);
   }
-
   .pr-rule-card-buttons {
     display: inline-flex;
     align-items: center;
@@ -1782,62 +642,23 @@ a.pr-nav-item:hover {
   }
 
   /* Bigger tap targets than the desktop table */
-  .pr-rule-card .pr-step-button {
-    width: 30px;
-    height: 30px;
-    font-size: 14px;
-  }
-
-  .pr-rule-card .pr-switch {
-    width: 44px;
-    height: 24px;
-  }
-
-  .pr-rule-card .pr-switch-thumb {
-    width: 20px;
-    height: 20px;
-  }
-
-  .pr-rule-card .pr-switch[aria-checked='true'] .pr-switch-thumb {
-    transform: translateX(20px);
-  }
-
-  .pr-rule-card .pr-link-button.is-danger {
-    padding: 6px 0 6px 4px;
-    font-size: var(--pr-text-body);
-    font-weight: 600;
-  }
-
   .pr-pager {
     display: grid;
     gap: 10px;
     margin-top: 16px;
     text-align: center;
   }
-
   .pr-pager p {
     margin: 0;
     color: var(--pr-muted);
     font-size: var(--pr-text-small);
   }
-
   .pr-pager-buttons {
     display: flex;
     gap: 10px;
   }
-
-  .pr-pager-buttons .pr-button {
-    flex: 1;
-    min-height: 44px;
-  }
-
   .pr-matrix-footer {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .pr-matrix-footer .pr-actions .pr-button {
-    flex: 1;
-    min-height: 40px;
   }
 }

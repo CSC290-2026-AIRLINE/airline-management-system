@@ -1,4 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 
 interface State {
   error: Error | null
@@ -19,12 +21,14 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="pr-callout is-error" role="alert">
-          This section failed to load: {this.state.error.message}{' '}
-          <button type="button" className="pr-link-button" onClick={() => this.setState({ error: null })}>
-            Try again
-          </button>
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="block">
+            This section failed to load: {this.state.error.message}{' '}
+            <Button variant="link" className="h-auto p-0" type="button" onClick={() => this.setState({ error: null })}>
+              Try again
+            </Button>
+          </AlertDescription>
+        </Alert>
       )
     }
     return this.props.children
