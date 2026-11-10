@@ -38,7 +38,8 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
           <SelectTrigger aria-label={field === 'origin' ? `Leg ${index + 1} origin` : `Leg ${index + 1} destination`}>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          {/* The "From" dropdown opts into the staff console's smoother open/close animation. */}
+          <SelectContent className={field === 'origin' ? 'cw-select-content--smooth' : undefined}>
             <SelectItem value="">Select airport</SelectItem>
             {AIRPORTS.map((airport) => (
               <SelectItem key={airport.code} value={airport.code}>

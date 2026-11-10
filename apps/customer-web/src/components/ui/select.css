@@ -74,6 +74,64 @@
   animation: cw-select-in 120ms ease-out;
 }
 
+/*
+ * The smoother variant, matching the staff console's dropdown (apps/staff-web/src/components/ui/select.tsx uses
+ * tw-animate-css): a 150ms fade and zoom that grows out of the trigger, and a closing animation so the list does not
+ * snap away. Opt in per dropdown with the `cw-select-content--smooth` class until the whole app is ready for it.
+ *
+ * The menu also matches the trigger it belongs to. The base rules let the list grow past the trigger (the viewport is
+ * a content box, so its padding is added to the trigger width) and let the rows spill out of the menu, which pushed the
+ * grey highlight and the tick outside the white panel. Border-box sizing keeps that padding inside the measured width.
+ */
+.cw-select-content.cw-select-content--smooth {
+  box-sizing: border-box;
+  min-width: var(--radix-select-trigger-width, 8rem);
+  transform-origin: var(--radix-select-content-transform-origin, center);
+}
+
+.cw-select-content.cw-select-content--smooth .cw-select-viewport {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.cw-select-content.cw-select-content--smooth .cw-select-item {
+  box-sizing: border-box;
+}
+
+/* The resting gap from the trigger, and where the list slides in from. */
+.cw-select-content.cw-select-content--smooth[data-side='bottom'] {
+  translate: 0 4px;
+  --cw-select-enter-x: 0px;
+  --cw-select-enter-y: -8px;
+}
+
+.cw-select-content.cw-select-content--smooth[data-side='top'] {
+  translate: 0 -4px;
+  --cw-select-enter-x: 0px;
+  --cw-select-enter-y: 8px;
+}
+
+.cw-select-content.cw-select-content--smooth[data-side='left'] {
+  translate: -4px 0;
+  --cw-select-enter-x: 8px;
+  --cw-select-enter-y: 0px;
+}
+
+.cw-select-content.cw-select-content--smooth[data-side='right'] {
+  translate: 4px 0;
+  --cw-select-enter-x: -8px;
+  --cw-select-enter-y: 0px;
+}
+
+.cw-select-content.cw-select-content--smooth[data-state='open'] {
+  animation: cw-select-smooth-in 150ms ease;
+}
+
+.cw-select-content.cw-select-content--smooth[data-state='closed'] {
+  animation: cw-select-smooth-out 150ms ease;
+}
+
 .cw-select-viewport {
   padding: 4px;
   min-width: var(--radix-select-trigger-width, 8rem);
@@ -130,8 +188,32 @@
   }
 }
 
+@keyframes cw-select-smooth-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--cw-select-enter-x, 0px), var(--cw-select-enter-y, 0px)) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes cw-select-smooth-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .cw-select-content[data-state='open'] {
+  .cw-select-content[data-state='open'],
+  .cw-select-content.cw-select-content--smooth[data-state='open'],
+  .cw-select-content.cw-select-content--smooth[data-state='closed'] {
     animation: none;
   }
 }
