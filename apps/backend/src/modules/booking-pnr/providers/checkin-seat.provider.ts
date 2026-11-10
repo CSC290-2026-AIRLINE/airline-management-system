@@ -177,10 +177,16 @@ export class CheckinSeatProvider implements SeatProvider {
     })
     if (!coupon) throw new NotFoundException('Confirmed booking for this flight not found')
     const cabin = coupon.booking_segment.cabin as Cabin
-    const map = await this.maps.seatMap(flightId, { bookingPassengerId, cabin })
+    const [map, layout] = await Promise.all([this.maps.seatMap(flightId, { bookingPassengerId, cabin }), this.layouts.getSeatMap(flightId)])
+    const standardSeats = new Set(
+      layout.rows
+        .flatMap((row) => row.seats)
+        .filter((seat) => seat.cabin === cabin && seat.type === 'standard' && !seat.blocked)
+        .map((seat) => seat.seatCode),
+    )
     for (const seat of map.rows
       .flatMap((row) => row.seats)
-      .filter((item) => item.status === 'free' && item.type === 'standard' && item.fee === 0)) {
+      .filter((item) => item.status === 'free' && standardSeats.has(item.code) && item.fee === 0)) {
       let lock: SeatLock | undefined
       try {
         lock = await this.hold(flightId, seat.code, bookingPassengerId, 300_000)

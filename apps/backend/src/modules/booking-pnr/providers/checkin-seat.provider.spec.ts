@@ -122,4 +122,27 @@ describe('CheckinSeatProvider', () => {
     await expect(provider.assigned('passenger')).resolves.toBeNull()
     await expect(provider.releaseAssigned('passenger')).rejects.toMatchObject({ code: 'SEAT_NOT_ALLOWED' })
   })
+
+  it('can auto-assign a standard business-cabin seat without selecting an exit seat', async () => {
+    findCoupon.mockResolvedValue({
+      id: 'coupon',
+      booking_id: 'booking',
+      booking_segment_id: 'segment',
+      booking_segment: { cabin: 'business' },
+      booking_passenger: { passenger_type: 'adult', other_booking_passenger: null, booking_service_request: [] },
+    })
+    layouts.getSeatMap.mockResolvedValue({ rows: [{ seats: [{ seatCode: '1A', cabin: 'business', type: 'standard', blocked: false }] }] })
+    maps.seatMap.mockResolvedValue({ rows: [{ seats: [{ code: '1A', type: 'business', status: 'free', fee: 0 }] }] })
+    findUniqueOrThrow.mockResolvedValue({
+      id: 'lock',
+      flight_id: 'flight',
+      seat_code: '1A',
+      status: 'held',
+      hold_expires_at: new Date('2026-11-10T12:05:00Z'),
+      fee_amount: 0,
+      payment_id: null,
+      booking_coupon_id: 'coupon',
+    })
+    await expect(provider.assignAnyStandard('flight', 'passenger')).resolves.toEqual({ seatCode: '1A', type: 'business' })
+  })
 })
