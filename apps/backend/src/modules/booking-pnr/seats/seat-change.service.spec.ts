@@ -35,6 +35,7 @@ describe('SeatChangeService', () => {
       seat: { seatCode: '12A' },
     })
     expect(bookings.getBookingDetail).toHaveBeenCalledWith('REF', viewer)
+    expect(seats.hold).toHaveBeenCalledWith('flight', '12A', 'passenger', 300_000, { rejectCheckedIn: true })
     expect(seats.confirm).toHaveBeenCalledWith('lock')
   })
 

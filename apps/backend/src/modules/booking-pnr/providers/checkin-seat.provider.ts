@@ -18,7 +18,13 @@ export class CheckinSeatProvider implements SeatProvider {
     return this.maps.seatMap(flightId, viewer)
   }
 
-  async hold(flightId: string, seatCode: string, bookingPassengerId: string, ttlMs: number): Promise<SeatLock> {
+  async hold(
+    flightId: string,
+    seatCode: string,
+    bookingPassengerId: string,
+    ttlMs: number,
+    options: { rejectCheckedIn?: boolean } = {},
+  ): Promise<SeatLock> {
     if (!/^[1-9][0-9]?[A-Z]$/.test(seatCode) || !Number.isSafeInteger(ttlMs) || ttlMs <= 0) {
       throw new BookingError('SEAT_NOT_ALLOWED', 'Invalid seat or hold duration')
     }
@@ -56,6 +62,13 @@ export class CheckinSeatProvider implements SeatProvider {
           Array<{ status: string }>
         >`SELECT status FROM booking WHERE id = ${coupon.booking_id}::uuid FOR UPDATE`
         if (bookings[0]?.status !== 'confirmed') throw new BookingError('BOOKING_CLOSED', 'Booking is no longer confirmed')
+        if (options.rejectCheckedIn) {
+          const checkIn = await tx.check_in.findFirst({
+            where: { booking_passenger_id: bookingPassengerId, flight_id: flightId, status: { in: ['checked_in', 'boarded', 'no_show'] } },
+            select: { id: true },
+          })
+          if (checkIn) throw new BookingError('BOOKING_CLOSED', 'Seat changes after check-in are handled by check-in')
+        }
         const active = await tx.booking_coupon.findFirst({
           where: { id: coupon.id, status: 'confirmed' },
           include: {

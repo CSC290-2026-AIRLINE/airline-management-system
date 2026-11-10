@@ -29,7 +29,7 @@ export class SeatChangeService {
       select: { id: true },
     })
     if (checkIn) throw new BookingError('BOOKING_CLOSED', 'Seat changes after check-in are handled by check-in')
-    const lock = await this.seats.hold(coupon.flightId, seatCode, coupon.bookingPassengerId, 300_000)
+    const lock = await this.seats.hold(coupon.flightId, seatCode, coupon.bookingPassengerId, 300_000, { rejectCheckedIn: true })
     if (lock.fee > 0) return { status: 'payment_required' as const, lock }
 
     try {

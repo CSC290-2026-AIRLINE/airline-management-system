@@ -13,12 +13,14 @@ describe('CheckinSeatProvider', () => {
   const findUniqueOrThrow = jest.fn()
   const findUnique = jest.fn()
   const findCouponById = jest.fn()
+  const findCheckIn = jest.fn()
   const update = jest.fn()
   const query = jest.fn()
   const tx = {
     $queryRaw: query,
     seat_assignment: { findUnique, findUniqueOrThrow, updateMany, update, create },
     booking_coupon: { findUnique: findCouponById, findFirst: findCoupon },
+    check_in: { findFirst: findCheckIn },
   }
   const db = {
     booking_coupon: { findFirst: findCoupon },
@@ -37,6 +39,7 @@ describe('CheckinSeatProvider', () => {
   beforeEach(() => {
     jest.resetAllMocks()
     db.$transaction.mockImplementation((fn) => fn(tx))
+    findCheckIn.mockResolvedValue(null)
     findCoupon.mockResolvedValue({
       id: 'coupon',
       booking_id: 'booking',
@@ -108,6 +111,14 @@ describe('CheckinSeatProvider', () => {
   it('does not hold a seat when the booking is cancelled concurrently', async () => {
     query.mockResolvedValue([{ status: 'cancelled' }])
     await expect(provider.hold('flight', '12A', 'passenger', 300_000)).rejects.toMatchObject({ code: 'BOOKING_CLOSED' })
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('rechecks check-in inside the booking transaction for post-booking changes', async () => {
+    findCheckIn.mockResolvedValue({ id: 'check-in' })
+    await expect(provider.hold('flight', '12A', 'passenger', 300_000, { rejectCheckedIn: true })).rejects.toMatchObject({
+      code: 'BOOKING_CLOSED',
+    })
     expect(create).not.toHaveBeenCalled()
   })
 
