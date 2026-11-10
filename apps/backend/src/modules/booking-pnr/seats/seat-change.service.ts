@@ -13,7 +13,10 @@ export class SeatChangeService {
   ) {}
 
   async changeSeatForCustomer(reference: string, couponId: string, seatCode: string, userId: string) {
-    const customer = await this.db.customer.findFirst({ where: { user_id: userId, deleted_at: null }, select: { id: true } })
+    const customer = await this.db.customer.findFirst({
+      where: { user_id: userId, deleted_at: null, user: { type: 'customer', deleted_at: null, disabled_at: null } },
+      select: { id: true },
+    })
     if (!customer) throw new NotFoundException('Booking not found')
     return this.changeSeat(reference, couponId, seatCode, { customerId: customer.id })
   }

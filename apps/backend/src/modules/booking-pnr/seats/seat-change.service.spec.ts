@@ -67,9 +67,18 @@ describe('SeatChangeService', () => {
     expect(bookings.getBookingDetail).not.toHaveBeenCalled()
   })
 
+  it('does not change a seat for another customer’s booking', async () => {
+    bookings.getBookingDetail.mockResolvedValue(null)
+    await expect(service.changeSeat('REF', 'coupon', '12A', viewer)).rejects.toThrow('Booking or coupon not found')
+    expect(seats.hold).not.toHaveBeenCalled()
+  })
+
   it('derives the customer from the signed-in user', async () => {
     await service.changeSeatForCustomer('REF', 'coupon', '12A', 'user')
-    expect(customer.findFirst).toHaveBeenCalledWith({ where: { user_id: 'user', deleted_at: null }, select: { id: true } })
+    expect(customer.findFirst).toHaveBeenCalledWith({
+      where: { user_id: 'user', deleted_at: null, user: { type: 'customer', deleted_at: null, disabled_at: null } },
+      select: { id: true },
+    })
     expect(bookings.getBookingDetail).toHaveBeenCalledWith('REF', { customerId: 'customer' })
   })
 
