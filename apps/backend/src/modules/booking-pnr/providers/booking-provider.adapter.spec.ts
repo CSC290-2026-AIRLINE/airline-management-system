@@ -37,6 +37,18 @@ describe('BookingProviderAdapter', () => {
     await expect(adapter.byBookingPassengerId('missing')).resolves.toBeNull()
   })
 
+  it('requires a flight when the passenger has multiple live flights', async () => {
+    const secondFlight = {
+      ...booking,
+      segments: [...booking.segments, { ...booking.segments[0], bookingSegmentId: 's2', flightId: 'f2', segmentOrder: 2 }],
+      coupons: [...booking.coupons, { ...booking.coupons[0], bookingSegmentId: 's2', flightId: 'f2' }],
+    }
+    reads.getBookingForPassenger.mockResolvedValue(secondFlight)
+    await expect(adapter.byBookingPassengerId('p1')).resolves.toBeNull()
+    await expect(adapter.byBookingPassengerId('p1', 'f2')).resolves.toMatchObject({ flightId: 'f2' })
+    await expect(adapter.byBookingPassengerId('p1', 'missing')).resolves.toBeNull()
+  })
+
   it('maps the confirmed passenger list supplied by the read port', async () => {
     const passenger = {
       bookingReference: 'ABC123',
