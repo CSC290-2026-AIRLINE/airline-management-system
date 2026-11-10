@@ -57,7 +57,11 @@ export function BookingSeatChange({
       }
     } catch (error) {
       if (error instanceof ApiError && error.code === 'SEAT_UNAVAILABLE') setTaken(true)
-      else setMessage('Could not change your seat. Refresh the seat map and try again.')
+      else if (error instanceof ApiError && error.code === 'BOOKING_CLOSED') {
+        setMessage('Your seat can no longer be changed here. Please contact the airline for help.')
+      } else if (error instanceof ApiError && error.code === 'SEAT_NOT_ALLOWED') {
+        setMessage('This seat is not available for this passenger. Please choose another seat.')
+      } else setMessage('Could not change your seat. Refresh the seat map and try again.')
     } finally {
       setSaving(false)
     }
