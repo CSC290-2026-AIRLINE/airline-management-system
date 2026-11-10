@@ -115,10 +115,11 @@ const PRICING_ITEMS = [
  * buttons (dimmed, not focusable) instead of links that go nowhere. When a team registers its route, swap its entry for
  * a `<SidebarMenuButton asChild><Link/></SidebarMenuButton>`.
  */
-function PendingItem({ item }: { item: NavItem }) {
+// `indent` is for items inside a group: the padding sits on the button, so its hover block spans the full width.
+function PendingItem({ item, indent = false }: { item: NavItem; indent?: boolean }) {
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton disabled>
+      <SidebarMenuButton disabled className={indent ? 'pl-4' : undefined}>
         <item.icon />
         <span>{item.label}</span>
       </SidebarMenuButton>
@@ -200,7 +201,12 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
           <NavGroup label="Administration">
             {ADMIN_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
-                <SidebarMenuButton asChild isActive={pathname === item.to || pathname.startsWith(item.to + '/')} tooltip={item.label}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
                   <Link to={item.to}>
                     <item.icon />
                     <span>{item.label}</span>
@@ -213,7 +219,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
           <NavGroup label="Pricing & Fare Rules">
             {PRICING_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
-                <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label}>
+                <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label} className="pl-4">
                   <Link to={item.to}>
                     <item.icon />
                     <span>{item.label}</span>
@@ -226,7 +232,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
           {GROUPS.map((group) => (
             <NavGroup key={group.label} label={group.label}>
               {group.items.map((item) => (
-                <PendingItem key={item.label} item={item} />
+                <PendingItem key={item.label} item={item} indent />
               ))}
             </NavGroup>
           ))}
