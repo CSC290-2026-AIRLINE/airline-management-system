@@ -2,6 +2,12 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { errorMessage, usePricingApi, type NewPricingRule, type PricingRule, type RuleGroup } from '../api'
 import { Dialog } from '../components/Dialog'
 import { groupLabel } from './describe'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Label } from '@staff-web/components/ui/label'
+import { Input } from '@staff-web/components/ui/input'
+import { DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 
 // Limits mirror CreatePricingRuleDto and the service checks, so most mistakes are caught before the request.
 const PCT_2DP = /^-?\d+(\.\d{1,2})?$/
@@ -114,9 +120,9 @@ export function NewRuleDialog({ group, nextPriority, onClose, onCreated }: NewRu
   function field(id: Field, label: string, input: ReactNode) {
     return (
       <div className="pr-field">
-        <label htmlFor={`new-rule-${id}`} className="pr-fare-label">
+        <Label htmlFor={`new-rule-${id}`} className="pr-fare-label">
           {label}
-        </label>
+        </Label>
         {input}
         {errors[id] && (
           <span id={`new-rule-${id}-error`} className="pr-field-error">
@@ -129,7 +135,7 @@ export function NewRuleDialog({ group, nextPriority, onClose, onCreated }: NewRu
 
   function textInput(id: Field, props: { inputMode?: 'decimal' | 'numeric'; type?: string; placeholder?: string } = {}) {
     return (
-      <input
+      <Input
         id={`new-rule-${id}`}
         type={props.type ?? 'text'}
         inputMode={props.inputMode}
@@ -146,15 +152,11 @@ export function NewRuleDialog({ group, nextPriority, onClose, onCreated }: NewRu
   const label = groupLabel(group).toLowerCase()
 
   return (
-    <Dialog labelledBy="new-rule-title" className="pr-confirm pr-form-dialog" onClose={() => !saving && onClose()}>
-      <div className="pr-sheet-handle" aria-hidden="true" />
+    <Dialog onClose={() => !saving && onClose()}>
       <form onSubmit={(e) => void handleSubmit(e)} noValidate>
-        <div className="pr-confirm-head">
-          <h2 id="new-rule-title">New {label} rule</h2>
-          <button type="button" className="pr-icon-button pr-phone-only" aria-label="Close" disabled={saving} onClick={onClose}>
-            ×
-          </button>
-        </div>
+        <DialogHeader>
+          <DialogTitle>New {label} rule</DialogTitle>
+        </DialogHeader>
 
         {field('name', 'Name', textInput('name', { placeholder: group === 'urgency' ? 'e.g. Last-minute surge' : undefined }))}
         {field('adjustment', 'Adjustment (%, negative lowers)', textInput('adjustment', { inputMode: 'decimal', placeholder: 'e.g. 15' }))}
@@ -175,7 +177,7 @@ export function NewRuleDialog({ group, nextPriority, onClose, onCreated }: NewRu
           field(
             'month',
             'Month',
-            <select
+            <NativeSelect
               id="new-rule-month"
               value={form.month}
               disabled={saving}
@@ -183,13 +185,13 @@ export function NewRuleDialog({ group, nextPriority, onClose, onCreated }: NewRu
               aria-describedby={errors.month ? 'new-rule-month-error' : undefined}
               onChange={(e) => set('month', e.target.value)}
             >
-              <option value="">Pick a month</option>
+              <NativeSelectOption value="">Pick a month</NativeSelectOption>
               {MONTHS.map((name, i) => (
-                <option key={name} value={i + 1}>
+                <NativeSelectOption key={name} value={i + 1}>
                   {name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>,
+            </NativeSelect>,
           )}
         {group === 'period' && (
           <div className="pr-fee-grid">
@@ -203,19 +205,19 @@ export function NewRuleDialog({ group, nextPriority, onClose, onCreated }: NewRu
         </p>
 
         {saveError && (
-          <div className="pr-callout is-error pr-confirm-error" role="alert">
-            {saveError}
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription className="block">{saveError}</AlertDescription>
+          </Alert>
         )}
 
-        <div className="pr-confirm-actions">
-          <button type="button" className="pr-button is-outline" disabled={saving} onClick={onClose}>
+        <DialogFooter>
+          <Button variant="outline" type="button" disabled={saving} onClick={onClose}>
             Cancel
-          </button>
-          <button type="submit" className="pr-button is-primary" disabled={saving}>
+          </Button>
+          <Button type="submit" disabled={saving}>
             {saving ? 'Saving…' : 'Save rule'}
-          </button>
-        </div>
+          </Button>
+        </DialogFooter>
       </form>
     </Dialog>
   )

@@ -5,6 +5,16 @@ import { useLoad } from '../hooks/useLoad'
 import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
 import { describeCondition, formatAdjustment, groupLabel } from './describe'
 import { NewRuleDialog } from './NewRuleDialog'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Switch } from '@staff-web/components/ui/switch'
+import { DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Notice } from '../components/Notice'
+import { CARD_BODY, CARD_TITLE, PHONE_SWITCH, SWITCH, TABLE_HEAD, TABLE_HEAD_ROW, TABLE_ROW, TABLE_WRAP } from '../components/card-styles'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
+import { Badge } from '@staff-web/components/ui/badge'
 
 const NOTICE_MS = 2000
 const RULES_PER_PAGE = 4 // phone only; the desktop table shows the whole group
@@ -94,74 +104,74 @@ export function RulesCard({ group, onGroupChange, onChanged }: RulesCardProps) {
   function moveButtons(rule: PricingRule, index: number) {
     return (
       <>
-        <button
+        <Button
+          variant="outline"
+          size="icon-sm"
           type="button"
-          className="pr-step-button"
           aria-label={`Move ${rule.name} up`}
           disabled={busy !== null || index === 0}
           onClick={() => move(index, -1)}
         >
           ↑
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
           type="button"
-          className="pr-step-button"
           aria-label={`Move ${rule.name} down`}
           disabled={busy !== null || index === groupRules.length - 1}
           onClick={() => move(index, 1)}
         >
           ↓
-        </button>
+        </Button>
       </>
     )
   }
 
   function activeSwitch(rule: PricingRule, labelledBy?: string) {
     return (
-      <button
-        type="button"
-        role="switch"
-        className="pr-switch"
-        aria-checked={rule.is_active}
+      <Switch
+        className={isPhone ? PHONE_SWITCH : SWITCH}
+        checked={rule.is_active}
         aria-label={labelledBy ? undefined : `${rule.name} active`}
         aria-labelledby={labelledBy}
         disabled={busy !== null}
         onClick={() => void run(rule.id, () => api.setPricingRuleActive(rule.id, !rule.is_active))}
-      >
-        <span className="pr-switch-thumb" />
-      </button>
+      />
     )
   }
 
   function removeButton(rule: PricingRule) {
     return (
-      <button type="button" className="pr-link-button is-danger" disabled={busy !== null} onClick={() => askRemove(rule)}>
+      <Button variant="link" className="h-auto p-0 text-destructive" type="button" disabled={busy !== null} onClick={() => askRemove(rule)}>
         Remove
-      </button>
+      </Button>
     )
   }
 
   function fareClassPill(rule: PricingRule) {
     return (
       rule.fare_class && (
-        <span className="pr-pill" title={rule.fare_class.name}>
+        <Badge variant="secondary" title={rule.fare_class.name}>
           {rule.fare_class.code} only
-        </span>
+        </Badge>
       )
     )
   }
 
   const body = rules.error ? (
-    <div className="pr-callout is-error" role="alert">
-      Could not load pricing rules: {rules.error}{' '}
-      <button type="button" className="pr-link-button" onClick={rules.reload}>
-        Retry
-      </button>
-    </div>
+    <Alert variant="destructive">
+      <AlertDescription className="block">
+        Could not load pricing rules: {rules.error}{' '}
+        <Button variant="link" className="h-auto p-0" type="button" onClick={rules.reload}>
+          Retry
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : !rules.data ? (
-    <p className="pr-state">Loading pricing rules…</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">Loading pricing rules…</p>
   ) : groupRules.length === 0 ? (
-    <p className="pr-state">No {groupLabel(group).toLowerCase()} rules yet.</p>
+    <p className="py-6 text-center text-sm text-muted-foreground">No {groupLabel(group).toLowerCase()} rules yet.</p>
   ) : isPhone ? (
     <ol className="pr-rule-cards" start={pageStart + 1}>
       {pageRules.map((rule, offset) => {
@@ -197,93 +207,93 @@ export function RulesCard({ group, onGroupChange, onChanged }: RulesCardProps) {
       })}
     </ol>
   ) : (
-    <div className="pr-table-wrap">
-      <table className="pr-table pr-rules-table">
-        <thead>
-          <tr>
-            <th scope="col">Priority</th>
-            <th scope="col">Rule</th>
-            <th scope="col">Condition</th>
-            <th scope="col">Adjust</th>
-            <th scope="col">Active</th>
-            <th scope="col">
+    <div className={TABLE_WRAP}>
+      <Table className="text-[13px] text-(--pr-primary)">
+        <TableHeader className="[&_tr]:border-0">
+          <TableRow className={TABLE_HEAD_ROW}>
+            <TableHead scope="col" className={`${TABLE_HEAD} pl-4`}>
+              Priority
+            </TableHead>
+            <TableHead scope="col" className={TABLE_HEAD}>
+              Rule
+            </TableHead>
+            <TableHead scope="col" className={TABLE_HEAD}>
+              Condition
+            </TableHead>
+            <TableHead scope="col" className={TABLE_HEAD}>
+              Adjust
+            </TableHead>
+            <TableHead scope="col" className={TABLE_HEAD}>
+              Active
+            </TableHead>
+            <TableHead scope="col" className={TABLE_HEAD}>
               <span className="pr-visually-hidden">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {groupRules.map((rule, index) => (
-            <tr key={rule.id} className={rule.is_active ? undefined : 'is-inactive'}>
-              <td>
+            <TableRow key={rule.id} className={`${TABLE_ROW}${rule.is_active ? '' : ' opacity-60'}`}>
+              <TableCell className="py-0 pr-3 pl-4">
                 <span className="pr-priority">
                   <strong>{index + 1}</strong>
                   {moveButtons(rule, index)}
                 </span>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell className="px-3 py-0">
                 {rule.name}
                 {fareClassPill(rule)}
-              </td>
-              <td>{describeCondition(rule)}</td>
-              <td className="pr-adjust">{formatAdjustment(rule.adjustment_pct)}</td>
-              <td>{activeSwitch(rule)}</td>
-              <td className="pr-row-actions">{removeButton(rule)}</td>
-            </tr>
+              </TableCell>
+              <TableCell className="px-3 py-0">{describeCondition(rule)}</TableCell>
+              <TableCell className="pr-adjust px-3 py-0">{formatAdjustment(rule.adjustment_pct)}</TableCell>
+              <TableCell className="px-3 py-0">{activeSwitch(rule)}</TableCell>
+              <TableCell className="pr-row-actions px-3 py-0">{removeButton(rule)}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 
   return (
     <>
-      <div role="status" aria-live="polite" className="pr-banner-slot">
-        {notice && <p className="pr-banner is-success">{notice.text}</p>}
-      </div>
-
-      <section className="pr-card" aria-labelledby="rules-title">
-        <div className="pr-card-head">
-          <h2 id="rules-title" className="pr-card-title">
+      <Card aria-labelledby="rules-title">
+        <CardHeader>
+          <CardTitle id="rules-title" role="heading" aria-level={2} className={CARD_TITLE}>
             Rules
-          </h2>
-          <p className="pr-muted">Priority decides which rule wins inside a group.</p>
-        </div>
+          </CardTitle>
+          <CardDescription>Priority decides which rule wins inside a group.</CardDescription>
+        </CardHeader>
+        <CardContent className={CARD_BODY}>
+          <Notice text={notice?.text} />
+          <Tabs value={group} onValueChange={(next) => onGroupChange(next as RuleGroup)}>
+            <TabsList aria-label="Rule groups">
+              {RULE_GROUPS.map((id) => (
+                <TabsTrigger key={id} value={id}>
+                  {groupLabel(id)}
+                  {rules.data && ` · ${all.filter((rule) => rule.rule_group === id).length}`}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <TabsContent value={group} className="pr-matrix-body">
+              {body}
+            </TabsContent>
+          </Tabs>
 
-        <div className="pr-tabs pr-card-tabs" role="tablist" aria-label="Rule groups">
-          {RULE_GROUPS.map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              id={`rule-tab-${id}`}
-              aria-selected={group === id}
-              aria-controls="rule-panel"
-              className={`pr-button ${group === id ? 'is-primary' : 'is-outline'}`}
-              onClick={() => onGroupChange(id)}
-            >
-              {groupLabel(id)}
-              {rules.data && ` · ${all.filter((rule) => rule.rule_group === id).length}`}
-            </button>
-          ))}
-        </div>
+          {actionError && (
+            <Alert variant="destructive">
+              <AlertDescription className="block">{actionError}</AlertDescription>
+            </Alert>
+          )}
 
-        <div id="rule-panel" role="tabpanel" aria-labelledby={`rule-tab-${group}`} className="pr-matrix-body">
-          {body}
-        </div>
-
-        {actionError && (
-          <div className="pr-callout is-error" role="alert">
-            {actionError}
+          <div className="pr-card-footer pr-rules-footer">
+            <Button variant="outline" type="button" disabled={!rules.data || busy !== null} onClick={() => setAdding(true)}>
+              + Add {groupLabel(group).toLowerCase()} rule
+            </Button>
+            <p className="pr-muted">Removing a rule is a soft delete. Quotes already made keep their frozen price.</p>
           </div>
-        )}
-
-        <div className="pr-card-footer pr-rules-footer">
-          <button type="button" className="pr-button is-outline" disabled={!rules.data || busy !== null} onClick={() => setAdding(true)}>
-            + Add {groupLabel(group).toLowerCase()} rule
-          </button>
-          <p className="pr-muted">Removing a rule is a soft delete. Quotes already made keep their frozen price.</p>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
       {isPhone && rules.data && pageCount > 1 && (
         <nav className="pr-pager" aria-label={`${groupLabel(group)} rule pages`}>
@@ -292,14 +302,14 @@ export function RulesCard({ group, onGroupChange, onChanged }: RulesCardProps) {
           </p>
           <div className="pr-pager-buttons">
             {currentPage > 0 && (
-              <button type="button" className="pr-button is-outline" onClick={() => setPage(currentPage - 1)}>
+              <Button variant="outline" type="button" onClick={() => setPage(currentPage - 1)}>
                 ‹ Previous
-              </button>
+              </Button>
             )}
             {currentPage < pageCount - 1 && (
-              <button type="button" className="pr-button is-primary" onClick={() => setPage(currentPage + 1)}>
+              <Button type="button" onClick={() => setPage(currentPage + 1)}>
                 Next page ›
-              </button>
+              </Button>
             )}
           </div>
         </nav>
@@ -321,18 +331,15 @@ export function RulesCard({ group, onGroupChange, onChanged }: RulesCardProps) {
       )}
 
       {removing && (
-        <Dialog labelledBy="remove-rule-title" className="pr-confirm" onClose={() => busy === null && setRemoving(null)}>
-          <div className="pr-confirm-head">
-            <h2 id="remove-rule-title">Remove rule {removing.name}?</h2>
-            <button type="button" className="pr-icon-button" aria-label="Close" disabled={busy !== null} onClick={() => setRemoving(null)}>
-              ×
-            </button>
-          </div>
-          <div className="pr-warning">
-            <strong>This rule will stop applying to new quotes.</strong>
-            <span>Quotes already issued keep their frozen price.</span>
-          </div>
-          <div className="pr-confirm-summary">
+        <Dialog onClose={() => busy === null && setRemoving(null)}>
+          <DialogHeader>
+            <DialogTitle>Remove rule {removing.name}?</DialogTitle>
+          </DialogHeader>
+          <Alert>
+            <AlertTitle>This rule will stop applying to new quotes.</AlertTitle>
+            <AlertDescription>Quotes already issued keep their frozen price.</AlertDescription>
+          </Alert>
+          <div className="grid gap-1 rounded-md border bg-muted/50 p-3 text-sm [&>span]:text-muted-foreground">
             <strong>
               {removing.name} · {groupLabel(removing.rule_group)}
             </strong>
@@ -342,23 +349,24 @@ export function RulesCard({ group, onGroupChange, onChanged }: RulesCardProps) {
             </span>
           </div>
           {removeError && (
-            <div className="pr-callout is-error pr-confirm-error" role="alert">
-              {removeError}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription className="block">{removeError}</AlertDescription>
+            </Alert>
           )}
-          <div className="pr-confirm-actions">
-            <button type="button" className="pr-button is-outline" disabled={busy !== null} onClick={() => setRemoving(null)}>
+          <DialogFooter>
+            <Button variant="outline" type="button" disabled={busy !== null} onClick={() => setRemoving(null)}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="destructive"
               type="button"
-              className="pr-button is-danger-solid"
+
               disabled={busy !== null}
               onClick={() => void confirmRemove(removing)}
             >
               {busy === removing.id ? 'Removing…' : 'Remove rule'}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </Dialog>
       )}
     </>

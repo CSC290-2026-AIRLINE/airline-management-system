@@ -3,6 +3,13 @@ import { errorMessage, SEAT_TYPES, usePricingApi, type PriceSimulation, type Sea
 import { useLoad } from '../hooks/useLoad'
 import { promoStatus } from '../taxes-promos/promo-format'
 import { seatTypeLabel } from './describe'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Label } from '@staff-web/components/ui/label'
+import { Input } from '@staff-web/components/ui/input'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { CARD_TITLE } from '../components/card-styles'
 
 const AMOUNT = /^\d+(\.\d{1,2})?$/
 const MAX_AMOUNT = 9_999_999_999.99 // NUMERIC(12,2)
@@ -92,9 +99,9 @@ export function SimulatorCard({ variant, refreshKey, onClose }: SimulatorCardPro
     const id = `sim-${field}`
     return (
       <div className="pr-field">
-        <label htmlFor={id}>{label}</label>
+        <Label htmlFor={id}>{label}</Label>
         <span className="pr-amount-field">
-          <input
+          <Input
             id={id}
             className="pr-fare-input"
             inputMode="decimal"
@@ -121,8 +128,8 @@ export function SimulatorCard({ variant, refreshKey, onClose }: SimulatorCardPro
       <div className="pr-sim-row">
         {amountInput('baseFare', 'Base fare', result?.currency ?? '')}
         <div className="pr-field">
-          <label htmlFor="sim-departure">Departure</label>
-          <input
+          <Label htmlFor="sim-departure">Departure</Label>
+          <Input
             id="sim-departure"
             type="date"
             value={form.departure}
@@ -136,36 +143,36 @@ export function SimulatorCard({ variant, refreshKey, onClose }: SimulatorCardPro
       <div className="pr-sim-row">
         {amountInput('seatsLeft', 'Seats left', '%')}
         <div className="pr-field">
-          <label htmlFor="sim-seat">Seat type</label>
-          <select id="sim-seat" value={form.seatType} onChange={(e) => set('seatType', e.target.value as SeatType)}>
+          <Label htmlFor="sim-seat">Seat type</Label>
+          <NativeSelect id="sim-seat" value={form.seatType} onChange={(e) => set('seatType', e.target.value as SeatType)}>
             {SEAT_TYPES.map((type) => (
-              <option key={type} value={type}>
+              <NativeSelectOption key={type} value={type}>
                 {seatTypeLabel(type)}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </div>
       </div>
 
       <div className="pr-field">
-        <label htmlFor="sim-promo">Promo code</label>
-        <select id="sim-promo" value={form.promoCode} onChange={(e) => set('promoCode', e.target.value)}>
-          <option value="">None</option>
+        <Label htmlFor="sim-promo">Promo code</Label>
+        <NativeSelect id="sim-promo" value={form.promoCode} onChange={(e) => set('promoCode', e.target.value)}>
+          <NativeSelectOption value="">None</NativeSelectOption>
           {livePromos.map((promo) => (
-            <option key={promo.id} value={promo.code}>
+            <NativeSelectOption key={promo.id} value={promo.code}>
               {promo.code}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
         {promos.error && <span className="pr-field-error">Could not load promo codes</span>}
       </div>
 
       {requestError ? (
-        <div className="pr-callout is-error" role="alert">
-          {requestError}
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="block">{requestError}</AlertDescription>
+        </Alert>
       ) : !result ? (
-        <p className="pr-state">Working out the price…</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">Working out the price…</p>
       ) : (
         <>
           <p className="pr-sim-note">
@@ -204,32 +211,34 @@ export function SimulatorCard({ variant, refreshKey, onClose }: SimulatorCardPro
   if (variant === 'page') {
     return (
       <section className="pr-editor-page" aria-labelledby="sim-title">
-        <button type="button" className="pr-back-link" onClick={onClose}>
+        <Button variant="link" type="button" className="h-auto w-fit p-0" onClick={onClose}>
           ‹ Pricing rules
-        </button>
+        </Button>
         <h2 id="sim-title" className="pr-editor-page-title">
           Price simulator
         </h2>
         <p className="pr-sim-lead">Dry run, nothing is saved</p>
-        <div className="pr-card">{body}</div>
+        <Card>
+          <CardContent>{body}</CardContent>
+        </Card>
       </section>
     )
   }
 
   return (
-    <section className="pr-card" aria-labelledby="sim-title">
-      <div className="pr-card-head has-action">
+    <Card aria-labelledby="sim-title">
+      <CardHeader className="flex items-start justify-between gap-4">
         <div>
-          <h2 id="sim-title" className="pr-card-title">
+          <CardTitle id="sim-title" role="heading" aria-level={2} className={CARD_TITLE}>
             Price simulator
-          </h2>
-          <p className="pr-muted">Dry run, nothing is saved</p>
+          </CardTitle>
+          <CardDescription>Dry run, nothing is saved</CardDescription>
         </div>
-        <button type="button" className="pr-icon-button" aria-label="Close price simulator" onClick={onClose}>
+        <Button variant="ghost" size="icon" type="button" aria-label="Close price simulator" onClick={onClose}>
           ×
-        </button>
-      </div>
-      {body}
-    </section>
+        </Button>
+      </CardHeader>
+      <CardContent>{body}</CardContent>
+    </Card>
   )
 }

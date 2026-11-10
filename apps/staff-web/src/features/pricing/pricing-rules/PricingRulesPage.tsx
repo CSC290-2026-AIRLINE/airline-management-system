@@ -7,6 +7,8 @@ import { PHONE_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
 import { RulesCard } from './RulesCard'
 import { SeatFeesCard } from './SeatFeesCard'
 import { SimulatorCard } from './SimulatorCard'
+import { Button } from '@staff-web/components/ui/button'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 
 interface PricingRulesPageProps {
   group: RuleGroup
@@ -36,18 +38,18 @@ export function PricingRulesPage({ group, onGroupChange }: PricingRulesPageProps
       description="Within a group the first matching rule wins. Winners of different groups multiply onto the base fare."
       actions={
         !simulatorOpen && (
-          <button type="button" className="pr-button is-outline" onClick={() => setSimulatorOpen(true)}>
+          <Button variant="outline" type="button" onClick={() => setSimulatorOpen(true)}>
             Open price simulator
-          </button>
+          </Button>
         )
       }
     >
       {isLoading ? (
-        <p className="pr-state">Signing in…</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">Signing in…</p>
       ) : !accessToken ? (
-        <div className="pr-callout is-error" role="alert">
-          Your session could not be started. Sign out and sign in again.
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="block">Your session could not be started. Sign out and sign in again.</AlertDescription>
+        </Alert>
       ) : isPhone && simulatorOpen ? (
         // Phone: the simulator is its own page; "‹ Pricing rules" goes back.
         simulator('page')
