@@ -30,21 +30,23 @@ import { RefundStub } from './stubs/refund.stub'
 import { ScreeningStub } from './stubs/screening.stub'
 import { SeatMapStub } from './stubs/seat-map.stub'
 import { SeatService } from './seats/seat.service'
-import { ServiceRequestStub } from './stubs/service-request.stub'
+import { AssistanceService } from './assistance/assistance.service'
 import { SeatMapController } from './seats/seat-map.controller'
 import { SeatMapService } from './seats/seat-map.service'
+import { SeatHoldExpiryService } from './seats/seat-hold-expiry.service'
 
 @Module({
   controllers: [SeatMapController],
   providers: [
     SeatMapService,
+    SeatHoldExpiryService,
     BookingStatusService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },
     { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
     { provide: INVENTORY_PORT, useClass: InventoryStub },
     { provide: SEAT_PORT, useClass: SeatService },
-    { provide: SERVICE_REQUEST_PORT, useClass: ServiceRequestStub },
+    { provide: SERVICE_REQUEST_PORT, useClass: AssistanceService },
     { provide: PRICING_PORT, useClass: PricingStub },
     { provide: LOYALTY_PORT, useClass: LoyaltyStub },
     { provide: CHECKOUT_PORT, useClass: CheckoutStub },
