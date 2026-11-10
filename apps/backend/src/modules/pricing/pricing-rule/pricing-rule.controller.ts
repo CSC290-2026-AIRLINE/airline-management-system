@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes } from '@nestjs/common'
 import { CreatePricingRuleDto } from './dto/create-pricing-rule.dto'
 import { ListPricingRulesDto } from './dto/list-pricing-rules.dto'
 import { ReorderPricingRulesDto } from './dto/reorder-pricing-rules.dto'
@@ -6,8 +6,10 @@ import { SimulatePriceDto } from './dto/simulate-price.dto'
 import { UpdatePricingRuleDto } from './dto/update-pricing-rule.dto'
 import { PricingRuleService } from './pricing-rule.service'
 import { PricingSimulatorService } from './pricing-simulator.service'
+import { pricingValidationPipe } from '../pricing.pipes'
 
 @Controller('staff/pricing-rules')
+@UsePipes(pricingValidationPipe)
 export class PricingRuleController {
   constructor(
     private readonly pricingRuleService: PricingRuleService,

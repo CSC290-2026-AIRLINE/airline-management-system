@@ -1,10 +1,12 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes } from '@nestjs/common'
 import { CreateBaseFareDto } from './dto/create-base-fare.dto'
 import { ListBaseFaresDto } from './dto/list-base-fares.dto'
 import { UpdateBaseFareDto } from './dto/update-base-fare.dto'
 import { BaseFareService } from './base-fare.service'
+import { pricingValidationPipe } from '../pricing.pipes'
 
 @Controller('staff/base-fares')
+@UsePipes(pricingValidationPipe)
 export class BaseFareController {
   constructor(private readonly baseFareService: BaseFareService) {}
 

@@ -1,11 +1,13 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes } from '@nestjs/common'
 import { Public } from '@backend/auth/decorators/public.decorator'
 import { CreateSeatFeeDto } from './dto/create-seat-fee.dto'
 import { LookupSeatFeeDto } from './dto/lookup-seat-fee.dto'
 import { UpdateSeatFeeDto } from './dto/update-seat-fee.dto'
 import { SeatFeeService } from './seat-fee.service'
+import { pricingValidationPipe } from '../pricing.pipes'
 
 @Controller('staff/seat-fees')
+@UsePipes(pricingValidationPipe)
 export class SeatFeeController {
   constructor(private readonly seatFeeService: SeatFeeService) {}
 
@@ -38,6 +40,7 @@ export class SeatFeeController {
 
 // Public so check-in (Feature 6) can price a seat change without a staff token.
 @Controller('seat-fees')
+@UsePipes(pricingValidationPipe)
 export class PublicSeatFeeController {
   constructor(private readonly seatFeeService: SeatFeeService) {}
 

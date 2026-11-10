@@ -1,11 +1,13 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes } from '@nestjs/common'
 import { BaggageChargeQueryDto } from './dto/baggage-charge-query.dto'
 import { CreateBaggageRateDto } from './dto/create-baggage-rate.dto'
 import { ListBaggageRatesDto } from './dto/list-baggage-rates.dto'
 import { UpdateBaggageRateDto } from './dto/update-baggage-rate.dto'
 import { BaggageRateService } from './baggage-rate.service'
+import { pricingValidationPipe } from '../pricing.pipes'
 
 @Controller('staff/baggage-rates')
+@UsePipes(pricingValidationPipe)
 export class BaggageRateController {
   constructor(private readonly baggageRateService: BaggageRateService) {}
 
@@ -38,6 +40,7 @@ export class BaggageRateController {
 
 // Signed-in callers only until Core agrees the final path and access with the baggage / check-in teams.
 @Controller('baggage-charge')
+@UsePipes(pricingValidationPipe)
 export class BaggageChargeController {
   constructor(private readonly baggageRateService: BaggageRateService) {}
 

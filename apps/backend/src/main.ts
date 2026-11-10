@@ -1,5 +1,4 @@
 import cookieParser from 'cookie-parser'
-import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { ConfigService } from '@nestjs/config'
 import { AppModule } from './app.module'
@@ -13,7 +12,6 @@ async function bootstrap() {
   const configService = app.get(ConfigService<EnvConfig, true>)
 
   app.setGlobalPrefix('/api')
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
   app.use(cookieParser())
   app.enableCors({
     origin: Object.keys(APP_ORIGINS),

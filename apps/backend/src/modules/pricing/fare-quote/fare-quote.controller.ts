@@ -1,10 +1,12 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UsePipes } from '@nestjs/common'
 import { CreateFareQuoteDto } from './dto/create-fare-quote.dto'
 import { QuoteFeeDto } from './dto/quote-fee.dto'
 import { FareQuoteService } from './fare-quote.service'
+import { pricingValidationPipe } from '../pricing.pipes'
 
 // Quotes are an audit trail: there is no update or delete route, and there must never be one.
 @Controller('fare-quotes')
+@UsePipes(pricingValidationPipe)
 export class FareQuoteController {
   constructor(private readonly fareQuoteService: FareQuoteService) {}
 
