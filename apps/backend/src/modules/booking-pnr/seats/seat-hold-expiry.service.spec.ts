@@ -16,7 +16,11 @@ describe('SeatHoldExpiryService', () => {
   it('releases only held seats whose expiry has passed according to the booking clock', async () => {
     await expect(service.sweep()).resolves.toBe(2)
     expect(updateMany).toHaveBeenCalledWith({
-      where: { status: 'held', hold_expires_at: { lte: now }, booking_coupon: { booking_segment: { booking: { status: 'confirmed' } } } },
+      where: {
+        status: 'held',
+        hold_expires_at: { lte: now },
+        booking_coupon: { booking_segment: { booking: { status: { in: ['confirmed', 'expired', 'cancelled'] } } } },
+      },
       data: { status: 'released', released_at: now, updated_at: now },
     })
   })
