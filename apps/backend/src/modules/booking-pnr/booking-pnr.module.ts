@@ -58,6 +58,9 @@ import { SeatChangeService } from './seats/seat-change.service'
 import { CheckinSeatMapAdapter } from './providers/checkin-seat-map.adapter'
 import { CheckinSeatProvider } from './providers/checkin-seat.provider'
 import { FlightImpactService } from './flight-events/flight-impact.service'
+import { AssistanceQueueService } from './assistance/assistance-queue.service'
+import { StaffAssistanceController } from './assistance/staff-assistance.controller'
+import { StaffAssistanceService } from './assistance/staff-assistance.service'
 
 @Module({
   // Feature 15's audit writer, for the staff cancellation entry (B7).
@@ -73,6 +76,7 @@ import { FlightImpactService } from './flight-events/flight-impact.service'
     DemoBookingCustomerController,
     SeatMapController,
     SeatChangeController,
+    StaffAssistanceController,
   ],
   providers: [
     SeatMapService,
@@ -80,6 +84,9 @@ import { FlightImpactService } from './flight-events/flight-impact.service'
     CheckinSeatMapAdapter,
     CheckinSeatProvider,
     FlightImpactService,
+    AssistanceQueueService,
+    StaffAssistanceService,
+    AssistanceService,
     SeatHoldExpiryService,
     HoldService,
     StaffBookingLookupService,
@@ -98,7 +105,7 @@ import { FlightImpactService } from './flight-events/flight-impact.service'
     { provide: BOOKING_EVENT_BUS, useClass: LocalBookingEventBus },
     { provide: INVENTORY_PORT, useClass: InventoryService },
     { provide: SEAT_PORT, useClass: SeatService },
-    { provide: SERVICE_REQUEST_PORT, useClass: AssistanceService },
+    { provide: SERVICE_REQUEST_PORT, useExisting: AssistanceService },
     { provide: PRICING_PORT, useClass: PricingStub },
     { provide: LOYALTY_PORT, useClass: LoyaltyStub },
     { provide: CHECKOUT_PORT, useClass: CheckoutStub },

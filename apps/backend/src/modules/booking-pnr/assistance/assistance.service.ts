@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { BookingError } from '../common/booking-error'
 import {
   BOOKING_CLOCK,
@@ -34,13 +34,14 @@ export class AssistanceService implements ServiceRequestPort {
     next: 'accepted' | 'rejected' | 'completed',
     decisionNote?: string,
   ) {
-    if (!['accepted', 'rejected', 'completed'].includes(next)) throw new BadRequestException('Invalid assistance status')
+    if (!['accepted', 'rejected', 'completed'].includes(next))
+      throw new BookingError('INVALID_BOOKING_STATE', 'Invalid assistance status', 422)
     const note = decisionNote?.trim()
-    if (next === 'rejected' && !note) throw new BadRequestException('A rejection reason is required')
+    if (next === 'rejected' && !note) throw new BookingError('INVALID_BOOKING_STATE', 'A rejection reason is required', 422)
     const current = await tx.booking_service_request.findUnique({ where: { id: requestId }, select: { id: true, status: true } })
-    if (!current) throw new NotFoundException('Assistance request not found')
+    if (!current) throw new BookingError('INVALID_BOOKING_STATE', 'Assistance request not found', 404)
     const expected = next === 'completed' ? 'accepted' : 'requested'
-    if (current.status !== expected) throw new ConflictException('This request cannot move to that status')
+    if (current.status !== expected) throw new BookingError('INVALID_BOOKING_STATE', 'This request cannot move to that status', 409)
     const now = this.clock.now()
     const result = await tx.booking_service_request.updateMany({
       where: { id: requestId, status: expected },
@@ -52,16 +53,16 @@ export class AssistanceService implements ServiceRequestPort {
         updated_at: now,
       },
     })
-    if (result.count !== 1) throw new ConflictException('This request was changed by someone else')
+    if (result.count !== 1) throw new BookingError('INVALID_BOOKING_STATE', 'This request was changed by someone else', 409)
     return { requestId, status: next, handledByStaffId: staffId, handledAt: now }
   }
 
   async createForHold(tx: BookingTransaction, requests: ServiceRequestInput[]): Promise<void> {
     const now = this.clock.now()
     for (const request of requests) {
-      if (!CODES.has(request.serviceCode)) throw new BadRequestException('Unsupported assistance code')
+      if (!CODES.has(request.serviceCode)) throw new BookingError('INVALID_BOOKING_STATE', 'Unsupported assistance code', 422)
       if (['UMNR', 'MEDA'].includes(request.serviceCode) && !request.note?.trim()) {
-        throw new BadRequestException('A note is required for this assistance request')
+        throw new BookingError('INVALID_BOOKING_STATE', 'A note is required for this assistance request', 422)
       }
       // Serialize overlapping booking-wide and segment-specific requests, including NULL segment IDs.
       await tx.$queryRaw`SELECT id FROM booking WHERE id = ${request.bookingId}::uuid FOR UPDATE`
@@ -69,12 +70,12 @@ export class AssistanceService implements ServiceRequestPort {
         where: { id: request.bookingPassengerId, booking_id: request.bookingId },
         select: { passenger: { select: { date_of_birth: true } } },
       })
-      if (!passenger) throw new BadRequestException('Passenger does not belong to this booking')
+      if (!passenger) throw new BookingError('INVALID_BOOKING_STATE', 'Passenger does not belong to this booking', 422)
       const segments = await tx.booking_segment.findMany({
         where: { booking_id: request.bookingId, ...(request.bookingSegmentId ? { id: request.bookingSegmentId } : {}) },
         select: { id: true, flight_id: true },
       })
-      if (!segments.length) throw new BadRequestException('No matching booking segment')
+      if (!segments.length) throw new BookingError('INVALID_BOOKING_STATE', 'No matching booking segment', 422)
       const existing = await tx.booking_service_request.findFirst({
         where: {
           booking_passenger_id: request.bookingPassengerId,
@@ -84,12 +85,12 @@ export class AssistanceService implements ServiceRequestPort {
         },
         select: { id: true },
       })
-      if (existing) throw new BadRequestException('An active assistance request already exists')
+      if (existing) throw new BookingError('INVALID_BOOKING_STATE', 'An active assistance request already exists', 409)
       const flights = await tx.flight.findMany({
         where: { id: { in: segments.map((segment) => segment.flight_id) } },
         select: { id: true, dep_at: true, service_date: true },
       })
-      if (flights.length !== segments.length) throw new BadRequestException('Flight not found')
+      if (flights.length !== segments.length) throw new BookingError('INVALID_BOOKING_STATE', 'Flight not found', 422)
       const minimumHours = ['UMNR', 'MEDA'].includes(request.serviceCode) ? 48 : 24
       if (flights.some((flight) => flight.dep_at.getTime() - now.getTime() < minimumHours * 60 * 60 * 1000)) {
         throw new BookingError('ASSISTANCE_TOO_LATE', 'Not enough time remains before departure')
@@ -103,7 +104,7 @@ export class AssistanceService implements ServiceRequestPort {
             return age < 5 || age > 11
           })
         ) {
-          throw new BadRequestException('Unaccompanied minors must be aged 5–11 on departure')
+          throw new BookingError('INVALID_BOOKING_STATE', 'Unaccompanied minors must be aged 5–11 on departure', 422)
         }
       }
       const seats = await tx.seat_assignment.findMany({
@@ -144,7 +145,7 @@ export class AssistanceService implements ServiceRequestPort {
         })
       } catch (error) {
         if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002')
-          throw new BadRequestException('An active assistance request already exists')
+          throw new BookingError('INVALID_BOOKING_STATE', 'An active assistance request already exists', 409)
         throw error
       }
     }

@@ -490,7 +490,7 @@ export interface FlightEventBus {
 // Booking events are published after commit (B1, B6). Feature 13 is the consumer that notifies customers; it finds the
 // recipients from the reference or `listFlightPassengers(flightId)`, so the payload stays small. C6 extends the type
 // with `service_request.updated` when it publishes.
-export type BookingEventType = 'booking.confirmed' | 'booking.cancelled'
+export type BookingEventType = 'booking.confirmed' | 'booking.cancelled' | 'service_request.updated'
 
 export interface BookingEvent {
   type: BookingEventType
