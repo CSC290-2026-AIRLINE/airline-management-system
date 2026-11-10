@@ -19,6 +19,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@staff-web': path.resolve(import.meta.dirname, 'src'),
+      '@customer-web': path.resolve(import.meta.dirname, '../customer-web/src'),
     },
   },
   server: {
