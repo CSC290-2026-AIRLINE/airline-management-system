@@ -5,6 +5,7 @@ import type { ApiErrorBody } from '../api/types'
 import { useBooking } from '../api/useBooking'
 import { AssistanceRequestDialog } from './AssistanceRequestDialog'
 import { AssistanceStatus } from './AssistanceStatus'
+import './booking-assistance-panel.css'
 
 export function BookingAssistancePanel({ reference, onChanged }: { reference: string; onChanged: () => void }) {
   const { fetchWithAuth } = useAppAuth()
@@ -15,7 +16,7 @@ export function BookingAssistancePanel({ reference, onChanged }: { reference: st
   if (!booking || !['held', 'confirmed'].includes(booking.status)) return null
 
   return (
-    <section aria-label="Special assistance">
+    <section className="booking-assistance" aria-label="Special assistance">
       <h2>Special assistance</h2>
       <label>
         Flight
@@ -29,7 +30,7 @@ export function BookingAssistancePanel({ reference, onChanged }: { reference: st
         </select>
       </label>
       {booking.passengers.map((passenger) => (
-        <div key={passenger.bookingPassengerId}>
+        <div className="booking-assistance__passenger" key={passenger.bookingPassengerId}>
           <h3>
             {passenger.firstName} {passenger.lastName}
           </h3>
