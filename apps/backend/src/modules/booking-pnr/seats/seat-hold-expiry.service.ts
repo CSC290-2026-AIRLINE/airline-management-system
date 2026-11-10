@@ -26,7 +26,9 @@ export class SeatHoldExpiryService implements OnModuleInit, OnModuleDestroy {
   async sweep(): Promise<number> {
     const now = this.clock.now()
     const result = await this.db.seat_assignment.updateMany({
-      where: { status: 'held', hold_expires_at: { lte: now } },
+      // The booking-expiry job owns held bookings and releases their seats in the same transaction as inventory.
+      // This job handles short seat-change/check-in holds on already-confirmed bookings.
+      where: { status: 'held', hold_expires_at: { lte: now }, booking_coupon: { booking_segment: { booking: { status: 'confirmed' } } } },
       data: { status: 'released', released_at: now, updated_at: now },
     })
     return result.count
