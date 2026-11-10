@@ -61,6 +61,8 @@ import { FlightImpactService } from './flight-events/flight-impact.service'
 import { AssistanceQueueService } from './assistance/assistance-queue.service'
 import { StaffAssistanceController } from './assistance/staff-assistance.controller'
 import { StaffAssistanceService } from './assistance/staff-assistance.service'
+import { BookingAssistanceController } from './assistance/booking-assistance.controller'
+import { BookingAssistanceService } from './assistance/booking-assistance.service'
 
 @Module({
   // Feature 15's audit writer, for the staff cancellation entry (B7).
@@ -77,6 +79,7 @@ import { StaffAssistanceService } from './assistance/staff-assistance.service'
     SeatMapController,
     SeatChangeController,
     StaffAssistanceController,
+    BookingAssistanceController,
   ],
   providers: [
     SeatMapService,
@@ -86,6 +89,7 @@ import { StaffAssistanceService } from './assistance/staff-assistance.service'
     FlightImpactService,
     AssistanceQueueService,
     StaffAssistanceService,
+    BookingAssistanceService,
     AssistanceService,
     SeatHoldExpiryService,
     HoldService,
