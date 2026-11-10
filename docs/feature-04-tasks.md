@@ -66,7 +66,7 @@ Every task is one step in working out a ticket's price: base fare → rule adjus
    - [ ] Fare class must be live → 404 `FARE_CLASS_NOT_FOUND`
    - [ ] Refuse to delete a fare class that still has live base fares → 409 `FARE_CLASS_IN_USE`
 2. **Fare rule route**
-   - [ ] `GET` and `PATCH /api/staff/fare-classes/:id/rule` over the restriction and fee columns of `fare_class`
+   - [ ] `GET` and `PUT /api/staff/fare-classes/:id/rule` over the restriction and fee columns of `fare_class`
 3. **Pricing settings** (`settings/`)
    - [ ] `GET /api/staff/settings` and `PUT /api/staff/settings/:key`
    - [ ] Closed list of keys:
@@ -104,8 +104,8 @@ Every task is one step in working out a ticket's price: base fare → rule adjus
      - a percentage **or** a fixed amount, never both
      - timestamp validity checked against the simulation clock
      - `max_uses`
-   - [ ] `PROMO_INVALID` with `details.reason`: `unknown`, `expired`, `not_yet_valid`, `exhausted` or `inactive`
-   - [ ] `POST /api/fare-quotes/:id/redeem` is idempotent: insert with `ON CONFLICT DO NOTHING` and increment `used_count` in one transaction
+   - [ ] `PROMO_INVALID` with `details.reason`: `not_found`, `not_started`, `expired`, `exhausted` or `inactive`
+   - [ ] `POST /api/promo-codes/:id/redemptions` (`booking_ref`, `fare_quote_id`) is idempotent per `booking_ref`: insert with `ON CONFLICT DO NOTHING` and increment `used_count` in one transaction; `DELETE /api/promo-codes/:id/redemptions/:booking_ref` releases the use
 7. **Staff pages**
    - [ ] fare classes
    - [ ] base fares
@@ -151,11 +151,11 @@ Every task is about money the airline records and reports. None of it depends on
      - create the matching `expense`
    - [ ] A double-click must not create two expenses. The unique index on `expense(payment_schedule_id)` blocks the second one; map that to 409 or return the existing expense.
    - [ ] Expense CRUD at `/api/staff/expenses`. Reject edits and deletes of expenses that have a `payment_schedule_id` (409).
-4. **Monthly finance summary** (`finance/summary`)
-   - [ ] Recompute a month on demand: `POST /api/staff/finance/summary/:month/recompute`
+4. **Monthly finance summary** (`finance/monthly`)
+   - [ ] Recompute a month on demand: `POST /api/staff/finance/recompute` with `{from, to}`
    - [ ] Cash basis: revenue by the month payment was captured, costs by `incurred_on`
    - [ ] `profit = revenue − pass_through − refunds − maintenance − staff − catering − other`. A CHECK constraint enforces this.
-   - [ ] `GET /api/staff/finance/summary?month=` for staff and Feature 14
+   - [ ] `GET /api/staff/finance/monthly?from=&to=` and `/monthly/:month` for staff and Feature 14
 5. **Staff pages**
    - [ ] currency rates
    - [ ] payment schedules (overdue highlighted; the "Mark paid" button is disabled while the request runs)
@@ -194,13 +194,13 @@ Every task is a charge added on top of the fare, and each one is a near-copy of 
    - [ ] If `calc_type = pct`, then `value <= 100`
    - [ ] Code format: capitals, digits and `_`
 3. **Overweight baggage** (`baggage-rate/`)
-   - [ ] CRUD at `/api/staff/baggage-rates`:
+   - [ ] CRUD at `/api/staff/overweight-baggage-rates`:
      - `fare_class_id`
      - `route_id`: optional; empty means the fare class default
      - `free_allowance_kg`, `rate_per_kg`, `max_bag_kg`
    - [ ] Unique (fare class, route), where an empty route counts as a value
    - [ ] Fare class must be live → 404
-   - [ ] Charge calculation, e.g. `GET /api/baggage-charge?fare_class_id=&route_id=&weight_kg=`:
+   - [ ] Charge calculation, e.g. `GET /api/overweight-baggage-fee?fare_class_id=&route_id=&weight_kg=`:
      - a route-specific rate wins over the default
      - no rate → 404
      - over `max_bag_kg` → 422

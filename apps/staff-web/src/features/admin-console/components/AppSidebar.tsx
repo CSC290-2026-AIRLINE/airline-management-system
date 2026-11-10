@@ -142,7 +142,7 @@ function NavGroup({ label, children }: { label: string; children: ReactNode }) {
         </SidebarGroupLabel>
         <CollapsibleContent className="group-data-[collapsible=icon]:block!">
           <SidebarGroupContent>
-            <SidebarMenu className="pl-4 group-data-[collapsible=icon]:pl-0">{children}</SidebarMenu>
+            <SidebarMenu>{children}</SidebarMenu>
           </SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
