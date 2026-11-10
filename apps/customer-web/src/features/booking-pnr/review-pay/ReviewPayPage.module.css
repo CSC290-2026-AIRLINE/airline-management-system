@@ -75,33 +75,6 @@
   color: var(--f3-ink);
 }
 
-.holdBanner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 14px 16px;
-  border: 1px solid rgba(148, 101, 28, 0.18);
-  border-radius: 10px;
-  background: var(--f3-warning-soft);
-  color: var(--f3-warning);
-  font-size: 14px;
-}
-
-.holdBanner p {
-  margin: 0;
-}
-
-.holdPill {
-  padding: 4px 10px;
-  border: 1px solid rgba(148, 101, 28, 0.25);
-  border-radius: 999px;
-  background: var(--f3-card);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
 .flightRow {
   display: flex;
   justify-content: space-between;

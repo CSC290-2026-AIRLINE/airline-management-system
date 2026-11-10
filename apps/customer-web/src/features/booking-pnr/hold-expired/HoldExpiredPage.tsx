@@ -1,5 +1,7 @@
 import { Link } from '@tanstack/react-router'
+import type { ApiError } from '../api/client'
 import { useBooking } from '../api/useBooking'
+import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { heldSeatCount } from '../lib/booking'
 import { ConfirmedState } from '../review-pay/ConfirmedState'
 import type { HoldExpiredReason } from './types'
@@ -8,22 +10,30 @@ import controls from '../styles/controls.module.css'
 import '../styles/tokens.css'
 
 export function HoldExpiredPage({ reference, reason }: { reference: string; reason: HoldExpiredReason }) {
-  const { booking, error } = useBooking(reference)
+  const { booking, error, isLoading, reload } = useBooking(reference)
 
-  if (booking?.status === 'confirmed') {
+  if (isLoading && !booking) {
+    return <LoadingState reference={reference} />
+  }
+
+  if (error) {
+    return error.status === 404 ? <NotFoundState reference={reference} /> : <ErrorState error={error} onRetry={() => void reload()} />
+  }
+
+  if (!booking) {
+    return <NotFoundState reference={reference} />
+  }
+
+  if (booking.status === 'confirmed') {
     return <ConfirmedState booking={booking} />
   }
 
-  const holdStillActive = booking?.status === 'held' && Date.parse(booking.holdExpiresAt) > Date.parse(booking.serverNow)
+  const holdStillActive = booking.status === 'held' && Date.parse(booking.holdExpiresAt) > Date.parse(booking.serverNow)
   if (holdStillActive) {
     return <ActiveHoldState reference={reference} />
   }
 
-  if (error?.status === 404) {
-    return <NotFoundState reference={reference} />
-  }
-
-  const seatCount = booking ? heldSeatCount(booking) : 0
+  const seatCount = heldSeatCount(booking)
   const seatLabel = seatCount > 0 ? `${seatCount} held seat${seatCount === 1 ? '' : 's'}` : 'held seats'
   const chip = reason === 'refunded' ? 'Payment refunded' : reason === 'cancelled' ? 'Booking cancelled' : 'Hold expired'
   const title =
@@ -69,6 +79,48 @@ function ActiveHoldState({ reference }: { reference: string }) {
             <Link to="/review-pay/$reference" params={{ reference }} className={controls.primary}>
               Return to Review &amp; pay
             </Link>
+            <Link to="/bookings" className={controls.secondary}>
+              Go to My Trips
+            </Link>
+          </div>
+        </section>
+      </div>
+    </main>
+  )
+}
+
+function LoadingState({ reference }: { reference: string }) {
+  return (
+    <main className={styles.page}>
+      <div className={styles.shell}>
+        <section className={styles.card} aria-busy="true">
+          <span className={styles.neutralChip}>Hold expired</span>
+          <h1>Loading booking…</h1>
+          <p className={styles.body}>Checking what happened to booking {reference}.</p>
+        </section>
+      </div>
+    </main>
+  )
+}
+
+/**
+ * The booking could not be read, so the page cannot say what happened to the hold. The customer gets the error and a
+ * way to try again instead of a copy about seats that may still be held.
+ */
+function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
+  return (
+    <main className={styles.page}>
+      <div className={styles.shell}>
+        <section className={styles.card}>
+          <ApiErrorBanner error={error} />
+          <h1>We could not load this booking</h1>
+          <p className={styles.body}>
+            The booking could not be read, so we cannot tell you yet what happened to its hold. Try again in a moment.
+          </p>
+          <div className={styles.actions}>
+            <button type="button" className={controls.primary} onClick={onRetry}>
+              Try again
+            </button>
             <Link to="/bookings" className={controls.secondary}>
               Go to My Trips
             </Link>

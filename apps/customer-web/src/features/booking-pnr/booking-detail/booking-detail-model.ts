@@ -71,13 +71,17 @@ export function partyLabel(passengers: BookingPassenger[]): string {
   return formatPassengerCounts(counts)
 }
 
-/** The chip of the booking itself. A booking whose last flight has left keeps its 'confirmed' status. */
-export function bookingChip(booking: BookingDetail): Chip {
-  if (booking.status === 'confirmed' && hasDeparted(booking)) {
+/**
+ * The chip of the booking itself. A booking whose last flight has left keeps its 'confirmed' status. The status can be
+ * given, because the page shows a hold as expired as soon as its countdown reaches zero, before the server has moved
+ * the booking.
+ */
+export function bookingChip(booking: BookingDetail, status: BookingStatus = booking.status): Chip {
+  if (status === 'confirmed' && hasDeparted(booking)) {
     return { label: 'Completed', tone: 'completed' }
   }
 
-  switch (booking.status) {
+  switch (status) {
     case 'held':
       return { label: 'Held', tone: 'held' }
     case 'confirmed':
@@ -87,7 +91,7 @@ export function bookingChip(booking: BookingDetail): Chip {
     case 'expired':
       return { label: 'Expired', tone: 'expired' }
     default: {
-      const unreachable: never = booking.status
+      const unreachable: never = status
       return unreachable
     }
   }

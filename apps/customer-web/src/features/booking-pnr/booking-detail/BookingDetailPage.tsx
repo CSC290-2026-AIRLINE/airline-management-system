@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ApiError } from '../api/client'
-import type { CancelBookingResult } from '../api/types'
+import type { BookingDetail, BookingStatus, CancelBookingResult } from '../api/types'
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
+import { HoldBanner } from '../components/HoldBanner'
 import { StatusChip } from '../components/StatusChip'
 import { formatDateWithYear, formatMoney } from '../lib/format'
 import controls from '../styles/controls.module.css'
@@ -26,14 +27,16 @@ import {
 import styles from './BookingDetailPage.module.css'
 import '../styles/tokens.css'
 
+// How long the page waits before it asks the server again whether the hold is over. The expiry sweep runs every
+// minute, so a booking can still read as 'held' for a little while after the countdown reached zero.
+const RELOAD_AFTER_EXPIRY_MS = 15_000
+
 /**
  * The Booking Detail page (B12, design frames 08 and 08a): the flights of a booking with their seats and tickets, the
  * passengers with their assistance requests, the payment and the links to the features that are not connected yet.
  */
 export function BookingDetailPage({ reference }: { reference: string }) {
   const { booking, error, isLoading, reload } = useBooking(reference)
-  const [isCancelOpen, setIsCancelOpen] = useState(false)
-  const [cancelled, setCancelled] = useState<CancelBookingResult | null>(null)
 
   if (isLoading && !booking) {
     return <LoadingState />
@@ -47,14 +50,61 @@ export function BookingDetailPage({ reference }: { reference: string }) {
     return <NotFoundState reference={reference} />
   }
 
-  const chip = bookingChip(booking)
+  return <BookingDetailView booking={booking} onReload={reload} />
+}
+
+/**
+ * The booking itself. A booking on hold counts down, and when the countdown reaches zero the page shows the expired
+ * booking and asks the server for the new status, so the customer does not have to reload the page.
+ */
+function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onReload: () => Promise<void> }) {
+  const [isCancelOpen, setIsCancelOpen] = useState(false)
+  const [cancelled, setCancelled] = useState<CancelBookingResult | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  // The countdown reached zero: the hold is over, even if the server has not moved the booking yet.
+  const [holdOver, setHoldOver] = useState(false)
+  // The hold the page already reacted to, so a reload cannot start the countdown over.
+  const answeredHoldRef = useRef<string | null>(null)
+  // Counts the reloads that wait for the expiry sweep to move the booking.
+  const [reloadTick, setReloadTick] = useState(0)
+
+  const handleExpiry = useCallback(() => {
+    if (answeredHoldRef.current === booking.holdExpiresAt) {
+      return
+    }
+    answeredHoldRef.current = booking.holdExpiresAt
+    setHoldOver(true)
+    void onReload()
+  }, [booking.holdExpiresAt, onReload])
+
+  // The hold is over, but the server still says 'held': ask again until the expiry sweep has moved the booking.
+  useEffect(() => {
+    if (!holdOver || booking.status !== 'held') {
+      return
+    }
+    const timer = window.setTimeout(() => {
+      setReloadTick((tick) => tick + 1)
+      void onReload()
+    }, RELOAD_AFTER_EXPIRY_MS)
+    return () => window.clearTimeout(timer)
+  }, [booking.status, holdOver, onReload, reloadTick])
+
+  const status: BookingStatus = booking.status === 'held' && holdOver ? 'expired' : booking.status
+  const chip = bookingChip(booking, status)
   const ordering = orderingWindow(booking)
-  const cancellable = booking.status === 'confirmed' || booking.status === 'held'
+  const cancellable = status === 'confirmed' || status === 'held'
 
   function handleCancelled(result: CancelBookingResult) {
     setIsCancelOpen(false)
     setCancelled(result)
-    void reload()
+    void onReload()
+  }
+
+  /** The booking can no longer be cancelled, because its hold expired while the customer was on the page. */
+  function handleInvalidState(error: ApiError) {
+    setIsCancelOpen(false)
+    setNotice(invalidStateNotice(error))
+    void onReload()
   }
 
   return (
@@ -79,7 +129,7 @@ export function BookingDetailPage({ reference }: { reference: string }) {
             </div>
 
             <div className={styles.headerActions}>
-              {booking.status === 'held' ? (
+              {status === 'held' ? (
                 <Link to="/review-pay/$reference" params={{ reference: booking.reference }} className={controls.primary}>
                   Complete payment
                 </Link>
@@ -94,6 +144,30 @@ export function BookingDetailPage({ reference }: { reference: string }) {
             </div>
           </header>
 
+          {status === 'held' ? (
+            <HoldBanner
+              reference={booking.reference}
+              holdExpiresAt={booking.holdExpiresAt}
+              serverNow={booking.serverNow}
+              onExpire={handleExpiry}
+            />
+          ) : null}
+
+          {status === 'expired' ? (
+            <section className={styles.expiredNotice}>
+              <p className={styles.text}>{notice ?? 'This hold expired and its seats are back on sale. Nothing was charged.'}</p>
+              <div className={styles.expiredActions}>
+                <Link to="/search" className={controls.primary}>
+                  Search again
+                </Link>
+                <Link to="/bookings" className={controls.secondary}>
+                  Go to My Trips
+                </Link>
+              </div>
+            </section>
+          ) : null}
+
+          {notice && status !== 'expired' ? <p className={styles.notice}>{notice}</p> : null}
           {cancelled ? <p className={styles.notice}>{cancelNotice(cancelled)}</p> : null}
 
           <FlightsCard booking={booking} />
@@ -162,7 +236,14 @@ export function BookingDetailPage({ reference }: { reference: string }) {
         </div>
       </main>
 
-      {isCancelOpen ? <CancelBookingDialog booking={booking} onClose={() => setIsCancelOpen(false)} onCancelled={handleCancelled} /> : null}
+      {isCancelOpen ? (
+        <CancelBookingDialog
+          booking={booking}
+          onClose={() => setIsCancelOpen(false)}
+          onCancelled={handleCancelled}
+          onInvalidState={handleInvalidState}
+        />
+      ) : null}
     </>
   )
 }
@@ -173,6 +254,27 @@ function cancelNotice(result: CancelBookingResult): string {
     return `Booking cancelled. A refund of ${formatMoney(result.refund, result.currency)} goes back to your card through refunds (feature 5b).`
   }
   return 'Booking cancelled. Nothing was charged.'
+}
+
+/**
+ * What the page says when the cancel route answers 409 INVALID_BOOKING_STATE, because the booking left the state it was
+ * in while the customer was on the page. The route says which state it is in.
+ */
+function invalidStateNotice(error: ApiError): string {
+  if (statusOfError(error) === 'expired') {
+    return 'This hold expired, so the booking can no longer be cancelled. Its seats are back on sale. Nothing was charged.'
+  }
+  return 'This booking can no longer be cancelled, because it is no longer in the state it was in. Reload the page to see its latest status.'
+}
+
+/** The status the route reports in the details of the error. */
+function statusOfError(error: ApiError): string | null {
+  const details = error.details
+  if (typeof details !== 'object' || details === null || !('status' in details)) {
+    return null
+  }
+  const status = (details as { status?: unknown }).status
+  return typeof status === 'string' ? status : null
 }
 
 function LoadingState() {

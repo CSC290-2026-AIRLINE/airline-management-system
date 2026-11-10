@@ -5,10 +5,10 @@ import type { BookingDetail, BookingServiceRequest } from '../api/types'
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { BookingStepper } from '../components/BookingStepper'
+import { HoldBanner } from '../components/HoldBanner'
 import { heldSeatCount } from '../lib/booking'
 import { toApiError } from '../lib/errors'
-import { formatCabin, formatDate, formatDuration, formatMoney, formatTime } from '../lib/format'
-import { useHoldCountdown } from '../lib/useHoldCountdown'
+import { formatCabin, formatDate, formatMoney, formatTime } from '../lib/format'
 import { CancelHoldDialog } from './CancelHoldDialog'
 import { ConfirmedState } from './ConfirmedState'
 import styles from './ReviewPayPage.module.css'
@@ -137,7 +137,20 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
           </header>
 
           <BookingStepper currentStep={4} />
-          <HoldBanner booking={booking} paused={countdownPaused} />
+          <HoldBanner
+            reference={booking.reference}
+            holdExpiresAt={booking.holdExpiresAt}
+            serverNow={booking.serverNow}
+            paused={countdownPaused}
+            onExpire={() => {
+              void navigate({
+                to: '/hold-expired/$reference',
+                params: { reference: booking.reference },
+                search: { reason: 'expired' },
+                replace: true,
+              })
+            }}
+          />
 
           {confirmError ? <ApiErrorBanner error={confirmError} /> : null}
 
@@ -202,33 +215,6 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
         onConfirm={() => void handleCancel()}
       />
     </>
-  )
-}
-
-function HoldBanner({ booking, paused }: { booking: BookingDetail; paused: boolean }) {
-  const navigate = useNavigate()
-  const remainingMs = useHoldCountdown(
-    booking.holdExpiresAt,
-    booking.serverNow,
-    () => {
-      void navigate({
-        to: '/hold-expired/$reference',
-        params: { reference: booking.reference },
-        search: { reason: 'expired' },
-        replace: true,
-      })
-    },
-    paused,
-  )
-
-  return (
-    <div className={styles.holdBanner}>
-      <p>
-        Seats held for <strong>{formatDuration(remainingMs)}</strong> · booking {booking.reference}. If time runs out, the seats go back on
-        sale.
-      </p>
-      <span className={styles.holdPill}>hold ends {formatTime(booking.holdExpiresAt)} · simulated time</span>
-    </div>
   )
 }
 

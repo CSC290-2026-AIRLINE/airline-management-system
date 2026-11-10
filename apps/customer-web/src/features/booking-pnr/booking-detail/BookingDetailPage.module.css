@@ -86,6 +86,24 @@
   font-size: 14px;
 }
 
+.expiredNotice {
+  padding: 16px 20px;
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+  background: var(--f3-card);
+}
+
+.expiredNotice .text {
+  margin: 0;
+}
+
+.expiredActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .sectionTitle {
   margin: 8px 0 10px;
   font-size: 20px;

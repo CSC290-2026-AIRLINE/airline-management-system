@@ -13,6 +13,8 @@ interface CancelBookingDialogProps {
   booking: BookingDetail
   onClose: () => void
   onCancelled: (result: CancelBookingResult) => void
+  // The booking can no longer be cancelled, because its hold expired while the customer was on the page.
+  onInvalidState?: (error: ApiError) => void
 }
 
 /**
@@ -22,7 +24,7 @@ interface CancelBookingDialogProps {
  *
  * The page mounts the dialog only while it is open, so every open starts with a fresh preview.
  */
-export function CancelBookingDialog({ booking, onClose, onCancelled }: CancelBookingDialogProps) {
+export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidState }: CancelBookingDialogProps) {
   const api = useBookingPnrApi()
   const apiRef = useRef(api)
   const [preview, setPreview] = useState<CancelPreview | null>(null)
@@ -31,10 +33,15 @@ export function CancelBookingDialog({ booking, onClose, onCancelled }: CancelBoo
   const [error, setError] = useState<ApiError | null>(null)
   // A passenger has checked in, so the booking can no longer be cancelled.
   const [isClosed, setIsClosed] = useState(false)
+  const onInvalidStateRef = useRef(onInvalidState)
 
   useEffect(() => {
     apiRef.current = api
   }, [api])
+
+  useEffect(() => {
+    onInvalidStateRef.current = onInvalidState
+  }, [onInvalidState])
 
   useEffect(() => {
     let cancelled = false
@@ -52,6 +59,9 @@ export function CancelBookingDialog({ booking, onClose, onCancelled }: CancelBoo
         const apiError = toApiError(caught)
         if (apiError.code === 'BOOKING_CLOSED') {
           setIsClosed(true)
+        } else if (apiError.code === 'INVALID_BOOKING_STATE') {
+          // The hold expired: the page shows the expired booking instead of a raw error.
+          onInvalidStateRef.current?.(apiError)
         } else {
           setError(apiError)
         }
@@ -78,6 +88,8 @@ export function CancelBookingDialog({ booking, onClose, onCancelled }: CancelBoo
       const apiError = toApiError(caught)
       if (apiError.code === 'BOOKING_CLOSED') {
         setIsClosed(true)
+      } else if (apiError.code === 'INVALID_BOOKING_STATE') {
+        onInvalidStateRef.current?.(apiError)
       } else {
         setError(apiError)
       }
