@@ -1,3 +1,4 @@
+import { airportCity } from '../../booking-search/components/airports'
 import type { BookingListItem } from '../api/types'
 import type { ChipTone } from '../components/StatusChip'
 
@@ -45,7 +46,7 @@ function chipFor(item: BookingListItem, tab: TripTab, countdown: string | null, 
     case 'confirmed':
       return tab === 'past' ? { label: 'Completed', tone: 'completed' } : { label: 'Confirmed', tone: 'confirmed' }
     case 'cancelled':
-      return { label: 'Cancelled', tone: 'cancelled' }
+      return { label: 'Cancelled · refunded', tone: 'cancelled' }
     case 'expired':
       return { label: 'Expired', tone: 'expired' }
     default: {
@@ -126,4 +127,18 @@ export function flightLabel(item: BookingListItem): string {
     return `${item.flightCount} flights`
   }
   return item.flightNumbers[0] ?? ''
+}
+
+// The airport codes of a trip label, e.g. "BKK ⇄ HKT".
+const IATA_CODE = /^[A-Z]{3}$/
+
+/**
+ * The route of a card: "Bangkok ⇄ Phuket" for a return trip, "Bangkok → Chiang Mai" for a one-way trip.
+ * The API sends the airport codes, the customer sees the city names.
+ */
+export function routeLabel(trip: string): string {
+  return trip
+    .split(' ')
+    .map((part) => (IATA_CODE.test(part) ? airportCity(part) : part))
+    .join(' ')
 }

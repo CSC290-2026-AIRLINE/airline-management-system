@@ -4,7 +4,7 @@ import { StatusChip } from '../components/StatusChip'
 import { formatDuration, formatPassengerCounts, formatTripDates } from '../lib/format'
 import { useHoldCountdown } from '../lib/useHoldCountdown'
 import controls from '../styles/controls.module.css'
-import { cardModel, flightLabel, type TripTab } from './booking-card-model'
+import { cardModel, flightLabel, routeLabel, type TripTab } from './booking-card-model'
 import styles from './BookingCard.module.css'
 
 interface BookingCardProps {
@@ -54,7 +54,7 @@ function CardShell({
   return (
     <article className={styles.card}>
       <div className={styles.head}>
-        <p className={styles.route}>{item.trip}</p>
+        <p className={styles.route}>{routeLabel(item.trip)}</p>
         <StatusChip label={model.chip.label} tone={model.chip.tone} className={styles.desktopChip} />
       </div>
 
@@ -82,12 +82,12 @@ function CardShell({
           View trip
         </Link>
         {model.action.kind === 'complete-payment' ? (
-          <Link to="/review-pay/$reference" params={{ reference: item.reference }} className={controls.link}>
+          <Link to="/review-pay/$reference" params={{ reference: item.reference }} className={`${controls.link} ${styles.cardLink}`}>
             {model.action.label}
           </Link>
         ) : null}
         {model.action.kind !== 'none' && model.action.kind !== 'complete-payment' ? (
-          <button type="button" className={controls.link} disabled title={model.action.disabledReason ?? undefined}>
+          <button type="button" className={`${controls.link} ${styles.cardLink}`} disabled title={model.action.disabledReason ?? undefined}>
             {model.action.label}
           </button>
         ) : null}

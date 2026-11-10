@@ -1,3 +1,4 @@
+/* One booking of My Trips (B11): the route and the details on the left, the actions on the right. */
 .card {
   position: relative;
   display: grid;
@@ -8,9 +9,9 @@
     'meta actions';
   column-gap: 20px;
   row-gap: 4px;
-  padding: 20px;
+  padding: 20px 28px 15px;
   border: 1px solid var(--f3-border);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--f3-card);
 }
 
@@ -18,7 +19,7 @@
   grid-area: head;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 13px;
   flex-wrap: wrap;
 }
 
@@ -46,16 +47,23 @@
 
 .actions {
   grid-area: actions;
-  position: relative;
-  z-index: 1;
+  align-self: start;
+  margin-top: 7px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 8px;
 }
 
-.viewTrip {
-  padding: 9px 16px;
+/* The small navy button of the frame: 101 x 37 px. */
+.actions .viewTrip {
+  min-height: 37px;
+  padding: 10px 20px;
+  font-size: 14px;
+}
+
+/* The link under the "View trip" button: "Add meals", "Complete payment", … */
+.actions .cardLink {
   font-size: 13px;
 }
 
@@ -136,7 +144,7 @@
   }
 
   /* The card itself opens the trip, so the button is not needed here. */
-  .viewTrip {
+  .actions .viewTrip {
     display: none;
   }
 
