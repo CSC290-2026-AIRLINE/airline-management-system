@@ -4,7 +4,15 @@ import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
 import { useBookingPnrApi } from '../api/client'
 import type { StaffBookingPage, StaffBookingQuery } from '../api/types'
-import { lookupDate, lookupMoney, lookupQuery, type LookupFilters } from './lookup-utils'
+import {
+  lookupDate,
+  lookupDateRange,
+  lookupMoney,
+  lookupQuery,
+  lookupShortDate,
+  type LookupFilters,
+  type LookupPeriod,
+} from './lookup-utils'
 import { BookingDetailsDialog } from './BookingDetailsDialog'
 import './lookup.css'
 
@@ -41,13 +49,13 @@ function LookupContent() {
   const [filters, setFilters] = useState<LookupFilters>({
     search: reference ?? '',
     dateType: 'booked',
-    period: 'month',
+    period: 'week',
     from: '',
     to: '',
     status: '',
   })
   const [query, setQuery] = useState<StaffBookingQuery>(() =>
-    lookupQuery({ search: reference ?? '', dateType: 'booked', period: 'month', from: '', to: '', status: '' }),
+    lookupQuery({ search: reference ?? '', dateType: 'booked', period: 'week', from: '', to: '', status: '' }),
   )
   const [page, setPage] = useState<StaffBookingPage | null>(null)
   const [loading, setLoading] = useState(true)
@@ -55,7 +63,6 @@ function LookupContent() {
   const [formError, setFormError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
-  const searchActive = !!filters.search.trim()
   useEffect(() => {
     api.current = currentApi
   }, [currentApi])
@@ -79,18 +86,48 @@ function LookupContent() {
       active = false
     }
   }, [query, refresh])
-  function apply(event: FormEvent) {
-    event.preventDefault()
+
+  /**
+   * Runs the current filters. Every filter control calls this on change, so the list narrows as the agent works
+   * rather than after a submit. The search box applies on Enter through the form below, because a free-text query
+   * would otherwise refetch on every keystroke.
+   */
+  function apply(next: LookupFilters) {
     try {
-      const next = lookupQuery(filters, 1, query.pageSize ?? 20)
+      const built = lookupQuery(next, 1, query.pageSize ?? 20)
       setLoading(true)
       setError(null)
       setFormError(null)
       setNotice(null)
-      setQuery(next)
+      setQuery(built)
     } catch (cause) {
       setFormError(cause instanceof Error ? cause.message : 'Check your filter values.')
     }
+  }
+  /** One filter control changed: keep the other values and re-run the query. */
+  function changeFilter<K extends keyof LookupFilters>(key: K, value: LookupFilters[K]) {
+    const next = { ...filters, [key]: value }
+    setFilters(next)
+    apply(next)
+  }
+  /**
+   * Periods map to concrete dates, so switching straight to a custom range would leave From/To empty and fail
+   * validation (frame 01d shows a filled range). Seed it from the period the agent just left, then apply.
+   */
+  function changePeriod(period: LookupPeriod) {
+    const next = { ...filters, period }
+    if (period === 'custom' && (!next.from || !next.to)) {
+      const range = lookupDateRange(filters.period)
+      const today = new Date().toISOString().slice(0, 10)
+      next.from = range.from ?? today
+      next.to = range.to ?? today
+    }
+    setFilters(next)
+    apply(next)
+  }
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    apply(filters)
   }
   function reload() {
     setLoading(true)
@@ -104,35 +141,33 @@ function LookupContent() {
   }
   const start = page?.items.length ? (page.page - 1) * page.pageSize + 1 : 0
   const end = page?.items.length ? start + page.items.length - 1 : 0
+  const range = `${query.dateType === 'travelling' ? 'Travelling' : 'Booked'} ${
+    query.from ? lookupDate(query.from) : 'any date'
+  }${query.to ? ` to ${lookupDate(query.to)}` : ''}`
   return (
     <main className="f3-lookup">
       <header className="f3-lookup-heading">
-        <div>
-          <p className="f3-lookup-eyebrow">STAFF BOOKINGS</p>
-          <h1>Bookings</h1>
-        </div>
-        <a href="/book-for-customer">Book for customer →</a>
+        <h1>Bookings</h1>
       </header>
       <p className="f3-lookup-muted">
         All bookings, newest first. Filter by date or status, or search by reference, name, ticket number or passport.
       </p>
-      <form className="f3-lookup-card f3-lookup-filters" onSubmit={apply} aria-label="Booking search and filters">
-        <label className="f3-lookup-search">
-          Search bookings
-          <Input
-            maxLength={200}
-            placeholder="Reference, passenger name, ticket number or passport"
-            value={filters.search}
-            onChange={(event) => setFilters({ ...filters, search: event.target.value })}
-          />
-        </label>
-        <div className="f3-lookup-filter-row">
+      <form className="f3-lookup-card f3-lookup-filters" onSubmit={submit} aria-label="Booking search and filters">
+        <div className={`f3-lookup-filter-row${filters.period === 'custom' ? ' is-custom' : ''}`}>
+          <label className="f3-lookup-search">
+            Search
+            <Input
+              maxLength={200}
+              placeholder="Reference, passenger name, ticket number or passport"
+              value={filters.search}
+              onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+            />
+          </label>
           <label>
             Date type
             <select
-              disabled={searchActive}
               value={filters.dateType}
-              onChange={(event) => setFilters({ ...filters, dateType: event.target.value as LookupFilters['dateType'] })}
+              onChange={(event) => changeFilter('dateType', event.target.value as LookupFilters['dateType'])}
             >
               <option value="booked">Booked on</option>
               <option value="travelling">Travelling on</option>
@@ -140,11 +175,7 @@ function LookupContent() {
           </label>
           <label>
             Period
-            <select
-              disabled={searchActive}
-              value={filters.period}
-              onChange={(event) => setFilters({ ...filters, period: event.target.value as LookupFilters['period'] })}
-            >
+            <select value={filters.period} onChange={(event) => changePeriod(event.target.value as LookupPeriod)}>
               <option value="all">All dates</option>
               <option value="today">Today</option>
               <option value="week">This week</option>
@@ -154,53 +185,39 @@ function LookupContent() {
               <option value="custom">Custom range</option>
             </select>
           </label>
+          {filters.period === 'custom' && (
+            <>
+              <label>
+                From
+                <Input
+                  type="date"
+                  max={filters.to || undefined}
+                  value={filters.from}
+                  onChange={(event) => changeFilter('from', event.target.value)}
+                />
+              </label>
+              <label>
+                To
+                <Input
+                  type="date"
+                  min={filters.from || undefined}
+                  value={filters.to}
+                  onChange={(event) => changeFilter('to', event.target.value)}
+                />
+              </label>
+            </>
+          )}
           <label>
             Status
-            <select
-              disabled={searchActive}
-              value={filters.status}
-              onChange={(event) => setFilters({ ...filters, status: event.target.value as LookupFilters['status'] })}
-            >
-              <option value="">All statuses</option>
+            <select value={filters.status} onChange={(event) => changeFilter('status', event.target.value as LookupFilters['status'])}>
+              <option value="">All</option>
               <option value="held">Held</option>
               <option value="confirmed">Confirmed</option>
               <option value="cancelled">Cancelled</option>
               <option value="expired">Expired</option>
             </select>
           </label>
-          <Button type="submit" disabled={loading} className="f3-lookup-primary">
-            {loading ? 'Loading…' : 'Search bookings'}
-          </Button>
         </div>
-        {filters.period === 'custom' && (
-          <div className="f3-lookup-custom">
-            <label>
-              From
-              <Input
-                type="date"
-                disabled={searchActive}
-                required={!searchActive}
-                max={filters.to || undefined}
-                value={filters.from}
-                onChange={(event) => setFilters({ ...filters, from: event.target.value })}
-              />
-            </label>
-            <label>
-              To
-              <Input
-                type="date"
-                disabled={searchActive}
-                required={!searchActive}
-                min={filters.from || undefined}
-                value={filters.to}
-                onChange={(event) => setFilters({ ...filters, to: event.target.value })}
-              />
-            </label>
-          </div>
-        )}
-        <p className="f3-lookup-hint">
-          Search looks across every date. Date and status filters apply only when the search box is empty. Dates are in UTC.
-        </p>
         {formError && (
           <p role="alert" className="f3-lookup-error">
             {formError}
@@ -223,12 +240,7 @@ function LookupContent() {
       <section className="f3-lookup-card" aria-label="Booking results" aria-busy={loading}>
         <div className="f3-lookup-results-heading">
           <p aria-live="polite">{loading ? 'Loading bookings…' : `${page?.total ?? 0} bookings`}</p>
-          <span>
-            {query.search
-              ? `Search: “${query.search}”`
-              : `${query.dateType === 'travelling' ? 'Travelling' : 'Booked'} ${query.from ?? 'any date'}${query.to ? ` to ${query.to}` : ''}`}{' '}
-            · newest first
-          </span>
+          <span>{query.search ? `Search: “${query.search}”` : range} · newest first</span>
         </div>
         {!loading && page?.items.length === 0 && (
           <div className="f3-lookup-empty">
@@ -267,16 +279,12 @@ function LookupContent() {
                       {item.trip}
                       <small>Travelling {lookupDate(item.travelDate)}</small>
                     </td>
-                    <td>{lookupDate(item.bookedAt)}</td>
+                    <td>{lookupShortDate(item.bookedAt)}</td>
                     <td>
                       <span className={`f3-lookup-chip is-${item.status}`}>{item.status}</span>
                     </td>
                     <td>
-                      {item.openServiceRequests > 0 ? (
-                        <span className="f3-lookup-chip is-held">{item.openServiceRequests} open</span>
-                      ) : (
-                        'None'
-                      )}
+                      {item.openServiceRequests > 0 && <span className="f3-lookup-chip is-held">{item.openServiceRequests} pending</span>}
                     </td>
                     <td className="f3-lookup-right">{lookupMoney(item.total, item.currency)}</td>
                   </tr>
@@ -290,7 +298,7 @@ function LookupContent() {
             Showing {start} to {end} of {page?.total ?? 0}
           </p>
           <div>
-            <label>
+            <label className="f3-lookup-per-page">
               Per page
               <select
                 aria-label="Bookings per page"
@@ -320,6 +328,9 @@ function LookupContent() {
           </div>
         </footer>
       </section>
+      <p className="f3-lookup-info">
+        Click a booking to open its details. Search looks at every date; the filters only narrow the list when the search box is empty.
+      </p>
       {reference && (
         <BookingDetailsDialog
           key={reference}

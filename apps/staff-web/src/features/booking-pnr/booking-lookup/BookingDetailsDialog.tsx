@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { Button } from '@staff-web/components/ui/button'
 import { useBookingPnrApi } from '../api/client'
 import type { BookingDetail } from '../api/types'
@@ -48,7 +49,7 @@ export function BookingDetailsDialog({ reference, onClose, onChanged }: { refere
   }
   return (
     <dialog
-      className="f3-lookup f3-lookup-modal"
+      className={`f3-lookup f3-lookup-modal${cancelMode ? ' is-cancel' : ''}`}
       ref={dialog}
       aria-labelledby="f3-booking-dialog-title"
       onCancel={(event) => {
@@ -56,15 +57,21 @@ export function BookingDetailsDialog({ reference, onClose, onChanged }: { refere
         if (!busy) onClose()
       }}
     >
-      <header className="f3-lookup-modal-heading">
-        <div>
-          <h2 id="f3-booking-dialog-title">Booking {reference}</h2>
-          {booking && <span className={`f3-lookup-chip is-${booking.status}`}>{booking.status}</span>}
-        </div>
-        <Button type="button" variant="ghost" aria-label="Close booking details" disabled={busy} onClick={onClose}>
-          ×
-        </Button>
-      </header>
+      {!cancelMode && (
+        <header className="f3-lookup-modal-heading">
+          <div>
+            <p className="f3-lookup-eyebrow">Booking</p>
+            <div className="f3-lookup-modal-title">
+              <h2 id="f3-booking-dialog-title">{reference}</h2>
+              {booking && <span className={`f3-lookup-chip is-${booking.status}`}>{booking.status}</span>}
+            </div>
+            {booking && <p className="f3-lookup-modal-sub">Booked by {booking.bookedByStaffId ? 'a staff agent' : 'the customer'}</p>}
+          </div>
+          <button type="button" aria-label="Close booking details" disabled={busy} onClick={onClose}>
+            ×
+          </button>
+        </header>
+      )}
       {loading && <p role="status">Loading booking details…</p>}
       {error && (
         <div role="alert" className="f3-lookup-error">
@@ -78,17 +85,14 @@ export function BookingDetailsDialog({ reference, onClose, onChanged }: { refere
         <>
           <BookingDetailsBody booking={booking} />
           <footer className="f3-lookup-actions">
-            <a href="/assistance">Open assistance queue</a>
-            <div>
-              <Button type="button" variant="outline" onClick={onClose}>
-                Close
+            <Button asChild variant="outline">
+              <Link to="/assistance">Open assistance queue</Link>
+            </Button>
+            {['held', 'confirmed'].includes(booking.status) && (
+              <Button type="button" variant="outline" className="f3-lookup-danger-outline" onClick={() => setCancelMode(true)}>
+                Cancel booking
               </Button>
-              {['held', 'confirmed'].includes(booking.status) && (
-                <Button type="button" variant="destructive" onClick={() => setCancelMode(true)}>
-                  Cancel booking
-                </Button>
-              )}
-            </div>
+            )}
           </footer>
         </>
       )}

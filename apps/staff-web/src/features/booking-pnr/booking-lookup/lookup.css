@@ -53,16 +53,6 @@
   justify-content: space-between;
   gap: 16px;
 }
-.f3-lookup-heading a {
-  font-weight: 600;
-  white-space: nowrap;
-}
-.f3-lookup-eyebrow {
-  color: #677287;
-  font-size: 11px;
-  letter-spacing: 1.2px;
-  font-weight: 700;
-}
 .f3-lookup-muted {
   color: #677287;
 }
@@ -76,11 +66,23 @@
 .f3-lookup-filters {
   padding: 22px;
 }
+/* One row of controls: the search box takes the slack, the rest are fixed-width. The custom range adds its two date
+   fields to the same row, so the bar never grows a second line. */
+.f3-lookup-filter-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px 150px 130px;
+  gap: 16px;
+  align-items: end;
+}
+.f3-lookup-filter-row.is-custom {
+  grid-template-columns: minmax(0, 1fr) 140px 150px 145px 145px 120px;
+}
 .f3-lookup label {
   display: grid;
   gap: 7px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  color: #677287;
 }
 .f3-lookup :is(input:not([type='checkbox']), select) {
   width: 100%;
@@ -93,33 +95,17 @@
   background: white;
   color: #0a1424;
 }
+/* The design draws its own chevron on the selects, so the browser's arrow is hidden. */
+.f3-lookup select {
+  appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235a6679' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+}
 .f3-lookup select:disabled {
   color: #7b8494;
   background: #f1f4f9;
-}
-.f3-lookup-filter-row {
-  display: grid;
-  grid-template-columns: 1fr 1.3fr 1fr auto;
-  gap: 16px;
-  margin-top: 18px;
-  align-items: end;
-}
-.f3-lookup .f3-lookup-primary {
-  min-height: 42px;
-  background: #102544;
-  color: white;
-}
-.f3-lookup-custom {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  max-width: 500px;
-  margin-top: 16px;
-}
-.f3-lookup-hint {
-  color: #677287;
-  font-size: 12px;
-  margin-top: 16px !important;
 }
 .f3-lookup-error,
 .f3-lookup-warning,
@@ -151,7 +137,7 @@
   border-bottom: 1px solid #e6e8ef;
 }
 .f3-lookup-results-heading p {
-  font-weight: 600;
+  font-weight: 700;
 }
 .f3-lookup-results-heading span {
   font-size: 12px;
@@ -206,8 +192,6 @@
   background: transparent;
   padding: 4px 0;
   color: #102544;
-  text-decoration: underline;
-  text-underline-offset: 4px;
   font-weight: 700;
 }
 .f3-lookup-chip {
@@ -246,13 +230,31 @@
   gap: 10px;
   align-items: center;
 }
-.f3-lookup-pagination label {
+/* The per-page control is quiet: it stays a select, but it does not compete with the Previous / Next buttons. */
+.f3-lookup-per-page {
   display: flex;
   align-items: center;
-  white-space: nowrap;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #8a93a3;
 }
-.f3-lookup-pagination select {
-  width: 70px;
+.f3-lookup-per-page select {
+  min-height: 30px;
+  width: 62px;
+  padding: 4px 26px 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #677287;
+  background-position: right 7px center;
+}
+.f3-lookup-info {
+  margin-top: 16px;
+  padding: 14px 18px;
+  border-radius: 8px;
+  background: #eaf0fb;
+  color: #1f408c;
+  font-size: 13px;
 }
 .f3-lookup-sr {
   position: absolute;
@@ -268,11 +270,14 @@
   min-height: 0;
   border: 0;
   border-radius: 12px;
-  width: min(900px, calc(100vw - 32px));
+  width: min(640px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   overflow: auto;
   background: white;
   box-shadow: 0 16px 70px #0a142433;
+}
+.f3-lookup-modal.is-cancel {
+  width: min(560px, calc(100vw - 32px));
 }
 .f3-lookup-modal::backdrop {
   background: #0a142499;
@@ -282,41 +287,99 @@
   justify-content: space-between;
   align-items: start;
   gap: 16px;
-  margin-bottom: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e6e8ef;
 }
 .f3-lookup-modal-heading > div {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.f3-lookup-modal-title {
+  display: flex;
+  gap: 10px;
   flex-wrap: wrap;
   align-items: center;
 }
 .f3-lookup-modal-heading h2 {
   margin: 0;
+  font-size: 24px;
 }
+.f3-lookup-eyebrow {
+  color: #677287;
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+/* The close control is a bordered square, as in the design. */
 .f3-lookup-modal-heading > button {
-  font-size: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #d9dfe9;
+  border-radius: 6px;
+  background: white;
+  color: #0a1424;
+  font-size: 17px;
+  line-height: 1;
 }
-.f3-lookup-detail-columns {
+.f3-lookup-modal-heading > button:hover {
+  background: #f2f4f8;
+}
+/* The cancel action of the details dialog is an outline button in the danger colour, as in the design. */
+.f3-lookup .f3-lookup-danger-outline {
+  border-color: #e5484d;
+  color: #b8171f;
+}
+.f3-lookup .f3-lookup-danger-outline:hover {
+  background: #fdecec;
+  color: #b8171f;
+}
+.f3-lookup-modal-sub {
+  color: #677287;
+  font-size: 13px;
+  margin-top: 6px;
+}
+/* The two-column body of the details dialog: flights and passengers on the first row, tickets and the total below. */
+.f3-lookup-detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 28px;
+  gap: 22px 32px;
+  padding: 18px 0;
+}
+.f3-lookup-detail-grid section {
+  min-width: 0;
+}
+.f3-lookup-detail-grid h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #677287;
 }
 .f3-lookup-detail-item {
-  padding: 12px 0;
-  border-bottom: 1px solid #e6e8ef;
+  padding: 8px 0;
+}
+.f3-lookup-detail-item + .f3-lookup-detail-item {
+  border-top: 1px solid #f0f2f7;
+}
+.f3-lookup-detail-item strong {
+  font-weight: 650;
 }
 .f3-lookup-detail-item p {
   color: #677287;
   font-size: 12px;
-  margin-top: 5px;
+  margin-top: 3px;
 }
-.f3-lookup-contact {
-  margin: 18px 0;
-}
-.f3-lookup-contact > strong {
-  display: block;
-  font-size: 20px;
-  margin-top: 16px;
+.f3-lookup-ticket {
+  color: #0a1424;
+  font-size: 13px;
+  padding: 3px 0;
 }
 .f3-lookup-history {
   list-style: none;
@@ -324,11 +387,8 @@
   margin: 0;
 }
 .f3-lookup-history li {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 10px 0 10px 16px;
-  border-left: 2px solid #d9dfe9;
+  padding: 5px 0;
+  font-size: 13px;
 }
 .f3-lookup-history span,
 .f3-lookup-history small {
@@ -337,15 +397,20 @@
 }
 .f3-lookup-actions {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 12px;
-  margin-top: 26px;
-  flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid #e6e8ef;
 }
 .f3-lookup-actions > div {
   display: flex;
   gap: 10px;
+}
+/* The cancel dialog's own title block: the border sits under the title, not at the top of the dialog. */
+.f3-lookup-cancel-heading {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 .f3-lookup-check {
   display: flex !important;
@@ -358,8 +423,12 @@
   height: 17px;
   accent-color: #102544;
 }
+/* The cancel dialog's amounts sit on a grey panel, one row per line. */
 .f3-lookup-amounts {
-  margin: 22px 0;
+  margin: 18px 0;
+  padding: 4px 18px;
+  border-radius: 8px;
+  background: #f2f4f8;
 }
 .f3-lookup-amounts > div {
   display: flex;
@@ -368,10 +437,22 @@
   padding: 12px 0;
   border-bottom: 1px solid #e6e8ef;
 }
+.f3-lookup-amounts > div:last-child {
+  border-bottom: 0;
+}
+.f3-lookup-amounts dt {
+  color: #0a1424;
+}
 .f3-lookup-amounts dd {
   margin: 0;
   font-weight: 650;
   white-space: nowrap;
+}
+.f3-lookup-amounts .is-fee {
+  color: #b8171f;
+}
+.f3-lookup-amounts .is-refund {
+  font-weight: 700;
 }
 @media (max-width: 700px) {
   .f3-lookup {
@@ -383,20 +464,13 @@
   .f3-lookup-heading h1 {
     font-size: 27px;
   }
-  .f3-lookup-heading a {
-    max-width: 120px;
-    text-align: right;
-    font-size: 12px;
-  }
   .f3-lookup-filters {
     padding: 18px 16px;
   }
-  .f3-lookup-filter-row {
+  .f3-lookup-filter-row,
+  .f3-lookup-filter-row.is-custom {
     grid-template-columns: 1fr 1fr;
     gap: 12px;
-  }
-  .f3-lookup-custom {
-    grid-template-columns: 1fr;
   }
   .f3-lookup-results-heading {
     flex-direction: column;
@@ -416,7 +490,7 @@
   .f3-lookup-modal {
     padding: 20px 16px;
   }
-  .f3-lookup-detail-columns {
+  .f3-lookup-detail-grid {
     grid-template-columns: 1fr;
     gap: 4px;
   }

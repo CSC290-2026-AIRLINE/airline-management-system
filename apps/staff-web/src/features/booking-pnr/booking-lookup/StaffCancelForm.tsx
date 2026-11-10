@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@staff-web/components/ui/button'
 import { useBookingPnrApi } from '../api/client'
 import type { BookingDetail, CancelPreview } from '../api/types'
-import { lookupMoney } from './lookup-utils'
+import { lookupMoney, lookupShortDate } from './lookup-utils'
 
 interface Props {
   booking: BookingDetail
@@ -10,6 +10,18 @@ interface Props {
   onSuccess: () => void
   onBusyChange: (busy: boolean) => void
 }
+
+/** "Somchai Wongchai and 1 other · FL203 · 12 Nov" — the line under the cancel title (frame 01p). */
+function contextLine(booking: BookingDetail): string {
+  const [lead, ...rest] = booking.passengers
+  const names = lead ? `${lead.firstName} ${lead.lastName}` : 'the passenger'
+  const others = rest.length > 0 ? ` and ${rest.length} other${rest.length === 1 ? '' : 's'}` : ''
+  const segment = booking.segments[0]
+  const flight = segment ? segment.flightNumber : ''
+  const date = segment ? lookupShortDate(segment.depAt) : ''
+  return [names + others, flight, date].filter(Boolean).join(' · ')
+}
+
 export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Props) {
   const currentApi = useBookingPnrApi(),
     api = useRef(currentApi)
@@ -58,8 +70,12 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
   }
   return (
     <form onSubmit={(event) => void cancel(event)} aria-label="Staff cancellation">
-      <h3>Cancel booking {booking.reference}?</h3>
-      <p>{booking.passengers.map((person) => `${person.firstName} ${person.lastName}`).join(', ')}</p>
+      <header className="f3-lookup-modal-heading f3-lookup-cancel-heading">
+        <div>
+          <h2 id="f3-booking-dialog-title">Cancel booking {booking.reference}?</h2>
+          <p className="f3-lookup-modal-sub">{contextLine(booking)}</p>
+        </div>
+      </header>
       {!preview && !error && <p role="status">Loading cancellation preview…</p>}
       {preview && (
         <>
@@ -69,12 +85,12 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
               <dd>{lookupMoney(booking.total, booking.currency)}</dd>
             </div>
             <div>
-              <dt>Standard cancellation fee</dt>
-              <dd>{lookupMoney(preview.fee, preview.currency)}</dd>
+              <dt>Cancellation fee</dt>
+              <dd className="is-fee">− {lookupMoney(preview.fee, preview.currency)}</dd>
             </div>
             <div>
-              <dt>Refund before any waiver</dt>
-              <dd>{lookupMoney(preview.refund, preview.currency)}</dd>
+              <dt>Refund</dt>
+              <dd className="is-refund">{lookupMoney(preview.refund, preview.currency)}</dd>
             </div>
             {preview.milesReturned != null && (
               <div>
@@ -84,7 +100,7 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
             )}
           </dl>
           <label>
-            Reason (recorded with the cancellation)
+            Reason (kept in the booking history)
             <select value={reason} required disabled={busy} onChange={(event) => setReason(event.target.value)}>
               <option value="">Choose a reason</option>
               <option>Customer request by phone</option>

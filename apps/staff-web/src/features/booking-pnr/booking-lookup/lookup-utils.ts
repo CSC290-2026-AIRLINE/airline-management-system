@@ -49,5 +49,18 @@ export const lookupDate = (value: string | null, withTime = false) =>
         timeZone: 'UTC',
       }).format(new Date(value))
     : '—'
+/** "26 Oct" — the Booked column of the results table (frame 01). */
+export const lookupShortDate = (value: string | null) =>
+  value ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(value)) : '—'
+/** "Thu 12 Nov" — the flight date of the details dialog (frame 01o). */
+export const lookupDayDate = (value: string | null) =>
+  value
+    ? new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(value))
+    : '—'
+/** "11:40" — the flight times of the details dialog (frame 01o). */
+export const lookupTime = (value: string | null) =>
+  value
+    ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }).format(new Date(value))
+    : '—'
 export const ticketLabel = (value: string | null) =>
   value ? (/^\d{13}$/.test(value) ? `${value.slice(0, 3)}-${value.slice(3)}` : value) : 'Not issued'

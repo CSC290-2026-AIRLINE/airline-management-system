@@ -1,80 +1,81 @@
 import type { BookingDetail } from '../api/types'
-import { lookupDate, lookupMoney, ticketLabel } from './lookup-utils'
+import { lookupDate, lookupDayDate, lookupMoney, lookupTime, ticketLabel } from './lookup-utils'
+
+/**
+ * The amber banner of the details dialog: one sentence per open assistance request, naming the passenger, the service
+ * code and how far away the departure is (frame 01o). The departure comes from the segment the request is for, so the
+ * sentence is about the flight the passenger is actually travelling on.
+ */
+function assistanceNote(booking: BookingDetail, request: BookingDetail['serviceRequests'][number]): string {
+  const passenger = booking.passengers.find((person) => person.bookingPassengerId === request.bookingPassengerId)
+  const segment = booking.segments.find((candidate) => candidate.bookingSegmentId === request.bookingSegmentId) ?? booking.segments[0]
+  const name = passenger ? passenger.firstName : 'The passenger'
+  if (!segment) return `${name} has a ${request.serviceCode} request awaiting review.`
+  const hours = (new Date(segment.depAt).getTime() - new Date(booking.serverNow).getTime()) / 3600000
+  const departure = hours > 24 ? 'Departure is more than 24 hours away.' : 'Departure is within 24 hours.'
+  const state =
+    request.status === 'requested' ? `a ${request.serviceCode} request awaiting review.` : `an accepted ${request.serviceCode} request.`
+  return `${name} has ${state} ${departure}`
+}
 
 export function BookingDetailsBody({ booking }: { booking: BookingDetail }) {
   const open = booking.serviceRequests.filter((request) => request.status === 'requested' || request.status === 'accepted')
   return (
     <>
-      <p className="f3-lookup-muted">
-        Booked by {booking.bookedByStaffId ? 'a staff agent' : 'the customer'} · {lookupDate(booking.bookedAt, true)} UTC
-      </p>
-      {open.length > 0 && (
-        <div className="f3-lookup-warning" role="status">
-          {open.length} open assistance request{open.length === 1 ? '' : 's'}. Check the assistance queue for the latest decisions.
-        </div>
-      )}
-      <div className="f3-lookup-detail-columns">
+      <div className="f3-lookup-detail-grid">
         <section>
           <h3>Flights</h3>
           {booking.segments.map((segment) => (
             <article className="f3-lookup-detail-item" key={segment.bookingSegmentId}>
               <strong>
-                {segment.origin} → {segment.destination}
+                {segment.flightNumber} · {lookupDayDate(segment.depAt)}
               </strong>
               <p>
-                {segment.flightNumber} · {segment.cabin.replace('_', ' ')}
-                {segment.fareClassCode ? ` · ${segment.fareClassCode}` : ''}
-              </p>
-              <p>
-                {lookupDate(segment.depAt, true)} → {lookupDate(segment.arrAt, true)} UTC
+                {segment.origin} {lookupTime(segment.depAt)} → {segment.destination} {lookupTime(segment.arrAt)} ·{' '}
+                {segment.cabin.replace('_', ' ')}
               </p>
             </article>
           ))}
         </section>
         <section>
-          <h3>Passengers & tickets</h3>
-          {booking.passengers.map((person) => (
-            <article className="f3-lookup-detail-item" key={person.bookingPassengerId}>
-              <strong>
-                {person.firstName} {person.lastName}
-              </strong>
-              <p>{person.passengerType}</p>
-              {booking.coupons
-                .filter((coupon) => coupon.bookingPassengerId === person.bookingPassengerId)
-                .map((coupon) => (
-                  <div key={coupon.couponId}>
-                    <p>
-                      {booking.segments.find((segment) => segment.bookingSegmentId === coupon.bookingSegmentId)?.flightNumber} ·{' '}
-                      {coupon.seatCode ?? 'Seat not chosen'}
-                    </p>
-                    <p>
-                      Ticket: {ticketLabel(coupon.ticketNumber)} · {coupon.status}
-                    </p>
-                  </div>
-                ))}
-            </article>
+          <h3>Passengers</h3>
+          {booking.passengers.map((person) => {
+            const seat = booking.coupons.find(
+              (coupon) =>
+                coupon.bookingPassengerId === person.bookingPassengerId &&
+                coupon.bookingSegmentId === booking.segments[0]?.bookingSegmentId,
+            )?.seatCode
+            return (
+              <article className="f3-lookup-detail-item" key={person.bookingPassengerId}>
+                <strong>
+                  {person.firstName} {person.lastName} ({person.passengerType}){seat ? ` · ${seat}` : ''}
+                </strong>
+              </article>
+            )
+          })}
+        </section>
+        <section>
+          <h3>Ticket numbers</h3>
+          {booking.coupons.map((coupon) => (
+            <p className="f3-lookup-ticket" key={coupon.couponId}>
+              {ticketLabel(coupon.ticketNumber)}
+            </p>
           ))}
+        </section>
+        <section>
+          <h3>Total</h3>
+          <div className="f3-lookup-detail-item">
+            <strong>{lookupMoney(booking.total, booking.currency)}</strong>
+            <p>Booked {lookupDate(booking.bookedAt)}</p>
+          </div>
         </section>
       </div>
-      <section className="f3-lookup-contact">
-        <h3>Booking contact</h3>
-        <p>{booking.contactEmail}</p>
-        <p>{booking.contactPhone ?? 'No phone provided'}</p>
-        <strong>Total {lookupMoney(booking.total, booking.currency)}</strong>
-      </section>
-      {booking.serviceRequests.length > 0 && (
-        <section>
-          <h3>Assistance</h3>
-          <ul>
-            {booking.serviceRequests.map((request) => (
-              <li key={request.serviceRequestId}>
-                {request.serviceCode} · {request.status === 'requested' ? 'Pending' : request.status}
-                {request.note ? ` · ${request.note}` : ''}
-                {request.decisionNote ? ` · ${request.decisionNote}` : ''}
-              </li>
-            ))}
-          </ul>
-        </section>
+      {open.length > 0 && (
+        <div className="f3-lookup-warning" role="status">
+          {open.map((request) => (
+            <p key={request.serviceRequestId}>{assistanceNote(booking, request)}</p>
+          ))}
+        </div>
       )}
       <section>
         <h3>History</h3>
@@ -82,17 +83,14 @@ export function BookingDetailsBody({ booking }: { booking: BookingDetail }) {
           <ol className="f3-lookup-history">
             {booking.history.map((entry, index) => (
               <li key={`${entry.at}/${index}`}>
-                <span>{lookupDate(entry.at, true)} UTC</span>
-                <strong>
-                  {entry.event === 'held'
-                    ? 'Booking held'
-                    : entry.event === 'confirmed'
-                      ? 'Payment confirmed, tickets issued'
-                      : entry.event === 'cancelled'
-                        ? 'Booking cancelled'
-                        : 'Booking expired'}
-                </strong>
-                {entry.byStaffId && <small>Staff action</small>}
+                {lookupDate(entry.at)} ·{' '}
+                {entry.event === 'held'
+                  ? 'Booking held'
+                  : entry.event === 'confirmed'
+                    ? 'Payment confirmed, tickets issued'
+                    : entry.event === 'cancelled'
+                      ? 'Booking cancelled'
+                      : 'Booking expired'}
               </li>
             ))}
           </ol>
