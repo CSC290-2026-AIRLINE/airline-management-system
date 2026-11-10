@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { BookingError } from '../common/booking-error'
-import { BOOKING_EVENT_BUS, type BookingEvent, type BookingEventBus } from '../contracts'
+import { BOOKING_EVENT_BUS, BOOKING_READ_PORT, type BookingEvent, type BookingEventBus, type BookingReadPort } from '../contracts'
 import { AssistanceQueueService } from './assistance-queue.service'
 import { AssistanceService } from './assistance.service'
 
@@ -16,6 +16,7 @@ export class StaffAssistanceService {
     private readonly queue: AssistanceQueueService,
     private readonly assistance: AssistanceService,
     @Inject(BOOKING_EVENT_BUS) private readonly events: BookingEventBus,
+    @Inject(BOOKING_READ_PORT) private readonly bookings: BookingReadPort,
   ) {}
 
   // Temporary: this mirrors Member A's active-staff check until the shared staff-only guard is available.
@@ -35,6 +36,10 @@ export class StaffAssistanceService {
 
   async review(userId: string, requestId: string, status: Exclude<Status, 'requested'>, decisionNote?: string) {
     const staffId = await this.requireStaff(userId)
+    const request = await this.db.booking_service_request.findUnique({ where: { id: requestId }, select: { booking_passenger_id: true } })
+    if (!request) throw new BookingError('INVALID_BOOKING_STATE', 'Assistance request not found', 404)
+    const booking = await this.bookings.getBookingForPassenger(request.booking_passenger_id)
+    if (!booking) throw new BookingError('INVALID_BOOKING_STATE', 'Booking not found', 404)
     const result = await this.db.$transaction(async (tx) => {
       const original = await tx.booking_service_request.findUnique({
         where: { id: requestId },
@@ -46,26 +51,18 @@ export class StaffAssistanceService {
           service_code: true,
           note: true,
           requested_at: true,
-          booking_passenger: {
-            select: {
-              booking: {
-                select: { booking_reference: true, customer_id: true, booking_segment: { select: { id: true, flight_id: true } } },
-              },
-            },
-          },
         },
       })
       if (!original) throw new BookingError('INVALID_BOOKING_STATE', 'Assistance request not found', 404)
       const updated = await this.assistance.reviewRequest(tx, requestId, staffId, status, decisionNote)
-      const booking = original.booking_passenger.booking
       const event: BookingEvent = {
         type: 'service_request.updated',
         bookingId: original.booking_id,
-        reference: booking.booking_reference,
-        customerId: booking.customer_id,
-        flightIds: booking.booking_segment
-          .filter((segment) => !original.booking_segment_id || segment.id === original.booking_segment_id)
-          .map((segment) => segment.flight_id),
+        reference: booking.reference,
+        customerId: booking.customerId,
+        flightIds: booking.segments
+          .filter((segment) => !original.booking_segment_id || segment.bookingSegmentId === original.booking_segment_id)
+          .map((segment) => segment.flightId),
         occurredAt: updated.handledAt,
       }
       return {

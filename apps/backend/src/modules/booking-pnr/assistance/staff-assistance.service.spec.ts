@@ -1,5 +1,5 @@
 import type { DbService } from '@backend/db/db.service'
-import type { BookingEventBus, BookingTransaction } from '../contracts'
+import type { BookingEventBus, BookingReadPort, BookingTransaction } from '../contracts'
 import type { AssistanceQueueService } from './assistance-queue.service'
 import type { AssistanceService } from './assistance.service'
 import { StaffAssistanceService } from './staff-assistance.service'
@@ -22,11 +22,13 @@ describe('StaffAssistanceService', () => {
   const queue = { list: jest.fn() }
   const assistance = { reviewRequest: jest.fn() }
   const events = { publish: jest.fn() }
+  const bookings = { getBookingForPassenger: jest.fn() }
   const service = new StaffAssistanceService(
-    { staff, $transaction: transaction } as unknown as DbService,
+    { staff, booking_service_request: requests, $transaction: transaction } as unknown as DbService,
     queue as unknown as AssistanceQueueService,
     assistance as unknown as AssistanceService,
     events as unknown as BookingEventBus,
+    bookings as unknown as BookingReadPort,
   )
 
   beforeEach(() => {
@@ -40,9 +42,11 @@ describe('StaffAssistanceService', () => {
       service_code: 'WCHR',
       note: null,
       requested_at: now,
-      booking_passenger: {
-        booking: { booking_reference: 'ABC123', customer_id: 'customer', booking_segment: [{ id: 'segment', flight_id: 'flight' }] },
-      },
+    })
+    bookings.getBookingForPassenger.mockResolvedValue({
+      reference: 'ABC123',
+      customerId: 'customer',
+      segments: [{ bookingSegmentId: 'segment', flightId: 'flight' }],
     })
     assistance.reviewRequest.mockResolvedValue({ status: 'accepted', handledAt: now })
     events.publish.mockResolvedValue(undefined)
