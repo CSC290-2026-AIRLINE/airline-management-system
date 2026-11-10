@@ -1,19 +1,32 @@
 import type { SeatPickerProps } from '../components/contracts'
+import type { Cabin } from '../api/types'
 import './seat-picker.css'
 
-export function SeatPicker({ seats, selectedSeatCode, disabledSeatCodes = [], passengerLabel, onSelect }: SeatPickerProps) {
+type SeatPickerWithCabinProps = SeatPickerProps & { selectedCabin?: Cabin }
+
+export function SeatPicker({
+  seats,
+  selectedSeatCode,
+  disabledSeatCodes = [],
+  passengerLabel,
+  selectedCabin,
+  onSelect,
+}: SeatPickerWithCabinProps) {
   const rows = [...new Set(seats.map((seat) => seat.row))].sort((a, b) => a - b)
 
   if (seats.length === 0) return <p>No seats are available to display.</p>
 
   return (
     <section className="seat-picker" aria-label={passengerLabel ? `Seats for ${passengerLabel}` : 'Choose a seat'}>
+      {selectedCabin && <p className="seat-picker__cabin">Your cabin: {selectedCabin.replace('_', ' ')}</p>}
       <div className="seat-picker__legend" aria-label="Seat legend">
         <span>Available</span>
         <span>Extra legroom</span>
         <span>Exit row</span>
         <span>Selected</span>
-        <span>Unavailable</span>
+        <span>Held</span>
+        <span>Taken</span>
+        <span>Blocked</span>
       </div>
       <div className="seat-picker__rows">
         {rows.map((row) => (
@@ -24,18 +37,19 @@ export function SeatPicker({ seats, selectedSeatCode, disabledSeatCodes = [], pa
               .map((seat, index) => {
                 const selected = selectedSeatCode === seat.seatCode
                 const disabled = seat.state !== 'available' || disabledSeatCodes.includes(seat.seatCode)
-                const label = `${seat.seatCode}, ${seat.type.replace('_', ' ')}, ${disabled ? 'unavailable' : 'available'}${seat.fee > 0 ? `, ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(seat.fee)}` : ''}`
+                const seatState = seat.state === 'available' && disabled ? 'unavailable' : seat.state
+                const label = `${seat.seatCode}, ${seat.type.replace('_', ' ')}, ${seatState}${seat.fee > 0 ? `, ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(seat.fee)}` : ''}`
                 return (
                   <button
                     key={seat.seatCode}
                     type="button"
-                    className={`seat-picker__seat seat-picker__seat--${seat.type}${index === 3 ? ' seat-picker__seat--aisle' : ''}`}
+                    className={`seat-picker__seat seat-picker__seat--${seat.type} seat-picker__seat--${seatState}${index === 3 ? ' seat-picker__seat--aisle' : ''}${selectedCabin === seat.cabin ? ' seat-picker__seat--cabin' : ''}`}
                     disabled={disabled}
                     aria-label={label}
                     aria-pressed={selected}
                     onClick={() => onSelect(seat.seatCode)}
                   >
-                    {seat.column}
+                    {seat.state === 'taken' || seat.state === 'blocked' ? '×' : seat.column}
                   </button>
                 )
               })}
