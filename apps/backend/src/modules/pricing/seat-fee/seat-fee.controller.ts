@@ -1,5 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes } from '@nestjs/common'
-import { Public } from '@backend/auth/decorators/public.decorator'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
 import { CreateSeatFeeDto } from './dto/create-seat-fee.dto'
 import { LookupSeatFeeDto } from './dto/lookup-seat-fee.dto'
 import { UpdateSeatFeeDto } from './dto/update-seat-fee.dto'
@@ -26,7 +25,7 @@ export class SeatFeeController {
     return this.seatFeeService.create(dto)
   }
 
-  @Patch(':id')
+  @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSeatFeeDto) {
     return this.seatFeeService.update(id, dto)
   }
@@ -38,15 +37,14 @@ export class SeatFeeController {
   }
 }
 
-// Public so check-in (Feature 6) can price a seat change without a staff token.
+// Any signed-in caller: check-in (Feature 6) prices a seat choice or upgrade. Stores nothing.
 @Controller('seat-fees')
 @UsePipes(pricingValidationPipe)
 export class PublicSeatFeeController {
   constructor(private readonly seatFeeService: SeatFeeService) {}
 
-  @Public()
-  @Get()
-  lookup(@Query() query: LookupSeatFeeDto) {
-    return this.seatFeeService.lookup(query.cabin, query.seat_type)
+  @Get('price')
+  price(@Query() query: LookupSeatFeeDto) {
+    return this.seatFeeService.price(query.cabin, query.seat_type, query.from_seat_type)
   }
 }

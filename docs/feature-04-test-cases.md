@@ -159,7 +159,7 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | FQ-01 | **Worked example** | Base fare 100. Active only: an urgency rule +10% matching the flight's days out, a load rule +15% with `max_seats_left_pct: 100`, VAT 7%, and SAVE10. `POST /fare-quotes` | `{"flight_id":"<id>","fare_class_id":"<id>","promo_code":"SAVE10"}` | 201. 100.00 → 110.00 → 126.50 → 113.85 → **121.82**. Lines: +10.00, +16.50, −12.65, +7.97 | |
 | FQ-02 | Lines add up | Add up the FQ-01 lines | None | The sum equals `total_amount` exactly | |
 | FQ-03 | Saved facts | `GET /fare-quotes/:id` | None | Same lines, `currency`, `expires_at` = `quoted_at` + hold minutes | |
-| FQ-04 | Unknown quote | `GET /fare-quotes/:id` | Random UUID | 404 `FARE_QUOTE_NOT_FOUND` | |
+| FQ-04 | Unknown quote | `GET /fare-quotes/:id` | Random UUID | 404 `QUOTE_NOT_FOUND` | |
 | FQ-05 | Reuse inside window | Send FQ-01 again | Same body | Same quote `id`, no new row | |
 | FQ-06 | Different key | Send FQ-01 with a different promo or `seat_type` | Changed body | New quote `id` | |
 | FQ-07 | After expiry | Set hold to 1 minute, make a quote, wait over 1 minute, send it again | Same body | New quote `id` | |
@@ -170,8 +170,8 @@ Set `quote_hold_minutes` back to `15` afterwards.
 | FQ-12 | Not bookable | Flight status `cancelled`, or already departed | That `flight_id` | 409 `FLIGHT_NOT_BOOKABLE` | |
 | FQ-13 | Check beats reuse | Make a quote, cancel the flight, send it again inside the window | Same body | 409 `FLIGHT_NOT_BOOKABLE`, not the saved quote | |
 | FQ-14 | Inactive class | Turn the fare class off | Same body | 404 `FARE_CLASS_NOT_FOUND` | |
-| FQ-15 | Advance purchase | Set `min_advance_purchase_days` above the flight's days out | Same body | 422 `ADVANCE_PURCHASE_REQUIRED`, with both day counts in `details` | |
-| FQ-16 | No base fare | Fare class with no base fare on that route | That `fare_class_id` | 422 `BASE_FARE_MISSING` | |
+| FQ-15 | Advance purchase | Set `min_advance_purchase_days` above the flight's days out | Same body | 422 `FARE_ADVANCE_PURCHASE_NOT_MET`, with both day counts in `details` | |
+| FQ-16 | No base fare | Fare class with no base fare on that route | That `fare_class_id` | 422 `BASE_FARE_NOT_FOUND` | |
 | FQ-17 | Promo: unknown | `POST /fare-quotes` | `promo_code: "NOPE"` | 422 `PROMO_INVALID`, `details.reason: "unknown"` | |
 | FQ-18 | Promo: expired | `POST /fare-quotes` | Code past `valid_to` | 422 `PROMO_INVALID`, reason `expired` | |
 | FQ-19 | Promo: not yet valid | `POST /fare-quotes` | Code before `valid_from` | 422 `PROMO_INVALID`, reason `not_yet_valid` | |
@@ -192,7 +192,7 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 | FE-04 | Capped at the total | Quote from a class with `cancel_fee_flat: 500` | `type=cancel` | `fee` equals the quote total | |
 | FE-05 | Uses the snapshot | Change the live class's fees, repeat FE-01 | None | Fee unchanged | |
 | FE-06 | Bad type | `GET /fare-quotes/:id/fee?type=refund` | None | 400 (validation) | |
-| FE-07 | Unknown quote | `GET /fare-quotes/:id/fee?type=cancel` | Random UUID | 404 `FARE_QUOTE_NOT_FOUND` | |
+| FE-07 | Unknown quote | `GET /fare-quotes/:id/fee?type=cancel` | Random UUID | 404 `QUOTE_NOT_FOUND` | |
 
 ### Promo redemption
 
@@ -203,7 +203,7 @@ Use a class with `refundable: true`, `cancel_fee_flat: 10`, `cancel_fee_pct: 5`,
 | RD-03 | No promo | Redeem a quote with no promo | None | 200, `redeemed: false`, `promo_code_id: null` | |
 | RD-04 | Last use taken | Code with `max_uses: 1`, two quotes (different seat type). Redeem both | None | First 200, second 422 `PROMO_INVALID`, reason `exhausted`. `used_count` stays 1 | |
 | RD-05 | Switched off later | Make a quote, turn the promo off, redeem | None | 200, counted: the price was already agreed | |
-| RD-06 | Unknown quote | `POST /fare-quotes/:id/redeem` | Random UUID | 404 `FARE_QUOTE_NOT_FOUND` | |
+| RD-06 | Unknown quote | `POST /fare-quotes/:id/redeem` | Random UUID | 404 `QUOTE_NOT_FOUND` | |
 
 ## Seat fees
 
@@ -255,14 +255,14 @@ Use a default rate with allowance 20 kg, rate 100 per kg, maximum 32 kg.
 | BG-13 | Charge, whole kg | Same | `weight_kg=25` | `charge: 500` | |
 | BG-14 | Charge, rounds up | Same | `weight_kg=25.4` | `chargeable_kg: 6`, `charge: 600` | |
 | BG-15 | Charge, at maximum | Same | `weight_kg=32` | `charge: 1200` | |
-| BG-16 | Too heavy | Same | `weight_kg=33` | 422 `BAGGAGE_TOO_HEAVY` | |
+| BG-16 | Too heavy | Same | `weight_kg=33` | 422 `BAG_TOO_HEAVY` | |
 | BG-17 | Override wins | Same, plus `route_id` of BG-02 | `weight_kg=25` | `charge: 750` | |
 | BG-18 | Falls back to default | Same, with another `route_id` | `weight_kg=25` | `charge: 500` | |
-| BG-19 | No rate | Class with no rate | `weight_kg=25` | 404 `BAGGAGE_RATE_NOT_FOUND` | |
+| BG-19 | No rate | Class with no rate | `weight_kg=25` | 404 `OVERWEIGHT_RATE_NOT_FOUND` | |
 | BG-20 | Bad weight | Same | `weight_kg=0`, then `abc` | 400 (validation) both times | |
 | BG-21 | No limit | Rate with `max_bag_kg: null` | `weight_kg=100` | Charged, not refused | |
 | BG-22 | Inactive rate | Turn the override off | BG-17 | Uses the default: `charge: 500` | |
-| BG-23 | Delete and re-add | `DELETE`, `GET` it, then send BG-01 | None | 204, 404 `BAGGAGE_RATE_NOT_FOUND`, 201 | |
+| BG-23 | Delete and re-add | `DELETE`, `GET` it, then send BG-01 | None | 204, 404 `OVERWEIGHT_RATE_NOT_FOUND`, 201 | |
 
 ## Currency rates
 

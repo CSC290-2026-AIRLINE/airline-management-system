@@ -1,5 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { SettingService } from '../setting/setting.service'
+import type { TaxFeeService } from '../tax-fee/tax-fee.service'
 import { SeatFeeService } from './seat-fee.service'
 
 // The real DbService loads @nestjs/config (ESM only), which Jest cannot load. The tests never use it: they pass `db` below.
@@ -7,6 +9,11 @@ jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
 
 const ID = '22222222-2222-2222-2222-222222222222'
 const seatFee = { id: ID, cabin: 'economy', seat_type: 'exit_row', amount: 300, deleted_at: null }
+
+const VAT = { code: 'VAT', name: 'VAT', kind: 'tax', calc_type: 'pct', value: '7.00' }
+const AIRPORT_FEE = { code: 'APT', name: 'Airport fee', kind: 'fee', calc_type: 'flat', value: '700.00' }
+const taxFees = { findAll: jest.fn() }
+const settings = { getBaseCurrency: jest.fn() }
 
 describe('SeatFeeService', () => {
   let service: SeatFeeService
@@ -16,7 +23,9 @@ describe('SeatFeeService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
-    service = new SeatFeeService(db as unknown as DbService)
+    taxFees.findAll.mockResolvedValue([VAT, AIRPORT_FEE])
+    settings.getBaseCurrency.mockResolvedValue('USD')
+    service = new SeatFeeService(db as unknown as DbService, taxFees as unknown as TaxFeeService, settings as unknown as SettingService)
   })
 
   it('lists only live seat fees', async () => {
@@ -33,7 +42,7 @@ describe('SeatFeeService', () => {
     const error = await service.findOne(ID).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'SEAT_FEE_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'SEAT_FEE_NOT_FOUND' } })
   })
 
   it('refuses a cabin + seat type that already has a live fee', async () => {
@@ -42,7 +51,7 @@ describe('SeatFeeService', () => {
     const error = await service.create({ cabin: 'economy', seat_type: 'exit_row', amount: 400 }).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
-    expect((error as ConflictException).getResponse()).toMatchObject({ code: 'SEAT_FEE_EXISTS' })
+    expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'SEAT_FEE_EXISTS' } })
     expect(db.seat_fee.create).not.toHaveBeenCalled()
   })
 
@@ -109,6 +118,41 @@ describe('SeatFeeService', () => {
     const error = await service.lookup('first', 'exit_row').catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'SEAT_FEE_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'SEAT_FEE_NOT_FOUND' } })
+  })
+
+  describe('price (GET /seat-fees/price)', () => {
+    const fees: Record<string, { amount: number }> = { normal: { amount: 0 }, exit_row: { amount: 300 }, extra_legroom: { amount: 400 } }
+
+    beforeEach(() => {
+      db.seat_fee.findFirst.mockImplementation(({ where }: { where: { seat_type: string } }) =>
+        Promise.resolve({ ...seatFee, seat_type: where.seat_type, ...fees[where.seat_type] }),
+      )
+    })
+
+    it('returns the amount, currency and percent taxes, and no flat tax', async () => {
+      const price = await service.price('economy', 'exit_row')
+
+      expect(price).toMatchObject({ amount: 300, currency: 'USD', total: 321, from_seat_type: null })
+      expect(price.taxes).toEqual([{ code: 'VAT', name: 'VAT', kind: 'tax', rate_pct: 7, amount: 21 }])
+    })
+
+    it('charges only the difference on an upgrade', async () => {
+      const price = await service.price('economy', 'extra_legroom', 'exit_row')
+
+      expect(price).toMatchObject({ amount: 100, from_seat_type: 'exit_row', total: 107 })
+    })
+
+    it('never charges less than 0 on a downgrade', async () => {
+      const price = await service.price('economy', 'normal', 'exit_row')
+
+      expect(price).toMatchObject({ amount: 0, total: 0 })
+    })
+
+    it('throws SEAT_FEE_NOT_FOUND for a seat type with no fee', async () => {
+      db.seat_fee.findFirst.mockResolvedValue(null)
+
+      await expect(service.price('economy', 'exit_row')).rejects.toBeInstanceOf(NotFoundException)
+    })
   })
 })

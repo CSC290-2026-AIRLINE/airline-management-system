@@ -12,7 +12,7 @@ export type TaxFeeCalcType = (typeof TAX_FEE_CALC_TYPES)[number]
 // Closed list, matching the CHECK on pricing_setting.key. The defaults are used only while the seed has not inserted a row.
 export const PRICING_SETTING_DEFAULTS = {
   quote_hold_minutes: '15',
-  base_currency: 'THB',
+  base_currency: 'USD',
 } as const
 export type PricingSettingKey = keyof typeof PRICING_SETTING_DEFAULTS
 export const MAX_QUOTE_HOLD_MINUTES = 1440

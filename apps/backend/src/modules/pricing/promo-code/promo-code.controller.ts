@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
 import { CreatePromoCodeDto } from './dto/create-promo-code.dto'
 import { PromoQuotesDto } from './dto/promo-quotes.dto'
 import { UpdatePromoCodeDto } from './dto/update-promo-code.dto'
@@ -31,7 +31,7 @@ export class PromoCodeController {
     return this.promoCodeService.create(dto)
   }
 
-  @Patch(':id')
+  @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePromoCodeDto) {
     return this.promoCodeService.update(id, dto)
   }

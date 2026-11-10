@@ -12,7 +12,7 @@ const baseFare = { id: ID, route_id: ROUTE_ID, fare_class_id: FARE_CLASS_ID, amo
 const dto = { route_id: ROUTE_ID, fare_class_id: FARE_CLASS_ID, amount: 1500 }
 
 function codeOf(error: unknown) {
-  return ((error as NotFoundException | ConflictException).getResponse() as { code: string }).code
+  return ((error as NotFoundException | ConflictException).getResponse() as { error: { code: string } }).error.code
 }
 
 describe('BaseFareService', () => {

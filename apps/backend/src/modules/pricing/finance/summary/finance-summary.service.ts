@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { PricingErrorCode, pricingError } from '../../pricing.errors'
-import { monthStart, simulatedNow, type ExpenseCategory } from '../finance.constants'
-import { SummaryQueryDto } from './dto/summary-query.dto'
+import { monthStart, simulatedNow, simulatedToday, type ExpenseCategory } from '../finance.constants'
 
 // A Prisma Decimal or a plain number: both have toFixed.
 type Numeric = number | { toFixed(decimalPlaces: number): string }
@@ -39,26 +38,35 @@ export class FinanceSummaryService {
     return this.db.finance_monthly_summary.upsert({ where: { month: start }, create: { month: start, ...row }, update: row })
   }
 
-  find({ month, from, to }: SummaryQueryDto) {
-    if (month && !from && !to) {
-      return this.findOne(month)
+  // Rebuilds every month from `from` to `to`, oldest first. Capped so one request cannot lock the table for years.
+  async recomputeRange(from: string, to: string) {
+    const months = monthsBetween(from, to)
+    const rows: Awaited<ReturnType<FinanceSummaryService['recompute']>>[] = []
+    for (const month of months) {
+      rows.push(await this.recompute(month))
     }
-    if (!month && from && to) {
-      return this.findRange(from, to)
-    }
-    throw new BadRequestException(
-      pricingError(PricingErrorCode.FINANCE_SUMMARY_QUERY_INVALID, 'Use either ?month=2026-11 or ?from=2026-01&to=2026-12'),
-    )
+    return rows
   }
 
-  async findOne(month: string) {
+  // The summary row plus what is behind it: the month's expenses and the payments still scheduled from today on.
+  async findMonth(month: string) {
     const summary = await this.db.finance_monthly_summary.findUnique({ where: { month: monthStart(month) } })
     if (!summary) {
       throw new NotFoundException(
         pricingError(PricingErrorCode.FINANCE_SUMMARY_NOT_FOUND, `No summary for ${month} yet; recompute it first`),
       )
     }
-    return summary
+    const [expenses, upcomingPayments] = await Promise.all([
+      this.db.expense.findMany({
+        where: { deleted_at: null, incurred_on: { gte: monthStart(month), lt: monthStart(month, 1) } },
+        orderBy: [{ incurred_on: 'asc' }, { created_at: 'asc' }],
+      }),
+      this.db.payment_schedule.findMany({
+        where: { deleted_at: null, status: 'scheduled', due_date: { gte: simulatedToday() } },
+        orderBy: { due_date: 'asc' },
+      }),
+    ])
+    return { ...summary, expenses, upcoming_payments: upcomingPayments }
   }
 
   // Only months that were recomputed have a row, so a range can have gaps.
@@ -100,6 +108,25 @@ export class FinanceSummaryService {
   private incomeFor(): Pick<SummaryAmounts, 'revenue_amount' | 'pass_through_amount' | 'refund_amount'> {
     return { revenue_amount: '0.00', pass_through_amount: '0.00', refund_amount: '0.00' }
   }
+}
+
+const MAX_RECOMPUTE_MONTHS = 36
+
+// '2026-01', '2026-03' → ['2026-01', '2026-02', '2026-03'].
+function monthsBetween(from: string, to: string): string[] {
+  if (from > to) {
+    throw new BadRequestException(pricingError(PricingErrorCode.FINANCE_SUMMARY_QUERY_INVALID, 'from must not be after to'))
+  }
+  const months: string[] = []
+  for (let cursor = monthStart(from); cursor <= monthStart(to); cursor = monthStart(cursor.toISOString().slice(0, 7), 1)) {
+    months.push(cursor.toISOString().slice(0, 7))
+    if (months.length > MAX_RECOMPUTE_MONTHS) {
+      throw new BadRequestException(
+        pricingError(PricingErrorCode.FINANCE_SUMMARY_QUERY_INVALID, `Recompute at most ${MAX_RECOMPUTE_MONTHS} months at a time`),
+      )
+    }
+  }
+  return months
 }
 
 // profit = revenue − pass-through − refunds − maintenance − staff − catering − other. The table's CHECK demands this exactly,

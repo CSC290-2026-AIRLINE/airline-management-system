@@ -26,7 +26,7 @@ export class BaggageRateService {
   async findOne(id: string) {
     const rate = await this.db.overweight_baggage_rate.findFirst({ where: { id, deleted_at: null }, include: INCLUDE_LABELS })
     if (!rate) {
-      throw new NotFoundException(pricingError(PricingErrorCode.BAGGAGE_RATE_NOT_FOUND, `Baggage rate ${id} not found`))
+      throw new NotFoundException(pricingError(PricingErrorCode.OVERWEIGHT_RATE_NOT_FOUND, `Baggage rate ${id} not found`))
     }
     return rate
   }
@@ -82,25 +82,25 @@ export class BaggageRateService {
   }
 
   // Charge for one bag: a rate for this route wins, otherwise the fare class default (route_id null).
-  async calculateCharge(fareClassId: string, weightKg: number, routeId?: string) {
+  async calculateCharge(fareClassId: string, weightKg: number, routeId?: string, heaviestBagKg?: number, extraAllowanceKg = 0) {
     const rate = (routeId && (await this.findLiveRate(fareClassId, routeId))) || (await this.findLiveRate(fareClassId, null))
     if (!rate) {
       throw new NotFoundException(
-        pricingError(PricingErrorCode.BAGGAGE_RATE_NOT_FOUND, `No baggage rate for fare class ${fareClassId}`, {
+        pricingError(PricingErrorCode.OVERWEIGHT_RATE_NOT_FOUND, `No baggage rate for fare class ${fareClassId}`, {
           fare_class_id: fareClassId,
           ...(routeId && { route_id: routeId }),
         }),
       )
     }
 
-    const freeAllowanceKg = Number(rate.free_allowance_kg)
+    const freeAllowanceKg = Number(rate.free_allowance_kg) + extraAllowanceKg
     const ratePerKg = Number(rate.rate_per_kg)
     const maxBagKg = toNumberOrNull(rate.max_bag_kg)
     // Too heavy is refused, not charged: the bag has to go as cargo.
-    if (maxBagKg !== null && weightKg > maxBagKg) {
+    if (maxBagKg !== null && heaviestBagKg !== undefined && heaviestBagKg > maxBagKg) {
       throw new UnprocessableEntityException(
-        pricingError(PricingErrorCode.BAGGAGE_TOO_HEAVY, `A bag of ${weightKg} kg is over the ${maxBagKg} kg limit and must go as cargo`, {
-          weight_kg: weightKg,
+        pricingError(PricingErrorCode.BAG_TOO_HEAVY, `A bag of ${heaviestBagKg} kg is over the ${maxBagKg} kg limit and must go as cargo`, {
+          heaviest_bag_kg: heaviestBagKg,
           max_bag_kg: maxBagKg,
         }),
       )

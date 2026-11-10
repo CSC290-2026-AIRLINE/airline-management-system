@@ -44,7 +44,7 @@ const APPROVAL_POLICIES = [
 ]
 const PRICING_SETTINGS = [
   { key: 'quote_hold_minutes', value: '15' },
-  { key: 'base_currency', value: 'THB' },
+  { key: 'base_currency', value: 'USD' },
 ]
 
 // Feature 6: the final demo needs two gates at one airport. The visa rows are examples, not real visa policy

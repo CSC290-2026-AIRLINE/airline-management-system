@@ -83,7 +83,7 @@ describe('PromoCodeService', () => {
     const error = await errorOf(service.findOne(PROMO_ID))
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect(error.getResponse()).toMatchObject({ code: 'PROMO_CODE_NOT_FOUND' })
+    expect(error.getResponse()).toMatchObject({ error: { code: 'PROMO_CODE_NOT_FOUND' } })
   })
 
   describe('create', () => {
@@ -125,7 +125,7 @@ describe('PromoCodeService', () => {
       const error = await errorOf(service.create({ ...save10, ...change }))
 
       expect(error).toBeInstanceOf(BadRequestException)
-      expect(error.getResponse()).toMatchObject({ code: 'PROMO_CODE_INVALID' })
+      expect(error.getResponse()).toMatchObject({ error: { code: 'PROMO_CODE_INVALID' } })
       expect(db.promo_code.create).not.toHaveBeenCalled()
     })
 
@@ -135,7 +135,7 @@ describe('PromoCodeService', () => {
       const error = await errorOf(service.create(save10))
 
       expect(error).toBeInstanceOf(ConflictException)
-      expect(error.getResponse()).toMatchObject({ code: 'PROMO_CODE_TAKEN', details: { promo_code_id: OTHER_ID } })
+      expect(error.getResponse()).toMatchObject({ error: { code: 'PROMO_CODE_TAKEN', details: { promo_code_id: OTHER_ID } } })
     })
 
     it('maps a unique violation from the database to PROMO_CODE_TAKEN', async () => {
@@ -179,7 +179,7 @@ describe('PromoCodeService', () => {
       const error = await errorOf(service.update(PROMO_ID, { max_uses: 2 }))
 
       expect(error).toBeInstanceOf(BadRequestException)
-      expect(error.getResponse()).toMatchObject({ details: { fields: ['max_uses'] } })
+      expect(error.getResponse()).toMatchObject({ error: { details: { fields: ['max_uses'] } } })
     })
 
     it('allows clearing max_uses to make a code unlimited', async () => {
@@ -224,7 +224,7 @@ describe('PromoCodeService', () => {
       id: 'q1',
       seat_type: null,
       total_amount: '121.82',
-      currency: 'THB',
+      currency: 'USD',
       quoted_at: new Date('2026-10-30T00:00:00.000Z'),
       fare_class: { code: 'Y' },
       flight: { flight_number: 'TG999', dep_at: new Date('2026-11-06T00:00:00.000Z'), route: { origin: 'BKK', destination: 'CNX' } },
@@ -255,7 +255,7 @@ describe('PromoCodeService', () => {
         id: 'q1',
         seat_type: null,
         total_amount: '121.82',
-        currency: 'THB',
+        currency: 'USD',
         quoted_at: quote.quoted_at,
         fare_class_code: 'Y',
         flight_number: 'TG999',
@@ -273,7 +273,7 @@ describe('PromoCodeService', () => {
       const error = await errorOf(service.findQuotes('NOPE'))
 
       expect(error).toBeInstanceOf(NotFoundException)
-      expect(error.getResponse()).toMatchObject({ code: 'PROMO_CODE_NOT_FOUND' })
+      expect(error.getResponse()).toMatchObject({ error: { code: 'PROMO_CODE_NOT_FOUND' } })
     })
   })
 
@@ -312,7 +312,7 @@ describe('PromoCodeService', () => {
       const error = await errorOf(service.checkPromo('SAVE10', now))
 
       expect(error).toBeInstanceOf(UnprocessableEntityException)
-      expect(error.getResponse()).toMatchObject({ code: 'PROMO_INVALID', details: { reason } })
+      expect(error.getResponse()).toMatchObject({ error: { code: 'PROMO_INVALID', details: { reason } } })
     })
   })
 })

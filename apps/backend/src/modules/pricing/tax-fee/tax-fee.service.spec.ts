@@ -51,7 +51,7 @@ describe('TaxFeeService', () => {
     const error = await service.findOne(ID).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'TAX_FEE_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'TAX_FEE_NOT_FOUND' } })
   })
 
   it('refuses a code already used by a live row', async () => {
@@ -60,7 +60,7 @@ describe('TaxFeeService', () => {
     const error = await service.create({ code: 'VAT', name: 'VAT again', kind: 'tax', calc_type: 'pct', value: 7 }).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
-    expect((error as ConflictException).getResponse()).toMatchObject({ code: 'TAX_FEE_CODE_TAKEN' })
+    expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'TAX_FEE_CODE_TAKEN' } })
     expect(db.tax_fee.create).not.toHaveBeenCalled()
   })
 
@@ -77,7 +77,7 @@ describe('TaxFeeService', () => {
     const error = await service.create({ code: 'BAD', name: 'Bad tax', kind: 'tax', calc_type: 'pct', value: 150 }).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(BadRequestException)
-    expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'TAX_FEE_PCT_TOO_HIGH' })
+    expect((error as BadRequestException).getResponse()).toMatchObject({ error: { code: 'TAX_FEE_PCT_TOO_HIGH' } })
     expect(db.tax_fee.create).not.toHaveBeenCalled()
   })
 

@@ -29,7 +29,7 @@ describe('SettingService', () => {
 
     expect(settings).toEqual([
       expect.objectContaining({ key: 'quote_hold_minutes', value: '20' }),
-      { key: 'base_currency', value: 'THB', updated_at: null, updated_by: null },
+      { key: 'base_currency', value: 'USD', updated_at: null, updated_by: null },
     ])
   })
 
@@ -37,14 +37,14 @@ describe('SettingService', () => {
     const error = await service.update('tax_rate', '7', USER_ID).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'SETTING_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'SETTING_NOT_FOUND' } })
   })
 
   it('refuses to change base_currency', async () => {
     const error = await service.update('base_currency', 'USD', USER_ID).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
-    expect((error as ConflictException).getResponse()).toMatchObject({ code: 'SETTING_READ_ONLY' })
+    expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'SETTING_READ_ONLY' } })
     expect(db.pricing_setting.upsert).not.toHaveBeenCalled()
   })
 
@@ -84,7 +84,7 @@ describe('SettingService', () => {
   it('falls back to defaults when the rows are missing', async () => {
     db.pricing_setting.findUnique.mockResolvedValue(null)
 
-    expect(await service.getBaseCurrency()).toBe('THB')
+    expect(await service.getBaseCurrency()).toBe('USD')
     expect(await service.getQuoteHoldMinutes()).toBe(15)
   })
 })

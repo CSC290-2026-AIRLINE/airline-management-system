@@ -24,21 +24,25 @@ export const PricingErrorCode = {
   PROMO_CODE_TAKEN: 'PROMO_CODE_TAKEN',
   PROMO_CODE_INVALID: 'PROMO_CODE_INVALID',
   PROMO_INVALID: 'PROMO_INVALID',
-  FARE_QUOTE_NOT_FOUND: 'FARE_QUOTE_NOT_FOUND',
+  QUOTE_NOT_FOUND: 'QUOTE_NOT_FOUND',
   FLIGHT_NOT_FOUND: 'FLIGHT_NOT_FOUND',
-  FLIGHT_NOT_BOOKABLE: 'FLIGHT_NOT_BOOKABLE',
-  ADVANCE_PURCHASE_REQUIRED: 'ADVANCE_PURCHASE_REQUIRED',
-  BASE_FARE_MISSING: 'BASE_FARE_MISSING',
+  FLIGHT_DEPARTED: 'FLIGHT_DEPARTED',
+  FLIGHT_CANCELLED: 'FLIGHT_CANCELLED',
+  FARE_CLASS_UNAVAILABLE: 'FARE_CLASS_UNAVAILABLE',
+  QUOTE_EXPIRED: 'QUOTE_EXPIRED',
+  CURRENCY_UNKNOWN: 'CURRENCY_UNKNOWN',
+  SEAT_TYPE_UNKNOWN: 'SEAT_TYPE_UNKNOWN',
+  FARE_ADVANCE_PURCHASE_NOT_MET: 'FARE_ADVANCE_PURCHASE_NOT_MET',
   UPSTREAM_UNAVAILABLE: 'UPSTREAM_UNAVAILABLE',
   CURRENCY_RATE_NOT_FOUND: 'CURRENCY_RATE_NOT_FOUND',
   CURRENCY_CODE_TAKEN: 'CURRENCY_CODE_TAKEN',
   CURRENCY_IS_BASE: 'CURRENCY_IS_BASE',
   PAYMENT_SCHEDULE_NOT_FOUND: 'PAYMENT_SCHEDULE_NOT_FOUND',
   PAYMENT_SCHEDULE_PAID: 'PAYMENT_SCHEDULE_PAID',
-  BAGGAGE_RATE_NOT_FOUND: 'BAGGAGE_RATE_NOT_FOUND',
+  OVERWEIGHT_RATE_NOT_FOUND: 'OVERWEIGHT_RATE_NOT_FOUND',
   BAGGAGE_RATE_EXISTS: 'BAGGAGE_RATE_EXISTS',
   BAGGAGE_RATE_INVALID: 'BAGGAGE_RATE_INVALID',
-  BAGGAGE_TOO_HEAVY: 'BAGGAGE_TOO_HEAVY',
+  BAG_TOO_HEAVY: 'BAG_TOO_HEAVY',
   EXPENSE_NOT_FOUND: 'EXPENSE_NOT_FOUND',
   EXPENSE_FROM_SCHEDULE: 'EXPENSE_FROM_SCHEDULE',
   FINANCE_SUMMARY_NOT_FOUND: 'FINANCE_SUMMARY_NOT_FOUND',
@@ -46,10 +50,10 @@ export const PricingErrorCode = {
 } as const
 export type PricingErrorCode = (typeof PricingErrorCode)[keyof typeof PricingErrorCode]
 
-// Body for every pricing error: { code, message, details? }. Pass it to a Nest exception, e.g.
+// Body for every pricing error: { error: { code, message, details? } }. Pass it to a Nest exception, e.g.
 // throw new NotFoundException(pricingError(PricingErrorCode.FARE_CLASS_NOT_FOUND, '...'))
 export function pricingError(code: PricingErrorCode, message: string, details?: Record<string, unknown>) {
-  return { code, message, ...(details && { details }) }
+  return { error: { code, message, ...(details && { details }) } }
 }
 
 // Prisma P2002 = unique constraint violated. Checked by code rather than `instanceof Prisma.PrismaClientKnownRequestError`

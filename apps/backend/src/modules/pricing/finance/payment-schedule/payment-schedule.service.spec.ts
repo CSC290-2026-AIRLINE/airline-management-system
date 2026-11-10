@@ -109,7 +109,7 @@ describe('PaymentScheduleService', () => {
 
     expect(db.payment_schedule.findFirst).toHaveBeenCalledWith({ where: { id: SCHEDULE_ID, deleted_at: null } })
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'PAYMENT_SCHEDULE_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'PAYMENT_SCHEDULE_NOT_FOUND' } })
   })
 
   describe('create', () => {
@@ -148,7 +148,7 @@ describe('PaymentScheduleService', () => {
       const error = await service.update(SCHEDULE_ID, { amount: 1 }).catch((e: unknown) => e)
 
       expect(error).toBeInstanceOf(ConflictException)
-      expect((error as ConflictException).getResponse()).toMatchObject({ code: 'PAYMENT_SCHEDULE_PAID' })
+      expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'PAYMENT_SCHEDULE_PAID' } })
       expect(db.payment_schedule.update).not.toHaveBeenCalled()
     })
 
@@ -216,7 +216,7 @@ describe('PaymentScheduleService', () => {
       const error = await service.pay(SCHEDULE_ID, USER_ID).catch((e: unknown) => e)
 
       expect(error).toBeInstanceOf(ConflictException)
-      expect((error as ConflictException).getResponse()).toMatchObject({ code: 'PAYMENT_SCHEDULE_PAID' })
+      expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'PAYMENT_SCHEDULE_PAID' } })
       expect(db.expense.create).not.toHaveBeenCalled()
     })
 

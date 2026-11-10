@@ -34,7 +34,7 @@ describe('BaggageRateService', () => {
     service = new BaggageRateService(db as unknown as DbService)
   })
 
-  describe('charge for one bag (Economy default: 20 kg free, 100 THB/kg, max 32 kg)', () => {
+  describe('charge for one bag (Economy default: 20 kg free, 100/kg, max 32 kg)', () => {
     beforeEach(() => {
       db.overweight_baggage_rate.findFirst.mockResolvedValue(economyDefault)
     })
@@ -45,21 +45,37 @@ describe('BaggageRateService', () => {
       [20.1, 1, 100],
       [25, 5, 500],
       [25.4, 6, 600],
-    ])('%p kg → %p chargeable kg → %p THB', async (weightKg, chargeableKg, charge) => {
+    ])('%p kg → %p chargeable kg → %p', async (weightKg, chargeableKg, charge) => {
       const result = await service.calculateCharge(FARE_CLASS_ID, weightKg)
 
       expect(result).toMatchObject({ chargeable_kg: chargeableKg, charge })
     })
 
-    it('refuses a 33 kg bag with BAGGAGE_TOO_HEAVY (422)', async () => {
-      const error = await service.calculateCharge(FARE_CLASS_ID, 33).catch((e: unknown) => e)
+    it('refuses a 33 kg bag with BAG_TOO_HEAVY (422)', async () => {
+      const error = await service.calculateCharge(FARE_CLASS_ID, 33, undefined, 33).catch((e: unknown) => e)
 
       expect(error).toBeInstanceOf(UnprocessableEntityException)
-      expect((error as UnprocessableEntityException).getResponse()).toMatchObject({ code: 'BAGGAGE_TOO_HEAVY' })
+      expect((error as UnprocessableEntityException).getResponse()).toMatchObject({ error: { code: 'BAG_TOO_HEAVY' } })
     })
 
     it('accepts a bag exactly at the max weight', async () => {
-      await expect(service.calculateCharge(FARE_CLASS_ID, 32)).resolves.toMatchObject({ chargeable_kg: 12, charge: 1200 })
+      await expect(service.calculateCharge(FARE_CLASS_ID, 32, undefined, 32)).resolves.toMatchObject({ chargeable_kg: 12, charge: 1200 })
+    })
+
+    it('checks the heaviest bag against the limit, not the total weight', async () => {
+      await expect(service.calculateCharge(FARE_CLASS_ID, 50, undefined, 25)).resolves.toMatchObject({ chargeable_kg: 30, charge: 3000 })
+    })
+
+    it('skips the limit check when no heaviest bag is given', async () => {
+      await expect(service.calculateCharge(FARE_CLASS_ID, 40)).resolves.toMatchObject({ chargeable_kg: 20 })
+    })
+
+    it('adds the tier bonus to the free allowance (extra_allowance_kg)', async () => {
+      await expect(service.calculateCharge(FARE_CLASS_ID, 25, undefined, undefined, 5)).resolves.toMatchObject({
+        free_allowance_kg: 25,
+        chargeable_kg: 0,
+        charge: 0,
+      })
     })
   })
 
@@ -89,13 +105,13 @@ describe('BaggageRateService', () => {
     })
   })
 
-  it('throws BAGGAGE_RATE_NOT_FOUND when there is no rate at all', async () => {
+  it('throws OVERWEIGHT_RATE_NOT_FOUND when there is no rate at all', async () => {
     db.overweight_baggage_rate.findFirst.mockResolvedValue(null)
 
     const error = await service.calculateCharge(FARE_CLASS_ID, 25, ROUTE_ID).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'BAGGAGE_RATE_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'OVERWEIGHT_RATE_NOT_FOUND' } })
   })
 
   it('rounds float noise before rounding up', () => {
@@ -113,7 +129,7 @@ describe('BaggageRateService', () => {
       .catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
-    expect((error as ConflictException).getResponse()).toMatchObject({ code: 'BAGGAGE_RATE_EXISTS' })
+    expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'BAGGAGE_RATE_EXISTS' } })
     expect(db.overweight_baggage_rate.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ route_id: null }) }),
     )
@@ -146,7 +162,7 @@ describe('BaggageRateService', () => {
     const error = await service.create({ fare_class_id: FARE_CLASS_ID, free_allowance_kg: 20, rate_per_kg: 100 }).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'FARE_CLASS_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'FARE_CLASS_NOT_FOUND' } })
   })
 
   it('refuses an unknown route', async () => {
@@ -158,7 +174,7 @@ describe('BaggageRateService', () => {
       .catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'ROUTE_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'ROUTE_NOT_FOUND' } })
   })
 
   it('refuses a free allowance not below the max bag weight', async () => {
@@ -167,7 +183,7 @@ describe('BaggageRateService', () => {
       .catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(BadRequestException)
-    expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'BAGGAGE_RATE_INVALID' })
+    expect((error as BadRequestException).getResponse()).toMatchObject({ error: { code: 'BAGGAGE_RATE_INVALID' } })
   })
 
   it('checks the final values on PATCH (lowering only max_bag_kg below the stored allowance)', async () => {

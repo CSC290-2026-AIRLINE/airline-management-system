@@ -91,7 +91,7 @@ describe('PricingRuleService', () => {
       const error = await errorOf(service.create({ ...urgency, month: 12 }))
 
       expect(error).toBeInstanceOf(BadRequestException)
-      expect(error.getResponse()).toMatchObject({ code: 'PRICING_RULE_INVALID', details: { fields: ['month'] } })
+      expect(error.getResponse()).toMatchObject({ error: { code: 'PRICING_RULE_INVALID', details: { fields: ['month'] } } })
       expect(db.pricing_rule.create).not.toHaveBeenCalled()
     })
 
@@ -117,7 +117,7 @@ describe('PricingRuleService', () => {
       const error = await errorOf(service.create({ ...urgency, fare_class_id: CLASS_ID }))
 
       expect(error).toBeInstanceOf(NotFoundException)
-      expect(error.getResponse()).toMatchObject({ code: 'FARE_CLASS_NOT_FOUND' })
+      expect(error.getResponse()).toMatchObject({ error: { code: 'FARE_CLASS_NOT_FOUND' } })
     })
 
     it('refuses a priority already used in the group', async () => {
@@ -126,7 +126,7 @@ describe('PricingRuleService', () => {
       const error = await errorOf(service.create({ ...urgency, priority: 1 }))
 
       expect(error).toBeInstanceOf(ConflictException)
-      expect(error.getResponse()).toMatchObject({ code: 'PRICING_RULE_PRIORITY_TAKEN', details: { pricing_rule_id: OTHER_ID } })
+      expect(error.getResponse()).toMatchObject({ error: { code: 'PRICING_RULE_PRIORITY_TAKEN', details: { pricing_rule_id: OTHER_ID } } })
     })
 
     it('maps a unique violation from the database to PRICING_RULE_PRIORITY_TAKEN', async () => {
@@ -144,7 +144,7 @@ describe('PricingRuleService', () => {
       const error = await errorOf(service.update(RULE_ID, { name: 'x' }))
 
       expect(error).toBeInstanceOf(NotFoundException)
-      expect(error.getResponse()).toMatchObject({ code: 'PRICING_RULE_NOT_FOUND' })
+      expect(error.getResponse()).toMatchObject({ error: { code: 'PRICING_RULE_NOT_FOUND' } })
     })
 
     it('checks the merged row, so a PATCH cannot clear the only condition', async () => {
@@ -214,8 +214,10 @@ describe('PricingRuleService', () => {
 
       expect(error).toBeInstanceOf(BadRequestException)
       expect(error.getResponse()).toMatchObject({
-        code: 'PRICING_RULE_REORDER_MISMATCH',
-        details: { missing: [OTHER_ID], unknown: [CLASS_ID] },
+        error: {
+          code: 'PRICING_RULE_REORDER_MISMATCH',
+          details: { missing: [OTHER_ID], unknown: [CLASS_ID] },
+        },
       })
       expect(db.$transaction).not.toHaveBeenCalled()
     })

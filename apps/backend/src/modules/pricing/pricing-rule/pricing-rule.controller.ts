@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
 import { CreatePricingRuleDto } from './dto/create-pricing-rule.dto'
 import { ListPricingRulesDto } from './dto/list-pricing-rules.dto'
 import { ReorderPricingRulesDto } from './dto/reorder-pricing-rules.dto'
@@ -11,10 +11,7 @@ import { pricingValidationPipe } from '../pricing.pipes'
 @Controller('staff/pricing-rules')
 @UsePipes(pricingValidationPipe)
 export class PricingRuleController {
-  constructor(
-    private readonly pricingRuleService: PricingRuleService,
-    private readonly pricingSimulatorService: PricingSimulatorService,
-  ) {}
+  constructor(private readonly pricingRuleService: PricingRuleService) {}
 
   @Get()
   findAll(@Query() filter: ListPricingRulesDto) {
@@ -31,21 +28,7 @@ export class PricingRuleController {
     return this.pricingRuleService.create(dto)
   }
 
-  // Returns the group's rules in their new order, for the drag-and-drop list.
-  @Post('reorder')
-  @HttpCode(200)
-  reorder(@Body() dto: ReorderPricingRulesDto) {
-    return this.pricingRuleService.reorder(dto)
-  }
-
-  // Dry run for the Price simulator panel: saves nothing.
-  @Post('simulate')
-  @HttpCode(200)
-  simulate(@Body() dto: SimulatePriceDto) {
-    return this.pricingSimulatorService.simulate(dto)
-  }
-
-  @Patch(':id')
+  @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePricingRuleDto) {
     return this.pricingRuleService.update(id, dto)
   }
@@ -54,5 +37,30 @@ export class PricingRuleController {
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.pricingRuleService.remove(id)
+  }
+}
+
+// Returns the group's rules in their new order, for the drag-and-drop list.
+@Controller('staff/pricing-rule-order')
+@UsePipes(pricingValidationPipe)
+export class PricingRuleOrderController {
+  constructor(private readonly pricingRuleService: PricingRuleService) {}
+
+  @Put()
+  reorder(@Body() dto: ReorderPricingRulesDto) {
+    return this.pricingRuleService.reorder(dto)
+  }
+}
+
+// Dry run for the Price simulator panel: saves nothing.
+@Controller('staff/pricing-simulations')
+@UsePipes(pricingValidationPipe)
+export class PricingSimulationController {
+  constructor(private readonly pricingSimulatorService: PricingSimulatorService) {}
+
+  @Post()
+  @HttpCode(200)
+  simulate(@Body() dto: SimulatePriceDto) {
+    return this.pricingSimulatorService.simulate(dto)
   }
 }

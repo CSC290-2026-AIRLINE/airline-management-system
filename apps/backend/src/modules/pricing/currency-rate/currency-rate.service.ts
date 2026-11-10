@@ -1,12 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
+import { PricingErrorCode, pricingError } from '../pricing.errors'
 import { staffIdFor } from '../pricing.staff'
-import { CreateCurrencyRateDto } from './dto/create-currency-rate.dto'
 import { UpdateCurrencyRateDto } from './dto/update-currency-rate.dto'
 
 // TODO: read pricing_setting 'base_currency' once Core's settings module exists. Every stored amount is in this currency.
-export const BASE_CURRENCY = 'THB'
+export const BASE_CURRENCY = 'USD'
 
 // A Prisma Decimal or a plain number: both have toFixed.
 type Numeric = number | { toFixed(decimalPlaces: number): string }
@@ -30,31 +29,19 @@ export class CurrencyRateService {
     return rate
   }
 
-  async create(dto: CreateCurrencyRateDto, userId: string) {
-    if (dto.currency_code === BASE_CURRENCY) {
+  // PUT /staff/currency-rates/:code: sets the rate for one currency, creating the row if it is new. The base currency is
+  // always 1 and cannot be set.
+  async upsert(code: string, dto: UpdateCurrencyRateDto, userId: string) {
+    if (code === BASE_CURRENCY) {
       throw new BadRequestException(
         pricingError(PricingErrorCode.CURRENCY_IS_BASE, `${BASE_CURRENCY} is the base currency; its rate is always 1`),
       )
     }
     const staffId = await staffIdFor(this.db, userId)
-    const existing = await this.db.currency_rate.findUnique({ where: { currency_code: dto.currency_code } })
-    if (existing) {
-      throw this.codeTaken(dto.currency_code)
-    }
-    try {
-      return await this.db.currency_rate.create({ data: { ...dto, updated_by: staffId }, include })
-    } catch (error) {
-      // Two requests can both pass the check above; the primary key catches the second one (P2002).
-      throw isUniqueViolation(error) ? this.codeTaken(dto.currency_code) : error
-    }
-  }
-
-  async update(code: string, dto: UpdateCurrencyRateDto, userId: string) {
-    await this.findOne(code)
-    const staffId = await staffIdFor(this.db, userId)
-    return this.db.currency_rate.update({
+    return this.db.currency_rate.upsert({
       where: { currency_code: code },
-      data: { ...dto, updated_by: staffId, updated_at: new Date() },
+      create: { currency_code: code, ...dto, updated_by: staffId },
+      update: { ...dto, updated_by: staffId, updated_at: new Date() },
       include,
     })
   }
@@ -66,10 +53,6 @@ export class CurrencyRateService {
     }
     const { rate_per_base } = await this.findOne(toCurrency)
     return roundHalfUp(toScaled(amount, 6) * toScaled(rate_per_base, 6), 12)
-  }
-
-  private codeTaken(code: string) {
-    return new ConflictException(pricingError(PricingErrorCode.CURRENCY_CODE_TAKEN, `Currency ${code} already has a rate`))
   }
 }
 

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UsePipes } from '@nestjs/common'
 import { CreateFareQuoteDto } from './dto/create-fare-quote.dto'
+import { DisplayCurrencyQueryDto } from './dto/display-currency-query.dto'
 import { QuoteFeeDto } from './dto/quote-fee.dto'
 import { FareQuoteService } from './fare-quote.service'
 import { pricingValidationPipe } from '../pricing.pipes'
@@ -16,8 +17,8 @@ export class FareQuoteController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.fareQuoteService.findOne(id)
+  findOne(@Param('id', ParseUUIDPipe) id: string, @Query() query: DisplayCurrencyQueryDto) {
+    return this.fareQuoteService.findOne(id, query.display_currency)
   }
 
   // Feature 3b, on booking confirmed. Retrying is safe.

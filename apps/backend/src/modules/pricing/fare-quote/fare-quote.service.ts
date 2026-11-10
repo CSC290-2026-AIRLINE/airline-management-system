@@ -1,7 +1,16 @@
-import { BadGatewayException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  GoneException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { FareClassService } from '../fare-class/fare-class.service'
-import { FARE_RULE_FIELDS, type SeatType } from '../pricing.constants'
+import { CurrencyRateService } from '../currency-rate/currency-rate.service'
+import { FARE_RULE_FIELDS, SEAT_TYPES, type SeatType } from '../pricing.constants'
 import { PricingErrorCode, pricingError } from '../pricing.errors'
 import { PricingRuleService } from '../pricing-rule/pricing-rule.service'
 import { PromoCodeService } from '../promo-code/promo-code.service'
@@ -30,8 +39,11 @@ interface QuoteKey {
   seat_type: SeatType | null
 }
 
-function presentQuote<T extends { fare_quote_line: unknown[] }>({ fare_quote_line, ...quote }: T) {
-  return { ...quote, lines: fare_quote_line }
+function presentQuote<T extends { fare_quote_line: unknown[] }>(
+  { fare_quote_line, ...quote }: T,
+  display?: { currency: string; total_amount: number },
+) {
+  return { ...quote, lines: fare_quote_line, ...(display && { display }) }
 }
 
 function lineRow(line: QuoteLine, index: number) {
@@ -56,6 +68,7 @@ export class FareQuoteService {
     private readonly taxFees: TaxFeeService,
     private readonly settings: SettingService,
     private readonly seatAvailability: SeatAvailability,
+    private readonly currencyRates: CurrencyRateService,
   ) {}
 
   // Returns the live shared quote for this key, or works out and saves a new one. The price is shared by everyone
@@ -65,6 +78,8 @@ export class FareQuoteService {
   // calculation: a saved quote must not keep selling a flight just cancelled or a promo just switched off.
   async create(dto: CreateFareQuoteDto) {
     const now = simNow()
+    const seatType = this.checkSeatType(dto.seat_type)
+    await this.checkDisplayCurrency(dto.display_currency)
     const flight = await this.findBookableFlight(dto.flight_id, now)
     const fareClass = await this.findSellableClass(dto.fare_class_id)
 
@@ -74,7 +89,7 @@ export class FareQuoteService {
     if (daysToDeparture < fareClass.min_advance_purchase_days) {
       throw new UnprocessableEntityException(
         pricingError(
-          PricingErrorCode.ADVANCE_PURCHASE_REQUIRED,
+          PricingErrorCode.FARE_ADVANCE_PURCHASE_NOT_MET,
           `${fareClass.code} must be bought at least ${fareClass.min_advance_purchase_days} days before departure`,
           { min_advance_purchase_days: fareClass.min_advance_purchase_days, days_to_departure: daysToDeparture },
         ),
@@ -86,26 +101,30 @@ export class FareQuoteService {
       flight_id: flight.id,
       fare_class_id: fareClass.id,
       promo_code_id: promo?.id ?? null,
-      seat_type: dto.seat_type ?? null,
+      seat_type: seatType,
     }
 
     const live = await this.findLiveQuote(this.db, key, now)
-    if (live) return presentQuote(live)
+    if (live) return presentQuote(live, await this.displayTotal(live, dto.display_currency))
 
+    // Only a new quote asks 3b: reusing a saved one calls nothing. A sold-out class is refused here.
     const seatsLeftPct = await this.readSeatsLeftPct(flight.id)
+    if (seatsLeftPct <= 0) {
+      throw new ConflictException(pricingError(PricingErrorCode.FARE_CLASS_UNAVAILABLE, 'No seats are left in this fare class'))
+    }
     const baseFare = await this.db.base_fare.findFirst({
       where: { route_id: flight.route_id, fare_class_id: fareClass.id, deleted_at: null },
     })
     if (!baseFare) {
       throw new UnprocessableEntityException(
-        pricingError(PricingErrorCode.BASE_FARE_MISSING, `Fare class ${fareClass.code} has no base fare on this route`),
+        pricingError(PricingErrorCode.BASE_FARE_NOT_FOUND, `Fare class ${fareClass.code} has no base fare on this route`),
       )
     }
 
     const baseAmount = Number(baseFare.amount)
     const [ruled, seatFee, taxes, currency, holdMinutes] = await Promise.all([
       this.pricingRules.applyRules(baseAmount, { fareClassId: fareClass.id, daysToDeparture, seatsLeftPct, departureDate }),
-      dto.seat_type ? this.seatFees.lookup(fareClass.cabin, dto.seat_type) : null,
+      seatType ? this.lookupSeatFee(fareClass.cabin, seatType) : null,
       this.taxFees.findAll(),
       this.settings.getBaseCurrency(),
       this.settings.getQuoteHoldMinutes(),
@@ -114,7 +133,7 @@ export class FareQuoteService {
     const { lines, totalCents } = buildQuoteLines({
       baseCents: toCents(baseAmount),
       rules: ruled.applied,
-      seatFee: seatFee && dto.seat_type ? { label: `Seat fee (${dto.seat_type})`, cents: toCents(Number(seatFee.amount)) } : undefined,
+      seatFee: seatFee && seatType ? { label: `Seat fee (${seatType})`, cents: toCents(Number(seatFee.amount)) } : undefined,
       promo: promo
         ? {
             id: promo.id,
@@ -154,11 +173,17 @@ export class FareQuoteService {
         include: WITH_LINES,
       })
     })
-    return presentQuote(saved)
+    return presentQuote(saved, await this.displayTotal(saved, dto.display_currency))
   }
 
-  async findOne(id: string) {
-    return presentQuote(await this.findQuote(id))
+  // An expired quote is 410, as the doc has it. /fee and redeem still work on one: 5b and 3b act on a booking made earlier.
+  async findOne(id: string, displayCurrency?: string) {
+    const quote = await this.findQuote(id)
+    if (quote.expires_at <= simNow()) {
+      throw new GoneException(pricingError(PricingErrorCode.QUOTE_EXPIRED, 'This quote has expired', { expires_at: quote.expires_at }))
+    }
+    await this.checkDisplayCurrency(displayCurrency)
+    return presentQuote(quote, await this.displayTotal(quote, displayCurrency))
   }
 
   // For Feature 5b. Always from the snapshot frozen on the quote, never the live fare class, so a later change to the
@@ -216,10 +241,52 @@ export class FareQuoteService {
     return { fare_quote_id: quote.id, promo_code_id: promoCodeId, redeemed: true, already_redeemed: count === 0 }
   }
 
+  private checkSeatType(seatType: string | undefined): SeatType | null {
+    if (seatType === undefined) return null
+    if (!(SEAT_TYPES as readonly string[]).includes(seatType)) {
+      throw new UnprocessableEntityException(
+        pricingError(PricingErrorCode.SEAT_TYPE_UNKNOWN, `Unknown seat type ${seatType}`, { allowed: SEAT_TYPES }),
+      )
+    }
+    return seatType as SeatType
+  }
+
+  // A seat type with no fee row for the cabin is not one the seat map offers there.
+  private async lookupSeatFee(cabin: string, seatType: SeatType) {
+    try {
+      return await this.seatFees.lookup(cabin, seatType)
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new UnprocessableEntityException(
+          pricingError(PricingErrorCode.SEAT_TYPE_UNKNOWN, `No seat fee for ${cabin} / ${seatType}`, { cabin, seat_type: seatType }),
+        )
+      }
+      throw error
+    }
+  }
+
+  private async checkDisplayCurrency(currency: string | undefined) {
+    if (!currency) return
+    try {
+      await this.currencyRates.convert(0, currency)
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new BadRequestException(pricingError(PricingErrorCode.CURRENCY_UNKNOWN, `No rate for display currency ${currency}`))
+      }
+      throw error
+    }
+  }
+
+  // Display only: converted from the stored total, never saved or charged. The quote's own currency is the base currency.
+  private async displayTotal(quote: { total_amount: unknown }, currency: string | undefined) {
+    if (!currency) return undefined
+    return { currency, total_amount: await this.currencyRates.convert(Number(quote.total_amount), currency) }
+  }
+
   private async findQuote(id: string) {
     const quote = await this.db.fare_quote.findUnique({ where: { id }, include: WITH_LINES })
     if (!quote) {
-      throw new NotFoundException(pricingError(PricingErrorCode.FARE_QUOTE_NOT_FOUND, `Fare quote ${id} not found`))
+      throw new NotFoundException(pricingError(PricingErrorCode.QUOTE_NOT_FOUND, `Fare quote ${id} not found`))
     }
     return quote
   }
@@ -248,9 +315,12 @@ export class FareQuoteService {
     if (!flight) {
       throw new NotFoundException(pricingError(PricingErrorCode.FLIGHT_NOT_FOUND, `Flight ${id} not found`))
     }
+    if (flight.status === 'cancelled') {
+      throw new ConflictException(pricingError(PricingErrorCode.FLIGHT_CANCELLED, 'This flight was cancelled', { status: flight.status }))
+    }
     if (!BOOKABLE_STATUSES.includes(flight.status) || flight.dep_at <= now) {
       throw new ConflictException(
-        pricingError(PricingErrorCode.FLIGHT_NOT_BOOKABLE, 'This flight can no longer be booked', { status: flight.status }),
+        pricingError(PricingErrorCode.FLIGHT_DEPARTED, 'This flight has already departed', { status: flight.status }),
       )
     }
     return flight
@@ -278,6 +348,8 @@ export class FareQuoteService {
   }
 
   private upstreamUnavailable() {
-    return new BadGatewayException(pricingError(PricingErrorCode.UPSTREAM_UNAVAILABLE, 'Seat availability is not available right now'))
+    return new ServiceUnavailableException(
+      pricingError(PricingErrorCode.UPSTREAM_UNAVAILABLE, 'Seat availability is not available right now'),
+    )
   }
 }

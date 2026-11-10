@@ -87,7 +87,7 @@ describe('ExpenseService', () => {
     const error = await service.findOne(EXPENSE_ID).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'EXPENSE_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'EXPENSE_NOT_FOUND' } })
   })
 
   describe('create', () => {
@@ -120,7 +120,7 @@ describe('ExpenseService', () => {
       const error = await service.update(EXPENSE_ID, { amount: 1 }).catch((e: unknown) => e)
 
       expect(error).toBeInstanceOf(ConflictException)
-      expect((error as ConflictException).getResponse()).toMatchObject({ code: 'EXPENSE_FROM_SCHEDULE' })
+      expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'EXPENSE_FROM_SCHEDULE' } })
       expect(db.expense.update).not.toHaveBeenCalled()
     })
   })

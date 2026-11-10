@@ -96,7 +96,7 @@ Every task is one step in working out a ticket's price: base fare → rule adjus
    - [ ] Error codes:
      - `FLIGHT_NOT_FOUND` 404
      - `FLIGHT_NOT_BOOKABLE` 409
-     - `BASE_FARE_MISSING` 422
+     - `BASE_FARE_NOT_FOUND` 422
      - `UPSTREAM_UNAVAILABLE` 502
    - [ ] Test with the worked example: 100.00 → 110.00 → 126.50 → 113.85 → **121.82**
 6. **Promo codes** (`promo-code/`)

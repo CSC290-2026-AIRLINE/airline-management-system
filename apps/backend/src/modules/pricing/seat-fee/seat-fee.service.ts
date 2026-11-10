@@ -1,12 +1,19 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
+import { percentOfCents } from '../pricing-rule/pricing-rule.engine'
+import { SettingService } from '../setting/setting.service'
+import { TaxFeeService } from '../tax-fee/tax-fee.service'
 import { CreateSeatFeeDto } from './dto/create-seat-fee.dto'
 import { UpdateSeatFeeDto } from './dto/update-seat-fee.dto'
 
 @Injectable()
 export class SeatFeeService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly taxFees: TaxFeeService,
+    private readonly settings: SettingService,
+  ) {}
 
   findAll() {
     return this.db.seat_fee.findMany({
@@ -21,6 +28,38 @@ export class SeatFeeService {
       throw new NotFoundException(pricingError(PricingErrorCode.SEAT_FEE_NOT_FOUND, `Seat fee ${id} not found`))
     }
     return seatFee
+  }
+
+  // What a seat choice costs at check-in; stores nothing. On an upgrade (`fromSeatType` given) the passenger pays the
+  // difference between the new and the current seat type, never less than 0. Percent taxes apply to that amount; flat
+  // per-leg taxes were already charged with the ticket, so they are not charged again.
+  async price(cabin: string, seatType: string, fromSeatType?: string) {
+    const [target, current, taxes, currency] = await Promise.all([
+      this.lookup(cabin, seatType),
+      fromSeatType ? this.lookup(cabin, fromSeatType) : null,
+      this.taxFees.findAll(),
+      this.settings.getBaseCurrency(),
+    ])
+    const amountCents = Math.max(Math.round(Number(target.amount) * 100) - Math.round(Number(current?.amount ?? 0) * 100), 0)
+    const taxLines = taxes
+      .filter((tax) => tax.calc_type === 'pct')
+      .map((tax) => ({
+        code: tax.code,
+        name: tax.name,
+        kind: tax.kind,
+        rate_pct: Number(tax.value),
+        amount: percentOfCents(amountCents, Number(tax.value)) / 100,
+      }))
+    const taxCents = taxLines.reduce((sum, line) => sum + Math.round(line.amount * 100), 0)
+    return {
+      cabin,
+      seat_type: seatType,
+      from_seat_type: fromSeatType ?? null,
+      amount: amountCents / 100,
+      currency,
+      taxes: taxLines,
+      total: (amountCents + taxCents) / 100,
+    }
   }
 
   async lookup(cabin: string, seatType: string) {

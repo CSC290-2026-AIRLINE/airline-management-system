@@ -5,7 +5,7 @@ import { CurrencyRateController } from './currency-rate/currency-rate.controller
 import { CurrencyRateService } from './currency-rate/currency-rate.service'
 import { BaseFareController } from './base-fare/base-fare.controller'
 import { BaseFareService } from './base-fare/base-fare.service'
-import { FareClassController } from './fare-class/fare-class.controller'
+import { FareClassController, PublicFareClassController } from './fare-class/fare-class.controller'
 import { FareClassService } from './fare-class/fare-class.service'
 import { FareQuoteController } from './fare-quote/fare-quote.controller'
 import { FareQuoteService } from './fare-quote/fare-quote.service'
@@ -16,7 +16,7 @@ import { FinanceSummaryController } from './finance/summary/finance-summary.cont
 import { FinanceSummaryService } from './finance/summary/finance-summary.service'
 import { PaymentScheduleController } from './finance/payment-schedule/payment-schedule.controller'
 import { PaymentScheduleService } from './finance/payment-schedule/payment-schedule.service'
-import { PricingRuleController } from './pricing-rule/pricing-rule.controller'
+import { PricingRuleController, PricingRuleOrderController, PricingSimulationController } from './pricing-rule/pricing-rule.controller'
 import { PricingRuleService } from './pricing-rule/pricing-rule.service'
 import { PricingSimulatorService } from './pricing-rule/pricing-simulator.service'
 import { PromoCodeController } from './promo-code/promo-code.controller'
@@ -31,9 +31,12 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
 @Module({
   controllers: [
     FareClassController,
+    PublicFareClassController,
     BaseFareController,
     SettingController,
     PricingRuleController,
+    PricingRuleOrderController,
+    PricingSimulationController,
     PromoCodeController,
     FareQuoteController,
     SeatFeeController,

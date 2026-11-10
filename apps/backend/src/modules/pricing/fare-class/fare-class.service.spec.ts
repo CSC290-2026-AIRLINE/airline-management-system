@@ -34,7 +34,7 @@ describe('FareClassService', () => {
     const error = await service.findOne(ID).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
-    expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'FARE_CLASS_NOT_FOUND' })
+    expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'FARE_CLASS_NOT_FOUND' } })
   })
 
   it('refuses a code already used by a live class', async () => {
@@ -99,8 +99,10 @@ describe('FareClassService', () => {
 
     expect(error).toBeInstanceOf(BadRequestException)
     expect((error as BadRequestException).getResponse()).toMatchObject({
-      code: 'FARE_RULE_INVALID',
-      details: { fields: ['cancel_fee_pct'] },
+      error: {
+        code: 'FARE_RULE_INVALID',
+        details: { fields: ['cancel_fee_pct'] },
+      },
     })
     expect(db.fare_class.update).not.toHaveBeenCalled()
   })
@@ -125,7 +127,9 @@ describe('FareClassService', () => {
     const error = await service.remove(ID).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
-    expect((error as ConflictException).getResponse()).toMatchObject({ code: 'FARE_CLASS_IN_USE', details: { base_fare_count: 2 } })
+    expect((error as ConflictException).getResponse()).toMatchObject({
+      error: { code: 'FARE_CLASS_IN_USE', details: { base_fare_count: 2 } },
+    })
     expect(db.fare_class.update).not.toHaveBeenCalled()
   })
 

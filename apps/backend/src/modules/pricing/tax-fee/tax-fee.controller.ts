@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
 import { CreateTaxFeeDto } from './dto/create-tax-fee.dto'
 import { UpdateTaxFeeDto } from './dto/update-tax-fee.dto'
 import { TaxFeeService } from './tax-fee.service'
@@ -24,7 +24,7 @@ export class TaxFeeController {
     return this.taxFeeService.create(dto)
   }
 
-  @Patch(':id')
+  @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTaxFeeDto) {
     return this.taxFeeService.update(id, dto)
   }

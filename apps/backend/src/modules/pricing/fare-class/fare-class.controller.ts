@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
 import { CreateFareClassDto } from './dto/create-fare-class.dto'
 import { UpdateFareClassDto } from './dto/update-fare-class.dto'
 import { UpdateFareRuleDto } from './dto/update-fare-rule.dto'
@@ -25,7 +25,7 @@ export class FareClassController {
     return this.fareClassService.create(dto)
   }
 
-  @Patch(':id')
+  @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFareClassDto) {
     return this.fareClassService.update(id, dto)
   }
@@ -35,7 +35,7 @@ export class FareClassController {
     return this.fareClassService.findRule(id)
   }
 
-  @Patch(':id/rule')
+  @Put(':id/rule')
   updateRule(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFareRuleDto) {
     return this.fareClassService.updateRule(id, dto)
   }
@@ -44,5 +44,17 @@ export class FareClassController {
   @HttpCode(204)
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.fareClassService.remove(id)
+  }
+}
+
+// Any signed-in caller: the active classes with their restrictions.
+@Controller('fare-classes')
+@UsePipes(pricingValidationPipe)
+export class PublicFareClassController {
+  constructor(private readonly fareClassService: FareClassService) {}
+
+  @Get()
+  findAll() {
+    return this.fareClassService.findAll(false)
   }
 }

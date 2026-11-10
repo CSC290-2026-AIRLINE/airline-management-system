@@ -16,7 +16,7 @@ export class CreateTaxFeeDto {
   @IsIn(TAX_FEE_CALC_TYPES)
   calc_type!: TaxFeeCalcType
 
-  // An amount in THB if flat, a percent if pct (the service checks pct <= 100 on the final values).
+  // An amount in the base currency if flat, a percent if pct (the service checks pct <= 100 on the final values).
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   value!: number

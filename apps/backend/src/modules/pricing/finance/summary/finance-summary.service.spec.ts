@@ -50,7 +50,8 @@ describe('ParseMonthPipe', () => {
 describe('FinanceSummaryService', () => {
   let service: FinanceSummaryService
   const db = {
-    expense: { groupBy: jest.fn() },
+    expense: { groupBy: jest.fn(), findMany: jest.fn() },
+    payment_schedule: { findMany: jest.fn() },
     finance_monthly_summary: { upsert: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
   }
 
@@ -126,26 +127,9 @@ describe('FinanceSummaryService', () => {
     })
   })
 
-  describe('find', () => {
-    it('reads one month by its first day', async () => {
-      db.finance_monthly_summary.findUnique.mockResolvedValue({ month: new Date('2026-11-01') })
-
-      await service.find({ month: '2026-11' })
-
-      expect(db.finance_monthly_summary.findUnique).toHaveBeenCalledWith({ where: { month: new Date('2026-11-01') } })
-    })
-
-    it('throws FINANCE_SUMMARY_NOT_FOUND for a month never recomputed', async () => {
-      db.finance_monthly_summary.findUnique.mockResolvedValue(null)
-
-      const error = await service.find({ month: '2026-11' }).catch((e: unknown) => e)
-
-      expect(error).toBeInstanceOf(NotFoundException)
-      expect((error as NotFoundException).getResponse()).toMatchObject({ code: 'FINANCE_SUMMARY_NOT_FOUND' })
-    })
-
+  describe('findRange', () => {
     it('reads a range, both ends included, oldest first', async () => {
-      await service.find({ from: '2026-06', to: '2026-10' })
+      await service.findRange('2026-06', '2026-10')
 
       expect(db.finance_monthly_summary.findMany).toHaveBeenCalledWith({
         where: { month: { gte: new Date('2026-06-01'), lte: new Date('2026-10-01') } },
@@ -153,16 +137,58 @@ describe('FinanceSummaryService', () => {
       })
     })
 
-    it.each([{}, { from: '2026-06' }, { to: '2026-10' }, { month: '2026-11', from: '2026-06', to: '2026-10' }])(
-      'refuses the query %p with 400',
-      (query) => {
-        expect(() => service.find(query)).toThrow(BadRequestException)
-      },
-    )
-
     it('refuses a range that ends before it starts', () => {
-      expect(() => service.find({ from: '2026-10', to: '2026-06' })).toThrow(BadRequestException)
+      expect(() => service.findRange('2026-10', '2026-06')).toThrow(BadRequestException)
       expect(db.finance_monthly_summary.findMany).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('findMonth', () => {
+    it('reads one month by its first day and adds its expenses and upcoming payments', async () => {
+      db.finance_monthly_summary.findUnique.mockResolvedValue({ month: new Date('2026-11-01') })
+      db.expense.findMany.mockResolvedValue([{ id: 'e1' }])
+      db.payment_schedule.findMany.mockResolvedValue([{ id: 'p1' }])
+
+      const result = await service.findMonth('2026-11')
+
+      expect(db.finance_monthly_summary.findUnique).toHaveBeenCalledWith({ where: { month: new Date('2026-11-01') } })
+      expect(db.expense.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { deleted_at: null, incurred_on: { gte: new Date('2026-11-01'), lt: new Date('2026-12-01') } } }),
+      )
+      expect(db.payment_schedule.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'scheduled', deleted_at: null }) }),
+      )
+      expect(result).toMatchObject({ expenses: [{ id: 'e1' }], upcoming_payments: [{ id: 'p1' }] })
+    })
+
+    it('throws FINANCE_SUMMARY_NOT_FOUND for a month never recomputed', async () => {
+      db.finance_monthly_summary.findUnique.mockResolvedValue(null)
+
+      const error = await service.findMonth('2026-11').catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(NotFoundException)
+      expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'FINANCE_SUMMARY_NOT_FOUND' } })
+    })
+  })
+
+  describe('recomputeRange', () => {
+    it('rebuilds every month from `from` to `to`, oldest first', async () => {
+      db.expense.groupBy.mockResolvedValue([])
+      db.finance_monthly_summary.upsert.mockImplementation(({ where }: { where: { month: Date } }) => Promise.resolve(where))
+
+      await service.recomputeRange('2026-11', '2027-01')
+
+      expect(db.finance_monthly_summary.upsert.mock.calls.map(([args]) => (args as { where: { month: Date } }).where.month)).toEqual([
+        new Date('2026-11-01'),
+        new Date('2026-12-01'),
+        new Date('2027-01-01'),
+      ])
+    })
+
+    it('refuses a backwards range and one longer than 36 months', async () => {
+      await expect(service.recomputeRange('2026-10', '2026-06')).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.recomputeRange('2020-01', '2026-12')).rejects.toBeInstanceOf(BadRequestException)
+      expect(db.finance_monthly_summary.upsert).not.toHaveBeenCalled()
     })
   })
 })
