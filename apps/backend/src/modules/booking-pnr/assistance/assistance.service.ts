@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common'
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { BookingError } from '../common/booking-error'
 import {
   BOOKING_CLOCK,
@@ -25,6 +25,36 @@ export class AssistanceService implements ServiceRequestPort {
     @Inject(BOOKING_CLOCK) private readonly clock: BookingClock,
     @Inject(SEAT_MAP_PORT) private readonly seatMaps: SeatMapPort,
   ) {}
+
+  // The caller must authorize the staff member and publish service_request.updated after its transaction commits.
+  async reviewRequest(
+    tx: BookingTransaction,
+    requestId: string,
+    staffId: string,
+    next: 'accepted' | 'rejected' | 'completed',
+    decisionNote?: string,
+  ) {
+    if (!['accepted', 'rejected', 'completed'].includes(next)) throw new BadRequestException('Invalid assistance status')
+    const note = decisionNote?.trim()
+    if (next === 'rejected' && !note) throw new BadRequestException('A rejection reason is required')
+    const current = await tx.booking_service_request.findUnique({ where: { id: requestId }, select: { id: true, status: true } })
+    if (!current) throw new NotFoundException('Assistance request not found')
+    const expected = next === 'completed' ? 'accepted' : 'requested'
+    if (current.status !== expected) throw new ConflictException('This request cannot move to that status')
+    const now = this.clock.now()
+    const result = await tx.booking_service_request.updateMany({
+      where: { id: requestId, status: expected },
+      data: {
+        status: next,
+        decision_note: next === 'rejected' ? note : null,
+        handled_by_staff_id: staffId,
+        handled_at: now,
+        updated_at: now,
+      },
+    })
+    if (result.count !== 1) throw new ConflictException('This request was changed by someone else')
+    return { requestId, status: next, handledByStaffId: staffId, handledAt: now }
+  }
 
   async createForHold(tx: BookingTransaction, requests: ServiceRequestInput[]): Promise<void> {
     const now = this.clock.now()

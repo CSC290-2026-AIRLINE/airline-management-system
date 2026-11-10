@@ -7,7 +7,7 @@ describe('AssistanceService', () => {
   const segment = { findMany: jest.fn() }
   const flight = { findMany: jest.fn() }
   const seat = { findMany: jest.fn() }
-  const requests = { create: jest.fn() }
+  const requests = { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() }
   const tx = {
     booking_passenger: passenger,
     booking_segment: segment,
@@ -34,6 +34,8 @@ describe('AssistanceService', () => {
     ])
     seat.findMany.mockResolvedValue([])
     requests.create.mockResolvedValue({})
+    requests.findUnique.mockResolvedValue({ id: 'request', status: 'requested' })
+    requests.updateMany.mockResolvedValue({ count: 1 })
   })
 
   it('creates a requested assistance record using the booking clock', async () => {
@@ -81,5 +83,24 @@ describe('AssistanceService', () => {
       'Unsupported',
     )
     expect(requests.create).not.toHaveBeenCalled()
+  })
+
+  it('accepts a pending request and records the staff member and booking clock time', async () => {
+    await expect(service.reviewRequest(tx, 'request', 'staff', 'accepted')).resolves.toMatchObject({ status: 'accepted', handledAt: now })
+    expect(requests.updateMany).toHaveBeenCalledWith({
+      where: { id: 'request', status: 'requested' },
+      data: expect.objectContaining({ handled_by_staff_id: 'staff', handled_at: now }),
+    })
+  })
+
+  it('requires a reason for rejection and rejects invalid transitions', async () => {
+    await expect(service.reviewRequest(tx, 'request', 'staff', 'rejected', ' ')).rejects.toThrow('reason')
+    await expect(service.reviewRequest(tx, 'request', 'staff', 'completed')).rejects.toThrow('cannot move')
+    expect(requests.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('detects a request changed concurrently', async () => {
+    requests.updateMany.mockResolvedValue({ count: 0 })
+    await expect(service.reviewRequest(tx, 'request', 'staff', 'accepted')).rejects.toThrow('changed by someone else')
   })
 })
