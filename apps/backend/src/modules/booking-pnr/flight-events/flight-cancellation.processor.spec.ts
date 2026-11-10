@@ -7,7 +7,13 @@ describe('FlightCancellationProcessor', () => {
   const bookings = { findMany: jest.fn() }
   const seats = { updateMany: jest.fn() }
   const cancellation = { cancelBookingsForFlight: jest.fn() }
-  const tx = { flight_event_receipt: receipts, booking: bookings, seat_assignment: seats } as unknown as BookingTransaction
+  const lockEvent = jest.fn()
+  const tx = {
+    $queryRaw: lockEvent,
+    flight_event_receipt: receipts,
+    booking: bookings,
+    seat_assignment: seats,
+  } as unknown as BookingTransaction
   const processor = new FlightCancellationProcessor(cancellation, { now: () => clock })
   const event: FlightEvent = {
     id: 'event',
@@ -23,6 +29,7 @@ describe('FlightCancellationProcessor', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
+    lockEvent.mockResolvedValue([{ id: 'event' }])
     receipts.findUnique.mockResolvedValue(null)
     receipts.create.mockResolvedValue({})
     bookings.findMany.mockResolvedValue([{ id: 'expired-booking' }])
@@ -36,6 +43,8 @@ describe('FlightCancellationProcessor', () => {
 
   it('applies B’s policy and releases the appropriate seats before recording the receipt', async () => {
     await expect(processor.process(tx, event)).resolves.toMatchObject({ eventId: 'event' })
+    expect(lockEvent).toHaveBeenCalledTimes(1)
+    expect(lockEvent.mock.invocationCallOrder[0]).toBeLessThan(receipts.findUnique.mock.invocationCallOrder[0])
     expect(cancellation.cancelBookingsForFlight).toHaveBeenCalledWith(tx, 'flight', event)
     expect(seats.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -45,6 +54,12 @@ describe('FlightCancellationProcessor', () => {
       }),
     )
     expect(receipts.create).toHaveBeenCalledWith({ data: { event_id: 'event', processed_at: clock } })
+  })
+
+  it('does not process an event that no longer exists', async () => {
+    lockEvent.mockResolvedValue([])
+    await expect(processor.process(tx, event)).rejects.toThrow('Flight event not found')
+    expect(cancellation.cancelBookingsForFlight).not.toHaveBeenCalled()
   })
 
   it('skips an event that already has a receipt', async () => {

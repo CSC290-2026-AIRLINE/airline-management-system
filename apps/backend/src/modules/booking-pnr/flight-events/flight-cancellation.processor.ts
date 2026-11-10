@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import {
   BOOKING_CLOCK,
   CANCEL_FOR_FLIGHT_PORT,
@@ -17,7 +17,10 @@ export class FlightCancellationProcessor {
 
   // The caller owns the transaction and publishes notifications only after commit.
   async process(tx: BookingTransaction, event: FlightEvent) {
-    if (event.type !== 'flight.cancelled') throw new Error('Expected a flight.cancelled event')
+    if (event.type !== 'flight.cancelled') throw new BadRequestException('Expected a flight.cancelled event')
+    // The receipt may not exist yet. Lock the event first so simultaneous deliveries cannot both apply the policy.
+    const events = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM flight_event WHERE id = ${event.id}::uuid FOR UPDATE`
+    if (!events.length) throw new NotFoundException('Flight event not found')
     const receipt = await tx.flight_event_receipt.findUnique({ where: { event_id: event.id }, select: { event_id: true } })
     if (receipt) return null
 
