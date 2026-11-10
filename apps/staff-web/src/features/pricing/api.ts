@@ -120,6 +120,7 @@ export interface PromoQuote {
 }
 
 export interface PromoQuotes {
+  promo_code_id: string
   code: string
   quotes: PromoQuote[]
 }
@@ -233,8 +234,14 @@ export function usePricingApi() {
     setPromoCodeActive: (id: string, isActive: boolean) => request<PromoCode>(`/promo-codes/${id}`, 'PUT', { is_active: isActive }),
 
     listPromoQuotes: (code: string) => request<PromoQuotes>(`/promo-codes/quotes?code=${encodeURIComponent(code.trim())}`),
-    // Not under /api/staff: Feature 3b calls this route too.
-    redeemFareQuote: async (id: string) => readResponse<unknown>(await fetchWithAuth(`/api/fare-quotes/${id}/redeem`, jsonInit('POST'))),
+    // Not under /api/staff: Feature 3b and 5a call this route too. One use per booking_ref, so a repeat counts nothing.
+    redeemPromoCode: async (promoCodeId: string, bookingRef: string, fareQuoteId: string) =>
+      readResponse<unknown>(
+        await fetchWithAuth(
+          `/api/promo-codes/${promoCodeId}/redemptions`,
+          jsonInit('POST', { booking_ref: bookingRef, fare_quote_id: fareQuoteId }),
+        ),
+      ),
 
     // Seat fees belong to Member C's backend (staff/seat-fees); this page only edits the amounts.
     listSeatFees: () => request<SeatFee[]>('/seat-fees'),

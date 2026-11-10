@@ -42,11 +42,12 @@ export function RedeemQuoteCard({ onRedeemed }: RedeemQuoteCardProps) {
     }
   }
 
-  async function redeem(quoteId: string, promoCode: string) {
+  async function redeem(promoCodeId: string, quoteId: string, promoCode: string) {
     setRedeeming(quoteId)
     setError(null)
     try {
-      await api.redeemFareQuote(quoteId)
+      // A hand redemption has no booking, so the quote id stands in as its booking reference.
+      await api.redeemPromoCode(promoCodeId, `manual:${quoteId}`, quoteId)
       setResult(await api.listPromoQuotes(promoCode))
       onRedeemed()
     } catch (e) {
@@ -110,7 +111,11 @@ export function RedeemQuoteCard({ onRedeemed }: RedeemQuoteCardProps) {
                 {quote.redeemed_at ? (
                   <Badge variant="secondary">Redeemed {DAY.format(new Date(quote.redeemed_at))}</Badge>
                 ) : (
-                  <Button disabled={redeeming !== null} className={PRIMARY_BUTTON} onClick={() => void redeem(quote.id, result.code)}>
+                  <Button
+                    disabled={redeeming !== null}
+                    className={PRIMARY_BUTTON}
+                    onClick={() => void redeem(result.promo_code_id, quote.id, result.code)}
+                  >
                     {redeeming === quote.id ? 'Redeeming…' : 'Redeem'}
                   </Button>
                 )}
