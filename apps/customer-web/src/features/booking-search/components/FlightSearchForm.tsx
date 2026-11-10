@@ -1,6 +1,7 @@
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import type { FlightSearchFormProps } from './contracts'
 import type { FlightSearchLeg, TripType } from '../api/types'
+import { AIRPORTS } from './airports'
 
 function today() {
   const date = new Date()
@@ -10,7 +11,7 @@ function today() {
 export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMessage }: FlightSearchFormProps) {
   function setLeg(index: number, change: Partial<FlightSearchLeg>) {
     const legs = value.legs.map((leg, position) => (position === index ? { ...leg, ...change } : leg))
-    if (value.tripType === 'return') legs[1] = { ...legs[1], origin: legs[0].destination, destination: legs[0].origin }
+    if (value.tripType === 'return' && legs[1]) legs[1] = { ...legs[1], origin: legs[0].destination, destination: legs[0].origin }
     onChange({ ...value, legs })
   }
   function setTrip(tripType: TripType) {
@@ -28,11 +29,97 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
     event.preventDefault()
     onSubmit(value)
   }
+  function airportSelect(leg: FlightSearchLeg, index: number, field: 'origin' | 'destination', label: string) {
+    return (
+      <label key={`${index}-${field}`}>
+        {label}
+        <select
+          aria-label={field === 'origin' ? `Leg ${index + 1} origin` : `Leg ${index + 1} destination`}
+          value={leg[field]}
+          onChange={(event) => setLeg(index, { [field]: event.target.value })}
+        >
+          <option value="">Select airport</option>
+          {AIRPORTS.map((airport) => (
+            <option key={airport.code} value={airport.code}>
+              {airport.city} ({airport.code})
+            </option>
+          ))}
+        </select>
+      </label>
+    )
+  }
+  function dateField(leg: FlightSearchLeg, index: number, label: string, ariaLabel: string, min: string) {
+    return (
+      <label key={`${index}-date`}>
+        {label}
+        <input
+          aria-label={ariaLabel}
+          type="date"
+          required
+          min={min}
+          value={leg.date}
+          onChange={(event) => setLeg(index, { date: event.target.value })}
+        />
+      </label>
+    )
+  }
   const labels: Array<[TripType, string]> = [
     ['one_way', 'One-way'],
     ['return', 'Return'],
     ['multi_city', 'Multi-city'],
   ]
+  const lastLeg = value.legs.length - 1
+  const rows: ReactNode[] = []
+  if (value.tripType === 'return') {
+    const outbound = value.legs[0]
+    const inbound = value.legs[1] ?? { origin: '', destination: '', date: '' }
+    rows.push(
+      <div className="f3-search-leg-row" key="return">
+        {airportSelect(outbound, 0, 'origin', 'From')}
+        {airportSelect(outbound, 0, 'destination', 'To')}
+        {dateField(outbound, 0, 'Depart', 'Leg 1 departure date', today())}
+        {dateField(inbound, 1, 'Return', 'Return date', outbound.date || today())}
+      </div>,
+    )
+  } else {
+    value.legs.forEach((leg, index) => {
+      rows.push(
+        <div className="f3-search-leg-row" key={index}>
+          {airportSelect(leg, index, 'origin', index > 0 ? `Leg ${index + 1} · From` : 'From')}
+          {airportSelect(leg, index, 'destination', 'To')}
+          {dateField(leg, index, 'Depart', `Leg ${index + 1} departure date`, index > 0 ? value.legs[index - 1].date || today() : today())}
+          {value.tripType === 'multi_city' && index === lastLeg && (
+            <div className="f3-search-leg-actions">
+              {value.legs.length > 2 && (
+                <button
+                  className="f3-search-remove"
+                  type="button"
+                  aria-label={`Remove leg ${index + 1}`}
+                  onClick={() => onChange({ ...value, legs: value.legs.filter((_, position) => position !== index) })}
+                >
+                  Remove leg {index + 1}
+                </button>
+              )}
+              {value.legs.length < 5 && (
+                <button
+                  className="f3-search-secondary"
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      ...value,
+                      legs: [...value.legs, { origin: value.legs.at(-1)!.destination, destination: '', date: '' }],
+                    })
+                  }
+                >
+                  + Add another leg (up to 5)
+                </button>
+              )}
+            </div>
+          )}
+        </div>,
+      )
+    })
+  }
   return (
     <form className={`f3-search-card f3-search-form is-${value.tripType}`} onSubmit={submit} aria-label="Flight search">
       <div className="f3-search-tabs" role="group" aria-label="Trip type">
@@ -42,122 +129,37 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
           </button>
         ))}
       </div>
-      <datalist id="f3-airports">
-        <option value="BKK">Bangkok Suvarnabhumi</option>
-        <option value="HKT">Phuket</option>
-        <option value="NRT">Tokyo Narita</option>
-        <option value="HKG">Hong Kong</option>
-        <option value="SIN">Singapore</option>
-      </datalist>
-      <div className="f3-search-route-fields">
-        {value.legs.map((leg, index) =>
-          value.tripType === 'return' && index === 1 ? (
-            <label key="return" className="f3-return-date">
-              Return
+      <div className="f3-search-route-fields">{rows}</div>
+      <div className="f3-search-party-row">
+        <div className="f3-search-party">
+          {(
+            [
+              ['adults', 'Adults (12+)'],
+              ['children', 'Children (2–11)'],
+              ['infants', 'Infants (under 2)'],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key}>
+              {label}
               <input
-                aria-label="Return date"
-                type="date"
+                type="number"
+                min={0}
+                max={key === 'infants' ? value.adults : 9 - value[key === 'adults' ? 'children' : 'adults']}
+                step={1}
                 required
-                min={value.legs[0].date || today()}
-                value={leg.date}
-                onChange={(event) => setLeg(1, { date: event.target.value })}
+                value={value[key]}
+                onChange={(event) => onChange({ ...value, [key]: event.target.value === '' ? 0 : Number(event.target.value) })}
               />
             </label>
-          ) : (
-            <fieldset className="f3-search-leg" key={index}>
-              <legend>{value.tripType === 'multi_city' ? `Leg ${index + 1}` : 'Where would you like to go?'}</legend>
-              <label>
-                From
-                <input
-                  aria-label={`Leg ${index + 1} origin`}
-                  placeholder="Airport code, e.g. BKK"
-                  list="f3-airports"
-                  autoComplete="off"
-                  maxLength={3}
-                  required
-                  pattern="[A-Z]{3}"
-                  value={leg.origin}
-                  onChange={(event) => setLeg(index, { origin: event.target.value.toUpperCase() })}
-                />
-              </label>
-              <label>
-                To
-                <input
-                  aria-label={`Leg ${index + 1} destination`}
-                  placeholder="Airport code, e.g. HKT"
-                  list="f3-airports"
-                  autoComplete="off"
-                  maxLength={3}
-                  required
-                  pattern="[A-Z]{3}"
-                  value={leg.destination}
-                  onChange={(event) => setLeg(index, { destination: event.target.value.toUpperCase() })}
-                />
-              </label>
-              <label>
-                Depart
-                <input
-                  aria-label={`Leg ${index + 1} departure date`}
-                  type="date"
-                  required
-                  min={index > 0 ? value.legs[index - 1].date || today() : today()}
-                  value={leg.date}
-                  onChange={(event) => setLeg(index, { date: event.target.value })}
-                />
-              </label>
-              {value.tripType === 'multi_city' && value.legs.length > 2 && (
-                <button
-                  className="f3-search-remove"
-                  type="button"
-                  aria-label={`Remove leg ${index + 1}`}
-                  onClick={() => onChange({ ...value, legs: value.legs.filter((_, position) => position !== index) })}
-                >
-                  Remove
-                </button>
-              )}
-            </fieldset>
-          ),
-        )}
-      </div>
-      {value.tripType === 'multi_city' && value.legs.length < 5 && (
-        <button
-          className="f3-search-secondary"
-          type="button"
-          onClick={() =>
-            onChange({ ...value, legs: [...value.legs, { origin: value.legs.at(-1)!.destination, destination: '', date: '' }] })
-          }
-        >
-          + Add another leg (up to 5)
-        </button>
-      )}
-      <div className="f3-search-party">
-        {(
-          [
-            ['adults', 'Adults (12+)'],
-            ['children', 'Children (2–11)'],
-            ['infants', 'Infants (under 2)'],
-          ] as const
-        ).map(([key, label]) => (
-          <label key={key}>
-            {label}
-            <input
-              type="number"
-              min={0}
-              max={key === 'infants' ? value.adults : 9 - value[key === 'adults' ? 'children' : 'adults']}
-              step={1}
-              required
-              value={value[key]}
-              onChange={(event) => onChange({ ...value, [key]: event.target.value === '' ? 0 : Number(event.target.value) })}
-            />
-          </label>
-        ))}
-      </div>
-      <div className="f3-search-submit">
-        <p>Up to 9 adults and children together. Infants sit on a lap, with one infant per adult.</p>
+          ))}
+        </div>
         <button className="f3-search-primary" disabled={isLoading} type="submit">
           {isLoading ? 'Searching…' : 'Search flights'}
         </button>
       </div>
+      <p className="f3-search-hint">
+        Up to 9 adults and children together. Infants sit on a lap, so you can't have more infants than adults.
+      </p>
       {errorMessage && (
         <p className="f3-search-error" role="alert">
           {errorMessage}
