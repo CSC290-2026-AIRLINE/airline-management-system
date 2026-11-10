@@ -10,7 +10,12 @@ describe('BookingAssistanceService', () => {
   const now = new Date('2026-11-11T00:00:00Z')
   const lock = jest.fn()
   const tx = { $queryRaw: lock } as unknown as BookingTransaction
-  const transaction = jest.fn((callback: (transaction: BookingTransaction) => Promise<unknown>) => callback(tx))
+  const commit = jest.fn()
+  const transaction = jest.fn(async (callback: (transaction: BookingTransaction) => Promise<unknown>) => {
+    const value = await callback(tx)
+    commit()
+    return value
+  })
   const createForHold = jest.fn()
   const getBookingDetail = jest.fn()
   const customer = { findFirst: jest.fn() }
@@ -52,6 +57,7 @@ describe('BookingAssistanceService', () => {
         occurredAt: now,
       }),
     )
+    expect(commit.mock.invocationCallOrder[0]).toBeLessThan(events.publish.mock.invocationCallOrder[0])
   })
 
   it('does not disclose a booking to an unknown viewer', async () => {
