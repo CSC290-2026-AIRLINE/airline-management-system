@@ -1,0 +1,46 @@
+.f3-staff-booking {
+  background: #f7f9fc;
+}
+.f3-staff-booking .f3-staff-customer {
+  min-height: 0;
+  padding-bottom: 0;
+}
+.f3-staff-customer-picker {
+  padding: 20px;
+}
+.f3-staff-customer-picker label {
+  max-width: 600px;
+}
+.f3-staff-customer-picker p {
+  color: #677287;
+  margin-top: 10px;
+  font-size: 13px;
+}
+.f3-staff-booking .f3-flow > h1 {
+  margin: 0 0 24px;
+}
+.f3-staff-receipt h2 {
+  font-size: 32px;
+  letter-spacing: 2px;
+  margin: 14px 0;
+}
+.f3-staff-receipt > a {
+  display: inline-block;
+  text-decoration: none;
+  margin-top: 20px;
+}
+.f3-staff-held {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 20px;
+  background: #fef4de;
+  color: #94651c;
+  margin-bottom: 20px;
+  font-size: 12px;
+}
+.f3-staff-booking > .f3-search:not(.f3-staff-customer) > .f3-search-heading {
+  display: none;
+}
+.f3-staff-booking > .f3-search:not(.f3-staff-customer) {
+  padding-top: 20px;
+}

@@ -1,0 +1,321 @@
+.f3-flow h1 {
+  margin-bottom: 12px;
+}
+.f3-flow-stepper {
+  padding: 0;
+  margin: 0 0 32px;
+  list-style: none;
+  display: flex;
+  gap: 24px;
+  color: #677287;
+  font-size: 13px;
+}
+.f3-flow-stepper li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.f3-flow-stepper span {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  height: 27px;
+  width: 27px;
+  background: #e6e8ef;
+  color: #677287;
+}
+.f3-flow-stepper [aria-current='step'] {
+  color: #102544;
+  font-weight: 700;
+}
+.f3-flow-stepper [aria-current='step'] span {
+  background: #102544;
+  color: white;
+}
+.f3-flow-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 24px;
+  align-items: start;
+}
+.f3-passengers-form {
+  min-width: 0;
+}
+.f3-passenger-card {
+  border: 1px solid #d9dfe9;
+  border-radius: 10px;
+  padding: 22px;
+  margin: 0 0 22px;
+  background: white;
+  min-width: 0;
+}
+.f3-passenger-card legend {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 8px;
+  text-transform: capitalize;
+}
+.f3-passenger-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.f3-passenger-card > p {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #677287;
+}
+.f3-lap-field {
+  margin-top: 18px;
+}
+.f3-flow-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+.f3-flow-summary {
+  background: white;
+  border: 1px solid #d9dfe9;
+  border-radius: 10px;
+  padding: 20px;
+}
+.f3-flow-summary article {
+  margin: 18px 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e6e8ef;
+}
+.f3-flow-summary article p {
+  color: #677287;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.f3-flow-summary > strong {
+  display: block;
+  margin: 12px 0;
+  font-size: 22px;
+}
+.f3-flow-summary > p:not(.f3-search-eyebrow) {
+  font-size: 12px;
+  color: #677287;
+}
+.f3-flow-error {
+  padding: 12px 16px;
+  margin-top: 16px !important;
+  border-radius: 6px;
+  background: #fdecec;
+  color: #b8171f !important;
+}
+@media (max-width: 760px) {
+  .f3-flow-columns {
+    grid-template-columns: 1fr;
+  }
+  .f3-flow-stepper {
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10px;
+  }
+  .f3-flow-stepper li {
+    flex-direction: column;
+    gap: 6px;
+    text-align: center;
+  }
+  .f3-passenger-fields {
+    grid-template-columns: 1fr;
+  }
+  .f3-passenger-card {
+    padding: 18px 16px;
+  }
+  .f3-flow-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .f3-flow-summary {
+    order: 2;
+  }
+}
+.f3-demo-notice {
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid #c8d9f0;
+  border-radius: 8px;
+  background: #eaf2ff;
+  color: #102544;
+  font-size: 13px;
+}
+.f3-demo-notice p {
+  margin-top: 6px;
+}
+.f3-demo-picker {
+  margin-bottom: 20px;
+}
+.f3-flow input[readonly] {
+  background: #f7f9fc;
+  color: #475569;
+}
+/* Passenger cards follow the Feature 3 form hierarchy. */
+.f3-customer-flow > * {
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.f3-customer-flow .f3-search-intro {
+  max-width: 1000px;
+  margin-bottom: 24px !important;
+}
+.f3-flow h1 {
+  margin-bottom: 0;
+}
+.f3-flow-columns > div {
+  min-width: 0;
+}
+.f3-flow-stepper {
+  gap: 0;
+  margin-bottom: 26px;
+}
+.f3-flow-stepper li:not(:last-child)::after {
+  content: '';
+  width: 36px;
+  height: 1px;
+  background: #d9dfe9;
+  margin: 0 16px 0 8px;
+}
+.f3-flow-stepper .is-complete {
+  color: #102544;
+}
+.f3-flow-stepper .is-complete span {
+  background: #102544;
+  color: white;
+}
+.f3-passenger-card {
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.f3-passenger-legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  padding: 0 !important;
+}
+.f3-passenger-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.f3-passenger-heading > div {
+  min-width: 0;
+}
+.f3-passenger-heading .f3-search-eyebrow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.f3-passenger-heading h2 {
+  font-size: 18px;
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+.f3-passenger-heading .f3-demo-picker {
+  margin: 0;
+  width: 220px;
+  max-width: 50%;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.f3-passenger-fields {
+  gap: 16px;
+}
+.f3-passenger-section-title {
+  font-size: 16px !important;
+  margin: 0 0 16px !important;
+}
+.f3-passenger-info {
+  padding: 10px 12px;
+  border: 1px solid #d8e4f5;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: #1d4ed8 !important;
+  font-size: 12px !important;
+}
+.f3-passenger-assistance {
+  border-top: 1px solid #e6e8ef;
+  margin-top: 20px;
+  padding-top: 16px;
+}
+.f3-passenger-assistance h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.f3-passenger-assistance h3 span {
+  color: #677287;
+  font-weight: 400;
+}
+.f3-flow-summary {
+  position: sticky;
+  top: 24px;
+  padding: 18px;
+}
+.f3-flow-summary article strong {
+  font-size: 14px;
+}
+.f3-flow-summary > p:last-child {
+  margin-top: 14px;
+  padding: 10px;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: #102544;
+}
+.f3-demo-notice {
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .f3-flow-stepper {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .f3-flow-stepper li {
+    min-width: 0;
+    font-size: 10px;
+  }
+  .f3-flow-stepper li:not(:last-child)::after {
+    display: none;
+  }
+  .f3-passenger-heading {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .f3-passenger-heading .f3-demo-picker {
+    width: 100%;
+    max-width: none;
+  }
+  .f3-passenger-fields {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .f3-passenger-card {
+    padding: 18px 16px;
+  }
+  .f3-passenger-card input,
+  .f3-passenger-card select {
+    min-height: 44px;
+  }
+  .f3-flow-summary {
+    position: static;
+  }
+}
+.f3-customer-flow > h1 {
+  margin-left: auto;
+  margin-right: auto;
+}
+.f3-customer-flow > .f3-search-intro {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
