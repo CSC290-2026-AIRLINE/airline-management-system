@@ -79,4 +79,26 @@ describe('FlightEventDispatcher', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1)
     expect(handle).toHaveBeenCalledTimes(1)
   })
+
+  it('does not run live handlers at the same time', async () => {
+    let finishFirst!: () => void
+    const handle = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishFirst = resolve
+          }),
+      )
+      .mockResolvedValue(undefined)
+    const dispatcher = new FlightEventDispatcher(bus, { replay: () => Promise.resolve() }, handle)
+    await dispatcher.start()
+    const first = bus.publish(event(1n))
+    const second = bus.publish(event(2n))
+    expect(handle).toHaveBeenCalledTimes(1)
+    finishFirst()
+    await Promise.all([first, second])
+    expect(handle.mock.calls.map(([item]) => item.seq)).toEqual([1n, 2n])
+    dispatcher.stop()
+  })
 })
