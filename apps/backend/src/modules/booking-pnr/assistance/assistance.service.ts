@@ -116,8 +116,15 @@ export class AssistanceService implements ServiceRequestPort {
         },
         select: { flight_id: true, seat_code: true },
       })
+      const maps = new Map(
+        await Promise.all(
+          [...new Set(seats.map((seat) => seat.flight_id))].map(
+            async (flightId) => [flightId, await this.seatMaps.getSeatMap(flightId)] as const,
+          ),
+        ),
+      )
       for (const seat of seats) {
-        const map = await this.seatMaps.getSeatMap(seat.flight_id)
+        const map = maps.get(seat.flight_id)!
         if (map.rows.some((row) => row.seats.some((item) => item.seatCode === seat.seat_code && item.type === 'exit'))) {
           throw new BookingError('SEAT_NOT_ALLOWED', 'Passengers requesting assistance cannot sit in an exit row')
         }

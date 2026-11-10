@@ -66,6 +66,26 @@ describe('AssistanceService', () => {
     expect(requests.create).not.toHaveBeenCalled()
   })
 
+  it('loads each flight layout only once when checking held seats', async () => {
+    seat.findMany.mockResolvedValue([
+      { flight_id: 'flight', seat_code: '1A' },
+      { flight_id: 'flight', seat_code: '1B' },
+    ])
+    maps.getSeatMap.mockResolvedValue({
+      rows: [
+        {
+          seats: [
+            { seatCode: '1A', type: 'standard' },
+            { seatCode: '1B', type: 'standard' },
+          ],
+        },
+      ],
+    })
+    await service.createForHold(tx, [input])
+    expect(maps.getSeatMap).toHaveBeenCalledTimes(1)
+    expect(requests.create).toHaveBeenCalledTimes(1)
+  })
+
   it('accepts a medical request exactly 48 hours before departure', async () => {
     flight.findMany.mockResolvedValue([
       { id: 'flight', dep_at: new Date('2026-11-03T00:00:00Z'), service_date: new Date('2026-11-03T00:00:00Z') },
