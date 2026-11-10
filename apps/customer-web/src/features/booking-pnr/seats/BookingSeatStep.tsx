@@ -23,6 +23,7 @@ export function BookingSeatStep({
   const [flightId, setFlightId] = useState(itinerary.selections[0]?.flight.flightId ?? '')
   const [travellerKey, setTravellerKey] = useState(travellers.find((person) => person.expectedType !== 'infant')?.key ?? '')
 
+  // A failed hold can mean someone else took a seat; refresh when the flow reports an error.
   useEffect(() => {
     const controller = new AbortController()
     async function load() {
@@ -49,7 +50,7 @@ export function BookingSeatStep({
     }
     void load()
     return () => controller.abort()
-  }, [fetchWithAuth, itinerary.selections, retry])
+  }, [fetchWithAuth, itinerary.selections, retry, error])
 
   const selection = itinerary.selections.find((item) => item.flight.flightId === flightId)
   const traveller = travellers.find((person) => person.key === travellerKey && person.expectedType !== 'infant')
