@@ -176,7 +176,7 @@ export class FareQuoteService {
     return presentQuote(saved, await this.displayTotal(saved, dto.display_currency))
   }
 
-  // An expired quote is 410, as the doc has it. /fee and redeem still work on one: 5b and 3b act on a booking made earlier.
+  // An expired quote is 410, as the doc has it. /fee still works on one: 5b acts on a booking made earlier.
   async findOne(id: string, displayCurrency?: string) {
     const quote = await this.findQuote(id)
     if (quote.expires_at <= simNow()) {
@@ -205,40 +205,6 @@ export class FareQuoteService {
       fee: allowed ? feeCents(toCents(Number(quote.total_amount)), flat, pct) / 100 : null, // null: not refundable or changeable
       currency: quote.currency,
     }
-  }
-
-  // Called by Feature 3b when a booking is confirmed. Safe to retry: the use is counted once per quote. A quote with no
-  // promo is a no-op rather than an error, so 3b can call this on every confirmation without checking first.
-  //
-  // Only "used up" refuses. The price was agreed when the quote was made, so a promo switched off or expired since then
-  // still counts. The increment is conditional rather than relying on the CHECK on used_count, so two bookings racing
-  // for the last use cannot both win, and throwing rolls the redemption row back.
-  async redeem(id: string) {
-    const quote = await this.findQuote(id)
-    const promoCodeId = quote.promo_code_id
-    if (!promoCodeId) {
-      return { fare_quote_id: quote.id, promo_code_id: null, redeemed: false, already_redeemed: false }
-    }
-
-    const { count } = await this.db.$transaction(async (tx) => {
-      const inserted = await tx.promo_redemption.createMany({
-        data: [{ promo_code_id: promoCodeId, fare_quote_id: quote.id, redeemed_at: simNow() }],
-        skipDuplicates: true, // ON CONFLICT DO NOTHING
-      })
-      if (inserted.count === 0) return inserted
-
-      const counted = await tx.$executeRaw`
-        UPDATE promo_code SET used_count = used_count + 1, updated_at = now()
-        WHERE id = ${promoCodeId}::uuid AND (max_uses IS NULL OR used_count < max_uses)`
-      if (counted === 0) {
-        throw new UnprocessableEntityException(
-          pricingError(PricingErrorCode.PROMO_INVALID, 'This promo code has no uses left', { reason: 'exhausted' }),
-        )
-      }
-      return inserted
-    })
-
-    return { fare_quote_id: quote.id, promo_code_id: promoCodeId, redeemed: true, already_redeemed: count === 0 }
   }
 
   private checkSeatType(seatType: string | undefined): SeatType | null {

@@ -521,61 +521,6 @@ describe('FareQuoteService', () => {
     })
   })
 
-  describe('redeem', () => {
-    const withPromo = { id: QUOTE_ID, promo_code_id: PROMO_ID, fare_quote_line: [] }
-
-    beforeEach(() => {
-      db.fare_quote.findUnique.mockResolvedValue(withPromo)
-      tx.promo_redemption.createMany.mockResolvedValue({ count: 1 })
-      tx.$executeRaw.mockResolvedValue(1)
-    })
-
-    it('records the redemption at simulation time and counts one use, in one transaction', async () => {
-      const result = await service.redeem(QUOTE_ID)
-
-      expect(tx.promo_redemption.createMany).toHaveBeenCalledWith({
-        data: [{ promo_code_id: PROMO_ID, fare_quote_id: QUOTE_ID, redeemed_at: NOW }],
-        skipDuplicates: true,
-      })
-      expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
-      expect(db.$transaction).toHaveBeenCalledTimes(1)
-      expect(result).toEqual({ fare_quote_id: QUOTE_ID, promo_code_id: PROMO_ID, redeemed: true, already_redeemed: false })
-    })
-
-    it('does not count again on a retry', async () => {
-      tx.promo_redemption.createMany.mockResolvedValue({ count: 0 })
-
-      const result = await service.redeem(QUOTE_ID)
-
-      expect(tx.$executeRaw).not.toHaveBeenCalled()
-      expect(result).toMatchObject({ redeemed: true, already_redeemed: true })
-    })
-
-    it('throws PROMO_INVALID exhausted when no use is left, which rolls the redemption back', async () => {
-      tx.$executeRaw.mockResolvedValue(0)
-
-      const error = await errorOf(service.redeem(QUOTE_ID))
-
-      expect(error).toBeInstanceOf(UnprocessableEntityException)
-      expect(error.getResponse()).toMatchObject({ error: { code: 'PROMO_INVALID', details: { reason: 'exhausted' } } })
-    })
-
-    it('does nothing for a quote with no promo', async () => {
-      db.fare_quote.findUnique.mockResolvedValue({ ...withPromo, promo_code_id: null })
-
-      const result = await service.redeem(QUOTE_ID)
-
-      expect(result).toEqual({ fare_quote_id: QUOTE_ID, promo_code_id: null, redeemed: false, already_redeemed: false })
-      expect(db.$transaction).not.toHaveBeenCalled()
-    })
-
-    it('throws QUOTE_NOT_FOUND for an unknown quote', async () => {
-      db.fare_quote.findUnique.mockResolvedValue(null)
-
-      await expect(service.redeem(QUOTE_ID)).rejects.toBeInstanceOf(NotFoundException)
-    })
-  })
-
   describe('reading a quote', () => {
     const stored = {
       id: QUOTE_ID,

@@ -2,7 +2,9 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { DbService } from '@backend/db/db.service'
 import type { PromoInvalidReason } from '../pricing.constants'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
+import { simNow } from '../fare-quote/sim-clock'
 import { CreatePromoCodeDto } from './dto/create-promo-code.dto'
+import { RedeemPromoDto } from './dto/redeem-promo.dto'
 import { UpdatePromoCodeDto } from './dto/update-promo-code.dto'
 
 // The row as it will be after a create or update, for the checks that span several fields.
@@ -117,10 +119,11 @@ export class PromoCodeService {
         quoted_at: true,
         fare_class: { select: { code: true } },
         flight: { select: { flight_number: true, dep_at: true, route: { select: { origin: true, destination: true } } } },
-        promo_redemption: { select: { redeemed_at: true } },
+        promo_redemption: { where: { status: 'redeemed' }, select: { redeemed_at: true }, take: 1 },
       },
     })
     return {
+      promo_code_id: promo.id,
       code: promo.code,
       quotes: quotes.map(({ fare_class, flight, promo_redemption, ...quote }) => ({
         ...quote,
@@ -134,14 +137,92 @@ export class PromoCodeService {
     }
   }
 
+  // Feature 3b or 5a, when a booking is paid. Counts one use per booking: a repeat with the same booking_ref returns the
+  // first result and counts nothing. Only "used up" refuses; the price was agreed when the quote was made, so a promo
+  // switched off or expired since then still counts. The increment is conditional, so two bookings racing for the last
+  // use cannot both win, and throwing rolls the redemption row back.
+  async redeem(promoCodeId: string, { booking_ref, fare_quote_id }: RedeemPromoDto) {
+    await this.findOne(promoCodeId)
+    const quote = await this.db.fare_quote.findUnique({ where: { id: fare_quote_id }, select: { id: true, promo_code_id: true } })
+    if (!quote) {
+      throw new NotFoundException(pricingError(PricingErrorCode.QUOTE_NOT_FOUND, `Fare quote ${fare_quote_id} not found`))
+    }
+    if (quote.promo_code_id !== promoCodeId) {
+      throw this.invalid('not_found', 'This quote was not priced with that promo code')
+    }
+
+    const key = { promo_code_id: promoCodeId, booking_ref }
+    return this.db.$transaction(async (tx) => {
+      const existing = await tx.promo_redemption.findUnique({ where: { promo_code_id_booking_ref: key } })
+      if (existing?.status === 'redeemed') {
+        return this.redemptionResult(existing, true)
+      }
+
+      if (!existing) {
+        const inserted = await tx.promo_redemption.createMany({
+          data: [{ ...key, fare_quote_id, redeemed_at: simNow() }],
+          skipDuplicates: true, // ON CONFLICT DO NOTHING: a concurrent retry got there first
+        })
+        if (inserted.count === 0) {
+          return this.redemptionResult(await tx.promo_redemption.findUniqueOrThrow({ where: { promo_code_id_booking_ref: key } }), true)
+        }
+      }
+
+      const counted = await tx.$executeRaw`
+        UPDATE promo_code SET used_count = used_count + 1, updated_at = now()
+        WHERE id = ${promoCodeId}::uuid AND (max_uses IS NULL OR used_count < max_uses)`
+      if (counted === 0) {
+        throw this.invalid('exhausted', 'This promo code has no uses left')
+      }
+      // A booking whose use was released (payment failed) and is paid again takes its use back.
+      const row = existing
+        ? await tx.promo_redemption.update({
+            where: { id: existing.id },
+            data: { status: 'redeemed', released_at: null, redeemed_at: simNow(), fare_quote_id },
+          })
+        : await tx.promo_redemption.findUniqueOrThrow({ where: { promo_code_id_booking_ref: key } })
+      return this.redemptionResult(row, false)
+    })
+  }
+
+  // When the booking is refunded or payment fails. Safe to retry: releasing a released use does nothing.
+  async release(promoCodeId: string, bookingRef: string) {
+    const key = { promo_code_id: promoCodeId, booking_ref: bookingRef }
+    await this.db.$transaction(async (tx) => {
+      const existing = await tx.promo_redemption.findUnique({ where: { promo_code_id_booking_ref: key } })
+      if (!existing) {
+        throw new NotFoundException(
+          pricingError(PricingErrorCode.PROMO_REDEMPTION_NOT_FOUND, `No use of this promo code for booking ${bookingRef}`),
+        )
+      }
+      if (existing.status === 'released') return
+      await tx.promo_redemption.update({ where: { id: existing.id }, data: { status: 'released', released_at: simNow() } })
+      await tx.$executeRaw`UPDATE promo_code SET used_count = GREATEST(used_count - 1, 0), updated_at = now() WHERE id = ${promoCodeId}::uuid`
+    })
+  }
+
+  private redemptionResult(
+    row: { promo_code_id: string; booking_ref: string; fare_quote_id: string; status: string; redeemed_at: Date },
+    alreadyRedeemed: boolean,
+  ) {
+    return {
+      promo_code_id: row.promo_code_id,
+      booking_ref: row.booking_ref,
+      fare_quote_id: row.fare_quote_id,
+      status: row.status,
+      redeemed_at: row.redeemed_at,
+      already_redeemed: alreadyRedeemed,
+    }
+  }
+
   // Used by fare quotes. Returns the live promo for a code typed at checkout, or throws PROMO_INVALID with the reason.
   // The caller passes the simulation time, because validity follows the simulation clock, not the real one.
   async checkPromo(code: string, simNow: Date) {
     const typed = code.trim().toUpperCase()
     const promo = await this.db.promo_code.findFirst({ where: { code: typed, deleted_at: null } })
-    if (!promo) throw this.invalid('unknown', `Promo code ${typed} does not exist`)
+    if (!promo) throw this.invalid('not_found', `Promo code ${typed} does not exist`)
     if (!promo.is_active) throw this.invalid('inactive', `Promo code ${typed} is not active`)
-    if (simNow < promo.valid_from) throw this.invalid('not_yet_valid', `Promo code ${typed} is not valid yet`)
+    if (simNow < promo.valid_from) throw this.invalid('not_started', `Promo code ${typed} is not valid yet`)
     if (simNow >= promo.valid_to) throw this.invalid('expired', `Promo code ${typed} has expired`)
     if (promo.max_uses !== null && promo.used_count >= promo.max_uses) {
       throw this.invalid('exhausted', `Promo code ${typed} has no uses left`)

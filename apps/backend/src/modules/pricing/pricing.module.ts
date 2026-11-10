@@ -19,7 +19,7 @@ import { PaymentScheduleService } from './finance/payment-schedule/payment-sched
 import { PricingRuleController, PricingRuleOrderController, PricingSimulationController } from './pricing-rule/pricing-rule.controller'
 import { PricingRuleService } from './pricing-rule/pricing-rule.service'
 import { PricingSimulatorService } from './pricing-rule/pricing-simulator.service'
-import { PromoCodeController } from './promo-code/promo-code.controller'
+import { PromoCodeController, PromoRedemptionController } from './promo-code/promo-code.controller'
 import { PromoCodeService } from './promo-code/promo-code.service'
 import { PublicSeatFeeController, SeatFeeController } from './seat-fee/seat-fee.controller'
 import { SeatFeeService } from './seat-fee/seat-fee.service'
@@ -38,6 +38,7 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     PricingRuleOrderController,
     PricingSimulationController,
     PromoCodeController,
+    PromoRedemptionController,
     FareQuoteController,
     SeatFeeController,
     PublicSeatFeeController,
