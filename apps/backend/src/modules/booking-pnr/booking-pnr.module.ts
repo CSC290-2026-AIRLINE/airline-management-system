@@ -57,6 +57,7 @@ import { SeatChangeController } from './seats/seat-change.controller'
 import { SeatChangeService } from './seats/seat-change.service'
 import { CheckinSeatMapAdapter } from './providers/checkin-seat-map.adapter'
 import { CheckinSeatProvider } from './providers/checkin-seat.provider'
+import { FlightImpactService } from './flight-events/flight-impact.service'
 
 @Module({
   // Feature 15's audit writer, for the staff cancellation entry (B7).
@@ -78,6 +79,7 @@ import { CheckinSeatProvider } from './providers/checkin-seat.provider'
     SeatChangeService,
     CheckinSeatMapAdapter,
     CheckinSeatProvider,
+    FlightImpactService,
     SeatHoldExpiryService,
     HoldService,
     StaffBookingLookupService,
@@ -127,6 +129,7 @@ import { CheckinSeatProvider } from './providers/checkin-seat.provider'
     CANCEL_FOR_FLIGHT_PORT,
     FLIGHT_EVENT_BUS,
     BOOKING_PROVIDER,
+    FlightImpactService,
   ],
 })
 export class BookingPnrModule {}
