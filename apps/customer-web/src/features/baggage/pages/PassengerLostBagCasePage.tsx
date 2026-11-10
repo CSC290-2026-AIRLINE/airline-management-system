@@ -3,6 +3,17 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
 import { DeliveryChoiceForm, type PassengerDeliveryChoice } from '../components/DeliveryChoiceForm'
 import { createPassengerCasePageState, isCurrentCaseRequest, passengerCasePageReducer, passengerDeliveryFormKey } from './case-page-state'
+import {
+  caseLookupMatchesOpenedCase,
+  caseRecoveryErrorMessage,
+  caseRecoveryReducer,
+  caseRecoveryDetailsMatchCase,
+  createCaseRecoveryState,
+  extractCaseNumbers,
+  normalizeCaseRecoveryAccess,
+  validateCaseRecoveryAccess,
+  type CaseRecoveryAccess,
+} from './case-page-recovery'
 import { canReportBagFoundByPassenger, caseProgressPresentation, caseStatusLabel, shouldShowNoOpenCase } from './case-page-presentation'
 import { timelineEventLabel, type PassengerCaseTimelineEvent } from './passenger-case-summary-view'
 import './PassengerLostBagCasePage.css'
@@ -110,17 +121,32 @@ function deliveryDestination(delivery: DeliveryChoiceState): string | null {
   return delivery.address ? `${DELIVERY_TYPE_LABELS[delivery.deliveryType]}: ${delivery.address}` : null
 }
 
-function TryCaseChips({ cases, currentCase, onOpen }: { cases: string[]; currentCase: string; onOpen: (caseNumber: string) => void }) {
-  if (cases.length === 0) return null
+function TryCaseChips({
+  cases,
+  currentCase,
+  onOpen,
+  onFindMyCases,
+}: {
+  cases: string[]
+  currentCase: string
+  onOpen: (caseNumber: string) => void
+  onFindMyCases?: () => void
+}) {
+  if (cases.length === 0 && !onFindMyCases) return null
 
   return (
-    <div className="passenger-case-access__suggestions" role="group" aria-label="Other baggage cases">
+    <div className="passenger-case-access__suggestions" role="group" aria-label="Find or open baggage cases">
       <span>Try:</span>
       {cases.map((caseItem) => (
         <button aria-pressed={caseItem === currentCase} key={caseItem} type="button" onClick={() => onOpen(caseItem)}>
           {caseItem}
         </button>
       ))}
+      {onFindMyCases && (
+        <button className="passenger-case-access__find-cases" type="button" onClick={onFindMyCases}>
+          Find my cases
+        </button>
+      )}
     </div>
   )
 }
@@ -142,6 +168,7 @@ export function PassengerLostBagCasePage() {
   const location = useLocation()
   const openedFromReport = useRef(false)
   const caseRequestGeneration = useRef(0)
+  const caseRecoveryRequest = useRef(0)
   const caseSummaryRequest = useRef(0)
   const [caseNumber, setCaseNumber] = useState('')
   const [bookingReference, setBookingReference] = useState('')
@@ -157,6 +184,8 @@ export function PassengerLostBagCasePage() {
   const [caseSummaryLoading, setCaseSummaryLoading] = useState(false)
   const [relatedCases, setRelatedCases] = useState<string[]>([])
   const [caseListMessage, setCaseListMessage] = useState('')
+  const [caseRecovery, dispatchCaseRecovery] = useReducer(caseRecoveryReducer, undefined, createCaseRecoveryState)
+  const [caseRecoveryAccess, setCaseRecoveryAccess] = useState<CaseRecoveryAccess | null>(null)
   const [isLookingUp, setIsLookingUp] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -176,6 +205,8 @@ export function PassengerLostBagCasePage() {
       surname: surname.trim(),
     }
 
+    if (report && access && !caseLookupMatchesOpenedCase(access, requestAccess)) clearOpenedCase()
+
     if (!CASE_NUMBER_PATTERN.test(requestAccess.caseNumber)) {
       setError('Enter a valid case number, such as LB-2026-000118.')
       return
@@ -194,6 +225,9 @@ export function PassengerLostBagCasePage() {
 
   async function loadCase(requestAccess: CaseAccess) {
     const requestId = ++caseRequestGeneration.current
+    caseRecoveryRequest.current += 1
+    dispatchCaseRecovery({ type: 'reset' })
+    setCaseRecoveryAccess(null)
     caseSummaryRequest.current += 1
     const isCurrent = () => isCurrentCaseRequest(requestId, caseRequestGeneration.current)
     const normalizedAccess = {
@@ -344,6 +378,108 @@ export function PassengerLostBagCasePage() {
     void loadCase({ ...access, caseNumber: nextCaseNumber })
   }
 
+  async function findMyCases(): Promise<void> {
+    const recoveryAccess = normalizeCaseRecoveryAccess(bookingReference, surname)
+    const validationError = validateCaseRecoveryAccess(recoveryAccess)
+    const requestId = ++caseRecoveryRequest.current
+    const isCurrent = () => requestId === caseRecoveryRequest.current
+
+    dispatchCaseRecovery({ type: 'reset' })
+    setCaseRecoveryAccess(null)
+    setRelatedCases([])
+    setCaseListMessage('')
+
+    if (validationError) {
+      dispatchCaseRecovery({ type: 'failed', message: validationError })
+      return
+    }
+
+    setCaseRecoveryAccess(recoveryAccess)
+    dispatchCaseRecovery({ type: 'loading' })
+
+    try {
+      const query = new URLSearchParams({
+        bookingReference: recoveryAccess.bookingReference,
+        surname: recoveryAccess.surname,
+      }).toString()
+      const response = await fetchWithAuth(`/api/customer/lost-reports?${query}`)
+      if (!isCurrent()) return
+
+      if (!response.ok) {
+        const message = caseRecoveryErrorMessage(
+          response.status === 401
+            ? 'Your sign-in has expired. Sign in again, then find your cases.'
+            : response.status === 403
+              ? 'This customer account is not authorized to access reports for those booking details.'
+              : await responseError(response, 'Your cases could not be found. Check the booking details and try again.'),
+        )
+        if (!isCurrent()) return
+        dispatchCaseRecovery({ type: 'failed', message })
+        setCaseRecoveryAccess(null)
+        return
+      }
+
+      const reports = (await response.json()) as unknown
+      if (!isCurrent()) return
+      const cases = extractCaseNumbers(reports)
+      dispatchCaseRecovery({ type: 'loaded', caseNumbers: cases })
+    } catch (cause) {
+      if (!isCurrent()) return
+      dispatchCaseRecovery({
+        type: 'failed',
+        message: cause instanceof Error ? cause.message : 'Your cases could not be loaded. Try again.',
+      })
+      setCaseRecoveryAccess(null)
+    }
+  }
+
+  function updateRecoveryDetails(field: 'bookingReference' | 'surname', value: string): void {
+    const nextBookingReference = field === 'bookingReference' ? value : bookingReference
+    const nextSurname = field === 'surname' ? value : surname
+    if (access && !caseRecoveryDetailsMatchCase(access, nextBookingReference, nextSurname)) {
+      clearOpenedCase()
+    } else {
+      caseRecoveryRequest.current += 1
+      dispatchCaseRecovery({ type: 'reset' })
+      setCaseRecoveryAccess(null)
+      setRelatedCases([])
+      setCaseListMessage('')
+    }
+
+    if (field === 'bookingReference') setBookingReference(value.toUpperCase())
+    else setSurname(value)
+  }
+
+  function clearOpenedCase(): void {
+    caseRequestGeneration.current += 1
+    caseRecoveryRequest.current += 1
+    caseSummaryRequest.current += 1
+    dispatchCasePage({ type: 'reset' })
+    dispatchCaseRecovery({ type: 'reset' })
+    setCaseRecoveryAccess(null)
+    setCaseSummary(null)
+    setCaseSummaryError('')
+    setCaseSummaryLoading(false)
+    setAccess(null)
+    setIsEditingAccess(true)
+    setCaseNumber('')
+    setRelatedCases([])
+    setCaseListMessage('')
+    setIsLookingUp(false)
+    setIsSaving(false)
+    setIsCancelling(false)
+    setIsConfirmingSelfFound(false)
+    setError('')
+    setSaveNotice('')
+  }
+
+  function openRecoveredCase(nextCaseNumber: string): void {
+    if (!caseRecoveryAccess || !caseRecovery.caseNumbers.includes(nextCaseNumber)) return
+
+    setCaseNumber(nextCaseNumber)
+    void loadCase({ ...caseRecoveryAccess, caseNumber: nextCaseNumber })
+  }
+
   function renderLookupForm(surface: 'desktop' | 'mobile') {
     return (
       <form
@@ -371,7 +507,7 @@ export function PassengerLostBagCasePage() {
             maxLength={6}
             disabled={isLookingUp}
             value={bookingReference}
-            onChange={(event) => setBookingReference(event.currentTarget.value.toUpperCase())}
+            onChange={(event) => updateRecoveryDetails('bookingReference', event.currentTarget.value)}
             placeholder="ABC123"
           />
         </label>
@@ -383,7 +519,7 @@ export function PassengerLostBagCasePage() {
             maxLength={100}
             disabled={isLookingUp}
             value={surname}
-            onChange={(event) => setSurname(event.currentTarget.value)}
+            onChange={(event) => updateRecoveryDetails('surname', event.currentTarget.value)}
             placeholder="Surname on booking"
           />
         </label>
@@ -391,6 +527,41 @@ export function PassengerLostBagCasePage() {
           {isLookingUp ? 'Opening…' : 'Open case'}
         </button>
       </form>
+    )
+  }
+
+  function openListedCase(caseNumber: string): void {
+    if (caseRecovery.status === 'results') openRecoveredCase(caseNumber)
+    else openRelatedCase(caseNumber)
+  }
+
+  function renderTryCaseChips() {
+    const cases = caseRecovery.status === 'results' ? caseRecovery.caseNumbers : relatedCases
+    const canFind = cases.length === 0 && !isLookingUp && caseRecovery.status !== 'loading'
+    const message = caseRecovery.status === 'empty' || caseRecovery.status === 'error' ? caseRecovery.message : ''
+
+    return (
+      <div className="passenger-case-recovery">
+        <TryCaseChips
+          cases={cases}
+          currentCase={report?.caseNumber ?? ''}
+          onOpen={openListedCase}
+          onFindMyCases={canFind ? () => void findMyCases() : undefined}
+        />
+        {caseRecovery.status === 'loading' && (
+          <p className="passenger-case-access__recovery-message" role="status">
+            Finding cases…
+          </p>
+        )}
+        {message && (
+          <p
+            className={`passenger-case-access__recovery-message${caseRecovery.status === 'error' ? ' passenger-case-access__recovery-message--error' : ''}`}
+            role={caseRecovery.status === 'error' ? 'alert' : 'status'}
+          >
+            {message}
+          </p>
+        )}
+      </div>
     )
   }
 
@@ -547,10 +718,7 @@ export function PassengerLostBagCasePage() {
       </header>
 
       <section className="passenger-case-access" aria-label="Open a baggage case">
-        <div className="passenger-case-access__desktop">
-          {renderLookupForm('desktop')}
-          <TryCaseChips cases={relatedCases} currentCase={report?.caseNumber ?? ''} onOpen={openRelatedCase} />
-        </div>
+        <div className="passenger-case-access__desktop">{renderLookupForm('desktop')}</div>
         <div className="passenger-case-access__mobile">
           {report && !isEditingAccess ? (
             <>
@@ -565,15 +733,12 @@ export function PassengerLostBagCasePage() {
                   Change
                 </button>
               </div>
-              <TryCaseChips cases={relatedCases} currentCase={report.caseNumber} onOpen={openRelatedCase} />
             </>
           ) : (
-            <>
-              {renderLookupForm('mobile')}
-              <TryCaseChips cases={relatedCases} currentCase={report?.caseNumber ?? ''} onOpen={openRelatedCase} />
-            </>
+            <>{renderLookupForm('mobile')}</>
           )}
         </div>
+        {renderTryCaseChips()}
         {error && (
           <p className="passenger-case-page__error" role="alert">
             {error}

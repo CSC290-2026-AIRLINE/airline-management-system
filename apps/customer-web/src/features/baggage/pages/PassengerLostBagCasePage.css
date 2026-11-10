@@ -101,6 +101,40 @@
   opacity: 0.7;
 }
 
+.passenger-case-access__find-cases {
+  min-height: 1.9rem;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid #d5ddea;
+  border-radius: 999px;
+  background: #fff;
+  color: #25334f;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.passenger-case-access__find-cases:focus-visible {
+  outline: 2px solid #ff9f0a;
+  outline-offset: 3px;
+}
+
+.passenger-case-access__find-cases:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.passenger-case-access__recovery-message {
+  margin: 0.35rem 0 0;
+  color: #68758f;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.passenger-case-access__recovery-message--error {
+  color: #b42318;
+}
+
 .passenger-case-access__desktop {
   display: block;
 }
@@ -522,6 +556,17 @@
 
   .passenger-case-access__form button {
     width: 100%;
+  }
+
+  .passenger-case-access__suggestions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.1rem;
+  }
+
+  .passenger-case-access__suggestions > span:first-child,
+  .passenger-case-access__suggestions button {
+    flex: 0 0 auto;
   }
 
   .passenger-case-layout {
