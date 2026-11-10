@@ -5,6 +5,9 @@
  * The trigger keeps the customer field metrics (40px high, 15px text) so it sits with the inputs next to it. The list is
  * portalled to the body, so it cannot read the page-scoped `--f3-*` variables; every colour below falls back to the value
  * the pages use.
+ *
+ * Every dropdown shares one look: the menu is as wide as its trigger, the rows and the tick stay inside it, and it opens
+ * and closes with the staff console's 150ms fade and zoom.
  */
 
 .cw-select-trigger {
@@ -52,7 +55,9 @@
 
 .cw-select-content {
   z-index: 50;
-  min-width: 8rem;
+  box-sizing: border-box;
+  min-width: var(--radix-select-trigger-width, 8rem);
+  transform-origin: var(--radix-select-content-transform-origin, center);
   border: 1px solid var(--f3-border, #d9dfe9);
   border-radius: 8px;
   background: #fff;
@@ -70,77 +75,61 @@
     0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
-.cw-select-content[data-state='open'] {
-  animation: cw-select-in 120ms ease-out;
-}
-
 /*
- * The smoother variant, matching the staff console's dropdown (apps/staff-web/src/components/ui/select.tsx uses
- * tw-animate-css): a 150ms fade and zoom that grows out of the trigger, and a closing animation so the list does not
- * snap away. Opt in per dropdown with the `cw-select-content--smooth` class until the whole app is ready for it.
- *
- * The menu also matches the trigger it belongs to. The base rules let the list grow past the trigger (the viewport is
- * a content box, so its padding is added to the trigger width) and let the rows spill out of the menu, which pushed the
- * grey highlight and the tick outside the white panel. Border-box sizing keeps that padding inside the measured width.
+ * The menu matches the trigger it belongs to. Without border-box sizing the viewport is a content box, so its padding is
+ * added to the trigger width and the rows spill out of the menu, which pushed the grey highlight and the tick outside the
+ * white panel.
  */
-.cw-select-content.cw-select-content--smooth {
-  box-sizing: border-box;
-  min-width: var(--radix-select-trigger-width, 8rem);
-  transform-origin: var(--radix-select-content-transform-origin, center);
-}
-
-.cw-select-content.cw-select-content--smooth .cw-select-viewport {
+.cw-select-viewport {
   box-sizing: border-box;
   width: 100%;
+  padding: 4px;
   min-width: 0;
-}
-
-.cw-select-content.cw-select-content--smooth .cw-select-item {
-  box-sizing: border-box;
+  max-height: var(--radix-select-content-available-height, 20rem);
 }
 
 /* The resting gap from the trigger, and where the list slides in from. */
-.cw-select-content.cw-select-content--smooth[data-side='bottom'] {
+.cw-select-content[data-side='bottom'] {
   translate: 0 4px;
   --cw-select-enter-x: 0px;
   --cw-select-enter-y: -8px;
 }
 
-.cw-select-content.cw-select-content--smooth[data-side='top'] {
+.cw-select-content[data-side='top'] {
   translate: 0 -4px;
   --cw-select-enter-x: 0px;
   --cw-select-enter-y: 8px;
 }
 
-.cw-select-content.cw-select-content--smooth[data-side='left'] {
+.cw-select-content[data-side='left'] {
   translate: -4px 0;
   --cw-select-enter-x: 8px;
   --cw-select-enter-y: 0px;
 }
 
-.cw-select-content.cw-select-content--smooth[data-side='right'] {
+.cw-select-content[data-side='right'] {
   translate: 4px 0;
   --cw-select-enter-x: -8px;
   --cw-select-enter-y: 0px;
 }
 
-.cw-select-content.cw-select-content--smooth[data-state='open'] {
+/*
+ * The open and close animation, matching the staff console's dropdown (apps/staff-web/src/components/ui/select.tsx uses
+ * tw-animate-css): a 150ms fade and zoom that grows out of the trigger, and a closing animation so the list does not snap
+ * away.
+ */
+.cw-select-content[data-state='open'] {
   animation: cw-select-smooth-in 150ms ease;
 }
 
-.cw-select-content.cw-select-content--smooth[data-state='closed'] {
+.cw-select-content[data-state='closed'] {
   animation: cw-select-smooth-out 150ms ease;
-}
-
-.cw-select-viewport {
-  padding: 4px;
-  min-width: var(--radix-select-trigger-width, 8rem);
-  max-height: var(--radix-select-content-available-height, 20rem);
 }
 
 .cw-select-item {
   position: relative;
   display: flex;
+  box-sizing: border-box;
   width: 100%;
   align-items: center;
   gap: 8px;
@@ -177,17 +166,6 @@
   height: 16px;
 }
 
-@keyframes cw-select-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 @keyframes cw-select-smooth-in {
   from {
     opacity: 0;
@@ -212,8 +190,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cw-select-content[data-state='open'],
-  .cw-select-content.cw-select-content--smooth[data-state='open'],
-  .cw-select-content.cw-select-content--smooth[data-state='closed'] {
+  .cw-select-content[data-state='closed'] {
     animation: none;
   }
 }
