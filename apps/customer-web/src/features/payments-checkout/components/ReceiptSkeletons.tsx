@@ -1,19 +1,22 @@
 import { Card, CardContent } from '@customer-web/components/ui/card'
 import { Skeleton } from '@customer-web/components/ui/skeleton'
 
-/** The receipts list while it loads. */
+/** The receipts list while it loads — the table's shape, so the page does not jump when the rows arrive. */
 export function ReceiptsSkeleton() {
   return (
-    <div className="flex flex-col gap-3" aria-busy="true" aria-live="polite">
+    <div className="overflow-hidden rounded-xl border border-border bg-card" aria-busy="true" aria-live="polite">
       <span className="sr-only">Loading your receipts…</span>
-      {[0, 1, 2].map((i) => (
-        <Card key={i} className="gap-3 py-4">
-          <CardContent className="flex flex-col gap-2.5">
-            <Skeleton className="h-3 w-40" />
-            <Skeleton className="h-4 w-64" />
-            <Skeleton className="h-3 w-52" />
-          </CardContent>
-        </Card>
+      <div className="border-b border-border px-4 py-3">
+        <Skeleton className="h-3 w-32" />
+      </div>
+      {[0, 1, 2, 3].map((row) => (
+        <div key={row} className="flex items-center gap-4 border-b border-border px-4 py-3 last:border-b-0">
+          <Skeleton className="h-3 w-36" />
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="ml-auto h-3 w-16" />
+        </div>
       ))}
     </div>
   )

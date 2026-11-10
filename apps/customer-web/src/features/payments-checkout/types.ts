@@ -19,6 +19,23 @@ export type PaymentStatus = 'created' | 'authorised' | 'captured' | 'failed' | '
 /** The selling features that can start a payment: 3 (booking), 6 (excess baggage), 12 (onboard sale), 17 (cargo). */
 export type PaymentSourceFeature = 3 | 6 | 12 | 17
 
+/**
+ * The customer's word for a receipt's state, from the frames.
+ *
+ * The frames show exactly three: "Paid", "Miles + cash" and "Flown". A receipt that was refunded in full still shows
+ * "Paid" — the credit note is a separate document, and the original receipt never changes.
+ */
+export type ReceiptStatus = 'paid' | 'miles_and_cash' | 'flown'
+
+/**
+ * The filter chips above the customer's receipts list.
+ *
+ * The chips cut across the status: "Flights" is every flight receipt, "Cargo" every cargo invoice, "Miles + cash" the
+ * split ones, and "With credit note" the receipts a credit note is attached to.
+ */
+export const RECEIPT_FILTERS = ['all', 'flights', 'miles_and_cash', 'cargo', 'credit_note'] as const
+export type ReceiptFilter = (typeof RECEIPT_FILTERS)[number]
+
 /** One line on a receipt. */
 export interface PaymentLineDto {
   line_type: string
@@ -35,6 +52,8 @@ export interface ReceiptSummaryDto {
   source_feature: PaymentSourceFeature
   source_feature_label: string
   status: PaymentStatus
+  /** The customer's word for the state, from the frames. */
+  receipt_status: ReceiptStatus
   title: string
   amount: number
   voucher_amount: number
@@ -42,10 +61,18 @@ export interface ReceiptSummaryDto {
   currency: string
   issued_at: string
   booking_reference: string | null
+  /** The route the customer flew, e.g. `BKK → CNX`. Null for a purchase that is not a flight. */
+  route: string | null
+  /** The flight number, e.g. `FY102`. */
+  flight_number: string | null
+  /** The day of the flight, as an ISO date. */
+  flight_date: string | null
   refund_state: RefundState
   has_credit_note: boolean
   /** The miles the booking was redeemed with. Miles are not money — the cash is in `amount`. */
   miles_redeemed: number | null
+  /** What the customer paid with, in words: "Card ending 4242", "40,000 miles + card ending 5100". */
+  paid_with: string
 }
 
 /** The customer's receipt detail. */
@@ -62,4 +89,9 @@ export interface ReceiptDetailDto extends ReceiptSummaryDto {
 export interface ListDto<T> {
   items: T[]
   total: number
+}
+
+/** The customer's receipt list, with the counts the frames show on the filter chips. */
+export interface ReceiptListDto extends ListDto<ReceiptSummaryDto> {
+  counts: Record<ReceiptFilter, number>
 }
