@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { NoAccessScreen } from '@staff-web/features/admin-console/components/NoAccessScreen'
 import { useScreenAccess } from '@staff-web/features/admin-console/hooks/useScreenAccess'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { retryCapture, sendFinancePosting } from '../api/payments'
 import { FilterChips } from '../components/FilterChips'
 import { PaymentProblemTable } from '../components/PaymentProblemTable'
-import { PageMessage, PAYMENT_CARD, StaffPageShell } from '../components/StaffPageShell'
+import { PageMessage, StaffPageShell } from '../components/StaffPageShell'
 import { usePaymentProblems } from '../hooks/usePaymentProblems'
 import { EXCEPTION_TAB_LABELS } from '../payment-copy'
 import { PAYMENT_EXCEPTION_TABS, type PaymentExceptionTab, type PaymentProblemDto } from '../types'
@@ -63,56 +62,50 @@ export function PaymentExceptionsPage() {
 
   return (
     <StaffPageShell
-      title="Payment exceptions"
-      subtitle="Payments that need a person: a capture that kept failing, a provider that went quiet, a posting the ledger never took."
+      title="Payment Exceptions"
+      subtitle="Money movements that did not finish cleanly. Start with Needs action. A retry you request moves to Queued until it finishes."
     >
-      <Card className={PAYMENT_CARD}>
-        <CardHeader>
-          <CardTitle className="text-lg">Payment exceptions</CardTitle>
-          <CardDescription>Select a reference to see the whole record. The actions here are the only ones staff can take.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* The tabs ------------------------------------------------------ */}
-          <div className="mb-4">
-            <FilterChips
-              ariaLabel="Filter problems by state"
-              value={tab}
-              onChange={setTab}
-              options={PAYMENT_EXCEPTION_TABS.map((item) => ({
-                value: item,
-                label: EXCEPTION_TAB_LABELS[item],
-                count: list.counts[item],
-              }))}
-            />
-          </div>
+      <div className="flex flex-col gap-4">
+        {/* The tabs ------------------------------------------------------ */}
+        <FilterChips
+          ariaLabel="Filter problems by state"
+          value={tab}
+          onChange={setTab}
+          options={PAYMENT_EXCEPTION_TABS.map((item) => ({
+            value: item,
+            label: EXCEPTION_TAB_LABELS[item],
+            count: list.counts[item],
+          }))}
+        />
 
-          {actionError && <PageMessage tone="danger" title="The action could not be completed" body={actionError} className="mb-4" />}
+        {actionError && <PageMessage tone="danger" title="The action could not be completed" body={actionError} />}
 
-          {list.error && <PageMessage tone="danger" title="The exception list could not be loaded" body={list.error} className="mt-2" />}
+        {list.error && <PageMessage tone="danger" title="The exception list could not be loaded" body={list.error} />}
 
-          {!list.error && list.loading && (
-            <p className="py-8 text-center text-sm text-muted-foreground" role="status">
-              Loading the exceptions…
-            </p>
-          )}
-
-          {!list.error && !list.loading && list.problems.length === 0 && (
-            <PageMessage
-              title={`Nothing under ${EXCEPTION_TAB_LABELS[tab].toLowerCase()}`}
-              body="There is no problem in this state right now."
-            />
-          )}
-
-          {!list.error && !list.loading && list.problems.length > 0 && (
-            <PaymentProblemTable problems={list.problems} onAction={(problem) => void runAction(problem)} workingId={workingId} />
-          )}
-
-          {/* The note the frames put under the list ------------------------ */}
-          <p className="mt-4 mb-0 text-xs text-muted-foreground">
-            Cancelling a confirmed ticket after a permanent capture failure is not automated yet. Staff decide here.
+        {!list.error && list.loading && (
+          <p className="py-12 text-center text-sm text-muted-foreground" role="status">
+            Loading the exceptions…
           </p>
-        </CardContent>
-      </Card>
+        )}
+
+        {!list.error && !list.loading && list.problems.length === 0 && (
+          <PageMessage
+            title={`Nothing under ${EXCEPTION_TAB_LABELS[tab].toLowerCase()}`}
+            body="There is no problem in this state right now."
+          />
+        )}
+
+        {!list.error && !list.loading && list.problems.length > 0 && (
+          <div className="overflow-hidden rounded-2xl border border-line bg-card">
+            <PaymentProblemTable problems={list.problems} onAction={(problem) => void runAction(problem)} workingId={workingId} />
+          </div>
+        )}
+
+        {/* The note the frames put under the list ------------------------ */}
+        <p className="m-0 text-sm text-muted-foreground">
+          Cancelling a confirmed ticket after a permanent capture failure is not automated yet. Staff decide here.
+        </p>
+      </div>
     </StaffPageShell>
   )
 }

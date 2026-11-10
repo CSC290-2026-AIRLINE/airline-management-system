@@ -1,5 +1,5 @@
-import { cn } from '@staff-web/lib/utils'
-import { formatDateTime } from '../payment-copy'
+import { Badge } from '@staff-web/components/ui/badge'
+import { formatShortDateTime, STATE_STEP_BADGE_CLASSES } from '../payment-copy'
 import type { PaymentStateStepDto } from '../types'
 
 interface PaymentStateHistoryProps {
@@ -9,8 +9,9 @@ interface PaymentStateHistoryProps {
 /**
  * The state history the frames put on the payment record.
  *
- * Every step the payment went through, oldest first, with the moment it happened. It is read-only by design: the
- * states come from the provider's events and from the booking, never from a person typing.
+ * Every step the payment went through, oldest first: the moment it happened on the left, the step's name in a pill on
+ * the right. It is read-only by design — the states come from the provider's events and from the booking, never from a
+ * person typing.
  */
 export function PaymentStateHistory({ steps }: PaymentStateHistoryProps) {
   if (steps.length === 0) {
@@ -18,25 +19,13 @@ export function PaymentStateHistory({ steps }: PaymentStateHistoryProps) {
   }
 
   return (
-    <ol className="m-0 flex list-none flex-col p-0">
-      {steps.map((step, index) => {
-        const last = index === steps.length - 1
-        return (
-          <li key={step.key} className="flex gap-3">
-            <div className="flex flex-col items-center">
-              <span
-                className={cn('mt-1 size-2.5 shrink-0 rounded-full', last ? 'bg-primary ring-4 ring-primary/15' : 'bg-border')}
-                aria-hidden="true"
-              />
-              {!last && <span className="w-px flex-1 bg-border" aria-hidden="true" />}
-            </div>
-            <div className={cn('flex flex-1 flex-col gap-0.5 pb-5', last && 'pb-0')}>
-              <span className={cn('text-sm', last ? 'font-semibold text-foreground' : 'text-muted-foreground')}>{step.label}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">{formatDateTime(step.at)}</span>
-            </div>
-          </li>
-        )
-      })}
+    <ol className="m-0 list-none p-0">
+      {steps.map((step) => (
+        <li key={step.key} className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0 last:pb-0">
+          <span className="text-sm text-muted-foreground tabular-nums">{formatShortDateTime(step.at)}</span>
+          <Badge className={STATE_STEP_BADGE_CLASSES[step.key] ?? 'bg-secondary text-muted-foreground'}>{step.label}</Badge>
+        </li>
+      ))}
     </ol>
   )
 }

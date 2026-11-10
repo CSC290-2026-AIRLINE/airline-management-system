@@ -1,4 +1,4 @@
-import type { PaymentExceptionTab, PaymentProblemType, PaymentStatus, StaffPaymentFilter } from './types'
+import type { PaymentExceptionState, PaymentExceptionTab, PaymentStatus, StaffPaymentFilter } from './types'
 
 /**
  * The wording the staff screens use.
@@ -79,6 +79,35 @@ export const STATUS_BADGE_CLASSES: Record<PaymentStatus, string> = {
   reversed: 'bg-secondary text-foreground',
 }
 
+/**
+ * The badge colours for each step of a payment's state history.
+ *
+ * The frames put the step's name in a pill on the right of the row: the steps before the money moved are quiet, the
+ * capture is the one that stands out.
+ */
+export const STATE_STEP_BADGE_CLASSES: Record<string, string> = {
+  created: 'bg-navy/10 text-navy',
+  authorised: 'bg-navy/10 text-navy',
+  confirmed: 'bg-navy/10 text-navy',
+  captured: 'bg-success-soft text-success-strong',
+  failed: 'bg-danger-soft text-danger',
+  voided: 'bg-secondary text-muted-foreground',
+  expired: 'bg-secondary text-muted-foreground',
+  reversed: 'bg-navy/10 text-navy',
+  stalled: 'bg-warning-soft text-warning',
+}
+
+/**
+ * The provider's name, in the words the frames use.
+ *
+ * The mock talks to a fake provider, so the panel says so rather than pretending to be Stripe.
+ */
+export function providerLabel(provider: string): string {
+  if (provider === 'fake') return 'Stripe (simulated)'
+  if (provider === 'stripe') return 'Stripe'
+  return provider.charAt(0).toUpperCase() + provider.slice(1)
+}
+
 /** The lookup's status filters, in the words the frames use. */
 export const FILTER_LABELS: Record<StaffPaymentFilter, string> = {
   captured: 'Captured',
@@ -96,13 +125,18 @@ export const EXCEPTION_TAB_LABELS: Record<PaymentExceptionTab, string> = {
   all: 'All',
 }
 
-/** The badge colours for the problem types, so the same problem always looks the same. */
-export const PROBLEM_TYPE_BADGE_CLASSES: Record<PaymentProblemType, string> = {
-  ticket_capture_stalled: 'bg-warning-soft text-warning',
-  cargo_capture_stalled: 'bg-warning-soft text-warning',
-  waiting_for_provider: 'bg-secondary text-muted-foreground',
-  finance_posting_delayed: 'bg-gold/15 text-warning',
-  authorisation_voided: 'bg-success-soft text-success-strong',
+/** The badge colours for the problem states, so the same state always looks the same. */
+export const PROBLEM_STATE_BADGE_CLASSES: Record<PaymentExceptionState, string> = {
+  needs_action: 'bg-danger-soft text-danger',
+  queued: 'bg-warning-soft text-warning',
+  resolved: 'bg-success-soft text-success-strong',
+}
+
+/** The name of a problem's state, in the words the frames use. */
+export const PROBLEM_STATE_LABELS: Record<PaymentExceptionState, string> = {
+  needs_action: 'Needs action',
+  queued: 'Queued',
+  resolved: 'Resolved',
 }
 
 /**

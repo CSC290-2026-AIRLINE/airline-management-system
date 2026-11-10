@@ -1,60 +1,59 @@
 import type { ReactNode } from 'react'
-import { Link } from '@tanstack/react-router'
+import { useAppAuth } from '@staff-web/auth/AuthProvider'
+import { useMyAccess } from '@staff-web/features/admin-console/components/MyAccessProvider'
 import { cn } from '@staff-web/lib/utils'
+import { StaffSidebar } from './StaffSidebar'
 import './payment-shell.css'
 
 interface StaffPageShellProps {
   title: string
   subtitle?: string
-  /** A control on the right of the navy bar — a link back, usually. */
-  action?: ReactNode
   children: ReactNode
 }
 
-const NAV = [
-  { to: '/payments/lookup', label: 'Payment lookup' },
-  { to: '/payments/exceptions', label: 'Payment exceptions' },
-] as const
-
 /**
- * The frame the payment screens sit in: the navy bar with the two screen links, and the page body.
+ * The frame the payment screens sit in: the workspace sidebar, the feature pills, the page heading and the body.
  *
- * The payment screens are staff screens of their own (`f5.payment_lookup` and `f5.payment_exceptions`), not tabs of the
- * admin console, so they get their own light frame rather than the console's sidebar.
+ * This is the frames' staff view — the navy admin workspace on the left, "Feature 5" and "Staff view" above the
+ * heading, and the signed-in member on the right.
  */
-export function StaffPageShell({ title, subtitle, action, children }: StaffPageShellProps) {
+export function StaffPageShell({ title, subtitle, children }: StaffPageShellProps) {
+  const { logout } = useAppAuth()
+  const { role } = useMyAccess()
+  const roleName = role?.name ?? 'Admin'
+
   return (
-    <div className="payment-shell min-h-svh bg-page font-sans text-foreground text-sm">
-      <header className="bg-primary text-white">
-        <div className="mx-auto flex max-w-260 flex-wrap items-center justify-between gap-3 px-4 py-3 max-tablet:flex-col max-tablet:items-start max-tablet:gap-2">
-          <div className="flex items-baseline gap-3">
-            <span className="text-lg font-bold tracking-wide">Airlines</span>
-            <span className="text-sm text-white/70">{title}</span>
+    <div className="payment-shell flex min-h-svh bg-page font-sans text-foreground">
+      <StaffSidebar roleName={roleName} onSignOut={() => void logout()} />
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* The feature pills --------------------------------------------- */}
+        <header className="flex items-center gap-3 px-8 pt-6 max-tablet:px-4">
+          <span className="rounded-md border border-warning/40 bg-warning-soft px-3 py-1 text-xs font-semibold tracking-wide text-foreground uppercase">
+            Staff view
+          </span>
+          <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold tracking-wide text-white uppercase">
+            Feature 5
+          </span>
+          <span className="ml-auto text-sm text-muted-foreground">{roleName}</span>
+        </header>
+
+        <main className="flex-1 px-8 pb-10 max-tablet:px-4">
+          {/* The heading ------------------------------------------------- */}
+          <div className="mt-6 mb-6">
+            <h1 className="m-0 font-sans text-4xl font-bold tracking-tight text-foreground max-tablet:text-3xl">{title}</h1>
+            {subtitle && <p className="mt-2 mb-0 max-w-3xl text-lg text-muted-foreground">{subtitle}</p>}
           </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <nav aria-label="Payment screens" className="flex flex-wrap items-center gap-4">
-              {NAV.map((item) => (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className="text-sm text-white/80 hover:text-white data-[status=active]:font-semibold data-[status=active]:text-gold"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-            {action}
-          </div>
-        </div>
-        {subtitle && <p className="mx-auto max-w-260 px-4 pb-3 text-sm text-white/70">{subtitle}</p>}
-      </header>
-      <main className="mx-auto max-w-260 px-4 py-6 max-tablet:px-3 max-tablet:py-4">{children}</main>
+
+          {children}
+        </main>
+      </div>
     </div>
   )
 }
 
 /** The white card every payment screen body sits in. */
-export const PAYMENT_CARD = 'border-border font-sans'
+export const PAYMENT_CARD = 'border-line bg-card font-sans'
 
 /** A page-level message, used for the empty and error states. */
 export function PageMessage({
@@ -71,7 +70,7 @@ export function PageMessage({
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card px-6 py-8 text-center',
+        'rounded-2xl border border-border bg-card px-6 py-8 text-center',
         tone === 'danger' && 'border-danger-line/40 bg-danger-soft',
         className,
       )}

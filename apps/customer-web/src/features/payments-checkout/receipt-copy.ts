@@ -17,9 +17,40 @@ export function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
 }
 
+/**
+ * `2026-11-17` → `Tue 17 Nov 2026`, the way the frames write a flight day.
+ *
+ * A date-only value is a calendar day, so it is read in the local time zone. Letting it fall back to UTC would move
+ * the day back one for anyone west of Greenwich.
+ */
+export function formatFlightDate(iso: string): string {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`) : new Date(iso)
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(date)
+}
+
 /** `40000` → `40,000 miles`. */
 export function formatMiles(miles: number): string {
   return `${new Intl.NumberFormat('en-US').format(miles)} miles`
+}
+
+/**
+ * The city behind an airport code, for the receipt's route line.
+ *
+ * The frames put the two airport codes in big letters with the city under each one. The API does not carry the city
+ * yet, so this is the mock's own list.
+ *
+ * TODO(F5a): take the city from the API with the rest of the trip, and delete this map.
+ */
+export const AIRPORT_CITIES: Record<string, string> = {
+  BKK: 'Bangkok',
+  CNX: 'Chiang Mai',
+  DMK: 'Don Mueang',
+  HKT: 'Phuket',
+  MDL: 'Mandalay',
+  MDY: 'Mandalay',
+  RGN: 'Yangon',
+  SIN: 'Singapore',
+  YGN: 'Yangon',
 }
 
 /**
@@ -41,13 +72,13 @@ export const RECEIPT_STATUS_LABELS: Record<ReceiptStatus, string> = {
 /** The badge colours for the receipt states, from the frames. */
 export const RECEIPT_STATUS_BADGE_CLASSES: Record<ReceiptStatus, string> = {
   paid: 'bg-success-soft text-success-strong',
-  miles_and_cash: 'bg-warning-soft text-warning',
+  miles_and_cash: 'bg-navy/10 text-navy',
   flown: 'bg-secondary text-muted-foreground',
 }
 
 /** The filter chips above the receipts list, in the frames' words. */
 export const RECEIPT_FILTER_LABELS: Record<ReceiptFilter, string> = {
-  all: 'All',
+  all: 'All receipts',
   flights: 'Flights',
   miles_and_cash: 'Miles + cash',
   cargo: 'Cargo',

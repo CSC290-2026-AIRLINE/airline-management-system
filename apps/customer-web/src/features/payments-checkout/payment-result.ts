@@ -1,0 +1,103 @@
+/**
+ * The payment result page: the screen Stripe sends the customer back to.
+ *
+ * After the checkout, the customer lands here and the page says what the payment is doing — still confirming, paid,
+ * paid with miles, a paid cargo booking, a capture that is still running, a declined card, or a hold that ran out.
+ *
+ * TODO(F5a): in the product this screen is the selling feature's own confirmation page (Feature 3, 6, 12 or 17), which
+ * polls the payment and shows these states. The mock keeps them here so Feature 5a owns the wording.
+ */
+
+/** The states the page can show, in the frames' order. */
+export const PAYMENT_RESULT_STATES = [
+  'processing',
+  'paid',
+  'paid_with_miles',
+  'cargo_paid',
+  'capture_stalled',
+  'card_declined',
+  'hold_expired',
+] as const
+export type PaymentResultState = (typeof PAYMENT_RESULT_STATES)[number]
+
+/** The state's name, in the words the frames use. */
+export const PAYMENT_RESULT_LABELS: Record<PaymentResultState, string> = {
+  processing: 'Processing',
+  paid: 'Paid',
+  paid_with_miles: 'Paid with miles',
+  cargo_paid: 'Cargo paid',
+  capture_stalled: 'Capture stalled',
+  card_declined: 'Card declined',
+  hold_expired: 'Hold expired',
+}
+
+/**
+ * Where a button on the result goes.
+ *
+ * The customer app has two places a payment result can point at: the receipt list, and one receipt. Anything else — the
+ * booking flow, the trip details, the passenger details — belongs to another feature and is not there yet.
+ */
+export type PaymentResultLink = { to: '/receipts' } | { to: '/receipts/$receiptId'; receiptId: string }
+
+/** A button on the result. */
+export interface PaymentResultAction {
+  /** The button's label, in the frames' words. */
+  label: string
+  /** Where the button goes. Left out when the screen it belongs to is not in this app yet. */
+  link?: PaymentResultLink
+  /** The button prints the page rather than going anywhere — the receipt is the customer's own document. */
+  print?: boolean
+  /** The frame's quiet button, next to the main one. */
+  variant?: 'primary' | 'outline'
+  /** Why the button cannot be pressed yet. */
+  hint?: string
+}
+
+/** A block of detail under the heading — the frames' trip, receipt and passenger blocks. */
+export interface PaymentResultBlock {
+  /** The block's heading, e.g. "Flight FY102". */
+  title: string
+  /** The muted line under the heading, e.g. "Trip details". */
+  subtitle: string
+  /** The block's detail, e.g. "1 adult passenger · Passenger details are confirmed for this booking". */
+  body: string | null
+  /** The link the block offers, e.g. "View trip details". */
+  action: PaymentResultAction
+  /** A second link, e.g. "Print receipt". */
+  secondary_action?: PaymentResultAction
+}
+
+/** What the phone frame adds under the heading: the card it was charged to, the amount and a reassurance. */
+export interface PaymentResultMobile {
+  /** The line under the heading, e.g. "Charged to card 4242". */
+  line: string
+  /** The amount, e.g. "705.00 USD". */
+  amount: string
+  /** The note at the foot of the phone page. */
+  note: string
+}
+
+/** One state of the payment result page. */
+export interface PaymentResultDto {
+  state: PaymentResultState
+  /** The pill above the heading, e.g. "Captured". */
+  badge: string
+  /** The pill's colours, from the status colours the app uses. */
+  badge_class: string
+  /** The page's heading, e.g. "You are booked on FY214". */
+  title: string
+  /** The paragraph under the heading. */
+  body: string | null
+  /** The reference line, e.g. "Booking K7QF2M · Payment PAY-20261104-0042". */
+  reference: string | null
+  /** The buttons under the card. */
+  actions: PaymentResultAction[]
+  /** The blocks the paid-with-miles page shows. */
+  blocks: PaymentResultBlock[]
+  /** The note the frame puts under the heading, explaining where the screen comes from. */
+  annotation: string | null
+  /** The note the frame puts at the foot of the page. */
+  note: string | null
+  /** What the phone frame shows instead of the desktop card. */
+  mobile: PaymentResultMobile | null
+}

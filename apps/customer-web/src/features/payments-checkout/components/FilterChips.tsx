@@ -4,7 +4,7 @@ export interface FilterChipOption<T extends string> {
   value: T
   label: string
   /** How many receipts the chip would show. The frames put the count on the chip itself. */
-  count: number
+  count?: number
 }
 
 interface FilterChipsProps<T extends string> {
@@ -24,7 +24,7 @@ interface FilterChipsProps<T extends string> {
  */
 export function FilterChips<T extends string>({ options, value, onChange, ariaLabel }: FilterChipsProps<T>) {
   return (
-    <div role="group" aria-label={ariaLabel} className="flex flex-wrap items-center gap-2">
+    <div role="group" aria-label={ariaLabel} className="flex flex-wrap items-center gap-3">
       {options.map((option) => {
         const active = option.value === value
         return (
@@ -34,15 +34,15 @@ export function FilterChips<T extends string>({ options, value, onChange, ariaLa
             aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium transition-colors',
-              'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none',
-              active
-                ? 'border-navy bg-navy text-white'
-                : 'border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
+              'inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
+              'focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+              active ? 'border-navy bg-card text-navy' : 'border-border bg-card text-foreground hover:border-navy/40',
             )}
           >
             <span>{option.label}</span>
-            <span className={cn('text-xs tabular-nums', active ? 'text-white/70' : 'text-muted-foreground')}>{option.count}</span>
+            {option.count !== undefined && (
+              <span className={cn('text-sm tabular-nums', active ? 'text-navy/70' : 'text-muted-foreground')}>· {option.count}</span>
+            )}
           </button>
         )
       })}

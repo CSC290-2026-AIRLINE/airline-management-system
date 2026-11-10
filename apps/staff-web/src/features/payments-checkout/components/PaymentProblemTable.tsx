@@ -21,66 +21,65 @@ interface PaymentProblemTableProps {
  */
 export function PaymentProblemTable({ problems, onAction, workingId }: PaymentProblemTableProps) {
   return (
-    <div className="overflow-x-auto">
-      <Table className="min-w-200">
-        <TableHeader>
-          <TableRow>
-            <TableHead>Problem</TableHead>
-            <TableHead>Reference</TableHead>
-            <TableHead>What happened</TableHead>
-            <TableHead>What to do</TableHead>
-            <TableHead>Since</TableHead>
-            <TableHead>
-              <span className="sr-only">Action</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {problems.map((problem) => (
-            <TableRow key={problem.id}>
-              <TableCell>
-                <PaymentProblemBadge type={problem.type} label={problem.title} />
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-col gap-0.5">
-                  {problem.payment_id ? (
-                    <Link
-                      to="/payments/lookup/$paymentId"
-                      params={{ paymentId: problem.payment_id }}
-                      className="font-mono text-xs underline underline-offset-4"
-                    >
-                      {problem.reference}
-                    </Link>
-                  ) : (
-                    <span className="font-mono text-xs">{problem.reference}</span>
-                  )}
-                  {problem.booking_reference && (
-                    <span className="font-mono text-xs text-muted-foreground">{problem.booking_reference}</span>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell className="max-w-80 text-sm text-muted-foreground">{problem.what_happened}</TableCell>
-              <TableCell className="max-w-80 text-sm text-foreground">{problem.what_to_do}</TableCell>
-              <TableCell className="whitespace-nowrap text-sm text-muted-foreground" title={problem.since}>
-                {formatRelativeTime(problem.since)}
-              </TableCell>
-              <TableCell className="text-right">
-                {problem.action !== 'none' && problem.action_label && onAction && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={problem.action === 'retry_capture' ? 'default' : 'outline'}
-                    disabled={workingId !== null && workingId !== undefined}
-                    onClick={() => onAction(problem)}
+    <Table className="min-w-200">
+      <TableHeader>
+        <TableRow className="border-b border-line hover:bg-transparent">
+          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Problem</TableHead>
+          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Reference</TableHead>
+          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">What happened</TableHead>
+          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">What to do</TableHead>
+          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Since</TableHead>
+          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">
+            <span className="sr-only">Action</span>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {problems.map((problem) => (
+          <TableRow key={problem.id} className="border-b border-line last:border-b-0 hover:bg-transparent">
+            <TableCell className="px-5 py-4 align-top">
+              <div className="flex flex-col items-start gap-1.5">
+                <span className="text-sm font-semibold text-foreground">{problem.title}</span>
+                <PaymentProblemBadge state={problem.state} />
+              </div>
+            </TableCell>
+            <TableCell className="px-5 py-4 align-top">
+              <div className="flex flex-col gap-0.5">
+                {problem.payment_id ? (
+                  <Link
+                    to="/payments/lookup/$paymentId"
+                    params={{ paymentId: problem.payment_id }}
+                    className="text-sm font-medium text-foreground hover:underline"
                   >
-                    {workingId === problem.id ? 'Working…' : problem.action_label}
-                  </Button>
+                    {problem.reference}
+                  </Link>
+                ) : (
+                  <span className="text-sm font-medium text-foreground">{problem.reference}</span>
                 )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+                {problem.booking_reference && (
+                  <span className="text-xs text-muted-foreground">{problem.booking_reference}</span>
+                )}
+              </div>
+            </TableCell>
+            <TableCell className="max-w-80 px-5 py-4 align-top text-sm text-foreground whitespace-normal">
+              {problem.what_happened}
+            </TableCell>
+            <TableCell className="max-w-80 px-5 py-4 align-top text-sm text-foreground whitespace-normal">
+              {problem.what_to_do}
+            </TableCell>
+            <TableCell className="px-5 py-4 align-top text-sm whitespace-nowrap text-muted-foreground" title={problem.since}>
+              {formatRelativeTime(problem.since)}
+            </TableCell>
+            <TableCell className="px-5 py-4 text-right align-top">
+              {problem.action !== 'none' && problem.action_label && onAction && (
+                <Button type="button" size="sm" disabled={workingId !== null && workingId !== undefined} onClick={() => onAction(problem)}>
+                  {workingId === problem.id ? 'Working…' : problem.action_label}
+                </Button>
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }
