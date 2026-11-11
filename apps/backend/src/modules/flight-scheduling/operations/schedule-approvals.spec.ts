@@ -3,11 +3,13 @@ import { DbScheduleApprovals } from './schedule-approvals'
 const at = (hhmm: string) => new Date(`2026-11-02T${hhmm}:00Z`)
 const APPROVAL = '00000000-0000-0000-0000-0000000000b1'
 const AIRCRAFT = '00000000-0000-0000-0000-0000000000a1'
+const ROUTE = '00000000-0000-0000-0000-0000000000c1'
 
 const request = {
   approvalId: APPROVAL,
   purpose: 'new_flight' as const,
   flightId: null,
+  routeId: ROUTE,
   flightNumber: 'ZZ101',
   serviceDate: new Date('2026-11-02T00:00:00Z'),
   aircraftId: AIRCRAFT,
@@ -18,6 +20,7 @@ const row = (over: object = {}) => ({
   status: 'approved',
   purpose: 'new_flight',
   flight_id: null,
+  route_id: ROUTE,
   flight_number: 'ZZ101',
   service_date: '2026-11-02',
   aircraft_id: AIRCRAFT,
@@ -58,6 +61,7 @@ describe('DbScheduleApprovals', () => {
     ['flight_number', { flightNumber: 'ZZ999' }],
     ['service_date', { serviceDate: new Date('2026-11-03T00:00:00Z') }],
     ['purpose', { purpose: 'reschedule' as const }],
+    ['route', { routeId: '00000000-0000-0000-0000-0000000000c2' }],
   ])('refuses an approval whose %s differs, as a mismatch', async (name, over) => {
     tx.$queryRaw.mockResolvedValue([row()])
     await expect(consume(over)).resolves.toMatchObject({ ok: false, rule: 'approval_mismatch', detail: expect.stringContaining(name) })
