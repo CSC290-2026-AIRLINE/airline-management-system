@@ -57,7 +57,12 @@ export function PaymentProblemTable({ problems, onAction, workingId }: PaymentPr
                 >
                   {problem.reference}
                 </Link>
-                {problem.booking_reference && <span className="text-xs text-muted-foreground">{problem.booking_reference}</span>}
+                {problem.booking_reference && (
+                  <span className="text-xs text-muted-foreground">
+                    {/* A booking reference reads "Booking H2VM6P"; a waybill, which has a space in it, reads as it is. */}
+                    {/\s/.test(problem.booking_reference) ? problem.booking_reference : `Booking ${problem.booking_reference}`}
+                  </span>
+                )}
               </div>
             </TableCell>
             <TableCell className="max-w-80 px-5 py-4 align-top text-sm text-foreground whitespace-normal">
@@ -69,7 +74,14 @@ export function PaymentProblemTable({ problems, onAction, workingId }: PaymentPr
             </TableCell>
             <TableCell className="px-5 py-4 text-right align-top">
               {problem.action !== 'none' && problem.action_label && onAction && (
-                <Button type="button" size="sm" disabled={working} onClick={() => onAction(problem)}>
+                /* The frames draw the retry in navy and "Send now", which is optional, as an outline. */
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={problem.action === 'send_posting' ? 'outline' : 'default'}
+                  disabled={working}
+                  onClick={() => onAction(problem)}
+                >
                   {workingId === problem.id ? 'Working…' : problem.action_label}
                 </Button>
               )}

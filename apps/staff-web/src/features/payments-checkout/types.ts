@@ -85,6 +85,8 @@ export interface StaffPaymentSummaryDto {
   capture_stalled_at: string | null
   last_error: string | null
   receipt_id: string | null
+  /** When the payment last moved — the time the lookup shows under the reference. */
+  updated_at: string
 }
 
 /** One step of the state history the payment detail shows. */
@@ -102,6 +104,12 @@ export interface StaffPaymentDetailDto extends StaffPaymentSummaryDto {
   capture_attempts: number
   authorised_at: string | null
   voided_at: string | null
+  /** The provider's id for the payment, e.g. `pi_3Q…x9A`. Null until the real provider is connected. */
+  provider_reference: string | null
+  /** The flight the payment is for, e.g. `FY214 YGN → BKK`. Null for a purchase that is not a flight. */
+  trip: string | null
+  /** The refund opened against this payment, e.g. `REF-0121`. Feature 5b owns it; null until then. */
+  refund_reference: string | null
   lines: PaymentLineDto[]
   /** The steps the payment went through, oldest first. */
   state_history: PaymentStateStepDto[]

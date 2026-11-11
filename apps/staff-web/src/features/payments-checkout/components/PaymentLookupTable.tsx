@@ -47,7 +47,7 @@ export function PaymentLookupTable({ payments, onOpen }: PaymentLookupTableProps
             <TableCell className="px-5 py-4">
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold text-foreground">{payment.reference}</span>
-                <span className="text-xs text-muted-foreground tabular-nums">{formatShortDateTime(payment.started_at)}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{formatShortDateTime(payment.updated_at)}</span>
               </div>
             </TableCell>
             <TableCell className="px-5 py-4 text-sm font-medium text-foreground">{payment.booking_reference ?? '—'}</TableCell>

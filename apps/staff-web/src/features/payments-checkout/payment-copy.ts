@@ -18,7 +18,8 @@ export function formatAmount(amount: number): string {
 /**
  * `2026-11-04T10:01:30.000Z` → `4 Nov 09:14`.
  *
- * The short form the frames use inside a table cell, where the full date would crowd the row out.
+ * The short form the frames use inside a table cell, where the full date would crowd the row out. The times are read in
+ * UTC, the clock the payment timestamps are stored in, so a payment shows the same time to every member of staff.
  */
 export function formatShortDateTime(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -30,6 +31,7 @@ export function formatShortDateTime(iso: string | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
+    timeZone: 'UTC',
   }).format(date)
 }
 
@@ -48,7 +50,7 @@ export function formatRelativeTime(iso: string | null | undefined, now: Date = n
   if (seconds < 0) return 'just now'
   if (seconds < 60) return 'just now'
   const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+  if (minutes < 60) return `${minutes} min ago`
   const hours = Math.round(minutes / 60)
   if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
   const days = Math.round(hours / 24)

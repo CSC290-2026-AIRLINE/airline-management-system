@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { ChevronDown, LogOut } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { cn } from '@staff-web/lib/utils'
 import flythonMark from '../assets/flython-mark.svg'
 
@@ -26,10 +26,8 @@ const CUSTOMER_MANAGEMENT = [
   { to: null, label: 'Pay Runs' },
 ] as const
 
-/** The frames' clock: the prototype runs on the machine's own date. */
-function today(): string {
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date())
-}
+/** The frames' simulation clock. The prototype runs on a fixed day, so every screen reads the same date. */
+const SIMULATION_DAY = '27 Oct 2026'
 
 /**
  * The admin workspace sidebar the payment screens sit in.
@@ -58,15 +56,19 @@ export function StaffSidebar({ roleName, onSignOut }: StaffSidebarProps) {
         <p className="px-2 py-2 text-sm text-white/90">Reports &amp; Analytics</p>
 
         {CLOSED_GROUPS.map((group) => (
-          <p key={group} className="flex items-center gap-1.5 px-2 py-2 text-sm text-white/80">
-            <ChevronDown className="size-4 rotate-90" aria-hidden="true" />
+          <p key={group} className="flex items-center gap-2 px-2 py-2 text-sm text-white/80">
+            <span className="w-3 text-center" aria-hidden="true">
+              +
+            </span>
             {group}
           </p>
         ))}
 
         {/* Customer Management, open: the payment screens live in it. */}
-        <p className="flex items-center gap-1.5 px-2 py-2 text-sm font-medium text-white">
-          <ChevronDown className="size-4" aria-hidden="true" />
+        <p className="flex items-center gap-2 px-2 py-2 text-sm font-medium text-white">
+          <span className="w-3 text-center" aria-hidden="true">
+            -
+          </span>
           Customer Management
         </p>
         <ul className="m-0 list-none p-0 pl-3">
@@ -112,7 +114,7 @@ export function StaffSidebar({ roleName, onSignOut }: StaffSidebarProps) {
             <span className="size-2 rounded-full bg-gold" aria-hidden="true" />
             Simulation clock
           </p>
-          <p className="m-0 mt-1 text-base font-medium">{today()}</p>
+          <p className="m-0 mt-1 text-base font-medium">{SIMULATION_DAY}</p>
         </div>
 
         <div className="mb-4 rounded-xl border border-white/15 bg-white/5 px-4 py-3">

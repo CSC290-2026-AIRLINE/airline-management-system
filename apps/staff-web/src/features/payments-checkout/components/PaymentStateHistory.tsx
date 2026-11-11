@@ -23,7 +23,8 @@ export function PaymentStateHistory({ steps }: PaymentStateHistoryProps) {
       {steps.map((step) => (
         <li key={step.key} className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0 last:pb-0">
           <span className="text-sm text-muted-foreground tabular-nums">{formatShortDateTime(step.at)}</span>
-          <Badge className={STATE_STEP_BADGE_CLASSES[step.key] ?? 'bg-secondary text-muted-foreground'}>{step.label}</Badge>
+          {/* The frames write the step in lower case, whatever the API calls it. */}
+          <Badge className={`lowercase ${STATE_STEP_BADGE_CLASSES[step.key] ?? 'bg-secondary text-muted-foreground'}`}>{step.label}</Badge>
         </li>
       ))}
     </ol>

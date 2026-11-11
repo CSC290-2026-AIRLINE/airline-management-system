@@ -1,4 +1,4 @@
-import { MOCK_NOW, MOCK_PAYMENTS } from './mock-payments'
+import { MOCK_NOW, MOCK_PAYMENTS, OLDER_PAYMENT_IDS } from './mock-payments'
 import type {
   PaymentExceptionState,
   PaymentExceptionTab,
@@ -41,6 +41,9 @@ function toSummary(payment: StaffPaymentDetailDto): StaffPaymentSummaryDto {
     capture_attempts,
     authorised_at,
     voided_at,
+    provider_reference,
+    trip,
+    refund_reference,
     lines,
     state_history,
     exception,
@@ -52,6 +55,9 @@ function toSummary(payment: StaffPaymentDetailDto): StaffPaymentSummaryDto {
   void capture_attempts
   void authorised_at
   void voided_at
+  void provider_reference
+  void trip
+  void refund_reference
   void lines
   void state_history
   void exception
@@ -97,11 +103,15 @@ export interface StaffPaymentQuery {
  * The staff payment lookup, newest first.
  *
  * The counts on the filter chips cover everything the search matched, not just the page on screen, so the chips stay
- * honest while a search is on.
+ * honest while a search is on. Without a search the list is the last 30 days: the older payments wait for a search, as the
+ * frames' footer says.
  */
 export async function listStaffPayments(query: StaffPaymentQuery = {}): Promise<StaffPaymentListDto> {
   await delay(LATENCY_MS)
-  const searched = MOCK_PAYMENTS.filter((payment) => matchesSearch(payment, query.search))
+  const searching = Boolean(query.search?.trim())
+  const searched = MOCK_PAYMENTS.filter((payment) => searching || !OLDER_PAYMENT_IDS.has(payment.id)).filter((payment) =>
+    matchesSearch(payment, query.search),
+  )
 
   const counts: StaffPaymentListDto['counts'] = { all: searched.length, captured: 0, failed: 0, capture_stalled: 0, voided: 0, refunded: 0 }
   for (const payment of searched) {
@@ -163,7 +173,7 @@ function problemFor(payment: StaffPaymentDetailDto, now: Date): PaymentProblemDt
         ? 'The cargo booking is confirmed, but the card has not been charged. No Air Waybill is issued until it is.'
         : 'The booking is confirmed and the ticket is live, but the card has not been charged.',
       what_to_do: cargo
-        ? 'Retry the capture. If it keeps failing, cancel the cargo booking.'
+        ? 'Retry the capture, or cancel the cargo booking.'
         : 'Retry the capture. If it keeps failing, decide whether to cancel the ticket.',
       action: 'retry_capture',
       action_label: 'Retry capture',
@@ -181,10 +191,10 @@ function problemFor(payment: StaffPaymentDetailDto, now: Date): PaymentProblemDt
       reference: payment.reference,
       booking_reference: payment.booking_reference,
       what_happened: 'The finance ledger did not answer (503). The payment itself is complete.',
-      what_to_do: 'Send the payment to the finance ledger now.',
+      what_to_do: 'Nothing needed. The job keeps retrying; send now if it is urgent.',
       action: 'send_posting',
       action_label: 'Send now',
-      since: payment.started_at,
+      since: payment.updated_at,
       state: 'queued',
       payment_id: payment.id,
     }
@@ -215,7 +225,7 @@ function problemFor(payment: StaffPaymentDetailDto, now: Date): PaymentProblemDt
       reference: payment.reference,
       booking_reference: payment.booking_reference,
       what_happened: 'The card was authorised, but the booking confirm failed twice. The hold was released automatically.',
-      what_to_do: 'No action — the customer was not charged.',
+      what_to_do: 'No action. The customer was not charged.',
       action: 'none',
       action_label: null,
       since: payment.voided_at ?? payment.started_at,
@@ -227,16 +237,16 @@ function problemFor(payment: StaffPaymentDetailDto, now: Date): PaymentProblemDt
   const waitingForProvider =
     payment.status === 'authorised' &&
     payment.capture_attempts === 0 &&
-    now.getTime() - new Date(payment.started_at).getTime() > PROVIDER_EVENT_TIMEOUT_MS
+    now.getTime() - new Date(payment.started_at).getTime() >= PROVIDER_EVENT_TIMEOUT_MS
   if (waitingForProvider) {
     return {
       id: payment.id,
       type: 'waiting_for_provider',
-      title: 'Waiting for the provider',
+      title: 'Waiting for Stripe',
       reference: payment.reference,
       booking_reference: payment.booking_reference,
-      what_happened: 'No provider event for 30 minutes.',
-      what_to_do: 'Nothing yet — the reconciliation job is checking.',
+      what_happened: 'No Stripe event for 30 minutes.',
+      what_to_do: 'Nothing yet. The reconciliation job is checking.',
       action: 'none',
       action_label: null,
       since: payment.started_at,
@@ -290,6 +300,7 @@ export async function retryCapture(paymentId: string): Promise<StaffPaymentDetai
   payment.captured_at = now.toISOString()
   payment.capture_stalled_at = null
   payment.last_error = null
+  payment.updated_at = now.toISOString()
   payment.provider_fee = Math.round(payment.card_amount * 0.029 * 100) / 100
   payment.receipt_id = `rc_mock_${payment.id.slice(-6)}`
   payment.state_history = [...payment.state_history, { key: 'captured', label: 'captured', at: now.toISOString() }]
@@ -321,6 +332,7 @@ export async function sendFinancePosting(paymentId: string): Promise<StaffPaymen
 
   const now = new Date(MOCK_NOW)
   payment.last_error = null
+  payment.updated_at = now.toISOString()
   payment.exception = {
     state: 'resolved',
     detected_at: payment.exception?.detected_at ?? now.toISOString(),

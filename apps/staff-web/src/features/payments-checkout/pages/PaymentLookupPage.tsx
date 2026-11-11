@@ -125,7 +125,7 @@ export function PaymentLookupPage() {
 
         {/* The note the frames put under the list ------------------------ */}
         <p className="m-0 text-sm text-muted-foreground">
-          Read only. State changes come only from verified Stripe events and booking confirmation. Staff cannot edit a state by hand.
+          Read-only. State changes come only from verified Stripe events and booking confirmation. Staff cannot edit a state by hand.
           Opening a payment is recorded in the audit trail.
         </p>
       </div>
