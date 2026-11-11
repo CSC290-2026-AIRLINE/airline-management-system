@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { AuditService } from '../../admin-console/audit/audit.service'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import type { Tx } from './flight-event-writer'
 
 // Iteration-03: dismissing a conflict needs a reason and an entry in Feature 15's audit log. schedule_conflict has no

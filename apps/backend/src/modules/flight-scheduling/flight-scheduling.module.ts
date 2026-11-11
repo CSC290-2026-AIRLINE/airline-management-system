@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common'
-import { AuditModule } from '../admin-console/audit/audit.module'
+import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { AirportFeeController } from './airport-fee.controller'
 import { AirportFeeService } from './airport-fee.service'
 import { AirportController } from './airport.controller'
