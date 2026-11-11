@@ -26,6 +26,8 @@ import {
 } from './booking-detail-model'
 import styles from './BookingDetailPage.module.css'
 import '../styles/tokens.css'
+import { BookingSeatChangesPanel } from '../seats/BookingSeatChangesPanel'
+import { BookingAssistancePanel } from '../assistance/BookingAssistancePanel'
 
 // How long the page waits before it asks the server again whether the hold is over. The expiry sweep runs every
 // minute, so a booking can still read as 'held' for a little while after the countdown reached zero.
@@ -171,6 +173,10 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
           {cancelled ? <p className={styles.notice}>{cancelNotice(cancelled)}</p> : null}
 
           <FlightsCard booking={booking} />
+          {status === 'confirmed' && <BookingSeatChangesPanel reference={booking.reference} onChanged={() => void onReload()} />}
+          {(status === 'held' || status === 'confirmed') && (
+            <BookingAssistancePanel reference={booking.reference} onChanged={() => void onReload()} />
+          )}
 
           <section>
             <h2 className={styles.sectionTitle}>Check-in and boarding pass</h2>

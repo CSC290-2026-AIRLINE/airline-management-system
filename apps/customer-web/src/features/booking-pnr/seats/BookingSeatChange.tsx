@@ -10,7 +10,8 @@ interface BookingSeatChangeProps {
   cabin: Cabin
   passengerName: string
   currentSeat: string | null
-  onChangeSeat: (seatCode: string) => Promise<{ status: 'assigned' | 'payment_required' }>
+  onChangeSeat: (seatCode: string) => Promise<{ status: 'assigned' | 'payment_required'; lock?: { id: string } }>
+  onPaySeat?: (lockId: string) => Promise<void>
   onRefresh: () => Promise<void>
   onClose: () => void
 }
@@ -22,6 +23,7 @@ export function BookingSeatChange({
   passengerName,
   currentSeat,
   onChangeSeat,
+  onPaySeat,
   onRefresh,
   onClose,
 }: BookingSeatChangeProps) {
@@ -29,6 +31,7 @@ export function BookingSeatChange({
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [paymentRequired, setPaymentRequired] = useState(false)
+  const [paymentLock, setPaymentLock] = useState<string | null>(null)
   const [assigned, setAssigned] = useState(false)
   const [taken, setTaken] = useState(false)
   const seats = seatMap.rows.flatMap((row) => row.seats)
@@ -50,6 +53,7 @@ export function BookingSeatChange({
       const result = await onChangeSeat(selected)
       if (result.status === 'payment_required') {
         setPaymentRequired(true)
+        setPaymentLock(result.lock?.id ?? null)
         setMessage('This seat is held temporarily. Payment is required before it is assigned.')
       } else {
         setAssigned(true)
@@ -88,6 +92,25 @@ export function BookingSeatChange({
       />
       {message && <p role="status">{message}</p>}
       <div className="seat-selection__segments">
+        {import.meta.env.DEV && paymentRequired && paymentLock && onPaySeat && (
+          <button
+            type="button"
+            disabled={saving || assigned}
+            onClick={() => {
+              setSaving(true)
+              void onPaySeat(paymentLock)
+                .then(() => {
+                  setAssigned(true)
+                  setPaymentRequired(false)
+                  setMessage(`Seat ${selected} has been assigned after payment.`)
+                })
+                .catch(() => setMessage('Payment could not be completed. The seat has not been assigned; close and try again.'))
+                .finally(() => setSaving(false))
+            }}
+          >
+            {saving ? 'Confirming payment…' : 'Confirm seat payment (development)'}
+          </button>
+        )}
         <button type="button" disabled={!selected || saving || paymentRequired || assigned} onClick={() => void submit()}>
           {saving ? 'Saving…' : 'Confirm seat'}
         </button>

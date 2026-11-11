@@ -116,7 +116,14 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
               const body = (await response.json().catch(() => null)) as ApiErrorBody | null
               throw new ApiError(body?.error?.code ?? 'REQUEST_FAILED', body?.error?.message ?? 'Seat change failed', response.status)
             }
-            return (await response.json()) as { status: 'assigned' | 'payment_required' }
+            return (await response.json()) as { status: 'assigned' | 'payment_required'; lock?: { id: string } }
+          }}
+          onPaySeat={async (lockId) => {
+            const response = await fetchWithAuth(
+              `/api/dev/bookings/${encodeURIComponent(reference)}/coupons/${encodeURIComponent(coupon.couponId)}/seat/${encodeURIComponent(lockId)}/confirm`,
+              { method: 'POST' },
+            )
+            if (!response.ok) throw new Error('Seat payment failed')
           }}
           onRefresh={async () => {
             const response = await fetchWithAuth(`/api/flights/${encodeURIComponent(coupon.flightId)}/seat-map`)
