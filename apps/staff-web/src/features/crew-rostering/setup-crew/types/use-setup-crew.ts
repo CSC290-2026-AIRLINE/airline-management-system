@@ -35,6 +35,7 @@ export interface SetupCrewState {
   /** Each write resolves `true` once the backend has saved it, `false` after a failure has been shown as a notice. */
   createCrew: (input: CrewProfileInput) => Promise<boolean>
   updateCrew: (crewId: string, input: CrewProfileInput) => Promise<boolean>
+  deleteCrew: (crewId: string) => Promise<boolean>
   addCertification: (crewId: string, input: CertificationInput) => Promise<boolean>
   updateCertification: (crewId: string, certificationId: string, input: CertificationInput) => Promise<boolean>
   removeCertification: (crewId: string, certificationId: string) => Promise<boolean>
@@ -156,6 +157,17 @@ export function useSetupCrew(): SetupCrewState {
       })
     })
 
+  const deleteCrew = (crewId: string) =>
+    save(async () => {
+      const target = crew.find((member) => member.id === crewId)
+      await getApi().deleteCrew(crewId)
+      setCrew((current) => current.filter((member) => member.id !== crewId))
+      setNotice({
+        message: `${target ? fullName(target) : 'Crew member'} deleted`,
+        shortMessage: 'Crew member deleted',
+      })
+    })
+
   const addCertification = (crewId: string, input: CertificationInput) =>
     save(async () => {
       const added = await getApi().addCertification(crewId, input)
@@ -211,6 +223,7 @@ export function useSetupCrew(): SetupCrewState {
     clearFilters: () => setFilters(EMPTY_FILTERS),
     createCrew,
     updateCrew,
+    deleteCrew,
     addCertification,
     updateCertification,
     removeCertification,

@@ -21,6 +21,7 @@ import { CrewProfileView } from './components/crew-profile-view'
 import { CrewSummaryCards } from './components/crew-summary-cards'
 import { CertificationModal } from './modals/certification-modal'
 import { CrewProfileModal } from './modals/crew-profile-modal'
+import { DeleteCrewModal } from './modals/delete-crew-modal'
 import { useSetupCrew } from './types/use-setup-crew'
 import type { Certification, CertificationInput } from './types/types'
 
@@ -31,6 +32,7 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
 
   const [creating, setCreating] = useState(false)
   const [editingProfile, setEditingProfile] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [addingCertification, setAddingCertification] = useState(false)
   const [editingCertification, setEditingCertification] = useState<Certification | null>(null)
 
@@ -72,6 +74,7 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
               crew={crew}
               expiryWarningDays={state.expiryWarningDays}
               onEditProfile={() => setEditingProfile(true)}
+              onDelete={() => setDeleting(true)}
               onAddCertification={() => setAddingCertification(true)}
               onEditCertification={(certification) => setEditingCertification(certification)}
             />
@@ -153,6 +156,18 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
           onCancel={() => setEditingProfile(false)}
           onSubmit={async (input) => {
             if (await state.updateCrew(crew.id, input)) setEditingProfile(false)
+          }}
+        />
+      )}
+
+      {deleting && crew && (
+        <DeleteCrewModal
+          crew={crew}
+          onCancel={() => setDeleting(false)}
+          onConfirm={async () => {
+            const deleted = await state.deleteCrew(crew.id)
+            setDeleting(false)
+            if (deleted) void navigate({ to: '/setup-crew' })
           }}
         />
       )}

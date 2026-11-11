@@ -12,7 +12,7 @@ import {
   optionalDate,
 } from '../types/format'
 import type { Certification, CrewMember, UpcomingDuty } from '../types/types'
-import { Button, IconButton, PencilIcon, PlusIcon, TagPill } from '../../shared/ui'
+import { Button, IconButton, MinusIcon, PencilIcon, PlusIcon, TagPill } from '../../shared/ui'
 import { CrewAvatar, DetailRow, ProfileCard } from './profile-card'
 
 /**
@@ -25,6 +25,7 @@ export function CrewProfileView({
   crew,
   expiryWarningDays,
   onEditProfile,
+  onDelete,
   onAddCertification,
   onEditCertification,
 }: {
@@ -32,6 +33,7 @@ export function CrewProfileView({
   /** Days before expiry that a licence or certification shows as expiring soon. */
   expiryWarningDays: number
   onEditProfile: () => void
+  onDelete: () => void
   onAddCertification: () => void
   onEditCertification: (certification: Certification) => void
 }) {
@@ -46,10 +48,16 @@ export function CrewProfileView({
             <h1 className="font-display text-2xl font-bold text-primary-text">{fullName(crew)}</h1>
             <p className="mt-1 text-sm text-primary-text/60">{formatProfileMeta(crew)}</p>
           </div>
-          <Button variant="primary" onClick={onEditProfile} className="shrink-0 self-start sm:self-auto">
-            <PencilIcon className="h-4 w-4" />
-            Edit profile
-          </Button>
+          <div className="flex shrink-0 gap-3 self-start sm:self-auto">
+            <Button variant="danger" onClick={onDelete}>
+              <MinusIcon className="h-4 w-4" />
+              Delete crew
+            </Button>
+            <Button variant="primary" onClick={onEditProfile}>
+              <PencilIcon className="h-4 w-4" />
+              Edit profile
+            </Button>
+          </div>
         </div>
       </ProfileCard>
 

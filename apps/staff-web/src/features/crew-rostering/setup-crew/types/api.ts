@@ -81,6 +81,9 @@ export function createSetupCrewApi(fetchWithAuth: FetchWithAuth) {
       return toCrewMember(await request<CrewPayload>(`/crew/${crewId}`, send('PATCH', toProfileBody(input))))
     },
 
+    /** A soft delete on the server: the row is marked deleted, not removed. Refused while the person holds a seat on a roster. */
+    deleteCrew: (crewId: string) => requestVoid(fetchWithAuth, `${BASE_PATH}/crew/${crewId}`, { method: 'DELETE' }),
+
     addCertification: (crewId: string, input: CertificationInput) =>
       request<Certification>(`/crew/${crewId}/certifications`, send('POST', input)),
 

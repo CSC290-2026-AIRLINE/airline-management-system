@@ -122,3 +122,52 @@ describe('SetupCrewService.listCrew', () => {
     expect(crew[0]).toMatchObject({ hours28d: 0, upcomingDuties: [] })
   })
 })
+
+describe('SetupCrewService.deleteCrew', () => {
+  const CREW = '7c1b9d2e-3a44-4c1f-8f0a-5b6d7e8f9a00'
+
+  function setup(options: { exists?: boolean; seats?: number } = {}) {
+    const { exists = true, seats = 0 } = options
+    const db = {
+      crew: {
+        findFirst: jest.fn().mockResolvedValue(exists ? { id: CREW } : null),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      pairing_leg_assignment: { count: jest.fn().mockResolvedValue(seats) },
+    }
+    return { db, service: new SetupCrewService(db as unknown as DbService) }
+  }
+
+  it('marks the crew member deleted and keeps the row', async () => {
+    const { service, db } = setup()
+
+    await service.deleteCrew(CREW)
+
+    expect(db.crew.update).toHaveBeenCalledWith({
+      where: { id: CREW },
+      data: { deleted_at: expect.any(Date), updated_at: expect.any(Date) },
+    })
+  })
+
+  it('counts only seats that are still held', async () => {
+    const { service, db } = setup()
+
+    await service.deleteCrew(CREW)
+
+    expect(db.pairing_leg_assignment.count).toHaveBeenCalledWith({ where: { crew_id: CREW, unassigned_at: null } })
+  })
+
+  it('refuses while the crew member holds a seat on a roster, and changes nothing', async () => {
+    const { service, db } = setup({ seats: 3 })
+
+    await expect(service.deleteCrew(CREW)).rejects.toThrow('CREW_ASSIGNED · This crew member holds 3 seats')
+    expect(db.crew.update).not.toHaveBeenCalled()
+  })
+
+  it('says not found for a crew member who does not exist or is already deleted', async () => {
+    const { service, db } = setup({ exists: false })
+
+    await expect(service.deleteCrew(CREW)).rejects.toThrow('was not found')
+    expect(db.crew.update).not.toHaveBeenCalled()
+  })
+})

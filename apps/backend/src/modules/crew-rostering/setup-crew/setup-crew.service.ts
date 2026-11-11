@@ -380,6 +380,25 @@ export class SetupCrewService {
     return this.readCertification(certificationId)
   }
 
+  /**
+   * Removes a crew member by setting `deleted_at`, so the row and everything that points at it stay in the database
+   * and the employee and licence numbers are free to use again (their unique indexes skip deleted rows).
+   *
+   * Refused while the crew member still holds a seat on a roster, because deleting them would leave a rostered
+   * seat with nobody on it. They are taken off the roster first (Fix & publish), then deleted.
+   */
+  async deleteCrew(crewId: string): Promise<void> {
+    await this.assertCrewExists(crewId)
+    const seats = await this.db.pairing_leg_assignment.count({ where: { crew_id: crewId, unassigned_at: null } })
+    if (seats > 0) {
+      throw new ConflictException(
+        `CREW_ASSIGNED · This crew member holds ${seats} ${seats === 1 ? 'seat' : 'seats'} on a roster. Take them off the roster first.`,
+      )
+    }
+    const now = new Date()
+    await this.db.crew.update({ where: { id: crewId }, data: { deleted_at: now, updated_at: now } })
+  }
+
   /** Hard delete — a certification is a fact about the crew member, not a soft-deleted row. */
   async removeCertification(crewId: string, certificationId: string): Promise<void> {
     await this.assertCertificationBelongsToCrew(crewId, certificationId)

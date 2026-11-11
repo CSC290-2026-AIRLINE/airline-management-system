@@ -78,6 +78,13 @@ export class SetupCrewController {
     return this.setupCrewService.updateCrew(requireUuid(crewId, 'crewId'), parseProfile(asObject(body)))
   }
 
+  /** Soft delete: the row stays, marked deleted. Refused while the crew member holds a seat on a roster. */
+  @Delete('crew/:crewId')
+  @HttpCode(204)
+  async deleteCrew(@Param('crewId') crewId: string): Promise<void> {
+    await this.setupCrewService.deleteCrew(requireUuid(crewId, 'crewId'))
+  }
+
   @Post('crew/:crewId/certifications')
   async addCertification(@Param('crewId') crewId: string, @Body() body: unknown): Promise<CertificationRow> {
     return this.setupCrewService.addCertification(requireUuid(crewId, 'crewId'), parseCertification(asObject(body)))
