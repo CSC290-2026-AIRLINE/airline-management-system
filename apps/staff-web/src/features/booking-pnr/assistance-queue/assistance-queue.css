@@ -1,6 +1,14 @@
+#root:has(.assistance-page) {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  text-align: left;
+}
+
 .assistance-page {
   box-sizing: border-box;
-  width: min(100%, 1440px);
+  width: 100%;
   min-height: 100vh;
   margin: 0 auto;
   padding: 48px clamp(20px, 5vw, 72px);
