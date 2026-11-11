@@ -57,6 +57,8 @@ const offerRow = (approval_id: string, o: Offer) => ({
 const covers = (o: { starts_at: Date; ends_at: Date | null }, dep: Date) =>
   o.ends_at ? o.starts_at <= dep && dep <= o.ends_at : o.starts_at.getTime() === dep.getTime()
 
+const localDateOf = (at: Date, timeZone: string) => formatLocal(at, timeZone).slice(0, 10)
+
 const minutesOf = (d: Date | null) => (d === null ? null : d.getUTCHours() * 60 + d.getUTCMinutes())
 
 /**
@@ -101,15 +103,24 @@ export class ApprovalService {
     })
     if (!route?.is_active) throw new UnprocessableEntityException('Route is unknown or not active')
     if (!route.airport_route_originToairport.is_active) throw new UnprocessableEntityException(`Airport ${route.origin} is not active`)
-    const localDate = formatLocal(input.dep_at, route.airport_route_originToairport.timezone).slice(0, 10)
-    if (localDate !== input.service_date.toISOString().slice(0, 10)) {
-      throw new UnprocessableEntityException(`service_date must be ${localDate}, the departure's local date at ${route.origin}`)
-    }
+    const serviceDate = input.service_date.toISOString().slice(0, 10)
     if (input.flight_id) {
-      const flight = await this.db.flight.findUnique({ where: { id: input.flight_id }, select: { flight_number: true, route_id: true } })
+      // A reschedule keeps the flight's service date, even when the new departure falls on another local day.
+      const flight = await this.db.flight.findUnique({
+        where: { id: input.flight_id },
+        select: { flight_number: true, route_id: true, service_date: true },
+      })
       if (!flight) throw new UnprocessableEntityException('flight_id does not match a flight')
       if (flight.flight_number !== input.flight_number || flight.route_id !== input.route_id) {
         throw new UnprocessableEntityException('flight_number and route_id must be those of the flight being rescheduled')
+      }
+      const flightDate = flight.service_date.toISOString().slice(0, 10)
+      if (serviceDate !== flightDate)
+        throw new UnprocessableEntityException(`service_date must be ${flightDate}, the flight's service date`)
+    } else {
+      const localDate = localDateOf(input.dep_at, route.airport_route_originToairport.timezone)
+      if (localDate !== serviceDate) {
+        throw new UnprocessableEntityException(`service_date must be ${localDate}, the departure's local date at ${route.origin}`)
       }
     }
 
@@ -189,6 +200,12 @@ export class ApprovalService {
           throw new ConflictException(`Only an offered or rejected request can be revised, this one is ${prev.status}`)
         }
         const aircraft_id = input.aircraft_id ?? prev.aircraft_id
+        // A new flight's service date is its departure's local date, so an offer on the next local day moves the date with it.
+        // A reschedule keeps the flight's service date.
+        const service_date =
+          prev.purpose === 'new_flight'
+            ? new Date(localDateOf(input.dep_at, prev.route.airport_route_originToairport.timezone))
+            : prev.service_date
         const covered =
           prev.status === 'alternative_offered' &&
           aircraft_id === prev.aircraft_id &&
@@ -205,7 +222,7 @@ export class ApprovalService {
             pattern_id: prev.pattern_id,
             route_id: prev.route_id,
             flight_number: prev.flight_number,
-            service_date: prev.service_date,
+            service_date,
             aircraft_id,
             proposed_dep_at: input.dep_at,
             proposed_arr_at: input.arr_at,

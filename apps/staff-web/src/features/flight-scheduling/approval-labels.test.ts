@@ -62,6 +62,13 @@ describe('approval labels', () => {
       assert.equal(offerText(row(offers), 'UTC'), '22:00')
     })
 
+    it('gives the date of an offer on another local day than the request', () => {
+      const offers = [{ kind: 'slot' as const, starts_at: '2026-11-10T22:00:00Z', ends_at: null }]
+      // Requested 22:00 on 10 Nov at Bangkok (15:00Z); offered 05:00 on 11 Nov.
+      const r = { offers, proposed_dep_at: '2026-11-10T15:00:00Z' } as ApprovalRow
+      assert.equal(offerText(r, 'Asia/Bangkok'), '05:00 on 2026-11-11')
+    })
+
     it('is empty when nothing was offered', () => {
       assert.equal(offerText(row([]), 'Asia/Bangkok'), '')
     })

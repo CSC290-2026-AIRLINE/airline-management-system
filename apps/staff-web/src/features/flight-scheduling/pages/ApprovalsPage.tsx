@@ -31,6 +31,7 @@ export function ApprovalsPage() {
   const [status, setStatus] = useState('')
   const [flight, setFlight] = useState('')
   const [revising, setRevising] = useState<ApprovalRow | null>(null)
+  const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, say] = useNotice()
@@ -42,14 +43,17 @@ export function ApprovalsPage() {
 
   function open(r: ApprovalRow) {
     setRevising(r)
-    // Start from the first offered time, or the time that was requested.
-    setTime(localParts(r.offers[0]?.starts_at ?? r.proposed_dep_at, zone(r)).time)
+    // Start from the first offered time, or the time that was requested. An offer can be on the next local day, so the date
+    // is picked too.
+    const start = localParts(r.offers[0]?.starts_at ?? r.proposed_dep_at, zone(r))
+    setDate(start.date)
+    setTime(start.time)
   }
 
-  // The revised request keeps the flight's length and the date the request had at the airport.
+  // The revised request keeps the flight's length; the departure is the local date and time picked at the airport.
   function revisedTimes(r: ApprovalRow) {
-    if (!/^\d\d:\d\d$/.test(time)) return null
-    const dep = localToIso(localParts(r.proposed_dep_at, zone(r)).date, time, zone(r))
+    if (!/^\d\d:\d\d$/.test(time) || !/^\d{4}-\d\d-\d\d$/.test(date)) return null
+    const dep = localToIso(date, time, zone(r))
     const length = Date.parse(r.proposed_arr_at) - Date.parse(r.proposed_dep_at)
     return { dep_at: dep, arr_at: new Date(Date.parse(dep) + length).toISOString() }
   }
@@ -194,6 +198,7 @@ export function ApprovalsPage() {
                     {revising.approver_airport}.
                   </Callout>
                   <div className="fs-filters">
+                    <FormField label="Departure date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                     <FormField label="New departure time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
                     <FormField
                       label="Arrival (same flight length)"
@@ -209,7 +214,7 @@ export function ApprovalsPage() {
                       disabled={busy || times === null}
                       onClick={() => void sendRevision(revising)}
                     >
-                      Request approval for {time || '—'}
+                      Request approval for {date} {time || '—'}
                     </button>
                     <button type="button" className="fs-button-ghost" onClick={() => setRevising(null)}>
                       Cancel

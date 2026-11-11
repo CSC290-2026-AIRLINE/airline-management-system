@@ -114,7 +114,7 @@ describe('ApprovalService', () => {
     })
 
     it('ignores the flight being rescheduled when it counts the hour’s departures', async () => {
-      db.flight.findUnique.mockResolvedValue({ flight_number: 'ZZ101', route_id: ROUTE })
+      db.flight.findUnique.mockResolvedValue({ flight_number: 'ZZ101', route_id: ROUTE, service_date: new Date('2026-11-02T00:00:00Z') })
       await service.create(request({ purpose: 'reschedule', flight_id: FLIGHT }), STAFF)
       expect(tx.flight.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: { not: FLIGHT } }) }))
     })
@@ -139,12 +139,28 @@ describe('ApprovalService', () => {
       )
     })
 
+    it('keeps the flight’s service date for a reschedule that moves to the next local day', async () => {
+      db.flight.findUnique.mockResolvedValue({ flight_number: 'ZZ101', route_id: ROUTE, service_date: new Date('2026-11-02T00:00:00Z') })
+      // 00:30 on 3 Nov at Bangkok, for the flight of 2 Nov.
+      const late = { dep_at: min('2026-11-02T17:30:00Z'), arr_at: min('2026-11-02T19:00:00Z') }
+      await service.create(request({ purpose: 'reschedule', flight_id: FLIGHT, ...late }), STAFF)
+      expect(tx.schedule_approval.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ service_date: new Date('2026-11-02T00:00:00Z') }) }),
+      )
+      await expect(
+        service.create(
+          request({ purpose: 'reschedule', flight_id: FLIGHT, ...late, service_date: new Date('2026-11-03T00:00:00Z') }),
+          STAFF,
+        ),
+      ).rejects.toThrow(/service_date must be 2026-11-02, the flight's service date/)
+    })
+
     it('rejects a reschedule whose flight does not exist or does not match with 422', async () => {
       db.flight.findUnique.mockResolvedValue(null)
       await expect(service.create(request({ purpose: 'reschedule', flight_id: FLIGHT }), STAFF)).rejects.toThrow(
         UnprocessableEntityException,
       )
-      db.flight.findUnique.mockResolvedValue({ flight_number: 'ZZ999', route_id: ROUTE })
+      db.flight.findUnique.mockResolvedValue({ flight_number: 'ZZ999', route_id: ROUTE, service_date: new Date('2026-11-02T00:00:00Z') })
       await expect(service.create(request({ purpose: 'reschedule', flight_id: FLIGHT }), STAFF)).rejects.toThrow(
         UnprocessableEntityException,
       )
@@ -283,6 +299,31 @@ describe('ApprovalService', () => {
       )
       expect(tx.schedule_approval.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.not.objectContaining({ status: 'approved' }) }),
+      )
+    })
+
+    it('moves a new flight’s service date when the offered time is on the next local day', async () => {
+      // 06:00 on 3 Nov at Bangkok.
+      const next = min('2026-11-02T23:00:00Z')
+      tx.schedule_approval.findUnique.mockResolvedValue(
+        previous({ schedule_approval_offer: [{ kind: 'slot', starts_at: next, ends_at: null }] }),
+      )
+      await service.revise(ID, { dep_at: next, arr_at: min('2026-11-03T01:00:00Z') }, STAFF)
+      expect(tx.schedule_approval.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ service_date: new Date('2026-11-03T00:00:00Z'), status: 'approved' }),
+        }),
+      )
+    })
+
+    it('keeps a reschedule’s service date when the new time is on the next local day', async () => {
+      const next = min('2026-11-02T23:00:00Z')
+      tx.schedule_approval.findUnique.mockResolvedValue(
+        previous({ purpose: 'reschedule', flight_id: FLIGHT, schedule_approval_offer: [{ kind: 'slot', starts_at: next, ends_at: null }] }),
+      )
+      await service.revise(ID, { dep_at: next, arr_at: min('2026-11-03T01:00:00Z') }, STAFF)
+      expect(tx.schedule_approval.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ service_date: new Date('2026-11-02T00:00:00Z') }) }),
       )
     })
 
