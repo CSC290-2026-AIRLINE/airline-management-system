@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { createClerkClient } from '@clerk/backend'
 import { DbService } from '@backend/db/db.service'
 import type { EnvConfig } from '@backend/config/env.validation'
-import { PassengerProfilesService } from './passenger-profiles.service'
+import { CustomerAccountProfilesService } from './customer-account-profiles.service'
 
 @Injectable()
 export class ProfileIdentityService {
@@ -12,7 +12,7 @@ export class ProfileIdentityService {
   constructor(
     private readonly db: DbService,
     config: ConfigService<EnvConfig, true>,
-    private readonly profiles: PassengerProfilesService,
+    private readonly profiles: CustomerAccountProfilesService,
   ) {
     this.clerk = createClerkClient({ secretKey: config.get('CLERK_SECRET_KEY_CUSTOMER', { infer: true }) })
   }

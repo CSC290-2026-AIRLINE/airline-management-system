@@ -21,7 +21,8 @@ import { Type } from 'class-transformer'
 import { normalizePassportName, normalizePassportNumber } from '../identity-normalization'
 import { isValidBirthDate } from '../birth-date'
 
-export const GENDERS = ['M', 'F', 'X'] as const
+import { GENDERS } from '../identity-constants'
+export { GENDERS } from '../identity-constants'
 export const RELATIONSHIPS = ['spouse', 'parent', 'child', 'sibling', 'guardian', 'companion', 'other'] as const
 const defined = (_object: unknown, value: unknown) => value !== undefined
 const nullableTrim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || null : value)

@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common'
 import { Transform, type TransformFnParams } from 'class-transformer'
 import { IsDate, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator'
+import { birthDateError } from '../birth-date'
+import { GENDERS } from '../identity-constants'
+export { GENDERS } from '../identity-constants'
 
 /**
  * The identity columns shared by `POST /api/staff/passengers` and
@@ -9,27 +12,14 @@ import { IsDate, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-v
  * `passenger.gender` is `CHECK (gender IN ('M', 'F', 'X'))` — see `src/db/schema.sql`.
  */
 /** Exported so `CorrectIdentityDto` validates gender against the same list, not a second copy. */
-export const GENDERS = ['M', 'F', 'X'] as const
 
 export type Gender = (typeof GENDERS)[number]
-
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 /** A short country code in lower case (`th`, `hk`, `jp`, `mm`), per `src/db/schema.sql`. */
 const NATIONALITY_PATTERN = /^[a-z]{2}$/
 
 /** Passport is "uppercase letters and digits only" once normalised. */
 const PASSPORT_PATTERN = /^[A-Z0-9]+$/
-
-/**
- * The Artifact's DOB rule: not before 1900, and not after the current date.
- *
- * The upper bound stands in for "the simulation date" from the Artifact, because no
- * simulation clock ships in this repository — `schema.sql` marks the columns that are
- * meant to read from one, but there is nothing to read it from. Swap this for the real
- * clock when one lands; see the module README.
- */
-const EARLIEST_DATE_OF_BIRTH_YEAR = 1900
 
 /**
  * The identity columns are written by more than one route, and the database constrains
@@ -84,23 +74,13 @@ export function readDateOfBirth({ value }: TransformFnParams): unknown {
   if (typeof trimmed !== 'string') {
     return trimmed
   }
-  if (!ISO_DATE_PATTERN.test(trimmed)) {
-    throw new BadRequestException('dateOfBirth must be an ISO date (YYYY-MM-DD)')
-  }
-
-  const [year, month, day] = trimmed.split('-').map(Number)
-  const date = new Date(Date.UTC(year, month - 1, day))
-  // Date.UTC silently rolls 31 February over into March; compare the parts back.
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
-    throw new BadRequestException('dateOfBirth is not a real date')
-  }
-  if (year < EARLIEST_DATE_OF_BIRTH_YEAR) {
-    throw new BadRequestException(`dateOfBirth must not be before ${EARLIEST_DATE_OF_BIRTH_YEAR}`)
-  }
-  // Stands in for "not after the simulation date"; see {@link EARLIEST_DATE_OF_BIRTH_YEAR}.
-  if (date.getTime() > Date.now()) {
-    throw new BadRequestException('dateOfBirth must not be in the future')
-  }
+  // Keep the staff error messages while sharing the same calendar rule as customer forms.
+  const error = birthDateError(trimmed, new Date())
+  if (error === 'format') throw new BadRequestException('dateOfBirth must be an ISO date (YYYY-MM-DD)')
+  if (error === 'invalid') throw new BadRequestException('dateOfBirth is not a real date')
+  if (error === 'too_early') throw new BadRequestException('dateOfBirth must not be before 1900')
+  if (error === 'future') throw new BadRequestException('dateOfBirth must not be in the future')
+  const date = new Date(trimmed + 'T00:00:00.000Z')
   return date
 }
 
