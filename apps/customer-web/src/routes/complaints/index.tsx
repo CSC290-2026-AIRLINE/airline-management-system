@@ -4,3 +4,4 @@ import { MakeComplaintPage } from '../../features/customer-service/MakeComplaint
 export const Route = createFileRoute('/complaints/')({
   component: MakeComplaintPage,
 })
+

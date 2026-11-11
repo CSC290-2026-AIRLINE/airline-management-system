@@ -94,3 +94,4 @@ export const CATEGORY_ICONS: Record<ComplaintCategory, string> = {
   Flight: '✈️',
   Food: '🍽️',
 }
+

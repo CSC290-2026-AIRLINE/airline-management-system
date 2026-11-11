@@ -340,3 +340,4 @@ const tableHeaderStyle: React.CSSProperties = {
   letterSpacing: '0.05em',
   gap: '0',
 }
+

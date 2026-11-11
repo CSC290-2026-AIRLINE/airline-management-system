@@ -7,3 +7,4 @@ export const Route = createFileRoute('/complaints/sent')({
   }),
   component: ComplaintSentPage,
 })
+

@@ -374,3 +374,4 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   boxSizing: 'border-box',
 }
+
