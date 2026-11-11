@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { FARE_RULE_FIELDS } from '../pricing.constants'
+import { PricingAudit } from '../pricing.audit'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
 import { CreateFareClassDto } from './dto/create-fare-class.dto'
 import { UpdateFareClassDto } from './dto/update-fare-class.dto'
@@ -15,10 +16,18 @@ const RULE_SELECT = { id: true, ...Object.fromEntries(FARE_RULE_FIELDS.map((fiel
   true
 >
 
+// The fare-rule columns of a full fare_class row, so the audit entry's before/after hold the same fields.
+function pickRuleFields(row: FareRuleValues) {
+  return Object.fromEntries(FARE_RULE_FIELDS.map((field) => [field, row[field]]))
+}
+
 // fare services
 @Injectable()
 export class FareClassService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
 
   findAll(includeInactive = false) {
     return this.db.fare_class.findMany({
@@ -35,24 +44,47 @@ export class FareClassService {
     return fareClass
   }
 
-  async create(dto: CreateFareClassDto) {
+  async create(dto: CreateFareClassDto, userId: string) {
     this.assertRuleConsistent(dto)
     await this.assertCodeFree(dto.code)
     try {
-      return await this.db.fare_class.create({ data: dto })
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.fare_class.create({ data: dto })
+        await this.audit.write(
+          userId,
+          { action: 'create', entityType: 'fare_class', entityId: row.id, summary: `Created fare class ${row.code}`, after: row },
+          tx,
+        )
+        return row
+      })
     } catch (error) {
       throw this.mapUniqueViolation(error, dto.code)
     }
   }
 
-  async update(id: string, dto: UpdateFareClassDto) {
+  async update(id: string, dto: UpdateFareClassDto, userId: string) {
     const current = await this.findOne(id)
     this.assertRuleConsistent({ ...current, ...dto })
     if (dto.code) {
       await this.assertCodeFree(dto.code, id)
     }
     try {
-      return await this.db.fare_class.update({ where: { id }, data: { ...dto, updated_at: new Date() } })
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.fare_class.update({ where: { id }, data: { ...dto, updated_at: new Date() } })
+        await this.audit.write(
+          userId,
+          {
+            action: 'update',
+            entityType: 'fare_class',
+            entityId: id,
+            summary: `Updated fare class ${row.code}`,
+            before: current,
+            after: row,
+          },
+          tx,
+        )
+        return row
+      })
     } catch (error) {
       throw this.mapUniqueViolation(error, dto.code)
     }
@@ -66,16 +98,31 @@ export class FareClassService {
     return rule
   }
 
-  async updateRule(id: string, dto: UpdateFareRuleDto) {
+  async updateRule(id: string, dto: UpdateFareRuleDto, userId: string) {
     const current = await this.findOne(id)
     this.assertRuleConsistent({ ...current, ...dto })
-    return this.db.fare_class.update({ where: { id }, data: { ...dto, updated_at: new Date() }, select: RULE_SELECT })
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.fare_class.update({ where: { id }, data: { ...dto, updated_at: new Date() }, select: RULE_SELECT })
+      await this.audit.write(
+        userId,
+        {
+          action: 'update',
+          entityType: 'fare_class',
+          entityId: id,
+          summary: `Updated fare rules of ${current.code}`,
+          before: pickRuleFields(current),
+          after: row,
+        },
+        tx,
+      )
+      return row
+    })
   }
 
   // Soft delete: the row stays so old quotes and base fares that point at it still resolve.
   // A class that still has live base fares is refused, so it cannot vanish from staff lists while routes still sell it.
-  async remove(id: string) {
-    await this.findOne(id)
+  async remove(id: string, userId: string) {
+    const existing = await this.findOne(id)
     const liveBaseFares = await this.db.base_fare.count({ where: { fare_class_id: id, deleted_at: null } })
     if (liveBaseFares > 0) {
       throw new ConflictException(
@@ -85,7 +132,14 @@ export class FareClassService {
       )
     }
     const now = new Date()
-    await this.db.fare_class.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+    await this.db.$transaction(async (tx) => {
+      await tx.fare_class.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+      await this.audit.write(
+        userId,
+        { action: 'delete', entityType: 'fare_class', entityId: id, summary: `Deleted fare class ${existing.code}`, before: existing },
+        tx,
+      )
+    })
   }
 
   // A cancel fee on a non-refundable class (or a change fee on a non-changeable one) would be frozen into quotes and

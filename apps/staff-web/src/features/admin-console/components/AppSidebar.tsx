@@ -1,34 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import {
-  Calendar,
-  ChartColumn,
-  ChevronRight,
-  CreditCard,
-  FileText,
-  KeyRound,
-  Luggage,
-  LogOut,
-  MessageSquare,
-  Monitor,
-  Package,
-  Percent,
-  Plane,
-  PlaneLanding,
-  Receipt,
-  ScrollText,
-  Search,
-  ShieldCheck,
-  SlidersHorizontal,
-  Star,
-  Tag,
-  Ticket,
-  User,
-  UserCheck,
-  Users,
-  Utensils,
-  type LucideIcon,
-} from 'lucide-react'
+import { ChevronRight, LogOut } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@staff-web/components/ui/collapsible'
 import { ScrollArea } from '@staff-web/components/ui/scroll-area'
 import {
@@ -48,67 +20,7 @@ import {
 import flythonMark from '../assets/flython-mark.svg'
 import flythonLogoMark from '../assets/flython-logo-mark.svg'
 import sidebarPattern from '../assets/sidebar-pattern.png'
-
-interface NavItem {
-  label: string
-  icon: LucideIcon
-}
-
-const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
-
-const GROUPS: { label: string; items: NavItem[] }[] = [
-  {
-    label: 'Operations',
-    items: [
-      { label: 'Flight Operations', icon: Plane },
-      { label: 'Fleet & Aircraft', icon: PlaneLanding },
-      { label: 'Crew Scheduling', icon: Calendar },
-      { label: 'My Roster', icon: User },
-    ],
-  },
-  {
-    label: 'Commercial',
-    items: [
-      { label: 'Bookings & Inventory', icon: Ticket },
-      { label: 'Payments & Refunds', icon: CreditCard },
-      { label: 'Cargo & Air Freight', icon: Package },
-    ],
-  },
-  {
-    label: 'Airport & Onboard',
-    items: [
-      { label: 'Check-in & Boarding', icon: UserCheck },
-      { label: 'Gate Counter & Devices', icon: Monitor },
-      { label: 'Baggage Tracking', icon: Luggage },
-      { label: 'Onboard Products', icon: Utensils },
-    ],
-  },
-  {
-    label: 'Customer Management',
-    items: [
-      { label: 'Customer Search', icon: Search },
-      { label: 'Security Screening', icon: ShieldCheck },
-      { label: 'Service & Compensation', icon: MessageSquare },
-      { label: 'Loyalty Programme', icon: Star },
-    ],
-  },
-]
-
-/** The three admin screens, one per tab of the admin page. These are the live links in this app. */
-const ADMIN_ITEMS = [
-  { to: '/admin/staff', label: 'Staff & roles', icon: Users },
-  { to: '/admin/roles', label: 'Role access', icon: KeyRound },
-  { to: '/admin/audit-log', label: 'Audit log', icon: ScrollText },
-] as const
-
-/** The pricing and finance screens, one per page of the Pricing & Fare Rules feature. */
-const PRICING_ITEMS = [
-  { to: '/pricing/fare-setup', label: 'Fare Setup', icon: Tag },
-  { to: '/pricing/pricing-rules', label: 'Pricing Rules', icon: SlidersHorizontal },
-  { to: '/pricing/taxes-promos', label: 'Taxes, Currency & Promos', icon: Percent },
-  { to: '/pricing/expenses-payments', label: 'Expenses & Payments', icon: Receipt },
-  { to: '/pricing/monthly-report', label: 'Monthly Report', icon: FileText },
-] as const
+import { ADMIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM, type NavItem } from '../nav-items'
 
 /**
  * These screens belong to other feature teams and have no routes in this app yet, so they are listed as disabled

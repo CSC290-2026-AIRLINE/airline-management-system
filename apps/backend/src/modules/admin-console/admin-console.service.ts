@@ -628,7 +628,8 @@ export class AdminConsoleService {
    *
    *   - Every active `core` screen — these are always-on for everyone (e.g. Home, My profile).
    *   - Every active `admin` screen — only if the user's role is `is_admin`.
-   *   - Every active `assignable` screen the role has a `role_screen` grant for.
+   *   - Every active `assignable` screen — for an `is_admin` role, all of them; otherwise only those the role has a
+   *     `role_screen` grant for.
    *
    * `provisioned` is the signal that separates "signed in, but nobody created a staff account yet" from "has a staff
    * account whose role happens to hold no screens" — both produce an empty `screen_codes`, and only the former should
@@ -673,16 +674,14 @@ export class AdminConsoleService {
   }
 
   /**
-   * The one screen policy: every active `core` screen, every active `admin` screen for an `is_admin` role, and every
-   * active `assignable` screen the role holds a `role_screen` grant for. Sorted by feature, then code.
+   * The one screen policy: an `is_admin` role sees every active screen. Any other role sees every active `core` screen
+   * and every active `assignable` screen it holds a `role_screen` grant for. Sorted by feature, then code.
    */
   private async screensForRole(roleId: string, isAdmin: boolean): Promise<ScreenDto[]> {
-    const autoKinds: ScreenKind[] = isAdmin ? ['core', 'admin'] : ['core']
     const rows = await this.db.screen.findMany({
-      where: {
-        is_active: true,
-        OR: [{ kind: { in: autoKinds } }, { kind: 'assignable', role_screen: { some: { role_id: roleId } } }],
-      },
+      where: isAdmin
+        ? { is_active: true }
+        : { is_active: true, OR: [{ kind: 'core' }, { kind: 'assignable', role_screen: { some: { role_id: roleId } } }] },
       orderBy: [{ feature_no: 'asc' }, { code: 'asc' }],
       select: SCREEN_SELECT,
     })

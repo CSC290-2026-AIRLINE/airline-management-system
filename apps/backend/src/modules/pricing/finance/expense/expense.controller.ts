@@ -28,13 +28,13 @@ export class ExpenseController {
   }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateExpenseDto) {
-    return this.expenseService.update(id, dto)
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateExpenseDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.expenseService.update(id, dto, user.id)
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.expenseService.remove(id)
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.expenseService.remove(id, user.id)
   }
 }

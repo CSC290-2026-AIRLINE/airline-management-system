@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { PricingAudit } from '../pricing.audit'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
 import { CreateBaseFareDto } from './dto/create-base-fare.dto'
 import { ListBaseFaresDto } from './dto/list-base-fares.dto'
@@ -13,7 +14,10 @@ const INCLUDE_LABELS = {
 
 @Injectable()
 export class BaseFareService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
 
   findAll(filter: ListBaseFaresDto = {}) {
     return this.db.base_fare.findMany({
@@ -31,27 +35,69 @@ export class BaseFareService {
     return baseFare
   }
 
-  async create(dto: CreateBaseFareDto) {
+  async create(dto: CreateBaseFareDto, userId: string) {
     await this.assertRouteExists(dto.route_id)
     await this.assertFareClassLive(dto.fare_class_id)
     await this.assertPairFree(dto.route_id, dto.fare_class_id)
     try {
-      return await this.db.base_fare.create({ data: dto, include: INCLUDE_LABELS })
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.base_fare.create({ data: dto, include: INCLUDE_LABELS })
+        await this.audit.write(
+          userId,
+          {
+            action: 'create',
+            entityType: 'base_fare',
+            entityId: row.id,
+            summary: `Created base fare ${row.route.origin + '-' + row.route.destination + ' ' + row.fare_class.code}`,
+            after: row,
+          },
+          tx,
+        )
+        return row
+      })
     } catch (error) {
       throw this.mapUniqueViolation(error)
     }
   }
 
-  async update(id: string, dto: UpdateBaseFareDto) {
-    await this.findOne(id)
-    return this.db.base_fare.update({ where: { id }, data: { ...dto, updated_at: new Date() }, include: INCLUDE_LABELS })
+  async update(id: string, dto: UpdateBaseFareDto, userId: string) {
+    const existing = await this.findOne(id)
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.base_fare.update({ where: { id }, data: { ...dto, updated_at: new Date() }, include: INCLUDE_LABELS })
+      await this.audit.write(
+        userId,
+        {
+          action: 'update',
+          entityType: 'base_fare',
+          entityId: id,
+          summary: `Updated base fare ${row.route.origin + '-' + row.route.destination + ' ' + row.fare_class.code}`,
+          before: existing,
+          after: row,
+        },
+        tx,
+      )
+      return row
+    })
   }
 
   // Soft delete: quotes already made from this fare keep their own frozen lines.
-  async remove(id: string) {
-    await this.findOne(id)
+  async remove(id: string, userId: string) {
+    const existing = await this.findOne(id)
     const now = new Date()
-    await this.db.base_fare.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+    await this.db.$transaction(async (tx) => {
+      await tx.base_fare.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+      await this.audit.write(
+        userId,
+        {
+          action: 'delete',
+          entityType: 'base_fare',
+          entityId: id,
+          summary: `Deleted base fare ${existing.route.origin + '-' + existing.route.destination + ' ' + existing.fare_class.code}`,
+          before: existing,
+        },
+        tx,
+      )
+    })
   }
 
   // Route picker for the Base fares page. `route` belongs to Feature 2 and is only read here, like assertRouteExists.
