@@ -52,7 +52,14 @@ describe('CheckinSeatProvider', () => {
     create.mockResolvedValue({ id: 'lock' })
     query.mockResolvedValue([{ id: 'lock', status: 'confirmed' }])
     findUnique.mockResolvedValue({ booking_coupon: { booking_id: 'booking' } })
-    findCouponById.mockResolvedValue({ status: 'confirmed', booking_passenger_id: 'passenger', flight_id: 'flight' })
+    findCouponById.mockResolvedValue({
+      status: 'confirmed',
+      booking_passenger_id: 'passenger',
+      flight_id: 'flight',
+      booking_segment_id: 'segment',
+      booking_segment: { cabin: 'economy' },
+      booking_passenger: { passenger_type: 'adult', other_booking_passenger: null, booking_service_request: [] },
+    })
     findUniqueOrThrow.mockResolvedValue({
       id: 'lock',
       flight_id: 'flight',
@@ -107,6 +114,24 @@ describe('CheckinSeatProvider', () => {
     )
   })
 
+  it('rechecks exit-row eligibility before assigning a held seat', async () => {
+    findCouponById.mockResolvedValue({
+      status: 'confirmed',
+      booking_passenger_id: 'passenger',
+      flight_id: 'flight',
+      booking_segment_id: 'segment',
+      booking_segment: { cabin: 'economy' },
+      booking_passenger: {
+        passenger_type: 'adult',
+        other_booking_passenger: null,
+        booking_service_request: [{ status: 'requested', booking_segment_id: 'segment' }],
+      },
+    })
+    await expect(provider.confirm('lock')).rejects.toMatchObject({ code: 'SEAT_NOT_ALLOWED' })
+    expect(updateMany).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+  })
+
   it('does not hold a seat when the booking is cancelled concurrently', async () => {
     query.mockResolvedValue([{ status: 'cancelled' }])
     await expect(provider.hold('flight', '12A', 'passenger', 300_000)).rejects.toMatchObject({ code: 'BOOKING_CLOSED' })
@@ -144,6 +169,14 @@ describe('CheckinSeatProvider', () => {
   })
 
   it('can auto-assign a standard business-cabin seat without selecting an exit seat', async () => {
+    findCouponById.mockResolvedValue({
+      status: 'confirmed',
+      booking_passenger_id: 'passenger',
+      flight_id: 'flight',
+      booking_segment_id: 'segment',
+      booking_segment: { cabin: 'business' },
+      booking_passenger: { passenger_type: 'adult', other_booking_passenger: null, booking_service_request: [] },
+    })
     findCoupon.mockResolvedValue({
       id: 'coupon',
       booking_id: 'booking',

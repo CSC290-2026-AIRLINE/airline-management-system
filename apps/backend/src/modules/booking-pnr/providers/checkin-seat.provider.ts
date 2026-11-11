@@ -138,7 +138,14 @@ export class CheckinSeatProvider implements SeatProvider {
       const held = await tx.seat_assignment.findUniqueOrThrow({ where: { id: lockId } })
       const coupon = await tx.booking_coupon.findUnique({
         where: { id: held.booking_coupon_id },
-        select: { status: true, booking_passenger_id: true, flight_id: true },
+        select: {
+          status: true,
+          booking_passenger_id: true,
+          booking_segment_id: true,
+          flight_id: true,
+          booking_segment: { select: { cabin: true } },
+          booking_passenger: { include: { other_booking_passenger: true, booking_service_request: true } },
+        },
       })
       if (coupon?.status !== 'confirmed') throw new BookingError('BOOKING_CLOSED', 'Flight coupon is no longer confirmed')
       if (options.rejectCheckedIn) {
@@ -160,6 +167,21 @@ export class CheckinSeatProvider implements SeatProvider {
       if (held.status === 'assigned') return { seatCode: held.seat_code, type }
       if (held.status !== 'held' || !held.hold_expires_at || held.hold_expires_at <= now)
         throw new BookingError('SEAT_UNAVAILABLE', 'Seat hold has expired')
+      const passenger = coupon.booking_passenger
+      if (
+        seat.cabin !== coupon.booking_segment.cabin ||
+        passenger.passenger_type === 'infant' ||
+        (seat.type === 'exit' &&
+          (passenger.passenger_type !== 'adult' ||
+            passenger.other_booking_passenger ||
+            passenger.booking_service_request.some(
+              (request) =>
+                ['requested', 'accepted'].includes(request.status) &&
+                (!request.booking_segment_id || request.booking_segment_id === coupon.booking_segment_id),
+            )))
+      ) {
+        throw new BookingError('SEAT_NOT_ALLOWED', 'Seat is not allowed for this passenger')
+      }
       if (Number(held.fee_amount) > 0 && !held.payment_id)
         throw new BookingError('SEAT_NOT_ALLOWED', 'Payment is required before assigning this seat')
       await tx.seat_assignment.updateMany({
