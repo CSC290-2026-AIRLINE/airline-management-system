@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Button } from '@staff-web/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 import type { ServiceRequestQueueItem, ServiceRequestStatus } from '../api/types'
+import './assistance-queue.css'
 
 interface AssistanceQueueProps {
   requests: ServiceRequestQueueItem[]
@@ -14,11 +15,22 @@ const tabs: Array<{ label: string; value: ServiceRequestStatus | 'all' }> = [
   { label: 'Rejected', value: 'rejected' },
   { label: 'All', value: 'all' },
 ]
+const labels: Record<ServiceRequestStatus, string> = {
+  requested: 'Pending',
+  accepted: 'Accepted',
+  rejected: 'Rejected',
+  completed: 'Completed',
+}
 
 function departureTime(value: string | null): number {
   if (!value) return Number.POSITIVE_INFINITY
   const parsed = Date.parse(value)
   return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed
+}
+
+function departureDate(value: string | null): string {
+  if (!value || Number.isNaN(Date.parse(value))) return 'Date unavailable'
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
 }
 
 export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
@@ -36,18 +48,18 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
         .filter(
           (request) =>
             (status === 'all' || request.status === status) &&
-            (!flight || request.flightNumber?.toLowerCase().includes(flight.toLowerCase())),
+            (!flight || request.flightNumber?.toLowerCase().includes(flight.trim().toLowerCase())),
         )
         .toSorted((a, b) => departureTime(a.depAt) - departureTime(b.depAt)),
     [requests, status, flight],
   )
 
-  async function update(next: 'accepted' | 'rejected' | 'completed') {
-    if (!selected || (next === 'rejected' && !reason.trim())) return
+  async function update(item: ServiceRequestQueueItem, next: 'accepted' | 'rejected' | 'completed') {
+    if (working || (next === 'rejected' && !reason.trim())) return
     setWorking(true)
     setError(null)
     try {
-      await onUpdate(selected.serviceRequestId, next, next === 'rejected' ? reason.trim() : undefined)
+      await onUpdate(item.serviceRequestId, next, next === 'rejected' ? reason.trim() : undefined)
       setSelectedId(null)
       setRejecting(false)
       setReason('')
@@ -58,92 +70,130 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
     }
   }
 
+  function openReject(item: ServiceRequestQueueItem) {
+    setSelectedId(item.serviceRequestId)
+    setReason('')
+    setError(null)
+    setRejecting(true)
+  }
+
   return (
-    <section className="space-y-4" aria-label="Special assistance queue">
-      <div className="flex flex-wrap gap-2" aria-label="Filter by status">
-        {tabs.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            aria-pressed={status === tab.value}
-            onClick={() => setStatus(tab.value)}
-            className="rounded border px-3 py-2 aria-pressed:bg-slate-200"
-          >
-            {tab.label} ({tab.value === 'all' ? requests.length : requests.filter((item) => item.status === tab.value).length})
-          </button>
-        ))}
-      </div>
-      <label className="block">
-        Flight number <input value={flight} onChange={(event) => setFlight(event.target.value)} className="ml-2 rounded border p-2" />
-      </label>
-      {visible.length === 0 ? (
-        <p>No assistance requests found.</p>
-      ) : (
-        <ul className="space-y-2">
-          {visible.map((item) => (
-            <li key={item.serviceRequestId}>
-              <button
-                type="button"
-                className="w-full rounded border p-3 text-left"
-                onClick={() => {
-                  setSelectedId(item.serviceRequestId)
-                  setRejecting(false)
-                  setError(null)
-                }}
-              >
-                {item.passengerName} · {item.bookingReference} · {item.flightNumber ?? 'All flights'} · {item.serviceCode}
-              </button>
-            </li>
+    <section className="assistance-queue" aria-label="Special assistance queue">
+      <div className="assistance-queue__filters">
+        <div className="assistance-queue__tabs" aria-label="Filter by status">
+          {tabs.map((tab) => (
+            <button key={tab.value} type="button" aria-pressed={status === tab.value} onClick={() => setStatus(tab.value)}>
+              {tab.label}{' '}
+              <span>({tab.value === 'all' ? requests.length : requests.filter((item) => item.status === tab.value).length})</span>
+            </button>
           ))}
-        </ul>
+        </div>
+        <label className="assistance-queue__search">
+          Flight number
+          <input value={flight} onChange={(event) => setFlight(event.target.value)} placeholder="Search flights" />
+        </label>
+      </div>
+      {error && !rejecting && (
+        <p className="assistance-queue__error" role="alert">
+          {error}
+        </p>
       )}
-      {selected && (
-        <section className="space-y-3 rounded border p-4" aria-label="Assistance request details">
-          <h2 className="font-semibold">
-            {selected.passengerName} · {selected.bookingReference}
-          </h2>
+      <div className="assistance-queue__table-wrap">
+        <table className="assistance-queue__table">
+          <thead>
+            <tr>
+              <th scope="col">Booking</th>
+              <th scope="col">Passenger</th>
+              <th scope="col">Code</th>
+              <th scope="col">Flight · note</th>
+              <th scope="col">Status</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="assistance-queue__empty">
+                  No assistance requests found.
+                </td>
+              </tr>
+            ) : (
+              visible.map((item) => (
+                <tr key={item.serviceRequestId}>
+                  <td>
+                    <button className="assistance-queue__reference" type="button" onClick={() => setSelectedId(item.serviceRequestId)}>
+                      {item.bookingReference}
+                    </button>
+                  </td>
+                  <td>
+                    <strong>{item.passengerName}</strong>
+                    <small>{item.passengerType}</small>
+                  </td>
+                  <td>
+                    <strong>{item.serviceCode}</strong>
+                  </td>
+                  <td>
+                    {item.flightNumber ?? 'All flights'} · {departureDate(item.depAt)}
+                    {item.note && <small>{item.note}</small>}
+                    {item.status === 'rejected' && item.decisionNote && (
+                      <small className="assistance-queue__rejection">Reason: {item.decisionNote}</small>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`assistance-queue__status assistance-queue__status--${item.status}`}>{labels[item.status]}</span>
+                  </td>
+                  <td>
+                    <div className="assistance-queue__actions">
+                      {item.status === 'requested' && (
+                        <>
+                          <button
+                            className="assistance-queue__primary"
+                            type="button"
+                            disabled={working}
+                            onClick={() => void update(item, 'accepted')}
+                          >
+                            Accept
+                          </button>
+                          <button className="assistance-queue__danger" type="button" disabled={working} onClick={() => openReject(item)}>
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      {item.status === 'accepted' && (
+                        <button
+                          className="assistance-queue__secondary"
+                          type="button"
+                          disabled={working}
+                          onClick={() => void update(item, 'completed')}
+                        >
+                          Mark done
+                        </button>
+                      )}
+                      {(item.status === 'rejected' || item.status === 'completed') && <span>—</span>}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="assistance-queue__info">
+        Accepting, rejecting or completing a request tells the customer in their booking. A rejection needs a reason.
+      </p>
+      {selected && !rejecting && (
+        <section className="assistance-queue__details" aria-label="Assistance request details">
+          <h2>Request details</h2>
           <p>
-            {selected.flightNumber ?? 'All flights'} · {selected.serviceCode} ·{' '}
-            {selected.status === 'requested' ? 'Pending' : selected.status}
+            <strong>{selected.passengerName}</strong> · {selected.bookingReference}
+          </p>
+          <p>
+            {selected.flightNumber ?? 'All flights'} · {selected.serviceCode} · {labels[selected.status]}
           </p>
           {selected.note && <p>{selected.note}</p>}
-          {error && !rejecting && <p role="alert">{error}</p>}
-          <div className="flex flex-wrap gap-2">
-            {selected.status === 'requested' && (
-              <>
-                <button type="button" disabled={working} onClick={() => void update('accepted')}>
-                  Accept
-                </button>
-                <button
-                  type="button"
-                  disabled={working}
-                  onClick={() => {
-                    setReason('')
-                    setError(null)
-                    setRejecting(true)
-                  }}
-                >
-                  Reject
-                </button>
-              </>
-            )}
-            {selected.status === 'accepted' && (
-              <button type="button" disabled={working} onClick={() => void update('completed')}>
-                Mark done
-              </button>
-            )}
-            <button
-              type="button"
-              disabled={working}
-              onClick={() => {
-                setSelectedId(null)
-                setRejecting(false)
-                setReason('')
-              }}
-            >
-              Close
-            </button>
-          </div>
+          <button className="assistance-queue__secondary" type="button" onClick={() => setSelectedId(null)}>
+            Close
+          </button>
         </section>
       )}
       <Dialog
@@ -157,11 +207,15 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
       >
         <DialogContent showCloseButton={!working}>
           <DialogHeader>
-            <DialogTitle>Reject assistance request</DialogTitle>
-            <DialogDescription>Give a reason for rejecting the request. The passenger will be able to see it.</DialogDescription>
+            <DialogTitle>
+              Reject {selected?.serviceCode} for {selected?.passengerName}?
+            </DialogTitle>
+            <DialogDescription>
+              Booking {selected?.bookingReference} · {selected?.flightNumber ?? 'All flights'} · {departureDate(selected?.depAt ?? null)}
+            </DialogDescription>
           </DialogHeader>
           <label className="block">
-            Reason for rejection
+            Reason (shown to the customer, required)
             <textarea
               className="mt-2 block w-full rounded border p-2"
               value={reason}
@@ -181,9 +235,14 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
                 setReason('')
               }}
             >
-              Cancel
+              Back
             </Button>
-            <Button type="button" variant="destructive" disabled={working || !reason.trim()} onClick={() => void update('rejected')}>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={working || !reason.trim() || !selected}
+              onClick={() => selected && void update(selected, 'rejected')}
+            >
               {working ? 'Submitting…' : 'Reject request'}
             </Button>
           </DialogFooter>

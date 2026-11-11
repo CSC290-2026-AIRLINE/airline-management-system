@@ -4,7 +4,6 @@ import { useBookingPnrApi } from '../api/client'
 import type { ServiceRequestQueueItem } from '../api/types'
 import { AssistanceQueue } from './AssistanceQueue'
 
-// The route can be connected after the backend provides the shared staff-only guard.
 export function AssistanceQueuePage() {
   const { fetchWithAuth } = useAppAuth()
   const { updateServiceRequest } = useBookingPnrApi()
@@ -53,8 +52,12 @@ export function AssistanceQueuePage() {
   }
 
   return (
-    <main className="space-y-4">
-      <h1 className="text-2xl font-semibold">Special assistance</h1>
+    <main className="assistance-page">
+      <header className="assistance-page__header">
+        <p className="assistance-page__eyebrow">Customer management</p>
+        <h1>Special Assistance Queue</h1>
+        <p>Review requests from bookings. Oldest departure first.</p>
+      </header>
       {error && (
         <div role="alert">
           <p>{error}</p>
