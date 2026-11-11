@@ -37,12 +37,13 @@
   color: #102544;
   text-underline-offset: 4px;
 }
-.f3-lookup :is(button, a, input, select):focus-visible {
+.f3-lookup :is(button, a, input):not([data-slot='select-trigger']):focus-visible {
   outline: 3px solid #fca311;
   outline-offset: 3px;
 }
-/* The admin console's field focus: a navy border with a 50% navy ring (`focus-visible:border-ring focus-visible:ring-[3px] ring-ring/50`). */
-.f3-lookup :is(input:not([type='checkbox']), select):focus-visible {
+/* The admin console's field focus: a navy border with a 50% navy ring (`focus-visible:border-ring focus-visible:ring-[3px] ring-ring/50`).
+   The shared dropdown trigger is a button, so it needs the field focus too. */
+.f3-lookup :is(input:not([type='checkbox']), [data-slot='select-trigger']):focus-visible {
   outline: none;
   border-color: #102544;
   box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
@@ -90,7 +91,7 @@
   font-weight: 500;
   color: #677287;
 }
-.f3-lookup :is(input:not([type='checkbox']), select) {
+.f3-lookup input:not([type='checkbox']) {
   width: 100%;
   min-width: 0;
   min-height: 42px;
@@ -100,18 +101,6 @@
   font: inherit;
   background: white;
   color: #0a1424;
-}
-/* The design draws its own chevron on the selects, so the browser's arrow is hidden. */
-.f3-lookup select {
-  appearance: none;
-  padding-right: 34px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235a6679' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 11px center;
-}
-.f3-lookup select:disabled {
-  color: #7b8494;
-  background: #f1f4f9;
 }
 .f3-lookup-error,
 .f3-lookup-warning,
@@ -236,7 +225,7 @@
   gap: 10px;
   align-items: center;
 }
-/* The per-page control is quiet: it stays a select, but it does not compete with the Previous / Next buttons. */
+/* The per-page control is quiet: it stays a dropdown, but it does not compete with the Previous / Next buttons. */
 .f3-lookup-per-page {
   display: flex;
   align-items: center;
@@ -244,15 +233,6 @@
   font-size: 11px;
   font-weight: 500;
   color: #8a93a3;
-}
-.f3-lookup-per-page select {
-  min-height: 30px;
-  width: 62px;
-  padding: 4px 26px 4px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #677287;
-  background-position: right 7px center;
 }
 .f3-lookup-info {
   margin-top: 16px;

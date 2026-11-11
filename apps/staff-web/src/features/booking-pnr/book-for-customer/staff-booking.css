@@ -16,6 +16,20 @@
   margin-top: 10px;
   font-size: 13px;
 }
+/* The customer picker sits among the customer app's fields, so it keeps their metrics: 40px high with 15px text, the
+   same as the customer dropdown next to it. The page's own button rule would give the trigger an orange outline, so it
+   takes the field focus instead. */
+.f3-staff-customer-picker [data-slot='select-trigger'] {
+  min-height: 40px;
+}
+.f3-staff-customer-picker [data-slot='select-value'] {
+  font-size: 15px;
+}
+.f3-staff-customer-picker [data-slot='select-trigger']:focus-visible {
+  outline: none;
+  border-color: #102544;
+  box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
+}
 .f3-staff-booking .f3-flow > h1 {
   margin: 0 0 24px;
 }

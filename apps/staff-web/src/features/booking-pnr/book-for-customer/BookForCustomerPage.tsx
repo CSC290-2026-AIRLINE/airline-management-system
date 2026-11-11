@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { FlightSearchPage, type SearchItinerary } from '../../../../../customer-web/src/features/booking-search/pages/FlightSearchPage'
 import type { FlightSearchUrlState } from '../../../../../customer-web/src/features/booking-search/search-params'
 import { PassengersPage } from '../../../../../customer-web/src/features/booking-pnr/passengers/PassengersPage'
@@ -202,19 +203,23 @@ function StaffBookingContent() {
         <div className="f3-search-card f3-staff-customer-picker">
           <label>
             Customer
-            <select
-              required
+            <Select
               value={customerMissing ? '' : customerId}
               disabled={data.loading || !!data.error || busy || activeStep === 'held'}
-              onChange={(event) => chooseCustomer(event.target.value)}
+              onValueChange={(value) => chooseCustomer(value)}
+              required
             >
-              <option value="">{data.loading ? 'Loading demo customers…' : 'Choose a demo customer'}</option>
-              {data.customers.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name} · {row.email}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder={data.loading ? 'Loading demo customers…' : 'Choose a demo customer'} />
+              </SelectTrigger>
+              <SelectContent>
+                {data.customers.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {row.name} · {row.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           {customer && (
             <p>

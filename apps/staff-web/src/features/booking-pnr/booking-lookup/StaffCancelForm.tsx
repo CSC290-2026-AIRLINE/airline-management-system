@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@staff-web/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { useBookingPnrApi } from '../api/client'
 import type { BookingDetail, CancelPreview } from '../api/types'
 import { lookupMoney, lookupShortDate } from './lookup-utils'
@@ -31,9 +32,16 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
   const [waiveFee, setWaiveFee] = useState(false)
   const [busy, setBusy] = useState(false)
   const inFlight = useRef(false)
+  /* The form lives in a native `<dialog>`, which sits in the top layer. The dropdown menu has to open inside it, or it
+     would be painted behind the dialog. */
+  const form = useRef<HTMLFormElement>(null)
+  const [dialog, setDialog] = useState<HTMLElement | null>(null)
   useEffect(() => {
     api.current = currentApi
   }, [currentApi])
+  useEffect(() => {
+    setDialog(form.current?.closest('dialog') ?? null)
+  }, [])
   useEffect(() => {
     let active = true
     void api.current
@@ -69,7 +77,7 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
     if (success) onSuccess()
   }
   return (
-    <form onSubmit={(event) => void cancel(event)} aria-label="Staff cancellation">
+    <form ref={form} onSubmit={(event) => void cancel(event)} aria-label="Staff cancellation">
       <header className="f3-lookup-modal-heading f3-lookup-cancel-heading">
         <div>
           <h2 id="f3-booking-dialog-title">Cancel booking {booking.reference}?</h2>
@@ -101,13 +109,17 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
           </dl>
           <label>
             Reason (kept in the booking history)
-            <select value={reason} required disabled={busy} onChange={(event) => setReason(event.target.value)}>
-              <option value="">Choose a reason</option>
-              <option>Customer request by phone</option>
-              <option>Customer request in person</option>
-              <option>Booking correction</option>
-              <option>Other staff request</option>
-            </select>
+            <Select value={reason} onValueChange={setReason} disabled={busy} required>
+              <SelectTrigger className="min-h-10.5">
+                <SelectValue placeholder="Choose a reason" />
+              </SelectTrigger>
+              <SelectContent container={dialog}>
+                <SelectItem value="Customer request by phone">Customer request by phone</SelectItem>
+                <SelectItem value="Customer request in person">Customer request in person</SelectItem>
+                <SelectItem value="Booking correction">Booking correction</SelectItem>
+                <SelectItem value="Other staff request">Other staff request</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <label className="f3-lookup-check">
             <input type="checkbox" checked={waiveFee} disabled={busy} onChange={(event) => setWaiveFee(event.target.checked)} />

@@ -2,6 +2,7 @@ import { Component, useEffect, useMemo, useRef, useState, type FormEvent, type R
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { useBookingPnrApi } from '../api/client'
 import type { StaffBookingPage, StaffBookingQuery } from '../api/types'
 import {
@@ -19,6 +20,9 @@ import {
 } from './lookup-utils'
 import { BookingDetailsDialog } from './BookingDetailsDialog'
 import './lookup.css'
+
+/** Radix `Select` items cannot have an empty value, so the "no status filter" row gets its own marker. */
+const ALL_STATUSES = '__all__'
 
 class LookupBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
@@ -220,25 +224,32 @@ function LookupContent() {
           </label>
           <label>
             Date type
-            <select
-              value={filters.dateType}
-              onChange={(event) => changeFilter('dateType', event.target.value as LookupFilters['dateType'])}
-            >
-              <option value="booked">Booked on</option>
-              <option value="travelling">Travelling on</option>
-            </select>
+            <Select value={filters.dateType} onValueChange={(value) => changeFilter('dateType', value as LookupFilters['dateType'])}>
+              <SelectTrigger className="min-h-10.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="booked">Booked on</SelectItem>
+                <SelectItem value="travelling">Travelling on</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <label>
             Period
-            <select value={filters.period} onChange={(event) => changePeriod(event.target.value as LookupPeriod)}>
-              <option value="all">All dates</option>
-              <option value="today">Today</option>
-              <option value="week">This week</option>
-              <option value="month">This month</option>
-              <option value="year">This year</option>
-              <option value="last_year">Last year</option>
-              <option value="custom">Custom range</option>
-            </select>
+            <Select value={filters.period} onValueChange={(value) => changePeriod(value as LookupPeriod)}>
+              <SelectTrigger className="min-h-10.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All dates</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="week">This week</SelectItem>
+                <SelectItem value="month">This month</SelectItem>
+                <SelectItem value="year">This year</SelectItem>
+                <SelectItem value="last_year">Last year</SelectItem>
+                <SelectItem value="custom">Custom range</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           {filters.period === 'custom' && (
             <>
@@ -264,13 +275,21 @@ function LookupContent() {
           )}
           <label>
             Status
-            <select value={filters.status} onChange={(event) => changeFilter('status', event.target.value as LookupFilters['status'])}>
-              <option value="">All</option>
-              <option value="held">Held</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="expired">Expired</option>
-            </select>
+            <Select
+              value={filters.status || ALL_STATUSES}
+              onValueChange={(value) => changeFilter('status', (value === ALL_STATUSES ? '' : value) as LookupFilters['status'])}
+            >
+              <SelectTrigger className="min-h-10.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_STATUSES}>All</SelectItem>
+                <SelectItem value="held">Held</SelectItem>
+                <SelectItem value="confirmed">Confirmed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
         </div>
         {formError && (
@@ -355,16 +374,19 @@ function LookupContent() {
           <div>
             <label className="f3-lookup-per-page">
               Per page
-              <select
-                aria-label="Bookings per page"
-                disabled={loading}
-                value={query.pageSize ?? 20}
-                onChange={(event) => changePageSize(Number(event.target.value))}
-              >
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
+              <Select disabled={loading} value={String(query.pageSize ?? 20)} onValueChange={(value) => changePageSize(Number(value))}>
+                <SelectTrigger
+                  aria-label="Bookings per page"
+                  className="data-[size=default]:h-7.5 w-15.5 px-2 text-xs text-[#677287] *:data-[slot=select-value]:text-xs"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
             <Button variant="outline" disabled={loading || (page?.page ?? 1) <= 1} onClick={() => changePage((page?.page ?? 1) - 1)}>
               Previous

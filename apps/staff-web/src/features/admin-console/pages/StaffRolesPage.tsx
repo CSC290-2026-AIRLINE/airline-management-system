@@ -168,7 +168,7 @@ function Dropdown({
         className={cn('max-h-98.5 max-w-135 border-border font-sans', variant === 'field' && 'max-h-65')}
       >
         {items.map((o) => (
-          <SelectItem key={o.value} value={o.value} className={cn('px-2.5 whitespace-nowrap text-foreground', variant === 'card' && '')}>
+          <SelectItem key={o.value} value={o.value} className={cn('px-2.5 text-foreground', variant === 'card' && '')}>
             {o.label}
           </SelectItem>
         ))}
