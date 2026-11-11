@@ -48,10 +48,8 @@ export class AircraftChangeProcessor {
     ])
     const capacities = new Map<string, number>(map.cabins.map((cabin) => [cabin.cabin, cabin.capacity]))
     const existing = new Set(current.map((row) => row.cabin))
-    // A's current inventory contract cannot add a cabin in this transaction. Fail without recording a receipt.
-    if (map.cabins.some((cabin) => !existing.has(cabin.cabin))) {
-      throw new BookingError('INVALID_BOOKING_STATE', 'Aircraft change needs a transaction-aware inventory row for the new cabin')
-    }
+    const added = map.cabins.filter((cabin) => !existing.has(cabin.cabin))
+    if (added.length) await this.inventory.createForFlight(event.flightId, added, tx)
     for (const cabin of [...existing].sort()) await this.inventory.setCapacity(tx, event.flightId, cabin, capacities.get(cabin) ?? 0)
 
     const usable = new Map(

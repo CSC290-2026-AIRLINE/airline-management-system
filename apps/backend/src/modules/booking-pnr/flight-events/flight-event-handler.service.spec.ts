@@ -1,5 +1,5 @@
 import type { DbService } from '@backend/db/db.service'
-import type { BookingTransaction, FlightEvent } from '../contracts'
+import type { BookingTransaction, FlightEvent, InventoryPort } from '../contracts'
 import type { AircraftChangeProcessor } from './aircraft-change.processor'
 import type { FlightCancellationProcessor } from './flight-cancellation.processor'
 import { FlightEventHandlerService } from './flight-event-handler.service'
@@ -21,6 +21,8 @@ describe('FlightEventHandlerService', () => {
     committed()
     return result
   })
+  const inventory = { createForFlight: jest.fn() }
+  const maps = { getSeatMap: jest.fn() }
   const cancellation = { process: jest.fn() }
   const aircraftChange = { process: jest.fn() }
   const notifications = { cancellation: jest.fn(), seatsChanged: jest.fn() }
@@ -30,6 +32,8 @@ describe('FlightEventHandlerService', () => {
     aircraftChange as unknown as AircraftChangeProcessor,
     notifications as unknown as FlightEventNotificationsService,
     { now: () => now },
+    inventory as unknown as InventoryPort,
+    maps,
   )
   const event: FlightEvent = {
     id: 'event',
@@ -83,8 +87,25 @@ describe('FlightEventHandlerService', () => {
     expect(committed.mock.invocationCallOrder[0]).toBeLessThan(notifications.cancellation.mock.invocationCallOrder[0])
   })
 
-  it('does not pretend a flight-created event was handled without an atomic inventory interface', async () => {
-    await expect(service.handle({ ...event, type: 'flight.created' })).rejects.toThrow('transaction-aware inventory')
-    expect(transaction).not.toHaveBeenCalled()
+  it('creates inventory and a receipt in the same transaction', async () => {
+    lock.mockResolvedValue([{ flight_id: 'flight', type: 'created' }])
+    maps.getSeatMap.mockResolvedValue({ cabins: [{ cabin: 'economy', capacity: 180 }] })
+    await service.handle({ ...event, type: 'flight.created' })
+    expect(inventory.createForFlight).toHaveBeenCalledWith('flight', [{ cabin: 'economy', capacity: 180 }], tx)
+    expect(receipt.create).toHaveBeenCalledWith({ data: { event_id: 'event', processed_at: now } })
+  })
+  it('skips an already-receipted creation without changing inventory', async () => {
+    lock.mockResolvedValue([{ flight_id: 'flight', type: 'created' }])
+    receipt.findUnique.mockResolvedValue({ event_id: 'event' })
+    await service.handle({ ...event, type: 'flight.created' })
+    expect(inventory.createForFlight).not.toHaveBeenCalled()
+    expect(receipt.create).not.toHaveBeenCalled()
+  })
+  it('does not receipt a failed inventory creation', async () => {
+    lock.mockResolvedValue([{ flight_id: 'flight', type: 'created' }])
+    maps.getSeatMap.mockResolvedValue({ cabins: [{ cabin: 'economy', capacity: 180 }] })
+    inventory.createForFlight.mockRejectedValueOnce(new Error('Inventory failed'))
+    await expect(service.handle({ ...event, type: 'flight.created' })).rejects.toThrow('Inventory failed')
+    expect(receipt.create).not.toHaveBeenCalled()
   })
 })

@@ -1,6 +1,14 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import { BOOKING_CLOCK, type BookingClock, type FlightEvent } from '../contracts'
+import {
+  BOOKING_CLOCK,
+  INVENTORY_PORT,
+  SEAT_MAP_PORT,
+  type BookingClock,
+  type FlightEvent,
+  type InventoryPort,
+  type SeatMapPort,
+} from '../contracts'
 import { AircraftChangeProcessor } from './aircraft-change.processor'
 import { FlightCancellationProcessor } from './flight-cancellation.processor'
 import { FlightEventNotificationsService } from './flight-event-notifications.service'
@@ -13,6 +21,8 @@ export class FlightEventHandlerService {
     private readonly aircraftChange: AircraftChangeProcessor,
     private readonly notifications: FlightEventNotificationsService,
     @Inject(BOOKING_CLOCK) private readonly clock: BookingClock,
+    @Inject(INVENTORY_PORT) private readonly inventory: InventoryPort,
+    @Inject(SEAT_MAP_PORT) private readonly maps: SeatMapPort,
   ) {}
 
   async handle(event: FlightEvent): Promise<void> {
@@ -22,8 +32,19 @@ export class FlightEventHandlerService {
       return
     }
     if (event.type === 'flight.created') {
-      // A's current inventory interface cannot create rows in the receipt transaction.
-      throw new Error('Flight creation requires transaction-aware inventory creation')
+      await this.db.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<
+          Array<{ flight_id: string; type: string }>
+        >`SELECT flight_id, type FROM flight_event WHERE id = ${event.id}::uuid FOR UPDATE`
+        if (!rows.length) throw new NotFoundException('Flight event not found')
+        if (rows[0].flight_id !== event.flightId || rows[0].type !== 'created')
+          throw new BadRequestException('Flight event does not match the stored record')
+        if (await tx.flight_event_receipt.findUnique({ where: { event_id: event.id }, select: { event_id: true } })) return
+        const map = await this.maps.getSeatMap(event.flightId)
+        await this.inventory.createForFlight(event.flightId, map.cabins, tx)
+        await tx.flight_event_receipt.create({ data: { event_id: event.id, processed_at: this.clock.now() } })
+      })
+      return
     }
     if (event.type !== 'flight.aircraft_changed') return
 

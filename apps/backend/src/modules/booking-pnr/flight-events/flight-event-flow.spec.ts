@@ -1,5 +1,5 @@
 import type { DbService } from '@backend/db/db.service'
-import type { BookingEventBus, BookingReadPort, BookingTransaction, FlightEvent } from '../contracts'
+import type { BookingEventBus, BookingReadPort, BookingTransaction, FlightEvent, InventoryPort, SeatMapPort } from '../contracts'
 import { LocalFlightEventBus } from '../stubs/flight-event-bus.stub'
 import type { AircraftChangeProcessor } from './aircraft-change.processor'
 import { FlightCancellationProcessor } from './flight-cancellation.processor'
@@ -66,7 +66,15 @@ describe('flight cancellation event flow', () => {
       { publish } as unknown as BookingEventBus,
       clock,
     )
-    const handler = new FlightEventHandlerService(db, cancellation, {} as AircraftChangeProcessor, notifications, clock)
+    const handler = new FlightEventHandlerService(
+      db,
+      cancellation,
+      {} as AircraftChangeProcessor,
+      notifications,
+      clock,
+      {} as InventoryPort,
+      {} as SeatMapPort,
+    )
     const bus = new LocalFlightEventBus()
     const dispatcher = new FlightEventDispatcher(
       bus,

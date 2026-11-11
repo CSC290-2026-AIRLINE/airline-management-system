@@ -6,7 +6,7 @@ describe('AircraftChangeProcessor', () => {
   const inventoryRows = { findMany: jest.fn() }
   const seats = { findMany: jest.fn(), updateMany: jest.fn() }
   const tx = { aircraft, seat_inventory: inventoryRows, seat_assignment: seats } as unknown as BookingTransaction
-  const inventory = { setCapacity: jest.fn() }
+  const inventory = { setCapacity: jest.fn(), createForFlight: jest.fn() }
   const maps = { getSeatMap: jest.fn() }
   const now = new Date('2026-11-10T12:00:00Z')
   const processor = new AircraftChangeProcessor(inventory as unknown as InventoryPort, maps, { now: () => now })
@@ -58,10 +58,10 @@ describe('AircraftChangeProcessor', () => {
     expect(maps.getSeatMap).not.toHaveBeenCalled()
   })
 
-  it('fails safely if a new cabin needs inventory creation', async () => {
+  it('creates a new cabin in the same transaction before updating existing capacity', async () => {
     maps.getSeatMap.mockResolvedValue({ cabins: [{ cabin: 'business', capacity: 3 }], rows: [] })
-    await expect(processor.process(tx, event)).rejects.toMatchObject({ code: 'INVALID_BOOKING_STATE' })
-    expect(inventory.setCapacity).not.toHaveBeenCalled()
-    expect(seats.updateMany).not.toHaveBeenCalled()
+    await processor.process(tx, event)
+    expect(inventory.createForFlight).toHaveBeenCalledWith('flight', [{ cabin: 'business', capacity: 3 }], tx)
+    expect(inventory.setCapacity).toHaveBeenCalledWith(tx, 'flight', 'economy', 0)
   })
 })

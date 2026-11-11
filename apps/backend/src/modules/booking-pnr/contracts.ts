@@ -65,7 +65,7 @@ export interface InventoryPort {
   sell: (tx: BookingTransaction, keys: InventoryKey[], count: number, award?: boolean) => Promise<void>
   release: (tx: BookingTransaction, keys: InventoryKey[], count: number, award?: boolean) => Promise<void>
   returnSold: (tx: BookingTransaction, keys: InventoryKey[], count: number, award?: boolean) => Promise<void>
-  createForFlight: (flightId: string, cabins: InventoryCabin[]) => Promise<void>
+  createForFlight: (flightId: string, cabins: InventoryCabin[], tx?: BookingTransaction) => Promise<void>
   setCapacity: (tx: BookingTransaction, flightId: string, cabin: string, capacity: number) => Promise<void>
   setAwardSeats: (flightId: string, cabin: string, count: number) => Promise<void>
   seatsLeft: (flightId: string, cabin: string) => Promise<number>
@@ -172,6 +172,7 @@ export interface ChargeRequest {
   amount: number
   currency: string
   idempotencyKey: string
+  purchaseRef?: string
 }
 
 export interface PaymentResult {
@@ -181,7 +182,7 @@ export interface PaymentResult {
 }
 
 export interface CheckoutPort {
-  charge: (request: ChargeRequest) => Promise<PaymentResult>
+  charge: (request: ChargeRequest, tx?: BookingTransaction) => Promise<PaymentResult>
 }
 
 export interface RefundRequest {
