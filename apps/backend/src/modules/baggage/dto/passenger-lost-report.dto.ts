@@ -16,6 +16,11 @@ export class CreatePassengerLostReportDto extends PassengerReportAccessQuery {
   @IsUUID()
   flightId!: string
 
+  /** "Whose bag is it?": another traveller on the same booking. Omit for the signed-in customer's own bag. */
+  @IsOptional()
+  @IsUUID()
+  bookingPassengerId?: string
+
   @IsIn(BAG_TYPES)
   bagType!: BagType
 

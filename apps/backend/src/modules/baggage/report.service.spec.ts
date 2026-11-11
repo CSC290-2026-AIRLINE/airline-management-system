@@ -396,3 +396,111 @@ describe('MockBookingVerification.resolveTraveller', () => {
     await expect(bookings.resolveTraveller({ ...requester, bookingPassengerId: 'BP003', flightId: 'F001' })).resolves.toBeNull()
   })
 })
+
+describe('ReportService.create for another traveller ("Whose bag is it?")', () => {
+  let service: ReportService
+  let repository: InMemoryReportRepository
+  let bookings: MockBookingVerification
+
+  // Booking K7QX2M: reporter Anna (P001/BP001) and co-traveller Erik (P002/BP002), both on F001; Erik also on F003.
+  // Booking XYZ789: unrelated passenger P009/BP009.
+  const reporter = { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P001' }
+  const bagDetails = { bagType: 'suitcase' as const, colour: 'black' as const, contactEmail: 'anna@example.com', flightId: 'F001' }
+
+  beforeEach(() => {
+    repository = new InMemoryReportRepository()
+    bookings = new MockBookingVerification([
+      { ...reporter, bookingPassengerId: 'BP001', flightId: 'F001' },
+      { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P002', bookingPassengerId: 'BP002', flightId: 'F001' },
+      { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P002', bookingPassengerId: 'BP002', flightId: 'F003' },
+      { bookingReference: 'XYZ789', surname: 'Jones', passengerId: 'P009', bookingPassengerId: 'BP009', flightId: 'F001' },
+    ])
+    service = new ReportService(
+      repository,
+      bookings,
+      new MockCheckedBagLookup([
+        { tagNumber: '0111111111', bookingPassengerId: 'BP001', flightId: 'F001' },
+        { tagNumber: '0222222222', bookingPassengerId: 'BP002', flightId: 'F001' },
+      ]),
+      new InMemoryCaseNumberSequence(),
+      new MockSimulationClock(new Date('2026-10-29T10:00:00Z')),
+      { upload: jest.fn(), remove: jest.fn(), retrieve: jest.fn() },
+    )
+  })
+
+  it('own bag (bookingPassengerId omitted) still verifies the reporter and never resolves a traveller', async () => {
+    const resolve = jest.spyOn(bookings, 'resolveTraveller')
+    const report = await service.create({ ...reporter, ...bagDetails, reportedByCustomerId: 'C001' })
+
+    expect(resolve).not.toHaveBeenCalled()
+    expect(report).toMatchObject({ bookingPassengerId: 'BP001', passengerId: 'P001', flightId: 'F001', reportedByCustomerId: 'C001' })
+  })
+
+  it('own bag with bookingPassengerId null behaves exactly like omitted', async () => {
+    const resolve = jest.spyOn(bookings, 'resolveTraveller')
+    const report = await service.create({ ...reporter, ...bagDetails, bookingPassengerId: null, reportedByCustomerId: 'C001' })
+
+    expect(resolve).not.toHaveBeenCalled()
+    expect(report.bookingPassengerId).toBe('BP001')
+  })
+
+  it('reports for a co-traveller on the same booking, keeping the signed-in customer as reporter', async () => {
+    const report = await service.create({ ...reporter, ...bagDetails, bookingPassengerId: 'BP002', reportedByCustomerId: 'C001' })
+
+    expect(report).toMatchObject({
+      bookingPassengerId: 'BP002',
+      passengerId: 'P002',
+      flightId: 'F001',
+      reportedByCustomerId: 'C001',
+      reportedByStaffId: null,
+      status: 'open',
+    })
+  })
+
+  it('selecting the reporter own bookingPassengerId gives the same result as the own-bag flow', async () => {
+    const report = await service.create({ ...reporter, ...bagDetails, bookingPassengerId: 'BP001', reportedByCustomerId: 'C001' })
+
+    expect(report).toMatchObject({ bookingPassengerId: 'BP001', passengerId: 'P001', reportedByCustomerId: 'C001' })
+  })
+
+  it('accepts a co-traveller flight the reporter is not on', async () => {
+    const report = await service.create({ ...reporter, ...bagDetails, flightId: 'F003', bookingPassengerId: 'BP002' })
+
+    expect(report).toMatchObject({ bookingPassengerId: 'BP002', flightId: 'F003' })
+  })
+
+  it.each([
+    ['a traveller on an unrelated booking', { bookingPassengerId: 'BP009' }],
+    ['an unknown traveller ID', { bookingPassengerId: 'BP-NOPE' }],
+    ['an empty traveller ID', { bookingPassengerId: '' }],
+    ['a flight the co-traveller holds no confirmed ticket for', { bookingPassengerId: 'BP002', flightId: 'F002' }],
+    ['a reporter whose surname does not verify', { bookingPassengerId: 'BP002', surname: 'Wrong' }],
+    ['a reporter on another booking reference', { bookingPassengerId: 'BP009', bookingReference: 'XYZ789' }],
+  ])('rejects %s with the generic verification error and creates nothing', async (_label, override) => {
+    await expect(service.create({ ...reporter, ...bagDetails, ...override, reportedByCustomerId: 'C001' })).rejects.toMatchObject({
+      code: 'INVALID_REPORT',
+      message: 'Booking verification failed',
+    })
+    for (const bp of ['BP001', 'BP002', 'BP009']) await expect(repository.listByBookingPassengerId(bp)).resolves.toHaveLength(0)
+  })
+
+  it('checks tag ownership against the selected bag owner: the co-traveller tag is accepted', async () => {
+    const report = await service.create({ ...reporter, ...bagDetails, bookingPassengerId: 'BP002', tagNumber: '0222222222' })
+
+    expect(report).toMatchObject({ bookingPassengerId: 'BP002', tagNumber: '0222222222' })
+  })
+
+  it('checks tag ownership against the selected bag owner: the reporter own tag is rejected for a co-traveller report', async () => {
+    await expect(
+      service.create({ ...reporter, ...bagDetails, bookingPassengerId: 'BP002', tagNumber: '0111111111' }),
+    ).rejects.toMatchObject({ code: 'TAG_NOT_ON_BOOKING' })
+  })
+
+  it('applies the duplicate live-report rule to the co-traveller tag, whoever reports it', async () => {
+    await service.create({ ...reporter, ...bagDetails, bookingPassengerId: 'BP002', tagNumber: '0222222222' })
+
+    await expect(
+      service.create({ ...reporter, ...bagDetails, bookingPassengerId: 'BP002', tagNumber: '0222222222' }),
+    ).rejects.toMatchObject({ code: 'REPORT_EXISTS' })
+  })
+})

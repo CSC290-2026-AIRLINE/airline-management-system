@@ -98,3 +98,41 @@ describe('PassengerLostReportController.create', () => {
     )
   })
 })
+
+describe('PassengerLostReportController.create for another traveller', () => {
+  it('passes the chosen bookingPassengerId through but always takes passenger and reporter identity from the guard', async () => {
+    const report = { id: 'report-id', status: 'open' } as LostBagReport
+    const reports = { create: jest.fn().mockResolvedValue(report) }
+    const controller = new PassengerLostReportController(
+      reports as unknown as ReportService,
+      {} as never,
+      {} as never,
+      {
+        suggestForReport: jest.fn().mockResolvedValue(undefined),
+      } as unknown as BagMatchingService,
+    )
+    const customer = { id: 'user-id', customerId: 'customer-id', passengerId: 'passenger-id' } as BaggageCustomer
+    const dto = {
+      bookingReference: 'K7QX2M',
+      surname: 'Eriksson',
+      flightId: '00000000-0000-4000-8000-000000000001',
+      bookingPassengerId: '00000000-0000-4000-8000-0000000000b2',
+      bagType: 'suitcase',
+      colour: 'black',
+      // Not in the DTO (the ValidationPipe rejects them); proves the controller overrides them anyway.
+      passengerId: 'spoofed-passenger',
+      reportedByCustomerId: 'spoofed-customer',
+    } as unknown as CreatePassengerLostReportDto
+
+    await controller.create(customer, dto)
+
+    expect(reports.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingPassengerId: '00000000-0000-4000-8000-0000000000b2',
+        passengerId: 'passenger-id',
+        reportedByCustomerId: 'customer-id',
+      }),
+      undefined,
+    )
+  })
+})

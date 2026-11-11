@@ -23,6 +23,12 @@ export interface CreateReportInput {
   bookingReference: string
   surname: string
   passengerId: string
+  /**
+   * "Whose bag is it?": the booking passenger whose bag is lost, when it is not the signed-in customer's own. Omitted or
+   * null means the reporter's own bag (the original flow). Never trusted on its own: it must resolve on the reporter's
+   * verified booking with a confirmed coupon for flightId.
+   */
+  bookingPassengerId?: string | null
   tagNumber?: string | null
   bagType: BagType
   colour: BagColour
@@ -70,12 +76,24 @@ export class ReportService {
       throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_TAG, 'Invalid baggage tag number')
     }
 
-    const passenger = await this.bookings.verifyPassenger({
-      bookingReference: input.bookingReference,
-      surname: input.surname,
-      passengerId: input.passengerId,
-      flightId: input.flightId,
-    })
+    // The bag owner. Own bag: the reporter, verified as before. Another traveller: resolved only on the reporter's own
+    // verified booking. Either way a failure gets the same generic error, and the tag/duplicate checks below apply to
+    // the bag owner.
+    const passenger =
+      input.bookingPassengerId == null
+        ? await this.bookings.verifyPassenger({
+            bookingReference: input.bookingReference,
+            surname: input.surname,
+            passengerId: input.passengerId,
+            flightId: input.flightId,
+          })
+        : await this.bookings.resolveTraveller({
+            bookingReference: input.bookingReference,
+            surname: input.surname,
+            passengerId: input.passengerId,
+            bookingPassengerId: input.bookingPassengerId,
+            flightId: input.flightId,
+          })
 
     if (!passenger) {
       throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')

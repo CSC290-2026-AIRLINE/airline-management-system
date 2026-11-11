@@ -39,7 +39,10 @@ export class MockBookingVerification implements BookingVerification {
     return Promise.resolve([])
   }
 
-  /** Same-booking rule: the requester must verify, and the chosen traveller must share their booking reference. */
+  /**
+   * Same rules as the Prisma adapter: the requester verifies on the booking on any flight (no flightId), and the chosen
+   * traveller must share that booking reference with a coupon for the requested flight.
+   */
   async resolveTraveller(input: {
     bookingReference: string
     surname: string
@@ -47,7 +50,11 @@ export class MockBookingVerification implements BookingVerification {
     bookingPassengerId: string
     flightId: string
   }): Promise<VerifiedBookingPassenger | null> {
-    const requester = await this.verifyPassenger(input)
+    const requester = await this.verifyPassenger({
+      bookingReference: input.bookingReference,
+      surname: input.surname,
+      passengerId: input.passengerId,
+    })
     if (!requester) return null
 
     const traveller = this.bookings.find(
