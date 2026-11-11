@@ -15,6 +15,7 @@
     "outDir": "./dist",
     "rootDir": ".",
     "ignoreDeprecations": "5.0",
+    // "baseUrl": ".",
     "paths": {
       "@backend/*": ["./src/*"]
     },

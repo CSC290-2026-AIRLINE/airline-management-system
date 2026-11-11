@@ -9,6 +9,7 @@ import { validateEnv } from './config/env.validation'
 import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
 import { ScreeningModule } from '@backend/modules/screening/screening.module'
 import { WatchlistModule } from '@backend/modules/watchlist/watchlist.module'
+import { PricingModule } from './modules/pricing/pricing.module'
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { WatchlistModule } from '@backend/modules/watchlist/watchlist.module'
     PassengerProfilesModule,
     ScreeningModule,
     WatchlistModule,
+    PricingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

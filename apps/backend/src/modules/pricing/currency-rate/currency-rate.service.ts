@@ -1,0 +1,92 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { DbService } from '@backend/db/db.service'
+import { PricingAudit } from '../pricing.audit'
+import { PricingErrorCode, pricingError } from '../pricing.errors'
+import { staffIdFor } from '../pricing.staff'
+import { UpdateCurrencyRateDto } from './dto/update-currency-rate.dto'
+
+// TODO: read pricing_setting 'base_currency' once Core's settings module exists. Every stored amount is in this currency.
+export const BASE_CURRENCY = 'USD'
+
+// A Prisma Decimal or a plain number: both have toFixed.
+type Numeric = number | { toFixed(decimalPlaces: number): string }
+
+// Who last changed each rate, for the staff page.
+const include = { staff: { select: { id: true, staff_code: true, first_name: true, last_name: true } } }
+
+@Injectable()
+export class CurrencyRateService {
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
+
+  findAll() {
+    return this.db.currency_rate.findMany({ include, orderBy: { currency_code: 'asc' } })
+  }
+
+  async findOne(code: string) {
+    const rate = await this.db.currency_rate.findUnique({ where: { currency_code: code }, include })
+    if (!rate) {
+      throw new NotFoundException(pricingError(PricingErrorCode.CURRENCY_RATE_NOT_FOUND, `No rate for currency ${code}`))
+    }
+    return rate
+  }
+
+  // PUT /staff/currency-rates/:code: sets the rate for one currency, creating the row if it is new. The base currency is
+  // always 1 and cannot be set.
+  async upsert(code: string, dto: UpdateCurrencyRateDto, userId: string) {
+    if (code === BASE_CURRENCY) {
+      throw new BadRequestException(
+        pricingError(PricingErrorCode.CURRENCY_IS_BASE, `${BASE_CURRENCY} is the base currency; its rate is always 1`),
+      )
+    }
+    const staffId = await staffIdFor(this.db, userId)
+    const before = await this.db.currency_rate.findUnique({ where: { currency_code: code }, include })
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.currency_rate.upsert({
+        where: { currency_code: code },
+        create: { currency_code: code, ...dto, updated_by: staffId },
+        update: { ...dto, updated_by: staffId, updated_at: new Date() },
+        include,
+      })
+      await this.audit.write(
+        userId,
+        {
+          action: before ? 'update' : 'create',
+          entityType: 'currency_rate',
+          entityId: code,
+          summary: `${before ? 'Updated' : 'Added'} currency rate ${code}`,
+          before: before ?? undefined,
+          after: row,
+        },
+        tx,
+      )
+      return row
+    })
+  }
+
+  // Converts an amount in the base currency, rounded half up to 2 decimal places. Exported for Feature 2.
+  async convert(amount: Numeric, toCurrency: string): Promise<number> {
+    if (toCurrency === BASE_CURRENCY) {
+      return roundHalfUp(toScaled(amount, 6), 6)
+    }
+    const { rate_per_base } = await this.findOne(toCurrency)
+    return roundHalfUp(toScaled(amount, 6) * toScaled(rate_per_base, 6), 12)
+  }
+}
+
+// Money math in integers, so 0.1 + 0.2 style float errors cannot change a rounded amount.
+// toScaled(98.5, 2) = 9850n
+function toScaled(value: Numeric, scale: number): bigint {
+  const [whole, fraction = ''] = value.toFixed(scale).split('.')
+  return BigInt(whole + fraction)
+}
+
+// Rounds a value with `scale` decimal places to 2, halves away from zero.
+function roundHalfUp(scaled: bigint, scale: number): number {
+  const divisor = 10n ** BigInt(scale - 2)
+  const magnitude = scaled < 0n ? -scaled : scaled
+  const cents = (magnitude + divisor / 2n) / divisor
+  return Number(scaled < 0n ? -cents : cents) / 100
+}
