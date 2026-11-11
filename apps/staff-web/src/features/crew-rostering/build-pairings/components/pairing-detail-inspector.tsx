@@ -33,6 +33,7 @@ export function PairingDetailInspector({
   onClose?: () => void
 }) {
   const committed = pairing.rosterRunId != null
+  const published = committed && pairing.rosterRunStatus === 'published'
   const invalid = evaluation.status === 'failed' && !committed
   // The "each flight leaves where the last landed" row only earns its place once it fails.
   const checks = evaluation.checks.filter((check) => check.code !== 'SEQUENCE_BROKEN' || check.status === 'failed')
@@ -159,9 +160,9 @@ export function PairingDetailInspector({
         </section>
       )}
 
-      {committed ? (
+      {published ? (
         <p className="rounded-lg bg-info-bg px-4 py-3 text-sm text-primary">
-          This pairing is already committed to a roster run, so it is not edited here. Continue to Assign crew to crew it.
+          This pairing is in a published roster, so it is not edited here. Change its crew in Fix &amp; publish.
         </p>
       ) : (
         <footer className={`flex gap-3 ${invalid ? 'border-t border-border-desc/40 pt-4' : ''} ${onClose ? 'justify-center' : ''}`}>
@@ -173,6 +174,12 @@ export function PairingDetailInspector({
             <MinusIcon className="h-4 w-4" />
             Delete pairing
           </Button>
+          {committed && (
+            <p className="basis-full text-xs text-primary-text/60">
+              Committed to the draft roster run. Edits and deleting are saved to the database straight away, and crew already assigned to a
+              leg you take off is cleared.
+            </p>
+          )}
         </footer>
       )}
     </aside>

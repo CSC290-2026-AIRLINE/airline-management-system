@@ -66,6 +66,15 @@ export function FixPublishPage() {
   const seatOnly = state.openBreaks.every((item) => item.code === 'NO_LEGAL_CREW')
   const windowSearch = { dateFrom: state.params.dateFrom, dateTo: state.params.dateTo, base: state.params.base }
   const hasRun = state.rosterRun !== null
+
+  /**
+   * The next roster run carries on with the pairings the last one left out: with some left, it opens Assign crew on a new
+   * draft run holding just those; with none left, it opens Build pairings for a fresh start.
+   */
+  async function startNextRun() {
+    const carryOn = await state.startNextRun()
+    void navigate(carryOn ? { to: '/assign-crew', search: windowSearch } : { to: '/build-pairings' })
+  }
   const backToRoster = isPublished && hasOpen
   const base = state.rosterRun?.base ?? state.params.base
 
@@ -164,7 +173,7 @@ export function FixPublishPage() {
                 tone={state.banner.tone}
                 action={
                   isPublished ? (
-                    <Button variant="highlight" className="h-10 shrink-0" onClick={() => void navigate({ to: '/build-pairings' })}>
+                    <Button variant="highlight" className="h-10 shrink-0" onClick={() => void startNextRun()}>
                       Start next roster run
                       <ArrowRightIcon className="h-4 w-4" />
                     </Button>
@@ -290,7 +299,7 @@ export function FixPublishPage() {
           canPublish={state.canPublish}
           onBack={() => void navigate({ to: '/assign-crew', search: windowSearch })}
           onPublish={state.publish}
-          onNextRun={() => void navigate({ to: '/build-pairings' })}
+          onNextRun={() => void startNextRun()}
         />
       </div>
 

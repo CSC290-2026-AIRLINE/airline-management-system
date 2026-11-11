@@ -62,8 +62,8 @@ export interface CommitDraft {
 
 export interface CommitResult {
   rosterRun: RosterRun
-  /** The pairings that were stored, with the code each one was given. */
-  committed: { ref: string; code: string }[]
+  /** The pairings that were stored, with the id and code each one was given. */
+  committed: { ref: string; id: string; code: string }[]
   /** Refs of drafts that failed a legality check on the server. */
   skippedInvalid: string[]
   skippedOutsideWindow: string[]

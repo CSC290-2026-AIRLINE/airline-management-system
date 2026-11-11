@@ -54,6 +54,8 @@ export interface AssignCrewState {
   selectAll: () => void
   clearSelection: () => void
   runAutoAssign: () => void
+  /** Carries the pairings the last roster left out into a new draft run, then loads it. */
+  startNextRun: () => void
 }
 
 /**
@@ -89,6 +91,8 @@ export function useAssignCrew(): AssignCrewState {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
+  /** Bumped to read the window's run again, for example after the next roster run is started. */
+  const [reloadKey, setReloadKey] = useState(0)
   const [result, setResult] = useState<RunResult | null>(null)
 
   const { dateFrom, dateTo, base } = params
@@ -133,7 +137,7 @@ export function useAssignCrew(): AssignCrewState {
     return () => {
       cancelled = true
     }
-  }, [getApi, signedIn, dateFrom, dateTo, base])
+  }, [getApi, signedIn, dateFrom, dateTo, base, reloadKey])
 
   const selectedPairings = useMemo(() => pairings.filter((pairing) => selectedIds.includes(pairing.id)), [pairings, selectedIds])
 
@@ -165,6 +169,20 @@ export function useAssignCrew(): AssignCrewState {
     setRunError(null)
     setParams((current) => ({ ...current, [key]: key === 'base' ? value : (value as LocalDate) }))
   }, [])
+
+  const startNextRun = useCallback(() => {
+    setRunError(null)
+    getApi()
+      .startNextRun({ dateFrom, dateTo, base })
+      .then((next) => {
+        if (next.rosterRun === null) {
+          setRunError('No valid pairing is left to carry over. Repair or generate pairings in Build pairings first.')
+          return
+        }
+        setReloadKey((key) => key + 1)
+      })
+      .catch((error: unknown) => setRunError(error instanceof Error ? error.message : 'Could not start the next roster run.'))
+  }, [base, dateFrom, dateTo, getApi])
 
   const runAutoAssign = useCallback(() => {
     if (!rosterRun || selectedIds.length === 0 || isRunning) return
@@ -207,6 +225,7 @@ export function useAssignCrew(): AssignCrewState {
     selectAll,
     clearSelection,
     runAutoAssign,
+    startNextRun,
   }
 }
 

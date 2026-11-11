@@ -61,6 +61,8 @@ export interface FixPublishState {
   canPublish: boolean
   publishChecks: PublishCheck[]
   publish: () => void
+  /** Starts the next roster run from the pairings the last one left out. Resolves `true` when there is a run to carry on in. */
+  startNextRun: () => Promise<boolean>
   swapIn: (breakId: string, candidateId: string) => void
   overrideBreak: (breakId: string, reason: string) => void
   /** True once a seat a sick call left open has been refilled. */
@@ -194,6 +196,20 @@ export function useFixPublish(): FixPublishState {
     void edit(() => getApi().publish(runId)).then(() => setSelectedId(null))
   }, [canPublish, data, edit, getApi])
 
+  const startNextRun = useCallback(async (): Promise<boolean> => {
+    if (isBusy) return false
+    setIsBusy(true)
+    try {
+      const next = await getApi().startNextRun(params)
+      return next.rosterRun !== null
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Could not start the next roster run.')
+      return false
+    } finally {
+      setIsBusy(false)
+    }
+  }, [getApi, isBusy, params])
+
   const recheck = useCallback(() => {
     const runId = data?.rosterRun?.id
     if (!runId || isBusy) return
@@ -277,6 +293,7 @@ export function useFixPublish(): FixPublishState {
     canPublish,
     publishChecks: data?.publishChecks ?? [],
     publish,
+    startNextRun,
     swapIn,
     overrideBreak,
     isUpdated: updateNote !== null,

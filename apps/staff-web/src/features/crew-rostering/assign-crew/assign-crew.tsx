@@ -55,6 +55,8 @@ export function AssignCrewPage() {
   // rather than a claim that is not true.
   const role = roleLabel(user?.type ?? 'admin')
 
+  // Pairings in a published run are already crewed and live, so they are not offered for picking again.
+  const published = state.rosterRun?.status === 'published'
   const canRun = state.rosterRun?.status === 'draft' && state.selectedPairings.length > 0 && state.dateError === null && !state.isRunning
   const summary = state.summary
   const hasResults = state.assignments !== null && summary !== null
@@ -87,7 +89,7 @@ export function AssignCrewPage() {
     />
   )
 
-  const picker = (
+  const pickerOrNotice = (
     <PairingsPicker
       pairings={state.pairings}
       selectedIds={state.selectedIds}
@@ -99,6 +101,17 @@ export function AssignCrewPage() {
       onClearSelection={state.clearSelection}
       onRun={() => setConfirming(true)}
     />
+  )
+
+  const picker = published ? (
+    <PublishedNotice
+      count={state.pairings.length}
+      leftOut={state.uncommitted.length}
+      onViewRoster={openFixPublish}
+      onStartNextRun={state.startNextRun}
+    />
+  ) : (
+    pickerOrNotice
   )
 
   return (
@@ -152,7 +165,7 @@ export function AssignCrewPage() {
             </p>
           )}
 
-          {state.rosterRun?.status === 'published' && (
+          {published && (
             <p className="rounded-lg border border-secondary/40 bg-secondary/10 px-4 py-3 text-sm font-medium text-primary">
               This roster is published. Change crew in Fix &amp; publish instead of running auto-assign again.
             </p>
@@ -184,7 +197,7 @@ export function AssignCrewPage() {
                 )}
               </>
             ) : (
-              <NoCrewAssigned committedCount={state.pairings.length} />
+              !published && <NoCrewAssigned committedCount={state.pairings.length} />
             )}
           </div>
 
@@ -240,7 +253,7 @@ export function AssignCrewPage() {
                 )}
               </>
             ) : (
-              <NoCrewAssigned committedCount={state.pairings.length} />
+              !published && <NoCrewAssigned committedCount={state.pairings.length} />
             )}
           </PageColumn>
         </main>
@@ -308,6 +321,47 @@ function RunSummaryBanner({ summary, onOpenFix }: { summary: AssignmentSummary; 
         {clean ? 'Fix & publish' : 'Fix breaks'}
         <ArrowRightIcon className="h-4 w-4" />
       </Button>
+    </div>
+  )
+}
+
+/**
+ * Stands in for the picker once the window's roster is published. Those pairings are crewed and live, so there is nothing
+ * to pick; the way on is Fix & publish for the roster, or the next roster run for what was left out.
+ */
+function PublishedNotice({
+  count,
+  leftOut,
+  onViewRoster,
+  onStartNextRun,
+}: {
+  count: number
+  /** Pairings in the window that were left out of the roster and can go in the next one. */
+  leftOut: number
+  onViewRoster: () => void
+  onStartNextRun: () => void
+}) {
+  return (
+    <div className="rounded-xl border border-border-desc/40 bg-page-bg px-5 py-5">
+      <p className="text-sm font-bold text-primary-text">
+        {count} {count === 1 ? 'pairing' : 'pairings'} assigned and published
+      </p>
+      <p className="mt-1.5 text-sm leading-relaxed text-primary-text/70">
+        {leftOut > 0
+          ? `${leftOut} more ${leftOut === 1 ? 'pairing was' : 'pairings were'} left out of this roster. Start the next roster run to crew ${leftOut === 1 ? 'it' : 'them'}.`
+          : 'Nothing is left to crew in this window.'}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        {leftOut > 0 && (
+          <Button variant="highlight" onClick={onStartNextRun}>
+            Start next roster run
+            <ArrowRightIcon className="h-4 w-4" />
+          </Button>
+        )}
+        <Button variant="outline" onClick={onViewRoster}>
+          View roster in Fix &amp; publish
+        </Button>
+      </div>
     </div>
   )
 }

@@ -13,7 +13,7 @@ import { RouteText } from '../components/route-text'
  * the standard confirm with the consequences and a `Delete pairing` button.
  */
 export function DeletePairingModal({ pairing, onCancel, onConfirm }: { pairing: Pairing; onCancel: () => void; onConfirm: () => void }) {
-  const blocked = pairing.published
+  const blocked = pairing.rosterRunStatus === 'published'
   const evaluation = useMemo(() => validatePairing(pairing), [pairing])
   const days = useMemo(() => new Set(pairing.legs.map((leg) => leg.departureAt.slice(0, 10))).size, [pairing.legs])
 
@@ -49,7 +49,13 @@ export function DeletePairingModal({ pairing, onCancel, onConfirm }: { pairing: 
         </p>
       ) : (
         <p className="text-sm text-primary-text/70">
-          This can't be undone. Its flights go back to the unpaired list. A pairing used by a published roster can't be deleted.
+          This can't be undone. Its flights go back to the unpaired list.
+          {pairing.rosterRunId != null
+            ? ' It is committed to the draft roster run, so it is deleted from the database along with any crew assigned to it.'
+            : pairing.id.startsWith('draft-')
+              ? ' It was never stored, so it just leaves this page.'
+              : ' It is a draft kept from an earlier round, so it is deleted from the database.'}{' '}
+          A pairing used by a published roster can't be deleted.
         </p>
       )}
 

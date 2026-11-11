@@ -30,6 +30,17 @@ export function createAssignCrewApi(fetchWithAuth: FetchWithAuth) {
         `/pairings?${new URLSearchParams({ dateFrom: params.dateFrom, dateTo: params.dateTo, base: params.base })}`,
       ),
 
+    /** Starts the next draft roster run for the window from the drafts the last one left out. */
+    startNextRun: (params: AssignCrewParams) =>
+      requestJson<{ rosterRun: { id: string } | null; moved: number; left: number }>(
+        fetchWithAuth,
+        '/api/crew-rostering/build-pairing/runs/next',
+        {
+          method: 'POST',
+          body: JSON.stringify(params),
+        },
+      ),
+
     getRun: (rosterRunId: string) => request<RunResult>(`/runs/${rosterRunId}`),
 
     autoAssign: (rosterRunId: string, pairingIds: readonly string[]) =>

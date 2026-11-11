@@ -36,16 +36,24 @@ function canFollow(candidate: ScheduledFlight, from: FlightLeg): boolean {
   return candidate.origin === from.destination && minutesBetween(from.arrivalAt, candidate.departureAt) >= MIN_CONNECTION_MINUTES
 }
 
-/** Groups legs into duty days. A new day starts when the local date changes. */
-function splitIntoDutyDays(legs: readonly FlightLeg[]): FlightLeg[][] {
+/**
+ * Groups legs into duties, the way the server does: a new duty starts only when the time from release (arrival plus
+ * `releaseMinutes`) to the next report (departure minus `reportMinutes`) reaches `minRestHours`. Legs with less rest
+ * between them are one duty, even across midnight.
+ */
+function splitIntoDutyDays(legs: readonly FlightLeg[], limits: PairingLimits): FlightLeg[][] {
   const days: FlightLeg[][] = []
   for (const leg of legs) {
     const current = days.at(-1)
-    if (current && localDateKey(current[0].departureAt) === localDateKey(leg.departureAt)) {
-      current.push(leg)
-    } else {
-      days.push([leg])
-    }
+    const previous = current?.at(-1)
+    const rested =
+      previous !== undefined &&
+      new Date(leg.departureAt).getTime() -
+        limits.reportMinutes * 60_000 -
+        (new Date(previous.arrivalAt).getTime() + limits.releaseMinutes * 60_000) >=
+        limits.minRestHours * 3_600_000
+    if (current && !rested) current.push(leg)
+    else days.push([leg])
   }
   return days
 }
@@ -126,7 +134,7 @@ export function validatePairing(pairing: Pairing): PairingEvaluation {
   const { legs, base } = pairing
   const limits = pairing.limits ?? DEFAULT_LIMITS
   const route = routeOf(legs)
-  const days = splitIntoDutyDays(legs)
+  const days = splitIntoDutyDays(legs, limits)
   const dayCount = spanDays(legs)
   const layovers = findLayovers(legs)
   const dayDuties = days.map((day) => dutyMinutesForDay(day, limits))
