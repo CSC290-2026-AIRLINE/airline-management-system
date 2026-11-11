@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { StaffGuard } from './operations/staff.guard'
 import type { ListRoutesQueryDto } from './dto/route.dto'
 import { RouteService } from './route.service'
 
@@ -16,11 +17,13 @@ export class RouteController {
     return this.routeService.get(id)
   }
 
+  @UseGuards(StaffGuard)
   @Post()
   create(@Body() body: unknown) {
     return this.routeService.create(body)
   }
 
+  @UseGuards(StaffGuard)
   @Put(':id')
   update(@Param('id') id: string, @Body() body: unknown) {
     return this.routeService.update(id, body)
