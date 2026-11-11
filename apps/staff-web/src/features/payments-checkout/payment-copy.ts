@@ -65,7 +65,7 @@ export const STATUS_BADGE_CLASSES: Record<PaymentStatus, string> = {
   failed: 'bg-danger-soft text-danger',
   voided: 'bg-danger-soft text-danger',
   expired: 'bg-secondary text-muted-foreground',
-  reversed: 'bg-secondary text-foreground',
+  reversed: 'bg-[#EAF0FB] text-navy',
 }
 
 /**
@@ -75,14 +75,14 @@ export const STATUS_BADGE_CLASSES: Record<PaymentStatus, string> = {
  * capture is the one that stands out.
  */
 export const STATE_STEP_BADGE_CLASSES: Record<string, string> = {
-  created: 'bg-navy/10 text-navy',
-  authorised: 'bg-navy/10 text-navy',
-  confirmed: 'bg-navy/10 text-navy',
+  created: 'bg-[#EAF0FB] text-navy',
+  authorised: 'bg-[#EAF0FB] text-navy',
+  confirmed: 'bg-[#EAF0FB] text-navy',
   captured: 'bg-success-soft text-success-strong',
   failed: 'bg-danger-soft text-danger',
   voided: 'bg-secondary text-muted-foreground',
   expired: 'bg-secondary text-muted-foreground',
-  reversed: 'bg-navy/10 text-navy',
+  reversed: 'bg-[#EAF0FB] text-navy',
   stalled: 'bg-warning-soft text-warning',
 }
 

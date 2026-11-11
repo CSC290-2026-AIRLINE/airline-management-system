@@ -36,7 +36,7 @@ export function FilterChips<T extends string>({ options, value, onChange, ariaLa
             className={cn(
               'inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
               'focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
-              active ? 'border-navy bg-blue-50 text-navy' : 'border-border bg-card text-foreground hover:border-navy/40',
+              active ? 'border-navy bg-[#EAF0FB] text-navy' : 'border-border bg-card text-foreground hover:border-navy/40',
             )}
           >
             <span>{option.label}</span>
