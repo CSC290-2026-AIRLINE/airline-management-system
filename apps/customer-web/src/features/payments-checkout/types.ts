@@ -81,8 +81,13 @@ export interface ReceiptDetailDto extends ReceiptSummaryDto {
   card_brand: string | null
   card_last4: string | null
   lines: PaymentLineDto[]
-  /** The credit note attached to this receipt, if the payment was reversed. Feature 5b owns the refund itself. */
-  credit_note: { document_number: string; amount: number; issued_at: string } | null
+  /**
+   * The credit note attached to this receipt, if the payment was reversed. Feature 5b owns the refund itself.
+   * `description` says what was refunded, e.g. `seat 12B refund`; null until Feature 5b records it.
+   */
+  credit_note: { document_number: string; amount: number; issued_at: string; description: string | null } | null
+  /** A note about this receipt's refund that the fare rules alone cannot give. Null until Feature 5b provides it. */
+  refund_note: string | null
 }
 
 /** The list wrapper every list endpoint returns, so the frontend always reads `items` off one key. */

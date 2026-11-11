@@ -50,7 +50,8 @@ export function CustomerHeader() {
 
   return (
     <header className="px-4 pt-4 max-phone:px-3 max-phone:pt-3">
-      <div className="mx-auto flex max-w-6xl translate-x-4 items-center justify-between gap-4 rounded-2xl border border-line bg-card px-4 py-3 max-tablet:px-5">
+      {/* The desktop bar is a soft grey strip; the phone's is a white card with an outline, as in the frames. */}
+      <div className="mx-auto flex max-w-6xl translate-x-4 items-center justify-between gap-4 rounded-2xl bg-secondary/70 px-4 py-3 max-tablet:border max-tablet:border-line max-tablet:bg-card max-tablet:px-5">
         {/* The brand ---------------------------------------------------- */}
         <Link
           to="/"
@@ -70,7 +71,11 @@ export function CustomerHeader() {
               key={item.label}
               aria-disabled="true"
               title={item.hint}
-              className={cn('cursor-not-allowed text-sm font-medium text-muted-foreground', item.primary && 'font-semibold text-navy')}
+              className={cn(
+                'cursor-not-allowed text-sm font-medium text-foreground',
+                /* The frames underline the way in to a booking instead of colouring it. */
+                item.primary && 'underline decoration-1 underline-offset-4',
+              )}
             >
               {item.label}
             </span>

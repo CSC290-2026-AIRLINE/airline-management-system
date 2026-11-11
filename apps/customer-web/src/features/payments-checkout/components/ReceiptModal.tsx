@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { Link } from '@tanstack/react-router'
 import { CircleAlert, X } from 'lucide-react'
 import { Card, CardContent } from '@customer-web/components/ui/card'
 import { useReceipt } from '../hooks/useReceipt'
@@ -69,21 +68,8 @@ export function ReceiptModal({ receiptId, onClose }: ReceiptModalProps) {
             </Card>
           )}
 
+          {/* The receipt also has a page of its own at /receipts/<number>, so the deep link can be shared. */}
           {!loading && !error && receipt && <ReceiptDetailBody receipt={receipt} />}
-
-          {/* The receipt also has a page of its own, so the deep link can be shared and copied. */}
-          {!loading && !error && receipt && (
-            <p className="m-0 mt-6 border-t border-line pt-4 text-sm">
-              <Link
-                to="/receipts/$receiptId"
-                params={{ receiptId: receipt.document_number }}
-                className="font-medium text-navy hover:underline"
-              >
-                Open the receipt page
-              </Link>
-              <span className="text-muted-foreground"> — /receipts/{receipt.document_number}</span>
-            </p>
-          )}
         </div>
       </div>
     </div>

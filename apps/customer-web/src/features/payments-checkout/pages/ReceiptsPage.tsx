@@ -5,6 +5,7 @@ import { Card, CardContent } from '@customer-web/components/ui/card'
 import { CustomerShell } from '../components/CustomerShell'
 import { FilterChips } from '../components/FilterChips'
 import { PageTabs } from '../components/PageTabs'
+import { ReceiptInline } from '../components/ReceiptInline'
 import { ReceiptModal } from '../components/ReceiptModal'
 import { ReceiptsSkeleton } from '../components/ReceiptSkeletons'
 import { ReceiptTable } from '../components/ReceiptTable'
@@ -130,7 +131,16 @@ export function ReceiptsPage() {
         )}
 
         {!list.loading && !list.error && list.receipts.length > 0 && (
-          <ReceiptTable receipts={list.receipts} onOpen={(receipt) => setOpenReceiptId(receipt.id)} />
+          <ReceiptTable
+            receipts={list.receipts}
+            onOpen={(receipt) => {
+              /* On a phone a second tap folds the receipt away again; on a desktop the panel has its own close button. */
+              const phone = window.matchMedia('(max-width: 48rem)').matches
+              setOpenReceiptId((open) => (phone && open === receipt.id ? null : receipt.id))
+            }}
+            expandedId={openReceiptId}
+            renderExpanded={(receipt) => <ReceiptInline receiptId={receipt.id} />}
+          />
         )}
 
         {/* The note the frames put under the list ------------------------ */}
@@ -143,7 +153,12 @@ export function ReceiptsPage() {
       </div>
 
       {/* The receipt, opened over the list --------------------------------- */}
-      {openReceiptId !== null && <ReceiptModal receiptId={openReceiptId} onClose={() => setOpenReceiptId(null)} />}
+      {/* A phone shows the receipt under its card instead, so the panel is only for the wider screens. */}
+      {openReceiptId !== null && (
+        <div className="max-tablet:hidden">
+          <ReceiptModal receiptId={openReceiptId} onClose={() => setOpenReceiptId(null)} />
+        </div>
+      )}
     </CustomerShell>
   )
 }

@@ -58,24 +58,24 @@ export interface PaymentResultAction {
   hint?: string
 }
 
-/** A block of detail under the heading — the frames' trip, receipt and passenger blocks. */
+/** A card of detail under the heading — the frames' trip, passenger and receipt cards on the miles page. */
 export interface PaymentResultBlock {
-  /** The block's heading, e.g. "Flight FY102". */
+  /** The pill at the top of the card, e.g. "Flight FY102". */
+  badge: string
+  /** The card's heading, e.g. "Trip details". */
   title: string
-  /** The muted line under the heading, e.g. "Trip details". */
-  subtitle: string
-  /** The block's detail, e.g. "1 adult passenger · Passenger details are confirmed for this booking". */
+  /** The card's detail, e.g. "BKK 09:40 → YGN 11:00 · Sat 21 Nov 2026 · Direct flight". */
   body: string | null
-  /** The link the block offers, e.g. "View trip details". */
-  action: PaymentResultAction
-  /** A second link, e.g. "Print receipt". */
-  secondary_action?: PaymentResultAction
+  /** The buttons on the card, e.g. "View trip details". */
+  actions: PaymentResultAction[]
 }
 
-/** What the phone frame adds under the heading: the card it was charged to, the amount and a reassurance. */
+/** What the phone frame shows instead of the desktop card: the trip in two lines, then the card and the amount. */
 export interface PaymentResultMobile {
-  /** The line under the heading, e.g. "Charged to card 4242". */
-  line: string
+  /** The trip, a line each, e.g. ["YGN → BKK · Tue 17 Nov 2026", "2 adults · seats 12A, 12B"]. */
+  summary: string[]
+  /** The line under the divider, e.g. "Charged to card 4242". */
+  charged: string
   /** The amount, e.g. "705.00 USD". */
   amount: string
   /** The note at the foot of the phone page. */
@@ -97,8 +97,10 @@ export interface PaymentResultDto {
   reference: string | null
   /** The buttons under the card. */
   actions: PaymentResultAction[]
-  /** The blocks the paid-with-miles page shows. */
+  /** The cards the paid-with-miles page shows under the heading card. */
   blocks: PaymentResultBlock[]
+  /** The confirming page shows a bar that fills while the booking is confirmed. */
+  progress?: boolean
   /** The note the frame puts under the heading, explaining where the screen comes from. */
   annotation: string | null
   /** The note the frame puts at the foot of the page. */

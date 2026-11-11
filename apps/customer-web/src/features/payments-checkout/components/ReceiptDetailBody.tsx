@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from '@customer-web/components/ui/button'
 import {
   AIRPORT_CITIES,
+  CARGO_REFUND_ACTION,
   CARGO_REFUND_NOTE,
   DOCUMENT_LABELS,
   formatAmount,
@@ -15,9 +16,9 @@ import { ReceiptStateBadge, ReceiptStatusBadge } from './ReceiptStatusBadge'
 import type { ReceiptDetailDto } from '../types'
 
 /** A labelled value, the way the frames set them: a grey name over a dark value. */
-function Detail({ label, value }: { label: string; value: string }) {
+function Detail({ label, value, align = 'start' }: { label: string; value: string; align?: 'start' | 'end' }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className={align === 'end' ? 'flex flex-col gap-1 text-right' : 'flex flex-col gap-1'}>
       <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{label}</span>
       <span className="text-base text-foreground">{value}</span>
     </div>
@@ -34,19 +35,26 @@ function ends(receipt: ReceiptDetailDto): { from: string; to: string } {
  * The cargo's waybill, the way the cargo panel writes it.
  *
  * The list adds the flight and the weight to the same line — `Cargo · AWB 217-48201936 · FY214 · 180 kg` — but the panel
- * names the waybill alone.
+ * names the waybill alone, and puts the flight and the weight on the route line.
  */
 function cargoWaybill(title: string): string {
   return title.split(' · ').slice(0, 2).join(' · ')
 }
 
+/** What the cargo frame writes in the middle of the route line: `FY214 · 180 kg`. */
+function cargoLegend(title: string): string {
+  return title.split(' · ').slice(2).join(' · ')
+}
+
 /**
- * The note the frame puts above the buttons: what this receipt says about a refund.
+ * The note the frame puts under the buttons: what this receipt says about a refund.
  *
- * The frames say something different for each kind of receipt — what happens to the miles, what happens to a flight
- * that has flown, who handles a cargo refund — so the note is picked from the receipt itself.
+ * A note the API sends for this receipt wins. Without one, the frames say something different for each kind of receipt —
+ * what happens to the miles, what happens to a flight that has flown, who handles a cargo refund — so the note is picked
+ * from the receipt itself.
  */
 function refundNote(receipt: ReceiptDetailDto): string {
+  if (receipt.refund_note) return receipt.refund_note
   if (receipt.miles_redeemed !== null) return MILES_REFUND_NOTE
   if (receipt.source_feature === 17) return CARGO_REFUND_NOTE
   return REFUND_STATE_COPY[receipt.refund_state].note
@@ -85,44 +93,49 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
   /* A flight that has already gone is written without its weekday, the way the frames write it. */
   const flown = receipt.receipt_status === 'flown'
   const note = tripNote(receipt)
+  const cargo = receipt.source_feature === 17
+  const download = receipt.document_type === 'invoice' ? 'Download invoice' : 'Download receipt'
+  /* The frames' cargo panel offers its own button; a flight offers the refund its state allows. */
+  const action = cargo ? CARGO_REFUND_ACTION : refund.action
+  const actionHint = cargo ? 'Coming with the cargo feature' : 'Coming with feature 5b'
 
   return (
     <div className="flex flex-col gap-5">
       {/* The document ---------------------------------------------------- */}
-      <div className="flex flex-wrap items-center gap-2 pr-14">
-        <span className="rounded-md bg-navy/10 px-2 py-1 font-mono text-sm font-medium text-navy">{receipt.document_number}</span>
-        <ReceiptStateBadge status={receipt.receipt_status} />
-        {/* The receipt state never changes, so a refunded payment says so separately. */}
-        {receipt.status !== 'captured' && <ReceiptStatusBadge status={receipt.status} />}
-        {/* A fare that cannot be refunded says so on the document row — the other states are said in the note. */}
-        {receipt.refund_state === 'not_refundable' && (
-          <span className="rounded-md bg-warning-soft px-2 py-1 text-xs font-semibold text-warning">{refund.label}</span>
+      <div className="flex flex-col gap-1 pr-14">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-md bg-navy/10 px-2 py-1 font-mono text-sm font-medium text-navy">{receipt.document_number}</span>
+          <ReceiptStateBadge status={receipt.receipt_status} />
+          {/* The receipt state never changes, so a refunded payment says so separately. */}
+          {receipt.status !== 'captured' && <ReceiptStatusBadge status={receipt.status} />}
+        </div>
+        {/* A flight names its flight, a cargo names its waybill. */}
+        {cargo ? (
+          <p className="m-0 text-sm text-muted-foreground">{cargoWaybill(receipt.title)}</p>
+        ) : (
+          receipt.flight_number && (
+            <p className="m-0 text-sm text-muted-foreground">
+              Flight {receipt.flight_number}
+              {note && ` · ${note}`}
+            </p>
+          )
         )}
-        {receipt.flight_date && <span className="text-sm text-muted-foreground">{formatFlightDate(receipt.flight_date, flown)}</span>}
       </div>
 
       {/* The trip --------------------------------------------------------- */}
       {receipt.route ? (
         <>
-          {/* A flight names its flight, a cargo names its waybill. */}
-          {receipt.source_feature === 17 ? (
-            <p className="m-0 text-base font-semibold text-foreground">{cargoWaybill(receipt.title)}</p>
-          ) : (
-            receipt.flight_number && (
-              <p className="m-0 text-sm text-muted-foreground">
-                Flight {receipt.flight_number}
-                {note && ` · ${note}`}
-              </p>
-            )
-          )}
           <div className="flex items-end justify-between gap-6">
             <div className="flex flex-col">
               <span className="text-3xl font-bold text-foreground">{from}</span>
               <span className="text-sm text-muted-foreground">{AIRPORT_CITIES[from] ?? from}</span>
             </div>
             <div className="flex-1 pb-2">
-              {receipt.flight_date && (
-                <p className="m-0 text-center text-sm text-muted-foreground">{formatFlightDate(receipt.flight_date, flown)}</p>
+              {/* The flight's day, or for a cargo the flight and the weight. */}
+              {(receipt.flight_date || cargo) && (
+                <p className="m-0 text-center text-sm text-muted-foreground">
+                  {cargo ? cargoLegend(receipt.title) : formatFlightDate(receipt.flight_date ?? '', flown)}
+                </p>
               )}
               <div className="mt-2 h-px bg-border" />
             </div>
@@ -141,9 +154,9 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
       )}
 
       {/* The booking and what was paid with ------------------------------ */}
-      <div className="grid grid-cols-2 gap-4 max-phone:grid-cols-1">
+      <div className="flex items-start justify-between gap-4">
         <Detail label="Booking" value={receipt.booking_reference ?? '—'} />
-        <Detail label="Paid with" value={receipt.paid_with} />
+        <Detail label="Paid with" value={receipt.paid_with} align="end" />
       </div>
 
       {/* What the money paid for ----------------------------------------- */}
@@ -170,14 +183,12 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
         </span>
       </div>
 
-      {/* The note above the buttons --------------------------------------- */}
-      <p className="m-0 text-sm text-muted-foreground">{refundNote(receipt)}</p>
-
       {/* The credit note ------------------------------------------------- */}
       {receipt.credit_note && (
         <>
-          <p className="m-0 rounded-xl bg-warning-soft px-4 py-3 text-sm text-warning">
-            Credit note {receipt.credit_note.document_number}: refund, −{formatAmount(receipt.credit_note.amount)} {receipt.currency}
+          <p className="m-0 rounded-xl bg-warning-soft px-4 py-3 text-sm text-foreground">
+            Credit note {receipt.credit_note.document_number}: {receipt.credit_note.description ?? 'refund'}, −
+            {formatAmount(receipt.credit_note.amount)} {receipt.currency}
           </p>
           {showCreditNote && (
             <dl className="m-0 grid grid-cols-3 gap-4 rounded-xl border border-line bg-card px-4 py-3 max-phone:grid-cols-1">
@@ -191,14 +202,18 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
 
       {/* The actions ----------------------------------------------------- */}
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" onClick={() => downloadReceipt(receipt)}>
-          Download receipt
+        <Button type="button" className="min-w-40 flex-1" onClick={() => downloadReceipt(receipt)}>
+          {download}
         </Button>
         {/* Refunds are Feature 5b. The frame shows the button; this release cannot take the request yet. */}
-        {refund.action && (
-          <Button type="button" variant="outline" disabled title="Coming with feature 5b">
-            {refund.action}
+        {action && (
+          <Button type="button" variant="outline" disabled title={actionHint}>
+            {action}
           </Button>
+        )}
+        {/* A fare that cannot be refunded says so beside the download, in plain words. */}
+        {!cargo && receipt.refund_state === 'not_refundable' && (
+          <span className="px-3 text-sm font-medium text-muted-foreground">{refund.label}</span>
         )}
         {receipt.credit_note && (
           <Button type="button" variant="outline" onClick={() => setShowCreditNote((shown) => !shown)}>
@@ -206,6 +221,9 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
           </Button>
         )}
       </div>
+
+      {/* The note under the buttons -------------------------------------- */}
+      <p className="m-0 -mt-2 text-sm text-muted-foreground">{refundNote(receipt)}</p>
     </div>
   )
 }

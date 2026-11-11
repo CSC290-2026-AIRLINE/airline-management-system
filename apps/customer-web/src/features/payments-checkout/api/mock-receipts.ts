@@ -46,13 +46,15 @@ export const MOCK_RECEIPTS: ReceiptDetailDto[] = [
     lines: [
       { line_type: 'fare', description: 'Fare · 2 adults', amount: 624 },
       { line_type: 'seat', description: 'Seat selection · 12A, 12B', amount: 36 },
-      { line_type: 'baggage', description: 'Extra baggage · 1 · 20 kg', amount: 45 },
+      { line_type: 'baggage', description: 'Extra baggage · 1 × 20 kg', amount: 45 },
     ],
     credit_note: {
       document_number: 'CRN-0007',
       amount: 18,
       issued_at: '2026-11-04T09:15:00.000Z',
+      description: 'seat 12B refund',
     },
+    refund_note: 'Extra baggage is still inside the fare rules. Seat 12B was already refunded (credit note CRN-0007).',
   },
   {
     id: 'rc_00000000-0000-4000-8000-000000000002',
@@ -81,10 +83,12 @@ export const MOCK_RECEIPTS: ReceiptDetailDto[] = [
     card_brand: 'Visa',
     card_last4: '4242',
     lines: [
-      { line_type: 'fare', description: 'Fare · 2 adults', amount: 179 },
-      { line_type: 'seat', description: 'Seat selection · 18C, 18D', amount: 36 },
+      { line_type: 'miles', description: 'Paid with 24,000 miles', amount: 0 },
+      { line_type: 'taxes', description: 'Taxes and carrier charges · 1 adult', amount: 185 },
+      { line_type: 'seat', description: 'Seat selection · 4C', amount: 30 },
     ],
     credit_note: null,
+    refund_note: null,
   },
   {
     id: 'rc_00000000-0000-4000-8000-000000000003',
@@ -112,8 +116,12 @@ export const MOCK_RECEIPTS: ReceiptDetailDto[] = [
     billing_name: 'Su Myat',
     card_brand: 'Visa',
     card_last4: '4242',
-    lines: [{ line_type: 'fare', description: 'Fare · 1 adult', amount: 412 }],
+    lines: [
+      { line_type: 'fare', description: 'Fare · 1 adult', amount: 380 },
+      { line_type: 'upgrade', description: 'Upgrade · premium economy', amount: 32 },
+    ],
     credit_note: null,
+    refund_note: null,
   },
   {
     id: 'rc_00000000-0000-4000-8000-000000000004',
@@ -141,8 +149,9 @@ export const MOCK_RECEIPTS: ReceiptDetailDto[] = [
     billing_name: 'Khin Lay',
     card_brand: 'Visa',
     card_last4: '4242',
-    lines: [{ line_type: 'fare', description: 'Fare · 1 adult', amount: 298 }],
+    lines: [{ line_type: 'fare', description: 'Fare · 2 adults', amount: 298 }],
     credit_note: null,
+    refund_note: null,
   },
   {
     id: 'rc_00000000-0000-4000-8000-000000000005',
@@ -170,7 +179,11 @@ export const MOCK_RECEIPTS: ReceiptDetailDto[] = [
     billing_name: 'Tun Trading',
     card_brand: 'Visa',
     card_last4: '4242',
-    lines: [{ line_type: 'cargo_freight', description: 'Cargo freight — 180 kg', amount: 1260 }],
+    lines: [
+      { line_type: 'cargo_freight', description: 'Freight · 180 kg chargeable × 6.50', amount: 1170 },
+      { line_type: 'cargo_surcharge', description: 'Handling surcharge', amount: 90 },
+    ],
     credit_note: null,
+    refund_note: null,
   },
 ]

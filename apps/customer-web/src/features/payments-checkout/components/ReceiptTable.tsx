@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { formatAmount, formatFlightDate, formatShortDate, tripNote } from '../receipt-copy'
 import { ReceiptStateBadge } from './ReceiptStatusBadge'
 import type { ReceiptSummaryDto } from '../types'
@@ -6,6 +7,9 @@ interface ReceiptTableProps {
   receipts: ReceiptSummaryDto[]
   /** Opens one receipt. The frames open the receipt over the list, in a panel. */
   onOpen: (receipt: ReceiptSummaryDto) => void
+  /** The receipt unfolded under its card on a phone, as the phone frame shows it. */
+  expandedId?: string | null
+  renderExpanded?: (receipt: ReceiptSummaryDto) => ReactNode
 }
 
 /**
@@ -37,7 +41,7 @@ function receiptDate(receipt: ReceiptSummaryDto): string {
  * the total, with the booking and the day underneath. The whole row is the button that opens the receipt, because the
  * frames' rows are tappable all the way across.
  */
-export function ReceiptTable({ receipts, onOpen }: ReceiptTableProps) {
+export function ReceiptTable({ receipts, onOpen, expandedId = null, renderExpanded }: ReceiptTableProps) {
   return (
     <>
       {/* The cards, on a phone ------------------------------------------ */}
@@ -58,6 +62,7 @@ export function ReceiptTable({ receipts, onOpen }: ReceiptTableProps) {
               </span>
               <span className="shrink-0 text-base font-semibold text-foreground tabular-nums">{formatAmount(receipt.amount)}</span>
             </button>
+            {expandedId === receipt.id && renderExpanded && <div className="mt-3">{renderExpanded(receipt)}</div>}
           </li>
         ))}
       </ul>

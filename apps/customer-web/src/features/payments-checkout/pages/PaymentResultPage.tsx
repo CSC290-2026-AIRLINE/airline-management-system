@@ -29,7 +29,7 @@ export function PaymentResultPage({ initialState }: PaymentResultPageProps) {
 
   return (
     <CustomerShell title="Payment result">
-      <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      <div className="flex flex-col gap-6">
         {loading && (
           <div className="rounded-3xl border border-line bg-card p-10" aria-busy="true">
             <span className="sr-only">Loading the payment result…</span>

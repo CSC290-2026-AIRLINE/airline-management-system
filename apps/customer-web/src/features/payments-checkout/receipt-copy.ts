@@ -149,7 +149,7 @@ export const REFUND_STATE_COPY: Record<RefundState, { label: string; note: strin
   },
   not_refundable: {
     label: 'Not refundable',
-    note: 'Flown more than 14 days ago: refunds are closed for this booking.',
+    note: 'Flown more than 14 days ago; refunds are closed for this booking.',
     action: null,
   },
   ask_staff: {
@@ -161,6 +161,9 @@ export const REFUND_STATE_COPY: Record<RefundState, { label: string; note: strin
 
 /** What a cargo receipt says about its refunds: they belong to the cargo booking page. */
 export const CARGO_REFUND_NOTE = 'Cargo cancellations and refunds are handled from the cargo booking page.'
+
+/** The button the cargo frame puts beside "Download invoice": a cargo is cancelled from its own booking page. */
+export const CARGO_REFUND_ACTION = 'Cancel in My cargo'
 
 /** What a booking paid for with miles says about them: they go back to the balance. */
 export const MILES_REFUND_NOTE = 'Miles are returned to your balance and cash goes back to the card.'
