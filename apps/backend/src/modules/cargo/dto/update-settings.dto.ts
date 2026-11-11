@@ -1,4 +1,4 @@
-import { IsNumber, IsPositive, IsString } from 'class-validator'
+import { IsArray, IsNumber, IsPositive, IsString, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
 
 const VALID_KEYS = [
@@ -27,6 +27,8 @@ class SettingEntryDto {
 }
 
 export class UpdateSettingsDto {
+  @IsArray()
+  @ValidateNested({ each: true })
   @Type(() => SettingEntryDto)
   settings: SettingEntryDto[]
 }
