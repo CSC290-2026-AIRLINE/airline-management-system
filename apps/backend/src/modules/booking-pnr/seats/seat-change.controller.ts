@@ -1,5 +1,5 @@
 import { Body, Controller, Param, ParseUUIDPipe, Put, ValidationPipe } from '@nestjs/common'
-import { Matches } from 'class-validator'
+import { IsString, Matches, MaxLength, ValidateIf } from 'class-validator'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { BookingError } from '../common/booking-error'
@@ -8,6 +8,11 @@ import { SeatChangeService } from './seat-change.service'
 class ChangeSeatDto {
   @Matches(/^[1-9][0-9]?[A-Z]$/)
   seatCode!: string
+
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsString()
+  @MaxLength(500)
+  overrideReason?: string
 }
 
 @Controller('bookings')
@@ -30,6 +35,8 @@ export class SeatChangeController {
     )
     input: ChangeSeatDto,
   ) {
+    if (input.overrideReason !== undefined)
+      return this.seatChanges.changeSeatForUser(reference, couponId, input.seatCode, user.id, input.overrideReason)
     return this.seatChanges.changeSeatForUser(reference, couponId, input.seatCode, user.id)
   }
 }

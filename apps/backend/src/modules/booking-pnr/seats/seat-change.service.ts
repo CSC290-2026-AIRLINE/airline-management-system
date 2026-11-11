@@ -12,7 +12,7 @@ export class SeatChangeService {
     @Inject(BOOKING_READ_PORT) private readonly bookings: BookingReadPort,
   ) {}
 
-  async changeSeatForUser(reference: string, couponId: string, seatCode: string, userId: string) {
+  async changeSeatForUser(reference: string, couponId: string, seatCode: string, userId: string, overrideReason?: string) {
     const [customer, staff] = await Promise.all([
       this.db.customer.findFirst({
         where: { user_id: userId, deleted_at: null, user: { type: 'customer', deleted_at: null, disabled_at: null } },
@@ -24,13 +24,33 @@ export class SeatChangeService {
         select: { id: true },
       }),
     ])
-    if (staff) return this.changeSeat(reference, couponId, seatCode, { staff: true })
+    if (overrideReason !== undefined && (!staff || !overrideReason.trim() || overrideReason.trim().length > 500))
+      throw new BookingError(
+        'SEAT_NOT_ALLOWED',
+        'A staff seat assignment requires an active staff account and a reason of 1 to 500 characters',
+        staff ? 422 : 403,
+      )
+    if (staff)
+      return this.changeSeat(
+        reference,
+        couponId,
+        seatCode,
+        { staff: true },
+        overrideReason === undefined ? undefined : { userId, staffId: staff.id, reason: overrideReason.trim() },
+      )
     if (customer) return this.changeSeat(reference, couponId, seatCode, { customerId: customer.id })
     throw new BookingError('INVALID_BOOKING_STATE', 'Booking not found', 404)
   }
 
   // A route must derive the viewer from authenticated server-side identity; never accept it from a request body.
-  async changeSeat(reference: string, couponId: string, seatCode: string, viewer: BookingViewer) {
+  async changeSeat(
+    reference: string,
+    couponId: string,
+    seatCode: string,
+    viewer: BookingViewer,
+    staffOverride?: { userId: string; staffId: string; reason: string },
+  ) {
+    if (staffOverride && viewer.staff !== true) throw new BookingError('SEAT_NOT_ALLOWED', 'An active staff account is required', 403)
     if ((!viewer.customerId && viewer.staff !== true) || (viewer.customerId && viewer.staff))
       throw new BookingError('INVALID_BOOKING_STATE', 'Booking not found', 404)
     const booking = await this.bookings.getBookingDetail(reference, viewer)
@@ -57,7 +77,7 @@ export class SeatChangeService {
     if (lock.fee > 0) return { status: 'payment_required' as const, lock }
 
     try {
-      const seat = await this.seats.confirm(lock.id, { rejectCheckedIn: true })
+      const seat = await this.seats.confirm(lock.id, { rejectCheckedIn: true, ...(staffOverride ? { staffOverride } : {}) })
       return { status: 'assigned' as const, seat }
     } catch (error) {
       await this.seats.release(lock.id)

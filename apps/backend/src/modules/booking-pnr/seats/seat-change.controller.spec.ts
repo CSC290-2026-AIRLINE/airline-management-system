@@ -61,4 +61,19 @@ describe('SeatChangeController', () => {
     expect(response.body).toMatchObject({ error: { code: 'INVALID_BOOKING_STATE' } })
     expect(changeSeatForUser).not.toHaveBeenCalled()
   })
+
+  it('passes an optional staff reason while keeping identity server-derived', async () => {
+    changeSeatForUser.mockResolvedValue({ status: 'assigned' })
+    await request(app.getHttpServer())
+      .put(url)
+      .set('Authorization', 'Bearer token')
+      .send({ seatCode: '12A', overrideReason: 'Airport assistance' })
+      .expect(200)
+    expect(changeSeatForUser).toHaveBeenCalledWith('ABC123', coupon, '12A', 'user', 'Airport assistance')
+  })
+
+  it.each([null, 123, 'x'.repeat(501)])('rejects an invalid staff reason: %p', async (overrideReason) => {
+    await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer token').send({ seatCode: '12A', overrideReason }).expect(422)
+    expect(changeSeatForUser).not.toHaveBeenCalled()
+  })
 })

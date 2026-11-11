@@ -109,4 +109,19 @@ describe('SeatChangeService', () => {
     })
     expect(bookings.getBookingDetail).toHaveBeenCalledWith('REF', { staff: true })
   })
+
+  it('passes the server-resolved staff identity and reason for an audited assignment', async () => {
+    customer.findFirst.mockResolvedValue(null)
+    staff.findFirst.mockResolvedValue({ id: 'staff' })
+    await service.changeSeatForUser('REF', 'coupon', '12A', 'user', ' Assistance requested ')
+    expect(seats.confirm).toHaveBeenCalledWith('lock', {
+      rejectCheckedIn: true,
+      staffOverride: { userId: 'user', staffId: 'staff', reason: 'Assistance requested' },
+    })
+  })
+
+  it('refuses customer-supplied staff overrides', async () => {
+    await expect(service.changeSeatForUser('REF', 'coupon', '12A', 'user', 'Override')).rejects.toMatchObject({ status: 403 })
+    expect(seats.hold).not.toHaveBeenCalled()
+  })
 })

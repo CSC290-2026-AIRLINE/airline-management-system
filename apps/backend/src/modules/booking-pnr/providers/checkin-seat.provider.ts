@@ -1,5 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { BookingError } from '../common/booking-error'
 import { BOOKING_CLOCK, SEAT_MAP_PORT, type BookingClock, type SeatMapPort } from '../contracts'
 import { CheckinSeatMapAdapter } from './checkin-seat-map.adapter'
@@ -12,6 +13,7 @@ export class CheckinSeatProvider implements SeatProvider {
     private readonly maps: CheckinSeatMapAdapter,
     @Inject(BOOKING_CLOCK) private readonly clock: BookingClock,
     @Inject(SEAT_MAP_PORT) private readonly layouts: SeatMapPort,
+    private readonly audit: AuditService,
   ) {}
 
   seatMap(flightId: string, viewer: { bookingPassengerId: string | null; cabin: Cabin | null }) {
@@ -120,7 +122,10 @@ export class CheckinSeatProvider implements SeatProvider {
     })
   }
 
-  async confirm(lockId: string, options: { rejectCheckedIn?: boolean } = {}): Promise<{ seatCode: string; type: SeatType }> {
+  async confirm(
+    lockId: string,
+    options: { rejectCheckedIn?: boolean; staffOverride?: { userId: string; staffId: string; reason: string } } = {},
+  ): Promise<{ seatCode: string; type: SeatType }> {
     const now = this.clock.now()
     return this.db.$transaction(async (tx) => {
       const reference = await tx.seat_assignment.findUnique({
@@ -184,14 +189,51 @@ export class CheckinSeatProvider implements SeatProvider {
       }
       if (Number(held.fee_amount) > 0 && !held.payment_id)
         throw new BookingError('SEAT_NOT_ALLOWED', 'Payment is required before assigning this seat')
+      const override = options.staffOverride
+      let staff: { id: string; role: { code: string } } | null = null
+      if (override) {
+        if (!override.reason.trim() || override.reason.trim().length > 500)
+          throw new BookingError('SEAT_NOT_ALLOWED', 'A staff seat assignment requires a reason of 1 to 500 characters', 422)
+        staff = await tx.staff.findFirst({
+          where: {
+            id: override.staffId,
+            user_id: override.userId,
+            deleted_at: null,
+            user: { type: 'staff', deleted_at: null, disabled_at: null },
+          },
+          select: { id: true, role: { select: { code: true } } },
+        })
+        if (!staff) throw new BookingError('SEAT_NOT_ALLOWED', 'An active staff account is required', 403)
+      }
       await tx.seat_assignment.updateMany({
         where: { booking_coupon_id: held.booking_coupon_id, status: 'assigned' },
         data: { status: 'released', released_at: now, updated_at: now },
       })
       await tx.seat_assignment.update({
         where: { id: lockId },
-        data: { status: 'assigned', assigned_at: now, hold_expires_at: null, updated_at: now },
+        data: {
+          status: 'assigned',
+          assigned_at: now,
+          hold_expires_at: null,
+          updated_at: now,
+          ...(staff ? { assigned_by_staff_id: staff.id } : {}),
+        },
       })
+      if (override && staff)
+        await this.audit.write(
+          {
+            actor: { type: 'staff', id: override.userId, role: staff.role.code },
+            sourceFeature: '3b',
+            action: 'update',
+            entityType: 'seat_assignment',
+            entityId: lockId,
+            summary: 'Staff assigned a passenger seat',
+            reason: override.reason.trim(),
+            after: { seatCode: held.seat_code, bookingCouponId: held.booking_coupon_id },
+            occurredAt: now,
+          },
+          tx,
+        )
       return { seatCode: held.seat_code, type }
     })
   }

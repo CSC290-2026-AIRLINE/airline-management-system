@@ -1,8 +1,10 @@
 import type { DbService } from '@backend/db/db.service'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import type { CheckinSeatMapAdapter } from './checkin-seat-map.adapter'
 import { CheckinSeatProvider } from './checkin-seat.provider'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
+jest.mock('@backend/modules/admin-console/audit/audit.service', () => ({ AuditService: class {} }))
 
 describe('CheckinSeatProvider', () => {
   const now = new Date('2026-11-10T12:00:00Z')
@@ -16,11 +18,14 @@ describe('CheckinSeatProvider', () => {
   const findCheckIn = jest.fn()
   const update = jest.fn()
   const query = jest.fn()
+  const staff = { findFirst: jest.fn() }
+  const audit = { write: jest.fn() }
   const tx = {
     $queryRaw: query,
     seat_assignment: { findUnique, findUniqueOrThrow, updateMany, update, create },
     booking_coupon: { findUnique: findCouponById, findFirst: findCoupon },
     check_in: { findFirst: findCheckIn },
+    staff,
   }
   const db = {
     booking_coupon: { findFirst: findCoupon },
@@ -34,12 +39,15 @@ describe('CheckinSeatProvider', () => {
     maps as unknown as CheckinSeatMapAdapter,
     { now: () => now },
     layouts,
+    audit as unknown as AuditService,
   )
 
   beforeEach(() => {
     jest.resetAllMocks()
     db.$transaction.mockImplementation((fn) => fn(tx))
     findCheckIn.mockResolvedValue(null)
+    staff.findFirst.mockResolvedValue({ id: 'staff', role: { code: 'admin' } })
+    audit.write.mockResolvedValue({ id: 'audit', seq: '1' })
     findCoupon.mockResolvedValue({
       id: 'coupon',
       booking_id: 'booking',
@@ -136,6 +144,40 @@ describe('CheckinSeatProvider', () => {
     query.mockResolvedValue([{ status: 'cancelled' }])
     await expect(provider.hold('flight', '12A', 'passenger', 300_000)).rejects.toMatchObject({ code: 'BOOKING_CLOSED' })
     expect(create).not.toHaveBeenCalled()
+  })
+
+  it('records the staff assignment and its reason in the assignment transaction', async () => {
+    await provider.confirm('lock', { staffOverride: { userId: 'user', staffId: 'staff', reason: 'Airport assistance request' } })
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ assigned_by_staff_id: 'staff' }) }))
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: { type: 'staff', id: 'user', role: 'admin' },
+        sourceFeature: '3b',
+        action: 'update',
+        reason: 'Airport assistance request',
+        occurredAt: now,
+      }),
+      tx,
+    )
+  })
+
+  it('refuses a staff assignment without a reason or an active staff account', async () => {
+    await expect(provider.confirm('lock', { staffOverride: { userId: 'user', staffId: 'staff', reason: ' ' } })).rejects.toMatchObject({
+      code: 'SEAT_NOT_ALLOWED',
+    })
+    staff.findFirst.mockResolvedValue(null)
+    await expect(
+      provider.confirm('lock', { staffOverride: { userId: 'user', staffId: 'staff', reason: 'Airport assistance' } }),
+    ).rejects.toMatchObject({ status: 403 })
+    expect(update).not.toHaveBeenCalled()
+    expect(audit.write).not.toHaveBeenCalled()
+  })
+
+  it('propagates an audit failure so the assignment transaction rolls back', async () => {
+    audit.write.mockRejectedValue(new Error('Audit unavailable'))
+    await expect(
+      provider.confirm('lock', { staffOverride: { userId: 'user', staffId: 'staff', reason: 'Airport assistance' } }),
+    ).rejects.toThrow('Audit unavailable')
   })
 
   it('rechecks check-in inside the booking transaction for post-booking changes', async () => {
