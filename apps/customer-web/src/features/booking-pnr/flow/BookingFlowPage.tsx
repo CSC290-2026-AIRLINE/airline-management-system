@@ -2,6 +2,7 @@ import { useDemoPassengers } from '../passengers/useDemoPassengers'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FlightSearchPage, type SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
+import type { FlightSearchUrlState } from '../../booking-search/search-params'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { HoldBookingRequest, HoldBookingResponse, HoldBookingSeat } from '../api/types'
 import { PassengersPage } from '../passengers/PassengersPage'
@@ -41,6 +42,8 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   const [held, setHeld] = useState<HoldBookingResponse | null>(() => restored?.held ?? null)
   const [assistance, setAssistance] = useState<Record<string, AssistanceValue>>(() => restored?.assistance ?? {})
   const [choices, setChoices] = useState<SeatChoice[]>(() => restored?.choices ?? [])
+  // The search the customer had open on the flights step, so a refresh there does not wipe it.
+  const [searchDraft, setSearchDraft] = useState<FlightSearchUrlState | null>(() => restored?.search ?? null)
   const [priceChange, setPriceChange] = useState<PriceChangedDetails | null>(null)
   const [seatConflict, setSeatConflict] = useState(false)
   const pendingRequest = useRef<HoldBookingRequest | null>(null)
@@ -60,8 +63,8 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
       clearFlowDraft()
       return
     }
-    saveFlowDraft(itinerary, { step, travellers, contact, assistance, choices, held })
-  }, [itinerary, step, travellers, contact, assistance, choices, held])
+    saveFlowDraft(itinerary, { step, travellers, contact, assistance, choices, held, search: searchDraft })
+  }, [itinerary, step, travellers, contact, assistance, choices, held, searchDraft])
 
   function updateTraveller(key: string, change: Partial<TravellerDraft>) {
     setTravellers((current) => current.map((person) => (person.key === key ? { ...person, ...change } : person)))
@@ -185,7 +188,17 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
         <Link to="/search">Search flights</Link>
       </main>
     )
-  if (step === 1) return <FlightSearchPage initialItinerary={itinerary} onContinue={selectItinerary} />
+  if (step === 1)
+    return (
+      <FlightSearchPage
+        // With a stored search the page brings back that search, so the results of the old itinerary must not show
+        // under the edited form.
+        initialItinerary={searchDraft ? undefined : itinerary}
+        urlState={searchDraft ?? undefined}
+        onUrlChange={(next) => setSearchDraft(next)}
+        onContinue={selectItinerary}
+      />
+    )
   return (
     <main className="f3-search f3-flow f3-customer-flow">
       <ol className="f3-flow-stepper" aria-label="Booking progress">

@@ -1,4 +1,10 @@
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
+import {
+  flightSearchParamsFromState,
+  flightSearchStateFromParams,
+  parseFlightSearchParams,
+  type FlightSearchUrlState,
+} from '../../booking-search/search-params'
 import type { PassengerType, HoldBookingResponse, ServiceCode } from '../api/types'
 import type { AssistanceValue } from '../components/contracts'
 import type { SeatChoice } from './integration'
@@ -136,6 +142,8 @@ export interface RestoredFlow {
   assistance: Record<string, AssistanceValue>
   choices: SeatChoice[]
   held: HoldBookingResponse | null
+  /** The search the customer had open on the flights step. */
+  search: FlightSearchUrlState | null
 }
 /** What the flow page hands over to be kept. */
 export interface FlowSnapshot {
@@ -145,6 +153,7 @@ export interface FlowSnapshot {
   assistance: Record<string, AssistanceValue>
   choices: SeatChoice[]
   held: HoldBookingResponse | null
+  search: FlightSearchUrlState | null
 }
 
 /** Ties a draft to the flights it was made for. The price may change, the flights may not. */
@@ -225,6 +234,16 @@ function sanitiseChoices(value: unknown, travellers: TravellerDraft[], itinerary
   }
   return choices
 }
+/**
+ * The search the customer had open on the flights step. It goes through the same parser as the URL, so a stale or
+ * hand-edited draft falls back to the defaults instead of breaking the page.
+ */
+function sanitiseSearch(value: unknown): FlightSearchUrlState | null {
+  if (!value || typeof value !== 'object') return null
+  const params = parseFlightSearchParams(value as Record<string, unknown>)
+  if (Object.keys(params).length === 0) return null
+  return flightSearchStateFromParams(params)
+}
 function sanitiseHeld(value: unknown): HoldBookingResponse | null {
   if (!value || typeof value !== 'object') return null
   const raw = value as Record<string, unknown>
@@ -274,6 +293,7 @@ export function readFlowDraft(itinerary: SearchItinerary | null): RestoredFlow |
     assistance: sameItinerary ? sanitiseAssistance(draft.assistance, travellers) : {},
     choices: sameItinerary ? sanitiseChoices(draft.choices, travellers, itinerary) : [],
     held,
+    search: sameItinerary ? sanitiseSearch(draft.search) : null,
   }
 }
 
@@ -289,6 +309,7 @@ export function saveFlowDraft(itinerary: SearchItinerary, snapshot: FlowSnapshot
     assistance: held ? {} : snapshot.assistance,
     choices: held ? [] : snapshot.choices,
     held,
+    search: held || !snapshot.search ? null : flightSearchParamsFromState(snapshot.search),
   }
   try {
     sessionStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(draft))
