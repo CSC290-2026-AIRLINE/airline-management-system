@@ -3,7 +3,6 @@ import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { FormField } from '../components/FormField'
 import { Card } from '../components/Card'
 import { ListState } from '../components/ListState'
-import { NotConnected } from '../components/NotConnected'
 import { PageHeader } from '../components/PageHeader'
 import { RouteCodes } from '../components/RouteCodes'
 import { SelectField } from '../components/SelectField'
@@ -13,7 +12,8 @@ import { Toast } from '../components/Toast'
 import { TableWrap } from '../components/TableWrap'
 import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
 import { useNotice } from '../hooks/useNotice'
-import { CONNECTED, partnersFor } from '../connected'
+import { CONNECTED } from '../connected'
+import { usePartners } from '../hooks/usePartners'
 import type { AirportRow, RouteRow } from '../types'
 import '../flight-scheduling.css'
 
@@ -21,6 +21,7 @@ const EMPTY = { origin: '', destination: '', distance_km: '', block_time_min: ''
 
 export function RoutesPage() {
   const { fetchWithAuth } = useAppAuth()
+  const { partnersFor } = usePartners(fetchWithAuth)
   // ponytail: first 100 of each; page through them when there are more.
   const routes = usePagedList<RouteRow>('/routes?limit=100', fetchWithAuth)
   const airports = usePagedList<AirportRow>('/airports?is_active=true&limit=100', fetchWithAuth)
@@ -87,9 +88,6 @@ export function RoutesPage() {
           An origin and destination pair with its distance and gate-to-gate block time. Distance is what the loyalty programme (feature 11)
           uses for miles and what the range gate checks against the aircraft type.
         </PageHeader>
-        {!CONNECTED.partnerRoutes && (
-          <NotConnected>Partner airlines per route are hidden until the partner_airline_route table exists.</NotConnected>
-        )}
 
         {rowError && <p role="alert">{rowError}</p>}
         <ListState

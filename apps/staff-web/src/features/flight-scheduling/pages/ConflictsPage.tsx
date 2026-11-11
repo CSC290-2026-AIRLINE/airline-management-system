@@ -3,7 +3,8 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Callout } from '../components/Callout'
 import { Card } from '../components/Card'
-import { CONNECTED, partnersFor } from '../connected'
+import { CONNECTED } from '../connected'
+import { usePartners } from '../hooks/usePartners'
 import { FormField } from '../components/FormField'
 import { ListState } from '../components/ListState'
 import { PageHeader } from '../components/PageHeader'
@@ -39,6 +40,7 @@ const utc = (iso: string) => `${formatDateTime(iso, 'UTC')} UTC`
 // apply yet (it needs feature 9, the approval tables or partner routes) shows the reason instead of a form.
 export function ConflictsPage() {
   const { fetchWithAuth } = useAppAuth()
+  const { partnersFor } = usePartners(fetchWithAuth)
   const { reasons } = useDisruptionReasons()
   const { aircraft: fleet } = useAircraft(fetchWithAuth)
   const conflicts = useResource<ConflictRow[]>('/conflicts', fetchWithAuth)

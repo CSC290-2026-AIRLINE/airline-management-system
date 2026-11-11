@@ -460,4 +460,20 @@ describe('FlightOperationsService', () => {
       await expect(service.listEvents(FLIGHT)).rejects.toThrow(NotFoundException)
     })
   })
+
+  describe('listPartnerAirlines', () => {
+    it('lists each active partner with the routes it flies', async () => {
+      db.partner_airline.findMany.mockResolvedValue([
+        {
+          code: 'ZP',
+          name: 'Zed Partner',
+          partner_airline_route_partner_airline_route_partner_airlineTopartner_airline: [{ route: { origin: 'ZZB', destination: 'ZZC' } }],
+        },
+      ])
+      await expect(service.listPartnerAirlines()).resolves.toEqual([
+        { code: 'ZP', name: 'Zed Partner', routes: [{ origin: 'ZZB', destination: 'ZZC' }] },
+      ])
+      expect(db.partner_airline.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { is_active: true } }))
+    })
+  })
 })

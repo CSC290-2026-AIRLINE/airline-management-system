@@ -149,9 +149,23 @@ export class FlightOperationsService {
     return { results }
   }
 
-  /** Active partner airlines, for rebooking a cancelled flight. partner_airline_route says which of them fly a given route. */
-  listPartnerAirlines() {
-    return this.db.partner_airline.findMany({ where: { is_active: true }, orderBy: { code: 'asc' }, select: { code: true, name: true } })
+  /** Active partner airlines, for rebooking a cancelled flight, each with the routes it flies (partner_airline_route). */
+  async listPartnerAirlines() {
+    const rows = await this.db.partner_airline.findMany({
+      where: { is_active: true },
+      orderBy: { code: 'asc' },
+      select: {
+        code: true,
+        name: true,
+        partner_airline_route_partner_airline_route_partner_airlineTopartner_airline: {
+          select: { route: { select: { origin: true, destination: true } } },
+        },
+      },
+    })
+    return rows.map(({ partner_airline_route_partner_airline_route_partner_airlineTopartner_airline: flies, ...p }) => ({
+      ...p,
+      routes: flies.map((f) => f.route),
+    }))
   }
 
   /** Diversion keeps the route and sets actual_destination; later flights then start from the wrong airport. */

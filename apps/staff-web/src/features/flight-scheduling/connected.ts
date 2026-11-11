@@ -26,15 +26,12 @@ export const CONNECTED: Record<
   approvalPolicy: true, // GET/PUT /airports/:iata/approval-policy
   costEstimate: true, // flight detail: GET /flights/:id/cost-estimate (operating cost and fees; revenue from F4 and F3b is listed as pending)
   impact: false, // GET /flights/:id/impact (bookings, crew, bags, cargo)
-  partnerRoutes: false, // partner_airline_route table
+  partnerRoutes: true, // GET /partner-airlines with the routes each partner flies: Routes column, cancel and rebook with a partner
   eventLog: false, // an endpoint that lists events across all flights
 }
 
 // F1: the current simulation time, or null while there is no clock.
 export const simClockNow = (): string | null => null
-
-// Partner airlines that can carry a route. Empty until partner_airline_route exists.
-export const partnersFor: (origin: string, destination: string) => string[] = () => []
 
 // ponytail: stub. The board is under routes/_authenticated/ now, so GET /conflicts can feed this count; wire it when the badge is needed.
 export const openConflictCount = (): number | null => null
