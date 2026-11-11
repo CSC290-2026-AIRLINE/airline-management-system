@@ -38,22 +38,25 @@ function makeService(reports: TestReport[], initialTime: Date) {
     return Promise.resolve({ count })
   })
 
-  const queryRaw = jest.fn((_strings: TemplateStringsArray, cutoff: Date) =>
-    Promise.resolve(
+  // The threshold is read inside the transaction with the FOR SHARE row lock; reports are then locked FOR UPDATE.
+  const setting = { value: String(TIMEOUT_DAYS) as string | null }
+  const queryRaw = jest.fn((strings: TemplateStringsArray, param: unknown) => {
+    if (strings.join(' ').includes('FROM baggage_setting')) {
+      return Promise.resolve(setting.value === null ? [] : [{ value: setting.value }])
+    }
+    const cutoff = param as Date
+    return Promise.resolve(
       reports
         .filter((report) => report.status === 'open' && report.lost_at === null && report.reported_at <= cutoff)
         .map(({ id }) => ({ id })),
-    ),
-  )
-  const findSetting = jest.fn().mockResolvedValue({ value: String(TIMEOUT_DAYS) })
-  const transaction = jest.fn(async (callback: (tx: any) => Promise<number>) =>
+    )
+  })
+  const transaction = jest.fn(async (callback: (tx: any) => Promise<unknown>) =>
     callback({ $queryRaw: queryRaw, lost_bag_report: { updateMany } }),
   )
 
+  // No baggage_setting delegate outside the transaction: a pre-transaction read would throw here.
   const db = {
-    baggage_setting: {
-      findUnique: findSetting,
-    },
     $transaction: transaction,
   } as unknown as DbService
 
@@ -61,7 +64,7 @@ function makeService(reports: TestReport[], initialTime: Date) {
     service: new LostReportLifecycleService(db, clock),
     clock,
     db,
-    findSetting,
+    setting,
     queryRaw,
     transaction,
     updateMany,
@@ -174,8 +177,9 @@ describe('LostReportLifecycleService', () => {
     await service.markTimedOutReports()
 
     expect(transaction).toHaveBeenCalledTimes(1)
-    expect(queryRaw.mock.invocationCallOrder[0]).toBeLessThan(updateMany.mock.invocationCallOrder[0])
-    const sql = queryRaw.mock.calls[0][0].join(' ')
+    // Call 0 is the setting read (FOR SHARE); call 1 locks the due reports.
+    expect(queryRaw.mock.invocationCallOrder[1]).toBeLessThan(updateMany.mock.invocationCallOrder[0])
+    const sql = queryRaw.mock.calls[1][0].join(' ')
     expect(sql).toContain("status = 'open'")
     expect(sql).toContain('lost_at IS NULL')
     expect(sql).toContain('reported_at <=')
@@ -191,11 +195,43 @@ describe('LostReportLifecycleService', () => {
     expect(updateMany.mock.calls[0][0].data).not.toHaveProperty('closed_at')
   })
 
-  it('fails clearly when the configured timeout is absent or invalid', async () => {
-    const { service, transaction, findSetting } = makeService([], threshold)
-    findSetting.mockResolvedValue({ value: 'not-a-duration' })
+  it.each([
+    ['invalid', 'not-a-duration'],
+    ['absent', null],
+  ])('fails clearly when the configured timeout is %s, before locking or changing any report', async (_label, value) => {
+    const reports = [report('kept-open')]
+    const { service, setting, queryRaw, updateMany } = makeService(reports, threshold)
+    setting.value = value
 
     await expect(service.markTimedOutReports()).rejects.toBeInstanceOf(InternalServerErrorException)
-    expect(transaction).not.toHaveBeenCalled()
+    expect(queryRaw).toHaveBeenCalledTimes(1)
+    expect(updateMany).not.toHaveBeenCalled()
+    expect(reports[0].status).toBe('open')
+  })
+
+  it('reads lost_after_days under a FOR SHARE lock as the first statement of the sweep transaction', async () => {
+    const reports = [report('due')]
+    const { service, queryRaw, transaction } = makeService(reports, threshold)
+
+    await service.markTimedOutReports()
+
+    expect(transaction).toHaveBeenCalledTimes(1)
+    const [settingSql, ...params] = queryRaw.mock.calls[0]
+    expect(settingSql.join('?')).toMatch(/SELECT value FROM baggage_setting WHERE key = \? FOR SHARE/)
+    expect(params).toEqual(['lost_after_days'])
+    expect(queryRaw.mock.calls[1][0].join(' ')).toContain('FROM lost_bag_report')
+  })
+
+  it('applies the value read under the lock in its own transaction, not one from before it', async () => {
+    const reports = [report('due-at-21-not-at-30')]
+    const { service, setting, queryRaw, updateMany, transaction } = makeService(reports, threshold)
+    // An admin raised the threshold to 30, committing just before this sweep's transaction took its lock.
+    transaction.mockImplementationOnce(async (callback: (tx: any) => Promise<unknown>) => {
+      setting.value = '30'
+      return callback({ $queryRaw: queryRaw, lost_bag_report: { updateMany } })
+    })
+
+    await expect(service.markTimedOutReports()).resolves.toMatchObject({ lostAfterDays: 30, marked: 0 })
+    expect(reports[0].status).toBe('open')
   })
 })

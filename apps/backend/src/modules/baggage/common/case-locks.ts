@@ -39,3 +39,21 @@ export async function lockFoundBag(tx: Prisma.TransactionClient, foundBagId: str
 
   return rows[0] ?? null
 }
+
+export type BaggageSettingKey = 'lost_after_days' | 'unclaimed_after_days'
+
+/**
+ * Reads one baggage threshold for a lifecycle sweep with a FOR SHARE row lock, as the sweep transaction's FIRST lock.
+ * It conflicts with the settings API's FOR UPDATE (BaggageSettingsService), so a sweep and a settings change on the same
+ * key run one after the other: a sweep that locked first finishes with the old value before the change can commit, and
+ * a sweep that waits reads the newly committed value (READ COMMITTED re-reads the row once the lock is granted).
+ * Sweeps do not block each other. Only the settings API locks baggage_setting FOR UPDATE, and it locks nothing else, so
+ * this lock cannot take part in a wait cycle with the report/bag locks above.
+ *
+ * Call inside `db.$transaction`. Returns the raw stored value, or null when the row does not exist.
+ */
+export async function shareLockBaggageSetting(tx: Prisma.TransactionClient, key: BaggageSettingKey): Promise<string | null> {
+  const rows = await tx.$queryRaw<{ value: string }[]>`SELECT value FROM baggage_setting WHERE key = ${key} FOR SHARE`
+
+  return rows[0]?.value ?? null
+}

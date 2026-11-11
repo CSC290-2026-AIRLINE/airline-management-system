@@ -3,7 +3,7 @@ import type { found_bag } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
 import { AUDIT_SOURCE_FEATURE, BAG_COLOURS, BAG_TYPES, type BagColour, type BagType } from './common/baggage.constants'
-import { lockFoundBag } from './common/case-locks'
+import { lockFoundBag, shareLockBaggageSetting } from './common/case-locks'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { FoundBag } from './common/found-bag.types'
@@ -276,19 +276,20 @@ export class FoundBagLifecycleService {
    * on record but can no longer be matched or delivered.
    */
   async markUnclaimed(actor: AuditActor = AuditService.systemActor()): Promise<UnclaimedSweepResult> {
-    const setting = await this.db.baggage_setting.findUnique({ where: { key: 'unclaimed_after_days' }, select: { value: true } })
-    const parsed = Number(setting?.value)
-    const unclaimedAfterDays = Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_UNCLAIMED_AFTER_DAYS
-    const cutoff = new Date(this.clock.now().getTime() - unclaimedAfterDays * DAY_MS)
+    return this.db.$transaction(async (tx) => {
+      // The threshold is read under a FOR SHARE lock in this transaction (see shareLockBaggageSetting), so a concurrent
+      // settings change cannot commit while this sweep still applies the old value.
+      const parsed = Number(await shareLockBaggageSetting(tx, 'unclaimed_after_days'))
+      const unclaimedAfterDays = Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_UNCLAIMED_AFTER_DAYS
+      const cutoff = new Date(this.clock.now().getTime() - unclaimedAfterDays * DAY_MS)
 
-    const due = { status: 'held', found_at: { lte: cutoff }, bag_match: { none: { status: 'confirmed' } } }
+      const due = { status: 'held', found_at: { lte: cutoff }, bag_match: { none: { status: 'confirmed' } } }
 
-    const marked = await this.db.$transaction(async (tx) => {
       const rows = await tx.found_bag.findMany({ where: due, select: { id: true } })
       const ids = rows.map((r) => r.id)
 
       if (ids.length === 0) {
-        return 0
+        return { unclaimedAfterDays, cutoff, marked: 0 }
       }
 
       // The same conditions again, so a bag matched since the read above is left alone.
@@ -312,10 +313,8 @@ export class FoundBagLifecycleService {
         )
       }
 
-      return count
+      return { unclaimedAfterDays, cutoff, marked: count }
     })
-
-    return { unclaimedAfterDays, cutoff, marked }
   }
 
   private async findBag(foundBagId: string): Promise<FoundBag> {

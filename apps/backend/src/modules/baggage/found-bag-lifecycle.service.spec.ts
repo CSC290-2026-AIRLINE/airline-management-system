@@ -59,10 +59,19 @@ function makeSvc() {
       findUniqueOrThrow: jest.fn().mockResolvedValue(foundBagRow({ status: 'continued_with_flight' })),
     },
     bag_location_event: { create: jest.fn().mockResolvedValue({}) },
-    baggage_setting: { findUnique: jest.fn().mockResolvedValue({ value: '90' }) },
-    $queryRaw: jest.fn().mockResolvedValue([{ id: BAG_ID, status: 'held' }]),
+    // No baggage_setting delegate: the sweep must read its threshold inside the transaction, via the FOR SHARE query.
+    $queryRaw: jest.fn((strings: TemplateStringsArray) =>
+      Promise.resolve(
+        strings.join(' ').includes('FROM baggage_setting')
+          ? setting.value === null
+            ? []
+            : [{ value: setting.value }]
+          : [{ id: BAG_ID, status: 'held' }],
+      ),
+    ),
     $transaction: jest.fn(),
   }
+  const setting = { value: '90' as string | null }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => Promise.resolve(cb(db)))
 
   const audit = { write: jest.fn().mockResolvedValue({ id: 'a-1', seq: '1' }) }
@@ -71,6 +80,7 @@ function makeSvc() {
     svc: new FoundBagLifecycleService(db as unknown as DbService, audit as unknown as AuditService, { now: () => SIM_NOW }),
     db,
     audit,
+    setting,
   }
 }
 
@@ -247,17 +257,43 @@ describe('FoundBagLifecycleService.markUnclaimed', () => {
     expect(audit.write).not.toHaveBeenCalled()
   })
 
-  it('falls back to 90 days when the setting is missing or invalid', async () => {
-    const { svc, db } = makeSvc()
-    db.baggage_setting.findUnique.mockResolvedValue({ value: 'abc' })
+  it.each([
+    ['invalid', 'abc'],
+    ['missing', null],
+  ])('falls back to 90 days when the setting is %s', async (_label, value) => {
+    const { svc, setting } = makeSvc()
+    setting.value = value
 
     await expect(svc.markUnclaimed()).resolves.toMatchObject({ unclaimedAfterDays: 90 })
   })
 
   it('uses the configured number of days', async () => {
-    const { svc, db } = makeSvc()
-    db.baggage_setting.findUnique.mockResolvedValue({ value: '30' })
+    const { svc, setting } = makeSvc()
+    setting.value = '30'
 
     await expect(svc.markUnclaimed()).resolves.toMatchObject({ unclaimedAfterDays: 30, cutoff: new Date('2026-10-08T00:00:00Z') })
+  })
+
+  it('reads unclaimed_after_days under a FOR SHARE lock as the first statement of the sweep transaction', async () => {
+    const { svc, db } = makeSvc()
+
+    await svc.markUnclaimed()
+
+    expect(db.$transaction).toHaveBeenCalledTimes(1)
+    const [settingSql, ...params] = db.$queryRaw.mock.calls[0] as unknown as [TemplateStringsArray, ...unknown[]]
+    expect(settingSql.join('?')).toMatch(/SELECT value FROM baggage_setting WHERE key = \? FOR SHARE/)
+    expect(params).toEqual(['unclaimed_after_days'])
+    expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.found_bag.findMany.mock.invocationCallOrder[0])
+  })
+
+  it('applies the value read under the lock in its own transaction, not one from before it', async () => {
+    const { svc, db, setting } = makeSvc()
+    // An admin raised the threshold to 120, committing just before this sweep's transaction took its lock.
+    db.$transaction.mockImplementationOnce((cb: (tx: typeof db) => unknown) => {
+      setting.value = '120'
+      return Promise.resolve(cb(db))
+    })
+
+    await expect(svc.markUnclaimed()).resolves.toMatchObject({ unclaimedAfterDays: 120, cutoff: new Date('2026-07-10T00:00:00Z') })
   })
 })

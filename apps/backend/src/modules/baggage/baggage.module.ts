@@ -3,6 +3,9 @@ import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { FOUND_BAG_CLOCK, FOUND_BAG_RECORDED_LISTENERS, type FoundBagRecordedListener } from './common/found-bag.ports'
 import { BaggageFlightController } from './baggage-flight.controller'
+import { BaggageSettingsController } from './baggage-settings.controller'
+import { BaggageSettingsService } from './baggage-settings.service'
+import { BaggageAdminGuard } from './guards/baggage-admin.guard'
 import { BaggageFlightService } from './baggage-flight.service'
 import { BagMatchController } from './bag-match.controller'
 import { BagMatchReviewService } from './bag-match-review.service'
@@ -38,6 +41,7 @@ import { StaffNotificationService } from './staff-notification.service'
     BagDeliveryController,
     StaffNotificationController,
     BaggageFlightController,
+    BaggageSettingsController,
   ],
   providers: [
     FoundBagService,
@@ -54,6 +58,8 @@ import { StaffNotificationService } from './staff-notification.service'
     StaffNotificationService,
     BaggageFlightService,
     BaggageStaffGuard,
+    BaggageAdminGuard,
+    BaggageSettingsService,
     // Every saved found bag is matched against open and lost reports.
     {
       provide: FOUND_BAG_RECORDED_LISTENERS,
