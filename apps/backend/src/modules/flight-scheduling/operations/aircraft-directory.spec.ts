@@ -33,6 +33,28 @@ describe('DbAircraftDirectory', () => {
       await expect(directory.availability(AIRCRAFT, FROM, TO)).resolves.toEqual({ kind: 'available' })
     })
 
+    // 2026-11-02 is a Monday.
+    it('is available on a listed operating day', async () => {
+      db.aircraft.findFirst.mockResolvedValue(row({ aircraft_operating_day: [{ day_of_week: 1 }, { day_of_week: 2 }] }))
+      await expect(directory.availability(AIRCRAFT, FROM, TO)).resolves.toEqual({ kind: 'available' })
+    })
+
+    it('is unavailable on a weekday the aircraft does not operate', async () => {
+      db.aircraft.findFirst.mockResolvedValue(row({ aircraft_operating_day: [{ day_of_week: 2 }] }))
+      await expect(directory.availability(AIRCRAFT, FROM, TO)).resolves.toEqual({
+        kind: 'unavailable',
+        rule: 'not_operating_day',
+        detail: 'ZZ-AAA does not operate on Monday (2026-11-02)',
+      })
+      expect(db.aircraft_status_period.findFirst).not.toHaveBeenCalled()
+    })
+
+    it('checks every UTC day a window crosses', async () => {
+      db.aircraft.findFirst.mockResolvedValue(row({ aircraft_operating_day: [{ day_of_week: 1 }] }))
+      const overnight = await directory.availability(AIRCRAFT, new Date('2026-11-02T22:00:00Z'), new Date('2026-11-03T01:00:00Z'))
+      expect(overnight).toMatchObject({ kind: 'unavailable', rule: 'not_operating_day' })
+    })
+
     it('looks for a non in_service period that overlaps the UTC days of the window', async () => {
       await directory.availability(AIRCRAFT, FROM, TO)
       expect(db.aircraft_status_period.findFirst).toHaveBeenCalledWith(
