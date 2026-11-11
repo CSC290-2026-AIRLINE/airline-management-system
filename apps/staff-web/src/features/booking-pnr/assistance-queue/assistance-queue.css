@@ -34,11 +34,6 @@
   text-transform: uppercase;
 }
 .assistance-queue {
-  padding: 0 24px 24px;
-  border: 1px solid #d9dfe9;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 3px 14px rgb(16 37 68 / 4%);
   font-size: 14px;
 }
 .assistance-queue__filters {
@@ -90,6 +85,10 @@
 }
 .assistance-queue__table-wrap {
   overflow-x: auto;
+  margin-top: 24px;
+  border: 1px solid #d9dfe9;
+  border-radius: 12px;
+  background: #fff;
 }
 .assistance-queue__table {
   width: 100%;
@@ -191,8 +190,9 @@
   opacity: 0.55;
 }
 .assistance-queue__info {
-  margin: 20px 0 0;
+  margin: 24px 0 0;
   padding: 13px 16px;
+  border: 1px solid #c9d9f8;
   border-radius: 7px;
   background: #eaf2ff;
   color: #1d4ed8;
@@ -222,9 +222,6 @@
 @media (max-width: 600px) {
   .assistance-page {
     padding: 28px 16px;
-  }
-  .assistance-queue {
-    padding: 0 16px 16px;
   }
   .assistance-queue__tabs {
     gap: 14px;
