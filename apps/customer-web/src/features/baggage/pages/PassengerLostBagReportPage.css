@@ -1,3 +1,12 @@
+/* Full-width page: overrides the app's centred #root column while this page is mounted. */
+#root:has(.passenger-report-page) {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  border-inline: 0;
+  background: #f6f8fc;
+}
+
 .passenger-report-page {
   --report-ink: #17233f;
   --report-muted: #68758f;
