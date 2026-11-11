@@ -14,7 +14,14 @@ import {
   validateCaseRecoveryAccess,
   type CaseRecoveryAccess,
 } from './case-page-recovery'
-import { canReportBagFoundByPassenger, caseProgressPresentation, caseStatusLabel, shouldShowNoOpenCase } from './case-page-presentation'
+import {
+  CANCELLATION_UNAVAILABLE_MESSAGE,
+  canReportBagFoundByPassenger,
+  caseProgressPresentation,
+  caseStatusLabel,
+  shouldShowCancellationUnavailable,
+  shouldShowNoOpenCase,
+} from './case-page-presentation'
 import { canUseOwnerActions, resolveViewerOwnership } from './case-ownership'
 import { timelineEventLabel, type PassengerCaseTimelineEvent } from './passenger-case-summary-view'
 import './PassengerLostBagCasePage.css'
@@ -695,7 +702,7 @@ export function PassengerLostBagCasePage() {
   }
 
   async function reportBagFoundByPassenger(): Promise<void> {
-    if (!report || !access || !canReportBagFoundByPassenger(report.status) || !ownerActionsAllowed) return
+    if (!report || !access || !canReportBagFoundByPassenger(report.status, delivery?.status ?? null) || !ownerActionsAllowed) return
 
     const currentAccess = access
     const requestId = caseRequestGeneration.current
@@ -904,7 +911,7 @@ export function PassengerLostBagCasePage() {
               </p>
             )}
 
-            {canReportBagFoundByPassenger(report.status) && access && ownerActionsAllowed && (
+            {canReportBagFoundByPassenger(report.status, delivery?.status ?? null) && access && ownerActionsAllowed && (
               <div className="passenger-case-self-found">
                 {!isConfirmingSelfFound ? (
                   <button
@@ -929,6 +936,11 @@ export function PassengerLostBagCasePage() {
                   </div>
                 )}
               </div>
+            )}
+            {shouldShowCancellationUnavailable(report.status, delivery?.status ?? null) && access && ownerActionsAllowed && (
+              <p className="passenger-case-cancel-unavailable" role="status">
+                {CANCELLATION_UNAVAILABLE_MESSAGE}
+              </p>
             )}
           </section>
 

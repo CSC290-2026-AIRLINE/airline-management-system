@@ -6,7 +6,6 @@ import { PrismaClient } from '@backend/db/generated/prisma/client'
 import type { DbService } from '@backend/db/db.service'
 import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { BagDeliveryService } from '@backend/modules/baggage/bag-delivery.service'
-import { FOUND_BAG_ERROR_CODES, FoundBagError } from '@backend/modules/baggage/common/found-bag.errors'
 import type { FoundBagClock } from '@backend/modules/baggage/common/found-bag.ports'
 import { PrismaReportRepository } from '@backend/modules/baggage/prisma-report.repository'
 
@@ -370,7 +369,7 @@ async function createFixture(client: PrismaClient): Promise<{ cases: FixtureCase
         await tx.bag_location_event.create({
           data: {
             found_bag_id: foundBag.id,
-            airport_code: routeOrigin,
+            airport_code: routeDestination,
             action: 'arrived',
             staff_id: staff.id,
             occurred_at: new Date(oldMovement.getTime() + 120_000),
@@ -564,15 +563,19 @@ async function loadOrCreateFixture(client: PrismaClient): Promise<{ cases: Fixtu
   assert.equal(await client.bag_match.count(), rows.length)
   assert.equal(await client.bag_delivery.count(), rows.length)
 
+  // Recognized partial states: a run that stopped after its first scenario (the refused cancellation, then the dispatch),
+  // optionally with the untouched case a previous resume added. A cancelled case that still has its confirmed match,
+  // matched bag and pending delivery is NOT recognized: confirmed cases cannot be cancelled online, so such rows were not
+  // made by this suite under the current policy and must not be resumed.
   const fourCaseStates = [
-    { report_status: 'cancelled', bag_status: 'matched', delivery_status: 'preparing', event_count: 1 },
+    { report_status: 'delivering', bag_status: 'sent', delivery_status: 'in_transit', event_count: 2 },
     { report_status: 'matched', bag_status: 'matched', delivery_status: 'preparing', event_count: 1 },
     { report_status: 'matched', bag_status: 'matched', delivery_status: 'preparing', event_count: 3 },
     { report_status: 'matched', bag_status: 'matched', delivery_status: 'preparing', event_count: 1 },
   ]
   const fiveCaseStates = [
     ...fourCaseStates,
-    { report_status: 'cancelled', bag_status: 'matched', delivery_status: 'preparing', event_count: 1 },
+    { report_status: 'matched', bag_status: 'matched', delivery_status: 'preparing', event_count: 1 },
   ]
   const expectedStates = rows.length === 4 ? fourCaseStates : fiveCaseStates
   assert.deepEqual(
@@ -585,7 +588,7 @@ async function loadOrCreateFixture(client: PrismaClient): Promise<{ cases: Fixtu
     expectedStates,
     'Existing rows must match a known partial state from this concurrency suite before resuming',
   )
-  assert.equal(await client.bag_location_event.count(), rows.length === 4 ? 6 : 7)
+  assert.equal(await client.bag_location_event.count(), rows.length === 4 ? 7 : 8)
 
   const staffId = rows[0].staff_id
   assert.ok(staffId && rows.every((row) => row.staff_id === staffId))
@@ -635,7 +638,12 @@ async function readState(client: PrismaClient, item: FixtureCase) {
   return { report: report.status, foundBag: foundBag.status, delivery: delivery.status, events }
 }
 
-async function cancellationWins(
+/**
+ * The passenger's cancellation reaches the report lock first, but the case is already confirmed (matched, delivery
+ * preparing), so it is refused under the lock without writing anything. Staff dispatch, queued behind it on the same row,
+ * then goes ahead on the untouched case.
+ */
+async function refusedCancellationThenDispatch(
   fixture: FixtureCase,
   clients: { cancel: PrismaClient; dispatch: PrismaClient; observer: PrismaClient },
   staffId: string,
@@ -660,16 +668,16 @@ async function cancellationWins(
     cancellationGate.release.resolve()
   }
 
-  const result = await cancellation
-  assert.equal(result?.status, 'cancelled')
-  await assert.rejects(dispatch, (error: unknown) => error instanceof FoundBagError && error.code === FOUND_BAG_ERROR_CODES.INVALID_STATUS)
+  assert.equal(await cancellation, null, 'A confirmed case must not be cancelled online, even before dispatch')
+  const dispatched = await dispatch
+  assert.equal(dispatched.status, 'in_transit')
   assert.deepEqual(await readState(clients.observer, fixture), {
-    report: 'cancelled',
-    foundBag: 'matched',
-    delivery: 'preparing',
-    events: 1,
+    report: 'delivering',
+    foundBag: 'sent',
+    delivery: 'in_transit',
+    events: 2,
   })
-  console.log('PASS cancellation wins: dispatch waited for the report lock and then rejected')
+  console.log('PASS refused cancellation: dispatch waited for the report lock, then sent the untouched confirmed case')
 }
 
 async function dispatchWins(
@@ -709,17 +717,30 @@ async function dispatchWins(
   console.log('PASS dispatch wins: cancellation waited for the report lock and then rejected')
 }
 
-async function historicalMovementDoesNotBlock(fixture: FixtureCase, client: PrismaClient): Promise<void> {
+/**
+ * A confirmed case whose bag has pre-report sent/arrived history. The cancellation is refused because ownership is
+ * confirmed and leaves that history untouched; the old movement is not mistaken for a live dispatch, so staff can still
+ * send the bag (its latest movement is an arrival, not a send).
+ */
+async function historicalMovementDoesNotBlock(fixture: FixtureCase, client: PrismaClient, staffId: string): Promise<void> {
   const repository = reportRepository(client)
-  const result = await repository.cancelIfNotDispatched(fixture.reportId, fixture.bookingPassengerId, SIMULATION_NOW)
-  assert.equal(result?.status, 'cancelled')
+  assert.equal(await repository.cancelIfNotDispatched(fixture.reportId, fixture.bookingPassengerId, SIMULATION_NOW), null)
   assert.deepEqual(await readState(client, fixture), {
-    report: 'cancelled',
+    report: 'matched',
     foundBag: 'matched',
     delivery: 'preparing',
     events: 3,
   })
-  console.log('PASS historical movement: pre-report sent/arrived events do not block cancellation')
+
+  const dispatched = await deliveryService(client).setStatus({ staffId, deliveryId: fixture.deliveryId, status: 'in_transit' })
+  assert.equal(dispatched.status, 'in_transit')
+  assert.deepEqual(await readState(client, fixture), {
+    report: 'delivering',
+    foundBag: 'sent',
+    delivery: 'in_transit',
+    events: 4,
+  })
+  console.log('PASS historical movement: confirmed case not cancellable, history kept, and pre-report movement does not block dispatch')
 }
 
 async function failedDispatchRollsBack(fixture: FixtureCase, client: PrismaClient, staffId: string): Promise<void> {
@@ -771,7 +792,7 @@ async function main(): Promise<void> {
     const fixture = await loadOrCreateFixture(fixtureClient)
     const [cancelWinsCase, dispatchWinsCase, historicalCase, rollbackCase] = fixture.cases
 
-    await cancellationWins(
+    await refusedCancellationThenDispatch(
       cancelWinsCase,
       { cancel: cancellationWinnerClient, dispatch: dispatchLoserClient, observer: observerClient },
       fixture.staffId,
@@ -781,7 +802,7 @@ async function main(): Promise<void> {
       { dispatch: dispatchWinnerClient, cancel: cancellationLoserClient, observer: observerClient },
       fixture.staffId,
     )
-    await historicalMovementDoesNotBlock(historicalCase, observerClient)
+    await historicalMovementDoesNotBlock(historicalCase, observerClient, fixture.staffId)
     await failedDispatchRollsBack(rollbackCase, fixtureClient, fixture.staffId)
     console.log('All four isolated PostgreSQL concurrency scenarios passed.')
   } finally {

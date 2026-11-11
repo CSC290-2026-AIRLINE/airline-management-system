@@ -501,6 +501,13 @@
   margin-top: 1.25rem;
 }
 
+.passenger-case-cancel-unavailable {
+  margin: 1.25rem 0 0;
+  color: #68758f;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .passenger-case-self-found__confirmation {
   width: min(100%, 28rem);
   padding: 0.9rem;

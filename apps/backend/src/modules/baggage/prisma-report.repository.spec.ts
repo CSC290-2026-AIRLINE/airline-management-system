@@ -464,37 +464,70 @@ describe('PrismaReportRepository cancellation', () => {
   const reportId = reportRow().id
   const bookingPassengerId = reportRow().booking_passenger_id
   const closedAt = new Date('2026-10-29T12:00:00Z')
+  const confirmedMatch = { id: '00000000-0000-4000-8000-000000000007' }
 
-  it('cancels a matched report before dispatch and records closure time', async () => {
-    const harness = makeRepository()
+  /** A case staff have not confirmed a bag for: no confirmed match and no delivery row. */
+  const unconfirmed = (overrides: Record<string, unknown> = {}) =>
+    reportRow({ status: 'open', bag_match: [], bag_delivery: null, ...overrides })
+
+  it.each(['open', 'lost'])('cancels an unconfirmed %s report under the case lock and records closure time', async (status) => {
+    const harness = makeRepository({ report: unconfirmed({ status }) })
 
     const cancelled = await harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)
 
     expect(cancelled).toMatchObject({ status: 'cancelled', closedAt })
     expect(harness.queryRaw).toHaveBeenCalledTimes(1)
+    expect((harness.queryRaw.mock.calls[0][0] as TemplateStringsArray).join('?')).toContain('FOR UPDATE')
+    // Every eligibility read happens after the row lock, inside the same transaction.
+    expect(harness.queryRaw.mock.invocationCallOrder[0]).toBeLessThan(harness.findFirst.mock.invocationCallOrder[0])
     expect(harness.findFirst).toHaveBeenCalledWith({
       where: {
         id: reportId,
         booking_passenger_id: bookingPassengerId,
-        status: { in: ['open', 'matched', 'lost'] },
+        status: { in: ['open', 'lost'] },
       },
       include: {
-        bag_delivery: true,
-        bag_match: {
-          where: { status: 'confirmed' },
-          select: { found_bag_id: true, found_bag: { select: { status: true } } },
-        },
+        bag_delivery: { select: { id: true } },
+        bag_match: { where: { status: 'confirmed' }, select: { id: true } },
       },
     })
-    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
     expect(harness.update).toHaveBeenCalledWith({
       where: { id: reportId },
       data: { status: 'cancelled', closed_at: closedAt, updated_at: closedAt },
     })
   })
 
+  it.each(['matched', 'delivering', 'closed', 'cancelled'])('refuses a %s report and writes nothing', async (status) => {
+    const harness = makeRepository({ report: reportRow({ status, bag_match: [confirmedMatch] }) })
+
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+
+    expect(harness.update).not.toHaveBeenCalled()
+    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when an open report already has a confirmed match (inconsistent status)', async () => {
+    const harness = makeRepository({ report: unconfirmed({ bag_match: [confirmedMatch] }) })
+
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+
+    expect(harness.update).not.toHaveBeenCalled()
+  })
+
+  it.each(['waiting_choice', 'preparing', 'in_transit', 'ready_for_pickup', 'delivered'])(
+    'fails closed when a lost or open report already has a %s delivery row (ownership was confirmed)',
+    async (deliveryStatus) => {
+      for (const status of ['open', 'lost']) {
+        const harness = makeRepository({ report: unconfirmed({ status, bag_delivery: { id: 'd-1', status: deliveryStatus } }) })
+
+        await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+        expect(harness.update).not.toHaveBeenCalled()
+      }
+    },
+  )
+
   it('rejects a repeated cancellation after the report is already cancelled', async () => {
-    const harness = makeRepository({ report: reportRow({ status: 'cancelled' }) })
+    const harness = makeRepository({ report: unconfirmed({ status: 'cancelled' }) })
 
     await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
 
@@ -503,7 +536,7 @@ describe('PrismaReportRepository cancellation', () => {
   })
 
   it('does not lock or cancel a report for a different booking passenger', async () => {
-    const harness = makeRepository({ lockedRows: [] })
+    const harness = makeRepository({ lockedRows: [], report: unconfirmed() })
 
     await expect(harness.repository.cancelIfNotDispatched(reportId, '00000000-0000-4000-8000-000000000099', closedAt)).resolves.toBeNull()
 
@@ -511,48 +544,9 @@ describe('PrismaReportRepository cancellation', () => {
     expect(harness.update).not.toHaveBeenCalled()
   })
 
-  it.each(['sent', 'delivered'])('rejects cancellation when the matched found bag status is %s', async (status) => {
+  it('still refuses a dispatched case, even when the movement clock was rewound', async () => {
     const harness = makeRepository({
-      report: reportRow({
-        bag_match: [
-          {
-            found_bag_id: '00000000-0000-4000-8000-000000000005',
-            reviewed_at: new Date('2026-10-29T11:00:00Z'),
-            found_bag: { status },
-          },
-        ],
-      }),
-    })
-
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
-
-    expect(harness.update).not.toHaveBeenCalled()
-    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
-  })
-
-  it.each(['waiting_choice', 'preparing'])('allows cancellation while delivery is %s', async (status) => {
-    const harness = makeRepository({ report: reportRow({ bag_delivery: { status } }) })
-
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toMatchObject({
-      status: 'cancelled',
-    })
-    expect(harness.update).toHaveBeenCalledTimes(1)
-    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
-  })
-
-  it('rejects when delivery is in transit even if dispatch occurred_at predates reviewed_at after a clock rewind', async () => {
-    const report = reportRow({
-      bag_delivery: { status: 'in_transit' },
-      bag_match: [
-        {
-          found_bag_id: '00000000-0000-4000-8000-000000000005',
-          reviewed_at: new Date('2026-10-29T11:00:00Z'),
-          found_bag: { status: 'sent' },
-        },
-      ],
-    })
-    const harness = makeRepository({
-      report,
+      report: reportRow({ status: 'delivering', bag_delivery: { id: 'd-1', status: 'in_transit' }, bag_match: [confirmedMatch] }),
       eventHistory: { action: 'sent', occurred_at: new Date('2026-10-29T10:59:00Z') },
     })
 
@@ -562,37 +556,11 @@ describe('PrismaReportRepository cancellation', () => {
     expect(harness.update).not.toHaveBeenCalled()
   })
 
-  it('allows historical sent movement when report and delivery remain pre-dispatch', async () => {
-    const harness = makeRepository({
-      report: reportRow({ bag_delivery: { status: 'preparing' } }),
-      eventHistory: { action: 'sent', occurred_at: new Date('2026-10-29T09:00:00Z') },
-    })
+  it('propagates a failed write so the transaction rolls back and nothing is reported as cancelled', async () => {
+    const harness = makeRepository({ report: unconfirmed() })
+    harness.update.mockRejectedValueOnce(new Error('write failed'))
 
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toMatchObject({
-      status: 'cancelled',
-    })
-
-    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
-    expect(harness.update).toHaveBeenCalledTimes(1)
-  })
-
-  it('rejects when the report is delivering even if delivery state has not caught up', async () => {
-    const harness = makeRepository({
-      report: reportRow({ status: 'delivering', bag_delivery: { status: 'preparing' } }),
-    })
-
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
-
-    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
-    expect(harness.update).not.toHaveBeenCalled()
-  })
-
-  it.each(['in_transit', 'ready_for_pickup', 'delivered'])('rejects cancellation when delivery status is %s', async (status) => {
-    const harness = makeRepository({ report: reportRow({ bag_delivery: { status } }) })
-
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
-
-    expect(harness.findDispatchEvent).not.toHaveBeenCalled()
-    expect(harness.update).not.toHaveBeenCalled()
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).rejects.toThrow('write failed')
+    expect(harness.transaction).toHaveBeenCalledTimes(1)
   })
 })

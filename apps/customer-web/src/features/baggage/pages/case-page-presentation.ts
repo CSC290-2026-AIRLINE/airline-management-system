@@ -34,6 +34,19 @@ export function shouldShowNoOpenCase(hasReport: boolean, isLookingUp: boolean, h
   return !hasReport && !isLookingUp && !hasError
 }
 
-export function canReportBagFoundByPassenger(status: string): boolean {
-  return status === 'open'
+/**
+ * The passenger may cancel ("I found it myself") only before staff confirm a found bag as theirs: an open case, or a lost
+ * one no bag has been confirmed for. A delivery record only exists after that confirmation, so its presence also closes it.
+ */
+export function canReportBagFoundByPassenger(status: string, deliveryStatus: string | null = null): boolean {
+  return (status === 'open' || status === 'lost') && deliveryStatus === null
+}
+
+export const CANCELLATION_UNAVAILABLE_MESSAGE =
+  'Online cancellation is unavailable after staff confirms the bag is yours. Please contact airline staff if you need help changing your recovery arrangements.'
+
+/** After staff confirm the bag is the passenger's, and until it is back with them, explain why there is no cancel option. */
+export function shouldShowCancellationUnavailable(status: string, deliveryStatus: string | null): boolean {
+  if (status === 'cancelled' || status === 'closed' || deliveryStatus === 'delivered') return false
+  return status === 'matched' || status === 'delivering' || deliveryStatus !== null
 }

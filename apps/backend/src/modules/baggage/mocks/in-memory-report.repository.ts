@@ -48,8 +48,7 @@ export class InMemoryReportRepository implements ReportRepository {
 
   cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null> {
     const index = this.reports.findIndex(
-      (report) =>
-        report.id === reportId && report.bookingPassengerId === bookingPassengerId && ['open', 'matched', 'lost'].includes(report.status),
+      (report) => report.id === reportId && report.bookingPassengerId === bookingPassengerId && ['open', 'lost'].includes(report.status),
     )
 
     if (index === -1) {
@@ -66,5 +65,11 @@ export class InMemoryReportRepository implements ReportRepository {
     this.reports[index] = cancelled
 
     return Promise.resolve({ ...cancelled })
+  }
+
+  /** Test helper: moves a case on as staff or the lifecycle job would (e.g. matched after a confirmation). */
+  setStatus(caseNumber: string, status: LostBagReport['status']): void {
+    const report = this.reports.find((item) => item.caseNumber === caseNumber)
+    if (report) report.status = status
   }
 }

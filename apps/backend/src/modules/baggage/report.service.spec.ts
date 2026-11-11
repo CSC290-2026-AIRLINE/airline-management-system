@@ -339,6 +339,25 @@ describe('ReportService', () => {
       code: 'CANCELLATION_NOT_ALLOWED',
     })
   })
+
+  it('allows the owner to cancel a lost report that staff have not confirmed a bag for', async () => {
+    const created = await service.create(validInput)
+    repository.setStatus(created.caseNumber, 'lost')
+
+    await expect(service.cancel(created.caseNumber, access)).resolves.toMatchObject({ status: 'cancelled' })
+  })
+
+  it.each(['matched', 'delivering', 'closed'] as const)(
+    'refuses cancellation once staff have confirmed the bag (%s) and leaves the case as it is',
+    async (status) => {
+      const created = await service.create(validInput)
+      repository.setStatus(created.caseNumber, status)
+
+      // The existing contract: CANCELLATION_NOT_ALLOWED, which the baggage error filter answers with 409.
+      await expect(service.cancel(created.caseNumber, access)).rejects.toMatchObject({ code: 'CANCELLATION_NOT_ALLOWED' })
+      expect((await repository.findByCaseNumber(created.caseNumber))?.status).toBe(status)
+    },
+  )
 })
 
 describe('ReportService.listEligibleTravellers', () => {

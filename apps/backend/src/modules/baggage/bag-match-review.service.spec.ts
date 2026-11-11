@@ -15,6 +15,12 @@ const OTHER_STAFF_ID = '99999999-9999-4999-8999-999999999999'
 const ACTOR: AuditActor = { type: 'staff', id: '44444444-4444-4444-8444-444444444444', role: 'baggage' }
 const SIM_NOW = new Date('2026-10-30T08:00:00Z')
 
+/** list(): reviewed rows always; a pending suggestion only while its case is open or lost. */
+const ACTIONABLE_OR_REVIEWED = [
+  { status: { notIn: ['suggested', 'under_review'] } },
+  { lost_bag_report: { status: { in: ['open', 'lost'] } } },
+]
+
 function prismaError(code: string) {
   return Object.assign(new Error(code), { code })
 }
@@ -147,9 +153,51 @@ describe('BagMatchReviewService.list', () => {
     await svc.list({ status: 'suggested', reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })
 
     expect(db.bag_match.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { status: 'suggested', report_id: REPORT_ID, found_bag_id: FOUND_BAG_ID } }),
+      expect.objectContaining({
+        where: { status: 'suggested', report_id: REPORT_ID, found_bag_id: FOUND_BAG_ID, OR: ACTIONABLE_OR_REVIEWED },
+      }),
     )
     expect(await svc.list({ reportId: 'nope' })).toEqual([])
+  })
+
+  it.each([
+    ['no filter', {}],
+    ['a status filter', { status: 'under_review' as const }],
+    ['a case filter', { reportId: REPORT_ID }],
+    ['a bag filter', { foundBagId: FOUND_BAG_ID }],
+  ])('offers pending suggestions only while their case can be matched, with %s', async (_label, filter) => {
+    const { svc, db } = makeSvc()
+
+    await svc.list(filter)
+
+    const where = db.bag_match.findMany.mock.calls[0][0].where
+    expect(where.OR).toEqual(ACTIONABLE_OR_REVIEWED)
+  })
+
+  it('keeps reviewed history but leaves out pending suggestions on cancelled, closed or matched cases', async () => {
+    const { svc, db } = makeSvc()
+    const rows = [
+      matchRow({ id: 'pending-open' }),
+      matchRow({ id: 'pending-lost', lost_bag_report: { ...matchRow().lost_bag_report, status: 'lost' } }),
+      matchRow({ id: 'pending-cancelled', lost_bag_report: { ...matchRow().lost_bag_report, status: 'cancelled' } }),
+      matchRow({ id: 'pending-closed', status: 'under_review', lost_bag_report: { ...matchRow().lost_bag_report, status: 'closed' } }),
+      matchRow({ id: 'pending-matched', lost_bag_report: { ...matchRow().lost_bag_report, status: 'matched' } }),
+      matchRow({ id: 'confirmed-cancelled', status: 'confirmed', lost_bag_report: { ...matchRow().lost_bag_report, status: 'cancelled' } }),
+      matchRow({ id: 'rejected-cancelled', status: 'rejected', lost_bag_report: { ...matchRow().lost_bag_report, status: 'cancelled' } }),
+    ]
+    // Evaluate the where clause the service builds against the rows, as the database would.
+    type Clause = { status?: { notIn: string[] }; lost_bag_report?: { status: { in: string[] } } }
+    const holds = (clause: Clause, row: (typeof rows)[number]) =>
+      clause.status
+        ? !clause.status.notIn.includes(row.status)
+        : (clause.lost_bag_report?.status.in.includes(row.lost_bag_report.status) ?? false)
+    db.bag_match.findMany.mockImplementation(({ where }: { where: { OR: Clause[] } }) =>
+      Promise.resolve(rows.filter((row) => where.OR.some((clause) => holds(clause, row)))),
+    )
+
+    const ids = (await svc.list()).map((m) => m.id).sort()
+
+    expect(ids).toEqual(['confirmed-cancelled', 'pending-lost', 'pending-open', 'rejected-cancelled'])
   })
 })
 
@@ -323,6 +371,24 @@ describe('BagMatchReviewService.confirm', () => {
     expect(db.bag_delivery.upsert).not.toHaveBeenCalled()
   })
 
+  it.each(['cancelled', 'closed', 'matched', 'delivering'])(
+    'refuses a stale suggestion whose case is now %s, before locking the bag or writing anything',
+    async (status) => {
+      const { svc, db, audit } = makeSvc()
+      db.$queryRaw.mockImplementation((_sql: TemplateStringsArray, id: string) => Promise.resolve([{ id, status }]))
+
+      await expect(svc.confirm({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'ok' })).rejects.toMatchObject({
+        code: 'MATCH_CLOSED',
+      })
+      expect(db.$queryRaw).toHaveBeenCalledTimes(1) // the case lock only; the bag is never locked
+      expect(db.bag_match.updateMany).not.toHaveBeenCalled()
+      expect(db.lost_bag_report.updateMany).not.toHaveBeenCalled()
+      expect(db.found_bag.updateMany).not.toHaveBeenCalled()
+      expect(db.bag_delivery.upsert).not.toHaveBeenCalled()
+      expect(audit.write).not.toHaveBeenCalled()
+    },
+  )
+
   it('answers MATCH_CLOSED when another match of the case or bag was confirmed at the same time', async () => {
     const { svc, db } = makeSvc()
     db.$transaction.mockRejectedValue(prismaError('P2002'))
@@ -355,5 +421,48 @@ describe('BagMatchReviewService.reject', () => {
     await expect(svc.reject({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'Different strap' })).rejects.toMatchObject({
       code: 'MATCH_CLOSED',
     })
+  })
+
+  it('locks the case row before recording the rejection', async () => {
+    const { svc, db } = makeSvc()
+
+    await svc.reject({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID })
+
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1)
+    const [sql, id] = db.$queryRaw.mock.calls[0] as [TemplateStringsArray, string]
+    expect(sql.join('?')).toMatch(/FROM lost_bag_report[\s\S]*FOR UPDATE/)
+    expect(id).toBe(REPORT_ID)
+    expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.bag_match.updateMany.mock.invocationCallOrder[0])
+  })
+
+  it.each(['open', 'lost'])('rejects a suggestion on a %s case', async (status) => {
+    const { svc, db } = makeSvc()
+    db.$queryRaw.mockImplementation((_sql: TemplateStringsArray, id: string) => Promise.resolve([{ id, status }]))
+
+    await expect(svc.reject({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID })).resolves.toBeDefined()
+    expect(db.bag_match.updateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['cancelled', 'closed', 'matched', 'delivering'])(
+    'does not record a "not the same bag" decision on a stale suggestion whose case is %s',
+    async (status) => {
+      const { svc, db, audit } = makeSvc()
+      db.$queryRaw.mockImplementation((_sql: TemplateStringsArray, id: string) => Promise.resolve([{ id, status }]))
+
+      await expect(svc.reject({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'Different' })).rejects.toMatchObject({
+        code: 'MATCH_CLOSED',
+      })
+      expect(db.bag_match.updateMany).not.toHaveBeenCalled()
+      expect(audit.write).not.toHaveBeenCalled()
+    },
+  )
+
+  it('answers MATCH_NOT_FOUND when the case row has gone', async () => {
+    const { svc, db, audit } = makeSvc()
+    db.$queryRaw.mockResolvedValue([])
+
+    await expect(svc.reject({ staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID })).rejects.toMatchObject({ code: 'MATCH_NOT_FOUND' })
+    expect(db.bag_match.updateMany).not.toHaveBeenCalled()
+    expect(audit.write).not.toHaveBeenCalled()
   })
 })

@@ -9,6 +9,8 @@ import type { BagType, BagColour, ReportStatus } from './common/baggage.constant
 import type { DeliveryStatus, DeliveryType } from './common/bag-delivery.types'
 
 const LIVE_STATUSES = ['open', 'matched', 'delivering', 'lost']
+/** Self-service cancellation is only for a case staff have not yet confirmed a bag for (open, or lost after 21 days). */
+export const SELF_CANCELLABLE_REPORT_STATUSES: ReportStatus[] = ['open', 'lost']
 const DELIVERY_TYPES: readonly DeliveryType[] = ['home', 'hotel', 'other_address', 'airport_pickup']
 
 function isDeliveryType(value: unknown): value is DeliveryType {
@@ -414,8 +416,15 @@ export class PrismaReportRepository implements ReportRepository {
     return rows.map(toReport)
   }
 
+  /**
+   * Passenger self-service cancellation. Allowed only before staff confirm a found bag as this passenger's: once ownership
+   * is confirmed (and so also once the bag is on its way) the case can no longer be cancelled online, and its confirmed
+   * match, bag reservation and delivery are left exactly as they are. Returns null when the case is not cancellable.
+   */
   async cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null> {
     return this.db.$transaction(async (tx) => {
+      // The case row lock comes first (see case-locks): a staff confirmation of this case either finished before this,
+      // and is seen below, or waits and then finds the case cancelled. Every eligibility read happens under the lock.
       const locked = await tx.$queryRaw<{ id: string }[]>`
         SELECT id
         FROM lost_bag_report
@@ -429,27 +438,19 @@ export class PrismaReportRepository implements ReportRepository {
         where: {
           id: reportId,
           booking_passenger_id: bookingPassengerId,
-          status: { in: ['open', 'matched', 'lost'] },
+          status: { in: SELF_CANCELLABLE_REPORT_STATUSES },
         },
         include: {
-          bag_delivery: true,
-          bag_match: {
-            where: { status: 'confirmed' },
-            select: { found_bag_id: true, found_bag: { select: { status: true } } },
-          },
+          bag_delivery: { select: { id: true } },
+          bag_match: { where: { status: 'confirmed' }, select: { id: true } },
         },
       })
 
       if (!report) return null
 
-      // Once delivery has begun, the passenger cannot cancel.
-      if (report.bag_delivery && !['waiting_choice', 'preparing'].includes(report.bag_delivery.status)) {
-        return null
-      }
-
-      // The delivery flow records matched-bag dispatch in both delivery and found-bag state.
-      // Do not order append-only movement history by occurred_at: it uses the rewindable simulation clock.
-      if (report.bag_match.some((match) => ['sent', 'delivered'].includes(match.found_bag.status))) return null
+      // Fail closed if the status and the recovery rows ever disagree: a confirmed match, or the delivery row that
+      // confirmation opens, means ownership was confirmed whatever the case status says.
+      if (report.bag_match.length > 0 || report.bag_delivery) return null
 
       const updated = await tx.lost_bag_report.update({
         where: { id: report.id },

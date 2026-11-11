@@ -197,6 +197,10 @@ export class BagMatchReviewService {
       where.found_bag_id = foundBagId
     }
 
+    // A pending suggestion is only actionable while its case can still be matched. Suggestions left on a cancelled,
+    // closed or already-matched case stay stored as history but are not offered for review; reviewed rows always show.
+    where.OR = [{ status: { notIn: OPEN_MATCH_STATUSES } }, { lost_bag_report: { status: { in: MATCHABLE_REPORT_STATUSES } } }]
+
     // The newest rows; reviewOrder then puts open and strong matches first.
     const rows = await this.db.bag_match.findMany({
       where,
@@ -303,7 +307,18 @@ export class BagMatchReviewService {
       await this.db.$transaction(async (tx) => {
         // The case, then the bag: the lock order of every write to a case (see case-locks). A passenger cancelling the
         // case or a desk moving the bag waits for this confirmation, or this waits for them.
-        if (!(await lockLostReport(tx, match.report_id)) || !(await lockFoundBag(tx, match.found_bag_id))) {
+        const lockedReport = await lockLostReport(tx, match.report_id)
+
+        if (!lockedReport) {
+          throw notFound()
+        }
+
+        // A suggestion left on a case that was cancelled or closed meanwhile is not confirmed (nothing is written).
+        if (!MATCHABLE_REPORT_STATUSES.some((s) => s === lockedReport.status)) {
+          throw closed('This case is no longer open')
+        }
+
+        if (!(await lockFoundBag(tx, match.found_bag_id))) {
           throw notFound()
         }
 
@@ -364,7 +379,10 @@ export class BagMatchReviewService {
     return this.getById(match.id)
   }
 
-  /** Not the same bag. The case and the bag stay as they are and can be matched again with others. */
+  /**
+   * Not the same bag. The case and the bag stay as they are and can be matched again with others. Only a suggestion on a
+   * case that can still be matched is reviewed: one left on a cancelled or closed case is history, not a decision.
+   */
   async reject(input: ReviewInput): Promise<BagMatch> {
     const staffId = input.staffId?.trim()
 
@@ -375,6 +393,18 @@ export class BagMatchReviewService {
     const reviewedAt = this.clock.now()
 
     await this.db.$transaction(async (tx) => {
+      // The case lock first (see case-locks), then its state: a passenger cancelling the case either finished before
+      // this, and is seen here, or waits for this review.
+      const report = await lockLostReport(tx, match.report_id)
+
+      if (!report) {
+        throw notFound()
+      }
+
+      if (!MATCHABLE_REPORT_STATUSES.some((s) => s === report.status)) {
+        throw closed('This case is no longer open')
+      }
+
       const { count } = await tx.bag_match.updateMany({
         where: { id: match.id, status: { in: OPEN_MATCH_STATUSES } },
         data: { status: 'rejected', reviewed_by: staffId, reviewed_at: reviewedAt, review_note: note, updated_at: new Date() },
