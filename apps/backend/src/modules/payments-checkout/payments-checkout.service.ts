@@ -563,9 +563,22 @@ export class PaymentsCheckoutService {
   /* ──────────────────────────────────────────────────────────────────────────── */
 
   private async requirePayment(paymentId: string): Promise<PaymentRecord> {
-    const payment = await this.repo.findById(paymentId)
+    const payment = (await this.repo.findById(paymentId)) ?? (await this.findPaymentByReference(paymentId))
     if (!payment) throw new NotFoundException(`Payment ${paymentId} not found`)
     return payment
+  }
+
+  /**
+   * Finds a payment by the reference the staff read out loud, e.g. `PAY-20261104-0042`.
+   *
+   * The reference is derived rather than stored, so the mock looks a payment up the same way it builds the reference.
+   * It lets the staff screens link to a payment by the number on the screen instead of by its internal id.
+   */
+  private async findPaymentByReference(reference: string): Promise<PaymentRecord | undefined> {
+    const needle = reference.trim().toUpperCase()
+    if (!needle.startsWith('PAY-')) return undefined
+    const payments = await this.repo.listPayments()
+    return payments.find((payment) => paymentReference(payment) === needle)
   }
 
   /** The staff detail page's body: the summary plus everything only the detail page shows. */

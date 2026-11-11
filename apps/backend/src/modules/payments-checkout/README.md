@@ -53,7 +53,7 @@ What the service checks:
 - features 3 and 6 need a `booking_id`; feature 17 needs a `cargo_booking_id`
 - `expires_at` must be after `started_at`
 - the same `idempotency_key` returns the payment that already exists instead of creating a second one
-- a second *live* payment for the same `purchase_ref` is refused, so a customer cannot pay twice
+- a second _live_ payment for the same `purchase_ref` is refused, so a customer cannot pay twice
 
 ### 2. Confirm and settle
 
@@ -143,7 +143,7 @@ export class StaffPaymentsController {
 and fails with a 500 rather than an open door.
 
 The frontend's `NoAccessScreen` passes `recorded={false}`, because the page is refused before any API call — so there
-is no row for *that* attempt. The rows are written by the backend guard for the requests that reach it.
+is no row for _that_ attempt. The rows are written by the backend guard for the requests that reach it.
 
 ## The exception list is a list of problems
 
@@ -153,13 +153,13 @@ list.
 
 The five problems 5a can raise are in `payment.types.ts` (`PAYMENT_PROBLEM_TYPES`):
 
-| Problem                  | State       | Action                                    |
-| ------------------------ | ----------- | ----------------------------------------- |
+| Problem                  | State        | Action                                    |
+| ------------------------ | ------------ | ----------------------------------------- |
 | Ticket capture stalled   | needs action | Retry capture                             |
 | Cargo capture stalled    | needs action | Retry capture                             |
-| Waiting for the provider | queued      | none — the reconciliation job is checking |
-| Finance posting delayed  | queued      | Send now                                  |
-| Authorisation voided     | resolved    | none — the customer was not charged       |
+| Waiting for the provider | queued       | none — the reconciliation job is checking |
+| Finance posting delayed  | queued       | Send now                                  |
+| Authorisation voided     | resolved     | none — the customer was not charged       |
 
 Feature 5c's "Crew payout failed" belongs to the same page in the frames, but it is 5c's row and 5a does not raise it.
 
