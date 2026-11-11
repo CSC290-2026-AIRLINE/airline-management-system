@@ -47,7 +47,7 @@ export function PageTabs({ tabs, value, onChange, ariaLabel, panelId }: PageTabs
             className={cn(
               'rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
               'focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
-              active ? 'border-navy bg-card text-navy' : 'border-border bg-card text-foreground hover:border-navy/40',
+              active ? 'border-navy bg-[#EAF0FB] text-navy' : 'border-border bg-card text-foreground hover:border-navy/40',
               tab.disabled && 'cursor-not-allowed opacity-60 hover:border-border',
             )}
           >

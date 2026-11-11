@@ -64,7 +64,8 @@ export const MOCK_PAYMENT_RESULTS: PaymentResultDto[] = [
   {
     state: 'paid_with_miles',
     badge: 'Paid with miles',
-    badge_class: 'bg-navy/10 text-navy',
+    /* The frame draws "Paid with miles" in the same green as "Captured". */
+    badge_class: 'bg-success-soft text-success-strong',
     title: 'Your booking is confirmed',
     body: 'FY102 · BKK → YGN · Sat 21 Nov 2026 · 1 adult · Paid with 24,000 miles',
     reference: null,

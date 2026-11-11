@@ -104,7 +104,7 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
       {/* The document ---------------------------------------------------- */}
       <div className="flex flex-col gap-1 pr-14">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-md bg-navy/10 px-2 py-1 font-mono text-sm font-medium text-navy">{receipt.document_number}</span>
+          <span className="rounded-md bg-[#EAF0FB] px-2 py-1 font-mono text-sm font-medium text-navy">{receipt.document_number}</span>
           <ReceiptStateBadge status={receipt.receipt_status} />
           {/* The receipt state never changes, so a refunded payment says so separately. */}
           {receipt.status !== 'captured' && <ReceiptStatusBadge status={receipt.status} />}

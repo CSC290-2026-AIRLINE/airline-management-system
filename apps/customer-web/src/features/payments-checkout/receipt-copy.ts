@@ -87,7 +87,7 @@ export const RECEIPT_STATUS_LABELS: Record<ReceiptStatus, string> = {
 /** The badge colours for the receipt states, from the frames. */
 export const RECEIPT_STATUS_BADGE_CLASSES: Record<ReceiptStatus, string> = {
   paid: 'bg-success-soft text-success-strong',
-  miles_and_cash: 'bg-navy/10 text-navy',
+  miles_and_cash: 'bg-[#EAF0FB] text-navy',
   flown: 'bg-secondary text-muted-foreground',
 }
 
@@ -126,7 +126,7 @@ export const STATUS_BADGE_CLASSES: Record<PaymentStatus, string> = {
   failed: 'bg-danger-soft text-danger',
   voided: 'bg-danger-soft text-danger',
   expired: 'bg-secondary text-muted-foreground',
-  reversed: 'bg-secondary text-foreground',
+  reversed: 'bg-[#EAF0FB] text-navy',
 }
 
 /**

@@ -65,7 +65,8 @@ export function CustomerHeader() {
         </Link>
 
         {/* The screens --------------------------------------------------- */}
-        <nav aria-label="Main" className="flex items-center gap-7 max-tablet:hidden">
+        {/* `ml-auto` pushes the screens against the profile, on the right, the way the frames set them. */}
+        <nav aria-label="Main" className="mr-9 ml-auto flex items-center gap-7 max-tablet:hidden">
           {NAV.map((item) => (
             <span
               key={item.label}
