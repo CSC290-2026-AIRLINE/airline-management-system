@@ -6,10 +6,18 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { validateEnv } from './config/env.validation'
+import { PaymentsRefundsModule } from './modules/payments-refunds/payments-refunds.module'
 import { PricingModule } from './modules/pricing/pricing.module'
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), DbModule, AuthModule, AdminConsoleModule, PricingModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    DbModule,
+    AuthModule,
+    AdminConsoleModule,
+    PricingModule,
+    PaymentsRefundsModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
