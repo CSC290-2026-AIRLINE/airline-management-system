@@ -2,7 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { BookingError } from '../common/booking-error'
-import { BOOKING_CLOCK, SEAT_MAP_PORT, type BookingClock, type SeatMapPort } from '../contracts'
+import { BOOKING_CLOCK, CHECKOUT_PORT, SEAT_MAP_PORT, type BookingClock, type SeatMapPort, type CheckoutPort } from '../contracts'
 import { CheckinSeatMapAdapter } from './checkin-seat-map.adapter'
 import type { Cabin, SeatLock, SeatProvider, SeatType } from './feature6.types'
 
@@ -14,6 +14,7 @@ export class CheckinSeatProvider implements SeatProvider {
     @Inject(BOOKING_CLOCK) private readonly clock: BookingClock,
     @Inject(SEAT_MAP_PORT) private readonly layouts: SeatMapPort,
     private readonly audit: AuditService,
+    @Inject(CHECKOUT_PORT) private readonly checkout: CheckoutPort,
   ) {}
 
   seatMap(flightId: string, viewer: { bookingPassengerId: string | null; cabin: Cabin | null }) {
@@ -124,7 +125,11 @@ export class CheckinSeatProvider implements SeatProvider {
 
   async confirm(
     lockId: string,
-    options: { rejectCheckedIn?: boolean; staffOverride?: { userId: string; staffId: string; reason: string } } = {},
+    options: {
+      rejectCheckedIn?: boolean
+      payWithCheckout?: boolean
+      staffOverride?: { userId: string; staffId: string; reason: string }
+    } = {},
   ): Promise<{ seatCode: string; type: SeatType }> {
     const now = this.clock.now()
     return this.db.$transaction(async (tx) => {
@@ -187,8 +192,35 @@ export class CheckinSeatProvider implements SeatProvider {
       ) {
         throw new BookingError('SEAT_NOT_ALLOWED', 'Seat is not allowed for this passenger')
       }
-      if (Number(held.fee_amount) > 0 && !held.payment_id)
-        throw new BookingError('SEAT_NOT_ALLOWED', 'Payment is required before assigning this seat')
+      let paymentId = held.payment_id
+      if (Number(held.fee_amount) > 0) {
+        if (!paymentId && options.payWithCheckout) {
+          const payment = await this.checkout.charge(
+            {
+              bookingId: reference.booking_coupon.booking_id,
+              amount: Number(held.fee_amount),
+              currency: 'USD',
+              idempotencyKey: `seat:${lockId}`,
+              purchaseRef: `seat_assignment:${lockId}`,
+            },
+            tx,
+          )
+          paymentId = payment.paymentId
+        }
+        if (!paymentId) throw new BookingError('SEAT_NOT_ALLOWED', 'Payment is required before assigning this seat')
+        const payment = await tx.payment.findFirst({
+          where: {
+            id: paymentId,
+            booking_id: reference.booking_coupon.booking_id,
+            purchase_ref: `seat_assignment:${lockId}`,
+            status: 'captured',
+            currency: 'USD',
+            amount_total: held.fee_amount,
+          },
+          select: { id: true },
+        })
+        if (!payment) throw new BookingError('SEAT_NOT_ALLOWED', 'Seat payment has not been captured for this purchase')
+      }
       const override = options.staffOverride
       let staff: { id: string; role: { code: string } } | null = null
       if (override) {
@@ -216,6 +248,7 @@ export class CheckinSeatProvider implements SeatProvider {
           assigned_at: now,
           hold_expires_at: null,
           updated_at: now,
+          ...(paymentId ? { payment_id: paymentId } : {}),
           ...(staff ? { assigned_by_staff_id: staff.id } : {}),
         },
       })

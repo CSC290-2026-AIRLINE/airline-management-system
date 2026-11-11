@@ -20,12 +20,15 @@ describe('CheckinSeatProvider', () => {
   const query = jest.fn()
   const staff = { findFirst: jest.fn() }
   const audit = { write: jest.fn() }
+  const checkout = { charge: jest.fn() }
+  const payment = { findFirst: jest.fn() }
   const tx = {
     $queryRaw: query,
     seat_assignment: { findUnique, findUniqueOrThrow, updateMany, update, create },
     booking_coupon: { findUnique: findCouponById, findFirst: findCoupon },
     check_in: { findFirst: findCheckIn },
     staff,
+    payment,
   }
   const db = {
     booking_coupon: { findFirst: findCoupon },
@@ -40,6 +43,7 @@ describe('CheckinSeatProvider', () => {
     { now: () => now },
     layouts,
     audit as unknown as AuditService,
+    checkout,
   )
 
   beforeEach(() => {
@@ -48,6 +52,8 @@ describe('CheckinSeatProvider', () => {
     findCheckIn.mockResolvedValue(null)
     staff.findFirst.mockResolvedValue({ id: 'staff', role: { code: 'admin' } })
     audit.write.mockResolvedValue({ id: 'audit', seq: '1' })
+    checkout.charge.mockResolvedValue({ paymentId: 'payment', amount: 12, currency: 'USD' })
+    payment.findFirst.mockResolvedValue({ id: 'payment' })
     findCoupon.mockResolvedValue({
       id: 'coupon',
       booking_id: 'booking',
@@ -112,6 +118,58 @@ describe('CheckinSeatProvider', () => {
     })
     await expect(provider.confirm('lock')).rejects.toMatchObject({ code: 'SEAT_NOT_ALLOWED' })
     expect(update).not.toHaveBeenCalled()
+  })
+
+  it('captures the development payment and assigns the paid seat in one transaction', async () => {
+    findUniqueOrThrow.mockResolvedValue({
+      id: 'lock',
+      flight_id: 'flight',
+      seat_code: '12A',
+      status: 'held',
+      hold_expires_at: new Date(now.getTime() + 300_000),
+      fee_amount: 12,
+      payment_id: null,
+      booking_coupon_id: 'coupon',
+    })
+    await provider.confirm('lock', { payWithCheckout: true })
+    expect(checkout.charge).toHaveBeenCalledWith(
+      { bookingId: 'booking', amount: 12, currency: 'USD', idempotencyKey: 'seat:lock', purchaseRef: 'seat_assignment:lock' },
+      tx,
+    )
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ payment_id: 'payment', status: 'assigned' }) }),
+    )
+  })
+
+  it('does not charge an expired hold', async () => {
+    findUniqueOrThrow.mockResolvedValue({
+      id: 'lock',
+      flight_id: 'flight',
+      seat_code: '12A',
+      status: 'held',
+      hold_expires_at: now,
+      fee_amount: 12,
+      payment_id: null,
+    })
+    await expect(provider.confirm('lock', { payWithCheckout: true })).rejects.toMatchObject({ code: 'SEAT_UNAVAILABLE' })
+    expect(checkout.charge).not.toHaveBeenCalled()
+    expect(updateMany).not.toHaveBeenCalled()
+  })
+
+  it('does not release the previous seat if the payment is not captured for this purchase', async () => {
+    findUniqueOrThrow.mockResolvedValue({
+      id: 'lock',
+      flight_id: 'flight',
+      seat_code: '12A',
+      status: 'held',
+      hold_expires_at: new Date(now.getTime() + 300_000),
+      fee_amount: 12,
+      payment_id: 'unrelated',
+      booking_coupon_id: 'coupon',
+    })
+    payment.findFirst.mockResolvedValue(null)
+    await expect(provider.confirm('lock')).rejects.toMatchObject({ code: 'SEAT_NOT_ALLOWED' })
+    expect(updateMany).not.toHaveBeenCalled()
   })
 
   it('assigns a valid free seat and releases the previous seat in the same transaction', async () => {

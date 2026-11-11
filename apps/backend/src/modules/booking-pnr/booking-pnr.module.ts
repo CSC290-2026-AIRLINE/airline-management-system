@@ -63,11 +63,20 @@ import { StaffAssistanceController } from './assistance/staff-assistance.control
 import { StaffAssistanceService } from './assistance/staff-assistance.service'
 import { BookingAssistanceController } from './assistance/booking-assistance.controller'
 import { BookingAssistanceService } from './assistance/booking-assistance.service'
+import { FlightEventsService } from './flight-events/flight-events.service'
+import { SeatPaymentService } from './seats/seat-payment.service'
+import { DevSeatPaymentController } from './seats/dev-seat-payment.controller'
+import { FlightEventHandlerService } from './flight-events/flight-event-handler.service'
+import { FlightEventCatchupService } from './flight-events/flight-event-catchup.service'
+import { FlightCancellationProcessor } from './flight-events/flight-cancellation.processor'
+import { AircraftChangeProcessor } from './flight-events/aircraft-change.processor'
+import { FlightEventNotificationsService } from './flight-events/flight-event-notifications.service'
 
 @Module({
   // Feature 15's audit writer, for the staff cancellation entry (B7).
   imports: [AuditModule],
   controllers: [
+    DevSeatPaymentController,
     DevConfirmController,
     BookingsController,
     CustomerBookingsController,
@@ -82,6 +91,13 @@ import { BookingAssistanceService } from './assistance/booking-assistance.servic
     BookingAssistanceController,
   ],
   providers: [
+    SeatPaymentService,
+    FlightEventsService,
+    FlightEventHandlerService,
+    FlightEventCatchupService,
+    FlightCancellationProcessor,
+    AircraftChangeProcessor,
+    FlightEventNotificationsService,
     SeatMapService,
     SeatChangeService,
     CheckinSeatMapAdapter,
