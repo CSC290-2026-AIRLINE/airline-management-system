@@ -28,7 +28,9 @@ export function BookingLayout({ children }: { children: ReactNode }) {
             <Link
               key={link.href}
               to={link.href}
-              aria-current={link.match.some((path) => location.pathname.startsWith(path)) ? 'page' : undefined}
+              aria-current={
+                link.match.some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`)) ? 'page' : undefined
+              }
             >
               {link.label}
             </Link>
