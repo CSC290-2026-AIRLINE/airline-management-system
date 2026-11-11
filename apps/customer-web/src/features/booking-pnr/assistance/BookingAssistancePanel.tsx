@@ -9,10 +9,20 @@ import './booking-assistance-panel.css'
 
 export function BookingAssistancePanel({ reference, onChanged }: { reference: string; onChanged: () => void }) {
   const { fetchWithAuth } = useAppAuth()
-  const { booking, reload } = useBooking(reference)
+  const { booking, reload, isLoading, error } = useBooking(reference)
   const [passengerId, setPassengerId] = useState<string | null>(null)
   const [segmentId, setSegmentId] = useState('')
 
+  if (isLoading) return <p role="status">Loading assistance requests…</p>
+  if (error)
+    return (
+      <section className="booking-assistance" aria-label="Special assistance">
+        <p role="alert">Could not load assistance requests.</p>
+        <button type="button" onClick={() => void reload()}>
+          Try again
+        </button>
+      </section>
+    )
   if (!booking || !['held', 'confirmed'].includes(booking.status)) return null
 
   return (
@@ -35,7 +45,11 @@ export function BookingAssistancePanel({ reference, onChanged }: { reference: st
             {passenger.firstName} {passenger.lastName}
           </h3>
           {booking.serviceRequests
-            .filter((item) => item.bookingPassengerId === passenger.bookingPassengerId)
+            .filter(
+              (item) =>
+                item.bookingPassengerId === passenger.bookingPassengerId &&
+                (!segmentId || item.bookingSegmentId === null || item.bookingSegmentId === segmentId),
+            )
             .map((item) => (
               <p key={item.serviceRequestId}>
                 {item.serviceCode} · <AssistanceStatus status={item.status} />

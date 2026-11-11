@@ -18,6 +18,8 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [revision, setRevision] = useState(0)
+  const [bookingLoading, setBookingLoading] = useState(true)
+  const [bookingError, setBookingError] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -25,10 +27,18 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
       .then(async (response) => {
         if (!response.ok) throw new Error('Booking unavailable')
         const data = (await response.json()) as BookingDetail
-        if (!controller.signal.aborted) setBooking(data)
+        if (!controller.signal.aborted) {
+          setBooking(data)
+          setBookingError(false)
+          setBookingLoading(false)
+        }
       })
       .catch(() => {
-        if (!controller.signal.aborted) setBooking(null)
+        if (!controller.signal.aborted) {
+          setBooking(null)
+          setBookingError(true)
+          setBookingLoading(false)
+        }
       })
     return () => controller.abort()
   }, [fetchWithAuth, reference, revision])
@@ -51,6 +61,16 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
     [fetchWithAuth],
   )
 
+  if (bookingLoading) return <p role="status">Loading booking seats…</p>
+  if (bookingError)
+    return (
+      <section className="seat-selection" aria-label="Manage seats">
+        <p role="alert">Could not load booking seats.</p>
+        <button type="button" onClick={() => setRevision((value) => value + 1)}>
+          Try again
+        </button>
+      </section>
+    )
   if (!booking || booking.status !== 'confirmed') return null
   const coupon = booking.coupons.find((item) => item.couponId === selectedCoupon)
   const segment = booking.segments.find((item) => item.bookingSegmentId === coupon?.bookingSegmentId)
