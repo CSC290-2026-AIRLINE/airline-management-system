@@ -7,11 +7,6 @@ import type { PaymentStatus, ReceiptDocumentType, ReceiptFilter, ReceiptStatus, 
  * pages.
  */
 
-/** `58.2` + `USD` → `$58.20`. */
-export function formatMoney(amount: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
-}
-
 /** `2026-11-06T10:12:00.000Z` → `Nov 6, 2026, 10:12 AM`. */
 export function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
@@ -22,15 +17,35 @@ export function formatDateTime(iso: string): string {
  *
  * A date-only value is a calendar day, so it is read in the local time zone. Letting it fall back to UTC would move
  * the day back one for anyone west of Greenwich.
+ *
+ * A flight that has already gone is written without its weekday — `19 Oct 2026` — which is how the frames write the
+ * receipts of the flights that have flown.
  */
-export function formatFlightDate(iso: string): string {
+export function formatFlightDate(iso: string, flown = false): string {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`) : new Date(iso)
-  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(date)
+  const options: Intl.DateTimeFormatOptions = flown
+    ? { day: 'numeric', month: 'short', year: 'numeric' }
+    : { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }
+  return new Intl.DateTimeFormat('en-GB', options).format(date)
 }
 
-/** `40000` → `40,000 miles`. */
-export function formatMiles(miles: number): string {
-  return `${new Intl.NumberFormat('en-US').format(miles)} miles`
+/** `2026-11-04T09:14:00.000Z` → `4 Nov 2026`, the day a receipt was issued. */
+export function formatShortDate(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(date)
+}
+
+/**
+ * The note that sits between the flight number and the day.
+ *
+ * A booking paid for with miles is an award seat — that is the frame's word for it. The API does not carry the fare type
+ * yet, so the note comes from the miles on the receipt.
+ *
+ * TODO(F5a): take the fare type from the API and delete this.
+ */
+export function tripNote(receipt: { miles_redeemed: number | null }): string | null {
+  return receipt.miles_redeemed ? 'award seat' : null
 }
 
 /**
@@ -123,18 +138,29 @@ export const STATUS_BADGE_CLASSES: Record<PaymentStatus, string> = {
  * - `refundable` — the fare rules allow it.
  * - `not_refundable` — nothing to ask for; the receipt says why.
  * - `ask_staff` — the flight has already gone, so a person has to decide.
+ *
+ * `action` is the button the frame puts under the receipt, and it is null when the frame puts no button at all.
  */
-export const REFUND_STATE_COPY: Record<RefundState, { label: string; note: string }> = {
+export const REFUND_STATE_COPY: Record<RefundState, { label: string; note: string; action: string | null }> = {
   refundable: {
     label: 'Refundable',
     note: 'This fare can be refunded. Refund requests are handled by staff.',
+    action: 'Request a refund',
   },
   not_refundable: {
     label: 'Not refundable',
-    note: 'This fare cannot be refunded.',
+    note: 'Flown more than 14 days ago: refunds are closed for this booking.',
+    action: null,
   },
   ask_staff: {
     label: 'Ask staff',
-    note: 'This flight has already departed, so a staff member has to review the refund.',
+    note: 'This flight has flown, so it is outside the fare rules. Staff can approve a goodwill refund.',
+    action: 'Ask staff to review',
   },
 }
+
+/** What a cargo receipt says about its refunds: they belong to the cargo booking page. */
+export const CARGO_REFUND_NOTE = 'Cargo cancellations and refunds are handled from the cargo booking page.'
+
+/** What a booking paid for with miles says about them: they go back to the balance. */
+export const MILES_REFUND_NOTE = 'Miles are returned to your balance and cash goes back to the card.'

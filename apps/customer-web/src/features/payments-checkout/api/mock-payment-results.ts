@@ -1,9 +1,9 @@
 import type { PaymentResultDto } from '../payment-result'
 
 /** The receipts the result page points at, so the buttons open the document they name. */
-const CARD_RECEIPT_ID = 'rc_00000000-0000-4000-8000-000000000001'
-const MILES_RECEIPT_ID = 'rc_00000000-0000-4000-8000-000000000002'
-const CARGO_RECEIPT_ID = 'rc_00000000-0000-4000-8000-000000000005'
+const CARD_RECEIPT_ID = 'RCT-0042'
+const MILES_RECEIPT_ID = 'RCT-0044'
+const CARGO_RECEIPT_ID = 'INV-0008'
 
 /**
  * The note the frames put under the heading of the pages that need it.

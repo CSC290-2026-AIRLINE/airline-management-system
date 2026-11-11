@@ -1,4 +1,4 @@
-import { formatAmount, formatFlightDate } from '../receipt-copy'
+import { formatAmount, formatFlightDate, formatShortDate, tripNote } from '../receipt-copy'
 import { ReceiptStateBadge } from './ReceiptStatusBadge'
 import type { ReceiptSummaryDto } from '../types'
 
@@ -8,20 +8,26 @@ interface ReceiptTableProps {
   onOpen: (receipt: ReceiptSummaryDto) => void
 }
 
-/** The trip, the way the frames write it: the flight and the day, or the cargo and its waybill. */
+/**
+ * The line under the route: the flight and its day, or the cargo's waybill.
+ *
+ * The frames write the flight as `Flight FY214 · Tue 17 Nov 2026` — the flight, the note that sits between it and the
+ * day, and the day itself. A flight that has already gone has no weekday.
+ */
 function tripLine(receipt: ReceiptSummaryDto): string {
   if (receipt.source_feature === 17) return receipt.title
-  if (receipt.flight_number && receipt.flight_date) {
-    return `Flight ${receipt.flight_number} · ${formatFlightDate(receipt.flight_date)}`
-  }
-  if (receipt.flight_number) return `Flight ${receipt.flight_number}`
-  if (receipt.route) return receipt.route
-  return receipt.source_feature_label
+  if (!receipt.flight_number) return receipt.route ?? receipt.source_feature_label
+
+  const parts = [`Flight ${receipt.flight_number}`]
+  const note = tripNote(receipt)
+  if (note) parts.push(note)
+  if (receipt.flight_date) parts.push(formatFlightDate(receipt.flight_date, receipt.receipt_status === 'flown'))
+  return parts.join(' · ')
 }
 
 /** The day the receipt was issued — what the phone frame shows under the document number. */
 function receiptDate(receipt: ReceiptSummaryDto): string {
-  return formatFlightDate(receipt.flight_date ?? receipt.issued_at)
+  return formatShortDate(receipt.issued_at)
 }
 
 /**
@@ -96,9 +102,13 @@ export function ReceiptTable({ receipts, onOpen }: ReceiptTableProps) {
                 }}
                 className="cursor-pointer border-b border-line last:border-b-0 hover:bg-accent focus-visible:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
               >
-                <td className="px-5 py-4 text-sm font-medium text-foreground">{receipt.document_number}</td>
-                <td className="px-5 py-4 text-sm text-foreground">{tripLine(receipt)}</td>
-                <td className="px-5 py-4 text-sm tracking-wide text-foreground">{receipt.booking_reference ?? '—'}</td>
+                <td className="px-5 py-4 font-mono text-sm font-medium text-foreground">{receipt.document_number}</td>
+                <td className="px-5 py-4">
+                  {/* The route sits above the trip, the way the frames stack them. */}
+                  {receipt.route && <span className="block text-sm font-semibold text-foreground">{receipt.route}</span>}
+                  <span className="block text-xs text-muted-foreground">{tripLine(receipt)}</span>
+                </td>
+                <td className="px-5 py-4 font-mono text-sm tracking-wide text-foreground">{receipt.booking_reference ?? '—'}</td>
                 <td className="px-5 py-4 text-sm text-foreground">{receipt.paid_with}</td>
                 <td className="px-5 py-4 text-right text-sm font-semibold text-foreground tabular-nums">{formatAmount(receipt.amount)}</td>
                 <td className="px-5 py-4">

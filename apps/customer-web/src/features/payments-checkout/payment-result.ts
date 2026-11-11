@@ -20,6 +20,11 @@ export const PAYMENT_RESULT_STATES = [
 ] as const
 export type PaymentResultState = (typeof PAYMENT_RESULT_STATES)[number]
 
+/** Whether a string from the URL is one of the states the page can show. */
+export function isPaymentResultState(value: string): value is PaymentResultState {
+  return (PAYMENT_RESULT_STATES as readonly string[]).includes(value)
+}
+
 /** The state's name, in the words the frames use. */
 export const PAYMENT_RESULT_LABELS: Record<PaymentResultState, string> = {
   processing: 'Processing',

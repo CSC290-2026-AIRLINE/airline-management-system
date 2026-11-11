@@ -30,13 +30,8 @@ export function CustomerShell({ title, action, children }: CustomerShellProps) {
       </main>
 
       <footer className="mx-auto max-w-6xl px-4 pb-8 max-phone:px-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="m-0 text-sm text-muted-foreground">Prototype with sample data. Payments, cards and amounts are fictional.</p>
-          {/* The frames put "Book" at the foot of the page. The booking feature is not in this app yet. */}
-          <span aria-disabled="true" title="Coming with the booking feature" className="cursor-not-allowed text-sm font-medium text-foreground">
-            Book
-          </span>
-        </div>
+        {/* The frames put nothing else at the foot of the page — the prototype note is the last line. */}
+        <p className="m-0 text-sm text-muted-foreground">Prototype with sample data. Payments, cards and amounts are fictional.</p>
       </footer>
     </div>
   )

@@ -16,37 +16,36 @@ const INITIAL: UseReceiptState = { loading: true, error: null, receipt: null, no
 /**
  * Loads one receipt by id.
  *
- * The state is reset during render when the id changes, rather than inside the effect body: the
- * `react-hooks/set-state-in-effect` rule rejects that, and resetting during render is React's own pattern for
- * "the props changed, the old answer is stale".
+ * The answer is stored together with the id it was loaded for, and what the page shows is derived during render: an
+ * answer that belongs to a different id is stale, so the page falls back to the loading state until the new one
+ * arrives. Deriving it keeps the reset out of the effect body, which the `react-hooks/set-state-in-effect` rule
+ * rejects, and out of the render body, which the `react-hooks/set-state-in-render` rule rejects.
  *
  * TODO(F5a): swap the mock API for TanStack Query once the shared setup lands (see the customer-web CLAUDE.md).
  */
 export function useReceipt(receiptId: string): UseReceiptState {
-  const [state, setState] = useState<UseReceiptState>(INITIAL)
-  const [loadedId, setLoadedId] = useState<string | null>(null)
-
-  if (loadedId !== receiptId) {
-    setLoadedId(receiptId)
-    setState(INITIAL)
-  }
+  const [loaded, setLoaded] = useState<{ id: string; state: UseReceiptState }>(() => ({ id: receiptId, state: INITIAL }))
 
   useEffect(() => {
     let cancelled = false
     getReceipt(receiptId)
       .then((receipt) => {
         if (cancelled) return
-        setState({ loading: false, error: null, receipt, notFound: false })
+        setLoaded({ id: receiptId, state: { loading: false, error: null, receipt, notFound: false } })
       })
       .catch((e: unknown) => {
         if (cancelled) return
         const message = e instanceof Error ? e.message : String(e)
-        setState({ loading: false, error: message, receipt: null, notFound: /^\s*404\b/.test(message) })
+        setLoaded({
+          id: receiptId,
+          state: { loading: false, error: message, receipt: null, notFound: /^\s*404\b/.test(message) },
+        })
       })
     return () => {
       cancelled = true
     }
   }, [receiptId])
 
-  return state
+  /* An answer loaded for another receipt is stale, so it is not shown while the new one is on its way. */
+  return loaded.id === receiptId ? loaded.state : INITIAL
 }

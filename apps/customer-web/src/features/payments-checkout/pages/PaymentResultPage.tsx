@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { CircleAlert } from 'lucide-react'
 import { Card, CardContent } from '@customer-web/components/ui/card'
 import { Skeleton } from '@customer-web/components/ui/skeleton'
@@ -8,16 +8,23 @@ import { PaymentResultCard } from '../components/PaymentResultCard'
 import { usePaymentResults } from '../hooks/usePaymentResults'
 import { PAYMENT_RESULT_LABELS, type PaymentResultState } from '../payment-result'
 
+interface PaymentResultPageProps {
+  /** Which state to show. The route reads it from `?state=`, so every frame has an address of its own. */
+  initialState?: PaymentResultState
+}
+
 /**
  * Where Stripe sends the customer back to after the checkout.
  *
  * The page says what the payment is doing: still confirming, paid, paid with miles, a paid cargo booking, a capture
  * that is still running, a declined card or a hold that ran out. Each of those is a different screen in the frames, so
- * the states can be switched at the foot of the page — the prototype stands in for the API the real page polls.
+ * the states can be switched at the foot of the page — and each one has its own URL, so a state can be linked to.
  */
-export function PaymentResultPage() {
+export function PaymentResultPage({ initialState }: PaymentResultPageProps) {
+  const navigate = useNavigate()
   const { loading, error, results } = usePaymentResults()
-  const [state, setState] = useState<PaymentResultState>('paid')
+  /* The URL is the state: the chip writes it, and the browser's back button walks it. */
+  const state = initialState ?? 'paid'
   const result = results.find((item) => item.state === state) ?? null
 
   return (
@@ -65,7 +72,7 @@ export function PaymentResultPage() {
             <FilterChips
               ariaLabel="Show a payment state"
               value={state}
-              onChange={setState}
+              onChange={(next) => void navigate({ to: '/payments/result', search: { state: next }, replace: true })}
               options={results.map((item) => ({ value: item.state, label: PAYMENT_RESULT_LABELS[item.state] }))}
             />
           </div>

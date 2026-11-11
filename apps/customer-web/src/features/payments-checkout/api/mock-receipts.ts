@@ -12,6 +12,7 @@ import type { ReceiptDetailDto } from '../types'
  * once it is live.
  *
  * The dates are fixed rather than relative to "now", so the list does not reorder itself while you are looking at it.
+ * A receipt for a flight that has already gone was issued on the day it flew, which is the date the phone frame shows.
  *
  * TODO(F5a): delete this file when the customer receipts come from `GET /api/receipts`.
  */
@@ -69,7 +70,7 @@ export const MOCK_RECEIPTS: ReceiptDetailDto[] = [
     currency: 'USD',
     issued_at: '2026-11-04T09:40:00.000Z',
     booking_reference: 'W4NB8T',
-    route: 'BKK → CNX',
+    route: 'BKK → YGN',
     flight_number: 'FY102',
     flight_date: '2026-11-21',
     refund_state: 'refundable',
@@ -99,9 +100,9 @@ export const MOCK_RECEIPTS: ReceiptDetailDto[] = [
     voucher_amount: 0,
     card_amount: 412,
     currency: 'USD',
-    issued_at: '2026-11-02T16:20:00.000Z',
+    issued_at: '2026-10-19T16:20:00.000Z',
     booking_reference: 'M3XP9D',
-    route: 'BKK → CNX',
+    route: 'BKK → YGN',
     flight_number: 'FY102',
     flight_date: '2026-10-19',
     refund_state: 'ask_staff',
@@ -128,9 +129,9 @@ export const MOCK_RECEIPTS: ReceiptDetailDto[] = [
     voucher_amount: 0,
     card_amount: 298,
     currency: 'USD',
-    issued_at: '2026-10-31T08:44:00.000Z',
+    issued_at: '2026-10-02T08:44:00.000Z',
     booking_reference: 'B8TN4W',
-    route: 'BKK → SIN',
+    route: 'YGN → MDL',
     flight_number: 'FY310',
     flight_date: '2026-10-02',
     refund_state: 'not_refundable',

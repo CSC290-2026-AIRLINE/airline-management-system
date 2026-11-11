@@ -75,10 +75,16 @@ export async function listReceipts(query: ReceiptQuery = {}): Promise<ReceiptLis
   return { items, total: filtered.length, counts }
 }
 
-/** One receipt. Throws the way the API throws, so the page can show the same "not found" state either way. */
+/**
+ * One receipt. Throws the way the API throws, so the page can show the same "not found" state either way.
+ *
+ * The id or the receipt number both work — `RCT-0042` is what the customer sees on the document, so it is what the
+ * deep link carries.
+ */
 export async function getReceipt(receiptId: string): Promise<ReceiptDetailDto> {
   await delay(LATENCY_MS)
-  const found = MOCK_RECEIPTS.find((receipt) => receipt.id === receiptId)
+  const needle = receiptId.trim().toLowerCase()
+  const found = MOCK_RECEIPTS.find((receipt) => receipt.id.toLowerCase() === needle || receipt.document_number.toLowerCase() === needle)
   if (!found) {
     throw new Error(`404 Not Found: Receipt ${receiptId} not found`)
   }

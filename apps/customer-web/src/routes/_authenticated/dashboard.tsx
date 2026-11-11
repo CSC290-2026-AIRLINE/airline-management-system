@@ -14,12 +14,15 @@ function Dashboard() {
     <div>
       <h1>Welcome{user ? `, ${clerkUser?.firstName ?? user.email}` : ''}</h1>
       <p>{clerkUser?.primaryEmailAddress?.emailAddress}</p>
-      {/* Feature 5a: the entry point to the customer's receipts. */}
-      <p>
+      {/* Feature 5a: the entry points to the customer's receipts and to the payment result page. */}
+      <div className="flex flex-col items-start gap-1">
         <Link to="/receipts" className="text-sm text-primary underline underline-offset-4">
           Your receipts
         </Link>
-      </p>
+        <Link to="/payments/result" className="text-sm text-primary underline underline-offset-4">
+          Payment result
+        </Link>
+      </div>
       <button type="button" className="counter" onClick={() => void logout()} disabled={isLoading}>
         Log out
       </button>
