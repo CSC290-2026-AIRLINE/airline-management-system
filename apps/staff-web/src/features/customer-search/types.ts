@@ -16,6 +16,16 @@
  */
 export type PersonFilter = 'all' | 'account-holder' | 'traveller'
 
+/**
+ * The kind of a person — an account holder or a traveller — in the URL's kebab-case
+ * spelling.
+ *
+ * The backend spells the same thing in camelCase (`Person.type`, and the `type` it
+ * returns on every row); the URL spells it in kebab-case, like {@link PersonFilter}.
+ * `lib/searchParams.ts` translates on the way out.
+ */
+export type PersonKind = Exclude<PersonFilter, 'all'>
+
 /** `passenger.gender` is a `CHECK (gender IN ('M', 'F', 'X'))` on the column. */
 export type Gender = 'F' | 'M' | 'X'
 

@@ -20,7 +20,13 @@ interface CustomerDetailProps {
   /** Optional `← Back` control; mobile always shows it because the list is hidden. */
   onBack?: () => void
   onClose?: () => void
-  onSelectPerson: (personId: string) => void
+  /**
+   * Opens another profile — a saved traveller or a linked account.
+   *
+   * The whole person is passed, not just the id: the caller's kind decides which
+   * detail route the new profile is read from.
+   */
+  onSelectPerson: (person: Person) => void
   onCorrectIdentity?: (person: Person) => void
 }
 
@@ -107,7 +113,7 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
             <ul className="cs-relations">
               {person.savedTravellers.map((saved) => (
                 <li key={saved.person.id}>
-                  <button type="button" className="cs-relations__item" onClick={() => onSelectPerson(saved.person.id)}>
+                  <button type="button" className="cs-relations__item" onClick={() => onSelectPerson(saved.person)}>
                     <Avatar person={saved.person} size="sm" />
                     <span className="cs-relations__name">{personName(saved.person)}</span>
                     {saved.relationship ? <span className={relationshipClass(saved.relationship)}>{saved.relationship}</span> : null}
@@ -136,14 +142,14 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
                 </thead>
                 <tbody>
                   {person.savedTravellers.map((saved) => (
-                    <tr key={saved.person.id} className="cs-relations-table__row" onClick={() => onSelectPerson(saved.person.id)}>
+                    <tr key={saved.person.id} className="cs-relations-table__row" onClick={() => onSelectPerson(saved.person)}>
                       <td>
                         <button
                           type="button"
                           className="cs-relations-table__link"
                           onClick={(event) => {
                             event.stopPropagation()
-                            onSelectPerson(saved.person.id)
+                            onSelectPerson(saved.person)
                           }}
                         >
                           {personName(saved.person)}
@@ -160,7 +166,7 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
                           className="cs-link"
                           onClick={(event) => {
                             event.stopPropagation()
-                            onSelectPerson(saved.person.id)
+                            onSelectPerson(saved.person)
                           }}
                         >
                           View
@@ -181,7 +187,7 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
           <ul className="cs-linked">
             {person.linkedAccounts.map((link) => (
               <li key={link.person.id}>
-                <button type="button" className="cs-linked__item" onClick={() => onSelectPerson(link.person.id)}>
+                <button type="button" className="cs-linked__item" onClick={() => onSelectPerson(link.person)}>
                   <Avatar person={link.person} />
                   <span className="cs-linked__body">
                     <span className="cs-linked__name">
