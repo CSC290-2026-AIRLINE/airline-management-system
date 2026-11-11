@@ -50,6 +50,18 @@ export interface VerifiedReportFlight {
   destination: string
 }
 
+/**
+ * A traveller on a verified booking who holds at least one confirmed coupon ("Whose bag is it?").
+ * Only what the selector needs: no contact details, documents, or other bookings.
+ */
+export interface EligibleTraveller {
+  bookingPassengerId: string
+  displayName: string
+  /** True for the signed-in customer's own passenger. */
+  isYou: boolean
+  flights: VerifiedReportFlight[]
+}
+
 export interface BookingVerification {
   verifyPassenger(input: {
     bookingReference: string
@@ -59,6 +71,18 @@ export interface BookingVerification {
   }): Promise<VerifiedBookingPassenger | null>
 
   listConfirmedFlights(input: { bookingReference: string; surname: string; passengerId: string }): Promise<VerifiedReportFlight[]>
+
+  /** Travellers on the requester's verified booking; empty when the requester does not verify. */
+  listEligibleTravellers(input: { bookingReference: string; surname: string; passengerId: string }): Promise<EligibleTraveller[]>
+
+  /** A traveller on the requester's own verified booking with a confirmed coupon for the flight; null otherwise. */
+  resolveTraveller(input: {
+    bookingReference: string
+    surname: string
+    passengerId: string
+    bookingPassengerId: string
+    flightId: string
+  }): Promise<VerifiedBookingPassenger | null>
 }
 
 export interface CheckedBagOwnership {

@@ -10,6 +10,7 @@ import type {
   BookingVerification,
   CheckedBagLookup,
   DeliveryChoiceSnapshot,
+  EligibleTraveller,
   VerifiedReportFlight,
   ReportRepository,
   CaseNumberSequence,
@@ -182,6 +183,20 @@ export class ReportService {
 
   listConfirmedFlights(access: ReportAccessInput): Promise<VerifiedReportFlight[]> {
     return this.bookings.listConfirmedFlights(access)
+  }
+
+  /**
+   * "Whose bag is it?": the travellers on the requester's booking. A verified requester always sees at least themselves,
+   * so an empty result means verification failed; it gets the same error as every other passenger call.
+   */
+  async listEligibleTravellers(access: ReportAccessInput): Promise<EligibleTraveller[]> {
+    const travellers = await this.bookings.listEligibleTravellers(access)
+
+    if (travellers.length === 0) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
+    }
+
+    return travellers
   }
 
   async cancel(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {

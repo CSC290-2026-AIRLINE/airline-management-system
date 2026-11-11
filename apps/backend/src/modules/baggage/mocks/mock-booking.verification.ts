@@ -1,4 +1,4 @@
-import type { BookingVerification, VerifiedBookingPassenger, VerifiedReportFlight } from '../common/report.ports'
+import type { BookingVerification, EligibleTraveller, VerifiedBookingPassenger, VerifiedReportFlight } from '../common/report.ports'
 
 export interface MockBookingRecord extends VerifiedBookingPassenger {
   bookingReference: string
@@ -33,5 +33,32 @@ export class MockBookingVerification implements BookingVerification {
 
   listConfirmedFlights(): Promise<VerifiedReportFlight[]> {
     return Promise.resolve([])
+  }
+
+  listEligibleTravellers(): Promise<EligibleTraveller[]> {
+    return Promise.resolve([])
+  }
+
+  /** Same-booking rule: the requester must verify, and the chosen traveller must share their booking reference. */
+  async resolveTraveller(input: {
+    bookingReference: string
+    surname: string
+    passengerId: string
+    bookingPassengerId: string
+    flightId: string
+  }): Promise<VerifiedBookingPassenger | null> {
+    const requester = await this.verifyPassenger(input)
+    if (!requester) return null
+
+    const traveller = this.bookings.find(
+      (item) =>
+        item.bookingReference.toUpperCase() === input.bookingReference.toUpperCase() &&
+        item.bookingPassengerId === input.bookingPassengerId &&
+        item.flightId === input.flightId,
+    )
+
+    return traveller
+      ? { bookingPassengerId: traveller.bookingPassengerId, passengerId: traveller.passengerId, flightId: traveller.flightId }
+      : null
   }
 }

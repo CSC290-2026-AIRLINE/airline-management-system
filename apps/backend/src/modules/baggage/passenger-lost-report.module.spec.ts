@@ -9,6 +9,7 @@ import { DbModule } from '@backend/db/db.module'
 import { DbService } from '@backend/db/db.service'
 import { PassengerLostReportController } from './passenger-lost-report.controller'
 import { PassengerLostReportFlightsController } from './passenger-lost-report-flights.controller'
+import { PassengerLostReportTravellersController } from './passenger-lost-report-travellers.controller'
 import { PassengerCaseSummaryService } from './passenger-case-summary.service'
 import { PassengerLostReportModule } from './passenger-lost-report.module'
 import { PassengerDeliveryChoiceService } from './passenger-delivery-choice.service'
@@ -47,6 +48,7 @@ describe('PassengerLostReportModule dependency injection', () => {
     expect(moduleRef.get(PassengerLostReportController)).toBeInstanceOf(PassengerLostReportController)
     expect(moduleRef.get(BagMatchingService)).toBeInstanceOf(BagMatchingService)
     expect(moduleRef.get(PassengerLostReportFlightsController)).toBeInstanceOf(PassengerLostReportFlightsController)
+    expect(moduleRef.get(PassengerLostReportTravellersController)).toBeInstanceOf(PassengerLostReportTravellersController)
     expect(moduleRef.get(PassengerCaseSummaryService)).toBeInstanceOf(PassengerCaseSummaryService)
     expect(moduleRef.get(PassengerDeliveryChoiceService)).toBeInstanceOf(PassengerDeliveryChoiceService)
     expect(moduleRef.get(ReportService)).toBeInstanceOf(ReportService)

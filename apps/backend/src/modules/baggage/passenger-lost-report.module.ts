@@ -13,12 +13,13 @@ import { PassengerLostReportController } from './passenger-lost-report.controlle
 import { BaggageCustomerGuard } from './guards/baggage-customer.guard'
 import { PassengerDeliveryChoiceService } from './passenger-delivery-choice.service'
 import { PassengerLostReportFlightsController } from './passenger-lost-report-flights.controller'
+import { PassengerLostReportTravellersController } from './passenger-lost-report-travellers.controller'
 import { PassengerCaseSummaryService } from './passenger-case-summary.service'
 import { LOST_REPORT_PHOTO_S3_CLIENT, LostReportPhotoStorage } from './lost-report-photo.storage'
 
 @Module({
   imports: [AuditModule, BaggageModule],
-  controllers: [PassengerLostReportController, PassengerLostReportFlightsController],
+  controllers: [PassengerLostReportController, PassengerLostReportFlightsController, PassengerLostReportTravellersController],
   providers: [
     BaggageCustomerGuard,
     PassengerDeliveryChoiceService,

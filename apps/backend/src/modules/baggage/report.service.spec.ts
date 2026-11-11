@@ -340,3 +340,59 @@ describe('ReportService', () => {
     })
   })
 })
+
+describe('ReportService.listEligibleTravellers', () => {
+  const access = { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P001' }
+
+  function serviceWith(listEligibleTravellers: jest.Mock) {
+    const bookings = new MockBookingVerification()
+    bookings.listEligibleTravellers = listEligibleTravellers
+    return new ReportService(
+      new InMemoryReportRepository(),
+      bookings,
+      new MockCheckedBagLookup([]),
+      new InMemoryCaseNumberSequence(),
+      new MockSimulationClock(),
+      { upload: jest.fn(), remove: jest.fn(), retrieve: jest.fn() },
+    )
+  }
+
+  it('returns the travellers on the verified booking', async () => {
+    const travellers = [
+      { bookingPassengerId: 'BP001', displayName: 'Anna Eriksson', isYou: true, flights: [] },
+      { bookingPassengerId: 'BP002', displayName: 'Erik Eriksson', isYou: false, flights: [] },
+    ]
+    const list = jest.fn().mockResolvedValue(travellers)
+
+    await expect(serviceWith(list).listEligibleTravellers(access)).resolves.toEqual(travellers)
+    expect(list).toHaveBeenCalledWith(access)
+  })
+
+  it('rejects with the generic verification error when the requester is not on the booking', async () => {
+    await expect(serviceWith(jest.fn().mockResolvedValue([])).listEligibleTravellers(access)).rejects.toMatchObject({
+      code: 'INVALID_REPORT',
+      message: 'Booking verification failed',
+    })
+  })
+})
+
+describe('MockBookingVerification.resolveTraveller', () => {
+  const bookings = new MockBookingVerification([
+    { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P001', bookingPassengerId: 'BP001', flightId: 'F001' },
+    { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P002', bookingPassengerId: 'BP002', flightId: 'F001' },
+    { bookingReference: 'XYZ789', surname: 'Jones', passengerId: 'P003', bookingPassengerId: 'BP003', flightId: 'F001' },
+  ])
+  const requester = { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P001' }
+
+  it('resolves a co-traveller on the same booking', async () => {
+    await expect(bookings.resolveTraveller({ ...requester, bookingPassengerId: 'BP002', flightId: 'F001' })).resolves.toEqual({
+      bookingPassengerId: 'BP002',
+      passengerId: 'P002',
+      flightId: 'F001',
+    })
+  })
+
+  it('rejects a traveller from an unrelated booking', async () => {
+    await expect(bookings.resolveTraveller({ ...requester, bookingPassengerId: 'BP003', flightId: 'F001' })).resolves.toBeNull()
+  })
+})
