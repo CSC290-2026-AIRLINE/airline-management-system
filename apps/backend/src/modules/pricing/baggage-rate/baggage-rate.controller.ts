@@ -1,4 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { BaggageChargeQueryDto } from './dto/baggage-charge-query.dto'
 import { CreateBaggageRateDto } from './dto/create-baggage-rate.dto'
 import { ListBaggageRatesDto } from './dto/list-baggage-rates.dto'
@@ -22,19 +24,19 @@ export class BaggageRateController {
   }
 
   @Post()
-  create(@Body() dto: CreateBaggageRateDto) {
-    return this.baggageRateService.create(dto)
+  create(@Body() dto: CreateBaggageRateDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.baggageRateService.create(dto, user.id)
   }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBaggageRateDto) {
-    return this.baggageRateService.update(id, dto)
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBaggageRateDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.baggageRateService.update(id, dto, user.id)
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.baggageRateService.remove(id)
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.baggageRateService.remove(id, user.id)
   }
 }
 

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { PricingAudit } from '../pricing.audit'
 import { PricingErrorCode, pricingError } from '../pricing.errors'
 import { staffIdFor } from '../pricing.staff'
 import { UpdateCurrencyRateDto } from './dto/update-currency-rate.dto'
@@ -15,7 +16,10 @@ const include = { staff: { select: { id: true, staff_code: true, first_name: tru
 
 @Injectable()
 export class CurrencyRateService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
 
   findAll() {
     return this.db.currency_rate.findMany({ include, orderBy: { currency_code: 'asc' } })
@@ -38,11 +42,27 @@ export class CurrencyRateService {
       )
     }
     const staffId = await staffIdFor(this.db, userId)
-    return this.db.currency_rate.upsert({
-      where: { currency_code: code },
-      create: { currency_code: code, ...dto, updated_by: staffId },
-      update: { ...dto, updated_by: staffId, updated_at: new Date() },
-      include,
+    const before = await this.db.currency_rate.findUnique({ where: { currency_code: code }, include })
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.currency_rate.upsert({
+        where: { currency_code: code },
+        create: { currency_code: code, ...dto, updated_by: staffId },
+        update: { ...dto, updated_by: staffId, updated_at: new Date() },
+        include,
+      })
+      await this.audit.write(
+        userId,
+        {
+          action: before ? 'update' : 'create',
+          entityType: 'currency_rate',
+          entityId: code,
+          summary: `${before ? 'Updated' : 'Added'} currency rate ${code}`,
+          before: before ?? undefined,
+          after: row,
+        },
+        tx,
+      )
+      return row
     })
   }
 

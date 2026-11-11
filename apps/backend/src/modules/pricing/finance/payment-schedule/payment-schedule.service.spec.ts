@@ -2,6 +2,8 @@ import { ConflictException, ForbiddenException, NotFoundException } from '@nestj
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../../pricing.audit'
+import { mockAudit } from '../../pricing.testing'
 import { CreatePaymentScheduleDto } from './dto/create-payment-schedule.dto'
 import { PaymentScheduleService } from './payment-schedule.service'
 
@@ -20,6 +22,8 @@ async function errorsFor(body: Record<string, unknown>) {
   const errors = await validate(plainToInstance(CreatePaymentScheduleDto, body), { whitelist: true, forbidNonWhitelisted: true })
   return errors.map((e) => e.property)
 }
+
+const AUDIT_USER = 'user-1'
 
 describe('CreatePaymentScheduleDto', () => {
   it('accepts a valid bill, with or without a description', async () => {
@@ -50,6 +54,7 @@ describe('CreatePaymentScheduleDto', () => {
 
 describe('PaymentScheduleService', () => {
   let service: PaymentScheduleService
+  const audit = mockAudit()
   const db = {
     payment_schedule: {
       findMany: jest.fn(),
@@ -66,10 +71,15 @@ describe('PaymentScheduleService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
+    audit.write.mockResolvedValue(undefined)
+    // The audit entry reads the written row back, so a write must return one.
+    db.payment_schedule.create.mockResolvedValue({ id: 'schedule-new', payee: 'Acme' })
+    db.payment_schedule.update.mockResolvedValue({ id: 'schedule-new', payee: 'Acme' })
+    db.expense.create.mockResolvedValue({ id: 'expense-new' })
     db.staff.findFirst.mockResolvedValue({ id: STAFF_ID })
     // Runs the callback with the same mocks as the transaction client.
     db.$transaction.mockImplementation((work: (tx: typeof db) => unknown) => work(db))
-    service = new PaymentScheduleService(db as unknown as DbService)
+    service = new PaymentScheduleService(db as unknown as DbService, audit as unknown as PricingAudit)
   })
 
   describe('findAll', () => {
@@ -120,6 +130,11 @@ describe('PaymentScheduleService', () => {
       expect(db.payment_schedule.create).toHaveBeenCalledWith({
         data: { ...bill, due_date: new Date('2026-11-30'), created_by: STAFF_ID },
       })
+      expect(audit.write).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ action: 'create', entityType: 'payment_schedule', entityId: 'schedule-new' }),
+        db,
+      )
     })
 
     it('refuses a user with no staff row', async () => {
@@ -134,18 +149,23 @@ describe('PaymentScheduleService', () => {
     it('changes a scheduled bill and sets updated_at', async () => {
       db.payment_schedule.findFirst.mockResolvedValue(scheduled)
 
-      await service.update(SCHEDULE_ID, { amount: 260000, due_date: '2026-12-15' })
+      await service.update(SCHEDULE_ID, { amount: 260000, due_date: '2026-12-15' }, AUDIT_USER)
 
       expect(db.payment_schedule.update).toHaveBeenCalledWith({
         where: { id: SCHEDULE_ID },
         data: { amount: 260000, due_date: new Date('2026-12-15'), updated_at: expect.any(Date) },
       })
+      expect(audit.write).toHaveBeenCalledWith(
+        AUDIT_USER,
+        expect.objectContaining({ action: 'update', entityType: 'payment_schedule', entityId: SCHEDULE_ID, before: scheduled }),
+        db,
+      )
     })
 
     it('refuses a paid schedule with 409', async () => {
       db.payment_schedule.findFirst.mockResolvedValue(paid)
 
-      const error = await service.update(SCHEDULE_ID, { amount: 1 }).catch((e: unknown) => e)
+      const error = await service.update(SCHEDULE_ID, { amount: 1 }, AUDIT_USER).catch((e: unknown) => e)
 
       expect(error).toBeInstanceOf(ConflictException)
       expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'PAYMENT_SCHEDULE_PAID' } })
@@ -155,7 +175,7 @@ describe('PaymentScheduleService', () => {
     it('throws not found for a missing schedule', async () => {
       db.payment_schedule.findFirst.mockResolvedValue(null)
 
-      await expect(service.update(SCHEDULE_ID, { amount: 1 })).rejects.toBeInstanceOf(NotFoundException)
+      await expect(service.update(SCHEDULE_ID, { amount: 1 }, AUDIT_USER)).rejects.toBeInstanceOf(NotFoundException)
       expect(db.payment_schedule.update).not.toHaveBeenCalled()
     })
   })
@@ -164,18 +184,23 @@ describe('PaymentScheduleService', () => {
     it('soft deletes a scheduled bill', async () => {
       db.payment_schedule.findFirst.mockResolvedValue(scheduled)
 
-      await service.remove(SCHEDULE_ID)
+      await service.remove(SCHEDULE_ID, AUDIT_USER)
 
       expect(db.payment_schedule.update).toHaveBeenCalledWith({
         where: { id: SCHEDULE_ID },
         data: { deleted_at: expect.any(Date), updated_at: expect.any(Date) },
       })
+      expect(audit.write).toHaveBeenCalledWith(
+        AUDIT_USER,
+        expect.objectContaining({ action: 'delete', entityType: 'payment_schedule', entityId: SCHEDULE_ID, before: scheduled }),
+        db,
+      )
     })
 
     it('refuses a paid schedule with 409', async () => {
       db.payment_schedule.findFirst.mockResolvedValue(paid)
 
-      await expect(service.remove(SCHEDULE_ID)).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.remove(SCHEDULE_ID, AUDIT_USER)).rejects.toBeInstanceOf(ConflictException)
       expect(db.payment_schedule.update).not.toHaveBeenCalled()
     })
   })
@@ -208,6 +233,14 @@ describe('PaymentScheduleService', () => {
           created_by: STAFF_ID,
         },
       })
+      // The paid bill and its new expense are both audited, inside the same transaction.
+      expect(audit.write).toHaveBeenCalledTimes(2)
+      expect(audit.write).toHaveBeenCalledWith(USER_ID, expect.objectContaining({ action: 'update', entityType: 'payment_schedule' }), db)
+      expect(audit.write).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ action: 'create', entityType: 'expense', entityId: 'expense-new' }),
+        db,
+      )
     })
 
     it('refuses an already paid bill with 409 and creates no expense', async () => {
