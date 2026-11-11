@@ -4,11 +4,12 @@ import { SettingsService } from './settings.service'
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
 describe('SettingsService', () => {
-  const db = { flight_setting: { findMany: jest.fn(), upsert: jest.fn() } }
+  const db = { $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)), flight_setting: { findMany: jest.fn(), upsert: jest.fn() } }
   const service = new SettingsService(db as never)
 
   beforeEach(() => {
     jest.resetAllMocks()
+    db.$transaction.mockImplementation((ops: unknown[]) => Promise.all(ops))
     db.flight_setting.findMany.mockResolvedValue([])
   })
 
@@ -27,6 +28,12 @@ describe('SettingsService', () => {
     expect(db.flight_setting.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ where: { key: 'airline_code' }, create: { key: 'airline_code', value: 'XX' } }),
     )
+  })
+
+  it('saves both keys in one transaction', async () => {
+    await service.update({ holding_limit_minutes: 30, airline_code: 'xx' })
+    expect(db.$transaction).toHaveBeenCalledTimes(1)
+    expect((db.$transaction.mock.calls[0] as unknown[][])[0]).toHaveLength(2)
   })
 
   it.each([

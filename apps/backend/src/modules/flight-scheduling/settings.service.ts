@@ -34,10 +34,13 @@ export class SettingsService {
     if (saves.length === 0 && errors.length === 0) errors.push('send holding_limit_minutes or airline_code')
     if (errors.length) throw new BadRequestException(errors)
 
-    // updated_at is audit metadata, so the real clock is fine. ponytail: updated_by stays empty until staff ids are looked up from the token.
-    for (const { key, value } of saves) {
-      await this.db.flight_setting.upsert({ where: { key }, create: { key, value }, update: { value, updated_at: new Date() } })
-    }
+    // One transaction, so a request that sends both keys saves both or neither. updated_at is audit metadata, so the real clock is
+    // fine. ponytail: updated_by stays empty until staff ids are looked up from the token.
+    await this.db.$transaction(
+      saves.map(({ key, value }) =>
+        this.db.flight_setting.upsert({ where: { key }, create: { key, value }, update: { value, updated_at: new Date() } }),
+      ),
+    )
     return this.get()
   }
 }
