@@ -30,13 +30,17 @@ export class AssistanceQueueService {
     // B owns booking reads. Resolve each booking only once even when it has several requests.
     const passengerByBooking = new Map<string, string>()
     for (const request of requests) passengerByBooking.set(request.booking_id, request.booking_passenger_id)
-    const details = new Map<string, BookingDetail | null>(
-      await Promise.all(
-        [...passengerByBooking].map(
-          async ([bookingId, passengerId]) => [bookingId, await this.bookings.getBookingForPassenger(passengerId)] as const,
-        ),
-      ),
-    )
+    const details = new Map<string, BookingDetail | null>()
+    const lookups = [...passengerByBooking]
+    // The shared port does not yet have a batch method; keep simultaneous reads bounded.
+    for (let offset = 0; offset < lookups.length; offset += 10) {
+      const batch = await Promise.all(
+        lookups
+          .slice(offset, offset + 10)
+          .map(async ([bookingId, passengerId]) => [bookingId, await this.bookings.getBookingForPassenger(passengerId)] as const),
+      )
+      for (const [bookingId, booking] of batch) details.set(bookingId, booking)
+    }
 
     return requests
       .flatMap((request) => {
