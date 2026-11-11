@@ -73,7 +73,13 @@ export class DbAircraftDirectory implements AircraftDirectory {
   async availability(aircraftId: string, from: Date, to: Date): Promise<AircraftAvailability> {
     const aircraft = await this.db.aircraft.findFirst({
       where: { id: aircraftId, deleted_at: null },
-      select: { tail_number: true, entry_into_service_date: true, retired_on: true, aircraft_type: { select: { is_active: true } } },
+      select: {
+        tail_number: true,
+        entry_into_service_date: true,
+        retired_on: true,
+        aircraft_type: { select: { is_active: true } },
+        aircraft_operating_day: { select: { day_of_week: true } },
+      },
     })
     if (!aircraft) return { kind: 'unavailable', rule: 'aircraft_not_found', detail: 'The aircraft does not exist' }
     const [first, last] = [dayOf(from), dayOf(to)]
@@ -87,6 +93,18 @@ export class DbAircraftDirectory implements AircraftDirectory {
     }
     if (!aircraft.aircraft_type.is_active)
       return { kind: 'unavailable', rule: 'type_inactive', detail: `The type of ${tail} is not active` }
+
+    // aircraft_operating_day: no rows means every weekday; otherwise every day the window touches must be listed (1 = Monday).
+    const days = new Set((aircraft.aircraft_operating_day ?? []).map((d) => d.day_of_week))
+    if (days.size > 0) {
+      for (let d = new Date(first); dayOf(d) <= last; d = new Date(d.getTime() + 86_400_000)) {
+        const weekday = d.getUTCDay() || 7
+        if (!days.has(weekday)) {
+          const name = d.toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' })
+          return { kind: 'unavailable', rule: 'not_operating_day', detail: `${tail} does not operate on ${name} (${dayOf(d)})` }
+        }
+      }
+    }
 
     // No period for a day means in service. end_date is the inclusive last day; null is open-ended.
     const period = await this.db.aircraft_status_period.findFirst({
