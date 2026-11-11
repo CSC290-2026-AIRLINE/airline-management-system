@@ -13,7 +13,8 @@ import { Card } from '../components/Card'
 import { TableWrap } from '../components/TableWrap'
 import { STATUS_LABEL } from '../approval-labels'
 import { availabilityChecks } from '../availability'
-import { CONNECTED, partnersFor } from '../connected'
+import { CONNECTED } from '../connected'
+import { usePartners } from '../hooks/usePartners'
 import { capitalize, formatDateTime, localParts, localToIso, WEEKDAYS } from '../format'
 import { useAircraft } from '../hooks/useAircraft'
 import { useDisruptionReasons } from '../hooks/useDisruptionReasons'
@@ -46,6 +47,7 @@ function eventText(e: FlightEventRow) {
 export function FlightDetailPage({ flightId }: { flightId: string }) {
   const { reasons } = useDisruptionReasons()
   const { fetchWithAuth } = useAppAuth()
+  const { partnersFor } = usePartners(fetchWithAuth)
   const { aircraft: fleet } = useAircraft(fetchWithAuth)
   const flight = useResource<FlightDetail>(`/flights/${flightId}`, fetchWithAuth)
   const events = useResource<FlightEventRow[]>(`/flights/${flightId}/events`, fetchWithAuth)
