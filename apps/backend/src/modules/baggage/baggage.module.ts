@@ -12,6 +12,7 @@ import { BagDeliveryController } from './bag-delivery.controller'
 import { BagDeliveryService } from './bag-delivery.service'
 import { BagTrackingService } from './bag-tracking.service'
 import { FoundBagLifecycleService } from './found-bag-lifecycle.service'
+import { FoundBagUnclaimedRunner } from './found-bag-unclaimed.runner'
 import { FoundBagController } from './found-bag.controller'
 import { FoundBagService } from './found-bag.service'
 import { BaggageStaffGuard } from './guards/baggage-staff.guard'
@@ -43,6 +44,8 @@ import { StaffNotificationService } from './staff-notification.service'
     BagTrackingService,
     StationContactService,
     FoundBagLifecycleService,
+    // Marks held bags unclaimed after unclaimed_after_days without a staff request.
+    FoundBagUnclaimedRunner,
     StaffLostReportService,
     BagCostService,
     BagMatchingService,
