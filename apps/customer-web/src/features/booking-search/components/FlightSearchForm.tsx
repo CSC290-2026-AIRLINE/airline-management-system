@@ -149,6 +149,7 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
                 max={key === 'infants' ? value.adults : 9 - value[key === 'adults' ? 'children' : 'adults']}
                 step={1}
                 required
+                className={key === 'adults' ? 'f3-search-adults-input' : undefined}
                 value={value[key]}
                 onChange={(event) => onChange({ ...value, [key]: event.target.value === '' ? 0 : Number(event.target.value) })}
               />

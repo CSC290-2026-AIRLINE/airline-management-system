@@ -4,6 +4,8 @@
   --f3-ink: #0a1424;
   --f3-muted: #677287;
   --f3-border: #d9dfe9;
+  /* Matches the staff console input border (`--color-input` in apps/staff-web/src/index.css). */
+  --f3-input-border: #dbe0eb;
   --f3-line: #e6e8ef;
   --f3-selected: #eaf2ff;
   box-sizing: border-box;
@@ -158,6 +160,14 @@
 }
 .f3-search input::placeholder {
   color: #7b8494;
+}
+.f3-search .f3-search-adults-input {
+  border-color: var(--f3-input-border);
+}
+.f3-search .f3-search-adults-input:focus-visible {
+  outline: none;
+  border-color: var(--f3-primary);
+  box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
 }
 .f3-search-route-fields {
   display: grid;
