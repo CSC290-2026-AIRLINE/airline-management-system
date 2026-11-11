@@ -16,6 +16,13 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit }: AssistanceR
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  function close() {
+    if (saving) return
+    setValue({ serviceCode: null, note: '' })
+    setError(null)
+    onClose()
+  }
+
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
@@ -59,7 +66,7 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit }: AssistanceR
       aria-labelledby="assistance-request-title"
       onCancel={(event) => {
         event.preventDefault()
-        if (!saving) onClose()
+        close()
       }}
     >
       <h2 id="assistance-request-title">Request assistance</h2>
@@ -67,7 +74,7 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit }: AssistanceR
         <AssistanceFields value={value} onChange={setValue} disabled={saving} />
         {error && <p role="alert">{error}</p>}
         <div className="assistance-request-dialog__actions">
-          <button type="button" onClick={onClose} disabled={saving}>
+          <button type="button" onClick={close} disabled={saving}>
             Cancel
           </button>
           <button type="submit" disabled={saving}>
