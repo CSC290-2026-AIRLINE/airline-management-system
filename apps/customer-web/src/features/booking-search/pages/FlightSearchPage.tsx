@@ -1,10 +1,11 @@
-import { Component, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Component, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { FlightSearchForm } from '../components/FlightSearchForm'
 import { validateSearch } from '../components/search-validation'
 import { airportCity } from '../components/airports'
 import type { FlightSearchFormValue } from '../components/contracts'
 import { useBookingSearchApi } from '../api/client'
 import type { CabinAvailability, FlightOption, FlightSearchRequest, FlightSearchResponse } from '../api/types'
+import { defaultFlightSearchValue, type FlightSearchPick, type FlightSearchSort, type FlightSearchUrlState } from '../search-params'
 import '../search.css'
 
 export interface SelectedFlight {
@@ -20,8 +21,14 @@ interface SearchProps {
   tripLink?: { href: string; label: string }
   initialItinerary?: SearchItinerary
   onContinue?: (itinerary: SearchItinerary) => void
+  /** The search state read from the URL. When it is missing the page keeps everything in memory. */
+  urlState?: FlightSearchUrlState
+  /** Called whenever the search state changes, so the route can write it to the URL. */
+  onUrlChange?: (next: FlightSearchUrlState) => void
 }
-type Sort = 'price' | 'departure' | 'duration'
+type Sort = FlightSearchSort
+/** What came back from a search. */
+type SearchOutcome = { status: 'found'; response: FlightSearchResponse } | { status: 'failed'; message: string } | { status: 'stale' }
 const money = (value: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', currencyDisplay: 'code' }).format(value)
 const time = (value: string) =>
@@ -31,6 +38,34 @@ const day = (value: string) =>
     new Date(`${value}T12:00:00Z`),
   )
 const cabins = { economy: 'Economy', premium_economy: 'Premium economy', business: 'Business', first: 'First' }
+
+/** The request the API takes: the form without the cabin, which is a display-only choice for now. */
+function requestFrom(value: FlightSearchFormValue): FlightSearchRequest {
+  const { tripType, legs, adults, children, infants } = value
+  return { tripType, legs, adults, children, infants }
+}
+
+/** The picked fares as they travel in the URL: one entry per leg, `undefined` where nothing is picked. */
+function picksFromSelections(selections: Array<SelectedFlight | undefined>, legCount: number): Array<FlightSearchPick | undefined> {
+  return Array.from({ length: legCount }, (_, index) => {
+    const selection = selections[index]
+    return selection ? { flightId: selection.flight.flightId, fareClassId: selection.fare.fareClassId } : undefined
+  })
+}
+
+/** The picked fares matched back against a fresh result. A fare that is gone or sold out is dropped. */
+function selectionsFromPicks(
+  response: FlightSearchResponse,
+  picks: Array<FlightSearchPick | undefined>,
+): Array<SelectedFlight | undefined> {
+  return response.legs.map((leg, index) => {
+    const pick = picks[index]
+    if (!pick) return undefined
+    const flight = leg.options.find((option) => option.flightId === pick.flightId)
+    const fare = flight?.cabins.find((candidate) => candidate.fareClassId === pick.fareClassId && !candidate.unavailableReason)
+    return flight && fare ? { flight, fare } : undefined
+  })
+}
 
 class SearchBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
@@ -60,19 +95,11 @@ export function FlightSearchPage(props: SearchProps) {
   )
 }
 
-function FlightSearchContent({ onContinue, initialItinerary, tripLink }: SearchProps) {
+function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState, onUrlChange }: SearchProps) {
   const { searchFlights } = useBookingSearchApi()
   const [form, setForm] = useState<FlightSearchFormValue>(
-    initialItinerary
-      ? { ...initialItinerary.request, cabin: initialItinerary.request.cabin ?? 'economy' }
-      : {
-          tripType: 'one_way',
-          legs: [{ origin: '', destination: '', date: '' }],
-          adults: 1,
-          children: 0,
-          infants: 0,
-          cabin: 'economy',
-        },
+    urlState?.form ??
+      (initialItinerary ? { ...initialItinerary.request, cabin: initialItinerary.request.cabin ?? 'economy' } : defaultFlightSearchValue()),
   )
   const [result, setResult] = useState<FlightSearchResponse | null>(
     initialItinerary
@@ -81,11 +108,18 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink }: SearchP
   )
   const [submitted, setSubmitted] = useState<FlightSearchRequest | null>(initialItinerary?.request ?? null)
   const [selected, setSelected] = useState<Array<SelectedFlight | undefined>>(initialItinerary?.selections ?? [])
-  const [isLoading, setLoading] = useState(false)
+  const [isLoading, setLoading] = useState(urlState?.submitted ?? false)
   const [error, setError] = useState<string | null>(null)
-  const [sort, setSort] = useState<Sort>('price')
+  const [sort, setSort] = useState<Sort>(urlState?.sort ?? 'price')
   const sequence = useRef(0)
   const abort = useRef<AbortController | null>(null)
+
+  /* Hands the new state to the route, which writes it to the URL. Without a route (the booking flow, the staff app)
+     the page keeps its state in memory as before. */
+  function persist(next: FlightSearchUrlState) {
+    if (!onUrlChange) return
+    onUrlChange(next)
+  }
 
   function changeForm(value: FlightSearchFormValue) {
     sequence.current++
@@ -96,35 +130,83 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink }: SearchP
     setSubmitted(null)
     setSelected([])
     setError(null)
+    persist({ form: value, submitted: false, sort, picks: [] })
   }
-  async function search(value: FlightSearchFormValue) {
+  /* Asks the API for a search. The page is only touched once the answer is in, so a slow answer cannot overwrite a
+     newer search. */
+  async function fetchSearch(input: FlightSearchRequest): Promise<SearchOutcome> {
+    const current = ++sequence.current
+    abort.current?.abort()
+    const controller = new AbortController()
+    abort.current = controller
+    try {
+      const response = await searchFlights(input, controller.signal)
+      if (current !== sequence.current) return { status: 'stale' }
+      return { status: 'found', response }
+    } catch (cause) {
+      if (current !== sequence.current || controller.signal.aborted) return { status: 'stale' }
+      return { status: 'failed', message: cause instanceof Error ? cause.message : 'We could not search flights. Please try again.' }
+    }
+  }
+  /* Puts a finished search on the page. */
+  function applyOutcome(outcome: SearchOutcome, input: FlightSearchRequest, picks: Array<FlightSearchPick | undefined>) {
+    if (outcome.status === 'failed') {
+      setError(outcome.message)
+      setLoading(false)
+      return
+    }
+    if (outcome.status !== 'found') return
+    setSubmitted(input)
+    setResult(outcome.response)
+    setSelected(selectionsFromPicks(outcome.response, picks))
+    setLoading(false)
+  }
+  function submit(value: FlightSearchFormValue) {
     const message = validateSearch(value)
     if (message) {
       setError(message)
       return
     }
-    const { tripType, legs, adults, children, infants } = value
-    const input: FlightSearchRequest = { tripType, legs, adults, children, infants }
-    const current = ++sequence.current
-    abort.current?.abort()
-    const controller = new AbortController()
-    abort.current = controller
+    const input = requestFrom(value)
     setLoading(true)
     setError(null)
     setResult(null)
     setSelected([])
-    try {
-      const response = await searchFlights(input, controller.signal)
-      if (current !== sequence.current) return
-      setSubmitted(input)
-      setResult(response)
-    } catch (cause) {
-      if (current === sequence.current && !controller.signal.aborted)
-        setError(cause instanceof Error ? cause.message : 'We could not search flights. Please try again.')
-    } finally {
-      if (current === sequence.current) setLoading(false)
-    }
+    setSubmitted(input)
+    persist({ form: value, submitted: true, sort, picks: [] })
+    void (async () => {
+      applyOutcome(await fetchSearch(input), input, [])
+    })()
   }
+  /* A fare was clicked: remember it in the URL so a refresh keeps the same selection. */
+  function pickFare(legIndex: number, flight: FlightOption, fare: CabinAvailability) {
+    const next = selected.slice(0, legIndex)
+    next[legIndex] = { flight, fare }
+    setSelected(next)
+    persist({ form, submitted: submitted !== null, sort, picks: picksFromSelections(next, form.legs.length) })
+  }
+  function changeSort(value: Sort) {
+    setSort(value)
+    persist({ form, submitted: submitted !== null, sort: value, picks: picksFromSelections(selected, form.legs.length) })
+  }
+
+  /* The page opens on a URL that holds a search: run it again and pick the same fares. */
+  useEffect(() => {
+    if (!urlState?.submitted) return
+    const input = requestFrom(urlState.form)
+    const picks = urlState.picks
+    let cancelled = false
+    ;(async () => {
+      const outcome = await fetchSearch(input)
+      if (cancelled) return
+      applyOutcome(outcome, input, picks)
+    })()
+    return () => {
+      cancelled = true
+    }
+    // The search runs once, when the page opens. The URL it comes from is fixed for the life of the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const party = (submitted?.adults ?? 0) + (submitted?.children ?? 0)
   const total = selected.reduce((sum, selection) => sum + (selection?.fare.pricePerPassenger ?? 0), 0) * party
   const picked = selected.filter(Boolean).length
@@ -174,13 +256,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink }: SearchP
           </a>
         )}
       </div>
-      <FlightSearchForm
-        value={form}
-        onChange={changeForm}
-        onSubmit={(value) => void search(value)}
-        isLoading={isLoading}
-        errorMessage={error}
-      />
+      <FlightSearchForm value={form} onChange={changeForm} onSubmit={submit} isLoading={isLoading} errorMessage={error} />
       <div aria-live="polite" aria-busy={isLoading}>
         {isLoading && (
           <section className="f3-search-card f3-search-empty">
@@ -216,7 +292,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink }: SearchP
               <div className="f3-search-sort">
                 <span>Sort</span>
                 {sortOptions.map(([value, label]) => (
-                  <button key={value} type="button" aria-pressed={sort === value} onClick={() => setSort(value)}>
+                  <button key={value} type="button" aria-pressed={sort === value} onClick={() => changeSort(value)}>
                     {label}
                   </button>
                 ))}
@@ -293,13 +369,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink }: SearchP
                                     className={`f3-search-fare ${pickedFare ? 'is-selected' : ''}`}
                                     disabled={!!fare.unavailableReason}
                                     aria-pressed={pickedFare}
-                                    onClick={() =>
-                                      setSelected((current) => {
-                                        const next = current.slice(0, legIndex)
-                                        next[legIndex] = { flight, fare }
-                                        return next
-                                      })
-                                    }
+                                    onClick={() => pickFare(legIndex, flight, fare)}
                                   >
                                     <strong>{fare.unavailableReason ? 'Not available' : money(fare.pricePerPassenger)}</strong>
                                     <small className={fare.seatsLeft <= 4 ? 'f3-search-low' : ''}>
