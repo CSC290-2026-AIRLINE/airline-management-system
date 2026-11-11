@@ -1,5 +1,7 @@
 import { BadRequestException, UnprocessableEntityException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit } from '../pricing.testing'
 import type { PromoCodeService } from '../promo-code/promo-code.service'
 import type { SeatFeeService } from '../seat-fee/seat-fee.service'
 import type { SettingService } from '../setting/setting.service'
@@ -40,6 +42,7 @@ const TAXES = [
 const dto: SimulatePriceDto = { base_fare: 100, departure_date: '2026-10-13', seats_left_pct: 15, seat_type: 'normal' }
 
 describe('PricingSimulatorService', () => {
+  const audit = mockAudit()
   const db = { pricing_rule: { findMany: jest.fn() } }
   const seatFees = { findAll: jest.fn() }
   const taxFees = { findAll: jest.fn() }
@@ -55,7 +58,7 @@ describe('PricingSimulatorService', () => {
     settings.getBaseCurrency.mockResolvedValue('USD')
     settings.getQuoteHoldMinutes.mockResolvedValue(15)
     service = new PricingSimulatorService(
-      new PricingRuleService(db as unknown as DbService),
+      new PricingRuleService(db as unknown as DbService, audit as unknown as PricingAudit),
       seatFees as unknown as SeatFeeService,
       taxFees as unknown as TaxFeeService,
       settings as unknown as SettingService,

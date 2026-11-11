@@ -1,4 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreatePricingRuleDto } from './dto/create-pricing-rule.dto'
 import { ListPricingRulesDto } from './dto/list-pricing-rules.dto'
 import { ReorderPricingRulesDto } from './dto/reorder-pricing-rules.dto'
@@ -24,19 +26,19 @@ export class PricingRuleController {
   }
 
   @Post()
-  create(@Body() dto: CreatePricingRuleDto) {
-    return this.pricingRuleService.create(dto)
+  create(@Body() dto: CreatePricingRuleDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pricingRuleService.create(dto, user.id)
   }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePricingRuleDto) {
-    return this.pricingRuleService.update(id, dto)
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePricingRuleDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pricingRuleService.update(id, dto, user.id)
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.pricingRuleService.remove(id)
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.pricingRuleService.remove(id, user.id)
   }
 }
 
@@ -47,8 +49,8 @@ export class PricingRuleOrderController {
   constructor(private readonly pricingRuleService: PricingRuleService) {}
 
   @Put()
-  reorder(@Body() dto: ReorderPricingRulesDto) {
-    return this.pricingRuleService.reorder(dto)
+  reorder(@Body() dto: ReorderPricingRulesDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pricingRuleService.reorder(dto, user.id)
   }
 }
 

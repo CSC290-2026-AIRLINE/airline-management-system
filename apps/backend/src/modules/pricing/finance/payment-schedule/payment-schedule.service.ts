@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { PricingAudit } from '../../pricing.audit'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../../pricing.errors'
 import { staffIdFor } from '../../pricing.staff'
 import { simulatedToday } from '../finance.constants'
@@ -9,7 +10,10 @@ import { UpdatePaymentScheduleDto } from './dto/update-payment-schedule.dto'
 
 @Injectable()
 export class PaymentScheduleService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
 
   // Overdue = still scheduled and due before today, so ?status=paid&overdue=true can never match.
   findAll({ status, overdue }: ListPaymentSchedulesDto = {}) {
@@ -36,22 +40,58 @@ export class PaymentScheduleService {
 
   async create(dto: CreatePaymentScheduleDto, userId: string) {
     const staffId = await staffIdFor(this.db, userId)
-    return this.db.payment_schedule.create({ data: { ...dto, due_date: new Date(dto.due_date), created_by: staffId } })
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.payment_schedule.create({ data: { ...dto, due_date: new Date(dto.due_date), created_by: staffId } })
+      await this.audit.write(
+        userId,
+        { action: 'create', entityType: 'payment_schedule', entityId: row.id, summary: `Scheduled payment to ${row.payee}`, after: row },
+        tx,
+      )
+      return row
+    })
   }
 
-  async update(id: string, dto: UpdatePaymentScheduleDto) {
-    await this.findUnpaid(id)
-    return this.db.payment_schedule.update({
-      where: { id },
-      data: { ...dto, ...(dto.due_date && { due_date: new Date(dto.due_date) }), updated_at: new Date() },
+  async update(id: string, dto: UpdatePaymentScheduleDto, userId: string) {
+    const existing = await this.findUnpaid(id)
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.payment_schedule.update({
+        where: { id },
+        data: { ...dto, ...(dto.due_date && { due_date: new Date(dto.due_date) }), updated_at: new Date() },
+      })
+      await this.audit.write(
+        userId,
+        {
+          action: 'update',
+          entityType: 'payment_schedule',
+          entityId: id,
+          summary: `Updated scheduled payment to ${row.payee}`,
+          before: existing,
+          after: row,
+        },
+        tx,
+      )
+      return row
     })
   }
 
   // Soft delete: a deleted bill stays in the table but drops out of every list.
-  async remove(id: string) {
-    await this.findUnpaid(id)
+  async remove(id: string, userId: string) {
+    const existing = await this.findUnpaid(id)
     const now = new Date()
-    await this.db.payment_schedule.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+    await this.db.$transaction(async (tx) => {
+      await tx.payment_schedule.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+      await this.audit.write(
+        userId,
+        {
+          action: 'delete',
+          entityType: 'payment_schedule',
+          entityId: id,
+          summary: `Deleted scheduled payment to ${existing.payee}`,
+          before: existing,
+        },
+        tx,
+      )
+    })
   }
 
   // Marks the bill paid and records the matching expense in one transaction, so the books never show only one of them.
@@ -69,7 +109,7 @@ export class PaymentScheduleService {
         if (count === 0) {
           throw alreadyPaid()
         }
-        await tx.expense.create({
+        const expense = await tx.expense.create({
           data: {
             category: schedule.category,
             description: schedule.description ? `${schedule.payee}: ${schedule.description}` : schedule.payee,
@@ -79,7 +119,31 @@ export class PaymentScheduleService {
             created_by: staffId,
           },
         })
-        return tx.payment_schedule.findUniqueOrThrow({ where: { id }, include: { expense: true } })
+        const paid = await tx.payment_schedule.findUniqueOrThrow({ where: { id }, include: { expense: true } })
+        await this.audit.write(
+          userId,
+          {
+            action: 'update',
+            entityType: 'payment_schedule',
+            entityId: id,
+            summary: `Marked payment to ${schedule.payee} as paid`,
+            before: schedule,
+            after: paid,
+          },
+          tx,
+        )
+        await this.audit.write(
+          userId,
+          {
+            action: 'create',
+            entityType: 'expense',
+            entityId: expense.id,
+            summary: `Recorded expense for payment to ${schedule.payee}`,
+            after: expense,
+          },
+          tx,
+        )
+        return paid
       })
     } catch (error) {
       // The unique index on expense.payment_schedule_id is the last guard against a second expense (P2002).
