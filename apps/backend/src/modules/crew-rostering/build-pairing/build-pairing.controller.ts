@@ -4,6 +4,7 @@ import {
   type BuildParams,
   type CommitDraft,
   type CommitResult,
+  type NextRunResult,
   type GenerateResult,
   type DeletePairingResult,
   type FlightImpactRow,
@@ -52,6 +53,12 @@ export class BuildPairingController {
   async commitPairings(@Body() body: unknown): Promise<CommitResult> {
     const source = asObject(body)
     return this.buildPairingService.commitPairings(parseBuildParams(source), parseDrafts(source.pairings))
+  }
+
+  /** Starts the next draft roster run for a window, from the drafts the last one left out. */
+  @Post('runs/next')
+  async startNextRun(@Body() body: unknown): Promise<NextRunResult> {
+    return this.buildPairingService.startNextRun(parseBuildParams(asObject(body)))
   }
 
   @Put('pairings/:pairingId/legs')

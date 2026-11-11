@@ -520,8 +520,17 @@ export class FixPublishService {
         // Checked again under the lock, so what is counted below is the roster as it stands now.
         await this.assignCrew.check(rosterRunId)
 
+        // Only the pairings that were assigned crew are published. The rest go back to Build pairings as drafts, so a
+        // roster is never published with seats nobody was ever assigned to, and they can go into the next run.
+        const { outsideBatch } = await this.assignCrew.loadRun(rosterRunId)
+        if (outsideBatch.length > 0) {
+          await tx.rule_break.deleteMany({ where: { roster_run_id: rosterRunId, pairing_id: { in: outsideBatch } } })
+          await tx.pairing_leg_assignment.deleteMany({ where: { pairing_id: { in: outsideBatch } } })
+          await tx.roster_run_pairing.deleteMany({ where: { roster_run_id: rosterRunId, pairing_id: { in: outsideBatch } } })
+        }
+
         const pairings = await tx.roster_run_pairing.count({ where: { roster_run_id: rosterRunId } })
-        if (pairings === 0) throw new ConflictException('ROSTER_EMPTY · Commit at least one pairing in Build pairings before publishing')
+        if (pairings === 0) throw new ConflictException('ROSTER_EMPTY · Run auto-assign on at least one pairing before publishing')
         const open = await tx.rule_break.count({ where: { roster_run_id: rosterRunId, resolved_at: null } })
         if (open > 0) throw new ConflictException(`ROSTER_HAS_BREAKS · close ${open} open ${open === 1 ? 'break' : 'breaks'} to publish`)
 
@@ -542,7 +551,7 @@ export class FixPublishService {
             entity_id: rosterRunId,
             summary: 'Roster published',
             before: { status: 'draft' },
-            after: { status: 'published', published_at: now.toISOString() },
+            after: { status: 'published', published_at: now.toISOString(), returned_to_drafts: outsideBatch.length },
           },
         })
       },
@@ -569,7 +578,10 @@ export class FixPublishService {
     const closedFixed = rows.filter((row) => row.resolved_at !== null && row.resolution === 'fixed').map((row) => row.id)
     const trail = await this.swapTrail(closedFixed)
 
-    const breaks = rows.map((row, index) => this.toFixBreakRow(row, index + 1, world, trail))
+    // Breaks left over from pairings outside the batch are not shown.
+    const breaks = rows
+      .filter((row) => world.pairingById.has(row.pairing_id))
+      .map((row, index) => this.toFixBreakRow(row, index + 1, world, trail))
     const uncovered = new Set(
       breaks.filter((item) => item.resolution === undefined && item.code === 'NO_LEGAL_CREW').map((item) => item.legId),
     )

@@ -26,7 +26,9 @@ function flight(id: string, origin: string, destination: string, dep: number, ar
 }
 
 /** Just enough of `DbService` for `commitPairings`, with every write recorded. */
-function setup(options: { flights: ReturnType<typeof flight>[]; runs?: { id: string; status: string }[] }) {
+type FlightRow = Omit<ReturnType<typeof flight>, 'pairing_leg'> & { pairing_leg: { pairing_id: string } | null }
+
+function setup(options: { flights: FlightRow[]; runs?: { id: string; status: string }[]; storedDrafts?: { id: string; code: string }[] }) {
   const created: { data: { pairing_leg: { create: { flight_id: string; added_by: string }[] } } }[] = []
   let sequence = 200
   const tx = {
@@ -37,6 +39,7 @@ function setup(options: { flights: ReturnType<typeof flight>[]; runs?: { id: str
         sequence += 1
         return Promise.resolve({ id: `pairing-${sequence}`, code: `P-${sequence}` })
       }),
+      deleteMany: jest.fn(),
     },
     roster_run_pairing: { createMany: jest.fn() },
   }
@@ -51,6 +54,8 @@ function setup(options: { flights: ReturnType<typeof flight>[]; runs?: { id: str
       ]),
     },
     roster_run: { findMany: jest.fn().mockResolvedValue(options.runs ?? []) },
+    // Drafts already stored for the window (pairings with no run), looked up by the codes the commit names.
+    pairing: { findMany: jest.fn().mockResolvedValue(options.storedDrafts ?? []) },
     flight: { findMany: jest.fn().mockResolvedValue(options.flights) },
     $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)),
   }
@@ -68,7 +73,7 @@ describe('BuildPairingService.commitPairings', () => {
     const { service, tx, created } = setup({ flights: [out, back] })
     const result = await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1'), leg('2', true)] }])
 
-    expect(result.committed).toEqual([{ ref: 'P-108', code: 'P-201' }])
+    expect(result.committed).toEqual([{ ref: 'P-108', id: 'pairing-201', code: 'P-201' }])
     expect(result.skippedInvalid).toEqual([])
     expect(tx.roster_run.create).toHaveBeenCalledTimes(1)
     expect(created[0].data.pairing_leg.create).toEqual([
@@ -108,6 +113,30 @@ describe('BuildPairingService.commitPairings', () => {
     ])
     expect(result.committed.map((row) => row.ref)).toEqual(['P-108'])
     expect(result.skippedTaken).toEqual(['P-109'])
+  })
+
+  it('replaces a stored draft with its committed copy, so its own flights are not "taken"', async () => {
+    const held = [
+      { ...out, pairing_leg: { pairing_id: 'old-1' } },
+      { ...back, pairing_leg: { pairing_id: 'old-1' } },
+    ]
+    const { service, tx } = setup({ flights: held, storedDrafts: [{ id: 'old-1', code: 'P-108' }] })
+
+    const result = await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1'), leg('2')] }])
+
+    expect(result.committed.map((row) => row.ref)).toEqual(['P-108'])
+    expect(result.skippedTaken).toEqual([])
+    expect(tx.pairing.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['old-1'] } } })
+  })
+
+  it('leaves a stored draft alone when its commit was skipped', async () => {
+    const lonely = [{ ...out, pairing_leg: { pairing_id: 'old-1' } }]
+    const { service, tx } = setup({ flights: lonely, storedDrafts: [{ id: 'old-1', code: 'P-108' }] })
+
+    const result = await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1')] }])
+
+    expect(result.skippedInvalid).toEqual(['P-108'])
+    expect(tx.pairing.deleteMany).not.toHaveBeenCalled()
   })
 
   it('leaves out a valid draft that runs past the window', async () => {
@@ -181,15 +210,41 @@ describe('BuildPairingService.saveLegs on a committed pairing', () => {
     expect(tx.pairing_leg.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['leg-2'] } } })
     expect(result.withdrawnFromRun).toBe(false)
   })
+})
 
-  it('is still in the run after the next Generate, which drops only pairings outside every run', async () => {
+describe('BuildPairingService.generatePairings', () => {
+  it('brings back a stored draft as it was and draws new pairings only from flights that are still free', async () => {
     const { service, db } = setupEdit()
-    await service.saveLegs('pairing-1', [leg('1')])
+    const out = flight('1', 'BKK', 'NRT', 1, 7, { pairing_leg: { pairing_id: 'draft-1' } })
+    const back = flight('2', 'NRT', 'BKK', 9, 15, { pairing_leg: { pairing_id: 'draft-1' } })
+    const fresh = flight('3', 'BKK', 'NRT', 25, 31)
+    const home = flight('4', 'NRT', 'BKK', 33, 39)
+    db.pairing.findMany.mockResolvedValue([
+      {
+        id: 'draft-1',
+        code: 'P-60',
+        base_airport: 'BKK',
+        pairing_leg: [
+          { id: 'leg-1', added_by: 'auto', flight: flight('1', 'BKK', 'NRT', 1, 7) },
+          { id: 'leg-2', added_by: 'auto', flight: flight('2', 'NRT', 'BKK', 9, 15) },
+        ],
+        roster_run_pairing: null,
+      },
+    ])
+    db.flight.findMany.mockResolvedValue([out, back, fresh, home])
+    const loose = db as unknown as { $queryRaw: unknown }
+    loose.$queryRaw = jest.fn().mockResolvedValue([{ last_value: BigInt(70), is_called: true }])
+    ;(service as unknown as { findRun: unknown }).findRun = jest.fn().mockResolvedValue(null)
 
-    const result = await (service as unknown as { discardDrafts: (p: typeof params) => Promise<unknown> }).discardDrafts(params)
+    const result = await service.generatePairings(params)
 
+    const kept = result.pairings.find((pairing) => pairing.code === 'P-60')
+    expect(kept).toMatchObject({ id: 'draft-1', rosterRunId: null })
+    expect(kept?.legs.map((item) => item.flightId)).toEqual(['1', '2'])
+    // The new proposal is built from the two flights nobody holds, and numbered after the stored ones.
+    const proposed = result.pairings.filter((pairing) => pairing.id.startsWith('draft-P-'))
+    expect(proposed.flatMap((pairing) => pairing.legs.map((item) => item.flightId)).sort()).toEqual(['3', '4'])
     expect(db.pairing.deleteMany).not.toHaveBeenCalled()
-    expect(result).toEqual({ deleted: 0, kept: 1 })
   })
 })
 
@@ -235,5 +290,74 @@ describe('BuildPairingService.flightImpact', () => {
 
     expect(await service.flightImpact(FLIGHT)).toMatchObject({ pairings: [], pairingCount: 0, crewCount: 0 })
     expect(db.pairing_leg_assignment.findMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('BuildPairingService.startNextRun', () => {
+  const draftRow = (id: string, code: string, ok: boolean) => ({
+    id,
+    code,
+    base_airport: 'BKK',
+    roster_run_pairing: null,
+    // A pairing that does not come home to base fails its legality check.
+    pairing_leg: ok
+      ? [
+          { id: `${id}-a`, added_by: 'auto', flight: flight('1', 'BKK', 'NRT', 5.5, 11.5) },
+          { id: `${id}-b`, added_by: 'auto', flight: flight('2', 'NRT', 'BKK', 12.5, 16.5) },
+        ]
+      : [{ id: `${id}-a`, added_by: 'auto', flight: flight('3', 'BKK', 'NRT', 5.5, 11.5) }],
+  })
+
+  function nextSetup(options: { latest?: { id: string; status: string } | null; drafts?: ReturnType<typeof draftRow>[] }) {
+    const tx = {
+      roster_run: { create: jest.fn().mockResolvedValue({ id: 'run-next' }) },
+      roster_run_pairing: { createMany: jest.fn() },
+    }
+    const db = {
+      crew_setting: { findMany: jest.fn().mockResolvedValue([]) },
+      country_legality_rule: { findMany: jest.fn().mockResolvedValue([]) },
+      airport: {
+        findMany: jest.fn().mockResolvedValue([
+          { iata_code: 'BKK', country: 'TH', timezone: 'Asia/Bangkok' },
+          { iata_code: 'NRT', country: 'JP', timezone: 'Asia/Tokyo' },
+        ]),
+      },
+      roster_run: { findFirst: jest.fn().mockResolvedValue(options.latest ?? null) },
+      pairing: { findMany: jest.fn().mockResolvedValue(options.drafts ?? []) },
+      $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)),
+    }
+    return { service: new BuildPairingService(db as unknown as DbService), tx, db }
+  }
+
+  it('puts the valid drafts in a new draft run and leaves the invalid ones as drafts', async () => {
+    const { service, tx } = nextSetup({
+      latest: { id: 'run-old', status: 'published' },
+      drafts: [draftRow('p-1', 'P-60', true), draftRow('p-2', 'P-61', false)],
+    })
+
+    const result = await service.startNextRun(params)
+
+    expect(result).toMatchObject({ moved: 1, left: 1, rosterRun: { id: 'run-next', status: 'draft' } })
+    expect(tx.roster_run.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'draft' }) }))
+    expect(tx.roster_run_pairing.createMany).toHaveBeenCalledWith({ data: [{ roster_run_id: 'run-next', pairing_id: 'p-1' }] })
+  })
+
+  it('creates no run when no draft is usable, so the page goes back to Build pairings', async () => {
+    const { service, tx } = nextSetup({ latest: { id: 'run-old', status: 'published' }, drafts: [] })
+
+    const result = await service.startNextRun(params)
+
+    expect(result).toEqual({ rosterRun: null, moved: 0, left: 0 })
+    expect(tx.roster_run.create).not.toHaveBeenCalled()
+  })
+
+  it('returns the latest run as it is when it is still a draft, and moves nothing', async () => {
+    const { service, tx, db } = nextSetup({ latest: { id: 'run-open', status: 'draft' }, drafts: [draftRow('p-1', 'P-60', true)] })
+
+    const result = await service.startNextRun(params)
+
+    expect(result).toMatchObject({ moved: 0, rosterRun: { id: 'run-open' } })
+    expect(db.pairing.findMany).not.toHaveBeenCalled()
+    expect(tx.roster_run.create).not.toHaveBeenCalled()
   })
 })

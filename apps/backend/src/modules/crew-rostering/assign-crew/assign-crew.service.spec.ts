@@ -217,3 +217,65 @@ describe('AssignCrewService.autoAssign re-run', () => {
     })
   })
 })
+
+describe('AssignCrewService batch', () => {
+  const run = { id: RUN, status: 'draft', base_airport: 'BKK' }
+
+  /** `loadRun` against a database that knows which pairings have someone assigned. */
+  function loadSetup(status: 'draft' | 'published', crewed: string[]) {
+    const db = {
+      roster_run: { findUnique: jest.fn().mockResolvedValue({ ...run, status }) },
+      pairing_leg_assignment: { findMany: jest.fn().mockResolvedValue(crewed.map((id) => ({ pairing_id: id }))) },
+    }
+    const instance = new AssignCrewService(db as unknown as DbService)
+    const loose = instance as unknown as { loadContext: unknown; toRunPairings: unknown }
+    loose.loadContext = jest.fn().mockResolvedValue({})
+    loose.toRunPairings = jest.fn().mockReturnValue(['p-1', 'p-2', 'p-3'].map((id) => ({ id, code: id, legs: [], limits: LIMITS })))
+    return { instance, db }
+  }
+
+  it('is the pairings somebody was assigned to while the run is a draft, and reports the rest', async () => {
+    const { instance } = loadSetup('draft', ['p-2'])
+
+    const loaded = await instance.loadRun(RUN)
+
+    expect(loaded.pairings.map((pairing) => pairing.id)).toEqual(['p-2'])
+    expect(loaded.outsideBatch).toEqual(['p-1', 'p-3'])
+  })
+
+  it('returns every pairing when auto-assign asks for them all', async () => {
+    const { instance, db } = loadSetup('draft', ['p-2'])
+
+    const loaded = await instance.loadRun(RUN, { all: true })
+
+    expect(loaded.pairings).toHaveLength(3)
+    expect(loaded.outsideBatch).toEqual([])
+    expect(db.pairing_leg_assignment.findMany).not.toHaveBeenCalled()
+  })
+
+  it('treats every pairing of a published run as part of it', async () => {
+    const { instance } = loadSetup('published', [])
+
+    const loaded = await instance.loadRun(RUN)
+
+    expect(loaded.pairings).toHaveLength(3)
+    expect(loaded.outsideBatch).toEqual([])
+  })
+
+  it('drops the open breaks of a pairing outside the batch when the run is checked', async () => {
+    const deleteMany = jest.fn().mockResolvedValue({ count: 2 })
+    const db = { rule_break: { deleteMany }, pairing_leg_assignment: { findMany: jest.fn().mockResolvedValue([]) } }
+    const instance = new AssignCrewService(db as unknown as DbService)
+    const loose = instance as unknown as Record<string, unknown>
+    loose.loadRun = jest.fn().mockResolvedValue({ run, pairings: [], context: {}, outsideBatch: ['p-1'] })
+    loose.activeAssignments = jest.fn().mockResolvedValue([])
+    loose.evaluate = jest.fn().mockReturnValue([])
+    loose.storeBreaks = jest.fn()
+    loose.toResult = jest.fn().mockReturnValue({})
+    loose.openBreaks = jest.fn().mockResolvedValue([])
+
+    await instance.check(RUN)
+
+    expect(deleteMany).toHaveBeenCalledWith({ where: { roster_run_id: RUN, resolved_at: null, pairing_id: { in: ['p-1'] } } })
+  })
+})

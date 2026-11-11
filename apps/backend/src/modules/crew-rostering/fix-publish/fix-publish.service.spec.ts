@@ -10,16 +10,19 @@ jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClient
 const RUN = '7c1b9d2e-3a44-4c1f-8f0a-5b6d7e8f9a00'
 
 /** Just enough of `DbService` for `publish`, with the order of lock, re-check and writes recorded. */
-function setupPublish(options: { locked?: { status: string }; open?: number; pairings?: number; flipped?: number } = {}) {
-  const { locked = { status: 'draft' }, open = 0, pairings = 3, flipped = 1 } = options
+function setupPublish(
+  options: { locked?: { status: string }; open?: number; pairings?: number; flipped?: number; outsideBatch?: string[] } = {},
+) {
+  const { locked = { status: 'draft' }, open = 0, pairings = 3, flipped = 1, outsideBatch = [] } = options
   const calls: string[] = []
   const tx = {
     $queryRaw: jest.fn(() => {
       calls.push('lock')
       return Promise.resolve([locked])
     }),
-    roster_run_pairing: { count: jest.fn().mockResolvedValue(pairings) },
-    rule_break: { count: jest.fn().mockResolvedValue(open) },
+    roster_run_pairing: { count: jest.fn().mockResolvedValue(pairings), deleteMany: jest.fn() },
+    rule_break: { count: jest.fn().mockResolvedValue(open), deleteMany: jest.fn() },
+    pairing_leg_assignment: { deleteMany: jest.fn() },
     roster_run: { updateMany: jest.fn().mockResolvedValue({ count: flipped }) },
     audit_log: { create: jest.fn() },
   }
@@ -32,6 +35,8 @@ function setupPublish(options: { locked?: { status: string }; open?: number; pai
       calls.push('check')
       return Promise.resolve()
     }),
+    // Pairings nobody was assigned to are outside the batch.
+    loadRun: jest.fn().mockResolvedValue({ outsideBatch }),
   }
   const service = new FixPublishService(db as unknown as DbService, assign as unknown as AssignCrewService)
   jest
@@ -49,6 +54,35 @@ describe('FixPublishService.publish', () => {
     expect(calls).toEqual(['lock', 'check'])
     expect(tx.roster_run.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: RUN, status: 'draft' } }))
     expect(tx.audit_log.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('publishes only the pairings that were assigned crew, and returns the others to drafts', async () => {
+    const { service, tx } = setupPublish({ outsideBatch: ['p-2', 'p-3'] })
+
+    await service.publish(RUN, 'user-1')
+
+    expect(tx.rule_break.deleteMany).toHaveBeenCalledWith({ where: { roster_run_id: RUN, pairing_id: { in: ['p-2', 'p-3'] } } })
+    expect(tx.pairing_leg_assignment.deleteMany).toHaveBeenCalledWith({ where: { pairing_id: { in: ['p-2', 'p-3'] } } })
+    expect(tx.roster_run_pairing.deleteMany).toHaveBeenCalledWith({ where: { roster_run_id: RUN, pairing_id: { in: ['p-2', 'p-3'] } } })
+    expect(tx.audit_log.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ after: expect.objectContaining({ returned_to_drafts: 2 }) }) }),
+    )
+  })
+
+  it('touches nothing when every pairing is in the batch', async () => {
+    const { service, tx } = setupPublish()
+
+    await service.publish(RUN, 'user-1')
+
+    expect(tx.roster_run_pairing.deleteMany).not.toHaveBeenCalled()
+    expect(tx.rule_break.deleteMany).not.toHaveBeenCalled()
+  })
+
+  it('refuses a roster where nobody has been assigned, and does not flip the run', async () => {
+    const { service, tx } = setupPublish({ outsideBatch: ['p-1'], pairings: 0 })
+
+    await expect(service.publish(RUN, 'user-1')).rejects.toThrow('ROSTER_EMPTY')
+    expect(tx.roster_run.updateMany).not.toHaveBeenCalled()
   })
 
   it('refuses while a break is open, and does not flip the run', async () => {

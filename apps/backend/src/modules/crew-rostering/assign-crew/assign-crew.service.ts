@@ -363,7 +363,8 @@ export class AssignCrewService {
    * (`assigned_by = 'ops'`) stay, and the seats they fill are not filled again.
    */
   async autoAssign(rosterRunId: string, pairingIds: string[], options: AutoAssignOptions = {}): Promise<RunResult> {
-    const { run, pairings } = await this.loadRun(rosterRunId)
+    // Every pairing in the run, crewed or not: the ones picked here are what becomes the batch.
+    const { run, pairings } = await this.loadRun(rosterRunId, { all: true })
     if (run.status === 'published') throw new ConflictException('This roster is published and can no longer be crewed automatically')
 
     const unknown = pairingIds.find((id) => !pairings.some((pairing) => pairing.id === id))
@@ -436,7 +437,11 @@ export class AssignCrewService {
 
   /** Re-checks every rule on the run against what is stored, and records the result. */
   async check(rosterRunId: string): Promise<RunResult> {
-    const { run, pairings, context } = await this.loadRun(rosterRunId)
+    const { run, pairings, context, outsideBatch } = await this.loadRun(rosterRunId)
+    // A pairing nobody has been assigned to is not part of this batch yet, so it carries no breaks of its own.
+    if (outsideBatch.length > 0) {
+      await this.db.rule_break.deleteMany({ where: { roster_run_id: rosterRunId, resolved_at: null, pairing_id: { in: outsideBatch } } })
+    }
     const assignments = await this.activeAssignments(pairings)
     const crewIds = [...new Set(assignments.map((row) => row.crew_id))]
     const legs = pairings.flatMap((pairing) => pairing.legs)
@@ -829,11 +834,38 @@ export class AssignCrewService {
   /* ── reads ──────────────────────────────────────────────────────────────── */
 
   /** The run with its pairings and legs, for the step that fixes and publishes it. */
-  async loadRun(rosterRunId: string): Promise<{ run: RunDbRow; pairings: RunPairing[]; context: Context }> {
+  /**
+   * The run with its pairings.
+   *
+   * While the run is a draft, its *batch* is the pairings somebody has been assigned to: what Fix & publish shows
+   * and what publishing covers. The rest are committed but not crewed yet, and come back in `outsideBatch`.
+   * `all` returns every pairing in the run, which auto-assign needs to pick from. A published run is all batch.
+   */
+  async loadRun(
+    rosterRunId: string,
+    options: { all?: boolean } = {},
+  ): Promise<{ run: RunDbRow; pairings: RunPairing[]; context: Context; outsideBatch: string[] }> {
     const run = await this.db.roster_run.findUnique({ where: { id: rosterRunId }, select: RUN_SELECT })
     if (!run) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
     const context = await this.loadContext(run.base_airport)
-    return { run, pairings: this.toRunPairings(run, context), context }
+    const every = this.toRunPairings(run, context)
+    if (options.all || run.status === 'published' || every.length === 0) return { run, pairings: every, context, outsideBatch: [] }
+
+    const crewed = new Set(
+      (
+        await this.db.pairing_leg_assignment.findMany({
+          where: { pairing_id: { in: every.map((pairing) => pairing.id) }, unassigned_at: null },
+          select: { pairing_id: true },
+          distinct: ['pairing_id'],
+        })
+      ).map((row) => row.pairing_id),
+    )
+    return {
+      run,
+      pairings: every.filter((pairing) => crewed.has(pairing.id)),
+      context,
+      outsideBatch: every.filter((pairing) => !crewed.has(pairing.id)).map((pairing) => pairing.id),
+    }
   }
 
   private async activeAssignments(pairings: RunPairing[]): Promise<(AssignmentDbRow & { crew: CrewDbRow })[]> {
