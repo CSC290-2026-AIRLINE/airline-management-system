@@ -289,10 +289,18 @@
 /* Results */
 .f3-search-result-tools {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: 16px;
   margin-top: 24px;
+}
+.f3-search-price-note {
+  padding: 6px 10px;
+  border: 1px solid var(--f3-border);
+  border-radius: 8px;
+  background: white;
+  color: var(--f3-muted);
+  font-size: 12px;
 }
 .f3-search-sort {
   display: flex;
@@ -327,7 +335,7 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  padding: 18px 20px 14px;
+  padding: 14px 16px 12px;
   border-bottom: 1px solid var(--f3-line);
 }
 .f3-search-results header h2 {
@@ -341,10 +349,10 @@
 }
 .f3-search-cabin-headings {
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: 385px minmax(0, 1fr);
   gap: 20px;
-  padding: 12px 20px;
-  background: #fbfcfe;
+  padding: 10px 16px;
+  background: white;
   border-bottom: 1px solid var(--f3-line);
 }
 .f3-search-cabin-headings > span,
@@ -357,9 +365,9 @@
 }
 .f3-search-flight {
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: 385px minmax(0, 1fr);
   gap: 20px;
-  padding: 16px 20px;
+  padding: 12px 16px;
 }
 .f3-search-flight + .f3-search-flight {
   border-top: 1px solid var(--f3-line);
@@ -371,8 +379,8 @@
   gap: 6px;
 }
 .f3-search-flight-time > strong {
-  font-size: 19px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 600;
 }
 .f3-search-flight-time > strong span {
   color: #9aa5b5;
@@ -391,8 +399,8 @@
 .f3-search-cabin-columns {
   display: grid;
   grid-template-columns: repeat(var(--f3-cabin-count), minmax(0, 1fr));
-  gap: 18px;
-  max-width: calc(var(--f3-cabin-count) * 250px + (var(--f3-cabin-count) - 1) * 18px);
+  gap: 12px;
+  max-width: calc(var(--f3-cabin-count) * 250px + (var(--f3-cabin-count) - 1) * 12px);
 }
 .f3-search-cabin-cell {
   min-width: 0;
@@ -404,9 +412,9 @@
   display: flex;
   flex-direction: column;
   align-items: start;
-  gap: 4px;
+  gap: 2px;
   min-height: 56px;
-  padding: 11px 13px;
+  padding: 9px 12px;
   text-align: left;
   background: white;
   border: 1px solid var(--f3-border);
@@ -418,17 +426,17 @@
   background: #f5f8fd;
 }
 .f3-search-fare > strong {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
 }
 .f3-search-fare > small {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--f3-muted);
 }
 .f3-search-fare.is-selected {
   background: var(--f3-selected);
   border: 2px solid var(--f3-primary);
-  padding: 10px 12px;
+  padding: 8px 11px;
 }
 .f3-search-fare.is-selected > strong {
   color: var(--f3-primary);
@@ -466,7 +474,7 @@
 
 /* Your trip */
 .f3-search-summary {
-  padding: 18px 20px;
+  padding: 14px 20px;
   display: flex;
   gap: 24px;
   justify-content: space-between;
@@ -594,6 +602,9 @@
   }
   .f3-search-result-tools {
     justify-content: flex-start;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
   }
   .f3-search-results header {
     padding: 16px;

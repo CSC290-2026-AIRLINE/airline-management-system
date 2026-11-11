@@ -288,7 +288,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
         {result && !noResults && (
           <>
             <div className="f3-search-result-tools">
-              <span />
+              <span className="f3-search-price-note">Prices and availability checked live</span>
               <div className="f3-search-sort">
                 <span>Sort</span>
                 {sortOptions.map(([value, label]) => (
@@ -375,7 +375,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                                     <small className={fare.seatsLeft <= 4 ? 'f3-search-low' : ''}>
                                       {fare.unavailableReason
                                         ? fare.unavailableReason
-                                        : `Fare ${fare.fareClassCode} · ${fare.seatsLeft > 9 ? '9+' : fare.seatsLeft} seats left`}
+                                        : `${fare.seatsLeft > 9 ? '9+' : fare.seatsLeft} seats left`}
                                     </small>
                                   </button>
                                 )
