@@ -216,23 +216,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 22px;
+  padding: 14px 20px;
   color: #677287;
   font-size: 12px;
 }
-.f3-lookup-pagination > div {
+.f3-lookup-page-controls {
   display: flex;
   gap: 10px;
   align-items: center;
-}
-/* The per-page control is quiet: it stays a dropdown, but it does not compete with the Previous / Next buttons. */
-.f3-lookup-per-page {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  color: #8a93a3;
+  justify-content: flex-end;
 }
 .f3-lookup-info {
   margin-top: 16px;
@@ -467,11 +459,11 @@
   }
   .f3-lookup-pagination {
     flex-direction: column;
-    align-items: start;
+    align-items: stretch;
     padding: 16px;
   }
-  .f3-lookup-pagination > div {
-    flex-wrap: wrap;
+  .f3-lookup-page-controls {
+    justify-content: space-between;
   }
   .f3-lookup-modal {
     padding: 20px 16px;

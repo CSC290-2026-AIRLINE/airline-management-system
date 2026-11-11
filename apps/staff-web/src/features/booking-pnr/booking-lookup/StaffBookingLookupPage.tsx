@@ -190,14 +190,6 @@ function LookupContent() {
     setError(null)
     void navigate({ to: '/booking-lookup', search: { ...search, page: value > 1 ? value : undefined }, replace: true })
   }
-  function changePageSize(value: number) {
-    setError(null)
-    void navigate({
-      to: '/booking-lookup',
-      search: { ...search, page: undefined, pageSize: value === 20 ? undefined : value },
-      replace: true,
-    })
-  }
   const start = page?.items.length ? (page.page - 1) * page.pageSize + 1 : 0
   const end = page?.items.length ? start + page.items.length - 1 : 0
   const range = `${query.dateType === 'travelling' ? 'Travelling' : 'Booked'} ${
@@ -371,23 +363,7 @@ function LookupContent() {
           <p>
             Showing {start} to {end} of {page?.total ?? 0}
           </p>
-          <div>
-            <label className="f3-lookup-per-page">
-              Per page
-              <Select disabled={loading} value={String(query.pageSize ?? 20)} onValueChange={(value) => changePageSize(Number(value))}>
-                <SelectTrigger
-                  aria-label="Bookings per page"
-                  className="data-[size=default]:h-7.5 w-15.5 px-2 text-xs text-[#677287] *:data-[slot=select-value]:text-xs"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="20">20</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
+          <nav className="f3-lookup-page-controls" aria-label="Booking result pages">
             <Button variant="outline" disabled={loading || (page?.page ?? 1) <= 1} onClick={() => changePage((page?.page ?? 1) - 1)}>
               Previous
             </Button>
@@ -398,7 +374,7 @@ function LookupContent() {
             >
               Next
             </Button>
-          </div>
+          </nav>
         </footer>
       </section>
       <p className="f3-lookup-info">
