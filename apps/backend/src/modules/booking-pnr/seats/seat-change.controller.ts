@@ -30,6 +30,6 @@ export class SeatChangeController {
     )
     input: ChangeSeatDto,
   ) {
-    return this.seatChanges.changeSeatForCustomer(reference, couponId, input.seatCode, user.id)
+    return this.seatChanges.changeSeatForUser(reference, couponId, input.seatCode, user.id)
   }
 }

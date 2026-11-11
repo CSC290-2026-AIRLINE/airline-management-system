@@ -10,10 +10,11 @@ jest.mock('../providers/checkin-seat.provider', () => ({ CheckinSeatProvider: cl
 describe('SeatChangeService', () => {
   const checkIn = { findFirst: jest.fn() }
   const customer = { findFirst: jest.fn() }
+  const staff = { findFirst: jest.fn() }
   const seats = { hold: jest.fn(), confirm: jest.fn(), release: jest.fn() }
   const bookings = { getBookingDetail: jest.fn() }
   const service = new SeatChangeService(
-    { check_in: checkIn, customer } as unknown as DbService,
+    { check_in: checkIn, customer, staff } as unknown as DbService,
     seats as unknown as CheckinSeatProvider,
     bookings as unknown as BookingReadPort,
   )
@@ -27,6 +28,7 @@ describe('SeatChangeService', () => {
     })
     checkIn.findFirst.mockResolvedValue(null)
     customer.findFirst.mockResolvedValue({ id: 'customer' })
+    staff.findFirst.mockResolvedValue(null)
     seats.hold.mockResolvedValue({ id: 'lock', fee: 0 })
     seats.confirm.mockResolvedValue({ seatCode: '12A', type: 'standard' })
     seats.release.mockResolvedValue(undefined)
@@ -83,7 +85,7 @@ describe('SeatChangeService', () => {
   })
 
   it('derives the customer from the signed-in user', async () => {
-    await service.changeSeatForCustomer('REF', 'coupon', '12A', 'user')
+    await service.changeSeatForUser('REF', 'coupon', '12A', 'user')
     expect(customer.findFirst).toHaveBeenCalledWith({
       where: { user_id: 'user', deleted_at: null, user: { type: 'customer', deleted_at: null, disabled_at: null } },
       select: { id: true },
@@ -93,7 +95,18 @@ describe('SeatChangeService', () => {
 
   it('refuses to change a seat without a customer profile', async () => {
     customer.findFirst.mockResolvedValue(null)
-    await expect(service.changeSeatForCustomer('REF', 'coupon', '12A', 'user')).rejects.toThrow('Booking not found')
+    await expect(service.changeSeatForUser('REF', 'coupon', '12A', 'user')).rejects.toThrow('Booking not found')
     expect(bookings.getBookingDetail).not.toHaveBeenCalled()
+  })
+
+  it('allows an active staff account to choose a seat without forcing it', async () => {
+    customer.findFirst.mockResolvedValue(null)
+    staff.findFirst.mockResolvedValue({ id: 'staff' })
+    await service.changeSeatForUser('REF', 'coupon', '12A', 'user')
+    expect(staff.findFirst).toHaveBeenCalledWith({
+      where: { user_id: 'user', deleted_at: null, user: { type: 'staff', deleted_at: null, disabled_at: null } },
+      select: { id: true },
+    })
+    expect(bookings.getBookingDetail).toHaveBeenCalledWith('REF', { staff: true })
   })
 })

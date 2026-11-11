@@ -14,7 +14,7 @@ jest.mock('../providers/checkin-seat.provider', () => ({ CheckinSeatProvider: cl
 
 describe('SeatChangeController', () => {
   let app: INestApplication
-  const changeSeatForCustomer = jest.fn()
+  const changeSeatForUser = jest.fn()
   const coupon = '00000000-0000-4000-8000-000000000001'
   const url = `/api/bookings/ABC123/coupons/${coupon}/seat`
 
@@ -22,7 +22,7 @@ describe('SeatChangeController', () => {
     const module = await Test.createTestingModule({
       controllers: [SeatChangeController],
       providers: [
-        { provide: SeatChangeService, useValue: { changeSeatForCustomer } },
+        { provide: SeatChangeService, useValue: { changeSeatForUser } },
         { provide: JwtService, useValue: { verifyAsync: jest.fn().mockResolvedValue({ sub: 'user', email: 'test@example.com' }) } },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
       ],
@@ -33,23 +33,23 @@ describe('SeatChangeController', () => {
     await app.init()
   })
   afterAll(async () => app.close())
-  beforeEach(() => changeSeatForCustomer.mockReset())
+  beforeEach(() => changeSeatForUser.mockReset())
 
   it('requires authentication', async () => {
     await request(app.getHttpServer()).put(url).send({ seatCode: '12A' }).expect(401)
-    expect(changeSeatForCustomer).not.toHaveBeenCalled()
+    expect(changeSeatForUser).not.toHaveBeenCalled()
   })
 
   it('derives identity from the access token and forwards a valid seat', async () => {
-    changeSeatForCustomer.mockResolvedValue({ status: 'assigned', seat: { seatCode: '12A' } })
+    changeSeatForUser.mockResolvedValue({ status: 'assigned', seat: { seatCode: '12A' } })
     await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer token').send({ seatCode: '12A' }).expect(200)
-    expect(changeSeatForCustomer).toHaveBeenCalledWith('ABC123', coupon, '12A', 'user')
+    expect(changeSeatForUser).toHaveBeenCalledWith('ABC123', coupon, '12A', 'user')
   })
 
   it('rejects invalid seat codes and unexpected viewer fields', async () => {
     await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer token').send({ seatCode: '0A' }).expect(422)
     await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer token').send({ seatCode: '12A', staff: true }).expect(422)
-    expect(changeSeatForCustomer).not.toHaveBeenCalled()
+    expect(changeSeatForUser).not.toHaveBeenCalled()
   })
 
   it('returns the Feature 3 error format for an invalid coupon id', async () => {
@@ -59,6 +59,6 @@ describe('SeatChangeController', () => {
       .send({ seatCode: '12A' })
       .expect(422)
     expect(response.body).toMatchObject({ error: { code: 'INVALID_BOOKING_STATE' } })
-    expect(changeSeatForCustomer).not.toHaveBeenCalled()
+    expect(changeSeatForUser).not.toHaveBeenCalled()
   })
 })

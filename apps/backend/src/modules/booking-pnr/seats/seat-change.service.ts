@@ -12,13 +12,21 @@ export class SeatChangeService {
     @Inject(BOOKING_READ_PORT) private readonly bookings: BookingReadPort,
   ) {}
 
-  async changeSeatForCustomer(reference: string, couponId: string, seatCode: string, userId: string) {
-    const customer = await this.db.customer.findFirst({
-      where: { user_id: userId, deleted_at: null, user: { type: 'customer', deleted_at: null, disabled_at: null } },
-      select: { id: true },
-    })
-    if (!customer) throw new BookingError('INVALID_BOOKING_STATE', 'Booking not found', 404)
-    return this.changeSeat(reference, couponId, seatCode, { customerId: customer.id })
+  async changeSeatForUser(reference: string, couponId: string, seatCode: string, userId: string) {
+    const [customer, staff] = await Promise.all([
+      this.db.customer.findFirst({
+        where: { user_id: userId, deleted_at: null, user: { type: 'customer', deleted_at: null, disabled_at: null } },
+        select: { id: true },
+      }),
+      // Temporary: use the same active-staff check as the assistance queue until the shared guard is available.
+      this.db.staff.findFirst({
+        where: { user_id: userId, deleted_at: null, user: { type: 'staff', deleted_at: null, disabled_at: null } },
+        select: { id: true },
+      }),
+    ])
+    if (staff) return this.changeSeat(reference, couponId, seatCode, { staff: true })
+    if (customer) return this.changeSeat(reference, couponId, seatCode, { customerId: customer.id })
+    throw new BookingError('INVALID_BOOKING_STATE', 'Booking not found', 404)
   }
 
   // A route must derive the viewer from authenticated server-side identity; never accept it from a request body.

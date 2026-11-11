@@ -26,13 +26,18 @@ describe('Customer seat-change flow', () => {
         Promise.resolve(where.user_id === 'owner' ? { id: 'customer' } : null),
       ),
     },
+    staff: {
+      findFirst: jest.fn(({ where }: { where: { user_id: string } }) =>
+        Promise.resolve(where.user_id === 'staff-user' ? { id: 'staff' } : null),
+      ),
+    },
     check_in: checkIn,
   }
   const seats = { hold: jest.fn(), confirm: jest.fn(), release: jest.fn() }
   const bookings = {
-    getBookingDetail: jest.fn((_reference: string, viewer: { customerId?: string }) =>
+    getBookingDetail: jest.fn((_reference: string, viewer: { customerId?: string; staff?: boolean }) =>
       Promise.resolve(
-        viewer.customerId === 'customer'
+        viewer.customerId === 'customer' || viewer.staff === true
           ? { status: 'confirmed', coupons: [{ couponId, status: 'confirmed', flightId: 'flight', bookingPassengerId: 'passenger' }] }
           : null,
       ),
@@ -76,6 +81,11 @@ describe('Customer seat-change flow', () => {
   it('does not let another customer choose a seat', async () => {
     await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer other').send({ seatCode: '4A' }).expect(404)
     expect(seats.hold).not.toHaveBeenCalled()
+  })
+
+  it('lets an active staff member select an available seat', async () => {
+    await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer staff-user').send({ seatCode: '4A' }).expect(200)
+    expect(bookings.getBookingDetail).toHaveBeenCalledWith('ABC123', { staff: true })
   })
 
   it('refuses a seat change after check-in', async () => {
