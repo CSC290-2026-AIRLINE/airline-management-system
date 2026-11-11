@@ -9,6 +9,99 @@ export interface LookupFilters {
   to: string
   status: BookingStatus | ''
 }
+export const LOOKUP_PERIODS: LookupPeriod[] = ['all', 'today', 'week', 'month', 'year', 'last_year', 'custom']
+export const LOOKUP_DATE_TYPES: LookupFilters['dateType'][] = ['booked', 'travelling']
+export const LOOKUP_STATUSES: BookingStatus[] = ['held', 'confirmed', 'cancelled', 'expired']
+export const LOOKUP_PAGE_SIZES = [20, 50, 100]
+
+/**
+ * The lookup filters as they live in the URL. Every field is optional: a bare `/booking-lookup` uses the defaults
+ * below, and anything unrecognised is dropped rather than passed to the API.
+ */
+export interface LookupSearch {
+  reference?: string
+  /** The free-text search that was applied. */
+  q?: string
+  dateType?: LookupFilters['dateType']
+  period?: LookupPeriod
+  from?: string
+  to?: string
+  status?: BookingStatus
+  page?: number
+  pageSize?: number
+}
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+function isIsoDate(value: string) {
+  return ISO_DATE.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value
+}
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+function asInteger(value: unknown): number | undefined {
+  const text = typeof value === 'number' ? String(value) : asString(value)
+  if (!text || !/^\d+$/.test(text)) return undefined
+  const parsed = Number(text)
+  return Number.isSafeInteger(parsed) ? parsed : undefined
+}
+/**
+ * Normalises raw search params into the lookup's own shape. Bad values are dropped, so a hand-edited link falls back
+ * to the defaults instead of failing the query. The custom range keeps its order check for the page to report.
+ */
+export function parseLookupSearch(raw: Record<string, unknown>): LookupSearch {
+  const search: LookupSearch = {}
+  const reference = asString(raw.reference)
+  if (reference && /^[A-HJ-NP-Z2-9]{6}$/i.test(reference)) search.reference = reference.toUpperCase()
+  const q = asString(raw.q)
+  if (q) search.q = q.slice(0, 200)
+  if (LOOKUP_DATE_TYPES.includes(raw.dateType as LookupFilters['dateType'])) search.dateType = raw.dateType as LookupFilters['dateType']
+  if (LOOKUP_PERIODS.includes(raw.period as LookupPeriod)) search.period = raw.period as LookupPeriod
+  const from = asString(raw.from)
+  const to = asString(raw.to)
+  if (from && isIsoDate(from)) search.from = from
+  if (to && isIsoDate(to)) search.to = to
+  if (LOOKUP_STATUSES.includes(raw.status as BookingStatus)) search.status = raw.status as BookingStatus
+  const page = asInteger(raw.page)
+  if (page !== undefined && page >= 1) search.page = page
+  const pageSize = asInteger(raw.pageSize)
+  if (pageSize !== undefined && LOOKUP_PAGE_SIZES.includes(pageSize)) search.pageSize = pageSize
+  return search
+}
+/** The filter controls as they are shown, from the URL. */
+export function lookupFiltersFromSearch(search: LookupSearch): LookupFilters {
+  const period = search.period && LOOKUP_PERIODS.includes(search.period) ? search.period : 'week'
+  const custom = period === 'custom'
+  return {
+    search: search.q ?? '',
+    dateType: search.dateType === 'travelling' ? 'travelling' : 'booked',
+    period,
+    from: custom ? (search.from ?? '') : '',
+    to: custom ? (search.to ?? '') : '',
+    status: search.status && LOOKUP_STATUSES.includes(search.status) ? search.status : '',
+  }
+}
+/** The API query for the current URL. Throws for an incomplete custom range, like `lookupQuery` does. */
+export function lookupQueryFromSearch(search: LookupSearch): StaffBookingQuery {
+  return lookupQuery(lookupFiltersFromSearch(search), search.page ?? 1, search.pageSize ?? 20)
+}
+/**
+ * The URL for the filters the user is looking at. Defaults are left out, so a plain list stays at
+ * `/booking-lookup` and only what was changed shows up in the query string.
+ */
+export function lookupSearchFromFilters(filters: LookupFilters, page = 1, pageSize = 20): LookupSearch {
+  const search: LookupSearch = {}
+  const text = filters.search.trim()
+  if (text) search.q = text
+  if (filters.dateType !== 'booked') search.dateType = filters.dateType
+  if (filters.period !== 'week') search.period = filters.period
+  if (filters.period === 'custom') {
+    search.from = filters.from
+    search.to = filters.to
+  }
+  if (filters.status) search.status = filters.status
+  if (page > 1) search.page = page
+  if (pageSize !== 20) search.pageSize = pageSize
+  return search
+}
 const isoDate = (date: Date) => date.toISOString().slice(0, 10)
 export function lookupDateRange(period: LookupPeriod, now = new Date()): { from?: string; to?: string } {
   const year = now.getUTCFullYear(),

@@ -1,4 +1,4 @@
-import { Component, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
@@ -7,11 +7,15 @@ import type { StaffBookingPage, StaffBookingQuery } from '../api/types'
 import {
   lookupDate,
   lookupDateRange,
+  lookupFiltersFromSearch,
   lookupMoney,
   lookupQuery,
+  lookupQueryFromSearch,
+  lookupSearchFromFilters,
   lookupShortDate,
   type LookupFilters,
   type LookupPeriod,
+  type LookupSearch,
 } from './lookup-utils'
 import { BookingDetailsDialog } from './BookingDetailsDialog'
 import './lookup.css'
@@ -41,31 +45,76 @@ export function StaffBookingLookupPage() {
   )
 }
 
+/**
+ * The query for the current URL. A custom range that is not filled in yet falls back to the default period, so the
+ * list still loads; the page shows the message from `lookupFormError` above it.
+ */
+function safeLookupQuery(search: LookupSearch): StaffBookingQuery {
+  try {
+    return lookupQueryFromSearch(search)
+  } catch {
+    return lookupQuery(lookupFiltersFromSearch({ ...search, period: 'week' }), search.page ?? 1, search.pageSize ?? 20)
+  }
+}
+function lookupFormError(search: LookupSearch): string | null {
+  try {
+    lookupQueryFromSearch(search)
+    return null
+  } catch (cause) {
+    return cause instanceof Error ? cause.message : 'Check your filter values.'
+  }
+}
+/**
+ * Says what the URL is showing. The booking reference is left out on purpose: opening a booking changes the URL, but
+ * not the list behind it.
+ */
+function lookupKey(search: LookupSearch) {
+  const filters = lookupFiltersFromSearch(search)
+  return JSON.stringify([
+    filters.search,
+    filters.dateType,
+    filters.period,
+    filters.from,
+    filters.to,
+    filters.status,
+    search.page ?? 1,
+    search.pageSize ?? 20,
+  ])
+}
+
 function LookupContent() {
-  const { reference } = useSearch({ from: '/_authenticated/booking-lookup' })
+  const search = useSearch({ from: '/_authenticated/booking-lookup' })
+  const { reference } = search
   const navigate = useNavigate({ from: '/booking-lookup' })
   const currentApi = useBookingPnrApi(),
     api = useRef(currentApi)
-  const [filters, setFilters] = useState<LookupFilters>({
-    search: reference ?? '',
-    dateType: 'booked',
-    period: 'week',
-    from: '',
-    to: '',
-    status: '',
-  })
-  const [query, setQuery] = useState<StaffBookingQuery>(() =>
-    lookupQuery({ search: reference ?? '', dateType: 'booked', period: 'week', from: '', to: '', status: '' }),
-  )
+  /* The filters are the URL: a refresh, a shared link and the back button all show the same list. */
+  const filters = useMemo(() => lookupFiltersFromSearch(search), [search])
+  /* The search box keeps its own text until it is submitted, so a half-typed reference is not sent to the API. */
+  const [draftSearch, setDraftSearch] = useState(() => search.q ?? '')
+  const urlKey = lookupKey(search)
+  const [applied, setApplied] = useState<{ key: string; q: string }>(() => ({ key: urlKey, q: search.q ?? '' }))
+  const [query, setQuery] = useState<StaffBookingQuery>(() => safeLookupQuery(search))
   const [page, setPage] = useState<StaffBookingPage | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [formError, setFormError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(() => lookupFormError(search))
   const [notice, setNotice] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
   useEffect(() => {
     api.current = currentApi
   }, [currentApi])
+  /* Render-time adjustment — the URL is the prop here. When it changes (a filter the user picked, the back button, a
+     shared link), the query and the messages are re-seeded from it. */
+  if (applied.key !== urlKey) {
+    const previousSearch = applied.q
+    setApplied({ key: urlKey, q: search.q ?? '' })
+    setQuery(safeLookupQuery(search))
+    setFormError(lookupFormError(search))
+    setError(null)
+    setLoading(true)
+    if (previousSearch !== (search.q ?? '')) setDraftSearch(search.q ?? '')
+  }
   useEffect(() => {
     let active = true
     void api.current
@@ -92,23 +141,23 @@ function LookupContent() {
    * rather than after a submit. The search box applies on Enter through the form below, because a free-text query
    * would otherwise refetch on every keystroke.
    */
-  function apply(next: LookupFilters) {
+  function apply(next: LookupFilters, pageNumber = 1, pageSize = query.pageSize ?? 20) {
     try {
-      const built = lookupQuery(next, 1, query.pageSize ?? 20)
-      setLoading(true)
+      lookupQuery(next, pageNumber, pageSize)
       setError(null)
-      setFormError(null)
       setNotice(null)
-      setQuery(built)
+      void navigate({
+        to: '/booking-lookup',
+        search: { ...lookupSearchFromFilters(next, pageNumber, pageSize), reference: search.reference },
+        replace: true,
+      })
     } catch (cause) {
       setFormError(cause instanceof Error ? cause.message : 'Check your filter values.')
     }
   }
   /** One filter control changed: keep the other values and re-run the query. */
   function changeFilter<K extends keyof LookupFilters>(key: K, value: LookupFilters[K]) {
-    const next = { ...filters, [key]: value }
-    setFilters(next)
-    apply(next)
+    apply({ ...filters, [key]: value })
   }
   /**
    * Periods map to concrete dates, so switching straight to a custom range would leave From/To empty and fail
@@ -122,12 +171,11 @@ function LookupContent() {
       next.from = range.from ?? today
       next.to = range.to ?? today
     }
-    setFilters(next)
     apply(next)
   }
   function submit(event: FormEvent) {
     event.preventDefault()
-    apply(filters)
+    apply({ ...filters, search: draftSearch })
   }
   function reload() {
     setLoading(true)
@@ -135,9 +183,16 @@ function LookupContent() {
     setRefresh((value) => value + 1)
   }
   function changePage(value: number) {
-    setLoading(true)
     setError(null)
-    setQuery((current) => ({ ...current, page: value }))
+    void navigate({ to: '/booking-lookup', search: { ...search, page: value > 1 ? value : undefined }, replace: true })
+  }
+  function changePageSize(value: number) {
+    setError(null)
+    void navigate({
+      to: '/booking-lookup',
+      search: { ...search, page: undefined, pageSize: value === 20 ? undefined : value },
+      replace: true,
+    })
   }
   const start = page?.items.length ? (page.page - 1) * page.pageSize + 1 : 0
   const end = page?.items.length ? start + page.items.length - 1 : 0
@@ -159,8 +214,8 @@ function LookupContent() {
             <Input
               maxLength={200}
               placeholder="Reference, passenger name, ticket number or passport"
-              value={filters.search}
-              onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+              value={draftSearch}
+              onChange={(event) => setDraftSearch(event.target.value)}
             />
           </label>
           <label>
@@ -269,7 +324,7 @@ function LookupContent() {
                     <td>
                       <button
                         className="f3-lookup-reference"
-                        onClick={() => void navigate({ to: '/booking-lookup', search: { reference: item.reference } })}
+                        onClick={() => void navigate({ to: '/booking-lookup', search: { ...search, reference: item.reference } })}
                       >
                         {item.reference}
                       </button>
@@ -304,11 +359,7 @@ function LookupContent() {
                 aria-label="Bookings per page"
                 disabled={loading}
                 value={query.pageSize ?? 20}
-                onChange={(event) => {
-                  setLoading(true)
-                  setError(null)
-                  setQuery((current) => ({ ...current, page: 1, pageSize: Number(event.target.value) }))
-                }}
+                onChange={(event) => changePageSize(Number(event.target.value))}
               >
                 <option value={20}>20</option>
                 <option value={50}>50</option>
@@ -335,7 +386,7 @@ function LookupContent() {
         <BookingDetailsDialog
           key={reference}
           reference={reference}
-          onClose={() => void navigate({ to: '/booking-lookup', search: {}, replace: true })}
+          onClose={() => void navigate({ to: '/booking-lookup', search: { ...search, reference: undefined }, replace: true })}
           onChanged={() => {
             setNotice(`Cancellation completed for ${reference}.`)
             reload()
