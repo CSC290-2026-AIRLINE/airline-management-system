@@ -153,13 +153,13 @@ list.
 
 The five problems 5a can raise are in `payment.types.ts` (`PAYMENT_PROBLEM_TYPES`):
 
-| Problem                  | State        | Action                                    |
-| ------------------------ | ------------ | ----------------------------------------- |
-| Ticket capture stalled   | needs action | Retry capture                             |
-| Cargo capture stalled    | needs action | Retry capture                             |
-| Waiting for the provider | queued       | none — the reconciliation job is checking |
-| Finance posting delayed  | queued       | Send now                                  |
-| Authorisation voided     | resolved     | none — the customer was not charged       |
+| Problem                 | State        | Action                                    |
+| ----------------------- | ------------ | ----------------------------------------- |
+| Ticket capture stalled  | needs action | Retry capture                             |
+| Cargo capture stalled   | needs action | Retry capture                             |
+| Waiting for Stripe      | queued       | none — the reconciliation job is checking |
+| Finance posting delayed | queued       | Send now                                  |
+| Authorisation voided    | resolved     | none — the customer was not charged       |
 
 Feature 5c's "Crew payout failed" belongs to the same page in the frames, but it is 5c's row and 5a does not raise it.
 

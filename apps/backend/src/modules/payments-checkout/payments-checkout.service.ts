@@ -447,8 +447,10 @@ export class PaymentsCheckoutService {
             document_number: creditNote.document_number,
             amount: creditNote.amount,
             issued_at: creditNote.issued_at.toISOString(),
+            description: null,
           }
         : null,
+      refund_note: null,
     }
   }
 
@@ -592,6 +594,10 @@ export class PaymentsCheckoutService {
       capture_attempts: payment.capture_attempts,
       authorised_at: payment.authorised_at?.toISOString() ?? null,
       voided_at: payment.voided_at?.toISOString() ?? null,
+      /* TODO(F5a): the provider's payment id, the flight and the refund come with the real provider and Feature 5b. */
+      provider_reference: null,
+      trip: null,
+      refund_reference: null,
       lines: payment.lines.map((line) => this.toLineDto(line)),
       state_history: stateHistoryFor(payment).map((step) => ({
         key: step.key,
@@ -792,7 +798,7 @@ export class PaymentsCheckoutService {
           ? 'The cargo booking is confirmed, but the card has not been charged. No Air Waybill is issued until it is.'
           : 'The booking is confirmed and the ticket is live, but the card has not been charged.',
         what_to_do: cargo
-          ? 'Retry the capture. If it keeps failing, cancel the cargo booking.'
+          ? 'Retry the capture, or cancel the cargo booking.'
           : 'Retry the capture. If it keeps failing, decide whether to cancel the ticket.',
         action: 'retry_capture',
         action_label: 'Retry capture',
@@ -810,7 +816,7 @@ export class PaymentsCheckoutService {
         reference,
         booking_reference: bookingReference,
         what_happened: 'The finance ledger did not answer (503). The payment itself is complete.',
-        what_to_do: 'Send the payment to the finance ledger now.',
+        what_to_do: 'Nothing needed. The job keeps retrying; send now if it is urgent.',
         action: 'send_posting',
         action_label: 'Send now',
         since: payment.updated_at.toISOString(),
@@ -844,7 +850,7 @@ export class PaymentsCheckoutService {
         reference,
         booking_reference: bookingReference,
         what_happened: 'The card was authorised, but the booking confirm failed twice. The hold was released automatically.',
-        what_to_do: 'No action — the customer was not charged.',
+        what_to_do: 'No action. The customer was not charged.',
         action: 'none',
         action_label: null,
         since: (payment.voided_at ?? payment.updated_at).toISOString(),
@@ -856,16 +862,16 @@ export class PaymentsCheckoutService {
     const waitingForProvider =
       payment.status === 'authorised' &&
       payment.capture_attempts === 0 &&
-      now.getTime() - payment.started_at.getTime() > PROVIDER_EVENT_TIMEOUT_MS
+      now.getTime() - payment.started_at.getTime() >= PROVIDER_EVENT_TIMEOUT_MS
     if (waitingForProvider) {
       return {
         id: payment.id,
         type: 'waiting_for_provider',
-        title: 'Waiting for the provider',
+        title: 'Waiting for Stripe',
         reference,
         booking_reference: bookingReference,
-        what_happened: 'No provider event for 30 minutes.',
-        what_to_do: 'Nothing yet — the reconciliation job is checking.',
+        what_happened: 'No Stripe event for 30 minutes.',
+        what_to_do: 'Nothing yet. The reconciliation job is checking.',
         action: 'none',
         action_label: null,
         since: payment.started_at.toISOString(),
@@ -941,6 +947,7 @@ export class PaymentsCheckoutService {
       capture_stalled_at: payment.capture_stalled_at?.toISOString() ?? null,
       last_error: payment.last_error,
       receipt_id: receipt?.id ?? null,
+      updated_at: payment.updated_at.toISOString(),
     }
   }
 
