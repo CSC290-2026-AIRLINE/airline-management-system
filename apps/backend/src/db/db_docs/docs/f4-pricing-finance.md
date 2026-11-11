@@ -1,6 +1,6 @@
 # F4 — Pricing, fare rules, and finance
 
-> **Status: MERGED LEVEL 1 SCHEMA — verified against `dev` on 21 Oct 2026 (`752428e732da`).** [PR #14](https://github.com/CSC290-2026-AIRLINE/airline-management-system/pull/14) merged on 12 Oct 2026 (16:54 UTC). The F1/F2/F4/F7/F9/F12/F15 SQL dictionary describes the committed 69-table Level 1 schema; Feature 8 is documented separately as an **unmerged proposal**. Repository merge is not proof of deployment to any running database or final feature-owner approval.
+> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
 **Tables (15):** [`fare_class`](#table-fare_class) · [`base_fare`](#table-base_fare) · [`pricing_rule`](#table-pricing_rule) · [`seat_fee`](#table-seat_fee) · [`overweight_baggage_rate`](#table-overweight_baggage_rate) · [`tax_fee`](#table-tax_fee) · [`currency_rate`](#table-currency_rate) · [`promo_code`](#table-promo_code) · [`pricing_setting`](#table-pricing_setting) · [`fare_quote`](#table-fare_quote) · [`fare_quote_line`](#table-fare_quote_line) · [`promo_redemption`](#table-promo_redemption) · [`payment_schedule`](#table-payment_schedule) · [`expense`](#table-expense) · [`finance_monthly_summary`](#table-finance_monthly_summary)
 
@@ -52,7 +52,7 @@ Starting fare for a particular route and fare class.
 
 **Indexes:** `base_fare_route_class_uq` (unique; `(route_id, fare_class_id) WHERE deleted_at IS NULL`); `base_fare_class_idx` (index; `(fare_class_id)`).
 
-**Cross-feature linkage:** `route_id` → `route(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `route_id` → `route(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-pricing_rule"></a>
 
@@ -127,7 +127,7 @@ Free baggage allowance and overweight rates by fare class, optionally route-spec
 
 **Indexes:** `overweight_baggage_rate_uq` (unique; `(fare_class_id, route_id) NULLS NOT DISTINCT WHERE deleted_at IS NULL`); `overweight_baggage_rate_route_idx` (index; `(route_id) WHERE route_id IS NOT NULL`).
 
-**Cross-feature linkage:** `route_id` → `route(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `route_id` → `route(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-tax_fee"></a>
 
@@ -236,7 +236,7 @@ Time-limited, immutable price snapshot for a flight, fare class, discount, and s
 
 **Indexes:** `fare_quote_lookup_ix` (index; `(flight_id, fare_class_id, expires_at DESC)`).
 
-**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-fare_quote_line"></a>
 

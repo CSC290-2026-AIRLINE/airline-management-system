@@ -1,70 +1,59 @@
 # Airline Management System — Database Documentation
 
-> **Status: MERGED LEVEL 1 SCHEMA — verified against `dev` on 21 Oct 2026 (`752428e732da`).** [PR #14](https://github.com/CSC290-2026-AIRLINE/airline-management-system/pull/14) merged on 12 Oct 2026 (16:54 UTC). The F1/F2/F4/F7/F9/F12/F15 SQL dictionary describes the committed 69-table Level 1 schema; Feature 8 is documented separately as an **unmerged proposal**. Repository merge is not proof of deployment to any running database or final feature-owner approval.
+> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
-**Maintained by:** Database Team — Docs + Maintain  
-**Scope:** Current Level 1 SQL on `dev`: F1 baseline and Features 2, 4, 7, 9, 12, 15 — **69 implemented tables / 640 columns**. Plus a **separate proposed Feature 8** dictionary based on the 11 Oct 2026 Iteration-02 specification; its **10 proposed tables are not in `dev`**. The 69-table total deliberately excludes Feature 8.
+**Maintained by:** Database Team — Docs + Maintain.
 
-## Find the documentation you need
+**Scope:** F1, F2, F4, F7, F8, F9, F12 and F15. The original Level 1 baseline had 69 tables / 640 columns; F2 Iteration-03 adds four tables / 42 columns, F8 adds eleven tables / 76 columns and the F7 screening update adds 14 columns net. Current total: **84 tables / 772 columns**.
 
-The detailed data dictionary is split by feature, so developers only need to open the section they are working on.
+## Data dictionaries
 
-| Feature               | What it covers                                                                                             | Data dictionary                                                                    |
-| --------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **F1**                | Shared users, staff, roles, refresh tokens (4 tables)                                                      | [F1 — Baseline](./docs/f1-baseline.md)                                             |
-| **F2**                | Airports, routes, flights, scheduling, disruptions (12 tables)                                             | [F2 — Flight Scheduling](./docs/f2-flight-scheduling.md)                           |
-| **F4**                | Fare classes, pricing, quotes, promotions, expenses, finance (15 tables)                                   | [F4 — Pricing & Finance](./docs/f4-pricing-finance.md)                             |
-| **F7**                | Passenger identities, customer accounts, watchlists and screening (6 tables)                               | [F7 — Profiles & Screening](./docs/f7-profiles-screening.md)                       |
-| **F8 (proposed)**     | Crew management, pairing construction, legality and roster publishing (**10 proposed tables**, NOT merged) | [F8 — Crew & Rostering (Iteration-02)](./docs/f8-crew-management-and-rostering.md) |
-| **F9**                | Aircraft, maintenance, operating days and turnaround tasks (8 tables)                                      | [F9 — Aircraft](./docs/f9-aircraft-management.md)                                  |
-| **F12**               | Products, menus, passenger orders (7 tables)                                                               | [F12A — Catalogue & Orders](./docs/f12-catalog-and-orders.md)                      |
-| **F12**               | Warehouses, catering, inventory, stock transfers, sales (14 tables)                                        | [F12B — Inventory & Catering](./docs/f12-inventory-and-catering.md)                |
-| **F15**               | Screen access, role permissions and audit history (3 tables)                                               | [F15 — Admin & Audit](./docs/f15-admin-audit.md)                                   |
-| **Implemented total** | **69 tables, 640 columns**, excluding the 10 unmerged F8 proposals                                         |                                                                                    |
+| Feature   | Coverage                                                         | Tables | Guide                                                          |
+| --------- | ---------------------------------------------------------------- | ------ | -------------------------------------------------------------- |
+| F1        | Roles, users, staff and refresh tokens                           | 4      | [Baseline](./docs/f1-baseline.md)                              |
+| F2        | Network, flights, disruptions, partners and schedule approvals   | 16     | [Flight scheduling](./docs/f2-flight-scheduling.md)            |
+| F4        | Fares, pricing, quotes, promotions and finance                   | 15     | [Pricing & finance](./docs/f4-pricing-finance.md)              |
+| F7        | Passengers, customers, watchlists and screening                  | 6      | [Profiles & screening](./docs/f7-profiles-screening.md)        |
+| F8        | Crew, country rules, pairings, roster runs and violations        | 11     | [Crew & rostering](./docs/f8-crew-management-and-rostering.md) |
+| F9        | Aircraft, availability, maintenance and turnaround               | 8      | [Aircraft](./docs/f9-aircraft-management.md)                   |
+| F12       | Products, menus and passenger orders                             | 7      | [Catalogue & orders](./docs/f12-catalog-and-orders.md)         |
+| F12       | Warehouses, batches, catering, transfers, sales and stock ledger | 14     | [Inventory & catering](./docs/f12-inventory-and-catering.md)   |
+| F15       | Screens, role permissions and audit history                      | 3      | [Administration & audit](./docs/f15-admin-audit.md)            |
+| **Total** |                                                                  | **84** |                                                                |
 
-## Shared reference guides
+## Shared guides
 
-| Guide                                                                | What you will find                                                                                       |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [Relationships & Migrations](./docs/relationships-and-migrations.md) | Cross-feature foreign keys, Prisma limits, SQL-only rules, migration history and data-loss warning       |
-| [Seeds](./docs/seed-data.md)                                         | Actual inserted defaults, test data, bootstrap rows, missing required seeds and a verification checklist |
-| [Decisions & Maintenance](./docs/decisions-and-maintenance.md)       | Naming and data standards, unconfirmed design decisions, changelog and how to keep these files updated   |
+- [Relationships & migrations](./docs/relationships-and-migrations.md): cross-feature FKs, SQL-only constraints and migration history.
+- [Seed data](./docs/seed-data.md): migration defaults, development network and missing reference data.
+- [Decisions & maintenance](./docs/decisions-and-maintenance.md): conventions, remaining decisions and update workflow.
+- [Verification notes, 24 Oct](./REVIEW_NOTES_2026-10-24.md): scope and checks for the current update.
+- [Historical verification, 21 Oct](./REVIEW_NOTES_2026-10-21.md): previous baseline snapshot, superseded for current counts and F8 status.
 
-## Authoritative repository files
+## Repository sources
 
-| File                                                                                                                                                                                                                                                            | Purpose                                                                                                    |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| [`schema.sql`](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/apps/backend/src/db/schema.sql)                                                                                                                                        | Merged Level 1 SQL: table definitions, constraints, indexes, triggers, inline inserts                      |
-| [`prisma/schema.prisma`](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/apps/backend/src/db/prisma/schema.prisma)                                                                                                                    | Merged Prisma ORM models; does **not** represent all PostgreSQL-only rules                                 |
-| [`prisma/migrations/20261012150000_level1_schema/migration.sql`](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/apps/backend/src/db/prisma/migrations/20261012150000_level1_schema/migration.sql)                                    | **Merged** Level 1 migration on `dev`; includes `schema.sql` unchanged, plus scaffold drops and admin role |
-| [`seed.ts`](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/apps/backend/src/db/seed.ts)                                                                                                                                              | Generated development/test records, not the full agreed reference seeds                                    |
-| [`db.module.ts`](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/apps/backend/src/db/db.module.ts) and [`db.service.ts`](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/apps/backend/src/db/db.service.ts) | NestJS database module and Prisma connection lifecycle                                                     |
-| [Central DB workflow](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/docs/database-structure.md)                                                                                                                                     | Ownership, update procedure and team rules (**scaffold model-count section is outdated on `dev`**)         |
-| [Git workflow](https://github.com/CSC290-2026-AIRLINE/airline-management-system/blob/dev/docs/branch-naming-and-workflow.md)                                                                                                                                    | Branch naming and PR requirements                                                                          |
+All paths below are relative to `apps/backend/src/db/`.
 
-**Technology:** PostgreSQL 16 (Docker Compose), Prisma with `@prisma/adapter-pg`, NestJS. `DATABASE_URL` is configured in `apps/backend/prisma.config.ts` and the backend configuration; do not store credentials in documentation.
+| File                                                                   | Purpose                                                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [`schema.sql`](../schema.sql)                                          | Consolidated current DDL, indexes, CHECKs, triggers and embedded inserts |
+| [`prisma/schema.prisma`](../prisma/schema.prisma)                      | ORM models; SQL remains necessary for rules Prisma cannot represent      |
+| [`prisma/migrations/`](../prisma/migrations/)                          | Ordered history: original scaffold, Level 1, F2 approvals and F8         |
+| [`seed.ts`](../seed.ts)                                                | Roles, F2 demo network and generated identity/session test records       |
+| [`db.module.ts`](../db.module.ts), [`db.service.ts`](../db.service.ts) | NestJS database injection and connection lifecycle                       |
+| [Central database guide](../../../../../docs/database-structure.md)    | Ownership/workflow; its four-model scaffold section remains outdated     |
 
-## How to read the data dictionary
+**Actual repository technology:** PostgreSQL 16, Prisma 7 with `@prisma/adapter-pg`, and NestJS. This documents the existing repository. No stack changes are part of this documentation update. Configuration comes from `apps/backend/prisma.config.ts` and backend configuration; do not copy credentials into docs.
 
-- **PK** = primary key; **FK** = SQL-enforced foreign key; **cross-FK** = cross-feature FK from Part 8 of `schema.sql` (included in the merged migration, but originally optional in the proposal).
-- **required** = `NOT NULL` / PK. **nullable** = NULL allowed by SQL, although backend validation may require a value for some operations.
-- **unique** may mean a single-column constraint or a compound/partial unique index; read each table’s **Indexes** note.
-- **`created_at` / `updated_at`** normally use database wall-clock time; named business events may require the _simulated clock_, which the backend supplies.
-- **Soft-deleted** rows are typically indicated by `deleted_at`; partial indexes may only apply to non-deleted rows.
-- **Defined in SQL ≠ applied to an environment.** **Backend rule ≠ database constraint.** **Seeded in code ≠ verified in a deployed database.**
+## Reading and integration notes
 
-## Important notes before integration
+- PK = primary key; FK = SQL-enforced foreign key; cross-FK = a cross-feature FK in current `schema.sql` Part 9. The original Level 1 migration used Part 8 for that section.
+- Required means SQL NOT NULL, primary key or generated identity; nullable means SQL permits NULL, possibly subject to conditional CHECKs.
+- Uniqueness can be compound, partial, expression-based or `NULLS NOT DISTINCT`; read each index definition.
+- `created_at` / `updated_at` use real time; business timestamps generally require the application simulation clock. Defaults do not automatically refresh updated_at.
+- Committed tables do not establish implemented feature services. The backend currently registers auth and app infrastructure; F2/F8 workers, legality calculations, publication gates and audit writers still require implementation.
+- The original Level 1 migration drops scaffold data. Existing migrations are append-only; do not reset a populated/shared database to make docs match.
+- `schema.sql` is now a consolidated schema, not a byte-for-byte copy of the original Level 1 migration. Apply subsequent F2/F8 migrations in order to upgrade the baseline.
+- Screen definitions, base currency, airline code and a complete approved bootstrap seed remain missing. F8 settings exist, but crew/country-language demo data does not.
+- Repository source was inspected; no running database deployment or runtime constraints were verified.
 
-1. The Level 1 SQL being documented is **merged into `dev`** by PR #14 (12 Oct 2026). **Merge is not proof that migrations ran** on a particular development or production database. **F8 is proposal only**, not part of that merge.
-2. The merged Level 1 migration **drops existing scaffold tables** before recreating them. Treat it as destructive to their data; do not apply it to a populated database without an approved preservation plan.
-3. The first `admin` role is inserted by the migration, but the complete reference seed (screens, base currency, airline code, initial admin account and more) is still missing as a complete reference seed on the inspected `dev` branch.
-4. Some decisions remain open with feature owners (F1 baseline, F4 cash-basis/refund semantics, F9 layout versioning, F12 provisional menu defaults and cross-feature FK assumptions). Track them in [Decisions & Maintenance](./docs/decisions-and-maintenance.md).
-5. Never edit generated Prisma client files or existing migrations solely to make the documentation match; escalate mismatches to DB Leads.
-
-## Updating these documents
-
-After a database PR merges: check `schema.sql` **and the applied migration**, review Prisma and seed changes, update only the affected feature files plus shared references, record the commit/PR, and submit a docs PR using the team’s workflow. See [Decisions & Maintenance](./docs/decisions-and-maintenance.md).
-
-**Read-only deliverable:** This updated ZIP does not modify GitHub or the database. It is a documentation proposal ready for team review and a separate docs PR.
-
-**Snapshot:** inspected `dev` HEAD `752428e732da4e4179a5c4f7ea2c1a07bc3f6400` (21 Oct 2026); F8 source: Group 1 Iteration-02 specification dated 11 Oct 2026. See [Verification & update notes](./REVIEW_NOTES_2026-10-21.md).
+Update only these Markdown docs for this task. Database schema, migrations, seeds, generated clients and central repository docs remain unchanged.

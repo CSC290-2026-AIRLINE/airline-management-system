@@ -1,6 +1,6 @@
 # F12 — Product catalogue, menus, and customer orders
 
-> **Status: MERGED LEVEL 1 SCHEMA — verified against `dev` on 21 Oct 2026 (`752428e732da`).** [PR #14](https://github.com/CSC290-2026-AIRLINE/airline-management-system/pull/14) merged on 12 Oct 2026 (16:54 UTC). The F1/F2/F4/F7/F9/F12/F15 SQL dictionary describes the committed 69-table Level 1 schema; Feature 8 is documented separately as an **unmerged proposal**. Repository merge is not proof of deployment to any running database or final feature-owner approval.
+> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
 
 **Tables (7):** [`product`](#table-product) · [`product_dietary`](#table-product_dietary) · [`product_offering`](#table-product_offering) · [`cabin_setting`](#table-cabin_setting) · [`catering_setting`](#table-catering_setting) · [`product_order`](#table-product_order) · [`product_order_line`](#table-product_order_line)
 
@@ -78,7 +78,7 @@ Product availability on a network-, route-, or flight-specific cabin menu.
 
 **Indexes:** `product_offering_uq` (unique; `(product_id, route_id, flight_id, cabin) NULLS NOT DISTINCT WHERE deleted_at IS NULL`); `product_offering_default_uq` (unique; `(route_id, flight_id, cabin) NULLS NOT DISTINCT WHERE is_default AND deleted_at IS NULL`).
 
-**Cross-feature linkage:** `route_id` → `route(id)`; `flight_id` → `flight(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `route_id` → `route(id)`; `flight_id` → `flight(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-cabin_setting"></a>
 
@@ -111,7 +111,7 @@ Cabin meal-service, preorder, and stock-buffer policy at network/route/flight sc
 
 **Indexes:** `cabin_setting_uq` (unique; `(route_id, flight_id, cabin) NULLS NOT DISTINCT`).
 
-**Cross-feature linkage:** `route_id` → `route(id)`; `flight_id` → `flight(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `route_id` → `route(id)`; `flight_id` → `flight(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-catering_setting"></a>
 
@@ -157,7 +157,7 @@ Customer onboard-product order for a booking/flight, including payment status.
 
 **Indexes:** `product_order_payment_uq` (unique; `(payment_id) WHERE payment_id IS NOT NULL`); `product_order_booking_idx` (index; `(booking_id)`); `product_order_customer_idx` (index; `(customer_id)`); `product_order_flight_idx` (index; `(flight_id, status)`).
 
-**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 8; coordinate any decision to omit with Database Leads.
+**Cross-feature linkage:** `flight_id` → `flight(id)`. Declared in Part 9; coordinate any decision to omit with Database Leads.
 
 <a id="table-product_order_line"></a>
 
