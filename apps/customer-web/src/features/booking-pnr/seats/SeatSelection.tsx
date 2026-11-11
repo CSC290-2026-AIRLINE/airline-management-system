@@ -38,6 +38,13 @@ export function SeatSelection({ passengers, segments, initialSeats = [], onConti
   const segment = segments.find((item) => item.flightId === flightId)
   const passenger = eligible.find((item) => item.id === passengerId)
   const selected = choices.find((item) => item.flightId === flightId && item.passengerId === passengerId)
+  const fee = choices.reduce((total, choice) => {
+    const flight = segments.find((item) => item.flightId === choice.flightId)
+    return total + (flight?.seatMap.rows.flatMap((row) => row.seats).find((seat) => seat.seatCode === choice.seatCode)?.fee ?? 0)
+  }, 0)
+  const exitSelected = segment?.seatMap.rows
+    .flatMap((row) => row.seats)
+    .some((seat) => seat.seatCode === selected?.seatCode && seat.type === 'exit')
 
   if (!segment || !passenger) return <p>No passengers or flights are available for seat selection.</p>
 
@@ -80,18 +87,29 @@ export function SeatSelection({ passengers, segments, initialSeats = [], onConti
           onSelect={selectSeat}
         />
         <aside>
-          <h2>Passengers</h2>
+          <h2>Passengers on this flight</h2>
           {eligible.map((item) => {
             const choice = choices.find((seat) => seat.passengerId === item.id && seat.flightId === flightId)
             return (
               <button key={item.id} type="button" aria-pressed={item.id === passengerId} onClick={() => setPassengerId(item.id)}>
-                {item.name} — {choice?.seatCode ?? 'No seat yet'}
+                {item.name} ({item.type}) — {choice?.seatCode ?? 'Choose later'}
               </button>
             )
           })}
           <p>Infants travel on an adult’s lap and do not need a seat.</p>
-          <p>Exit-row seats are subject to eligibility rules.</p>
-          <button type="button" onClick={() => onContinue(choices)}>
+          <p className="seat-selection__fees">
+            Seat fees <strong>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(fee)}</strong>
+          </p>
+          {exitSelected && (
+            <p className="seat-selection__warning" role="status">
+              Exit-row seats require an adult with no assistance request and no infant on their lap.
+            </p>
+          )}
+          <p className="seat-selection__hint">
+            Pick a passenger, then a seat. You can skip any flight and choose later in My Trips or at check-in. Seats are held when you
+            continue to review.
+          </p>
+          <button className="seat-selection__continue" type="button" onClick={() => onContinue(choices)}>
             Continue to review
           </button>
           <button type="button" onClick={skipSegment}>

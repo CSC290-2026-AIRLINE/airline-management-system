@@ -38,6 +38,16 @@ export function SeatPicker({
         ))}
       </div>
       <div className="seat-picker__rows">
+        <div className="seat-picker__row seat-picker__columns" aria-hidden="true">
+          <span className="seat-picker__number" />
+          {seats
+            .filter((seat) => seat.row === rows[0])
+            .map((seat, index) => (
+              <span className={`seat-picker__column${index === 3 ? ' seat-picker__seat--aisle' : ''}`} key={seat.column}>
+                {seat.column}
+              </span>
+            ))}
+        </div>
         {rows.map((row) => (
           <div className="seat-picker__row" key={row}>
             <span className="seat-picker__number">{row}</span>

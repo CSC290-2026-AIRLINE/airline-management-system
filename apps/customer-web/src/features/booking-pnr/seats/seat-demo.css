@@ -46,3 +46,25 @@ body {
     grid-template-columns: 1fr;
   }
 }
+.seat-demo {
+  max-width: 1200px;
+}
+.seat-demo__brand {
+  margin: 0;
+  padding: 18px 24px;
+  border-radius: 12px;
+  background: #eef1f6;
+  font-family: Georgia, serif;
+  font-size: 26px;
+}
+.seat-demo__brand small {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+}
+.seat-demo__card {
+  margin-top: 24px;
+}
+.seat-demo__card h3 {
+  font-size: 14px;
+}

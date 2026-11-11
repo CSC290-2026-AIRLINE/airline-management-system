@@ -57,6 +57,12 @@ export function BookingSeatStep({
   const map = maps?.[flightId]
   const selected = choices.find((item) => item.flightId === flightId && item.travellerKey === travellerKey)
   const allSeats = map?.rows.flatMap((row) => row.seats) ?? []
+  const seatFees = choices.reduce(
+    (total, choice) =>
+      total + (maps?.[choice.flightId]?.rows.flatMap((row) => row.seats).find((seat) => seat.seatCode === choice.seatCode)?.fee ?? 0),
+    0,
+  )
+  const exitSelected = allSeats.some((seat) => seat.seatCode === selected?.seatCode && seat.type === 'exit')
 
   return (
     <section className="seat-selection" aria-label="Seat selection">
@@ -133,6 +139,14 @@ export function BookingSeatStep({
                   </button>
                 ))}
               <p>Infants travel on an adult’s lap. Exit-row seats have eligibility rules.</p>
+              <p className="seat-selection__fees">
+                Seat fees <strong>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(seatFees)}</strong>
+              </p>
+              {exitSelected && (
+                <p className="seat-selection__warning" role="status">
+                  Exit-row seats require an adult with no assistance request and no infant on their lap.
+                </p>
+              )}
               <button type="button" disabled={busy} onClick={() => onChange(choices.filter((choice) => choice.flightId !== flightId))}>
                 Choose seats later for this flight
               </button>
