@@ -1,4 +1,5 @@
 import type { DbService } from '@backend/db/db.service'
+import { NotFoundException } from '@nestjs/common'
 import type { BookingReadPort } from '../contracts'
 import type { CheckinSeatProvider } from '../providers/checkin-seat.provider'
 import { SeatChangeService } from './seat-change.service'
@@ -54,6 +55,14 @@ describe('SeatChangeService', () => {
     checkIn.findFirst.mockResolvedValue({ id: 'check-in' })
     await expect(service.changeSeat('REF', 'coupon', '12A', viewer)).rejects.toMatchObject({ code: 'BOOKING_CLOSED' })
     expect(seats.hold).not.toHaveBeenCalled()
+  })
+
+  it('returns the booking error format if a coupon is no longer confirmed before the seat hold', async () => {
+    seats.hold.mockRejectedValue(new NotFoundException('Confirmed booking for this flight not found'))
+    await expect(service.changeSeat('REF', 'coupon', '12A', viewer)).rejects.toMatchObject({
+      code: 'INVALID_BOOKING_STATE',
+      status: 404,
+    })
   })
 
   it('releases the new hold if free-seat confirmation fails', async () => {

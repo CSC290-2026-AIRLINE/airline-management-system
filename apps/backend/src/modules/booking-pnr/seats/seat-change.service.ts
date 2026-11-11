@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { BookingError } from '../common/booking-error'
 import { BOOKING_READ_PORT, type BookingReadPort, type BookingViewer } from '../contracts'
@@ -39,7 +39,13 @@ export class SeatChangeService {
       select: { id: true },
     })
     if (checkIn) throw new BookingError('BOOKING_CLOSED', 'Seat changes after check-in are handled by check-in')
-    const lock = await this.seats.hold(coupon.flightId, seatCode, coupon.bookingPassengerId, 300_000, { rejectCheckedIn: true })
+    let lock: Awaited<ReturnType<CheckinSeatProvider['hold']>>
+    try {
+      lock = await this.seats.hold(coupon.flightId, seatCode, coupon.bookingPassengerId, 300_000, { rejectCheckedIn: true })
+    } catch (error) {
+      if (error instanceof NotFoundException) throw new BookingError('INVALID_BOOKING_STATE', 'Booking or coupon not found', 404)
+      throw error
+    }
     if (lock.fee > 0) return { status: 'payment_required' as const, lock }
 
     try {
