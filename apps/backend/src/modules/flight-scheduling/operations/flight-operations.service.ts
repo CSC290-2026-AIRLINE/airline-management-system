@@ -31,6 +31,7 @@ import { SCHEDULE_APPROVALS, type ScheduleApprovals } from './schedule-approvals
 
 const FLIGHT_SELECT = {
   id: true,
+  route_id: true,
   flight_number: true,
   service_date: true,
   status: true,
@@ -45,6 +46,7 @@ const FLIGHT_SELECT = {
 
 export type LockedFlight = {
   id: string
+  route_id: string
   flight_number: string
   service_date: Date
   status: string
@@ -309,6 +311,7 @@ export class FlightOperationsService {
       approvalId: input.approval_id,
       purpose: 'reschedule',
       flightId: flight.id,
+      routeId: flight.route_id,
       flightNumber: flight.flight_number,
       serviceDate: flight.service_date,
       aircraftId: flight.aircraft_id,

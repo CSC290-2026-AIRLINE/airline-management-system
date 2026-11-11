@@ -22,6 +22,7 @@ const SERVICE_DATE = new Date('2026-11-02T00:00:00Z')
 
 const flightRow = (over: object = {}) => ({
   id: FLIGHT,
+  route_id: '00000000-0000-0000-0000-0000000000c1',
   flight_number: 'ZZ101',
   service_date: SERVICE_DATE,
   status: 'scheduled',

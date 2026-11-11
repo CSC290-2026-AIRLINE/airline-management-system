@@ -102,6 +102,7 @@ export class FlightConfirmService {
           approvalId: input.approval_id,
           purpose: 'new_flight',
           flightId: null,
+          routeId: input.route_id,
           flightNumber: input.flight_number,
           serviceDate: input.service_date,
           aircraftId: input.aircraft_id,
