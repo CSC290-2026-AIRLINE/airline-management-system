@@ -268,6 +268,8 @@ export interface Leg {
   aircraftType: string
   international: boolean
   localLanguages: string[]
+  /** Cabin crew on this leg who must speak the destination's language: the country's own number, else the default. */
+  localCrewRequired: number
 }
 
 export interface RunPairing {
@@ -281,6 +283,7 @@ export interface RunPairing {
 export interface Context {
   defaults: RuleLimitsRow
   countryRules: Map<string, { minRestHours: number; maxDutyHours: number }>
+  localCrewByCountry: Map<string, number>
   airportCountry: Map<string, string>
   countryLanguages: Map<string, string[]>
   /** Duty days are cut at local midnight in the base's timezone. */
@@ -522,16 +525,17 @@ export class AssignCrewService {
 
     // Local speakers first, one language set at a time, then the rest of the cabin.
     const cabin: CrewDbRow[] = []
-    const languageSets = new Map(
-      pairing.legs
-        .filter((leg) => leg.international && leg.localLanguages.length > 0)
-        .map((leg) => [leg.localLanguages.join(','), leg.localLanguages]),
-    )
-    for (const languages of languageSets.values()) {
+    const languageSets = new Map<string, { languages: string[]; required: number }>()
+    for (const leg of pairing.legs.filter((item) => item.international && item.localLanguages.length > 0)) {
+      const key = leg.localLanguages.join(',')
+      const required = Math.max(languageSets.get(key)?.required ?? 0, leg.localCrewRequired)
+      languageSets.set(key, { languages: leg.localLanguages, required })
+    }
+    for (const { languages, required } of languageSets.values()) {
       const have = cabin.filter((member) => speaks(member.languages, languages)).length
       const room = CABIN_CREW_PER_LEG - cabin.length
       // In demo mode the speaker is sometimes left to chance, which is what raises NO_LOCAL_CREW.
-      const wanted = demoBreaks && random() < LOCAL_MISS_RATE ? 0 : Math.min(room, limits.minLocalCrew - have)
+      const wanted = demoBreaks && random() < LOCAL_MISS_RATE ? 0 : Math.min(room, required - have)
       cabin.push(...pick('cabin_crew', wanted, (member) => speaks(member.languages, languages)))
     }
     cabin.push(...pick('cabin_crew', CABIN_CREW_PER_LEG - cabin.length))
@@ -637,7 +641,7 @@ export class AssignCrewService {
               detail: `${police} of ${limits.minPoliceInternational} police on international flight ${leg.flightNumber}.`,
             })
           }
-          if (limits.minLocalCrew > 0) {
+          if (leg.localCrewRequired > 0) {
             const speakers = cabin.filter((row) => speaks(row.crew.languages, leg.localLanguages)).length
             if (leg.localLanguages.length === 0) {
               raise({
@@ -647,13 +651,13 @@ export class AssignCrewService {
                 rule: 'NO_LOCAL_CREW',
                 detail: `No local languages are set for ${leg.destinationCountry.toUpperCase()} (${leg.destination}). Add them in Setup rules.`,
               })
-            } else if (speakers < limits.minLocalCrew) {
+            } else if (speakers < leg.localCrewRequired) {
               raise({
                 ...base,
                 crewId: null,
                 role: null,
                 rule: 'NO_LOCAL_CREW',
-                detail: `${speakers} of ${limits.minLocalCrew} cabin crew on ${leg.flightNumber} speak ${leg.localLanguages.join(' or ')} for ${leg.destination}.`,
+                detail: `${speakers} of ${leg.localCrewRequired} cabin crew on ${leg.flightNumber} speak ${leg.localLanguages.join(' or ')} for ${leg.destination}.`,
               })
             }
           }
@@ -926,6 +930,7 @@ export class AssignCrewService {
             aircraftType: flight.aircraft.aircraft_type.model,
             international,
             localLanguages: international ? (context.countryLanguages.get(destinationCountry) ?? []) : [],
+            localCrewRequired: context.localCrewByCountry.get(destinationCountry) ?? context.defaults.minLocalCrew,
           }
         })
         .sort((a, b) => a.dep.getTime() - b.dep.getTime())

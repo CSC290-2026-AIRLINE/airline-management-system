@@ -39,6 +39,22 @@ describe('loadBaseContext', () => {
     expect(context.timeZone).toBe('Asia/Bangkok')
   })
 
+  it('collects the local-crew number a country sets for itself, apart from the settings', async () => {
+    const context = await loadBaseContext(
+      db({
+        settings: [
+          { key: 'min_local_crew', value: '1' },
+          { key: 'min_local_crew.jp', value: '2' },
+          { key: 'min_local_crew.kr', value: 'abc' },
+        ],
+      }) as unknown as DbService,
+      'BKK',
+    )
+
+    expect(context.localCrewByCountry).toEqual(new Map([['jp', 2]]))
+    expect(context.read('min_local_crew', 1)).toBe(1)
+  })
+
   it('reads each table once', async () => {
     const mock = db()
     await loadBaseContext(mock as unknown as DbService, 'BKK')
