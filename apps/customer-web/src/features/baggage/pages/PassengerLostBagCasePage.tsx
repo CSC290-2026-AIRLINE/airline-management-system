@@ -15,6 +15,7 @@ import {
   type CaseRecoveryAccess,
 } from './case-page-recovery'
 import { canReportBagFoundByPassenger, caseProgressPresentation, caseStatusLabel, shouldShowNoOpenCase } from './case-page-presentation'
+import { canUseOwnerActions, resolveViewerOwnership } from './case-ownership'
 import { timelineEventLabel, type PassengerCaseTimelineEvent } from './passenger-case-summary-view'
 import './PassengerLostBagCasePage.css'
 
@@ -26,6 +27,8 @@ interface CaseAccess {
 
 interface LostBagReportDetail {
   caseNumber: string
+  /** The bag owner's booking passenger; compared with the viewer's own to decide which controls to show. */
+  bookingPassengerId?: string
   bagType: string
   colour: string
   brand: string | null
@@ -193,6 +196,24 @@ export function PassengerLostBagCasePage() {
   const [isEditingAccess, setIsEditingAccess] = useState(true)
   const [saveNotice, setSaveNotice] = useState('')
   const [error, setError] = useState('')
+  // true: bag owner; false: another traveller on the booking (read-only view); null: not known yet.
+  const [viewerIsBagOwner, setViewerIsBagOwner] = useState<boolean | null>(null)
+  const ownerActionsAllowed = canUseOwnerActions(viewerIsBagOwner)
+
+  async function loadOwnership(currentAccess: CaseAccess, reportBookingPassengerId: string | undefined, caseRequestId: number) {
+    const isCurrent = () => isCurrentCaseRequest(caseRequestId, caseRequestGeneration.current)
+    const result = await resolveViewerOwnership(
+      () =>
+        fetchWithAuth(
+          `/api/customer/lost-report-travellers?bookingReference=${encodeURIComponent(currentAccess.bookingReference)}&surname=${encodeURIComponent(currentAccess.surname)}`,
+        ),
+      reportBookingPassengerId,
+      isCurrent,
+    )
+    // Checked again here, after the last await, before touching state: a stale case's result is dropped.
+    if (result.stale || !isCurrent()) return
+    setViewerIsBagOwner(result.ownership)
+  }
 
   async function handleLookup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -247,6 +268,7 @@ export function PassengerLostBagCasePage() {
     setCaseSummaryError('')
     setCaseSummaryLoading(false)
     setAccess(null)
+    setViewerIsBagOwner(null)
     setRelatedCases([])
     setCaseListMessage('')
     setCaseNumber(normalizedAccess.caseNumber)
@@ -290,6 +312,7 @@ export function PassengerLostBagCasePage() {
       setRelatedCases(caseNumbers)
       setCaseListMessage(listMessage)
       void loadCaseSummary(normalizedAccess, requestId)
+      void loadOwnership(normalizedAccess, reportData.bookingPassengerId, requestId)
 
       try {
         const deliveryResponse = await fetchWithAuth(`${casePath}/delivery-choice?${query}`)
@@ -461,6 +484,7 @@ export function PassengerLostBagCasePage() {
     setCaseSummaryError('')
     setCaseSummaryLoading(false)
     setAccess(null)
+    setViewerIsBagOwner(null)
     setIsEditingAccess(true)
     setCaseNumber('')
     setRelatedCases([])
@@ -567,6 +591,7 @@ export function PassengerLostBagCasePage() {
 
   async function saveChoice(choice: PassengerDeliveryChoice): Promise<void> {
     if (!access) throw new Error('Case access is no longer available. Reopen the case and try again.')
+    if (!ownerActionsAllowed) throw new Error('Only the traveller whose bag this is can choose the delivery.')
 
     const currentAccess = access
     const requestId = caseRequestGeneration.current
@@ -670,7 +695,7 @@ export function PassengerLostBagCasePage() {
   }
 
   async function reportBagFoundByPassenger(): Promise<void> {
-    if (!report || !access || !canReportBagFoundByPassenger(report.status)) return
+    if (!report || !access || !canReportBagFoundByPassenger(report.status) || !ownerActionsAllowed) return
 
     const currentAccess = access
     const requestId = caseRequestGeneration.current
@@ -879,7 +904,7 @@ export function PassengerLostBagCasePage() {
               </p>
             )}
 
-            {canReportBagFoundByPassenger(report.status) && access && (
+            {canReportBagFoundByPassenger(report.status) && access && ownerActionsAllowed && (
               <div className="passenger-case-self-found">
                 {!isConfirmingSelfFound ? (
                   <button
@@ -908,7 +933,17 @@ export function PassengerLostBagCasePage() {
           </section>
 
           <aside className="passenger-case-delivery">
-            {isDeliveryUnavailable ? (
+            {viewerIsBagOwner === false ? (
+              <section className="passenger-case-info" role="status">
+                <h2>Delivery</h2>
+                <p>
+                  {caseSummary
+                    ? `Only ${caseSummary.passenger.firstName} ${caseSummary.passenger.lastName}, whose bag this is, can choose where we send it or cancel this report.`
+                    : 'Only the traveller whose bag this is can choose where we send it or cancel this report.'}{' '}
+                  They open this case with the case number and their own booking details.
+                </p>
+              </section>
+            ) : isDeliveryUnavailable ? (
               <section className="passenger-case-info" role="status">
                 <h2>Delivery</h2>
                 <p>
@@ -937,6 +972,11 @@ export function PassengerLostBagCasePage() {
                       ? 'This case is closed, so its delivery choice can no longer be changed.'
                       : 'A delivery choice is available after staff confirms a found bag for this case.'}
                 </p>
+              </section>
+            ) : !ownerActionsAllowed ? (
+              <section className="passenger-case-info" role="status">
+                <h2>Delivery</h2>
+                <p>Checking that this is your bag before showing delivery options. If they do not appear, reopen the case to try again.</p>
               </section>
             ) : (
               <DeliveryChoiceForm

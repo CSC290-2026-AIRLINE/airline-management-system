@@ -46,6 +46,61 @@ export interface EligibleFlight {
   destination: string
 }
 
+/** A traveller on the verified booking (GET /api/customer/lost-report-travellers). */
+export interface EligibleTraveller {
+  bookingPassengerId: string
+  displayName: string
+  isYou: boolean
+  flights: EligibleFlight[]
+}
+
+/** Accept a traveller list only when it includes the signed-in customer; anything else falls back to the own-bag flow. */
+export function usableTravellers(value: unknown): EligibleTraveller[] {
+  if (!Array.isArray(value)) return []
+  const travellers = value.filter(
+    (item): item is EligibleTraveller =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof (item as EligibleTraveller).bookingPassengerId === 'string' &&
+      typeof (item as EligibleTraveller).displayName === 'string' &&
+      typeof (item as EligibleTraveller).isYou === 'boolean' &&
+      Array.isArray((item as EligibleTraveller).flights),
+  )
+  return travellers.some((traveller) => traveller.isYou) ? travellers : []
+}
+
+/** "Whose bag is it?" is shown only when there is someone other than the signed-in customer to choose. */
+export function showTravellerSelector(travellers: EligibleTraveller[]): boolean {
+  return travellers.length > 1 && travellers.some((traveller) => traveller.isYou)
+}
+
+export function defaultTravellerId(travellers: EligibleTraveller[]): string {
+  return travellers.find((traveller) => traveller.isYou)?.bookingPassengerId ?? ''
+}
+
+function selectedCoTraveller(travellers: EligibleTraveller[], selectedTravellerId: string): EligibleTraveller | undefined {
+  const selected = travellers.find((traveller) => traveller.bookingPassengerId === selectedTravellerId)
+  return selected && !selected.isYou ? selected : undefined
+}
+
+/** Own bag: the original eligible-flights list, unchanged. Another traveller: only that traveller's confirmed flights. */
+export function flightsForSelection(
+  ownFlights: EligibleFlight[],
+  travellers: EligibleTraveller[],
+  selectedTravellerId: string,
+): EligibleFlight[] {
+  return selectedCoTraveller(travellers, selectedTravellerId)?.flights ?? ownFlights
+}
+
+/** Sent only when reporting for another traveller, so the own-bag request stays exactly as before. */
+export function bookingPassengerIdForSubmit(travellers: EligibleTraveller[], selectedTravellerId: string): string | undefined {
+  return selectedCoTraveller(travellers, selectedTravellerId)?.bookingPassengerId
+}
+
+export function selectedTravellerName(travellers: EligibleTraveller[], selectedTravellerId: string): string | null {
+  return travellers.find((traveller) => traveller.bookingPassengerId === selectedTravellerId)?.displayName ?? null
+}
+
 export interface BookingFlightSummary {
   bookingReference: string
   flightNumber: string
@@ -115,12 +170,17 @@ export interface CreateLostReportPayload {
   description?: string
   contactEmail?: string
   contactPhone?: string
+  /** Only when reporting for another traveller on the booking. */
+  bookingPassengerId?: string
 }
 
 export type LostReportPageState = {
   flightState: 'idle' | 'loading' | 'loaded' | 'error'
   flights: EligibleFlight[]
   flightError: string
+  /** Travellers on the found booking; empty means the original own-bag flow. */
+  travellers: EligibleTraveller[]
+  selectedTravellerId: string
   submitState: 'idle' | 'submitting' | 'success' | 'error'
   submitError: string
   caseNumber: string
@@ -131,25 +191,52 @@ export type LostReportPageAction =
   | { type: 'flights-loaded'; flights: EligibleFlight[] }
   | { type: 'flights-failed'; message: string }
   | { type: 'flights-reset' }
+  | { type: 'travellers-loaded'; travellers: EligibleTraveller[] }
+  | { type: 'traveller-selected'; bookingPassengerId: string }
   | { type: 'submit-started' }
   | { type: 'submit-succeeded'; caseNumber: string }
   | { type: 'submit-failed'; message: string }
   | { type: 'reset' }
 
 export function createLostReportPageState(): LostReportPageState {
-  return { flightState: 'idle', flights: [], flightError: '', submitState: 'idle', submitError: '', caseNumber: '' }
+  return {
+    flightState: 'idle',
+    flights: [],
+    flightError: '',
+    travellers: [],
+    selectedTravellerId: '',
+    submitState: 'idle',
+    submitError: '',
+    caseNumber: '',
+  }
 }
 
 export function lostReportPageReducer(state: LostReportPageState, action: LostReportPageAction): LostReportPageState {
   switch (action.type) {
     case 'flights-loading':
-      return { ...state, flightState: 'loading', flights: [], flightError: '', submitError: '' }
+      return { ...state, flightState: 'loading', flights: [], flightError: '', travellers: [], selectedTravellerId: '', submitError: '' }
     case 'flights-loaded':
       return { ...state, flightState: 'loaded', flights: action.flights, flightError: '' }
     case 'flights-failed':
-      return { ...state, flightState: 'error', flights: [], flightError: action.message }
+      return { ...state, flightState: 'error', flights: [], flightError: action.message, travellers: [], selectedTravellerId: '' }
     case 'flights-reset':
-      return { ...state, flightState: 'idle', flights: [], flightError: '', submitState: 'idle', submitError: '', caseNumber: '' }
+      return {
+        ...state,
+        flightState: 'idle',
+        flights: [],
+        flightError: '',
+        travellers: [],
+        selectedTravellerId: '',
+        submitState: 'idle',
+        submitError: '',
+        caseNumber: '',
+      }
+    case 'travellers-loaded':
+      return { ...state, travellers: action.travellers, selectedTravellerId: defaultTravellerId(action.travellers) }
+    case 'traveller-selected':
+      return state.travellers.some((traveller) => traveller.bookingPassengerId === action.bookingPassengerId)
+        ? { ...state, selectedTravellerId: action.bookingPassengerId }
+        : state
     case 'submit-started':
       return { ...state, submitState: 'submitting', submitError: '', caseNumber: '' }
     case 'submit-succeeded':
@@ -187,7 +274,11 @@ export function validateLostReportForm(values: LostBagFormValues, flights: Eligi
   return errors
 }
 
-export function buildCreateLostReportPayload(values: LostBagFormValues, flights: EligibleFlight[]): CreateLostReportPayload {
+export function buildCreateLostReportPayload(
+  values: LostBagFormValues,
+  flights: EligibleFlight[],
+  bookingPassengerId?: string,
+): CreateLostReportPayload {
   const errors = validateLostReportForm(values, flights)
   if (Object.keys(errors).length > 0) throw new Error('Cannot create a lost report from invalid form values.')
 
@@ -209,12 +300,18 @@ export function buildCreateLostReportPayload(values: LostBagFormValues, flights:
     const trimmed = value.trim()
     if (trimmed) Object.assign(payload, { [key]: trimmed })
   }
+  if (bookingPassengerId) payload.bookingPassengerId = bookingPassengerId
 
   return payload
 }
 
-export function buildCreateLostReportFormData(values: LostBagFormValues, flights: EligibleFlight[], photo: File): FormData {
-  const payload = buildCreateLostReportPayload(values, flights)
+export function buildCreateLostReportFormData(
+  values: LostBagFormValues,
+  flights: EligibleFlight[],
+  photo: File,
+  bookingPassengerId?: string,
+): FormData {
+  const payload = buildCreateLostReportPayload(values, flights, bookingPassengerId)
   const formData = new FormData()
   for (const [key, value] of Object.entries(payload)) formData.append(key, value)
   formData.append('photo', photo)
