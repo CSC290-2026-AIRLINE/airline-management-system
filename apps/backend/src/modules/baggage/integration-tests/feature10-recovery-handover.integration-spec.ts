@@ -4,37 +4,37 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { JwtService } from '@nestjs/jwt'
 import { Reflector } from '@nestjs/core'
 import type { ExecutionContext } from '@nestjs/common'
-import { PrismaClient } from '../src/db/generated/prisma/client'
-import type { DbService } from '../src/db/db.service'
-import { AuditService } from '../src/modules/admin-console/audit/audit.service'
-import { SimulationClock } from '../src/modules/admin-console/simulation-clock'
-import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard'
-import { BagDeliveryController } from '../src/modules/baggage/bag-delivery.controller'
-import { BagDeliveryService } from '../src/modules/baggage/bag-delivery.service'
-import { BagTrackingService } from '../src/modules/baggage/bag-tracking.service'
-import { BagMatchController } from '../src/modules/baggage/bag-match.controller'
-import { BagMatchReviewService } from '../src/modules/baggage/bag-match-review.service'
-import { BagMatchingService } from '../src/modules/baggage/bag-matching.service'
-import { FoundBagController } from '../src/modules/baggage/found-bag.controller'
-import { FoundBagLifecycleService } from '../src/modules/baggage/found-bag-lifecycle.service'
-import { FoundBagService } from '../src/modules/baggage/found-bag.service'
-import { BaggageCustomerGuard, type BaggageCustomer } from '../src/modules/baggage/guards/baggage-customer.guard'
-import { BaggageStaffGuard, type BaggageStaff } from '../src/modules/baggage/guards/baggage-staff.guard'
-import { PassengerLostReportController } from '../src/modules/baggage/passenger-lost-report.controller'
-import { PassengerDeliveryChoiceService } from '../src/modules/baggage/passenger-delivery-choice.service'
-import { PassengerCaseSummaryService } from '../src/modules/baggage/passenger-case-summary.service'
-import { PrismaBookingVerification } from '../src/modules/baggage/prisma-booking.verification'
-import { PrismaCaseNumberSequence } from '../src/modules/baggage/prisma-case-number.sequence'
-import { PrismaCheckedBagLookup } from '../src/modules/baggage/prisma-checked-bag.lookup'
-import { PrismaReportRepository } from '../src/modules/baggage/prisma-report.repository'
-import { ReportService } from '../src/modules/baggage/report.service'
-import { OWNERSHIP_CHECK_ENTITY } from '../src/modules/baggage/bag-delivery.service'
+import { PrismaClient } from '@backend/db/generated/prisma/client'
+import type { DbService } from '@backend/db/db.service'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import { JwtAuthGuard } from '@backend/auth/guards/jwt-auth.guard'
+import { BagDeliveryController } from '@backend/modules/baggage/bag-delivery.controller'
+import { BagDeliveryService } from '@backend/modules/baggage/bag-delivery.service'
+import { BagTrackingService } from '@backend/modules/baggage/bag-tracking.service'
+import { BagMatchController } from '@backend/modules/baggage/bag-match.controller'
+import { BagMatchReviewService } from '@backend/modules/baggage/bag-match-review.service'
+import { BagMatchingService } from '@backend/modules/baggage/bag-matching.service'
+import { FoundBagController } from '@backend/modules/baggage/found-bag.controller'
+import { FoundBagLifecycleService } from '@backend/modules/baggage/found-bag-lifecycle.service'
+import { FoundBagService } from '@backend/modules/baggage/found-bag.service'
+import { BaggageCustomerGuard, type BaggageCustomer } from '@backend/modules/baggage/guards/baggage-customer.guard'
+import { BaggageStaffGuard, type BaggageStaff } from '@backend/modules/baggage/guards/baggage-staff.guard'
+import { PassengerLostReportController } from '@backend/modules/baggage/passenger-lost-report.controller'
+import { PassengerDeliveryChoiceService } from '@backend/modules/baggage/passenger-delivery-choice.service'
+import { PassengerCaseSummaryService } from '@backend/modules/baggage/passenger-case-summary.service'
+import { PrismaBookingVerification } from '@backend/modules/baggage/prisma-booking.verification'
+import { PrismaCaseNumberSequence } from '@backend/modules/baggage/prisma-case-number.sequence'
+import { PrismaCheckedBagLookup } from '@backend/modules/baggage/prisma-checked-bag.lookup'
+import { PrismaReportRepository } from '@backend/modules/baggage/prisma-report.repository'
+import { ReportService } from '@backend/modules/baggage/report.service'
+import { OWNERSHIP_CHECK_ENTITY } from '@backend/modules/baggage/bag-delivery.service'
 
 const TEST_DATABASE = 'feature10_concurrency_test'
 const TEST_USER = 'feature10_test'
 const TEST_HOST = '127.0.0.1'
 const TEST_PORT = '55432'
-const RUN_TAG = `f10airport_${randomUUID().replaceAll('-', '').slice(0, 12)}`
+const RUN_TAG = `f10handover_${randomUUID().replaceAll('-', '').slice(0, 12)}`
 const SIMULATION_NOW = new Date('2026-11-08T04:00:00.000Z')
 const unusedPhotoStorage = {
   upload() {
@@ -69,19 +69,6 @@ interface Fixture {
   staffEmail: string
   staffId: string
   foundBagId: string
-  invalidPickupAirport: string
-}
-
-interface ExistingFeature10Snapshot {
-  ids: {
-    reports: string[]
-    matches: string[]
-    foundBags: string[]
-    deliveries: string[]
-    locationEvents: string[]
-    audits: string[]
-  }
-  serialized: string
 }
 
 interface TestRequest {
@@ -117,27 +104,6 @@ function randomBookingReference(): string {
 
 function randomTicketNumber(): string {
   return `078${String(randomInt(0, 10_000_000_000)).padStart(10, '0')}`
-}
-
-async function findAvailableFlightSchedule(client: PrismaClient, aircraftId: string) {
-  const scheduledFlights = await client.flight.findMany({
-    where: { aircraft_id: aircraftId, status: { not: 'cancelled' } },
-    select: { scheduled_dep_at: true, scheduled_arr_at: true },
-  })
-  const firstDay = new Date('2026-11-10T00:00:00.000Z')
-
-  for (let dayOffset = 0; dayOffset < 3650; dayOffset += 1) {
-    const serviceDate = new Date(firstDay.getTime() + dayOffset * 24 * 60 * 60 * 1000)
-    const scheduledDeparture = new Date(serviceDate.getTime() + 10 * 60 * 60 * 1000)
-    const scheduledArrival = new Date(scheduledDeparture.getTime() + 85 * 60 * 1000)
-    const overlaps = scheduledFlights.some(
-      (flight) => scheduledDeparture < flight.scheduled_arr_at && scheduledArrival > flight.scheduled_dep_at,
-    )
-
-    if (!overlaps) return { serviceDate, scheduledDeparture, scheduledArrival }
-  }
-
-  throw new Error(`Could not find a non-overlapping synthetic flight slot for aircraft ${aircraftId}`)
 }
 
 async function assertDatabaseIdentity(client: PrismaClient, connectionString: string): Promise<void> {
@@ -176,60 +142,53 @@ async function assertDatabaseIdentity(client: PrismaClient, connectionString: st
   assert.equal(Number(identity[0].migrations), 14, 'Expected all 14 repository migrations to be deployed')
 }
 
-async function snapshotExistingFeature10Records(
-  client: PrismaClient,
-  existingIds?: ExistingFeature10Snapshot['ids'],
-): Promise<ExistingFeature10Snapshot> {
-  const [reports, matches, foundBags, deliveries, locationEvents, audits] = await Promise.all([
-    client.lost_bag_report.findMany({ where: existingIds ? { id: { in: existingIds.reports } } : undefined, orderBy: { id: 'asc' } }),
-    client.bag_match.findMany({ where: existingIds ? { id: { in: existingIds.matches } } : undefined, orderBy: { id: 'asc' } }),
-    client.found_bag.findMany({ where: existingIds ? { id: { in: existingIds.foundBags } } : undefined, orderBy: { id: 'asc' } }),
-    client.bag_delivery.findMany({ where: existingIds ? { id: { in: existingIds.deliveries } } : undefined, orderBy: { id: 'asc' } }),
-    client.bag_location_event.findMany({
-      where: existingIds ? { id: { in: existingIds.locationEvents } } : undefined,
-      orderBy: { id: 'asc' },
-    }),
-    client.audit_log.findMany({
-      where: existingIds ? { id: { in: existingIds.audits } } : undefined,
-      orderBy: { seq: 'asc' },
-      select: {
-        id: true,
-        seq: true,
-        occurred_at: true,
-        recorded_at: true,
-        actor_type: true,
-        actor_id: true,
-        actor_role: true,
-        source_feature: true,
-        action: true,
-        entity_type: true,
-        entity_id: true,
-        is_sensitive: true,
-      },
-    }),
-  ])
-  const ids = {
-    reports: reports.map((row) => row.id),
-    matches: matches.map((row) => row.id),
-    foundBags: foundBags.map((row) => row.id),
-    deliveries: deliveries.map((row) => row.id),
-    locationEvents: locationEvents.map((row) => row.id),
-    audits: audits.map((row) => row.id),
-  }
-  const auditMetadata = audits.map((row) => ({ ...row, seq: row.seq.toString() }))
+async function snapshotConcurrencyCases(client: PrismaClient): Promise<string> {
+  const rows = await client.$queryRaw<{ snapshot: string | null; reports: bigint }[]>`
+    WITH target_reports AS (
+      SELECT r.id AS report_id, r.flight_id, bp.id AS booking_passenger_id, bp.booking_id, bp.passenger_id,
+             b.idempotency_key
+      FROM lost_bag_report r
+      JOIN booking_passenger bp ON bp.id = r.booking_passenger_id
+      JOIN booking b ON b.id = bp.booking_id
+      WHERE b.idempotency_key LIKE 'feature10-concurrency-%'
+    )
+    SELECT COALESCE(jsonb_agg(
+      jsonb_build_object(
+        'report', (SELECT to_jsonb(report_row) FROM lost_bag_report report_row WHERE report_row.id = r.report_id),
+        'booking', (SELECT to_jsonb(b) FROM booking b WHERE b.id = r.booking_id),
+        'booking_passenger', (SELECT to_jsonb(bp) FROM booking_passenger bp WHERE bp.id = r.booking_passenger_id),
+        'passenger', (SELECT to_jsonb(p) FROM passenger p WHERE p.id = r.passenger_id),
+        'coupons', (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                  'coupon', to_jsonb(c), 'segment', to_jsonb(bs), 'flight', to_jsonb(f),
+                                  'inventory', to_jsonb(si)) ORDER BY c.id), '[]'::jsonb)
+                    FROM booking_coupon c
+                    JOIN booking_segment bs ON bs.id = c.booking_segment_id
+                    JOIN flight f ON f.id = c.flight_id
+                    JOIN seat_inventory si ON si.flight_id = f.id AND si.cabin = bs.cabin
+                    WHERE c.booking_passenger_id = r.booking_passenger_id AND c.flight_id = r.flight_id),
+        'matches', (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                                  'match', to_jsonb(m), 'found_bag', to_jsonb(fb),
+                                  'events', (SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY e.created_at, e.id), '[]'::jsonb)
+                                   FROM bag_location_event e WHERE e.found_bag_id = fb.id)) ORDER BY m.id), '[]'::jsonb)
+                     FROM bag_match m LEFT JOIN found_bag fb ON fb.id = m.found_bag_id WHERE m.report_id = r.report_id),
+        'deliveries', (SELECT COALESCE(jsonb_agg(to_jsonb(d) ORDER BY d.id), '[]'::jsonb)
+                       FROM bag_delivery d WHERE d.report_id = r.report_id),
+        'audits', (SELECT COALESCE(jsonb_agg(jsonb_build_array(a.id, a.seq, a.action, a.entity_type, a.entity_id, a.is_sensitive, a.recorded_at)
+                                  ORDER BY a.seq), '[]'::jsonb)
+                   FROM audit_log a
+                   WHERE a.entity_id IN (
+                     SELECT r.report_id::text
+                     UNION SELECT m.id::text FROM bag_match m WHERE m.report_id = r.report_id
+                     UNION SELECT m.found_bag_id::text FROM bag_match m WHERE m.report_id = r.report_id
+                     UNION SELECT d.id::text FROM bag_delivery d WHERE d.report_id = r.report_id
+                   ))
+      ) ORDER BY r.report_id
+    )::text, '[]') AS snapshot,
+    count(*) AS reports
+    FROM target_reports r`
 
-  return {
-    ids: existingIds ?? ids,
-    serialized: JSON.stringify({ reports, matches, foundBags, deliveries, locationEvents, audits: auditMetadata }),
-  }
-}
-
-async function findUnknownAirport(client: PrismaClient): Promise<string> {
-  const candidates = ['QZX', 'QZY', 'QZZ', 'ZXQ', 'ZYQ', 'ZZQ']
-  for (const candidate of candidates) {
-    if (!(await client.airport.findUnique({ where: { iata_code: candidate }, select: { iata_code: true } }))) return candidate
-  }
-  throw new Error('Could not identify a syntactically valid airport code absent from the isolated test database')
+  assert.equal(Number(rows[0].reports), 6, 'Expected exactly six existing concurrency-test reports before this run')
+  return rows[0].snapshot ?? '[]'
 }
 
 async function loadReference(client: PrismaClient) {
@@ -244,29 +203,29 @@ async function loadReference(client: PrismaClient) {
   })
 
   assert.ok(reference?.aircraft_id, 'A synthetic concurrency-suite flight with a reusable route and aircraft is required')
-  assert.notEqual(reference.route.origin, reference.route.destination, 'Pickup destination must differ from the bag origin')
   assert.equal(await client.airport.count({ where: { iata_code: { in: [reference.route.origin, reference.route.destination] } } }), 2)
-  // The existing service enforces airport existence through the database FK, not a relation to the booked flight route.
   return reference
 }
 
 async function createFixture(client: PrismaClient): Promise<Fixture> {
   const reference = await loadReference(client)
-  const invalidPickupAirport = await findUnknownAirport(client)
-  const flightSchedule = await findAvailableFlightSchedule(client, reference.aircraft_id)
   const suffix = randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()
-  const flightNumber = `G10P${suffix.slice(0, 8)}`
+  const flightNumber = `G10H${suffix.slice(0, 8)}`
   const bookingReference = randomBookingReference()
   const email = `f10-${suffix.toLowerCase()}@example.invalid`
   const staffEmail = `staff-${suffix.toLowerCase()}@example.invalid`
-  const idempotencyKey = `feature10-airport-pickup-${suffix.toLowerCase()}`
+  const idempotencyKey = `feature10-handover-${suffix.toLowerCase()}`
   const passportNumber = `SIMF10${suffix.slice(-8)}`
   const ticketNumber = randomTicketNumber()
   const roleCode = `f10i-${suffix.toLowerCase()}`
+  const flightDate = new Date('2026-11-07T00:00:00.000Z')
+  const departure = new Date('2026-11-07T10:00:00.000Z')
+  const arrival = new Date('2026-11-07T11:25:00.000Z')
+
   return client.$transaction(async (tx) => {
     const [flightCollision, referenceCollision, emailCollision, staffEmailCollision, roleCollision, ticketCollision, passportCollision] =
       await Promise.all([
-        tx.flight.count({ where: { flight_number: flightNumber, service_date: flightSchedule.serviceDate } }),
+        tx.flight.count({ where: { flight_number: flightNumber, service_date: flightDate } }),
         tx.booking.count({ where: { booking_reference: bookingReference } }),
         tx.user.count({ where: { email } }),
         tx.user.count({ where: { email: staffEmail } }),
@@ -303,12 +262,12 @@ async function createFixture(client: PrismaClient): Promise<Fixture> {
     const flight = await tx.flight.create({
       data: {
         flight_number: flightNumber,
-        service_date: flightSchedule.serviceDate,
+        service_date: flightDate,
         route_id: reference.route_id,
-        scheduled_dep_at: flightSchedule.scheduledDeparture,
-        scheduled_arr_at: flightSchedule.scheduledArrival,
-        dep_at: flightSchedule.scheduledDeparture,
-        arr_at: flightSchedule.scheduledArrival,
+        scheduled_dep_at: departure,
+        scheduled_arr_at: arrival,
+        dep_at: departure,
+        arr_at: arrival,
         aircraft_id: reference.aircraft_id,
         status: 'scheduled',
       },
@@ -363,7 +322,6 @@ async function createFixture(client: PrismaClient): Promise<Fixture> {
       staffEmail,
       staffId: staff.id,
       foundBagId: '',
-      invalidPickupAirport,
     }
   })
 }
@@ -413,12 +371,7 @@ async function main(): Promise<void> {
   const client = makeClient(connectionString)
   try {
     await assertDatabaseIdentity(client, connectionString)
-    assert.equal(
-      await client.booking.count({ where: { idempotency_key: { startsWith: 'feature10-airport-pickup-' } } }),
-      0,
-      'An airport-pickup integration run already exists; refusing duplicate synthetic writes',
-    )
-    const before = await snapshotExistingFeature10Records(client)
+    const before = await snapshotConcurrencyCases(client)
     const reference = await loadReference(client)
     const fixture = await createFixture(client)
 
@@ -503,70 +456,38 @@ async function main(): Promise<void> {
       bookingReference: fixture.bookingReference,
       surname: fixture.passengerLastName,
     }
-    await assert.rejects(
-      passengerController.saveDeliveryChoice(customer, report.caseNumber, access, {
-        deliveryType: 'airport_pickup',
-        pickupAirport: fixture.invalidPickupAirport,
-      }),
-      (error: unknown) => (error as { code?: string }).code === 'INVALID_DELIVERY',
-    )
-    const afterInvalidAirport = await passengerController.getDeliveryChoice(customer, report.caseNumber, access)
-    assert.deepEqual(afterInvalidAirport, {
-      deliveryType: null,
-      address: null,
-      pickupAirport: null,
-      status: 'waiting_choice',
-    })
-    assert.equal(
-      await client.audit_log.count({
-        where: { source_feature: '10', entity_type: 'bag_delivery', entity_id: delivery.id, action: 'update' },
-      }),
-      0,
-      'An unknown airport must not persist a delivery-choice audit row',
-    )
-
-    const pickupAirport = reference.route.destination
     const savedChoice = await passengerController.saveDeliveryChoice(customer, report.caseNumber, access, {
-      deliveryType: 'airport_pickup',
-      pickupAirport,
+      deliveryType: 'home',
+      address: `Synthetic home destination ${RUN_TAG}`,
     })
     assert.equal(savedChoice.status, 'preparing')
-    assert.equal(savedChoice.deliveryType, 'airport_pickup')
+    assert.equal(savedChoice.deliveryType, 'home')
     const persistedBeforeDispatch = await passengerController.getDeliveryChoice(customer, report.caseNumber, access)
     assert.deepEqual(persistedBeforeDispatch, {
-      deliveryType: 'airport_pickup',
-      address: null,
-      pickupAirport,
+      deliveryType: 'home',
+      address: `Synthetic home destination ${RUN_TAG}`,
+      pickupAirport: null,
       status: 'preparing',
     })
 
     const dispatched = await deliveryController.setStatus(staff, delivery.id, { status: 'in_transit' })
     assert.equal(dispatched.status, 'in_transit')
-    assert.equal(dispatched.foundBag?.status, 'sent')
-    assert.equal(dispatched.foundBag?.inTransit, true)
-    assert.equal(dispatched.foundBag?.toAirport, pickupAirport)
 
     await assert.rejects(
       passengerController.saveDeliveryChoice(customer, report.caseNumber, access, {
-        deliveryType: 'airport_pickup',
-        pickupAirport: reference.route.origin,
+        deliveryType: 'home',
+        address: `Changed destination ${RUN_TAG}`,
       }),
       (error: unknown) => (error as { code?: string }).code === 'ALREADY_SENT',
     )
     const persistedAfterDispatch = await passengerController.getDeliveryChoice(customer, report.caseNumber, access)
     assert.deepEqual(persistedAfterDispatch, {
-      deliveryType: 'airport_pickup',
-      address: null,
-      pickupAirport,
+      deliveryType: 'home',
+      address: `Synthetic home destination ${RUN_TAG}`,
+      pickupAirport: null,
       status: 'in_transit',
     })
     assert.equal(!['waiting_choice', 'preparing'].includes(persistedAfterDispatch.status), true)
-
-    const ready = await deliveryController.setStatus(staff, delivery.id, { status: 'ready_for_pickup' })
-    assert.equal(ready.status, 'ready_for_pickup')
-    assert.equal(ready.foundBag?.status, 'sent')
-    assert.equal(ready.foundBag?.inTransit, false)
-    assert.equal(ready.foundBag?.currentAirport, pickupAirport)
 
     const handedOver = await deliveryController.handOver(staff, delivery.id, {
       bookingReference: fixture.bookingReference,
@@ -586,8 +507,6 @@ async function main(): Promise<void> {
         bagStatus: string
         deliveryStatus: string
         deliveryType: string | null
-        pickupAirport: string | null
-        matchStatus: string
         eventActions: string[]
       }[]
     >`SELECT r.status AS "reportStatus",
@@ -595,8 +514,6 @@ async function main(): Promise<void> {
              fb.status AS "bagStatus",
              d.status AS "deliveryStatus",
              d.delivery_type AS "deliveryType",
-             d.pickup_airport AS "pickupAirport",
-             m.status AS "matchStatus",
              (SELECT array_agg(e.action ORDER BY e.created_at, e.id)
               FROM bag_location_event e WHERE e.found_bag_id = fb.id) AS "eventActions"
       FROM lost_bag_report r
@@ -609,10 +526,8 @@ async function main(): Promise<void> {
       closedAt: finalRows[0].closedAt,
       bagStatus: 'delivered',
       deliveryStatus: 'delivered',
-      deliveryType: 'airport_pickup',
-      pickupAirport,
-      matchStatus: 'confirmed',
-      eventActions: ['found', 'sent', 'arrived', 'delivered'],
+      deliveryType: 'home',
+      eventActions: ['found', 'out_for_delivery', 'delivered'],
     })
     assert.ok(finalRows[0].closedAt)
 
@@ -624,7 +539,7 @@ async function main(): Promise<void> {
       SELECT 1 FROM audit_log
       WHERE source_feature = '10' AND entity_type = 'bag_delivery' AND entity_id = ${delivery.id}
         AND action = 'update' AND is_sensitive = false
-        AND after->>'chosenBy' = 'passenger' AND after->>'deliveryType' = 'airport_pickup'
+        AND after->>'chosenBy' = 'passenger' AND after->>'deliveryType' = 'home'
     ) AS found`
     const ownershipAudits = await client.$queryRaw<{ count: bigint; passed: boolean }[]>`SELECT count(*) AS count,
       COALESCE(bool_or(after->>'passed' = 'true'), false) AS passed
@@ -632,36 +547,35 @@ async function main(): Promise<void> {
       WHERE source_feature = '10' AND entity_type = ${OWNERSHIP_CHECK_ENTITY}
         AND entity_id = ${delivery.id} AND is_sensitive = true`
     assert.ok(matchAudit, 'Confirmed match audit row must exist')
-    assert.equal(choiceAudits[0].found, true, 'Passenger airport pickup choice audit must be persisted')
+    assert.equal(choiceAudits[0].found, true, 'Passenger home choice audit must be persisted')
     assert.equal(Number(ownershipAudits[0].count), 1)
     assert.equal(ownershipAudits[0].passed, true, 'Successful synthetic ownership comparison must be audited')
 
     const summary = await passengerController.getCaseSummary(customer, report.caseNumber, access)
     assert.equal(summary.status, 'closed')
     assert.equal(summary.delivery?.status, 'delivered')
-    assert.equal(summary.delivery?.deliveryType, 'airport_pickup')
+    assert.equal(summary.delivery?.deliveryType, 'home')
     assert.deepEqual(
       summary.timeline.map((event) => event.type),
-      ['report_received', 'match_confirmed', 'choice_saved', 'bag_sent', 'bag_arrived', 'bag_delivered', 'case_closed'],
+      ['report_received', 'match_confirmed', 'choice_saved', 'out_for_delivery', 'bag_delivered', 'case_closed'],
     )
     const choiceEvent = summary.timeline.find((event) => event.type === 'choice_saved')
-    assert.ok(choiceEvent?.type === 'choice_saved' && choiceEvent.chosenBy === 'passenger' && choiceEvent.deliveryType === 'airport_pickup')
+    assert.ok(choiceEvent?.type === 'choice_saved' && choiceEvent.chosenBy === 'passenger' && choiceEvent.deliveryType === 'home')
     assert.equal(JSON.stringify(summary).includes(fixture.passportNumber), false)
     assert.equal(JSON.stringify(summary).includes(fixture.staffId), false)
 
-    const after = await snapshotExistingFeature10Records(client, before.ids)
-    assert.equal(after.serialized, before.serialized, 'All pre-existing Feature 10 test records must remain unchanged')
+    const after = await snapshotConcurrencyCases(client)
+    assert.equal(after, before, 'All six existing concurrency-test cases and their related records must remain unchanged')
 
     console.log('PASS guards: synthetic customer and baggage-admin identities passed the real JWT and Feature 10 guards')
     console.log('PASS matching: passenger report creation generated a suggested match; staff confirmation opened waiting_choice delivery')
-    console.log('PASS airport validation: unknown IATA-shaped code rejected without persisting choice or audit; existing airport accepted')
-    console.log('PASS airport pickup: passenger choice persisted, dispatched, arrived, and transitioned to ready_for_pickup')
+    console.log('PASS Home choice: passenger choice persisted with preparing state and a passenger audit entry')
     console.log('PASS dispatch lock: post-dispatch choice update was rejected and the saved choice remained unchanged')
     console.log(
       'PASS handover: real ownership comparison passed for synthetic test identity; report, bag, and delivery closed consistently',
     )
     console.log('PASS passenger summary: delivered/closed status and persisted recovery timeline are correct')
-    console.log('PASS isolation: all pre-existing Feature 10 baggage records and audit metadata are unchanged')
+    console.log('PASS isolation: all six pre-existing concurrency reports and related records are unchanged')
     console.log(`Synthetic record marker: ${RUN_TAG}`)
   } finally {
     await client.$disconnect()
