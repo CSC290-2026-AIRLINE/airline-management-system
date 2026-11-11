@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { CircleAlert, CircleCheck } from 'lucide-react'
+import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@staff-web/components/ui/dialog'
@@ -8,6 +8,7 @@ import { Label } from '@staff-web/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@staff-web/components/ui/tooltip'
 import { cn } from '@staff-web/lib/utils'
 import { CargoApiError, useCargoApi, type CommodityType, type Rate, type RateBody } from './cargo-api'
 
@@ -39,12 +40,13 @@ interface DistanceBand {
   label: string
   min: number
   max: number | null
+  dbMax: number | null
 }
 
 const DISTANCE_BANDS: DistanceBand[] = [
-  { label: '0–999 km', min: 0, max: 999 },
-  { label: '1,000–2,999 km', min: 1000, max: 2999 },
-  { label: '3,000 km and over', min: 3000, max: null },
+  { label: '0–999 km', min: 0, max: 999, dbMax: 1000 },
+  { label: '1,000–2,999 km', min: 1000, max: 2999, dbMax: 3000 },
+  { label: '3,000 km and over', min: 3000, max: null, dbMax: null },
 ]
 
 interface RateRow {
@@ -53,8 +55,18 @@ interface RateRow {
   bands: { rate: Rate | null; rate_per_kg: number; min_charge: number }[]
 }
 
-function groupByType(rates: Rate[]): RateRow[] {
+function groupByType(rates: Rate[], activeCommodityTypes: CommodityType[]): RateRow[] {
   const map = new Map<string, RateRow>()
+
+  for (const ct of activeCommodityTypes) {
+    if (!ct.is_active) continue
+    map.set(ct.id, {
+      commodity_type_id: ct.id,
+      commodity_type_name: ct.name,
+      bands: DISTANCE_BANDS.map(() => ({ rate: null, rate_per_kg: 0, min_charge: 0 })),
+    })
+  }
+
   for (const rate of rates) {
     let row = map.get(rate.commodity_type_id)
     if (!row) {
@@ -70,7 +82,12 @@ function groupByType(rates: Rate[]): RateRow[] {
       row.bands[bandIndex] = { rate, rate_per_kg: Number(rate.rate_per_kg), min_charge: Number(rate.min_charge) }
     }
   }
+
   return Array.from(map.values())
+}
+
+function missingBandIndices(row: RateRow): number[] {
+  return row.bands.reduce<number[]>((acc, b, i) => (b.rate === null ? [...acc, i] : acc), [])
 }
 
 /* ── Inline edit state ─────────────────────────────────────────────── */
@@ -90,44 +107,70 @@ function editStateFrom(row: RateRow): EditState {
 
 /* ── Add dialog ────────────────────────────────────────────────────── */
 
+interface IncompleteType {
+  id: string
+  name: string
+  missing: number[]
+}
+
 function AddRateDialog({
-  commodityTypes,
+  incompleteTypes,
   onClose,
   onSubmit,
 }: {
-  commodityTypes: CommodityType[]
+  incompleteTypes: IncompleteType[]
   onClose: () => void
-  onSubmit: (body: RateBody) => Promise<void>
+  onSubmit: (typeId: string, rates: RateBody[]) => Promise<void>
 }) {
   const [typeId, setTypeId] = useState('')
-  const [minDist, setMinDist] = useState('')
-  const [maxDist, setMaxDist] = useState('')
-  const [ratePerKg, setRatePerKg] = useState('')
+  const [bandValues, setBandValues] = useState<Record<number, string>>({})
   const [minCharge, setMinCharge] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const selected = incompleteTypes.find((t) => t.id === typeId)
+
+  function updateBand(i: number, value: string) {
+    setBandValues((prev) => ({ ...prev, [i]: value }))
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (saving) return
     setError(null)
 
-    if (!typeId || !minDist || !maxDist || !ratePerKg || !minCharge) {
-      setError('All fields are required.')
+    if (!typeId || !selected) {
+      setError('Select a commodity type.')
       return
+    }
+
+    const mc = Number(minCharge)
+    if (!minCharge || isNaN(mc) || mc < 0) {
+      setError('Enter a valid min charge.')
+      return
+    }
+
+    const bodies: RateBody[] = []
+    for (const i of selected.missing) {
+      const rpk = Number(bandValues[i])
+      if (!bandValues[i] || isNaN(rpk) || rpk <= 0) {
+        setError(`Enter a valid rate per kg for ${DISTANCE_BANDS[i].label}.`)
+        return
+      }
+      bodies.push({
+        commodity_type_id: typeId,
+        min_distance_km: DISTANCE_BANDS[i].min,
+        max_distance_km: DISTANCE_BANDS[i].dbMax,
+        rate_per_kg: rpk,
+        min_charge: mc,
+      })
     }
 
     setSaving(true)
     try {
-      await onSubmit({
-        commodity_type_id: typeId,
-        min_distance_km: Number(minDist),
-        max_distance_km: Number(maxDist),
-        rate_per_kg: Number(ratePerKg),
-        min_charge: Number(minCharge),
-      })
+      await onSubmit(typeId, bodies)
     } catch (err) {
-      setError(err instanceof CargoApiError ? err.message : 'Failed to create rate.')
+      setError(err instanceof CargoApiError ? err.message : 'Failed to create rates.')
       setSaving(false)
     }
   }
@@ -144,12 +187,19 @@ function AddRateDialog({
         <form onSubmit={submit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="add-rate-type">Commodity type</Label>
-            <Select value={typeId} onValueChange={setTypeId}>
+            <Select
+              value={typeId}
+              onValueChange={(v) => {
+                setTypeId(v)
+                setBandValues({})
+                setMinCharge('')
+              }}
+            >
               <SelectTrigger id="add-rate-type">
                 <SelectValue placeholder="Choose a type" />
               </SelectTrigger>
               <SelectContent>
-                {commodityTypes.map((t) => (
+                {incompleteTypes.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
                   </SelectItem>
@@ -157,39 +207,45 @@ function AddRateDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="add-rate-min">Min distance (km)</Label>
-              <Input id="add-rate-min" type="number" min={0} value={minDist} onChange={(e) => setMinDist(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="add-rate-max">Max distance (km)</Label>
-              <Input id="add-rate-max" type="number" min={0} value={maxDist} onChange={(e) => setMaxDist(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="add-rate-pkg">Rate per kg</Label>
-              <Input id="add-rate-pkg" type="number" min={0} step="0.01" value={ratePerKg} onChange={(e) => setRatePerKg(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="add-rate-min-charge">Min charge</Label>
-              <Input
-                id="add-rate-min-charge"
-                type="number"
-                min={0}
-                step="0.01"
-                value={minCharge}
-                onChange={(e) => setMinCharge(e.target.value)}
-              />
-            </div>
-          </div>
+
+          {selected && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Fill in prices for the missing distance band{selected.missing.length > 1 ? 's' : ''}.
+              </p>
+              {selected.missing.map((i) => (
+                <div key={i} className="flex flex-col gap-1.5">
+                  <Label htmlFor={`add-rate-band-${i}`}>{DISTANCE_BANDS[i].label} — rate per kg</Label>
+                  <Input
+                    id={`add-rate-band-${i}`}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={bandValues[i] ?? ''}
+                    onChange={(e) => updateBand(i, e.target.value)}
+                  />
+                </div>
+              ))}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="add-rate-min-charge">Min charge</Label>
+                <Input
+                  id="add-rate-min-charge"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={minCharge}
+                  onChange={(e) => setMinCharge(e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
           {error && <p className="text-sm text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving || !selected}>
               {saving ? 'Creating…' : 'Create'}
             </Button>
           </div>
@@ -212,6 +268,12 @@ export function RatesSection() {
   const [editState, setEditState] = useState<EditState | null>(null)
   const [saving, setSaving] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+
+  async function reload() {
+    const [ratesData, typesData] = await Promise.all([api.listRates(), api.listCommodityTypes()])
+    setRates(Array.isArray(ratesData) ? ratesData : [])
+    setCommodityTypes(Array.isArray(typesData) ? typesData : [])
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -236,7 +298,16 @@ export function RatesSection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const grouped = groupByType(rates)
+  const grouped = groupByType(rates, commodityTypes)
+
+  const incompleteTypes: IncompleteType[] = grouped
+    .filter((row) => {
+      const ct = commodityTypes.find((c) => c.id === row.commodity_type_id)
+      return ct?.is_active && missingBandIndices(row).length > 0
+    })
+    .map((row) => ({ id: row.commodity_type_id, name: row.commodity_type_name, missing: missingBandIndices(row) }))
+
+  const allPriced = incompleteTypes.length === 0
 
   function startEdit(row: RateRow) {
     setNotice(null)
@@ -254,7 +325,6 @@ export function RatesSection() {
     setSaving(true)
     setNotice(null)
     try {
-      const updatedRates: Rate[] = []
       for (let i = 0; i < DISTANCE_BANDS.length; i++) {
         const band = DISTANCE_BANDS[i]
         const existing = row.bands[i].rate
@@ -262,23 +332,18 @@ export function RatesSection() {
         const minCharge = Number(editState.bands[i].min_charge)
 
         if (existing) {
-          const updated = await api.updateRate(existing.id, { rate_per_kg: ratePerKg, min_charge: minCharge })
-          updatedRates.push(updated)
+          await api.updateRate(existing.id, { rate_per_kg: ratePerKg, min_charge: minCharge })
         } else if (ratePerKg > 0) {
-          const created = await api.createRate({
+          await api.createRate({
             commodity_type_id: row.commodity_type_id,
             min_distance_km: band.min,
-            max_distance_km: band.max ?? 999999,
+            max_distance_km: band.dbMax,
             rate_per_kg: ratePerKg,
             min_charge: minCharge,
           })
-          updatedRates.push(created)
         }
       }
-      setRates((prev) => {
-        const withoutOld = prev.filter((r) => !updatedRates.some((u) => u.id === r.id))
-        return [...withoutOld, ...updatedRates]
-      })
+      await reload()
       cancelEdit()
       setNotice({ tone: 'success', message: `${row.commodity_type_name} rates saved.` })
     } catch (err) {
@@ -291,11 +356,13 @@ export function RatesSection() {
     }
   }
 
-  async function handleAdd(body: RateBody) {
-    const created = await api.createRate(body)
-    setRates((prev) => [...prev, created])
+  async function handleAdd(_typeId: string, bodies: RateBody[]) {
+    for (const body of bodies) {
+      await api.createRate(body)
+    }
+    await reload()
     setShowAdd(false)
-    setNotice({ tone: 'success', message: 'Rate row added.' })
+    setNotice({ tone: 'success', message: 'Rates added.' })
   }
 
   if (loading) {
@@ -324,20 +391,45 @@ export function RatesSection() {
     <div>
       {notice && <NoticeBanner notice={notice} />}
 
+      {!allPriced && (
+        <Alert variant="default" className="mb-4 border-orange-300 bg-orange-50 text-orange-800">
+          <TriangleAlert className="text-orange-600" aria-hidden="true" />
+          <AlertDescription className="text-current">
+            {incompleteTypes.length} commodity type{incompleteTypes.length > 1 ? 's have' : ' has'} no price for some distances. Bookings
+            for {incompleteTypes.length > 1 ? 'them' : 'it'} will be refused.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           Price per kg for each distance band. Every booking pays at least the minimum charge.
         </p>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            setNotice(null)
-            setShowAdd(true)
-          }}
-        >
-          Add rate row
-        </Button>
+        {allPriced ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0}>
+                  <Button type="button" variant="outline" disabled>
+                    Add rate row
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>All commodity types are priced</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setNotice(null)
+              setShowAdd(true)
+            }}
+          >
+            Add rate row
+          </Button>
+        )}
       </div>
 
       <Table>
@@ -411,12 +503,12 @@ export function RatesSection() {
               <TableRow key={row.commodity_type_id}>
                 <TableCell className="font-bold text-foreground">{row.commodity_type_name}</TableCell>
                 {row.bands.map((band, i) => (
-                  <TableCell key={i} className="text-muted-foreground tabular-nums">
-                    {band.rate ? band.rate_per_kg.toFixed(2) : '—'}
+                  <TableCell key={i} className={cn('tabular-nums', band.rate ? 'text-muted-foreground' : 'text-orange-600')}>
+                    {band.rate ? band.rate_per_kg.toFixed(2) : 'Not set'}
                   </TableCell>
                 ))}
-                <TableCell className="text-muted-foreground tabular-nums">
-                  {row.bands[0].rate ? row.bands[0].min_charge.toFixed(2) : '—'}
+                <TableCell className={cn('tabular-nums', row.bands[0].rate ? 'text-muted-foreground' : 'text-orange-600')}>
+                  {row.bands[0].rate ? row.bands[0].min_charge.toFixed(2) : 'Not set'}
                 </TableCell>
                 <TableCell>
                   <Button
@@ -442,7 +534,7 @@ export function RatesSection() {
         </TableBody>
       </Table>
 
-      {showAdd && <AddRateDialog commodityTypes={commodityTypes} onClose={() => setShowAdd(false)} onSubmit={handleAdd} />}
+      {showAdd && <AddRateDialog incompleteTypes={incompleteTypes} onClose={() => setShowAdd(false)} onSubmit={handleAdd} />}
     </div>
   )
 }

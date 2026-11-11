@@ -264,7 +264,7 @@ export function CommodityTypesSection() {
     const created = await api.createCommodityType(body)
     setRows((prev) => [...prev, created])
     setShowAdd(false)
-    setNotice({ tone: 'success', message: `${created.code} created.` })
+    setNotice({ tone: 'success', message: `${created.code} created. Set its prices in the Rate table.` })
   }
 
   if (loading) {
