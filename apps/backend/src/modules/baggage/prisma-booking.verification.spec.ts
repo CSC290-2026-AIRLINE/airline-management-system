@@ -272,3 +272,43 @@ describe('PrismaBookingVerification.resolveTraveller', () => {
     expect(findFirstCoupon).not.toHaveBeenCalled()
   })
 })
+
+describe('PrismaBookingVerification.isOnRequesterBooking', () => {
+  let findFirstCoupon: jest.Mock
+  let findBookingPassenger: jest.Mock
+  let verification: PrismaBookingVerification
+  const access = { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: PASSENGER_ID }
+
+  beforeEach(() => {
+    findFirstCoupon = jest.fn().mockResolvedValue({ booking_passenger: { booking_id: BOOKING_ID } })
+    findBookingPassenger = jest.fn().mockResolvedValue({ id: CO_BP })
+    const db = {
+      booking_coupon: { findFirst: findFirstCoupon },
+      booking_passenger: { findFirst: findBookingPassenger },
+    } as unknown as DbService
+    verification = new PrismaBookingVerification(db)
+  })
+
+  it('is true when the booking passenger is on the requester verified booking', async () => {
+    await expect(verification.isOnRequesterBooking(access, CO_BP)).resolves.toBe(true)
+    expect(findBookingPassenger).toHaveBeenCalledWith({ where: { id: CO_BP, booking_id: BOOKING_ID }, select: { id: true } })
+  })
+
+  it('is false for a booking passenger on another booking', async () => {
+    findBookingPassenger.mockResolvedValue(null)
+
+    await expect(verification.isOnRequesterBooking(access, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')).resolves.toBe(false)
+  })
+
+  it('is false without looking up the booking passenger when the requester does not verify', async () => {
+    findFirstCoupon.mockResolvedValue(null)
+
+    await expect(verification.isOnRequesterBooking(access, CO_BP)).resolves.toBe(false)
+    expect(findBookingPassenger).not.toHaveBeenCalled()
+  })
+
+  it('is false for a malformed booking passenger ID without querying', async () => {
+    await expect(verification.isOnRequesterBooking(access, 'not-a-uuid')).resolves.toBe(false)
+    expect(findFirstCoupon).not.toHaveBeenCalled()
+  })
+})

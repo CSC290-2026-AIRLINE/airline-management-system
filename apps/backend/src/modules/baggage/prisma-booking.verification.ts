@@ -177,6 +177,28 @@ export class PrismaBookingVerification implements BookingVerification {
     return { bookingPassengerId: coupon.booking_passenger_id, passengerId: coupon.passenger_id, flightId: coupon.flight_id }
   }
 
+  /**
+   * Case viewing (spec §6: a case is visible to the same booking). True only when the requester passes the reference +
+   * surname check and the given booking passenger is on that same booking.
+   */
+  async isOnRequesterBooking(
+    input: { bookingReference: string; surname: string; passengerId: string },
+    bookingPassengerId: string,
+  ): Promise<boolean> {
+    const target = bookingPassengerId?.trim()
+    if (!target || !UUID_PATTERN.test(target)) return false
+
+    const bookingId = await this.findRequesterBookingId(input)
+    if (!bookingId) return false
+
+    const bookingPassenger = await this.db.booking_passenger.findFirst({
+      where: { id: target, booking_id: bookingId },
+      select: { id: true },
+    })
+
+    return bookingPassenger !== null
+  }
+
   /** The booking the requester belongs to, using the same checks as verifyPassenger (any flight). */
   private async findRequesterBookingId(input: { bookingReference: string; surname: string; passengerId: string }): Promise<string | null> {
     const reference = input.bookingReference?.trim().toUpperCase()

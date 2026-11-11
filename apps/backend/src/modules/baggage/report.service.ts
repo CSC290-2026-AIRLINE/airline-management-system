@@ -151,7 +151,40 @@ export class ReportService {
     }
   }
 
+  /**
+   * Read access (spec §6: a case is visible to the same booking). The bag owner gets the report unchanged, exactly as
+   * before. Another verified traveller on the same booking can read it too, without the stored contact details, which
+   * are not part of "report + delivery status". Unrelated bookings get REPORT_NOT_FOUND, as before.
+   */
   async getByCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
+    const { report, isBagOwner } = await this.getViewableReport(caseNumber, access)
+
+    return isBagOwner ? report : { ...report, contactEmail: null, contactPhone: null }
+  }
+
+  /** Read authorization only. Every action (photo, delivery choice, cancellation) keeps using findOwnedReport. */
+  async getViewableReport(caseNumber: string, access: ReportAccessInput): Promise<{ report: LostBagReport; isBagOwner: boolean }> {
+    const passenger = await this.bookings.verifyPassenger(access)
+
+    if (!passenger) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
+    }
+
+    const report = await this.repository.findByCaseNumber(caseNumber)
+
+    if (report && report.bookingPassengerId === passenger.bookingPassengerId) {
+      return { report, isBagOwner: true }
+    }
+
+    if (report && (await this.bookings.isOnRequesterBooking(access, report.bookingPassengerId))) {
+      return { report, isBagOwner: false }
+    }
+
+    throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
+  }
+
+  /** Owner-only lookup (unchanged rule) for the photo and the delivery-choice paths. */
+  private async findOwnedReport(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
     const passenger = await this.bookings.verifyPassenger(access)
 
     if (!passenger) {
@@ -168,9 +201,11 @@ export class ReportService {
   }
 
   async getPhotoForCaseNumber(caseNumber: string, access: ReportAccessInput, customerId: string): Promise<LostReportPhotoObject> {
-    const report = await this.getByCaseNumber(caseNumber, access)
+    // Photo policy: only the customer who submitted the report, and only while they pass the same-booking read check.
+    // Sharing the booking, or owning the bag, is not enough on its own. Own-bag cases (owner = reporter) are unchanged.
+    const { report } = await this.getViewableReport(caseNumber, access)
 
-    if (report.reportedByCustomerId !== customerId || !report.photoUrl) {
+    if (!customerId || report.reportedByCustomerId !== customerId || !report.photoUrl) {
       throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
     }
 
@@ -178,13 +213,13 @@ export class ReportService {
   }
 
   async getDeliveryIdForCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<string | null> {
-    const report = await this.getByCaseNumber(caseNumber, access)
+    const report = await this.findOwnedReport(caseNumber, access)
 
     return this.repository.findDeliveryIdByReportId(report.id)
   }
 
   async getDeliveryChoiceForCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<DeliveryChoiceSnapshot | null> {
-    const report = await this.getByCaseNumber(caseNumber, access)
+    const report = await this.findOwnedReport(caseNumber, access)
 
     return this.repository.findDeliveryChoiceByReportId(report.id)
   }

@@ -504,3 +504,192 @@ describe('ReportService.create for another traveller ("Whose bag is it?")', () =
     ).rejects.toMatchObject({ code: 'REPORT_EXISTS' })
   })
 })
+
+describe('ReportService case access for co-travellers (Stage 3)', () => {
+  let service: ReportService
+  let repository: InMemoryReportRepository
+  let bookings: MockBookingVerification
+  let photos: { upload: jest.Mock; remove: jest.Mock; retrieve: jest.Mock }
+
+  // Booking K7QX2M: Anna (reporter, P001/BP001), Erik (bag owner, P002/BP002), Tom (third traveller, P004/BP004).
+  // Booking XYZ789: unrelated passenger P009/BP009.
+  const anna = { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P001' }
+  const erik = { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P002' }
+  const tom = { bookingReference: 'K7QX2M', surname: 'Berg', passengerId: 'P004' }
+  const outsider = { bookingReference: 'XYZ789', surname: 'Jones', passengerId: 'P009' }
+  const bag = { bagType: 'suitcase' as const, colour: 'black' as const, contactEmail: 'anna@example.com', contactPhone: '+66 81 000 0000' }
+
+  beforeEach(() => {
+    repository = new InMemoryReportRepository()
+    photos = { upload: jest.fn(), remove: jest.fn(), retrieve: jest.fn() }
+    bookings = new MockBookingVerification([
+      { ...anna, bookingPassengerId: 'BP001', flightId: 'F001' },
+      { ...erik, bookingPassengerId: 'BP002', flightId: 'F001' },
+      { ...tom, bookingPassengerId: 'BP004', flightId: 'F001' },
+      { ...outsider, bookingPassengerId: 'BP009', flightId: 'F001' },
+    ])
+    service = new ReportService(
+      repository,
+      bookings,
+      new MockCheckedBagLookup([]),
+      new InMemoryCaseNumberSequence(),
+      new MockSimulationClock(new Date('2026-10-29T10:00:00Z')),
+      photos,
+    )
+  })
+
+  function reportForErik(withPhoto = false) {
+    const photo = withPhoto ? { buffer: Buffer.from([0xff, 0xd8, 0xff]), mimetype: 'image/jpeg', size: 3 } : undefined
+    return service.create({ ...anna, ...bag, flightId: 'F001', bookingPassengerId: 'BP002', reportedByCustomerId: 'C-ANNA' }, photo)
+  }
+
+  describe('viewing (same booking)', () => {
+    it('own bag: the owner sees the full report and no same-booking lookup runs', async () => {
+      const own = await service.create({ ...anna, ...bag, flightId: 'F001', reportedByCustomerId: 'C-ANNA' })
+      const lookup = jest.spyOn(bookings, 'isOnRequesterBooking')
+
+      await expect(service.getByCaseNumber(own.caseNumber, anna)).resolves.toEqual(own)
+      await expect(service.getViewableReport(own.caseNumber, anna)).resolves.toEqual({ report: own, isBagOwner: true })
+      expect(lookup).not.toHaveBeenCalled()
+    })
+
+    it('the bag owner sees a report filed for them by a co-traveller, with contact details', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getByCaseNumber(created.caseNumber, erik)).resolves.toEqual(created)
+    })
+
+    it('the reporter can open the co-traveller case they filed, without stored contact details', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getByCaseNumber(created.caseNumber, anna)).resolves.toEqual({
+        ...created,
+        contactEmail: null,
+        contactPhone: null,
+      })
+      await expect(service.getViewableReport(created.caseNumber, anna)).resolves.toMatchObject({ isBagOwner: false })
+    })
+
+    it('another verified traveller on the same booking (own surname) can view, without contact details', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getByCaseNumber(created.caseNumber, tom)).resolves.toMatchObject({
+        caseNumber: created.caseNumber,
+        contactEmail: null,
+        contactPhone: null,
+      })
+    })
+
+    it('a passenger on an unrelated booking gets REPORT_NOT_FOUND', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getByCaseNumber(created.caseNumber, outsider)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+    })
+
+    it('an outsider cannot borrow the booking reference with the wrong surname', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getByCaseNumber(created.caseNumber, { ...outsider, bookingReference: 'K7QX2M' })).rejects.toMatchObject({
+        code: 'INVALID_REPORT',
+      })
+    })
+
+    it('an unknown case number on a verified booking gets REPORT_NOT_FOUND', async () => {
+      await expect(service.getByCaseNumber('LB-2026-999999', anna)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+    })
+  })
+
+  describe('actions stay owner-only (unchanged)', () => {
+    it('a non-owner on the same booking cannot read or change the delivery choice', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getDeliveryChoiceForCaseNumber(created.caseNumber, anna)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+      await expect(service.getDeliveryIdForCaseNumber(created.caseNumber, anna)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+    })
+
+    it('a non-owner on the same booking cannot cancel; the owner still can', async () => {
+      const created = await reportForErik()
+
+      await expect(service.cancel(created.caseNumber, anna)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+      await expect(service.cancel(created.caseNumber, erik)).resolves.toMatchObject({ status: 'cancelled' })
+    })
+
+    it('the owner keeps delivery-choice access', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getDeliveryChoiceForCaseNumber(created.caseNumber, erik)).resolves.toBeNull()
+    })
+
+    it('the /mine listing is not widened: the reporter does not see the co-traveller case', async () => {
+      await reportForErik()
+
+      await expect(service.listMine(anna)).resolves.toHaveLength(0)
+      await expect(service.listMine(erik)).resolves.toHaveLength(1)
+    })
+  })
+
+  describe('photo: submitting customer only, within the same booking', () => {
+    const photoObject = { body: {} as never, contentType: 'image/jpeg' as const }
+    const photo = { buffer: Buffer.from([0xff, 0xd8, 0xff]), mimetype: 'image/jpeg', size: 3 }
+
+    beforeEach(() => photos.retrieve.mockResolvedValue(photoObject))
+
+    it('1. own-bag reporter can still retrieve their photo', async () => {
+      const own = await service.create({ ...anna, ...bag, flightId: 'F001', reportedByCustomerId: 'C-ANNA' }, photo)
+
+      await expect(service.getPhotoForCaseNumber(own.caseNumber, anna, 'C-ANNA')).resolves.toBe(photoObject)
+      expect(photos.retrieve).toHaveBeenCalledWith(own.id)
+    })
+
+    it('2. co-traveller reporter can retrieve the photo they uploaded for the bag owner', async () => {
+      const created = await reportForErik(true)
+
+      await expect(service.getPhotoForCaseNumber(created.caseNumber, anna, 'C-ANNA')).resolves.toBe(photoObject)
+      expect(photos.retrieve).toHaveBeenCalledWith(created.id)
+    })
+
+    it('3. the bag owner who did not submit the report cannot retrieve that photo', async () => {
+      const created = await reportForErik(true)
+
+      await expect(service.getPhotoForCaseNumber(created.caseNumber, erik, 'C-ERIK')).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+      expect(photos.retrieve).not.toHaveBeenCalled()
+    })
+
+    it('4. another same-booking traveller cannot retrieve it', async () => {
+      const created = await reportForErik(true)
+
+      await expect(service.getPhotoForCaseNumber(created.caseNumber, tom, 'C-TOM')).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+      expect(photos.retrieve).not.toHaveBeenCalled()
+    })
+
+    it('5a. an unrelated customer cannot retrieve it, even when claiming the reporter customer ID', async () => {
+      const created = await reportForErik(true)
+
+      await expect(service.getPhotoForCaseNumber(created.caseNumber, outsider, 'C-ANNA')).rejects.toMatchObject({
+        code: 'REPORT_NOT_FOUND',
+      })
+      expect(photos.retrieve).not.toHaveBeenCalled()
+    })
+
+    it('5b. an unverified customer (wrong surname on the booking) cannot retrieve it', async () => {
+      const created = await reportForErik(true)
+
+      await expect(service.getPhotoForCaseNumber(created.caseNumber, { ...anna, surname: 'Wrong' }, 'C-ANNA')).rejects.toMatchObject({
+        code: 'INVALID_REPORT',
+      })
+      expect(photos.retrieve).not.toHaveBeenCalled()
+    })
+
+    it('the reporter cannot retrieve a photo that was never uploaded', async () => {
+      const created = await reportForErik(false)
+
+      await expect(service.getPhotoForCaseNumber(created.caseNumber, anna, 'C-ANNA')).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+    })
+
+    it('an empty caller customer ID never matches a report with no customer reporter', async () => {
+      const staffStyle = await service.create({ ...anna, ...bag, flightId: 'F001' }, photo)
+
+      await expect(service.getPhotoForCaseNumber(staffStyle.caseNumber, anna, '')).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+    })
+  })
+})

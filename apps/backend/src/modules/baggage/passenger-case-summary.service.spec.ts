@@ -21,25 +21,48 @@ describe('PassengerCaseSummaryService', () => {
     delivery: { deliveryType: 'hotel', address: 'Hotel address', pickupAirport: null, status: 'preparing' },
     timeline: [{ type: 'report_received', occurredAt: new Date('2026-10-20T10:00:00Z') }],
   }
-  const reports = { getByCaseNumber: jest.fn() }
+  const reports = { getViewableReport: jest.fn() }
   const repository = { findPassengerCaseSummaryByReportId: jest.fn() }
   const service = new PassengerCaseSummaryService(reports as unknown as ReportService, repository as unknown as PrismaReportRepository)
 
   beforeEach(() => {
     jest.clearAllMocks()
-    reports.getByCaseNumber.mockResolvedValue(report)
+    reports.getViewableReport.mockResolvedValue({ report, isBagOwner: true })
     repository.findPassengerCaseSummaryByReportId.mockResolvedValue(summary)
   })
 
   it('authorizes the case before reading the summary by the verified report id', async () => {
     await expect(service.getByCaseNumber(report.caseNumber, access)).resolves.toEqual(summary)
 
-    expect(reports.getByCaseNumber).toHaveBeenCalledWith(report.caseNumber, access)
+    expect(reports.getViewableReport).toHaveBeenCalledWith(report.caseNumber, access)
     expect(repository.findPassengerCaseSummaryByReportId).toHaveBeenCalledWith(report.id)
   })
 
+  it('gives the bag owner the delivery address unchanged', async () => {
+    const result = await service.getByCaseNumber(report.caseNumber, access)
+
+    expect(result.delivery).toEqual({ deliveryType: 'hotel', address: 'Hotel address', pickupAirport: null, status: 'preparing' })
+  })
+
+  it('gives a same-booking traveller who is not the bag owner the delivery status but not the address', async () => {
+    reports.getViewableReport.mockResolvedValue({ report, isBagOwner: false })
+
+    const result = await service.getByCaseNumber(report.caseNumber, access)
+
+    expect(result.delivery).toEqual({ deliveryType: 'hotel', address: null, pickupAirport: null, status: 'preparing' })
+    expect({ ...result, delivery: null }).toEqual({ ...summary, delivery: null })
+    expect(summary.delivery?.address).toBe('Hotel address')
+  })
+
+  it('handles a case with no delivery yet for a non-owner viewer', async () => {
+    reports.getViewableReport.mockResolvedValue({ report, isBagOwner: false })
+    repository.findPassengerCaseSummaryByReportId.mockResolvedValue({ ...summary, delivery: null })
+
+    await expect(service.getByCaseNumber(report.caseNumber, access)).resolves.toMatchObject({ delivery: null })
+  })
+
   it('does not query summary data for a different passenger', async () => {
-    reports.getByCaseNumber.mockRejectedValue(new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Not found'))
+    reports.getViewableReport.mockRejectedValue(new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Not found'))
 
     await expect(
       service.getByCaseNumber(report.caseNumber, { ...access, passengerId: 'passenger-2', bookingReference: 'ZZZ999' }),

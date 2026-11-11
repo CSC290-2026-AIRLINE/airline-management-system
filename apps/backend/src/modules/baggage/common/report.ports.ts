@@ -83,6 +83,12 @@ export interface BookingVerification {
     bookingPassengerId: string
     flightId: string
   }): Promise<VerifiedBookingPassenger | null>
+
+  /** Case viewing: the requester verifies and the booking passenger is on the requester's booking. */
+  isOnRequesterBooking(
+    input: { bookingReference: string; surname: string; passengerId: string },
+    bookingPassengerId: string,
+  ): Promise<boolean>
 }
 
 export interface CheckedBagOwnership {
