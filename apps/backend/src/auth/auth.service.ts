@@ -1,11 +1,12 @@
 import { randomBytes, createHash } from 'node:crypto'
-import { Injectable, UnauthorizedException } from '@nestjs/common'
+import { ConflictException, Injectable, InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { createClerkClient, verifyToken } from '@clerk/backend'
 import { DbService } from '@backend/db/db.service'
 import type { EnvConfig } from '@backend/config/env.validation'
-import type { user } from '../db/generated/prisma/client'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { Prisma, type user } from '../db/generated/prisma/client'
 import { getAppOriginConfig, type AppOriginConfig } from './auth.constants'
 
 type ClerkClient = ReturnType<typeof createClerkClient>
@@ -19,14 +20,24 @@ interface IssuedTokenPair extends TokenPair {
   refreshTokenId: string
 }
 
+/** Thrown for a switched-off or removed account. Same 401 and message as before; it only carries the user so a refused
+ *  sign-in can be audited. */
+class AccountDisabledException extends UnauthorizedException {
+  constructor(readonly user: user) {
+    super('Account is disabled')
+  }
+}
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name)
   private readonly clerkClients = new Map<string, ClerkClient>()
 
   constructor(
     private readonly db: DbService,
     private readonly jwt: JwtService,
     private readonly configService: ConfigService<EnvConfig, true>,
+    private readonly audit: AuditService,
   ) {}
 
   async exchangeClerkSession(sessionToken: string, origin: string | undefined): Promise<{ user: user; tokens: TokenPair }> {
@@ -43,8 +54,18 @@ export class AuthService {
     const payload = await verifyToken(sessionToken, { secretKey: clerkSecretKey })
     const clerkUserId = payload.sub
 
-    const user = await this.findOrCreateUser(clerkClient, clerkUserId, config.userType)
+    let user: user
+    try {
+      user = await this.findOrCreateUser(clerkClient, clerkUserId, config.userType)
+    } catch (error) {
+      if (error instanceof AccountDisabledException) {
+        await this.recordAuthEvent(error.user.id, 'sign_in_blocked', 'Sign-in refused: account is disabled')
+      }
+      throw error
+    }
+    await this.recordStaffSignIn(user)
     const tokens = await this.issueTokenPair(user)
+    await this.recordAuthEvent(user.id, 'sign_in', 'Signed in')
     return { user, tokens }
   }
 
@@ -67,6 +88,7 @@ export class AuthService {
     }
 
     const user = await this.db.user.findUniqueOrThrow({ where: { id: existing.user_id } })
+    this.assertUserActive(user)
     const { refreshTokenId, ...tokens } = await this.issueTokenPair(user)
 
     await this.db.refresh_token.update({
@@ -79,10 +101,13 @@ export class AuthService {
 
   async logout(rawRefreshToken: string): Promise<void> {
     const tokenHash = hashToken(rawRefreshToken)
-    await this.db.refresh_token.updateMany({
+    const token = await this.db.refresh_token.findUnique({ where: { token_hash: tokenHash }, select: { user_id: true } })
+    const { count } = await this.db.refresh_token.updateMany({
       where: { token_hash: tokenHash, revoked_at: null },
       data: { revoked_at: new Date() },
     })
+    // Only a session that was actually open counts; logging out with an old or unknown cookie writes nothing.
+    if (count > 0 && token) await this.recordAuthEvent(token.user_id, 'sign_out', 'Signed out')
   }
 
   private async revokeAllForUser(userId: string): Promise<void> {
@@ -104,29 +129,104 @@ export class AuthService {
   private async findOrCreateUser(clerkClient: ClerkClient, clerkUserId: string, userType: 'customer' | 'staff'): Promise<user> {
     const existing = await this.db.user.findUnique({ where: { clerk_user_id: clerkUserId } })
     if (existing) {
+      this.assertUserActive(existing)
       return existing
     }
 
     const clerkUser = await clerkClient.users.getUser(clerkUserId)
-    const primaryEmail = clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)?.emailAddress
-    if (!primaryEmail) {
+    const primaryEmailAddress = clerkUser.emailAddresses.find((e) => e.id === clerkUser.primaryEmailAddressId)
+    if (!primaryEmailAddress) {
       throw new UnauthorizedException('Clerk account has no verified email address')
     }
+    const primaryEmail = primaryEmailAddress.emailAddress
     const firstName = clerkUser.firstName || primaryEmail
     const lastName = clerkUser.lastName || ''
 
-    const newUser = await this.db.user.create({
-      data: { type: userType, email: primaryEmail, clerk_user_id: clerkUserId },
-    })
-
-    if (userType === 'customer') {
-      await this.db.customer.create({ data: { user_id: newUser.id, first_name: firstName, last_name: lastName } })
-    } else {
-      // No Clerk field maps to a staff role, so every new staff sign-in defaults to 'admin'.
-      await this.db.staff.create({ data: { user_id: newUser.id, first_name: firstName, last_name: lastName, role: 'admin' } })
+    // An admin can create a staff account before the person ever signs in (clerk_user_id is NULL). Link that row on the
+    // first sign-in instead of inserting a second user with the same email. Only a verified address may claim it, otherwise
+    // anyone could sign up in Clerk with a staff member's email and take over their account.
+    if (userType === 'staff') {
+      const preCreated = await this.db.user.findFirst({
+        where: { type: 'staff', email: { equals: primaryEmail, mode: 'insensitive' }, clerk_user_id: null, deleted_at: null },
+      })
+      if (preCreated) {
+        if (primaryEmailAddress.verification?.status !== 'verified') {
+          throw new UnauthorizedException('Verify your email address before signing in')
+        }
+        this.assertUserActive(preCreated)
+        return this.db.user.update({ where: { id: preCreated.id }, data: { clerk_user_id: clerkUserId } })
+      }
     }
 
-    return newUser
+    // Staff accounts need a role row. Look it up first so a missing seed fails before anything is written.
+    const role = userType === 'staff' ? await this.findAdminRole() : null
+
+    // One transaction so a failed profile insert cannot leave a user row without its customer/staff row.
+    try {
+      return await this.db.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: { type: userType, email: primaryEmail, clerk_user_id: clerkUserId },
+        })
+
+        if (userType === 'customer') {
+          // The customer's own identity is a passenger row; names live there, not on customer.
+          const passenger = await tx.passenger.create({ data: { first_name: firstName, last_name: lastName } })
+          await tx.customer.create({ data: { user_id: created.id, passenger_id: passenger.id } })
+        } else if (role) {
+          // No Clerk field maps to a staff role, so every new staff sign-in defaults to the 'admin' role.
+          await tx.staff.create({ data: { user_id: created.id, first_name: firstName, last_name: lastName, role_id: role.id } })
+        }
+
+        return created
+      })
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error
+      // Two first sign-ins raced (e.g. a double-fired request): the other one created the row and this transaction rolled
+      // back whole, so use the winner's row. If it is not ours, the email already belongs to a different account.
+      const winner = await this.db.user.findUnique({ where: { clerk_user_id: clerkUserId } })
+      if (!winner) throw new ConflictException('An account with this email already exists')
+      this.assertUserActive(winner)
+      return winner
+    }
+  }
+
+  // Feature 15's Staff & roles page shows when each staff member last signed in. Only a real sign-in (this Clerk session
+  // exchange) counts; `refresh()` deliberately leaves the time alone. A failed write is logged and the sign-in still goes
+  // through — a missing timestamp must never lock anyone out.
+  private async recordStaffSignIn(user: user): Promise<void> {
+    if (user.type !== 'staff') return
+    try {
+      await this.db.staff.updateMany({ where: { user_id: user.id, deleted_at: null }, data: { last_sign_in_at: new Date() } })
+    } catch (error) {
+      this.logger.warn(`Could not record last_sign_in_at for user ${user.id}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  // sign_in / sign_out / sign_in_blocked rows for Feature 15's audit log. `tryWrite` never throws, so a failed audit
+  // write is logged and the sign-in or sign-out still goes through. Refreshing a token is not a sign-in and writes nothing.
+  private async recordAuthEvent(userId: string, action: 'sign_in' | 'sign_out' | 'sign_in_blocked', summary: string): Promise<void> {
+    try {
+      const actor = await this.audit.resolveActor(userId)
+      await this.audit.tryWrite({ actor, sourceFeature: '15', action, entityType: 'user', entityId: userId, summary })
+    } catch (error) {
+      this.logger.warn(`Could not audit ${action} for user ${userId}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  // user.disabled_at / deleted_at: an account that is switched off or removed must not sign in or refresh.
+  // Requests that already carry an access token are not re-checked here; the JWT guard does not read the database.
+  private assertUserActive(user: user): void {
+    if (user.deleted_at || user.disabled_at) {
+      throw new AccountDisabledException(user)
+    }
+  }
+
+  private async findAdminRole() {
+    const role = await this.db.role.findUnique({ where: { code: 'admin' } })
+    if (!role) {
+      throw new InternalServerErrorException("Staff sign-in needs the 'admin' role. Apply the migrations or run the seed.")
+    }
+    return role
   }
 
   private async issueTokenPair(user: user): Promise<IssuedTokenPair> {

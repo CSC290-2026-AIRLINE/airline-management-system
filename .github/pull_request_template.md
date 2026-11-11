@@ -17,7 +17,7 @@ Release PRs (dev -> main): replace this template with the list of PRs being rele
 
 ## Checklist
 
-- [ ] Branch is named `<type>/<team-id>-<short-description>` and was created from `dev`
+- [ ] Branch is named `feat-<feature-number>-<feature-name>` and was created from `dev`
 - [ ] Commits follow `<type>(<team-id>): <description>`
 - [ ] Ran lint, format check, tests, and build locally (the same checks CI runs)
 - [ ] Diff is under ~400 lines, or the description explains why it can't be split
