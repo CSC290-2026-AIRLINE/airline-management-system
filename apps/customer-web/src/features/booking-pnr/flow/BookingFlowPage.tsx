@@ -1,12 +1,15 @@
 import { useDemoPassengers } from '../passengers/useDemoPassengers'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FlightSearchPage, type SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { HoldBookingRequest, HoldBookingResponse, HoldBookingSeat } from '../api/types'
 import { PassengersPage } from '../passengers/PassengersPage'
 import {
+  clearFlowDraft,
+  readFlowDraft,
   readItinerary,
+  saveFlowDraft,
   saveItinerary,
   travellersFor,
   validateTravellers,
@@ -28,14 +31,16 @@ export interface FlowProps extends FlowComponents {
 
 export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, SeatStep, PriceChangedDialog, SeatTakenDialog }: FlowProps) {
   const [itinerary, setItinerary] = useState(readItinerary)
-  const [travellers, setTravellers] = useState(() => (itinerary ? travellersFor(itinerary) : []))
-  const [contact, setContact] = useState<BookingContact>({ email: '', phone: '', promoCode: '' })
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(2)
+  // The flow the customer left behind, so a refresh does not wipe what they typed.
+  const [restored] = useState(() => readFlowDraft(itinerary))
+  const [travellers, setTravellers] = useState(() => restored?.travellers ?? (itinerary ? travellersFor(itinerary) : []))
+  const [contact, setContact] = useState<BookingContact>(() => restored?.contact ?? { email: '', phone: '', promoCode: '' })
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(() => restored?.step ?? 2)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [held, setHeld] = useState<HoldBookingResponse | null>(null)
-  const [assistance, setAssistance] = useState<Record<string, AssistanceValue>>({})
-  const [choices, setChoices] = useState<SeatChoice[]>([])
+  const [held, setHeld] = useState<HoldBookingResponse | null>(() => restored?.held ?? null)
+  const [assistance, setAssistance] = useState<Record<string, AssistanceValue>>(() => restored?.assistance ?? {})
+  const [choices, setChoices] = useState<SeatChoice[]>(() => restored?.choices ?? [])
   const [priceChange, setPriceChange] = useState<PriceChangedDetails | null>(null)
   const [seatConflict, setSeatConflict] = useState(false)
   const pendingRequest = useRef<HoldBookingRequest | null>(null)
@@ -47,6 +52,16 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   const passengerResolver = resolvePassengers ?? demo.resolve
   /** The demo picker is the only way to fill the passenger details while it is on, so it has to be used for everyone. */
   const demoMode = !resolvePassengers && demo.enabled
+
+  /* The flow is kept in the session, so a refresh does not wipe the passenger details, the seats and the contact.
+     The details stay in sessionStorage, never in the address bar. */
+  useEffect(() => {
+    if (!itinerary) {
+      clearFlowDraft()
+      return
+    }
+    saveFlowDraft(itinerary, { step, travellers, contact, assistance, choices, held })
+  }, [itinerary, step, travellers, contact, assistance, choices, held])
 
   function updateTraveller(key: string, change: Partial<TravellerDraft>) {
     setTravellers((current) => current.map((person) => (person.key === key ? { ...person, ...change } : person)))
