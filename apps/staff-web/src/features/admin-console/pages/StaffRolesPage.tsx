@@ -154,9 +154,8 @@ function Dropdown({
         aria-label={ariaLabel ? `${ariaLabel}: ${selected?.label ?? placeholder}` : undefined}
         aria-invalid={invalid || undefined}
         className={cn(
-          'w-full gap-1.5 border-input bg-background px-3.5 text-left text-sm font-medium text-foreground focus-visible:ring-2 focus-visible:ring-primary/30',
-          variant === 'field' && 'border-border text-foreground',
-          variant === 'card' && 'border-input bg-accent px-3 text-sm text-foreground max-phone:text-sm',
+          'w-full gap-1.5 border-input bg-background px-3.5 text-left text-sm font-medium text-foreground',
+          variant === 'card' && 'bg-accent px-3 text-sm text-foreground max-phone:text-sm',
           invalid && 'border-danger-line',
         )}
       >

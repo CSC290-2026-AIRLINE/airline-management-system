@@ -41,6 +41,12 @@
   outline: 3px solid #fca311;
   outline-offset: 3px;
 }
+/* The admin console's field focus: a navy border with a 50% navy ring (`focus-visible:border-ring focus-visible:ring-[3px] ring-ring/50`). */
+.f3-lookup :is(input:not([type='checkbox']), select):focus-visible {
+  outline: none;
+  border-color: #102544;
+  box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
+}
 .f3-lookup button {
   cursor: pointer;
 }
@@ -88,7 +94,7 @@
   width: 100%;
   min-width: 0;
   min-height: 42px;
-  border: 1px solid #d9dfe9;
+  border: 1px solid var(--color-input, #dbe0eb);
   border-radius: 7px;
   padding: 9px 12px;
   font: inherit;

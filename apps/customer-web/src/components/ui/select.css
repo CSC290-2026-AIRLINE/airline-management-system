@@ -19,16 +19,12 @@
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid var(--f3-border, #d9dfe9);
+  border: 1px solid var(--f3-input-border, #dbe0eb);
   border-radius: 8px;
   appearance: none;
   background: #fff;
   color: var(--f3-ink, #0a1424);
   text-align: left;
-}
-
-.cw-select-trigger:hover:not(:disabled) {
-  border-color: var(--f3-primary, #102544);
 }
 
 .cw-select-trigger:disabled {
