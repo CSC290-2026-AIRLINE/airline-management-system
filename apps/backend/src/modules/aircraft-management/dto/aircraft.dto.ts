@@ -6,6 +6,7 @@ import {
   IsDateString,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -14,6 +15,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator'
 
 export const AIRCRAFT_STATUS_VALUES = ['in_service', 'grounded'] as const
@@ -67,13 +69,21 @@ export class UpdateAircraftDto {
 /**
  * `in_maintenance` is not accepted here: an aircraft enters maintenance through a maintenance
  * window, which creates the matching status period.
+ *
+ * When `status` is `grounded`, `reason` is mandatory: the doc specifies the status is set
+ * "with reason", and Feature 2's availability message has nothing to show without it.
  */
 export class CreateAircraftStatusDto {
   @IsIn(AIRCRAFT_STATUS_VALUES)
   status!: AircraftStatusValue
 
-  @IsOptional()
+  /**
+   * Required when status is 'grounded'; optional for 'in_service'.
+   * Without a reason a grounded aircraft's availability message is uninformative.
+   */
+  @ValidateIf((o: CreateAircraftStatusDto) => o.status === 'grounded' || o.reason !== undefined)
   @IsString()
+  @IsNotEmpty({ message: 'reason is required when status is grounded' })
   @MaxLength(255)
   reason?: string
 

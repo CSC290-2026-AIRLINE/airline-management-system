@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Feature 9 — Aircraft Management.
  * Tokens and components taken from the Figma file "CS26 UIUX Integrated Project"
  * (F9 frames: fleet list, aircraft type list, readiness, and their modals).
@@ -1606,6 +1606,10 @@
   position: absolute;
   top: 22px;
   right: 22px;
+  /* z-index: 1 ensures the button is painted above .f9-modal__head (position: relative, same
+     stacking context). Without it the sibling header, which is later in the DOM, covers the
+     button's hit-area so clicks fire on the header instead of onClose. */
+  z-index: 1;
   height: 27px;
   padding: 0 12px;
   border: 1px solid var(--f9-border);
