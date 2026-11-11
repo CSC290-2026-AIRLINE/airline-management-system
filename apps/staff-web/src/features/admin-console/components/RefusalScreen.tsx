@@ -14,7 +14,7 @@ import { TopBar } from './TopBar'
  */
 export function RefusalScreen({ children }: { children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-[1] flex flex-col overflow-y-auto bg-page font-sans leading-[normal] [color-scheme:light] [&_[data-slot=status-wrap]]:absolute [&_[data-slot=status-wrap]]:inset-0 [&_[data-slot=status-wrap]]:overflow-y-auto">
+    <div className="fixed inset-0 z-1 flex flex-col overflow-y-auto bg-page font-sans [color-scheme:light] [&_[data-slot=status-wrap]]:absolute [&_[data-slot=status-wrap]]:inset-0 [&_[data-slot=status-wrap]]:overflow-y-auto">
       <TopBar />
       {children}
     </div>
