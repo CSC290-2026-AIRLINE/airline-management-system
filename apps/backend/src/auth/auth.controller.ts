@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import type { Request, Response } from 'express'
+import type { CookieOptions, Request, Response } from 'express'
 import type { EnvConfig } from '@backend/config/env.validation'
 import { AuthService, TokenPair } from './auth.service'
 import { Public } from './decorators/public.decorator'
@@ -53,7 +53,7 @@ export class AuthController {
     }
     const cookieName = getRefreshCookieName(req.headers.origin)
     if (cookieName) {
-      res.clearCookie(cookieName, { path: '/api/auth' })
+      res.clearCookie(cookieName, this.refreshCookieOptions())
     }
   }
 
@@ -73,11 +73,17 @@ export class AuthController {
     }
     const refreshTokenTtlDays = this.configService.get('REFRESH_TOKEN_TTL_DAYS', { infer: true })
     res.cookie(cookieName, refreshToken, {
+      ...this.refreshCookieOptions(),
+      maxAge: refreshTokenTtlDays * 24 * 60 * 60 * 1000,
+    })
+  }
+
+  private refreshCookieOptions(): CookieOptions {
+    return {
       httpOnly: true,
       secure: this.configService.get('COOKIE_SECURE', { infer: true }),
       sameSite: 'lax',
       path: '/api/auth',
-      maxAge: refreshTokenTtlDays * 24 * 60 * 60 * 1000,
-    })
+    }
   }
 }

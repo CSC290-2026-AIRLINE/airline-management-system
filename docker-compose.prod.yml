@@ -68,9 +68,9 @@ services:
       # CORS allow-list, so a blank value would break every request.
       CUSTOMER_WEB_ORIGIN: ${CUSTOMER_WEB_ORIGIN:?CUSTOMER_WEB_ORIGIN must be set in .env}
       STAFF_WEB_ORIGIN: ${STAFF_WEB_ORIGIN:?STAFF_WEB_ORIGIN must be set in .env}
-      # The VM serves plain HTTP, where browsers drop Secure cookies (the
-      # refresh token). Set COOKIE_SECURE=true once HTTPS is in front.
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # HTTPS is terminated by the school reverse proxy, so the refresh-token
+      # cookie is Secure. Set COOKIE_SECURE=false only for a plain-HTTP setup.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
     depends_on:
       postgres:
         condition: service_healthy
