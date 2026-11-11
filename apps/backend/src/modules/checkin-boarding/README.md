@@ -280,7 +280,7 @@ shown by the demo script.
 - **The counter's seat and bag columns show "—"**: the search rows carry neither a seat nor a bag count; the passenger
   panel shows both. The backend row needs the two values before the columns can be filled.
 - **OCR** (`POST /check-ins/:id/document/ocr`) is not implemented (stretch goal).
-- **QR**: the boarding pass shows the reference and a pseudo-QR drawn from it; a real QR encoder is a dependency decision for the team.
+- **QR**: the customer boarding pass encodes the reference with `qrcode-generator` (customer-web's one dependency, added 2026-11-11 at Ajarn's request); the staff print view still shows the reference as text.
 - **Nest-generated 404/400/401 bodies** (unknown route, malformed JSON, missing token) do not use the `{ error }`
   envelope; a global exception filter in `main.ts` is the platform's call (raised with the Dev leads). The frontends
   map these to code `UNKNOWN`.
