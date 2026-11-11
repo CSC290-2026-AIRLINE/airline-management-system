@@ -19,6 +19,10 @@ export interface DefaultLimits {
   maxFlightsPerDuty: number
   maxPairingDays: number
   hoursCap28d: number
+  /** Cabin crew per leg who speak the destination's language. One value for every country. */
+  minLocalCrew: number
+  /** Not shown or edited on this page, but the backend saves all seven together, so a save sends it back unchanged. */
+  minPolice: number
 }
 
 /**
@@ -39,8 +43,8 @@ export interface CountryLimit {
   countryCode: string
   minRestHours: number
   maxDutyHours: number
-  /** Pairings that would be re-checked if this rule changed. */
-  affectedPairings: number
+  /** Cabin crew per leg who speak the destination's language: this country's own number, else the default's. */
+  minLocalCrew: number
 }
 
 /** A destination and the languages that count as local there. */
@@ -50,8 +54,6 @@ export interface CountryLanguage {
   countryCode: string
   /** Language codes, in the order the operator picked them. */
   languages: readonly string[]
-  /** Crew in the system who speak at least one of them. */
-  speakingCrew: number
 }
 
 /** Everything the page loads, edits and saves. */
@@ -69,9 +71,22 @@ export interface CountryLimitInput {
   country: string
   minRestHours: string
   maxDutyHours: string
+  minLocalCrew: string
 }
 
 export type CountryLimitErrors = Partial<Record<keyof CountryLimitInput, string>>
+
+/** Form state for the edit default limits overlay. Numbers stay as strings. */
+export interface DefaultLimitsInput {
+  minRestHours: string
+  maxDutyHours: string
+  maxFlightsPerDuty: string
+  maxPairingDays: string
+  hoursCap28d: string
+  minLocalCrew: string
+}
+
+export type DefaultLimitsErrors = Partial<Record<keyof DefaultLimitsInput, string>>
 
 /** Form state for the add/edit country language overlay. */
 export interface CountryLanguageInput {

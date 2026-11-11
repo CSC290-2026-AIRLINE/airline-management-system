@@ -36,7 +36,7 @@ export function RemoveCountryRuleModal({
       }
     >
       <p className="text-sm text-primary-text/70">
-        {limit.country} goes back to the default limits and its {limit.affectedPairings} pairings are rechecked. This can&rsquo;t be undone.
+        {limit.country} goes back to the default limits and its pairings are rechecked. This can&rsquo;t be undone.
       </p>
 
       <p className="mt-5 text-xs font-semibold text-primary-text/55">Rule to remove</p>

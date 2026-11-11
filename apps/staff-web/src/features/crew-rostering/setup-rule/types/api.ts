@@ -1,5 +1,5 @@
 import { requestJson, requestVoid, type FetchWithAuth } from '../../build-pairings/types/api'
-import type { CountryLanguage, CountryLimit, CountryOption, LanguageOption, RuleSet } from './types'
+import type { CountryLanguage, CountryLimit, CountryOption, DefaultLimits, LanguageOption, RuleSet } from './types'
 
 /**
  * Calls to `/api/crew-rostering/setup-rule`, through `fetchWithAuth` so every request
@@ -17,6 +17,7 @@ export interface CountryLimitBody {
   country: string
   minRestHours: number
   maxDutyHours: number
+  minLocalCrew: number
 }
 
 export interface CountryLanguageBody {
@@ -34,6 +35,8 @@ export function createSetupRuleApi(fetchWithAuth: FetchWithAuth) {
     getRuleSet: () => request<RuleSet>(''),
     listCountries: () => request<CountryOption[]>('/countries'),
     listLanguages: () => request<LanguageOption[]>('/languages'),
+
+    updateDefaults: (body: DefaultLimits) => request<DefaultLimits>('/defaults', send('PUT', body)),
 
     createCountryLimit: (body: CountryLimitBody) => request<CountryLimit>('/country-limits', send('POST', body)),
     updateCountryLimit: (countryCode: string, body: CountryLimitBody) =>

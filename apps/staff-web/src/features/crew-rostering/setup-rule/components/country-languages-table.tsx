@@ -1,4 +1,4 @@
-import { formatCrewCount, formatLanguageNames, formatMobileMappingSubline } from '../types/format'
+import { formatLanguageNames, formatMobileMappingSubline } from '../types/format'
 import type { CountryLanguage, LanguageOption } from '../types/types'
 import { Button, IconButton, InfoBox, PencilIcon } from '../../shared/ui'
 import { InlineLanguageEditor } from './inline-language-editor'
@@ -8,8 +8,7 @@ import { RuleCard } from './rule-card'
  * Destination language mappings, the input to local-crew eligibility.
  *
  * A real table from `md` up. Below that the reference stacks each destination
- * into its own card, because five columns do not fit a phone and the country is
- * the thing being read.
+ * into its own card, because the country is the thing being read.
  */
 export function CountryLanguagesTable({
   mappings,
@@ -57,12 +56,6 @@ export function CountryLanguagesTable({
                 </th>
                 <th scope="col" className="pb-2.5 font-semibold">
                   Local languages
-                </th>
-                <th scope="col" className="pb-2.5 font-semibold">
-                  Crew who speak it
-                </th>
-                <th scope="col" className="pb-2.5 font-semibold">
-                  Rule
                 </th>
                 <th scope="col" className="pb-2.5 text-right font-semibold">
                   Actions
@@ -129,12 +122,6 @@ function MappingRows({
           {mapping.country}
         </th>
         <td className="py-3.5 text-sm text-primary-text">{formatLanguageNames(mapping.languages, languages)}</td>
-        <td className="py-3.5 text-sm text-primary-text/70">{formatCrewCount(mapping.speakingCrew)}</td>
-        <td className="py-3.5">
-          <span className="inline-flex items-center rounded-full bg-secondary/25 px-2.5 py-1 text-[10px] font-bold tracking-wide text-btn-yellow-hover uppercase">
-            Local crew required
-          </span>
-        </td>
         <td className="py-3.5">
           <div className="flex items-center justify-end gap-3">
             <IconButton label={`Edit ${mapping.country} languages`} onClick={() => onInlineEdit(mapping)}>
@@ -155,7 +142,7 @@ function MappingRows({
 
       {editing && (
         <tr>
-          <td colSpan={5} className="pb-3">
+          <td colSpan={3} className="pb-3">
             <InlineLanguageEditor
               mapping={mapping}
               languages={languages}
@@ -204,13 +191,6 @@ function MappingCard({
       </div>
 
       <p className="text-xs text-primary-text/55">{formatMobileMappingSubline(mapping, languages)}</p>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm text-primary-text/70">{formatCrewCount(mapping.speakingCrew)}</span>
-        <span className="inline-flex items-center rounded-full bg-secondary/25 px-2.5 py-1 text-[10px] font-bold tracking-wide text-btn-yellow-hover uppercase">
-          Local crew required
-        </span>
-      </div>
     </div>
   )
 }

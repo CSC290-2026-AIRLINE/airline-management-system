@@ -1,4 +1,4 @@
-import { formatCrewCount, formatLanguageNames } from '../types/format'
+import { formatLanguageNames } from '../types/format'
 import type { CountryLanguage, LanguageOption } from '../types/types'
 import { BaseModalOverlay, Button } from '../../shared/ui'
 
@@ -54,7 +54,6 @@ export function RemoveCountryLanguageModal({
             ))}
           </ul>
         </div>
-        <p className="mt-1.5 text-sm text-primary-text/65">{formatCrewCount(mapping.speakingCrew)} speak it</p>
       </div>
     </BaseModalOverlay>
   )
