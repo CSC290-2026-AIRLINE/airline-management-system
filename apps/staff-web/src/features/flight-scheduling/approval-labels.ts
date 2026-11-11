@@ -22,8 +22,13 @@ export const TONE: Record<ApprovalStatus, string> = {
   expired: 'failed',
 }
 
-// The offered times as local clock times at the airport: "10:00, 10:30" for slots, "10:00 to 12:00" for a window.
+// The offered times as local clock times at the airport: "10:00, 10:30" for slots, "10:00 to 12:00" for a window. A time on
+// another local day than the request says its date: "05:00 on 2026-11-11".
 export function offerText(row: ApprovalRow, timeZone: string) {
-  const at = (iso: string) => localParts(iso, timeZone).time
+  const requested = row.proposed_dep_at ? localParts(row.proposed_dep_at, timeZone).date : null
+  const at = (iso: string) => {
+    const { date, time } = localParts(iso, timeZone)
+    return requested === null || date === requested ? time : `${time} on ${date}`
+  }
   return row.offers.map((o) => (o.ends_at ? `${at(o.starts_at)} to ${at(o.ends_at)}` : at(o.starts_at))).join(', ')
 }

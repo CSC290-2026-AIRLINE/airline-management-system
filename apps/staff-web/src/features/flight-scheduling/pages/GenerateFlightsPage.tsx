@@ -24,6 +24,7 @@ import {
   type ConfirmResult,
   type GateCheckResult,
   type PlanFlight,
+  type Slot,
 } from '../generate-flights'
 import { useAircraft } from '../hooks/useAircraft'
 import { useNotice } from '../hooks/useNotice'
@@ -78,7 +79,7 @@ interface Row {
   checkText: string
   approval: Approval
   answer: string
-  slots: string[] // departures the approver offered
+  slots: Slot[] // departures the approver offered
 }
 
 const time = (local: string) => local.slice(11, 16)
@@ -260,10 +261,10 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
   }
 
   // An offered time is a revision of the request: the approver already offered it, so it is approved at once.
-  async function pickSlot(r: Row, slot: string) {
+  async function pickSlot(r: Row, slot: Slot) {
     if (!r.approvalId) return
     const zone = zoneOf(r.origin)
-    const moved = moveTo(r, slot, zone)
+    const moved = moveTo(r, slot.at, zone)
     try {
       const a = await post<ApprovalRow>(`/approvals/${r.approvalId}/revise`, { dep_at: moved.depAt, arr_at: moved.arrAt })
       update(new Set([r.key]), () => ({
@@ -273,7 +274,7 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
         departs: localParts(moved.depAt, zone).time,
         arrives: localParts(moved.arrAt, zoneOf(r.destination)).time,
       }))
-      say(`${r.flight} on ${r.date} moved to ${slot}: ${approvalOutcome(a, zone).approval}.`)
+      say(`${r.flight} on ${r.date} moved to ${slot.label}: ${approvalOutcome(a, zone).approval}.`)
     } catch (e) {
       say(e instanceof Error ? e.message : String(e))
     }
@@ -722,8 +723,13 @@ export function GenerateFlightsPage({ pattern }: { pattern?: string }) {
                                 {r.approval === 'offered' && (
                                   <span className="fs-actions fs-start">
                                     {r.slots.map((slot) => (
-                                      <button key={slot} type="button" className="fs-button-light" onClick={() => void pickSlot(r, slot)}>
-                                        {slot}
+                                      <button
+                                        key={slot.at}
+                                        type="button"
+                                        className="fs-button-light"
+                                        onClick={() => void pickSlot(r, slot)}
+                                      >
+                                        {slot.label}
                                       </button>
                                     ))}
                                   </span>

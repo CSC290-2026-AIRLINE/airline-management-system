@@ -24,7 +24,8 @@ const flight: PlanFlight = {
   depAt: '2026-11-10T03:00:00.000Z', // 10:00 at Bangkok
   arrAt: '2026-11-10T04:15:00.000Z',
 }
-const approval = (over: Partial<ApprovalRow> = {}) => ({ status: 'approved', response_note: null, offers: [], ...over }) as ApprovalRow
+const approval = (over: Partial<ApprovalRow> = {}) =>
+  ({ status: 'approved', response_note: null, offers: [], proposed_dep_at: '2026-11-10T03:00:00Z', ...over }) as ApprovalRow
 
 describe('generate flights helpers', () => {
   it('chunks a list into calls of at most 50', () => {
@@ -115,27 +116,50 @@ describe('generate flights helpers', () => {
       assert.equal(approvalOutcome(approval({ status: 'consumed' }), BKK).approval, 'none')
     })
 
-    it('lists offered slots as local times and says what was offered', () => {
+    it('lists offered slots as local times, keeps each instant, and says what was offered', () => {
       const offers = [
-        { kind: 'slot' as const, starts_at: '2026-11-10T22:00:00Z', ends_at: null },
-        { kind: 'slot' as const, starts_at: '2026-11-10T22:15:00Z', ends_at: null },
+        { kind: 'slot' as const, starts_at: '2026-11-10T05:00:00Z', ends_at: null },
+        { kind: 'slot' as const, starts_at: '2026-11-10T05:15:00Z', ends_at: null },
       ]
       assert.deepEqual(approvalOutcome(approval({ status: 'alternative_offered', response_note: 'Not approved: curfew', offers }), BKK), {
         approval: 'offered',
-        answer: 'Not approved: curfew. Offered: 05:00, 05:15',
-        slots: ['05:00', '05:15'],
+        answer: 'Not approved: curfew. Offered: 12:00, 12:15',
+        slots: [
+          { at: '2026-11-10T05:00:00Z', label: '12:00' },
+          { at: '2026-11-10T05:15:00Z', label: '12:15' },
+        ],
       })
     })
 
-    it('offers a window as its start, and says the window', () => {
-      const offers = [{ kind: 'window' as const, starts_at: '2026-11-10T23:00:00Z', ends_at: '2026-11-11T02:45:00Z' }]
-      const r = approvalOutcome(approval({ status: 'alternative_offered', offers }), BKK)
-      assert.deepEqual(r.slots, ['06:00'])
-      assert.equal(r.answer, 'Offered: 06:00 to 09:45')
+    it('labels an offer on the next local day with its date', () => {
+      // The request was 10:00 on 10 Nov at Bangkok; 22:00Z is 05:00 on 11 Nov there.
+      const offers = [{ kind: 'slot' as const, starts_at: '2026-11-10T22:00:00Z', ends_at: null }]
+      assert.deepEqual(approvalOutcome(approval({ status: 'alternative_offered', offers }), BKK).slots, [
+        { at: '2026-11-10T22:00:00Z', label: '05:00 on 2026-11-11' },
+      ])
     })
 
-    it('moves a flight to another local departure time and keeps its length', () => {
-      assert.deepEqual(moveTo(flight, '12:30', BKK), { depAt: '2026-11-10T05:30:00.000Z', arrAt: '2026-11-10T06:45:00.000Z' })
+    it('offers a window as its start, and says the window', () => {
+      const offers = [{ kind: 'window' as const, starts_at: '2026-11-10T07:00:00Z', ends_at: '2026-11-10T09:45:00Z' }]
+      const r = approvalOutcome(approval({ status: 'alternative_offered', offers }), BKK)
+      assert.deepEqual(r.slots, [{ at: '2026-11-10T07:00:00Z', label: '14:00' }])
+      assert.equal(r.answer, 'Offered: 14:00 to 16:45')
+    })
+
+    it('moves a flight to an offered departure and keeps its length', () => {
+      assert.deepEqual(moveTo(flight, '2026-11-10T05:30:00Z', BKK), {
+        depAt: '2026-11-10T05:30:00.000Z',
+        arrAt: '2026-11-10T06:45:00.000Z',
+        date: '2026-11-10',
+      })
+    })
+
+    it('moves the service date with an offer on the next local day', () => {
+      assert.deepEqual(moveTo(flight, '2026-11-10T23:00:00Z', BKK), {
+        depAt: '2026-11-10T23:00:00.000Z',
+        arrAt: '2026-11-11T00:15:00.000Z',
+        date: '2026-11-11',
+      })
     })
   })
 

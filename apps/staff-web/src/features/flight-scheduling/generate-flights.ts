@@ -1,5 +1,5 @@
 import { offerText } from './approval-labels.ts'
-import { localParts, localToIso } from './format.ts'
+import { localParts } from './format.ts'
 import type { Approval, ApprovalRow } from './types'
 
 // The request and response shapes of the Generate flights steps: check the gates, ask for approval, confirm. Kept apart from the page so the
@@ -81,19 +81,34 @@ const APPROVAL_OF: Partial<Record<ApprovalRow['status'], Approval>> = {
   rejected: 'rejected',
 }
 
+/** An offered departure: the instant, and how a button shows it (local time, with the date when it is another local day). */
+export interface Slot {
+  at: string
+  label: string
+}
+
 // What a row shows for an approval. An offered window is listed as its start, since a row can only take one departure time.
-export function approvalOutcome(a: ApprovalRow, timeZone: string): { approval: Approval; answer: string; slots: string[] } {
+export function approvalOutcome(a: ApprovalRow, timeZone: string): { approval: Approval; answer: string; slots: Slot[] } {
+  const requestedDate = localParts(a.proposed_dep_at, timeZone).date
   return {
     approval: APPROVAL_OF[a.status] ?? 'none',
     answer: [a.response_note, a.offers.length > 0 ? `Offered: ${offerText(a, timeZone)}` : null].filter(Boolean).join('. '),
-    slots: a.offers.map((o) => localParts(o.starts_at, timeZone).time),
+    slots: a.offers.map((o) => {
+      const { date, time } = localParts(o.starts_at, timeZone)
+      return { at: o.starts_at, label: date === requestedDate ? time : `${time} on ${date}` }
+    }),
   }
 }
 
-// The flight moved to another local departure time at its origin, keeping its length.
-export function moveTo(f: Pick<PlanFlight, 'depAt' | 'arrAt'>, slot: string, timeZone: string) {
-  const depAt = localToIso(localParts(f.depAt, timeZone).date, slot, timeZone)
-  return { depAt, arrAt: new Date(Date.parse(depAt) + (Date.parse(f.arrAt) - Date.parse(f.depAt))).toISOString() }
+// The flight moved to an offered departure, keeping its length. Its service date is the new departure's local date at the origin,
+// so an offer on the next local day moves the date too (the backend does the same when it records the revision).
+export function moveTo(f: Pick<PlanFlight, 'depAt' | 'arrAt'>, at: string, timeZone: string) {
+  const depAt = new Date(at).toISOString()
+  return {
+    depAt,
+    arrAt: new Date(Date.parse(depAt) + (Date.parse(f.arrAt) - Date.parse(f.depAt))).toISOString(),
+    date: localParts(depAt, timeZone).date,
+  }
 }
 
 // ---- POST /flights/confirm
