@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { Info } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
+import { Route } from '@staff-web/routes/_authenticated/cargo/settings'
+import type { CargoSettingsTab } from '@staff-web/routes/_authenticated/cargo/settings'
 import { CommodityTypesSection } from './CommodityTypesSection'
 import { RatesSection } from './RatesSection'
 import { ProhibitedItemsSection } from './ProhibitedItemsSection'
@@ -8,15 +10,14 @@ import { SettingsSection } from './SettingsSection'
 
 const TABS = [
   { value: 'commodity-types', label: 'Commodity types' },
-  { value: 'rate-table', label: 'Rate table' },
+  { value: 'rates', label: 'Rate table' },
   { value: 'prohibited-items', label: 'Prohibited items' },
   { value: 'settings', label: 'Settings' },
-] as const
-
-type TabValue = (typeof TABS)[number]['value']
+] as const satisfies ReadonlyArray<{ value: CargoSettingsTab; label: string }>
 
 export function CargoSettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabValue>('commodity-types')
+  const { tab } = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
 
   return (
     <>
@@ -27,7 +28,11 @@ export function CargoSettingsPage() {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)} className="flex flex-col gap-4">
+      <Tabs
+        value={tab}
+        onValueChange={(v) => navigate({ search: { tab: v as CargoSettingsTab }, replace: true })}
+        className="flex flex-col gap-4"
+      >
         <div className="flex items-center justify-between gap-4">
           <TabsList variant="line" className="gap-2">
             {TABS.map((tab) => (
@@ -45,7 +50,7 @@ export function CargoSettingsPage() {
         <TabsContent value="commodity-types">
           <CommodityTypesSection />
         </TabsContent>
-        <TabsContent value="rate-table">
+        <TabsContent value="rates">
           <RatesSection />
         </TabsContent>
         <TabsContent value="prohibited-items">
