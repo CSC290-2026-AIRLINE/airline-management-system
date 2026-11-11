@@ -388,12 +388,14 @@ export function StatCard({ label, value }: { label: string; value: string | numb
 // ---------------------------------------------------------------------------
 
 /**
- * Role pill. `Cabin Crew` is outlined in the secondary colour and `Captain` is
- * solid navy; the rest share the neutral treatment so the two that appear most
- * often in a roster stand out.
+ * Role pill. `Cabin Crew` is outlined in the secondary colour with navy text (the
+ * secondary colour alone is too light to read on white) and `Captain` is solid navy;
+ * the rest share the neutral treatment so the two that appear most often in a roster
+ * stand out.
  */
 export function RoleBadge({ role }: { role: string }) {
-  const styles = role === 'Captain' ? 'bg-primary text-white' : role === 'Cabin Crew' ? 'text-secondary' : 'bg-page-bg text-primary'
+  const styles =
+    role === 'Captain' ? 'bg-primary text-white' : role === 'Cabin Crew' ? 'bg-secondary/15 text-primary' : 'bg-page-bg text-primary'
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${
