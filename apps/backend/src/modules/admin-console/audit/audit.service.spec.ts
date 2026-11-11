@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common'
+import { Decimal } from '@prisma/client/runtime/client'
 import {
   AuditService,
   DEFAULT_SENSITIVE_KEYS,
@@ -54,6 +55,22 @@ describe('maskValue', () => {
       sensitiveKeySet(),
     )
     expect(out).toEqual({ passportNo: MASKED, Passport_Number: MASKED, 'date-of-birth': MASKED, cardNumber: MASKED, seat: '12A' })
+  })
+
+  it('stores a Prisma Decimal or a Date as its JSON form instead of copying its internals', () => {
+    // A Prisma Decimal carries an own `constructor` property; copying it made Prisma refuse the whole write.
+    const decimal = { constructor: Object, s: 1, e: 2, d: [150], toJSON: () => '150' }
+    Object.setPrototypeOf(decimal, { kind: 'Decimal' })
+    const out = maskValue({ cancel_fee_flat: decimal, at: new Date('2026-11-11T00:00:00.000Z'), card_number: decimal }, sensitiveKeySet())
+    expect(out).toEqual({ cancel_fee_flat: '150', at: '2026-11-11T00:00:00.000Z', card_number: MASKED })
+  })
+
+  it('writes a row holding a real Prisma Decimal as plain JSON', async () => {
+    const { svc, db } = makeSvc()
+    await svc.write({ ...base, after: { cancel_fee_flat: new Decimal('150.00'), code: 'T1' } })
+    const after = db.audit_log.create.mock.calls[0][0].data.after
+    expect(after).toEqual({ cancel_fee_flat: '150', code: 'T1' })
+    expect(JSON.parse(JSON.stringify(after))).toEqual(after)
   })
 
   it('has a default list that covers passports, cards and dates of birth', () => {

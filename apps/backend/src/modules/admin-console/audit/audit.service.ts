@@ -117,14 +117,25 @@ export function sensitiveKeySet(extra: readonly string[] = []): ReadonlySet<stri
 /** Matches the `reason` limit the admin endpoints use. Longer text is cut, not rejected, so a write never fails on it. */
 const MAX_TEXT = 500
 
+/** An object literal or JSON-parsed object — not a class instance such as a Prisma `Decimal`, a `Date` or a `Buffer`. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false
+  const proto: unknown = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
 /**
  * Copy of `value` with every property whose name is in `fields` (at any depth, in objects and arrays) replaced by
  * `MASKED`. Names are compared with `normalizeKey`, so `fields` may hold either spelling. A whole value is masked —
  * an object under a sensitive key is replaced, not walked. `onMask` is called once per replaced value.
+ *
+ * Only plain objects and arrays are walked. Any other object (a Prisma `Decimal`, a `Date`) is replaced by its JSON form
+ * (`toJSON()`), which is what the `Json` column would store anyway; walking it instead would copy internals such as a
+ * `Decimal`'s own `constructor` property, which Prisma refuses to write.
  */
 export function maskValue(value: unknown, fields: ReadonlySet<string>, onMask?: () => void): unknown {
   if (Array.isArray(value)) return value.map((v) => maskValue(v, fields, onMask))
-  if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+  if (isPlainObject(value)) {
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => {
         if (fields.has(k) || fields.has(normalizeKey(k))) {
@@ -135,6 +146,13 @@ export function maskValue(value: unknown, fields: ReadonlySet<string>, onMask?: 
         return [k, maskValue(v, fields, onMask)]
       }),
     )
+  }
+  if (value !== null && typeof value === 'object') {
+    const toJSON = (value as { toJSON?: () => unknown }).toJSON
+    if (typeof toJSON === 'function') {
+      const json = toJSON.call(value)
+      return json === value ? value : maskValue(json, fields, onMask)
+    }
   }
   return value
 }
