@@ -32,9 +32,7 @@ export function StaffPageShell({ title, subtitle, children }: StaffPageShellProp
           <span className="rounded-md border border-warning/40 bg-warning-soft px-3 py-1 text-xs font-semibold tracking-wide text-foreground uppercase">
             Staff view
           </span>
-          <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold tracking-wide text-white uppercase">
-            Feature 5
-          </span>
+          <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold tracking-wide text-white uppercase">Feature 5</span>
           <span className="ml-auto text-sm text-muted-foreground">{roleName}</span>
         </header>
 
@@ -51,9 +49,6 @@ export function StaffPageShell({ title, subtitle, children }: StaffPageShellProp
     </div>
   )
 }
-
-/** The white card every payment screen body sits in. */
-export const PAYMENT_CARD = 'border-line bg-card font-sans'
 
 /** A page-level message, used for the empty and error states. */
 export function PageMessage({

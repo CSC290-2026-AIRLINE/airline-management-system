@@ -110,7 +110,12 @@ export function PaymentLookupPage() {
                 <Button type="button" variant="outline" disabled={page <= 1} onClick={() => setPage((n) => Math.max(1, n - 1))}>
                   Previous
                 </Button>
-                <Button type="button" variant="outline" disabled={page >= pageCount} onClick={() => setPage((n) => Math.min(pageCount, n + 1))}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={page >= pageCount}
+                  onClick={() => setPage((n) => Math.min(pageCount, n + 1))}
+                >
                   Next
                 </Button>
               </div>
@@ -120,8 +125,8 @@ export function PaymentLookupPage() {
 
         {/* The note the frames put under the list ------------------------ */}
         <p className="m-0 text-sm text-muted-foreground">
-          Read only. State changes come only from verified Stripe events and booking confirmation. Staff cannot edit a
-          state by hand. Opening a payment is recorded in the audit trail.
+          Read only. State changes come only from verified Stripe events and booking confirmation. Staff cannot edit a state by hand.
+          Opening a payment is recorded in the audit trail.
         </p>
       </div>
 

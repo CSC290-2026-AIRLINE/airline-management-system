@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@staff-web/components/ui/dialog'
 import { useStaffPayment } from '../hooks/useStaffPayment'
@@ -55,6 +56,20 @@ export function PaymentDetailModal({ paymentId, onClose }: PaymentDetailModalPro
           )}
 
           {!loading && !error && payment && <PaymentDetailPanel payment={payment} />}
+
+          {/* The payment also has a page of its own, so the deep link can be shared and copied. */}
+          {!loading && !error && payment && (
+            <p className="m-0 mt-6 border-t border-line pt-4 text-sm">
+              <Link
+                to="/payments/lookup/$paymentId"
+                params={{ paymentId: payment.reference }}
+                className="font-medium text-navy hover:underline"
+              >
+                Open the payment page
+              </Link>
+              <span className="text-muted-foreground"> — /payments/lookup/{payment.reference}</span>
+            </p>
+          )}
         </div>
       </DialogContent>
     </Dialog>

@@ -50,8 +50,8 @@ export function PaymentDetailPanel({ payment }: { payment: StaffPaymentDetailDto
       {/* The warning the frames put under the header -------------------- */}
       {stalled && (
         <p className="m-0 rounded-xl bg-warning-soft px-5 py-4 text-sm text-warning">
-          Booking is confirmed but the card charge has not completed after {payment.capture_attempts} attempts. The
-          customer sees "Confirming payment". Retries continue; staff can follow up in Payment exceptions.
+          Booking is confirmed but the card charge has not completed after {payment.capture_attempts} attempts. The customer sees
+          "Confirming payment". Retries continue; staff can follow up in Payment exceptions.
         </p>
       )}
 

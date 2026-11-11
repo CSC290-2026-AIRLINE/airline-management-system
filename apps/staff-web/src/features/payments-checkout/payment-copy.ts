@@ -6,11 +6,6 @@ import type { PaymentExceptionState, PaymentExceptionTab, PaymentStatus, StaffPa
  * Everything staff read about a payment lives here, so a copy change is one edit rather than a hunt through the pages.
  */
 
-/** `233.4` + `USD` → `$233.40`. */
-export function formatMoney(amount: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
-}
-
 /**
  * `705` → `705.00`.
  *
@@ -18,14 +13,6 @@ export function formatMoney(amount: number, currency: string): string {
  */
 export function formatAmount(amount: number): string {
   return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
-}
-
-/** `2026-11-09T09:20:00.000Z` → `Nov 9, 2026, 9:20 AM`. */
-export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return iso
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
 /**
@@ -137,28 +124,4 @@ export const PROBLEM_STATE_LABELS: Record<PaymentExceptionState, string> = {
   needs_action: 'Needs action',
   queued: 'Queued',
   resolved: 'Resolved',
-}
-
-/**
- * The `last_error` codes the mock can carry, in words a person can act on.
- *
- * TODO(F5a): these are the provider's own codes; the real implementation should map them through one table rather than
- * a `switch`, so a new provider code does not need a frontend change.
- */
-export const ERROR_LABELS: Record<string, string> = {
-  card_declined: 'Card declined',
-  hold_expired: 'The booking hold expired',
-  seller_declined: 'The sale did not go through',
-  capture_retry_limit_reached: 'The capture failed too many times',
-  capture_failed: 'The capture failed',
-  authorisation_failed: 'The card could not be authorised',
-  voided_by_staff: 'Voided by staff',
-  finance_posting_failed: 'The finance ledger did not answer',
-  booking_confirm_failed: 'The booking could not be confirmed',
-}
-
-/** The plain words for an error code, or the code itself when it is not one we know. */
-export function errorLabel(code: string | null | undefined): string {
-  if (!code) return '—'
-  return ERROR_LABELS[code] ?? code.replace(/_/g, ' ')
 }

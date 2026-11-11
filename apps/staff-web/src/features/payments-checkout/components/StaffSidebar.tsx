@@ -75,7 +75,11 @@ export function StaffSidebar({ roleName, onSignOut }: StaffSidebarProps) {
             if (item.to === null) {
               return (
                 <li key={item.label}>
-                  <span aria-disabled="true" title="Coming with another feature" className="block cursor-not-allowed rounded-lg px-3 py-2 text-sm text-white/55">
+                  <span
+                    aria-disabled="true"
+                    title="Coming with another feature"
+                    className="block cursor-not-allowed rounded-lg px-3 py-2 text-sm text-white/55"
+                  >
                     {item.label}
                   </span>
                 </li>

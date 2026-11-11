@@ -123,10 +123,22 @@ export async function listStaffPayments(query: StaffPaymentQuery = {}): Promise<
   return { items, total: filtered.length, counts }
 }
 
+/**
+ * Finds a payment by its id or by the reference staff read out loud.
+ *
+ * The deep links carry the reference (`PAY-20261109-0006`), because that is the number on the screen, and the actions
+ * carry the id, because that is what the API takes. Both find the same row — the backend's `requirePayment` falls back
+ * to the reference the same way.
+ */
+function findPayment(paymentId: string): StaffPaymentDetailDto | undefined {
+  const needle = paymentId.trim().toLowerCase()
+  return MOCK_PAYMENTS.find((payment) => payment.id.toLowerCase() === needle || payment.reference.toLowerCase() === needle)
+}
+
 /** One payment, with the capture-stalled panel and the state history the staff frames show. */
 export async function getStaffPayment(paymentId: string): Promise<StaffPaymentDetailDto> {
   await delay(LATENCY_MS)
-  const payment = MOCK_PAYMENTS.find((p) => p.id === paymentId)
+  const payment = findPayment(paymentId)
   if (!payment) {
     throw new Error(`404 Not Found: Payment ${paymentId} not found`)
   }
@@ -263,7 +275,7 @@ export async function listPaymentProblems(tab: PaymentExceptionTab): Promise<Pay
  */
 export async function retryCapture(paymentId: string): Promise<StaffPaymentDetailDto> {
   await delay(LATENCY_MS)
-  const payment = MOCK_PAYMENTS.find((p) => p.id === paymentId)
+  const payment = findPayment(paymentId)
   if (!payment) {
     throw new Error(`404 Not Found: Payment ${paymentId} not found`)
   }
@@ -299,7 +311,7 @@ export async function retryCapture(paymentId: string): Promise<StaffPaymentDetai
  */
 export async function sendFinancePosting(paymentId: string): Promise<StaffPaymentDetailDto> {
   await delay(LATENCY_MS)
-  const payment = MOCK_PAYMENTS.find((p) => p.id === paymentId)
+  const payment = findPayment(paymentId)
   if (!payment) {
     throw new Error(`404 Not Found: Payment ${paymentId} not found`)
   }
