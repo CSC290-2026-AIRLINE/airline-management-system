@@ -21,8 +21,11 @@ describe('Screening rules', () => {
     expect(classify(p, entryFixture(), score).level).toBe(expected)
     expect(classify(p, entryFixture({ date_of_birth: null }), score).level).toBe(expected)
   })
-  it('does not invent a passport-only probable rule', () => {
-    expect(classify(p, entryFixture({ passport_number: p.passport_number, nationality: null }), 0).level).toBe('none')
+  it.each([null, 'xx'])('same passport with nationality %s is probable even with no name or DOB match', (nationality) => {
+    expect(classify(p, entryFixture({ passport_number: p.passport_number, nationality }), 0).level).toBe('probable')
+  })
+  it('does not match when the passenger has no passport', () => {
+    expect(classify({ ...p, passport_number: null }, entryFixture({ passport_number: null }), 0).level).toBe('none')
   })
   it.each(triggers)('only check_in holds strong/probable; %s follows the outcome table', (trigger) => {
     expect(initialOutcome('strong', trigger)).toBe(trigger === 'check_in' ? 'held' : 'flagged')

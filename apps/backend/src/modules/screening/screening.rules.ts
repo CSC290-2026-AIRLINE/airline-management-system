@@ -3,7 +3,7 @@ import type { screening_check, screening_review } from '@backend/db/generated/pr
 export const triggers = ['booking', 'check_in', 'new_entry', 'entry_change', 'identity_change'] as const
 export type Trigger = (typeof triggers)[number]
 export type MatchLevel = 'none' | 'weak' | 'probable' | 'strong'
-export type MatchReason = 'none' | 'similar_name' | 'name_and_dob' | 'passport_and_nationality'
+export type MatchReason = 'none' | 'similar_name' | 'name_and_dob' | 'passport_and_nationality' | 'passport_only'
 export type Decision = 'confirmed' | 'false_positive'
 export interface Identity {
   id?: string
@@ -29,6 +29,9 @@ export function classify(passenger: Identity, entry: Identity, similarity: numbe
     countryKey(passenger.nationality) === countryKey(entry.nationality)
   )
     return { level: 'strong', reason: 'passport_and_nationality' }
+  // Same passport number with a different or missing nationality.
+  if (passportKey(passenger.passport_number) && passportKey(passenger.passport_number) === passportKey(entry.passport_number))
+    return { level: 'probable', reason: 'passport_only' }
   const dobMatches = sameDob(passenger.date_of_birth, entry.date_of_birth)
   if (dobMatches && similarity >= 0.5) return { level: 'probable', reason: 'name_and_dob' }
   if (!dobMatches && similarity >= 0.6) return { level: 'weak', reason: 'similar_name' }

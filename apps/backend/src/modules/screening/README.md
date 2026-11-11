@@ -41,14 +41,14 @@ One new row is inserted per matched entry. A no-match check stores `none`/`clear
 
 `pg_trgm` and the database's `name_key(first, last)` compute **name similarity only**. Normalize to uppercase ASCII letters/digits, compare both passenger name orders against the entry, and keep the maximum PostgreSQL `similarity` score. A score of 0.67 is name similarity of 67%, not a probability that two records are the same person.
 
-| Match    | Rule, in priority order                                |
-| -------- | ------------------------------------------------------ |
-| Strong   | Non-empty passport and nationality both equal          |
-| Probable | Name score >= 0.5 and both DOBs present and equal      |
-| Weak     | Name score >= 0.6 and DOBs different or either missing |
-| None     | None of the above                                      |
+| Match    | Rule, in priority order                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------ |
+| Strong   | Non-empty passport and nationality both equal                                                          |
+| Probable | Same passport with different/missing nationality, or name score >= 0.5 and both DOBs present and equal |
+| Weak     | Name score >= 0.6 and DOBs different or either missing                                                 |
+| None     | None of the above                                                                                      |
 
-The user-approved rules intentionally omit the passport-only Probable rule mentioned in the older frontend README. Gender is displayed but never used to match. Only active watchlist entries participate in a new match.
+A same passport number with a different or missing nationality is Probable (`passport_only`), per `docs/f7-g10.md`. Gender is displayed but never used to match. Only active watchlist entries participate in a new match.
 
 At `check_in`, Strong/Probable are `held`; Weak is `flagged`. At `booking`, `new_entry`, `entry_change` and `identity_change`, any match is `flagged`. None is always `clear`. Stored initial outcomes never change when reviewed.
 

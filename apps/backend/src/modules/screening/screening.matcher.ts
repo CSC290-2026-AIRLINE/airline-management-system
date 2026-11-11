@@ -16,8 +16,7 @@ export class ScreeningMatcher {
       FROM watchlist_entry w
       WHERE w.status = 'active'
         AND (
-          (w.passport_number = ${passenger.passport_number} AND w.nationality = ${passenger.nationality}
-            AND w.passport_number IS NOT NULL AND w.nationality IS NOT NULL)
+          (w.passport_number = ${passenger.passport_number} AND w.passport_number IS NOT NULL)
           OR similarity(name_key(${passenger.first_name}, ${passenger.last_name}), name_key(w.first_name, w.last_name)) >= 0.5
           OR similarity(name_key(${passenger.last_name}, ${passenger.first_name}), name_key(w.first_name, w.last_name)) >= 0.5
         )
