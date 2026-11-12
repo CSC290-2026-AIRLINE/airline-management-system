@@ -4,7 +4,7 @@ import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { PaymentsRefundsService } from './payments-refunds.service'
 import { CreateRefundRequestDto } from './dto/refund-action.dto'
 import { MyRefundQueryDto } from './dto/refund-query.dto'
-import type { MyRefundDto, MyRefundListDto, MyVoucherListDto } from './dto/payments-refunds.types'
+import type { MyRefundDto, MyRefundListDto, MyVoucherListDto, RefundableListDto } from './dto/payments-refunds.types'
 
 const validation = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
 
@@ -23,6 +23,12 @@ export class RefundsController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser, @Query() query: MyRefundQueryDto): Promise<MyRefundListDto> {
     return this.svc.listMyRefunds(user.id, query)
+  }
+
+  /** The customer's captured payments and the lines they can still ask money back for. It sits before `:id`, so "refundable" is not read as an id. */
+  @Get('refundable')
+  refundable(@CurrentUser() user: AuthenticatedUser): Promise<RefundableListDto> {
+    return this.svc.listMyRefundable(user.id)
   }
 
   /** One refund. 404 when it is not the customer's. */

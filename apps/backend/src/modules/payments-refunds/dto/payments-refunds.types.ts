@@ -142,6 +142,17 @@ export interface MyVoucherListDto extends ListDto<MyVoucherDto> {
   usable: number
 }
 
+/** One payment the customer can ask money back on, with the lines that still have something to refund. */
+export interface RefundablePaymentDto {
+  /** The reference the request names: the booking reference (`K7QF2M`). */
+  booking_reference: string
+  currency: string
+  total: number
+  lines: { description: string; amount: number; remaining: number }[]
+}
+
+export type RefundableListDto = ListDto<RefundablePaymentDto>
+
 /* ---- Staff: compensation and vouchers ------------------------------------------------------------------------- */
 
 /** One row of the compensation history: a voucher, or a card refund. */

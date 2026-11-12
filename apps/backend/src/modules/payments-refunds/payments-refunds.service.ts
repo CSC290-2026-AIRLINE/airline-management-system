@@ -8,15 +8,15 @@ import type {
   MyRefundListDto,
   MyVoucherDto,
   MyVoucherListDto,
+  RefundableListDto,
   RefundDetailDto,
   RefundQueueListDto,
   RefundSummaryDto,
 } from './dto/payments-refunds.types'
 import type { CompensationQueryDto, MyRefundQueryDto, RefundQueueQueryDto } from './dto/refund-query.dto'
 import type { CreateRefundRequestDto, IssueCompensationDto, RefundDecisionDto, VoidVoucherDto } from './dto/refund-action.dto'
-import { MOCK_BOOKINGS, resolveCustomerId } from './mock-refund-state'
-import { pad, REFUND_REPOSITORY } from './refund.repository'
-import type { RefundRepository } from './refund.repository'
+import { REFUND_REPOSITORY } from './refund-repository.interface'
+import type { RefundRepository } from './refund-repository.interface'
 import {
   cardRefundLabel,
   COMPENSATION_REASONS,
@@ -26,10 +26,9 @@ import {
   queueTabFor,
   REFUND_REASON_LABELS,
   staffRefundLabel,
-  VOUCHER_VALID_MONTHS,
   voucherLabel,
 } from './refund-status'
-import type { RefundRecord, VoucherRecord } from './refund.types'
+import type { BookingInfo, RefundRecord, VoucherRecord } from './refund.types'
 
 const DAY = 24 * 60 * 60 * 1000
 const CURRENCY = 'USD'
@@ -38,7 +37,12 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 /** `REF-0121`. */
 function referenceOf(refund: RefundRecord): string {
-  return `REF-${pad(refund.number)}`
+  return refund.reference
+}
+
+/** The id the provider knows a card refund by: `RF-` and the reference's number (`RF-0121`, `RF-3FA9C21B`). */
+function providerRefundOf(refund: RefundRecord): string {
+  return `RF-${refund.reference.replace(/^REF-/, '')}`
 }
 
 /** True when a refund is one the compensation page owns rather than the queue the customer's requests go through. */
@@ -121,6 +125,7 @@ export class PaymentsRefundsService {
     const before = refund.status
     const now = this.clock.now()
     const override = dto.decision !== 'reject' && refund.context.fare_rule === 'outside'
+    let voucher: VoucherRecord | undefined
 
     if (dto.decision === 'reject') {
       refund.status = 'rejected'
@@ -128,16 +133,17 @@ export class PaymentsRefundsService {
       refund.status = 'processing'
       refund.method = 'original'
       refund.voucher_amount = 0
-      refund.provider_refund_id = `RF-${pad(refund.number)}`
+      refund.provider_refund_id = providerRefundOf(refund)
     } else {
       refund.method = 'voucher'
       refund.voucher_amount = refund.amount
       refund.provider_refund_id = null
       refund.status = 'succeeded'
       refund.completed_at = now
-      const voucher = await this.issueVoucher({
+      voucher = await this.newVoucher({
         customerId: refund.context.customer_id,
         amount: refund.amount,
+        currency: await this.currencyOf(refund),
         booking: refund.context.booking_reference,
         refundId: refund.id,
         note: dto.reason,
@@ -151,7 +157,9 @@ export class PaymentsRefundsService {
     refund.context.decided_at = now
     refund.context.decided_by = actorId
     refund.context.override = override
-    await this.repo.updateRefund(refund)
+    /* A voucher and the refund that returns it are saved together, so one never exists without the other. */
+    if (voucher) await this.repo.saveRefundWithVoucher(refund, voucher, 'update')
+    else await this.repo.updateRefund(refund)
 
     await this.writeAudit(actorId, {
       action: 'status_change',
@@ -170,7 +178,7 @@ export class PaymentsRefundsService {
 
   /** The signed-in customer's refunds, newest first, with the counts the frames show on the tabs. */
   async listMyRefunds(userId: string, query: MyRefundQueryDto): Promise<MyRefundListDto> {
-    const customerId = resolveCustomerId(userId)
+    const customerId = await this.repo.resolveCustomerId(userId)
     const mine = (await this.repo.listRefunds()).filter((refund) => refund.context.customer_id === customerId && !isCompensation(refund))
     const searched = mine.filter((refund) => matches(query.search, referenceOf(refund), refund.context.booking_reference))
 
@@ -187,7 +195,7 @@ export class PaymentsRefundsService {
   /** One of the signed-in customer's refunds. 404 when it is not theirs. */
   async getMyRefund(userId: string, idOrReference: string): Promise<MyRefundDto> {
     const refund = await this.requireRefund(idOrReference)
-    if (refund.context.customer_id !== resolveCustomerId(userId) || isCompensation(refund)) {
+    if (refund.context.customer_id !== (await this.repo.resolveCustomerId(userId)) || isCompensation(refund)) {
       throw new NotFoundException(`Refund ${idOrReference} not found`)
     }
     return this.toMyRefund(refund)
@@ -201,30 +209,44 @@ export class PaymentsRefundsService {
    * and the payment provider — both still to come, so every request is queued today.
    */
   async requestRefund(userId: string, dto: CreateRefundRequestDto): Promise<MyRefundDto> {
-    const customerId = resolveCustomerId(userId)
-    const booking = MOCK_BOOKINGS[dto.booking_reference]
-    if (!booking || booking.customer_id !== customerId) {
+    const customerId = await this.repo.resolveCustomerId(userId)
+    const booking = customerId ? await this.repo.findBooking(dto.booking_reference) : undefined
+    /* Another customer's purchase answers the same as one that does not exist. */
+    if (!customerId || !booking || booking.customer_id !== customerId) {
       throw new NotFoundException(`Booking ${dto.booking_reference} not found`)
     }
 
+    /* The line asked about must be on the payment, and the amount no more than what is left on it. */
+    const payment = (await this.repo.listRefundable(customerId)).find((candidate) => candidate.booking.reference === booking.reference)
+    const line = payment?.lines.find((candidate) => candidate.description === dto.item)
+    if (!payment || !line) throw new NotFoundException(`${dto.item} is not on a payment of booking ${booking.reference}`)
+    /* A request for the same line that is already waiting is answered first: it is more useful than "nothing left". */
     const open = (await this.repo.listRefunds()).find(
       (refund) =>
         refund.context.booking_reference === booking.reference &&
         refund.context.item === dto.item &&
-        refund.status !== 'rejected' &&
-        refund.status !== 'failed',
+        (refund.status === 'requested' || refund.status === 'pending_approval'),
     )
     if (open) {
       throw new ConflictException(`${referenceOf(open)} already asks for a refund of ${dto.item} on ${booking.reference}`)
     }
 
+    if (dto.amount > line.remaining) {
+      throw new BadRequestException(
+        line.remaining > 0
+          ? `You can ask for at most ${line.remaining.toFixed(2)} ${booking.currency} for ${dto.item}`
+          : `${dto.item} has nothing left to refund`,
+      )
+    }
+
     const now = this.clock.now()
-    const number = await this.repo.nextRefundNumber()
+    const id = crypto.randomUUID()
     const refund: RefundRecord = {
-      id: `ref_${crypto.randomUUID()}`,
-      number,
+      id,
+      reference: '',
       payment_id: booking.payment_id,
-      source_key: `customer_request:${booking.reference}:${number}`,
+      payment_line_id: line.payment_line_id,
+      source_key: `customer_request:${id}`,
       reason: 'customer_request',
       method: 'original',
       status: 'requested',
@@ -249,7 +271,7 @@ export class PaymentsRefundsService {
         fare_rule: 'inside',
         fare_rule_label: 'Inside rules',
         fare_rule_note: 'This request is inside the fare rules.',
-        paid_by: `Card ${booking.card_last4} (${dto.amount.toFixed(2)}) · no voucher`,
+        paid_by: this.paidBy(booking, payment.total),
         card_brand: booking.card_brand,
         card_last4: booking.card_last4,
         credit_note_number: null,
@@ -260,15 +282,43 @@ export class PaymentsRefundsService {
         older: false,
       },
     }
-    await this.repo.insertRefund(refund)
-    return this.toMyRefund(refund)
+    const saved = await this.repo.insertRefund(refund)
+
+    /* The refund table has no column for the line or the customer's own words, so they go in the audit trail with the request. */
+    await this.writeAudit(userId, {
+      action: 'create',
+      entityType: 'refund',
+      entityId: saved.id,
+      summary: `${referenceOf(saved)} requested: ${dto.amount.toFixed(2)} ${booking.currency} for ${dto.item} on ${booking.reference}`,
+      reason: dto.reason,
+      after: { status: 'requested', item: dto.item, amount: dto.amount, customer_reason: dto.reason, booking_reference: booking.reference },
+    })
+    return this.toMyRefund(saved)
+  }
+
+  /** The customer's captured payments, with the lines they can still ask money back for (the "Request a refund" dialog). */
+  async listMyRefundable(userId: string): Promise<RefundableListDto> {
+    const customerId = await this.repo.resolveCustomerId(userId)
+    const payments = customerId ? await this.repo.listRefundable(customerId) : []
+    const items = payments
+      .map((payment) => ({
+        booking_reference: payment.booking.reference,
+        currency: payment.booking.currency,
+        total: payment.total,
+        lines: payment.lines
+          .filter((line) => line.remaining > 0)
+          .map((line) => ({ description: line.description, amount: line.amount, remaining: line.remaining })),
+      }))
+      .filter((payment) => payment.lines.length > 0)
+    return { items, total: items.length }
   }
 
   /** The signed-in customer's vouchers, usable ones first. */
   async listMyVouchers(userId: string): Promise<MyVoucherListDto> {
-    const customerId = resolveCustomerId(userId)
+    const customerId = await this.repo.resolveCustomerId(userId)
     const now = this.clock.now()
     const mine = (await this.repo.listVouchers())
+      .map((voucher) => this.current(voucher, now))
       .filter((voucher) => voucher.customer_id === customerId && voucher.status !== 'cancelled')
       .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || b.issued_at.getTime() - a.issued_at.getTime())
     return {
@@ -311,24 +361,47 @@ export class PaymentsRefundsService {
    * action is neither a case nor a customer's request.
    */
   async issueCompensation(actorId: string, dto: IssueCompensationDto): Promise<CompensationEntryDto> {
-    const booking = MOCK_BOOKINGS[dto.booking_reference]
+    const booking = await this.repo.findBooking(dto.booking_reference)
     if (!booking) throw new NotFoundException(`Booking ${dto.booking_reference} not found`)
 
+    /* Money back to the card can never be more than the payment still holds. A voucher is store credit, so it is not capped. */
+    if (dto.kind === 'card_refund') {
+      const counted = (await this.repo.listRefunds())
+        .filter(
+          (refund) =>
+            refund.payment_id === booking.payment_id &&
+            refund.status !== 'rejected' &&
+            refund.status !== 'failed' &&
+            /* A voucher given as goodwill is not money taken back out of the payment. */
+            !(refund.reason === 'staff_adjustment' && refund.method === 'voucher'),
+        )
+        .reduce((sum, refund) => sum + refund.amount, 0)
+      const left = Math.max(0, booking.total - counted)
+      if (dto.amount > left) {
+        throw new BadRequestException(
+          left > 0
+            ? `A card refund on ${booking.reference} can be at most ${left.toFixed(2)} ${booking.currency}, what the payment still holds`
+            : `The payment for ${booking.reference} has nothing left to refund to the card`,
+        )
+      }
+    }
+
     const now = this.clock.now()
-    const number = await this.repo.nextRefundNumber()
+    const id = crypto.randomUUID()
     const isVoucher = dto.kind === 'voucher'
     const refund: RefundRecord = {
-      id: `ref_${crypto.randomUUID()}`,
-      number,
+      id,
+      reference: '',
       payment_id: booking.payment_id,
-      source_key: `staff_adjustment:${booking.reference}:${number}`,
+      payment_line_id: null,
+      source_key: `staff_adjustment:${id}`,
       reason: 'staff_adjustment',
       method: isVoucher ? 'voucher' : 'original',
       status: isVoucher ? 'succeeded' : 'processing',
       amount: dto.amount,
       voucher_amount: isVoucher ? dto.amount : 0,
       fee_withheld: 0,
-      provider_refund_id: isVoucher ? null : `RF-${pad(number)}`,
+      provider_refund_id: null,
       requested_by_user_id: actorId,
       case_compensation_id: null,
       audit_log_id: null,
@@ -346,7 +419,7 @@ export class PaymentsRefundsService {
         fare_rule: 'inside',
         fare_rule_label: 'Staff decision',
         fare_rule_note: 'Issued by staff as compensation.',
-        paid_by: `Card ${booking.card_last4}`,
+        paid_by: this.paidBy(booking),
         card_brand: booking.card_brand,
         card_last4: booking.card_last4,
         credit_note_number: null,
@@ -360,27 +433,31 @@ export class PaymentsRefundsService {
 
     let entry: CompensationEntryDto
     if (isVoucher) {
-      const voucher = await this.issueVoucher({
+      const voucher = await this.newVoucher({
         customerId: booking.customer_id,
         amount: dto.amount,
+        currency: booking.currency,
         booking: booking.reference,
-        refundId: refund.id,
+        refundId: id,
         note: dto.reason,
         description: 'Compensation issued by staff',
       })
       refund.context.voucher_code = voucher.code
-      await this.repo.insertRefund(refund)
-      entry = this.voucherEntry(voucher, now)
+      const saved = await this.repo.saveRefundWithVoucher(refund, voucher, 'insert')
+      entry = this.voucherEntry(saved.voucher, now)
     } else {
-      await this.repo.insertRefund(refund)
-      entry = this.cardRefundEntry(refund)
+      const saved = await this.repo.insertRefund(refund)
+      /* A card refund is paid out by the provider (Feature 5a's gateway), so it starts as "Paying to card". */
+      saved.provider_refund_id = providerRefundOf(saved)
+      await this.repo.updateRefund(saved)
+      entry = this.cardRefundEntry(saved)
     }
 
     await this.writeAudit(actorId, {
       action: 'create',
       entityType: isVoucher ? 'compensation_voucher' : 'refund',
       entityId: entry.id,
-      summary: `${isVoucher ? `Voucher ${entry.reference}` : `Card refund ${entry.reference}`} for ${dto.amount.toFixed(2)} ${CURRENCY} added to booking ${booking.reference}`,
+      summary: `${isVoucher ? `Voucher ${entry.reference}` : `Card refund ${entry.reference}`} for ${dto.amount.toFixed(2)} ${booking.currency} added to booking ${booking.reference}`,
       reason: dto.reason,
       after: { kind: dto.kind, amount: dto.amount, booking_reference: booking.reference },
     })
@@ -396,8 +473,9 @@ export class PaymentsRefundsService {
   async voidVoucher(voucherId: string, actorId: string, dto: VoidVoucherDto): Promise<CompensationEntryDto> {
     const voucher = (await this.repo.findVoucherById(voucherId)) ?? (await this.repo.findVoucherByCode(voucherId))
     if (!voucher) throw new NotFoundException(`Voucher ${voucherId} not found`)
-    if (voucher.status !== 'active') {
-      throw new ConflictException(`${voucher.code} is ${voucherLabel(voucher.status, false).toLowerCase()} and cannot be voided`)
+    const status = this.current(voucher, this.clock.now()).status
+    if (status !== 'active') {
+      throw new ConflictException(`${voucher.code} is ${voucherLabel(status, false).toLowerCase()} and cannot be voided`)
     }
 
     const now = this.clock.now()
@@ -421,12 +499,9 @@ export class PaymentsRefundsService {
   /* ---- Mapping to the DTOs ---------------------------------------------------------------------------------- */
 
   private async requireRefund(idOrReference: string): Promise<RefundRecord> {
-    const byId = await this.repo.findRefundById(idOrReference)
-    if (byId) return byId
-    const match = /^REF-(\d{1,6})$/i.exec(idOrReference.trim())
-    const byNumber = match ? await this.repo.findRefundByNumber(Number(match[1])) : undefined
-    if (!byNumber) throw new NotFoundException(`Refund ${idOrReference} not found`)
-    return byNumber
+    const found = (await this.repo.findRefundById(idOrReference)) ?? (await this.repo.findRefundByReference(idOrReference))
+    if (!found) throw new NotFoundException(`Refund ${idOrReference} not found`)
+    return found
   }
 
   private toSummary(refund: RefundRecord): RefundSummaryDto {
@@ -513,7 +588,16 @@ export class PaymentsRefundsService {
     }
   }
 
-  private toMyVoucher(voucher: VoucherRecord, now: Date): MyVoucherDto {
+  /**
+   * The voucher as it is right now. The table keeps `active` until something rewrites it, and nothing does yet, so a
+   * voucher past its end is read as `expired` here, on every screen, rather than shown as usable.
+   */
+  private current(voucher: VoucherRecord, now: Date): VoucherRecord {
+    return voucher.status === 'active' && voucher.expires_at.getTime() <= now.getTime() ? { ...voucher, status: 'expired' } : voucher
+  }
+
+  private toMyVoucher(raw: VoucherRecord, now: Date): MyVoucherDto {
+    const voucher = this.current(raw, now)
     const days = this.daysLeft(voucher, now)
     return {
       id: voucher.id,
@@ -537,7 +621,8 @@ export class PaymentsRefundsService {
     return Math.max(0, Math.ceil((voucher.expires_at.getTime() - now.getTime()) / DAY))
   }
 
-  private voucherEntry(voucher: VoucherRecord, now: Date): CompensationEntryDto {
+  private voucherEntry(raw: VoucherRecord, now: Date): CompensationEntryDto {
+    const voucher = this.current(raw, now)
     const days = this.daysLeft(voucher, now)
     return {
       id: voucher.id,
@@ -570,10 +655,22 @@ export class PaymentsRefundsService {
 
   /* ---- Vouchers and audit ----------------------------------------------------------------------------------- */
 
-  /** A new single-use voucher, good for `VOUCHER_VALID_MONTHS` from now. */
-  private async issueVoucher(input: {
+  /** The text under a refund's "Paid by": the card, and what it paid. */
+  private paidBy(booking: BookingInfo, total?: number): string {
+    const card = booking.card_last4 ? `Card ${booking.card_last4}` : 'Card'
+    return total === undefined ? card : `${card} (${total.toFixed(2)}) · no voucher`
+  }
+
+  /** The currency of the payment a refund is on. */
+  private async currencyOf(refund: RefundRecord): Promise<string> {
+    return (await this.repo.findBooking(refund.context.booking_reference))?.currency ?? CURRENCY
+  }
+
+  /** A new single-use voucher, good for `payment_setting.voucher_valid_months` from now. It is saved with its refund, not here. */
+  private async newVoucher(input: {
     customerId: string
     amount: number
+    currency: string
     booking: string
     refundId: string
     note: string
@@ -581,13 +678,13 @@ export class PaymentsRefundsService {
   }): Promise<VoucherRecord> {
     const now = this.clock.now()
     const expires = new Date(now)
-    expires.setMonth(expires.getMonth() + VOUCHER_VALID_MONTHS)
-    const voucher: VoucherRecord = {
-      id: `vch_${crypto.randomUUID()}`,
+    expires.setMonth(expires.getMonth() + (await this.repo.voucherValidMonths()))
+    return {
+      id: crypto.randomUUID(),
       code: await this.newCode(),
       customer_id: input.customerId,
       amount: input.amount,
-      currency: CURRENCY,
+      currency: input.currency,
       status: 'active',
       case_compensation_id: null,
       refund_id: input.refundId,
@@ -602,14 +699,13 @@ export class PaymentsRefundsService {
       description: input.description,
       used_on: null,
     }
-    return this.repo.insertVoucher(voucher)
   }
 
-  /** `VCH-XXXX-XXXX`, from the alphabet the schema allows, not used by another voucher. */
+  /** `VCH-XXXXX-XXXXX`: the ten characters the schema allows, from the alphabet that leaves out I, O, 0 and 1, split in two. */
   private async newCode(): Promise<string> {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const pick = () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]
-      const code = `VCH-${Array.from({ length: 4 }, pick).join('')}-${Array.from({ length: 4 }, pick).join('')}`
+      const code = `VCH-${Array.from({ length: 5 }, pick).join('')}-${Array.from({ length: 5 }, pick).join('')}`
       if (!(await this.repo.findVoucherByCode(code))) return code
     }
     throw new BadRequestException('Could not make a voucher code, try again')

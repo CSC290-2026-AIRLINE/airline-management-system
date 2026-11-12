@@ -44,9 +44,14 @@ export interface RefundContext {
 /** One row of `refund`, plus the mock's context. */
 export interface RefundRecord {
   id: string
-  /** The number in `REF-0121`. The schema has no such column; it is `refund_number_seq` in the real feature. */
-  number: number
+  /**
+   * `REF-0121` in the mock, `REF-3FA9C21B` on the real table: the schema has no number column, so a stored refund is
+   * named by the start of its id. The repository sets it; a refund the service has not saved yet has none.
+   */
+  reference: string
   payment_id: string
+  /** The payment line this refund is for, when the payment has lines. The refund then also writes a `refund_line`. */
+  payment_line_id: string | null
   source_key: string
   reason: RefundReason
   method: RefundMethod
@@ -94,11 +99,37 @@ export interface VoucherRecord {
   used_on: string | null
 }
 
-/** A booking the mock knows, so a refund or a compensation can name it by its reference. */
-export interface MockBooking {
+/**
+ * A purchase a refund or a compensation can name by its reference: the payment behind it and the customer who paid.
+ * On the real tables the reference is the payment's `purchase_ref` (a booking reference such as `K7QF2M`).
+ */
+export interface BookingInfo {
   reference: string
   customer_id: string
   payment_id: string
-  card_brand: string
-  card_last4: string
+  currency: string
+  /** What the payment charged: a card refund on it can never be more than this, less what is already refunded. */
+  total: number
+  card_brand: string | null
+  card_last4: string | null
+}
+
+/** The old name, kept so the in-memory seed reads the same. */
+export type MockBooking = BookingInfo
+
+/** One line of a payment that a customer can still ask money back for. */
+export interface RefundableLine {
+  /** The `payment_line` id, or null when the payment has no lines and the whole payment is the one line. */
+  payment_line_id: string | null
+  description: string
+  amount: number
+  /** What is left to ask for: the line's amount minus the refunds that are not rejected or failed. */
+  remaining: number
+}
+
+/** A captured payment of the customer's, with what can still be refunded on it. */
+export interface RefundablePayment {
+  booking: BookingInfo
+  total: number
+  lines: RefundableLine[]
 }

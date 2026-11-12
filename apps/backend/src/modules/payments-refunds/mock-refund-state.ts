@@ -27,6 +27,8 @@ function booking(reference: string, paymentNumber: string, brand: string, last4:
     reference,
     customer_id: customerId,
     payment_id: `pay_00000000-0000-4000-8000-00000000${paymentNumber}`,
+    currency: 'USD',
+    total: 1000,
     card_brand: brand,
     card_last4: last4,
   }

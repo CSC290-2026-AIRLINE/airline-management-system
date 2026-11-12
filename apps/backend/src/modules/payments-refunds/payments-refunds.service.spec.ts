@@ -39,6 +39,18 @@ function compensation(overrides: Partial<IssueCompensationDto> = {}): IssueCompe
   })
 }
 
+describe('PaymentsRefundsService — a card refund never passes the payment', () => {
+  it('refuses a card refund above what the payment still holds, but a voucher is not capped', async () => {
+    const { svc } = await makeService()
+
+    await expect(svc.issueCompensation(STAFF, compensation({ kind: 'card_refund', amount: 5000 }))).rejects.toThrow(/at most/)
+    const voucher = await svc.issueCompensation(STAFF, compensation({ kind: 'voucher', amount: 5000 }))
+    expect(voucher.value).toBe(5000)
+    const card = await svc.issueCompensation(STAFF, compensation({ kind: 'card_refund', amount: 100 }))
+    expect(card.status_label).toBe('Paying to card')
+  })
+})
+
 describe('PaymentsRefundsService — the staff queue', () => {
   it('counts the tabs the way the frames do: three to review, two done', async () => {
     const { svc } = await makeService()
@@ -112,7 +124,7 @@ describe('PaymentsRefundsService.decide', () => {
     expect(detail.status_label).toBe('Voucher issued')
     expect(detail.voucher_amount).toBe(45)
     expect(detail.provider_refund_id).toBeNull()
-    expect(detail.voucher_code).toMatch(/^VCH-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/)
+    expect(detail.voucher_code).toMatch(/^VCH-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/)
 
     const vouchers = await svc.listMyVouchers(USER)
     expect(vouchers.items.some((voucher) => voucher.code === detail.voucher_code && voucher.amount === 45)).toBe(true)
@@ -203,6 +215,42 @@ describe('PaymentsRefundsService — the customer', () => {
         Object.assign(new CreateRefundRequestDto(), { booking_reference: 'ZZZZZZ', item: 'Seat', amount: 5, reason: 'x' }),
       ),
     ).rejects.toBeInstanceOf(NotFoundException)
+  })
+
+  it('refuses an amount above what is left on the line, and a line that is not on the payment', async () => {
+    const { svc } = await makeService()
+    const ask = (item: string, amount: number) =>
+      svc.requestRefund(USER, Object.assign(new CreateRefundRequestDto(), { booking_reference: 'K7QF2M', item, amount, reason: 'x' }))
+
+    await expect(ask('Seat 12A', 19)).rejects.toThrow(/at most 18.00 USD/)
+    await expect(ask('Business lounge', 10)).rejects.toBeInstanceOf(NotFoundException)
+  })
+
+  it('lists what the customer can ask money back on', async () => {
+    const { svc } = await makeService()
+    const refundable = await svc.listMyRefundable(USER)
+
+    expect(refundable.items.map((payment) => payment.booking_reference)).toContain('K7QF2M')
+    expect(refundable.items.find((payment) => payment.booking_reference === 'K7QF2M')?.lines).toEqual(
+      expect.arrayContaining([{ description: 'Seat 12A', amount: 18, remaining: 18 }]),
+    )
+  })
+
+  it('reads a voucher past its end as expired: not usable, not counted, not voidable', async () => {
+    const { svc, repo, clock } = await makeService()
+    const soon = (await repo.findVoucherByCode('VCH-3D8A-55TR'))!
+    soon.expires_at = new Date(clock.now().getTime() - 1000)
+
+    const vouchers = await svc.listMyVouchers(USER)
+    expect(vouchers.usable).toBe(1)
+    expect(vouchers.items.find((item) => item.code === 'VCH-3D8A-55TR')).toMatchObject({
+      status: 'expired',
+      status_label: 'Expired',
+      expires_in_days: null,
+    })
+    const history = await svc.listCompensation({ filter: 'vouchers' })
+    expect(history.items.find((entry) => entry.reference === 'VCH-3D8A-55TR')).toMatchObject({ status_label: 'Expired', can_void: false })
+    await expect(svc.voidVoucher('VCH-3D8A-55TR', STAFF, {})).rejects.toBeInstanceOf(ConflictException)
   })
 
   it('lists the vouchers, usable ones first, and marks the one that ends soon', async () => {

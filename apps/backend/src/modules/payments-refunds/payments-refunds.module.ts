@@ -1,18 +1,18 @@
 import { Module, type OnModuleInit } from '@nestjs/common'
 import { AdminConsoleModule } from '@backend/modules/admin-console/admin-console.module'
 import { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
-import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { PaymentsRefundsService } from './payments-refunds.service'
 import { RefundsController, VouchersController } from './refunds.controller'
 import { StaffRefundsController } from './staff-refunds.controller'
 import { ScreenAccessGuard } from './guards/screen-access.guard'
-import { buildSeedRefunds, buildSeedVouchers, InMemoryRefundRepository, REFUND_REPOSITORY, seedRepository } from './refund.repository'
+import { PrismaRefundRepository } from './prisma-refund.repository'
+import { REFUND_REPOSITORY } from './refund-repository.interface'
 
 /**
  * Feature 5b's module: refunds, vouchers and compensation, and the REST surface the frontends read.
  *
- * `REFUND_REPOSITORY` is the seam: the mock's in-memory store today and a Prisma-backed one tomorrow. Swapping it is
- * one line in the `providers` array — nothing else in the module changes.
+ * `REFUND_REPOSITORY` is the seam: the Prisma-backed repository reads and writes `refund`, `refund_line` and
+ * `compensation_voucher`. The in-memory one the unit tests use is a drop-in for it.
  *
  * `AdminConsoleModule` is imported for two reasons: `AdminConsoleService.registerSelfScreens` registers 5b's staff
  * screens with the admin console's Role access matrix, and `AuditModule` comes with it, which provides the one shared
@@ -25,16 +25,9 @@ import { buildSeedRefunds, buildSeedVouchers, InMemoryRefundRepository, REFUND_R
   providers: [
     PaymentsRefundsService,
     ScreenAccessGuard,
-    {
-      provide: REFUND_REPOSITORY,
-      inject: [SimulationClock],
-      useFactory: async (clock: SimulationClock) => {
-        const repo = new InMemoryRefundRepository()
-        const now = clock.now()
-        await seedRepository(repo, buildSeedRefunds(now), buildSeedVouchers(now))
-        return repo
-      },
-    },
+    // The real tables. The in-memory repository is only for the unit tests.
+    PrismaRefundRepository,
+    { provide: REFUND_REPOSITORY, useExisting: PrismaRefundRepository },
   ],
   exports: [PaymentsRefundsService],
 })

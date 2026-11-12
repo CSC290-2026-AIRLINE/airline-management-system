@@ -1,40 +1,12 @@
 import { DEMO_CUSTOMER_ID, MOCK_BOOKINGS } from './mock-refund-state'
-import type { RefundRecord, VoucherRecord } from './refund.types'
+import { REFUND_REPOSITORY } from './refund-repository.interface'
+import type { RefundRepository } from './refund-repository.interface'
+import type { BookingInfo, RefundablePayment, RefundRecord, VoucherRecord } from './refund.types'
 
-/**
- * The DI token for the repository. The module provides the mock implementation under this token; the real
- * Prisma-backed one replaces it in the same providers array.
- */
-export const REFUND_REPOSITORY = 'REFUND_REPOSITORY'
+export { REFUND_REPOSITORY }
+export type { RefundRepository }
 
-/**
- * The seam between Feature 5b and the database.
- *
- * Everything above this interface is feature code; everything below it is storage. The mock keeps the rows in memory,
- * so swapping in Prisma means writing one class over `refund`, `refund_line` and `compensation_voucher` and changing one
- * line in the module's providers array.
- *
- * Every method is asynchronous, because Prisma's are.
- *
- * TODO(F5b): replace `InMemoryRefundRepository` with a Prisma-backed implementation. The Database Team owns the schema;
- * this interface is shaped to match it.
- */
-export interface RefundRepository {
-  listRefunds(): Promise<RefundRecord[]>
-  findRefundById(id: string): Promise<RefundRecord | undefined>
-  findRefundByNumber(number: number): Promise<RefundRecord | undefined>
-  insertRefund(refund: RefundRecord): Promise<RefundRecord>
-  updateRefund(refund: RefundRecord): Promise<RefundRecord>
-  /** The next number for a `REF-nnnn` reference. */
-  nextRefundNumber(): Promise<number>
-  listVouchers(): Promise<VoucherRecord[]>
-  findVoucherById(id: string): Promise<VoucherRecord | undefined>
-  findVoucherByCode(code: string): Promise<VoucherRecord | undefined>
-  insertVoucher(voucher: VoucherRecord): Promise<VoucherRecord>
-  updateVoucher(voucher: VoucherRecord): Promise<VoucherRecord>
-}
-
-/** The mock repository. Rows live in maps for the life of the process; nothing is written anywhere. */
+/** The mock repository. Rows live in maps for the life of the process; nothing is written anywhere. Used by the tests. */
 export class InMemoryRefundRepository implements RefundRepository {
   private readonly refunds = new Map<string, RefundRecord>()
   private readonly vouchers = new Map<string, VoucherRecord>()
@@ -48,13 +20,20 @@ export class InMemoryRefundRepository implements RefundRepository {
     return Promise.resolve(this.refunds.get(id))
   }
 
-  findRefundByNumber(number: number): Promise<RefundRecord | undefined> {
-    return Promise.resolve([...this.refunds.values()].find((refund) => refund.number === number))
+  findRefundByReference(reference: string): Promise<RefundRecord | undefined> {
+    const wanted = reference.trim().toUpperCase()
+    return Promise.resolve([...this.refunds.values()].find((refund) => refund.reference.toUpperCase() === wanted))
   }
 
   insertRefund(refund: RefundRecord): Promise<RefundRecord> {
+    if (!refund.reference) {
+      this.lastNumber += 1
+      refund.reference = `REF-${pad(this.lastNumber)}`
+    } else {
+      const match = /^REF-(\d+)$/.exec(refund.reference)
+      if (match) this.lastNumber = Math.max(this.lastNumber, Number(match[1]))
+    }
     this.refunds.set(refund.id, refund)
-    this.lastNumber = Math.max(this.lastNumber, refund.number)
     return Promise.resolve(refund)
   }
 
@@ -63,9 +42,10 @@ export class InMemoryRefundRepository implements RefundRepository {
     return Promise.resolve(refund)
   }
 
-  nextRefundNumber(): Promise<number> {
-    this.lastNumber += 1
-    return Promise.resolve(this.lastNumber)
+  async saveRefundWithVoucher(refund: RefundRecord, voucher: VoucherRecord, mode: 'insert' | 'update') {
+    const saved = mode === 'insert' ? await this.insertRefund(refund) : await this.updateRefund(refund)
+    this.vouchers.set(voucher.id, voucher)
+    return { refund: saved, voucher }
   }
 
   listVouchers(): Promise<VoucherRecord[]> {
@@ -89,6 +69,34 @@ export class InMemoryRefundRepository implements RefundRepository {
     this.vouchers.set(voucher.id, voucher)
     return Promise.resolve(voucher)
   }
+
+  findBooking(reference: string): Promise<BookingInfo | undefined> {
+    const found = MOCK_BOOKINGS[reference]
+    return Promise.resolve(found ? { ...found, currency: 'USD', total: 1000 } : undefined)
+  }
+
+  resolveCustomerId(userId: string): Promise<string | undefined> {
+    void userId
+    return Promise.resolve(DEMO_CUSTOMER_ID)
+  }
+
+  listRefundable(customerId: string): Promise<RefundablePayment[]> {
+    const mine = Object.values(MOCK_BOOKINGS).filter((booking) => booking.customer_id === customerId)
+    return Promise.resolve(
+      mine.map((booking) => ({
+        booking: { ...booking, currency: 'USD', total: 1000 },
+        total: 1000,
+        lines: [
+          { payment_line_id: null, description: 'Seat 12A', amount: 18, remaining: 18 },
+          { payment_line_id: null, description: 'Extra baggage · 1 × 20 kg · FY214', amount: 45, remaining: 45 },
+        ],
+      })),
+    )
+  }
+
+  voucherValidMonths(): Promise<number> {
+    return Promise.resolve(12)
+  }
 }
 
 const DAY = 24 * 60 * 60 * 1000
@@ -109,14 +117,15 @@ function voucherId(suffix: string): string {
 }
 
 /** The booking's payment and card, for a seed row. */
-function bookingOf(reference: string) {
+function bookingOf(reference: string): BookingInfo {
   const found = MOCK_BOOKINGS[reference]
   if (!found) throw new Error(`The seed names booking ${reference}, which the mock does not know`)
-  return found
+  return { ...found, currency: 'USD', total: 1000 }
 }
 
 type SeedRefund = Omit<Partial<RefundRecord>, 'context'> &
-  Pick<RefundRecord, 'number' | 'reason' | 'method' | 'status' | 'amount'> & {
+  Pick<RefundRecord, 'reason' | 'method' | 'status' | 'amount'> & {
+    number: number
     booking: string
     item: string
     requested_at: Date
@@ -130,8 +139,9 @@ function refund(seed: SeedRefund): RefundRecord {
   const amount = seed.amount
   return {
     id: refundId(number),
-    number,
+    reference: `REF-${pad(number)}`,
     payment_id: known.payment_id,
+    payment_line_id: null,
     source_key: `${seed.reason}:${known.reference}:${number}`,
     voucher_amount: seed.method === 'voucher' ? amount : 0,
     fee_withheld: 0,
@@ -388,7 +398,7 @@ export function buildSeedVouchers(now: Date): VoucherRecord[] {
 }
 
 /** Loads the seed rows into a repository. The mock is seeded when the module starts. */
-export async function seedRepository(repo: RefundRepository, refunds: RefundRecord[], vouchers: VoucherRecord[]): Promise<void> {
+export async function seedRepository(repo: InMemoryRefundRepository, refunds: RefundRecord[], vouchers: VoucherRecord[]): Promise<void> {
   for (const row of refunds) await repo.insertRefund(row)
   for (const row of vouchers) await repo.insertVoucher(row)
 }
