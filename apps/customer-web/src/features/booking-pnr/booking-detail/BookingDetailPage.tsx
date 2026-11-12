@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ApiError } from '../api/client'
 import type { BookingDetail, BookingStatus, CancelBookingResult } from '../api/types'
@@ -112,7 +113,8 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
       <main className={styles.page}>
         <div className={styles.shell}>
           <Link to="/bookings" className={styles.backLink}>
-            ← My Trips
+            <ArrowLeft aria-hidden="true" size={16} strokeWidth={2.25} />
+            My Trips
           </Link>
 
           <header className={styles.header}>

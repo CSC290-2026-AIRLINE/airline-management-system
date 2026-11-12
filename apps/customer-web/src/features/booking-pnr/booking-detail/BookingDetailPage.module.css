@@ -2,7 +2,7 @@
 .page {
   box-sizing: border-box;
   width: 100%;
-  max-width: 1040px;
+  max-width: 1200px;
   margin: 40px auto 0;
   color: var(--f3-ink);
   font-family: var(--f3-font);
@@ -14,20 +14,44 @@
   flex-direction: column;
   gap: 16px;
   width: 100%;
-  max-width: 1040px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
+/* The "My Trips" pill above the header: a bordered chip in the shape of the secondary buttons of the design. */
 .backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   align-self: flex-start;
-  color: var(--f3-primary);
+  padding: 9px 16px;
+  border: 1px solid var(--f3-border);
+  border-radius: 8px;
+  background: var(--f3-card);
+  color: var(--f3-ink);
   font-size: 14px;
   font-weight: 600;
+  line-height: 1;
   text-decoration: none;
+  box-sizing: border-box;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.backLink svg {
+  transition: transform 0.15s ease;
 }
 
 .backLink:hover {
-  text-decoration: underline;
+  background: var(--f3-selected);
+  border-color: var(--f3-primary);
+  color: var(--f3-primary);
+}
+
+.backLink:hover svg {
+  transform: translateX(-2px);
 }
 
 .backLink:focus-visible {
