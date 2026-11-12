@@ -16,12 +16,20 @@ import { PassengerLostReportFlightsController } from './passenger-lost-report-fl
 import { PassengerLostReportTravellersController } from './passenger-lost-report-travellers.controller'
 import { PassengerCaseSummaryService } from './passenger-case-summary.service'
 import { LOST_REPORT_PHOTO_S3_CLIENT, LostReportPhotoStorage } from './lost-report-photo.storage'
+import { GuestLostReportFlightsController } from './guest-lost-report-flights.controller'
+import { GuestBookingLookupService } from './guest-booking-lookup.service'
 
 @Module({
   imports: [AuditModule, BaggageModule],
-  controllers: [PassengerLostReportController, PassengerLostReportFlightsController, PassengerLostReportTravellersController],
+  controllers: [
+    PassengerLostReportController,
+    PassengerLostReportFlightsController,
+    PassengerLostReportTravellersController,
+    GuestLostReportFlightsController,
+  ],
   providers: [
     BaggageCustomerGuard,
+    GuestBookingLookupService,
     PassengerDeliveryChoiceService,
     PassengerCaseSummaryService,
     PrismaReportRepository,
