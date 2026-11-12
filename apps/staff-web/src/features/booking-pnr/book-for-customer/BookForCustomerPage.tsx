@@ -181,7 +181,6 @@ function StaffBookingContent() {
             <p className="f3-search-eyebrow">STAFF BOOKING</p>
             <h1>Book for customer</h1>
           </div>
-          <a href="/booking-lookup">Booking lookup →</a>
         </div>
         <p className="f3-search-intro">Select a customer, then choose flights and enter the booking details on their behalf.</p>
         {import.meta.env.DEV && (
@@ -233,7 +232,6 @@ function StaffBookingContent() {
           urlState={searchState ?? undefined}
           onUrlChange={setSearchState}
           initialItinerary={searchState ? undefined : (itinerary ?? undefined)}
-          tripLink={{ href: '/booking-lookup', label: 'Booking lookup →' }}
           onContinue={customer && !data.error ? chooseFlights : undefined}
         />
       )}
