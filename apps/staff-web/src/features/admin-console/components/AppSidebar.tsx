@@ -1,33 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import {
-  Accessibility,
-  Calendar,
-  ChartColumn,
-  CreditCard,
-  KeyRound,
-  Luggage,
-  LogOut,
-  MessageSquare,
-  Minus,
-  Monitor,
-  Package,
-  Plane,
-  PlaneLanding,
-  Plus,
-  ScrollText,
-  Search,
-  ShieldCheck,
-  Star,
-  Tag,
-  Ticket,
-  User,
-  UserCheck,
-  UserPlus,
-  Users,
-  Utensils,
-  type LucideIcon,
-} from 'lucide-react'
+import { ChevronRight, LogOut } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@staff-web/components/ui/collapsible'
 import { ScrollArea } from '@staff-web/components/ui/scroll-area'
 import {
@@ -41,81 +14,25 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
 } from '@staff-web/components/ui/sidebar'
 import flythonMark from '../assets/flython-mark.svg'
-
-/** The routes this sidebar links to. Every one of them is registered in the router. */
-type NavRoute = '/booking-lookup' | '/book-for-customer' | '/assistance' | '/admin/staff' | '/admin/roles' | '/admin/audit-log'
-
-interface NavItem {
-  label: string
-  icon: LucideIcon
-  /** Set when the screen has a route in this app: the item is then a live link. */
-  to?: NavRoute
-}
-
-const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
-
-const GROUPS: { label: string; items: NavItem[] }[] = [
-  {
-    label: 'Operations',
-    items: [
-      { label: 'Flight Operations', icon: Plane },
-      { label: 'Fleet & Aircraft', icon: PlaneLanding },
-      { label: 'Crew Scheduling', icon: Calendar },
-      { label: 'My Roster', icon: User },
-    ],
-  },
-  {
-    label: 'Commercial',
-    items: [
-      { label: 'Bookings & Inventory', icon: Ticket },
-      { label: 'Pricing & Fare Rules', icon: Tag },
-      { label: 'Payments & Refunds', icon: CreditCard },
-      { label: 'Cargo & Air Freight', icon: Package },
-    ],
-  },
-  {
-    label: 'Airport & Onboard',
-    items: [
-      { label: 'Check-in & Boarding', icon: UserCheck },
-      { label: 'Gate Counter & Devices', icon: Monitor },
-      { label: 'Baggage Tracking', icon: Luggage },
-      { label: 'Onboard Products', icon: Utensils },
-    ],
-  },
-  {
-    label: 'Customer Management',
-    items: [
-      { label: 'Customer Search', icon: Search },
-      { label: 'Bookings', icon: Ticket, to: '/booking-lookup' },
-      { label: 'Book for Customer', icon: UserPlus, to: '/book-for-customer' },
-      { label: 'Assistance Queue', icon: Accessibility, to: '/assistance' },
-      { label: 'Security Screening', icon: ShieldCheck },
-      { label: 'Service & Compensation', icon: MessageSquare },
-      { label: 'Loyalty Programme', icon: Star },
-    ],
-  },
-]
-
-/** The three admin screens, one per tab of the admin page. These are the live links in this app. */
-const ADMIN_ITEMS: NavItem[] = [
-  { to: '/admin/staff', label: 'Staff & roles', icon: Users },
-  { to: '/admin/roles', label: 'Role access', icon: KeyRound },
-  { to: '/admin/audit-log', label: 'Audit log', icon: ScrollText },
-]
+import flythonLogoMark from '../assets/flython-logo-mark.svg'
+import sidebarPattern from '../assets/sidebar-pattern.png'
+import { ADMIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM, type NavItem } from '../nav-items'
 
 /**
  * One row of the sidebar. An item with a `to` is a live link to a screen this app has; an item without one belongs to
  * another feature team and has no route here yet, so it is listed as a disabled button (dimmed, not focusable). When a
  * team registers its route, it gains a `to` and becomes a link.
  */
-function NavEntry({ item, pathname }: { item: NavItem; pathname: string }) {
+// `indent` is for items inside a group: the padding sits on the button, so its hover block spans the full width.
+function PendingItem({ item, pathname, indent = false }: { item: NavItem; pathname: string; indent?: boolean }) {
   if (!item.to) {
     return (
       <SidebarMenuItem>
-        <SidebarMenuButton disabled>
+        <SidebarMenuButton disabled className={indent ? 'pl-4' : undefined}>
           <item.icon />
           <span>{item.label}</span>
         </SidebarMenuButton>
@@ -125,7 +42,7 @@ function NavEntry({ item, pathname }: { item: NavItem; pathname: string }) {
   const active = pathname === item.to || pathname.startsWith(item.to + '/')
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+      <SidebarMenuButton asChild isActive={active} tooltip={item.label} className={indent ? 'pl-4' : undefined}>
         <Link to={item.to}>
           <item.icon />
           <span>{item.label}</span>
@@ -136,100 +53,140 @@ function NavEntry({ item, pathname }: { item: NavItem; pathname: string }) {
 }
 
 /**
- * A sidebar group whose header opens and closes it. The header shows a plus when the group is closed and a minus when it
- * is open, which is the affordance the F3 designs use.
+ * A sidebar group whose header opens and closes it. Closed = quiet and chevron right; open = bright and chevron down.
+ * In the collapsed icon rail the header is hidden, a bar closes the group, and every item's icon shows, even in a closed group.
  */
-function NavGroup({ label, defaultOpen, children }: { label: string; defaultOpen: boolean; children: ReactNode }) {
+function NavGroup({ label, defaultOpen = true, children }: { label: string; defaultOpen?: boolean; children: ReactNode }) {
   return (
     <Collapsible defaultOpen={defaultOpen} className="group/collapsible">
       <SidebarGroup className="py-1">
         <SidebarGroupLabel asChild>
           <CollapsibleTrigger className="cursor-pointer text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:font-semibold data-[state=open]:text-sidebar-foreground">
-            <Plus className="size-4 shrink-0 group-data-[state=open]/collapsible:hidden" />
-            <Minus className="hidden size-4 shrink-0 group-data-[state=open]/collapsible:block" />
             {label}
+            <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 motion-reduce:transition-none" />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
-        <CollapsibleContent>
+        <CollapsibleContent className="group-data-[collapsible=icon]:block!">
           <SidebarGroupContent>
-            <SidebarMenu className="pl-4 group-data-[collapsible=icon]:pl-0">{children}</SidebarMenu>
+            <SidebarMenu>{children}</SidebarMenu>
           </SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
+      {/* Collapsed rail: a bar under the group, since its header is hidden. */}
+      <div aria-hidden="true" className="mx-2 my-1 hidden h-px bg-sidebar-foreground/25 group-data-[collapsible=icon]:block" />
     </Collapsible>
   )
 }
 
 /**
- * The admin workspace sidebar: the shadcn `Sidebar` (icon-collapsible on desktop, a sheet on a phone). The menu follows
- * the F3 staff design — Reports & Analytics first, then the four feature groups, then Administration last.
+ * The admin workspace sidebar: the shadcn `Sidebar` (icon-collapsible on desktop, a sheet on a phone). Administration
+ * comes first — its three screens are live links — then the pricing screens and the F15 menu of the other teams' screens.
  *
  * `expandedGroup` names the one group that starts open, for the pages whose design shows a single group expanded. The
  * admin console passes nothing and keeps every group open.
  */
 export function AppSidebar({ roleName, onSignOut, expandedGroup }: { roleName: string; onSignOut: () => void; expandedGroup?: string }) {
+  const { toggleSidebar } = useSidebar()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const groupIsOpen = (label: string) => (expandedGroup === undefined ? true : label === expandedGroup)
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1">
-          <img src={flythonMark} alt="" className="h-6 w-auto shrink-0" />
+      {/* The navy texture from the F15 frame, blended into the sidebar colour (its opacity is baked into the PNG). The sections below sit above it. */}
+      <img
+        src={sidebarPattern}
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 size-full object-cover mix-blend-luminosity"
+      />
+      <SidebarHeader className="relative">
+        <div className="flex items-center gap-2 px-2 py-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:px-0">
+          <img src={flythonMark} alt="" className="h-6 w-auto shrink-0 group-data-[collapsible=icon]:hidden" />
+          <button
+            type="button"
+            aria-label="Expand sidebar"
+            onClick={toggleSidebar}
+            className="hidden size-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-white/25 bg-white/15 shadow-md ring-sidebar-ring transition-colors group-data-[collapsible=icon]:flex hover:bg-white/25 focus-visible:ring-2"
+          >
+            <img src={flythonLogoMark} alt="" className="h-auto w-5" />
+          </button>
           <span className="flex flex-col font-heading leading-none font-bold group-data-[collapsible=icon]:hidden">
             <span className="text-xl">Flython</span>
             <span className="text-xs tracking-[0.3em]">AIRLINES</span>
           </span>
+          {/* Desktop collapse toggle (also Ctrl/Cmd+B). Collapsed, the logo below takes its place as the expand button. */}
+          <SidebarTrigger aria-label="Collapse sidebar" className="ml-auto hidden md:inline-flex group-data-[collapsible=icon]:hidden" />
         </div>
-        <p className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden">Admin workspace</p>
+        <p className="px-2 text-xs text-[#b7c1d1] uppercase group-data-[collapsible=icon]:hidden">Admin workspace</p>
       </SidebarHeader>
 
-      <SidebarContent className="gap-0 overflow-hidden">
+      <SidebarContent className="relative gap-0 overflow-hidden">
         {/* Thin overlay scrollbar that only shows while scrolling (Radix `type="scroll"`). Radix wraps the content in a
             `display: table` div, which breaks truncation, so it is made a block. */}
         <ScrollArea
           type="scroll"
           className="min-h-0 flex-1 [&_[data-slot=scroll-area-scrollbar]]:w-1.5 [&_[data-slot=scroll-area-thumb]]:bg-sidebar-foreground/30 [&_[data-slot=scroll-area-viewport]>div]:block!"
         >
-          <SidebarGroup className="py-1">
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <NavEntry item={REPORTS_ITEM} pathname={pathname} />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <NavGroup label="Administration" defaultOpen={groupIsOpen('Administration')}>
+            {ADMIN_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Pricing & Fare Rules" defaultOpen={groupIsOpen('Pricing & Fare Rules')}>
+            {PRICING_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label} className="pl-4">
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
 
           {GROUPS.map((group) => (
             <NavGroup key={group.label} label={group.label} defaultOpen={groupIsOpen(group.label)}>
               {group.items.map((item) => (
-                <NavEntry key={item.label} item={item} pathname={pathname} />
+                <PendingItem key={item.label} item={item} pathname={pathname} indent />
               ))}
             </NavGroup>
           ))}
 
-          <NavGroup label="Administration" defaultOpen={groupIsOpen('Administration')}>
-            {ADMIN_ITEMS.map((item) => (
-              <NavEntry key={item.to} item={item} pathname={pathname} />
-            ))}
-          </NavGroup>
+          <SidebarGroup className="py-1">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <PendingItem item={REPORTS_ITEM} pathname={pathname} />
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         </ScrollArea>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="relative border-t border-white/10 bg-sidebar">
         <SidebarMenu>
           <SidebarMenuItem>
-            <div className="px-2 py-1 group-data-[collapsible=icon]:hidden">
-              <p className="flex items-center gap-2 text-xs font-semibold tracking-wide text-sidebar-foreground/80 uppercase">
-                <span className="size-2 rounded-full bg-[#2fa568]" />
-                Signed in as
-              </p>
-              <p className="mt-1 text-sm font-bold">{roleName}</p>
+            <div
+              title="Menu shows the screens your role can open."
+              className="flex items-center gap-2 rounded-md border border-white/14 bg-white/6 px-2.5 py-1.5 group-data-[collapsible=icon]:hidden"
+            >
+              <span className="size-[7px] shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
+              <span className="text-xs text-white/65">Signed in as</span>
+              <span className="truncate text-sm font-semibold text-white">{roleName}</span>
             </div>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <p className="px-2 text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden">
-              Navigation follows assigned staff permissions.
-            </p>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Sign out" onClick={onSignOut}>
@@ -239,7 +196,6 @@ export function AppSidebar({ roleName, onSignOut, expandedGroup }: { roleName: s
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   )
 }

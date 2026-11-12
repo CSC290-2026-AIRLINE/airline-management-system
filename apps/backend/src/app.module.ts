@@ -8,6 +8,7 @@ import { AdminConsoleModule } from './modules/admin-console/admin-console.module
 import { BookingPnrModule } from './modules/booking-pnr/booking-pnr.module'
 import { BookingSearchModule } from './modules/booking-search/booking-search.module'
 import { validateEnv } from './config/env.validation'
+import { PricingModule } from './modules/pricing/pricing.module'
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { validateEnv } from './config/env.validation'
     AdminConsoleModule,
     BookingSearchModule,
     BookingPnrModule,
+    PricingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

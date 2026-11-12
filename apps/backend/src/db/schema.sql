@@ -798,18 +798,25 @@ CREATE TABLE fare_quote_line (
   UNIQUE (fare_quote_id, seq)
 );
 
--- A promo use is counted when a booking is confirmed, once per quote. Retrying "redeem" is a no-op:
---   INSERT INTO promo_redemption ... ON CONFLICT (fare_quote_id) DO NOTHING; then, only if a row was inserted,
---   UPDATE promo_code SET used_count = used_count + 1 WHERE id = $1;   (the CHECK on promo_code refuses to overshoot max_uses)
+-- A promo use is counted once per booking, not once per quote: quotes are shared, so two bookings can redeem the same one,
+-- and a booking with several legs has several quotes but spends one use. Retrying "redeem" is a no-op:
+--   INSERT INTO promo_redemption ... ON CONFLICT (promo_code_id, booking_ref) DO NOTHING; then, only if a row was inserted,
+--   UPDATE promo_code SET used_count = used_count + 1 WHERE id = $1 AND (max_uses IS NULL OR used_count < max_uses);
+-- Release sets status = 'released' and gives the use back.
 CREATE TABLE promo_redemption (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   promo_code_id UUID NOT NULL REFERENCES promo_code (id),
-  fare_quote_id UUID NOT NULL UNIQUE,
+  booking_ref   TEXT NOT NULL,                             -- feature 3b's booking reference, no FK across modules
+  fare_quote_id UUID NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'redeemed' CONSTRAINT promo_redemption_status_ck CHECK (status IN ('redeemed', 'released')),
   redeemed_at   TIMESTAMPTZ NOT NULL,                      -- simulation clock
+  released_at   TIMESTAMPTZ,                               -- simulation clock
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT promo_redemption_released_ck CHECK ((status = 'released') = (released_at IS NOT NULL)),
   FOREIGN KEY (fare_quote_id, promo_code_id) REFERENCES fare_quote (id, promo_code_id)
 );
 
+CREATE UNIQUE INDEX promo_redemption_booking_uq ON promo_redemption (promo_code_id, booking_ref);
 CREATE INDEX promo_redemption_promo_idx ON promo_redemption (promo_code_id);
 
 -- Finance --------------------------------------------------------------------------------------------
