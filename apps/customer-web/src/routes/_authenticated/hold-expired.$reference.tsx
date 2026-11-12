@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { BookingLayout } from '../../features/booking-search/components/BookingLayout'
 import { HoldExpiredPage } from '../../features/booking-pnr/hold-expired/HoldExpiredPage'
 import type { HoldExpiredReason } from '../../features/booking-pnr/hold-expired/types'
 
@@ -17,5 +18,9 @@ export const Route = createFileRoute('/_authenticated/hold-expired/$reference')(
 function HoldExpiredRoute() {
   const { reference } = Route.useParams()
   const { reason } = Route.useSearch()
-  return <HoldExpiredPage key={reference} reference={reference} reason={reason ?? 'expired'} />
+  return (
+    <BookingLayout>
+      <HoldExpiredPage key={reference} reference={reference} reason={reason ?? 'expired'} />
+    </BookingLayout>
+  )
 }

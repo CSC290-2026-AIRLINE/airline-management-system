@@ -573,7 +573,7 @@ export function AuditLogPage() {
               <label className="inline-flex items-center gap-2.5">
                 Rows
                 <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-                  <SelectTrigger className="w-18.5 border-border bg-background px-3 text-foreground">
+                  <SelectTrigger className="w-18.5 border-input bg-background px-3 text-foreground">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent position="popper" className="font-sans">

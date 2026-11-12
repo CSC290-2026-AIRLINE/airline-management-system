@@ -1,11 +1,14 @@
+/*
+ * My Trips (B11). The page shell comes from BookingLayout: the top bar owns the page background and the outer
+ * padding, so this file only draws the 1200 px content column of the "07 My bookings" frame.
+ */
 .page {
-  min-height: 100vh;
-  background: var(--f3-page);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1200px;
+  margin: 40px auto 0;
   color: var(--f3-ink);
   font-family: var(--f3-font);
-  padding: 40px 24px 64px;
-  box-sizing: border-box;
-  text-align: left;
 }
 
 .shell {
@@ -18,10 +21,6 @@
     'cards cards'
     'banner banner';
   column-gap: 20px;
-  row-gap: 20px;
-  width: 100%;
-  max-width: 1040px;
-  margin: 0 auto;
 }
 
 .title {
@@ -29,37 +28,44 @@
 }
 
 .title h1 {
-  margin: 0 0 6px;
-  font-size: 30px;
-  line-height: 1.15;
+  margin: 0;
+  font-family: var(--f3-font);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  /* The global h1 rule tracks -1.68px for the 56 px home hero. The page titles follow the flight search instead. */
+  letter-spacing: -0.6px;
   color: var(--f3-ink);
 }
 
 .subtitle {
-  margin: 0;
+  margin: 4px 0 0;
   color: var(--f3-muted);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .bookButton {
   grid-area: book;
-  align-self: start;
+  align-self: end;
+  min-height: 39px;
+  margin-bottom: 4px;
 }
 
 .tabs {
   grid-area: tabs;
   display: flex;
   gap: 8px;
+  margin-top: 21px;
 }
 
 .tab {
-  padding: 9px 18px;
+  padding: 10px 18px;
   border: 1px solid var(--f3-border);
   border-radius: 8px;
   background: var(--f3-card);
   color: var(--f3-ink);
   font-size: 14px;
-  font-weight: 600;
+  line-height: 1.4;
   text-decoration: none;
 }
 
@@ -67,10 +73,11 @@
   border-color: var(--f3-primary);
 }
 
+/* The selected tab: a light blue fill with a navy border. */
 .tabActive {
   background: var(--f3-selected);
   border-color: var(--f3-primary);
-  color: var(--f3-primary);
+  color: var(--f3-link);
 }
 
 .tab:focus-visible {
@@ -81,41 +88,49 @@
 .sectionTitle {
   grid-area: section;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .sectionTitle h2 {
   margin: 0;
   font-size: 20px;
+  font-weight: 700;
+  line-height: 1.5;
   color: var(--f3-ink);
 }
 
 .countChip {
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: var(--f3-neutral-soft);
   color: var(--f3-neutral);
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.2;
 }
 
 .cards {
   grid-area: cards;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
+  margin-top: 14px;
 }
 
+/* The light blue banner about the hold countdown. */
 .banner {
   grid-area: banner;
-  margin: 0;
-  padding: 14px 16px;
-  border-radius: 10px;
+  margin: 24px 0 0;
+  padding: 14px 24px;
+  border: 1px solid var(--f3-info-border);
+  border-radius: 8px;
   background: var(--f3-info-soft);
   color: var(--f3-info);
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.15;
 }
 
 .messageCard {
@@ -125,7 +140,7 @@
   gap: 8px;
   padding: 32px 28px;
   border: 1px solid var(--f3-border);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--f3-card);
   text-align: center;
 }
@@ -152,7 +167,9 @@
 
 @media (max-width: 600px) {
   .page {
-    padding: 24px 16px 48px;
+    margin-top: 24px;
+    /* The layout drops its side padding on the 393 px frame, so the column keeps its own inset. */
+    padding: 0 16px;
   }
 
   .shell {
@@ -177,7 +194,11 @@
   }
 
   .tabs {
-    gap: 8px;
+    margin-top: 0;
+  }
+
+  .cards {
+    margin-top: 0;
   }
 
   .tab {

@@ -15,9 +15,12 @@
   --f3-warning-soft: #fef4de;
   --f3-danger: #b8171f;
   --f3-danger-soft: #fdecec;
-  --f3-info: #1d4ed8;
-  --f3-info-soft: #dbeafe;
-  --f3-selected: #eaf2ff;
+  /* The links, the selected tab text and the banner text of the design. */
+  --f3-link: #1f408c;
+  --f3-info: #1f408c;
+  --f3-info-soft: #eaf0fb;
+  --f3-info-border: #c9d8f2;
+  --f3-selected: #eaf0fb;
   --f3-neutral: #475569;
   --f3-neutral-soft: #eef2f7;
   --f3-font: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;

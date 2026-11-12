@@ -1,5 +1,7 @@
-import { Component, useRef, useState, type ReactNode } from 'react'
+import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { FlightSearchPage, type SearchItinerary } from '../../../../../customer-web/src/features/booking-search/pages/FlightSearchPage'
+import type { FlightSearchUrlState } from '../../../../../customer-web/src/features/booking-search/search-params'
 import { PassengersPage } from '../../../../../customer-web/src/features/booking-pnr/passengers/PassengersPage'
 import {
   travellersFor,
@@ -11,6 +13,7 @@ import { resolveDemoPassengers } from '../../../../../customer-web/src/features/
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { BookForCustomerRequest, HoldBookingResponse } from '../api/types'
 import { useDemoStaffBooking } from './useDemoStaffBooking'
+import { clearBookingDraft, readBookingDraft, saveBookingDraft, type StaffBookingStep } from './booking-draft'
 import '../../../../../customer-web/src/features/booking-pnr/flow/flow.css'
 import './staff-booking.css'
 
@@ -45,17 +48,30 @@ export function BookForCustomerPage() {
 function StaffBookingContent() {
   const data = useDemoStaffBooking()
   const { bookForCustomer } = useBookingPnrApi()
-  const [customerId, setCustomerId] = useState('')
-  const [step, setStep] = useState<'search' | 'passengers' | 'seats' | 'held'>('search')
-  const [itinerary, setItinerary] = useState<SearchItinerary | null>(null)
-  const [travellers, setTravellers] = useState<TravellerDraft[]>([])
-  const [contact, setContact] = useState<BookingContact>({ email: '', phone: '', promoCode: '' })
+  const [restored] = useState(readBookingDraft)
+  const [customerId, setCustomerId] = useState(restored?.customerId ?? '')
+  const [step, setStep] = useState<StaffBookingStep>(restored?.step ?? 'search')
+  const [searchState, setSearchState] = useState<FlightSearchUrlState | null>(restored?.search ?? null)
+  const [itinerary, setItinerary] = useState<SearchItinerary | null>(restored?.itinerary ?? null)
+  const [travellers, setTravellers] = useState<TravellerDraft[]>(restored?.travellers ?? [])
+  const [contact, setContact] = useState<BookingContact>(restored?.contact ?? { email: '', phone: '', promoCode: '' })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [held, setHeld] = useState<HoldBookingResponse | null>(null)
-  const attempt = useRef<{ body: string; key: string } | null>(null)
+  const [held, setHeld] = useState<HoldBookingResponse | null>(restored?.held ?? null)
+  const [attempt, setAttempt] = useState<{ body: string; key: string } | null>(restored?.attempt ?? null)
   const inFlight = useRef(false)
   const customer = data.customers.find((row) => row.id === customerId)
+  const customerMissing = !data.loading && !data.error && !!customerId && !customer
+  const activeStep: StaffBookingStep = customerMissing && step !== 'held' ? 'search' : step
+
+  /* Keeps the draft in this tab so a refresh comes back to the same step. */
+  useEffect(() => {
+    if (!customerId && !itinerary && !held && !searchState && step === 'search') {
+      clearBookingDraft()
+      return
+    }
+    saveBookingDraft({ version: 1, customerId, step, search: searchState, itinerary, travellers, contact, held, attempt })
+  }, [customerId, step, searchState, itinerary, travellers, contact, held, attempt])
 
   function chooseCustomer(id: string) {
     const next = data.customers.find((row) => row.id === id)
@@ -66,7 +82,19 @@ function StaffBookingContent() {
     setHeld(null)
     setError(null)
     setStep('search')
-    attempt.current = null
+    setAttempt(null)
+  }
+  function startNewBooking() {
+    setCustomerId('')
+    setStep('search')
+    setSearchState(null)
+    setItinerary(null)
+    setTravellers([])
+    setContact({ email: '', phone: '', promoCode: '' })
+    setHeld(null)
+    setError(null)
+    setAttempt(null)
+    clearBookingDraft()
   }
   function chooseFlights(selection: SearchItinerary) {
     setItinerary(selection)
@@ -125,8 +153,11 @@ function StaffBookingContent() {
         seats: [],
       }
       const body = JSON.stringify(request)
-      if (attempt.current?.body !== body) attempt.current = { body, key: crypto.randomUUID() }
-      const booking = await bookForCustomer(request, attempt.current.key)
+      /* The same request keeps the same idempotency key, so a retry after a refresh is not a second booking. */
+      const next = attempt && attempt.body === body ? attempt : { body, key: crypto.randomUUID() }
+      setAttempt(next)
+      saveBookingDraft({ version: 1, customerId, step, search: searchState, itinerary, travellers, contact, held, attempt: next })
+      const booking = await bookForCustomer(request, next.key)
       setHeld(booking)
       setStep('held')
     } catch (cause) {
@@ -150,7 +181,6 @@ function StaffBookingContent() {
             <p className="f3-search-eyebrow">STAFF BOOKING</p>
             <h1>Book for customer</h1>
           </div>
-          <a href="/booking-lookup">Booking lookup →</a>
         </div>
         <p className="f3-search-intro">Select a customer, then choose flights and enter the booking details on their behalf.</p>
         {import.meta.env.DEV && (
@@ -164,22 +194,31 @@ function StaffBookingContent() {
             {data.error}
           </p>
         )}
+        {customerMissing && (
+          <p className="f3-flow-error" role="alert">
+            That customer is no longer available. Choose a customer again to continue.
+          </p>
+        )}
         <div className="f3-search-card f3-staff-customer-picker">
           <label>
             Customer
-            <select
+            <Select
+              value={customerMissing ? '' : customerId}
+              disabled={data.loading || !!data.error || busy || activeStep === 'held'}
+              onValueChange={(value) => chooseCustomer(value)}
               required
-              value={customerId}
-              disabled={data.loading || !!data.error || busy || step === 'held'}
-              onChange={(event) => chooseCustomer(event.target.value)}
             >
-              <option value="">{data.loading ? 'Loading demo customers…' : 'Choose a demo customer'}</option>
-              {data.customers.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name} · {row.email}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder={data.loading ? 'Loading demo customers…' : 'Choose a demo customer'} />
+              </SelectTrigger>
+              <SelectContent>
+                {data.customers.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {row.name} · {row.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           {customer && (
             <p>
@@ -188,27 +227,31 @@ function StaffBookingContent() {
           )}
         </div>
       </section>
-      {step === 'search' && (
+      {activeStep === 'search' && (
         <FlightSearchPage
-          initialItinerary={itinerary ?? undefined}
-          tripLink={{ href: '/booking-lookup', label: 'Booking lookup →' }}
+          urlState={searchState ?? undefined}
+          onUrlChange={setSearchState}
+          initialItinerary={searchState ? undefined : (itinerary ?? undefined)}
           onContinue={customer && !data.error ? chooseFlights : undefined}
         />
       )}
-      {step !== 'search' && itinerary && (
+      {activeStep !== 'search' && itinerary && (
         <main className="f3-search f3-flow">
           <ol className="f3-flow-stepper" aria-label="Staff booking progress">
             {['Flights', 'Passengers', 'Seats', 'Booking held'].map((label, index) => (
-              <li key={label} aria-current={(step === 'passengers' ? 1 : step === 'seats' ? 2 : 3) === index ? 'step' : undefined}>
+              <li
+                key={label}
+                aria-current={(activeStep === 'passengers' ? 1 : activeStep === 'seats' ? 2 : 3) === index ? 'step' : undefined}
+              >
                 <span>{index + 1}</span>
                 {label}
               </li>
             ))}
           </ol>
-          <h1>{step === 'passengers' ? 'Passengers & extras' : step === 'seats' ? 'Seat choices' : 'Booking held'}</h1>
+          <h1>{activeStep === 'passengers' ? 'Passengers & extras' : activeStep === 'seats' ? 'Seat choices' : 'Booking held'}</h1>
           <div className="f3-flow-columns">
             <div>
-              {step === 'passengers' && (
+              {activeStep === 'passengers' && (
                 <PassengersPage
                   itinerary={itinerary}
                   travellers={travellers}
@@ -226,7 +269,7 @@ function StaffBookingContent() {
                   demoError={data.error}
                 />
               )}
-              {step === 'seats' && (
+              {activeStep === 'seats' && (
                 <section className="f3-passenger-card">
                   <h2>Choose seats later</h2>
                   <p>Specific seats are optional. No seats are held until you create the booking below.</p>
@@ -259,12 +302,12 @@ function StaffBookingContent() {
                   </div>
                 </section>
               )}
-              {step === 'held' && held && (
+              {activeStep === 'held' && held && (
                 <section className="f3-passenger-card f3-staff-receipt">
                   <span className="f3-staff-held">Held · awaiting payment</span>
                   <p>Booking reference</p>
                   <h2>{held.reference}</h2>
-                  <p>Booked for {customer?.name}. This booking is not confirmed.</p>
+                  <p>{customer ? `Booked for ${customer.name}.` : 'Booked for the selected customer.'} This booking is not confirmed.</p>
                   <p>
                     Total: <strong>{usd(held.total)}</strong>
                   </p>
@@ -272,9 +315,14 @@ function StaffBookingContent() {
                     Hold expires{' '}
                     {new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(held.holdExpiresAt))}
                   </p>
-                  <a className="f3-search-primary" href={`/booking-lookup?reference=${encodeURIComponent(held.reference)}`}>
-                    Open booking lookup
-                  </a>
+                  <div className="f3-flow-actions">
+                    <button className="f3-search-secondary" type="button" onClick={startNewBooking}>
+                      Start a new booking
+                    </button>
+                    <a className="f3-search-primary" href={`/booking-lookup?reference=${encodeURIComponent(held.reference)}`}>
+                      Open booking lookup
+                    </a>
+                  </div>
                 </section>
               )}
             </div>

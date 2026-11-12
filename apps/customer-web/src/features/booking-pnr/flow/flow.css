@@ -107,6 +107,12 @@
   background: #fdecec;
   color: #b8171f !important;
 }
+/* The button row of the hold receipt: the "Go to My Trips" button under the hold details. */
+.f3-flow-receipt-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+}
 @media (max-width: 760px) {
   .f3-flow-columns {
     grid-template-columns: 1fr;
@@ -303,8 +309,10 @@
   .f3-passenger-card {
     padding: 18px 16px;
   }
-  .f3-passenger-card input,
-  .f3-passenger-card select {
+  .f3-passenger-card input {
+    min-height: 44px;
+  }
+  .cw-select-trigger {
     min-height: 44px;
   }
   .f3-flow-summary {

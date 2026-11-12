@@ -154,9 +154,8 @@ function Dropdown({
         aria-label={ariaLabel ? `${ariaLabel}: ${selected?.label ?? placeholder}` : undefined}
         aria-invalid={invalid || undefined}
         className={cn(
-          'w-full gap-1.5 border-input bg-background px-3.5 text-left text-sm font-medium text-foreground focus-visible:ring-2 focus-visible:ring-primary/30',
-          variant === 'field' && 'border-border text-foreground',
-          variant === 'card' && 'border-input bg-accent px-3 text-sm text-foreground max-phone:text-sm',
+          'w-full gap-1.5 border-input bg-background px-3.5 text-left text-sm font-medium text-foreground',
+          variant === 'card' && 'bg-accent px-3 text-sm text-foreground max-phone:text-sm',
           invalid && 'border-danger-line',
         )}
       >
@@ -169,7 +168,7 @@ function Dropdown({
         className={cn('max-h-98.5 max-w-135 border-border font-sans', variant === 'field' && 'max-h-65')}
       >
         {items.map((o) => (
-          <SelectItem key={o.value} value={o.value} className={cn('px-2.5 whitespace-nowrap text-foreground', variant === 'card' && '')}>
+          <SelectItem key={o.value} value={o.value} className={cn('px-2.5 text-foreground', variant === 'card' && '')}>
             {o.label}
           </SelectItem>
         ))}

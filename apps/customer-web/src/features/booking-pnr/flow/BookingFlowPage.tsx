@@ -1,12 +1,16 @@
 import { useDemoPassengers } from '../passengers/useDemoPassengers'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FlightSearchPage, type SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
+import type { FlightSearchUrlState } from '../../booking-search/search-params'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { HoldBookingRequest, HoldBookingResponse, HoldBookingSeat } from '../api/types'
 import { PassengersPage } from '../passengers/PassengersPage'
 import {
+  clearFlowDraft,
+  readFlowDraft,
   readItinerary,
+  saveFlowDraft,
   saveItinerary,
   travellersFor,
   validateTravellers,
@@ -17,6 +21,8 @@ import {
 import { priceChangedDetails, validateSeatChoices, type FlowComponents, type SeatChoice } from './integration'
 import type { AssistanceValue } from '../components/contracts'
 import type { PriceChangedDetails } from '../api/types'
+import controls from '../styles/controls.module.css'
+import '../styles/tokens.css'
 import './flow.css'
 
 export interface FlowProps extends FlowComponents {
@@ -26,14 +32,18 @@ export interface FlowProps extends FlowComponents {
 
 export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, SeatStep, PriceChangedDialog, SeatTakenDialog }: FlowProps) {
   const [itinerary, setItinerary] = useState(readItinerary)
-  const [travellers, setTravellers] = useState(() => (itinerary ? travellersFor(itinerary) : []))
-  const [contact, setContact] = useState<BookingContact>({ email: '', phone: '', promoCode: '' })
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(2)
+  // The flow the customer left behind, so a refresh does not wipe what they typed.
+  const [restored] = useState(() => readFlowDraft(itinerary))
+  const [travellers, setTravellers] = useState(() => restored?.travellers ?? (itinerary ? travellersFor(itinerary) : []))
+  const [contact, setContact] = useState<BookingContact>(() => restored?.contact ?? { email: '', phone: '', promoCode: '' })
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(() => restored?.step ?? 2)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [held, setHeld] = useState<HoldBookingResponse | null>(null)
-  const [assistance, setAssistance] = useState<Record<string, AssistanceValue>>({})
-  const [choices, setChoices] = useState<SeatChoice[]>([])
+  const [held, setHeld] = useState<HoldBookingResponse | null>(() => restored?.held ?? null)
+  const [assistance, setAssistance] = useState<Record<string, AssistanceValue>>(() => restored?.assistance ?? {})
+  const [choices, setChoices] = useState<SeatChoice[]>(() => restored?.choices ?? [])
+  // The search the customer had open on the flights step, so a refresh there does not wipe it.
+  const [searchDraft, setSearchDraft] = useState<FlightSearchUrlState | null>(() => restored?.search ?? null)
   const [priceChange, setPriceChange] = useState<PriceChangedDetails | null>(null)
   const [seatConflict, setSeatConflict] = useState(false)
   const pendingRequest = useRef<HoldBookingRequest | null>(null)
@@ -43,6 +53,18 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   const { holdBooking } = useBookingPnrApi()
   const demo = useDemoPassengers(!resolvePassengers)
   const passengerResolver = resolvePassengers ?? demo.resolve
+  /** The demo picker is the only way to fill the passenger details while it is on, so it has to be used for everyone. */
+  const demoMode = !resolvePassengers && demo.enabled
+
+  /* The flow is kept in the session, so a refresh does not wipe the passenger details, the seats and the contact.
+     The details stay in sessionStorage, never in the address bar. */
+  useEffect(() => {
+    if (!itinerary) {
+      clearFlowDraft()
+      return
+    }
+    saveFlowDraft(itinerary, { step, travellers, contact, assistance, choices, held, search: searchDraft })
+  }, [itinerary, step, travellers, contact, assistance, choices, held, searchDraft])
 
   function updateTraveller(key: string, change: Partial<TravellerDraft>) {
     setTravellers((current) => current.map((person) => (person.key === key ? { ...person, ...change } : person)))
@@ -68,8 +90,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   function continueToSeats() {
     if (!itinerary) return
     const missingNote = Object.values(assistance).some((value) => ['UMNR', 'MEDA'].includes(value.serviceCode ?? '') && !value.note.trim())
+    const missingDemo = demoMode && travellers.some((person) => !person.demoPassengerId)
     const message =
-      validateTravellers(travellers, contact, itinerary) ?? (missingNote ? 'Add a note for each UMNR or MEDA assistance request.' : null)
+      (missingDemo ? 'Choose a demo traveller for every passenger.' : null) ??
+      validateTravellers(travellers, contact, itinerary) ??
+      (missingNote ? 'Add a note for each UMNR or MEDA assistance request.' : null)
     setError(message)
     if (!message) setStep(3)
   }
@@ -163,7 +188,17 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
         <Link to="/search">Search flights</Link>
       </main>
     )
-  if (step === 1) return <FlightSearchPage initialItinerary={itinerary} onContinue={selectItinerary} />
+  if (step === 1)
+    return (
+      <FlightSearchPage
+        // With a stored search the page brings back that search, so the results of the old itinerary must not show
+        // under the edited form.
+        initialItinerary={searchDraft ? undefined : itinerary}
+        urlState={searchDraft ?? undefined}
+        onUrlChange={(next) => setSearchDraft(next)}
+        onContinue={selectItinerary}
+      />
+    )
   return (
     <main className="f3-search f3-flow f3-customer-flow">
       <ol className="f3-flow-stepper" aria-label="Booking progress">
@@ -340,7 +375,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                 Hold expires:{' '}
                 {new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(held.holdExpiresAt))}
               </p>
-              <Link to="/bookings">Go to My Trips</Link>
+              <div className="f3-flow-receipt-actions">
+                <Link to="/bookings" className={controls.secondary}>
+                  Go to My Trips
+                </Link>
+              </div>
             </section>
           )}
         </div>

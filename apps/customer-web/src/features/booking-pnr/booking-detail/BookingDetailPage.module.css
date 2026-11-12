@@ -1,10 +1,11 @@
+/* The page shell comes from BookingLayout: the top bar owns the page background and the outer padding. */
 .page {
-  min-height: 100vh;
-  background: var(--f3-page);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1200px;
+  margin: 40px auto 0;
   color: var(--f3-ink);
   font-family: var(--f3-font);
-  padding: 40px 24px 64px;
-  box-sizing: border-box;
   text-align: left;
 }
 
@@ -13,20 +14,44 @@
   flex-direction: column;
   gap: 16px;
   width: 100%;
-  max-width: 1040px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
+/* The "My Trips" pill above the header: a bordered chip in the shape of the secondary buttons of the design. */
 .backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   align-self: flex-start;
-  color: var(--f3-primary);
+  padding: 9px 16px;
+  border: 1px solid var(--f3-border);
+  border-radius: 8px;
+  background: var(--f3-card);
+  color: var(--f3-ink);
   font-size: 14px;
   font-weight: 600;
+  line-height: 1;
   text-decoration: none;
+  box-sizing: border-box;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.backLink svg {
+  transition: transform 0.15s ease;
 }
 
 .backLink:hover {
-  text-decoration: underline;
+  background: var(--f3-selected);
+  border-color: var(--f3-primary);
+  color: var(--f3-primary);
+}
+
+.backLink:hover svg {
+  transform: translateX(-2px);
 }
 
 .backLink:focus-visible {
@@ -58,8 +83,11 @@
 
 .titleRow h1 {
   margin: 0;
+  font-family: var(--f3-font);
   font-size: 30px;
   line-height: 1.15;
+  /* The global h1 rule tracks -1.68px for the 56 px home hero. The page titles follow the flight search instead. */
+  letter-spacing: -0.6px;
   color: var(--f3-ink);
 }
 
@@ -242,10 +270,6 @@
 }
 
 @media (max-width: 700px) {
-  .page {
-    padding: 24px 16px 48px;
-  }
-
   .titleRow h1 {
     font-size: 24px;
   }
@@ -266,5 +290,13 @@
     flex: 1 1 auto;
     width: 100%;
     height: 140px;
+  }
+}
+
+@media (max-width: 600px) {
+  .page {
+    margin-top: 24px;
+    /* The layout drops its side padding on the 393 px frame, so the column keeps its own inset. */
+    padding: 0 16px;
   }
 }

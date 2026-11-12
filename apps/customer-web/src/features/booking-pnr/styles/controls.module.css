@@ -87,7 +87,7 @@
   font: inherit;
   font-size: 14px;
   font-weight: 600;
-  color: var(--f3-primary);
+  color: var(--f3-link);
   cursor: pointer;
   text-decoration: none;
 }

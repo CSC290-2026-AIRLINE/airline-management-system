@@ -1,10 +1,11 @@
+/* The page shell comes from BookingLayout: the top bar owns the page background and the outer padding. */
 .page {
-  min-height: 100vh;
-  background: var(--f3-page);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1040px;
+  margin: 40px auto 0;
   color: var(--f3-ink);
   font-family: var(--f3-font);
-  padding: 40px 24px 64px;
-  box-sizing: border-box;
   text-align: left;
 }
 
@@ -31,8 +32,11 @@
 
 .header h1 {
   margin: 0 0 6px;
+  font-family: var(--f3-font);
   font-size: 30px;
   line-height: 1.15;
+  /* The global h1 rule tracks -1.68px for the 56 px home hero. The page titles follow the flight search instead. */
+  letter-spacing: -0.6px;
   color: var(--f3-ink);
 }
 
@@ -270,7 +274,9 @@
 
 @media (max-width: 600px) {
   .page {
-    padding: 24px 16px 48px;
+    margin-top: 24px;
+    /* The layout drops its side padding on the 393 px frame, so the column keeps its own inset. */
+    padding: 0 16px;
   }
 
   .header h1 {

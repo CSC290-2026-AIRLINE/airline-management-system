@@ -51,3 +51,5 @@ Thumbs.db
 # Claude Code: settings.example.json is the team template; settings.json is personal and ignored
 .claude/settings.json
 CLAUDE.local.md
+
+docs/customer-ui-test-checklist.md

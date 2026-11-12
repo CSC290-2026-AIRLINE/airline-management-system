@@ -1,0 +1,4 @@
+# Store text files with LF in the repository and check them out with LF on every
+# platform, so Windows clones (core.autocrlf) do not show phantom diffs after
+# running the formatter. Binary files are detected automatically.
+* text=auto eol=lf

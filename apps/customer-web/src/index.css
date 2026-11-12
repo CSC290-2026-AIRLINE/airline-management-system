@@ -60,6 +60,13 @@
   box-sizing: border-box;
 }
 
+/* Customer pages that own their own full-bleed shell, like the staff shell does. */
+#root:has(.f3-customer-layout) {
+  width: 100%;
+  border-inline: 0;
+  text-align: left;
+}
+
 body {
   margin: 0;
 }
