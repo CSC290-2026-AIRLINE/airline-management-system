@@ -77,3 +77,48 @@ export interface RefundQueueListDto {
   total: number
   counts: Record<RefundQueueTab, number>
 }
+
+/* ---- Compensation and vouchers (frames 04 to 04e) ---------------------------------------------------------------- */
+
+/** The chips on the compensation page. */
+export const COMPENSATION_FILTERS = ['all', 'vouchers', 'card_refunds'] as const
+export type CompensationFilter = (typeof COMPENSATION_FILTERS)[number]
+
+export function isCompensationFilter(value: unknown): value is CompensationFilter {
+  return typeof value === 'string' && (COMPENSATION_FILTERS as readonly string[]).includes(value)
+}
+
+/** What staff can issue: a new voucher, or money back to the card. */
+export const COMPENSATION_KINDS = ['voucher', 'card_refund'] as const
+export type CompensationKind = (typeof COMPENSATION_KINDS)[number]
+
+/** One row of the compensation history: a voucher, or a card refund. */
+export interface CompensationEntryDto {
+  id: string
+  kind: CompensationKind
+  booking_reference: string
+  value: number
+  currency: string
+  /** The voucher's code, or the card refund's provider reference. */
+  reference: string
+  /** "Active", "Expiring", "Redeemed", "Voided", "Paying to card", "Refunded". */
+  status_label: string
+  reason: string
+  issued_at: string
+  /** True while staff may still void it: an unused voucher. A card refund cannot be taken back. */
+  can_void: boolean
+}
+
+export interface CompensationListDto {
+  items: CompensationEntryDto[]
+  total: number
+  counts: Record<CompensationFilter, number>
+}
+
+/** Body of the "Issue compensation" dialog. */
+export interface IssueCompensationBody {
+  booking_reference: string
+  kind: CompensationKind
+  amount: number
+  reason: string
+}

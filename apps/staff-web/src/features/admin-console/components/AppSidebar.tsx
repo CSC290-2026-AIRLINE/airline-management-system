@@ -119,13 +119,13 @@ const PRICING_ITEMS = [
  * The Payments & Refunds screens (Feature 5), in the F5 frames' order. An item gets a `to` once its route exists on this
  * branch; the rest stay dimmed until then.
  *
- * TODO(F5): Payment Lookup and Payment Exceptions arrive with Feature 5a, Compensation & Vouchers with the next 5b
- * step, and Pay Runs with Feature 5c. Add each one's `to` when its route lands.
+ * TODO(F5): Payment Lookup and Payment Exceptions arrive with Feature 5a, and Pay Runs with Feature 5c. Add each one's
+ * `to` when its route lands.
  */
 const PAYMENTS_ITEMS: NavItem[] = [
   { label: 'Payment Lookup', icon: Search },
   { label: 'Refund Queue', icon: Undo2, to: '/payments/refunds' },
-  { label: 'Compensation & Vouchers', icon: Gift },
+  { label: 'Compensation & Vouchers', icon: Gift, to: '/payments/compensation' },
   { label: 'Payment Exceptions', icon: TriangleAlert },
   { label: 'Pay Runs', icon: Banknote },
 ]
