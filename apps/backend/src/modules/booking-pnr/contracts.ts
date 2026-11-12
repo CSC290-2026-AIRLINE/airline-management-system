@@ -65,7 +65,7 @@ export interface InventoryPort {
   sell: (tx: BookingTransaction, keys: InventoryKey[], count: number, award?: boolean) => Promise<void>
   release: (tx: BookingTransaction, keys: InventoryKey[], count: number, award?: boolean) => Promise<void>
   returnSold: (tx: BookingTransaction, keys: InventoryKey[], count: number, award?: boolean) => Promise<void>
-  createForFlight: (flightId: string, cabins: InventoryCabin[]) => Promise<void>
+  createForFlight: (flightId: string, cabins: InventoryCabin[], tx?: BookingTransaction) => Promise<void>
   setCapacity: (tx: BookingTransaction, flightId: string, cabin: string, capacity: number) => Promise<void>
   setAwardSeats: (flightId: string, cabin: string, count: number) => Promise<void>
   seatsLeft: (flightId: string, cabin: string) => Promise<number>
@@ -172,6 +172,7 @@ export interface ChargeRequest {
   amount: number
   currency: string
   idempotencyKey: string
+  purchaseRef?: string
 }
 
 export interface PaymentResult {
@@ -181,7 +182,7 @@ export interface PaymentResult {
 }
 
 export interface CheckoutPort {
-  charge: (request: ChargeRequest) => Promise<PaymentResult>
+  charge: (request: ChargeRequest, tx?: BookingTransaction) => Promise<PaymentResult>
 }
 
 export interface RefundRequest {
@@ -490,7 +491,8 @@ export interface FlightEventBus {
 // Booking events are published after commit (B1, B6). Feature 13 is the consumer that notifies customers; it finds the
 // recipients from the reference or `listFlightPassengers(flightId)`, so the payload stays small. C6 extends the type
 // with `service_request.updated` when it publishes.
-export type BookingEventType = 'booking.confirmed' | 'booking.cancelled'
+export type BookingEventType =
+  'booking.confirmed' | 'booking.cancelled' | 'booking.partner_rebooked' | 'booking.seat_changed' | 'service_request.updated'
 
 export interface BookingEvent {
   type: BookingEventType

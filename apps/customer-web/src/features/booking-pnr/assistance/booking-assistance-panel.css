@@ -1,0 +1,32 @@
+.booking-assistance {
+  max-width: 72rem;
+  margin: 1.5rem auto;
+  padding: 1.5rem;
+  border: 1px solid #dce3eb;
+  border-radius: 0.75rem;
+  background: white;
+  color: #14213d;
+}
+.booking-assistance label {
+  display: grid;
+  gap: 0.4rem;
+  max-width: 24rem;
+}
+.booking-assistance select,
+.booking-assistance button {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #9aacc0;
+  border-radius: 0.4rem;
+  background: white;
+  color: #14213d;
+}
+.booking-assistance button {
+  cursor: pointer;
+}
+.booking-assistance__passenger {
+  padding: 0.75rem 0;
+  border-top: 1px solid #dce3eb;
+}
+.booking-assistance__passenger h3 {
+  margin: 0.25rem 0 0.5rem;
+}

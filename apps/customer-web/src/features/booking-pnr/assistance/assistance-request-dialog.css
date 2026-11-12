@@ -1,0 +1,37 @@
+.assistance-request-dialog {
+  width: min(90vw, 32rem);
+  max-height: 85vh;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 0.75rem;
+  color: #14213d;
+  padding: 1.5rem;
+}
+.assistance-request-dialog::backdrop {
+  background: rgb(20 33 61 / 55%);
+}
+.assistance-request-dialog [role='alert'] {
+  color: #9b2525;
+}
+.assistance-request-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.assistance-request-dialog__actions button {
+  padding: 0.65rem 1rem;
+  border: 1px solid #102544;
+  border-radius: 0.4rem;
+  background: white;
+  color: #102544;
+  cursor: pointer;
+}
+.assistance-request-dialog__actions button[type='submit'] {
+  background: #102544;
+  color: white;
+}
+.assistance-request-dialog__actions button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}

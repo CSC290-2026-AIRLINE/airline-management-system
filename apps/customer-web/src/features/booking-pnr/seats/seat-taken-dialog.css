@@ -1,0 +1,27 @@
+.seat-taken-dialog {
+  max-width: 28rem;
+  border: 0;
+  border-radius: 0.75rem;
+  color: #14213d;
+  padding: 1.5rem;
+}
+.seat-taken-dialog::backdrop {
+  background: rgb(20 33 61 / 55%);
+}
+.seat-taken-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+.seat-taken-dialog__actions button {
+  padding: 0.65rem 1rem;
+  border: 1px solid #102544;
+  border-radius: 0.4rem;
+  background: white;
+  color: #102544;
+  cursor: pointer;
+}
+.seat-taken-dialog__actions button:last-child {
+  background: #102544;
+  color: white;
+}

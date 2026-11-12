@@ -48,13 +48,35 @@ import { PricingStub } from './stubs/pricing.stub'
 import { RefundStub } from './stubs/refund.stub'
 import { ScreeningStub } from './stubs/screening.stub'
 import { SeatMapStub } from './stubs/seat-map.stub'
-import { SeatStub } from './stubs/seat.stub'
-import { ServiceRequestStub } from './stubs/service-request.stub'
+import { SeatService } from './seats/seat.service'
+import { AssistanceService } from './assistance/assistance.service'
+import { SeatMapController } from './seats/seat-map.controller'
+import { SeatMapService } from './seats/seat-map.service'
+import { SeatHoldExpiryService } from './seats/seat-hold-expiry.service'
+import { SeatChangeController } from './seats/seat-change.controller'
+import { SeatChangeService } from './seats/seat-change.service'
+import { CheckinSeatMapAdapter } from './providers/checkin-seat-map.adapter'
+import { CheckinSeatProvider } from './providers/checkin-seat.provider'
+import { FlightImpactService } from './flight-events/flight-impact.service'
+import { AssistanceQueueService } from './assistance/assistance-queue.service'
+import { StaffAssistanceController } from './assistance/staff-assistance.controller'
+import { StaffAssistanceService } from './assistance/staff-assistance.service'
+import { BookingAssistanceController } from './assistance/booking-assistance.controller'
+import { BookingAssistanceService } from './assistance/booking-assistance.service'
+import { FlightEventsService } from './flight-events/flight-events.service'
+import { SeatPaymentService } from './seats/seat-payment.service'
+import { DevSeatPaymentController } from './seats/dev-seat-payment.controller'
+import { FlightEventHandlerService } from './flight-events/flight-event-handler.service'
+import { FlightEventCatchupService } from './flight-events/flight-event-catchup.service'
+import { FlightCancellationProcessor } from './flight-events/flight-cancellation.processor'
+import { AircraftChangeProcessor } from './flight-events/aircraft-change.processor'
+import { FlightEventNotificationsService } from './flight-events/flight-event-notifications.service'
 
 @Module({
   // Feature 15's audit writer, for the staff cancellation entry (B7).
   imports: [AuditModule],
   controllers: [
+    DevSeatPaymentController,
     DevConfirmController,
     BookingsController,
     CustomerBookingsController,
@@ -63,8 +85,29 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
     DemoPassengerController,
     StaffBookingController,
     DemoBookingCustomerController,
+    SeatMapController,
+    SeatChangeController,
+    StaffAssistanceController,
+    BookingAssistanceController,
   ],
   providers: [
+    SeatPaymentService,
+    FlightEventsService,
+    FlightEventHandlerService,
+    FlightEventCatchupService,
+    FlightCancellationProcessor,
+    AircraftChangeProcessor,
+    FlightEventNotificationsService,
+    SeatMapService,
+    SeatChangeService,
+    CheckinSeatMapAdapter,
+    CheckinSeatProvider,
+    FlightImpactService,
+    AssistanceQueueService,
+    StaffAssistanceService,
+    BookingAssistanceService,
+    AssistanceService,
+    SeatHoldExpiryService,
     HoldService,
     StaffBookingLookupService,
     DemoBookingCustomerService,
@@ -81,8 +124,8 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
     { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
     { provide: BOOKING_EVENT_BUS, useClass: LocalBookingEventBus },
     { provide: INVENTORY_PORT, useClass: InventoryService },
-    { provide: SEAT_PORT, useClass: SeatStub },
-    { provide: SERVICE_REQUEST_PORT, useClass: ServiceRequestStub },
+    { provide: SEAT_PORT, useClass: SeatService },
+    { provide: SERVICE_REQUEST_PORT, useExisting: AssistanceService },
     { provide: PRICING_PORT, useClass: PricingStub },
     { provide: LOYALTY_PORT, useClass: LoyaltyStub },
     { provide: CHECKOUT_PORT, useClass: CheckoutStub },
@@ -113,6 +156,7 @@ import { ServiceRequestStub } from './stubs/service-request.stub'
     CANCEL_FOR_FLIGHT_PORT,
     FLIGHT_EVENT_BUS,
     BOOKING_PROVIDER,
+    FlightImpactService,
   ],
 })
 export class BookingPnrModule {}

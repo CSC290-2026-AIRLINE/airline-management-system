@@ -1,0 +1,23 @@
+.assistance-status {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.assistance-status--requested {
+  background: #fff2d6;
+  color: #805000;
+}
+.assistance-status--accepted {
+  background: #e2f5e9;
+  color: #176b38;
+}
+.assistance-status--rejected {
+  background: #fde8e8;
+  color: #9b2525;
+}
+.assistance-status--completed {
+  background: #e9edf1;
+  color: #465568;
+}

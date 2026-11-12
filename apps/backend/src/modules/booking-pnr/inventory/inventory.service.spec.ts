@@ -124,4 +124,12 @@ describe('InventoryService', () => {
     await service.createForFlight('flight-a', [{ cabin: 'economy', capacity: 10 }])
     expect(tx.seat_inventory.createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }))
   })
+  it('uses the supplied event transaction rather than the root database', async () => {
+    const { service, tx } = fixture()
+    const createMany = jest.fn().mockResolvedValue({ count: 1 })
+    const eventTx = { seat_inventory: { createMany } } as unknown as BookingTransaction
+    await service.createForFlight('flight-a', [{ cabin: 'economy', capacity: 10 }], eventTx)
+    expect(createMany).toHaveBeenCalledTimes(1)
+    expect(tx.seat_inventory.createMany).not.toHaveBeenCalled()
+  })
 })

@@ -1,0 +1,70 @@
+body {
+  margin: 0;
+  background: #f4f6f8;
+  color: #14213d;
+  font-family: Inter, sans-serif;
+}
+.seat-demo {
+  max-width: 1000px;
+  margin: auto;
+  padding: 2rem 1.5rem;
+}
+.seat-demo__brand {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.seat-demo__step {
+  color: #617185;
+  font-size: 0.9rem;
+  margin: 2rem 0;
+}
+.seat-demo__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.seat-demo__card {
+  background: white;
+  border: 1px solid #dce3ea;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+}
+.seat-demo__card h2 {
+  font-size: 1rem;
+}
+.seat-demo__card button:not(.seat-picker__seat) {
+  background: white;
+  border: 1px solid #9aacc0;
+  border-radius: 0.4rem;
+  padding: 0.8rem;
+  color: #14213d;
+  cursor: pointer;
+}
+@media (max-width: 700px) {
+  .seat-demo__layout {
+    grid-template-columns: 1fr;
+  }
+}
+.seat-demo {
+  max-width: 1200px;
+}
+.seat-demo__brand {
+  margin: 0;
+  padding: 18px 24px;
+  border-radius: 12px;
+  background: #eef1f6;
+  font-family: Georgia, serif;
+  font-size: 26px;
+}
+.seat-demo__brand small {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+}
+.seat-demo__card {
+  margin-top: 24px;
+}
+.seat-demo__card h3 {
+  font-size: 14px;
+}

@@ -117,13 +117,13 @@ export class InventoryService implements InventoryPort {
     }
   }
 
-  async createForFlight(flightId: string, cabins: InventoryCabin[]): Promise<void> {
+  async createForFlight(flightId: string, cabins: InventoryCabin[], tx?: BookingTransaction): Promise<void> {
     for (const cabin of cabins) {
       nonNegative(cabin.capacity)
       nonNegative(cabin.awardLimit ?? 0)
       if ((cabin.awardLimit ?? 0) > cabin.capacity) throw new BookingError('SEAT_UNAVAILABLE', 'Award limit exceeds cabin capacity')
     }
-    await this.db.seat_inventory.createMany({
+    await (tx ?? this.db).seat_inventory.createMany({
       data: cabins.map((cabin) => ({
         flight_id: flightId,
         cabin: cabin.cabin,

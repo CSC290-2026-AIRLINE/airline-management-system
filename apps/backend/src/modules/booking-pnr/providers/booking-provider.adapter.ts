@@ -69,12 +69,13 @@ export class BookingProviderAdapter implements BookingProvider {
     return detail ? toBookingPassengers(detail) : []
   }
 
-  // Open item: Feature 6 assumes one flight per booking passenger. Until it also sends the flight id, this returns the
-  // passenger's first live coupon in segment order.
-  async byBookingPassengerId(id: string): Promise<BookingPassenger | null> {
+  // Feature 6's current interface does not pass a flight ID. Never guess when a passenger has multiple live flights.
+  // The optional argument allows the adapter to resolve a specific flight once Feature 6 agrees to pass it.
+  async byBookingPassengerId(id: string, flightId?: string): Promise<BookingPassenger | null> {
     const detail = await this.readPort.getBookingForPassenger(id)
     if (!detail) return null
-    return toBookingPassengers(detail).find((p) => p.bookingPassengerId === id) ?? null
+    const matches = toBookingPassengers(detail).filter((p) => p.bookingPassengerId === id && (!flightId || p.flightId === flightId))
+    return matches.length === 1 ? matches[0] : null
   }
 
   async listByFlight(flightId: string): Promise<BookingPassenger[]> {

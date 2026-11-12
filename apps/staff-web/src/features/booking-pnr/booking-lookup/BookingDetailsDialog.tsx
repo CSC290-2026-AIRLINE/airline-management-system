@@ -5,6 +5,7 @@ import { useBookingPnrApi } from '../api/client'
 import type { BookingDetail } from '../api/types'
 import { BookingDetailsBody } from './BookingDetailsBody'
 import { StaffCancelForm } from './StaffCancelForm'
+import { StaffSeatAssignment } from '../seats/StaffSeatAssignment'
 
 export function BookingDetailsDialog({ reference, onClose, onChanged }: { reference: string; onClose: () => void; onChanged: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -84,6 +85,14 @@ export function BookingDetailsDialog({ reference, onClose, onChanged }: { refere
       {booking && !cancelMode && (
         <>
           <BookingDetailsBody booking={booking} />
+          <StaffSeatAssignment
+            booking={booking}
+            onBusyChange={setBusy}
+            onChanged={() => {
+              reload()
+              onChanged()
+            }}
+          />
           <footer className="f3-lookup-actions">
             <Button asChild variant="outline">
               <Link to="/assistance">Open assistance queue</Link>
