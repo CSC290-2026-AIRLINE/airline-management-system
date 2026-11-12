@@ -219,7 +219,7 @@ export class ConfirmService {
   }
 
   private async afterConfirm(booking: LoadedBooking, coupons: LoadedCoupon[], now: Date): Promise<void> {
-    await this.redeemPromoCodes(coupons)
+    await this.redeemPromoCodes(coupons, booking.booking_reference)
 
     const passengerIds = [...new Set(booking.booking_passenger.map((passenger) => passenger.passenger_id))]
     try {
@@ -251,7 +251,7 @@ export class ConfirmService {
     }
   }
 
-  private async redeemPromoCodes(coupons: LoadedCoupon[]): Promise<void> {
+  private async redeemPromoCodes(coupons: LoadedCoupon[], bookingReference: string): Promise<void> {
     const quotes = new Map<string, string>()
     for (const coupon of coupons) {
       const code = coupon.fare_quote?.promo_code?.code
@@ -262,7 +262,7 @@ export class ConfirmService {
 
     for (const [fareQuoteId, promoCode] of quotes) {
       try {
-        await this.pricing.redeem(promoCode, fareQuoteId)
+        await this.pricing.redeem(promoCode, fareQuoteId, bookingReference)
       } catch (error) {
         this.logger.error(`Could not redeem promo ${promoCode} for quote ${fareQuoteId}`, error as Error)
       }

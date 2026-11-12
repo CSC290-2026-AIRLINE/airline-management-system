@@ -147,7 +147,7 @@ export interface PricingPort {
   cancelQuote: (request: CancelQuoteRequest) => Promise<CancelQuote>
   seatFee: (request: SeatFeeRequest) => Promise<number>
   // Counts the promo use once per quote at confirm (B1). Feature 4's promo-code.service.ts `redeem` in PR #35.
-  redeem: (promoCode: string, fareQuoteId: string) => Promise<void>
+  redeem: (promoCode: string, fareQuoteId: string, bookingRef: string) => Promise<void>
 }
 
 // An award seat has no fare class (booking_segment.fare_class_id is null for miles).
