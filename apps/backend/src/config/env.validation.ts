@@ -7,7 +7,6 @@ export interface EnvConfig {
   REFRESH_TOKEN_TTL_DAYS: number
   CLERK_SECRET_KEY_CUSTOMER: string
   CLERK_SECRET_KEY_STAFF: string
-  COOKIE_SECURE: boolean
 }
 
 const REQUIRED_KEYS = [
@@ -36,8 +35,5 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
     REFRESH_TOKEN_TTL_DAYS: Number(rawConfig.REFRESH_TOKEN_TTL_DAYS),
     CLERK_SECRET_KEY_CUSTOMER: String(rawConfig.CLERK_SECRET_KEY_CUSTOMER),
     CLERK_SECRET_KEY_STAFF: String(rawConfig.CLERK_SECRET_KEY_STAFF),
-    // Optional. Browsers drop Secure cookies on plain HTTP, so an HTTP-only
-    // deployment must set COOKIE_SECURE=false. Defaults to NODE_ENV=production.
-    COOKIE_SECURE: rawConfig.COOKIE_SECURE ? rawConfig.COOKIE_SECURE === 'true' : rawConfig.NODE_ENV === 'production',
   }
 }

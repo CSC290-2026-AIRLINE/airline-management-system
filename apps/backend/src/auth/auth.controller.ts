@@ -74,7 +74,7 @@ export class AuthController {
     const refreshTokenTtlDays = this.configService.get('REFRESH_TOKEN_TTL_DAYS', { infer: true })
     res.cookie(cookieName, refreshToken, {
       httpOnly: true,
-      secure: this.configService.get('COOKIE_SECURE', { infer: true }),
+      secure: this.configService.get('NODE_ENV', { infer: true }) === 'production',
       sameSite: 'lax',
       path: '/api/auth',
       maxAge: refreshTokenTtlDays * 24 * 60 * 60 * 1000,
