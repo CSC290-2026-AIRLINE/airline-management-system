@@ -1,4 +1,4 @@
-import { useReducer, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useReducer, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
 import {
@@ -7,6 +7,7 @@ import {
   buildBookingFlightSummary,
   bookingPassengerIdForSubmit,
   createLostReportPageState,
+  createPhotoPreview,
   flightsForSelection,
   lostReportPageReducer,
   PASSENGER_BAG_COLOURS,
@@ -21,6 +22,7 @@ import {
   type EligibleFlight,
   type EligibleTraveller,
   type LostBagFormValues,
+  type PhotoPreview,
 } from './lost-report-form'
 import './PassengerLostBagReportPage.css'
 
@@ -83,6 +85,47 @@ export function PassengerLostBagReportPage() {
   const [photo, setPhoto] = useState<File | null>(null)
   const [photoError, setPhotoError] = useState('')
   const photoInput = useRef<HTMLInputElement>(null)
+  // The selected photo's temporary preview URL: created in event handlers only, released when replaced or cleared.
+  const photoPreview = useRef<PhotoPreview | null>(null)
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
+  // The larger preview: a native modal <dialog> (showModal gives focus trapping and Escape), kept in sync with React state.
+  const [isPhotoEnlarged, setIsPhotoEnlarged] = useState(false)
+  const photoDialog = useRef<HTMLDialogElement>(null)
+  const photoThumbnail = useRef<HTMLButtonElement>(null)
+
+  function showPhotoPreview(file: File | null) {
+    // Close the larger preview first, so it never shows a URL that is about to be revoked.
+    if (photoDialog.current?.open) photoDialog.current.close()
+    setIsPhotoEnlarged(false)
+    photoPreview.current?.release()
+    photoPreview.current = file ? createPhotoPreview(file) : null
+    setPhotoPreviewUrl(photoPreview.current?.url ?? null)
+  }
+
+  useEffect(() => {
+    const dialog = photoDialog.current
+    if (!dialog) return
+    if (isPhotoEnlarged && photoPreviewUrl) {
+      if (!dialog.open) dialog.showModal()
+    } else if (dialog.open) {
+      dialog.close()
+    }
+  }, [isPhotoEnlarged, photoPreviewUrl])
+
+  /** Native close: the close button, Escape (cancel), or a programmatic close. */
+  function handlePhotoDialogClose() {
+    setIsPhotoEnlarged(false)
+    // Return focus to the thumbnail that opened it, when it is still on the page.
+    if (photoThumbnail.current?.isConnected) photoThumbnail.current.focus()
+  }
+
+  useEffect(
+    () => () => {
+      photoPreview.current?.release()
+      photoPreview.current = null
+    },
+    [],
+  )
   const submissionPending = useRef(false)
   const flightLookupRequest = useRef(0)
   const flightLookupAccess = useRef({ bookingReference: '', surname: '' })
@@ -208,6 +251,8 @@ export function PassengerLostBagReportPage() {
         return
       }
       dispatch({ type: 'submit-succeeded', caseNumber: created.caseNumber })
+      // The request has finished with the File; the success view replaces the form, so free its preview.
+      showPhotoPreview(null)
     } catch (cause) {
       dispatch({
         type: 'submit-failed',
@@ -237,6 +282,7 @@ export function PassengerLostBagReportPage() {
     setValues(EMPTY_VALUES)
     setFieldErrors({})
     setPhoto(null)
+    showPhotoPreview(null)
     setPhotoError('')
     if (photoInput.current) photoInput.current.value = ''
     dispatch({ type: 'reset' })
@@ -248,11 +294,13 @@ export function PassengerLostBagReportPage() {
     const error = validateLostReportPhoto(file)
     if (error) {
       setPhoto(null)
+      showPhotoPreview(null)
       setPhotoError(error)
       if (photoInput.current) photoInput.current.value = ''
       return
     }
     setPhoto(file)
+    showPhotoPreview(file)
     setPhotoError('')
   }
 
@@ -552,6 +600,18 @@ export function PassengerLostBagReportPage() {
                   </label>
                   {photo && (
                     <div className="passenger-report-photo__selected" aria-live="polite">
+                      {photoPreviewUrl && (
+                        <button
+                          ref={photoThumbnail}
+                          className="passenger-report-photo__preview-button"
+                          type="button"
+                          aria-label="Enlarge selected photo"
+                          aria-haspopup="dialog"
+                          onClick={() => setIsPhotoEnlarged(true)}
+                        >
+                          <img className="passenger-report-photo__preview" src={photoPreviewUrl} alt="" />
+                        </button>
+                      )}
                       <span title={photo.name}>{photo.name}</span>
                       <button
                         className="passenger-report-photo__remove"
@@ -559,6 +619,7 @@ export function PassengerLostBagReportPage() {
                         disabled={pageState.submitState === 'submitting'}
                         onClick={() => {
                           setPhoto(null)
+                          showPhotoPreview(null)
                           setPhotoError('')
                           if (photoInput.current) photoInput.current.value = ''
                         }}
@@ -637,6 +698,24 @@ export function PassengerLostBagReportPage() {
             </section>
           </aside>
         </div>
+      )}
+      {photoPreviewUrl && (
+        <dialog
+          ref={photoDialog}
+          className="passenger-report-photo-dialog"
+          aria-label="Selected photo preview"
+          onClose={handlePhotoDialogClose}
+        >
+          <button
+            className="passenger-report-button passenger-report-button--secondary passenger-report-photo-dialog__close"
+            type="button"
+            aria-label="Close photo preview"
+            onClick={() => photoDialog.current?.close()}
+          >
+            Close
+          </button>
+          <img className="passenger-report-photo-dialog__image" src={photoPreviewUrl} alt="Selected photo, enlarged" />
+        </dialog>
       )}
     </main>
   )

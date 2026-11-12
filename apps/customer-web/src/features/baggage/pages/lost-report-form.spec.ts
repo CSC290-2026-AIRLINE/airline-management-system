@@ -5,6 +5,7 @@ import {
   buildCreateLostReportPayload,
   buildBookingFlightSummary,
   createLostReportPageState,
+  createPhotoPreview,
   isCurrentFlightLookup,
   lostReportPageReducer,
   LOST_REPORT_PHOTO_MAX_BYTES,
@@ -209,4 +210,68 @@ test('flight lookup generation and normalized booking inputs must both match', (
   assert.equal(isCurrentFlightLookup(request, 3, { bookingReference: ' abc123 ', surname: ' Lee ' }), true)
   assert.equal(isCurrentFlightLookup(request, 4, { bookingReference: 'ABC123', surname: 'Lee' }), false)
   assert.equal(isCurrentFlightLookup(request, 3, { bookingReference: 'XYZ789', surname: 'Lee' }), false)
+})
+
+function fakeObjectUrls() {
+  const created: Blob[] = []
+  const revoked: string[] = []
+  return {
+    created,
+    revoked,
+    api: {
+      create(file: Blob) {
+        created.push(file)
+        return `blob:preview-${created.length}`
+      },
+      revoke(url: string) {
+        revoked.push(url)
+      },
+    },
+  }
+}
+
+test('a photo preview creates one object URL for the accepted file and does not revoke it yet', () => {
+  const urls = fakeObjectUrls()
+  const photo = new File(['jpeg'], 'bag.jpg', { type: 'image/jpeg' })
+  assert.equal(validateLostReportPhoto(photo), null)
+
+  const preview = createPhotoPreview(photo, urls.api)
+
+  assert.equal(preview.url, 'blob:preview-1')
+  assert.deepEqual(urls.created, [photo])
+  assert.deepEqual(urls.revoked, [])
+})
+
+test('releasing a photo preview revokes its URL exactly once', () => {
+  const urls = fakeObjectUrls()
+  const preview = createPhotoPreview(new File(['png'], 'bag.png', { type: 'image/png' }), urls.api)
+
+  preview.release()
+  preview.release()
+
+  assert.deepEqual(urls.revoked, ['blob:preview-1'])
+})
+
+test('replacing, clearing and unmounting release each preview URL once, leaving only the current one live', () => {
+  const urls = fakeObjectUrls()
+  const preview: { current: ReturnType<typeof createPhotoPreview> | null } = { current: null }
+  // Mirrors the page: every replacement or clear releases the previous preview first.
+  const show = (file: File | null) => {
+    preview.current?.release()
+    preview.current = file ? createPhotoPreview(file, urls.api) : null
+  }
+
+  show(new File(['a'], 'first.jpg', { type: 'image/jpeg' }))
+  show(new File(['b'], 'second.png', { type: 'image/png' })) // replacement
+  assert.deepEqual(urls.revoked, ['blob:preview-1'])
+
+  show(null) // invalid selection, Remove photo, success or Report another bag
+  show(null) // a second clear has nothing left to release
+  assert.deepEqual(urls.revoked, ['blob:preview-1', 'blob:preview-2'])
+
+  show(new File(['c'], 'third.jpg', { type: 'image/jpeg' }))
+  preview.current?.release() // unmount
+  preview.current?.release()
+  assert.deepEqual(urls.revoked, ['blob:preview-1', 'blob:preview-2', 'blob:preview-3'])
+  assert.equal(urls.created.length, 3)
 })

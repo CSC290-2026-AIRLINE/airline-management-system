@@ -305,6 +305,37 @@ export function buildCreateLostReportPayload(
   return payload
 }
 
+export interface ObjectUrlApi {
+  create(file: Blob): string
+  revoke(url: string): void
+}
+
+/** A temporary browser URL for showing a selected photo before it is uploaded. */
+export interface PhotoPreview {
+  url: string
+  /** Frees the URL. Safe to call more than once; it is revoked only the first time. */
+  release(): void
+}
+
+const BROWSER_OBJECT_URLS: ObjectUrlApi = {
+  create: (file) => URL.createObjectURL(file),
+  revoke: (url) => URL.revokeObjectURL(url),
+}
+
+/** Call only for a photo validateLostReportPhoto accepted, and only from an event handler (never during render). */
+export function createPhotoPreview(file: Blob, urls: ObjectUrlApi = BROWSER_OBJECT_URLS): PhotoPreview {
+  const url = urls.create(file)
+  let released = false
+  return {
+    url,
+    release() {
+      if (released) return
+      released = true
+      urls.revoke(url)
+    },
+  }
+}
+
 export function buildCreateLostReportFormData(
   values: LostBagFormValues,
   flights: EligibleFlight[],
