@@ -300,7 +300,7 @@ export function GatePage({ api }: { api: StaffApi }) {
         </Card>
         <Card className="gap-2 rounded-2xl border-[#dbe2ea] px-5 py-4">
           <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]">{headcount?.sensorCount ?? '—'}</div>
-          <div className={MUTED}>Gate sensor count (Feature 16)</div>
+          <div className={MUTED}>Gate head count</div>
         </Card>
       </div>
 
@@ -443,7 +443,7 @@ export function GatePage({ api }: { api: StaffApi }) {
         </p>
         <div className="flex flex-col gap-2">
           <Label htmlFor="gate-manual" className={INPUT_LABEL}>
-            Manual count (only if the sensor is down)
+            Head count at the gate
           </Label>
           <Input
             id="gate-manual"
@@ -458,7 +458,7 @@ export function GatePage({ api }: { api: StaffApi }) {
               setMismatch(null)
               setMismatchCount(null)
             }}
-            placeholder="Leave empty to use the sensor"
+            placeholder="Leave empty to use the automatic count"
           />
         </div>
         {mismatch ? <Message tone="error">{mismatch}</Message> : null}

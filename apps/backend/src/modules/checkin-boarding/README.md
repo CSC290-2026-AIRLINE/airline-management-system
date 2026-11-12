@@ -98,8 +98,9 @@ decided by `register('memory' | 'db')` in `checkin-boarding.module.ts` — one l
   moved up a boarding group by tier.
 - **Notifications** (`LoggerNotify`) — feature 13's notification service. The four type codes are already the ones
   feature 13 uses.
-- **Sensor** (`FixtureSensor`) — feature 16's head-count sensor. Without an override it answers the number that
-  boarded, so the demo counts by hand.
+- **Sensor** (`FixtureSensor`) — the automatic head count. Feature 16 will not build a gate sensor (G14's scope is a
+  standalone robot, Dev team 2026-11-12), so this fixture stays: without an override it answers the number that
+  boarded, and the agent's typed count is the real path.
 
 ### The staff guard reads `user.type`
 
