@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react'
-import { listMyVouchers } from '../api/mock-refunds'
+import { Badge } from '@customer-web/components/ui/badge'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent } from '@customer-web/components/ui/card'
+import { cn } from '@customer-web/lib/utils'
+import { useRefundsApi } from '../api/refunds'
 import { RefundsShell } from '../components/RefundsShell'
 import { formatAmount, formatDate } from '../format'
 import type { MyVoucherDto, MyVoucherListDto } from '../types'
 
 /** The colour of a voucher's state. The words come from the API (`status_label`). */
 function badgeClass(voucher: MyVoucherDto): string {
-  if (voucher.status === 'active') return voucher.status_label === 'Expiring' ? 'rf-badge rf-badge--warn' : 'rf-badge rf-badge--good'
-  if (voucher.status === 'redeemed') return 'rf-badge'
-  return 'rf-badge rf-badge--quiet'
+  if (voucher.status === 'active') {
+    return voucher.status_label === 'Expiring' ? 'bg-warning-soft text-warning' : 'bg-success-soft text-success-strong'
+  }
+  if (voucher.status === 'redeemed') return 'bg-[#EAF0FB] text-navy'
+  return 'bg-muted text-muted-foreground'
 }
 
 /** The line under a voucher: when it ends, or what happened to it. */
@@ -22,13 +28,15 @@ function endNote(voucher: MyVoucherDto): string {
 
 /** Feature 5b: the customer's vouchers (frame 05). */
 export function MyVouchersPage() {
+  const api = useRefundsApi()
   const [data, setData] = useState<MyVoucherListDto | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
-    listMyVouchers()
+    api
+      .listMyVouchers()
       .then((result) => {
         if (live) setData(result)
       })
@@ -38,6 +46,8 @@ export function MyVouchersPage() {
     return () => {
       live = false
     }
+    // `api` is rebuilt every render, so it stays out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /** Copies the code, so the customer can paste it at checkout. A browser that refuses just leaves the code on screen. */
@@ -57,44 +67,46 @@ export function MyVouchersPage() {
       current="vouchers"
     >
       {error && (
-        <p role="alert" className="rf-error">
-          {error}
-        </p>
+        <Card className="border-danger-line/40 bg-danger-soft" role="alert">
+          <CardContent className="text-sm text-danger">{error}</CardContent>
+        </Card>
       )}
-      {!data && !error && <p className="rf-empty">Loading your vouchers…</p>}
-      {data?.items.length === 0 && <p className="rf-empty">You have no vouchers yet.</p>}
+      {!data && !error && <p className="py-8 text-center text-sm text-muted-foreground">Loading your vouchers…</p>}
+      {data?.items.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">You have no vouchers yet.</p>}
 
-      <ul className="rf-list">
+      <ul className="m-0 grid list-none gap-4 p-0 md:grid-cols-2 lg:grid-cols-3">
         {data?.items.map((voucher) => (
-          <li key={voucher.id} className="rf-card">
-            <div className="rf-card-top">
-              <div>
-                <h2 className="rf-card-title rf-code">{voucher.code}</h2>
-                <p className="rf-card-meta">{voucher.description}</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div className="rf-amount">
-                  {formatAmount(voucher.amount)} {voucher.currency}
+          <li key={voucher.id}>
+            <Card className="h-full">
+              <CardContent className="flex h-full flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="m-0 font-mono text-base font-semibold tracking-wide text-foreground">{voucher.code}</h2>
+                  <Badge className={cn('border-0', badgeClass(voucher))}>{voucher.status_label}</Badge>
                 </div>
-                <span className={badgeClass(voucher)}>{voucher.status_label}</span>
-              </div>
-            </div>
-            <p className="rf-note">
-              Issued {formatDate(voucher.issued_at)} · {endNote(voucher)}
-            </p>
-            {voucher.status === 'active' && (
-              <div className="rf-actions" style={{ marginTop: 12 }}>
-                {/* The checkout is Feature 5a's; the button copies the code to paste there. */}
-                <button type="button" className="rf-button rf-button--outline" onClick={() => void copy(voucher.code)}>
-                  {copied === voucher.code ? 'Code copied' : 'Use at checkout'}
-                </button>
-              </div>
-            )}
+                <p className="m-0 text-3xl font-bold text-foreground tabular-nums">
+                  {formatAmount(voucher.amount)} <span className="text-base font-medium text-muted-foreground">{voucher.currency}</span>
+                </p>
+                <p className="m-0 text-sm text-muted-foreground">{voucher.description}</p>
+                <p className="m-0 text-sm text-muted-foreground">
+                  Issued {formatDate(voucher.issued_at)} · {endNote(voucher)}
+                </p>
+                {voucher.status === 'active' && (
+                  <div className="mt-auto pt-1">
+                    {/* The checkout is Feature 5a's; the button copies the code to paste there. */}
+                    <Button type="button" variant="outline" className="w-full" onClick={() => void copy(voucher.code)}>
+                      {copied === voucher.code ? 'Code copied' : 'Use at checkout'}
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </li>
         ))}
       </ul>
 
-      <p className="rf-footnote">A voucher is used once, in full, on one booking. Anything left over is not carried forward.</p>
+      <p className="mt-6 text-sm text-muted-foreground">
+        A voucher is used once, in full, on one booking. Anything left over is not carried forward.
+      </p>
     </RefundsShell>
   )
 }

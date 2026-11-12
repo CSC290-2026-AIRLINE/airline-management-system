@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Input } from '@staff-web/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { cn } from '@staff-web/lib/utils'
-import { listRefundQueue } from '../api/mock-refunds'
+import { useRefundsApi } from '../api/refunds'
 import { RefundsFrame } from '../components/RefundsFrame'
 import { RefundStatusBadge } from '../components/RefundStatusBadge'
 import { formatMoney } from '../format'
@@ -32,13 +32,15 @@ export function RefundQueuePage({ tab, onTabChange }: RefundQueuePageProps) {
 }
 
 function Queue({ tab, onTabChange }: RefundQueuePageProps) {
+  const api = useRefundsApi()
   const [search, setSearch] = useState('')
   const [data, setData] = useState<RefundQueueListDto | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let current = true
-    listRefundQueue(tab, search)
+    api
+      .listRefundQueue(tab, search)
       .then((result) => {
         if (current) {
           setData(result)
@@ -51,6 +53,8 @@ function Queue({ tab, onTabChange }: RefundQueuePageProps) {
     return () => {
       current = false
     }
+    // `api` is rebuilt every render, so it stays out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, search])
 
   return (

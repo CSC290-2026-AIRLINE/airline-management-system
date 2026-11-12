@@ -7,7 +7,7 @@ import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { cn } from '@staff-web/lib/utils'
-import { issueCompensation, listCompensation, voidVoucher } from '../api/mock-compensation'
+import { useRefundsApi } from '../api/refunds'
 import { RefundsFrame } from '../components/RefundsFrame'
 import { formatDateTime, formatMoney } from '../format'
 import {
@@ -58,6 +58,7 @@ export function CompensationPage({ filter, onFilterChange }: CompensationPagePro
 }
 
 function Compensation({ filter, onFilterChange }: CompensationPageProps) {
+  const api = useRefundsApi()
   const [search, setSearch] = useState('')
   const [data, setData] = useState<CompensationListDto | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +69,8 @@ function Compensation({ filter, onFilterChange }: CompensationPageProps) {
 
   useEffect(() => {
     let live = true
-    listCompensation(filter, search)
+    api
+      .listCompensation(filter, search)
       .then((result) => {
         if (!live) return
         setData(result)
@@ -80,6 +82,8 @@ function Compensation({ filter, onFilterChange }: CompensationPageProps) {
     return () => {
       live = false
     }
+    // `api` is rebuilt every render, so it stays out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, search, reload])
 
   return (
@@ -212,6 +216,7 @@ function Compensation({ filter, onFilterChange }: CompensationPageProps) {
 
 /** The "Issue compensation" dialog: booking, kind, amount and reason. */
 function IssueDialog({ open, onClose, onIssued }: { open: boolean; onClose: () => void; onIssued: (entry: CompensationEntryDto) => void }) {
+  const api = useRefundsApi()
   const [booking, setBooking] = useState('')
   const [kind, setKind] = useState<CompensationKind>('voucher')
   const [amount, setAmount] = useState('')
@@ -229,7 +234,12 @@ function IssueDialog({ open, onClose, onIssued }: { open: boolean; onClose: () =
     setBusy(true)
     setError(null)
     try {
-      const entry = await issueCompensation({ booking_reference: booking, kind, amount: value, reason })
+      const entry = await api.issueCompensation({
+        booking_reference: booking.trim().toUpperCase(),
+        kind,
+        amount: value,
+        reason: reason.trim(),
+      })
       setBooking('')
       setAmount('')
       setReason('')
@@ -328,6 +338,7 @@ function VoidDialog({
   onClose: () => void
   onVoided: (entry: CompensationEntryDto) => void
 }) {
+  const api = useRefundsApi()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -336,7 +347,7 @@ function VoidDialog({
     setBusy(true)
     setError(null)
     try {
-      onVoided(await voidVoucher(entry.id))
+      onVoided(await api.voidVoucher(entry.id))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'It could not be voided.')
     } finally {

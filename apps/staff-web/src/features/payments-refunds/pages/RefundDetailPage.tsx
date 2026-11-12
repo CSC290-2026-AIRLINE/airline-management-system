@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
 import { Label } from '@staff-web/components/ui/label'
-import { decideRefund, getRefund } from '../api/mock-refunds'
+import { useRefundsApi } from '../api/refunds'
 import { RefundsFrame } from '../components/RefundsFrame'
 import { RefundStatusBadge } from '../components/RefundStatusBadge'
 import { formatDateTime, formatMoney } from '../format'
@@ -34,6 +34,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function Detail({ refundId }: { refundId: string }) {
+  const api = useRefundsApi()
   const [refund, setRefund] = useState<RefundDetailDto | null>(null)
   const [missing, setMissing] = useState(false)
   const [reason, setReason] = useState('')
@@ -43,7 +44,8 @@ function Detail({ refundId }: { refundId: string }) {
 
   useEffect(() => {
     let current = true
-    getRefund(refundId)
+    api
+      .getRefund(refundId)
       .then((result) => {
         if (!current) return
         setRefund(result)
@@ -55,6 +57,8 @@ function Detail({ refundId }: { refundId: string }) {
     return () => {
       current = false
     }
+    // `api` is rebuilt every render, so it stays out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refundId])
 
   async function decide(decision: RefundDecision) {
@@ -67,7 +71,7 @@ function Detail({ refundId }: { refundId: string }) {
     setBusy(true)
     setError(null)
     try {
-      setRefund(await decideRefund(refund.id, decision, reason.trim()))
+      setRefund(await api.decideRefund(refund.id, decision, reason.trim()))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The decision could not be saved.')
     } finally {
@@ -112,12 +116,12 @@ function Detail({ refundId }: { refundId: string }) {
     <div className="space-y-4">
       {back}
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-xl font-semibold">{refund.reference}</h2>
+        <h2 className="m-0 font-sans text-xl font-semibold text-foreground">{refund.reference}</h2>
         <RefundStatusBadge status={refund.status} label={refund.status_label} />
       </div>
 
       <section aria-labelledby="request-heading" className="rounded-lg border bg-card p-4">
-        <h3 id="request-heading" className="mb-2 font-semibold">
+        <h3 id="request-heading" className="mb-2 font-semibold text-foreground">
           Request
         </h3>
         <dl className="divide-y">
@@ -136,7 +140,7 @@ function Detail({ refundId }: { refundId: string }) {
       </section>
 
       <section aria-labelledby="decision-heading" className="rounded-lg border bg-card p-4">
-        <h3 id="decision-heading" className="mb-2 font-semibold">
+        <h3 id="decision-heading" className="mb-2 font-semibold text-foreground">
           Decision
         </h3>
 

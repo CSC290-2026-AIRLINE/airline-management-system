@@ -73,32 +73,33 @@ export interface MyVoucherListDto {
   usable: number
 }
 
-/** A line the customer can ask money back for. */
+/** A line of a payment the customer can still ask money back for. */
 export interface RefundableLine {
   description: string
+  /** What the line cost. */
   amount: number
+  /** What is left to ask for: the cost less the refunds that are not rejected or failed. */
+  remaining: number
 }
 
-/** The receipt the "Request a refund" dialog is opened for. */
-export interface RefundReceipt {
-  document_number: string
+/** A captured payment of the customer's, with the lines that still have something to refund. */
+export interface RefundablePaymentDto {
+  /** The reference the request names: the booking reference. */
   booking_reference: string
   currency: string
   total: number
   lines: RefundableLine[]
 }
 
+export interface RefundableListDto {
+  items: RefundablePaymentDto[]
+  total: number
+}
+
 /** Body of the "Request a refund" dialog. */
 export interface RefundRequestBody {
+  booking_reference: string
   item: string
   amount: number
   reason: string
-}
-
-/** What the dialog's "Request sent" step shows. */
-export interface RefundRequestResult {
-  reference: string
-  amount: number
-  currency: string
-  message: string
 }
