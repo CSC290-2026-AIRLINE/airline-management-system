@@ -1,0 +1,377 @@
+/*
+ * Feature 5b's customer pages (My refunds, My vouchers, the request dialog).
+ *
+ * This branch's customer-web has no Tailwind or shadcn (Feature 5a adds them), so these pages carry their own small
+ * stylesheet. Every class starts with `rf-` so nothing here reaches another page. When the branches are merged, these
+ * can be rewritten with the shared components.
+ */
+
+.rf-page {
+  --rf-ink: #0f1b3d;
+  --rf-muted: #5b6577;
+  --rf-line: #e3e7ef;
+  --rf-card: #ffffff;
+  --rf-bg: #f6f8fc;
+  --rf-blue: #eaf0fb;
+  --rf-blue-ink: #1e3a8a;
+  --rf-green: #dff5e8;
+  --rf-green-ink: #14532d;
+  --rf-amber: #fdf0d3;
+  --rf-amber-ink: #7a4b00;
+  --rf-red: #fbe4e4;
+  --rf-red-ink: #8a1c1c;
+  min-height: 100svh;
+  background: var(--rf-bg);
+  color: var(--rf-ink);
+  font:
+    16px/1.5 system-ui,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+.rf-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 32px;
+  background: var(--rf-card);
+  border-bottom: 1px solid var(--rf-line);
+}
+
+.rf-brand {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--rf-ink);
+}
+
+.rf-main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+
+.rf-title {
+  margin: 0 0 4px;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--rf-ink);
+}
+
+.rf-subtitle {
+  margin: 0 0 24px;
+  color: var(--rf-muted);
+}
+
+/* The page tabs: Receipts, My refunds, My vouchers. */
+.rf-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.rf-tab {
+  padding: 8px 16px;
+  border: 1px solid var(--rf-line);
+  border-radius: 999px;
+  background: var(--rf-card);
+  color: var(--rf-ink);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.rf-tab[aria-current='page'],
+.rf-tab[aria-selected='true'] {
+  background: var(--rf-blue);
+  border-color: #b9c9ec;
+  color: var(--rf-blue-ink);
+}
+
+.rf-tab[aria-disabled='true'] {
+  color: var(--rf-muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.rf-tab:focus-visible,
+.rf-button:focus-visible,
+.rf-input:focus-visible {
+  outline: 3px solid #93b0ec;
+  outline-offset: 2px;
+}
+
+.rf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.rf-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--rf-line);
+  border-radius: 10px;
+  background: var(--rf-card);
+  color: var(--rf-ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.rf-search {
+  max-width: 320px;
+}
+
+.rf-button {
+  padding: 10px 18px;
+  border: 1px solid var(--rf-ink);
+  border-radius: 10px;
+  background: var(--rf-ink);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rf-button--outline {
+  background: var(--rf-card);
+  color: var(--rf-ink);
+  border-color: var(--rf-line);
+}
+
+.rf-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rf-card {
+  padding: 20px;
+  border: 1px solid var(--rf-line);
+  border-radius: 16px;
+  background: var(--rf-card);
+}
+
+.rf-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rf-card-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.rf-card-meta {
+  margin: 2px 0 0;
+  color: var(--rf-muted);
+  font-size: 14px;
+}
+
+.rf-amount {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rf-note {
+  margin: 12px 0 0;
+  color: var(--rf-muted);
+  font-size: 14px;
+}
+
+.rf-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--rf-blue);
+  color: var(--rf-blue-ink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rf-badge--good {
+  background: var(--rf-green);
+  color: var(--rf-green-ink);
+}
+
+.rf-badge--warn {
+  background: var(--rf-amber);
+  color: var(--rf-amber-ink);
+}
+
+.rf-badge--bad {
+  background: var(--rf-red);
+  color: var(--rf-red-ink);
+}
+
+.rf-badge--quiet {
+  background: #eceff4;
+  color: var(--rf-muted);
+}
+
+.rf-code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.rf-empty,
+.rf-error {
+  padding: 32px 16px;
+  border: 1px solid var(--rf-line);
+  border-radius: 16px;
+  background: var(--rf-card);
+  color: var(--rf-muted);
+  text-align: center;
+}
+
+.rf-error {
+  background: var(--rf-red);
+  color: var(--rf-red-ink);
+  border-color: #f0bcbc;
+}
+
+.rf-footnote {
+  margin-top: 24px;
+  color: var(--rf-muted);
+  font-size: 14px;
+}
+
+/* The dialog. */
+.rf-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 16px;
+  background: rgba(15, 27, 61, 0.6);
+}
+
+.rf-dialog {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  padding: 24px;
+  border-radius: 24px;
+  background: var(--rf-card);
+  color: var(--rf-ink);
+  box-shadow: 0 24px 60px rgba(15, 27, 61, 0.35);
+}
+
+.rf-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.rf-dialog-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.rf-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--rf-line);
+  border-radius: 50%;
+  background: var(--rf-card);
+  color: var(--rf-ink);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rf-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rf-label {
+  color: var(--rf-muted);
+  font-size: 13px;
+}
+
+.rf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rf-line);
+  border-radius: 10px;
+  background: var(--rf-bg);
+  font-size: 15px;
+}
+
+.rf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.rf-success {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--rf-green);
+  color: var(--rf-green-ink);
+}
+
+.rf-success p {
+  margin: 0;
+}
+
+.rf-problem {
+  margin: 0;
+  color: var(--rf-red-ink);
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .rf-header {
+    padding: 12px 16px;
+  }
+
+  .rf-title {
+    font-size: 26px;
+  }
+}
