@@ -3,12 +3,7 @@
 
 export type ComplaintCategory = 'Employee' | 'Flight' | 'Food'
 
-export type ComplaintStatus =
-  | 'Pending'
-  | 'In Review'
-  | 'Escalated'
-  | 'Resolved'
-  | 'Closed'
+export type ComplaintStatus = 'Pending' | 'In Review' | 'Escalated' | 'Resolved' | 'Closed'
 
 export interface ComplaintNote {
   id: string
@@ -80,18 +75,3 @@ export function generateCaseId(): string {
   const num = existing.length + 1
   return `CS-${year}-${String(num).padStart(5, '0')}`
 }
-
-export const STATUS_COLORS: Record<ComplaintStatus, { bg: string; text: string; border: string }> = {
-  Pending: { bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
-  'In Review': { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
-  Escalated: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
-  Resolved: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
-  Closed: { bg: '#f3f4f6', text: '#374151', border: '#d1d5db' },
-}
-
-export const CATEGORY_ICONS: Record<ComplaintCategory, string> = {
-  Employee: '👤',
-  Flight: '✈️',
-  Food: '🍽️',
-}
-

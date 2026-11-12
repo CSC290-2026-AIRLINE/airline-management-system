@@ -25,12 +25,15 @@ import {
   Utensils,
   type LucideIcon,
 } from 'lucide-react'
+import type { LinkProps } from '@tanstack/react-router'
 
 /** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
 
 export interface NavItem {
   label: string
   icon: LucideIcon
+  /** Set once the owning team has a route in this app; the item then renders as a live link instead of a disabled one. */
+  to?: LinkProps['to']
 }
 
 export const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
@@ -67,7 +70,7 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { label: 'Customer Search', icon: Search },
       { label: 'Security Screening', icon: ShieldCheck },
-      { label: 'Service & Compensation', icon: MessageSquare },
+      { label: 'Service & Compensation', icon: MessageSquare, to: '/complaints' },
       { label: 'Loyalty Programme', icon: Star },
     ],
   },

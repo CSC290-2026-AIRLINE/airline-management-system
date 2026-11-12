@@ -1,377 +1,228 @@
-import { useState } from 'react'
-import type { Complaint, ComplaintStatus, ComplaintNote } from './types'
-import { STATUS_COLORS, CATEGORY_ICONS } from './types'
+import { useId, useState, type ReactNode } from 'react'
+import { Flag, Lock, Send } from 'lucide-react'
+import { Button } from '@staff-web/components/ui/button'
+import { Checkbox } from '@staff-web/components/ui/checkbox'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@staff-web/components/ui/sheet'
+import { Switch } from '@staff-web/components/ui/switch'
+import { cn } from '@staff-web/lib/utils'
+import type { Complaint, ComplaintNote, ComplaintStatus } from './types'
+import { CategoryLabel, StatusBadge } from './ComplaintBadges'
+import { formatDateTime } from './format'
 
 const ALL_STATUSES: ComplaintStatus[] = ['Pending', 'In Review', 'Escalated', 'Resolved', 'Closed']
 
 interface Props {
   complaint: Complaint
   onUpdate: (updated: Complaint) => void
-  onClose: () => void
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-export function ComplaintDetailPanel({ complaint, onUpdate, onClose }: Props) {
+/** The case drawer. Rendered inside the dashboard's `Sheet`, which owns opening and closing it. */
+export function ComplaintDetailPanel({ complaint, onUpdate }: Props) {
   const [noteText, setNoteText] = useState('')
   const [isInternal, setIsInternal] = useState(true)
   const [staffName, setStaffName] = useState('Staff Admin')
+  const ids = { supervisor: useId(), name: useId(), note: useId(), internal: useId() }
 
-  function changeStatus(status: ComplaintStatus) {
-    const updated: Complaint = {
-      ...complaint,
-      status,
-      updatedAt: new Date().toISOString(),
-    }
-    onUpdate(updated)
-  }
-
-  function toggleSupervisor() {
-    const updated: Complaint = {
-      ...complaint,
-      supervisorInvolved: !complaint.supervisorInvolved,
-      updatedAt: new Date().toISOString(),
-    }
-    onUpdate(updated)
+  function update(changes: Partial<Complaint>) {
+    onUpdate({ ...complaint, ...changes, updatedAt: new Date().toISOString() })
   }
 
   function addNote() {
     if (!noteText.trim()) return
     const note: ComplaintNote = {
       id: crypto.randomUUID(),
-      author: staffName || 'Staff Admin',
+      author: staffName.trim() || 'Staff Admin',
       content: noteText.trim(),
       createdAt: new Date().toISOString(),
       isInternal,
     }
-    const updated: Complaint = {
-      ...complaint,
-      notes: [...complaint.notes, note],
-      updatedAt: new Date().toISOString(),
-    }
     setNoteText('')
-    onUpdate(updated)
+    update({ notes: [...complaint.notes, note] })
   }
 
-  const col = STATUS_COLORS[complaint.status]
-
   return (
-    <div style={{
-      width: '460px',
-      flexShrink: 0,
-      background: '#fff',
-      borderLeft: '1px solid #e2e8f0',
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      overflow: 'hidden',
-    }}>
-      {/* Panel Header */}
-      <div style={{
-        padding: '18px 20px 14px',
-        borderBottom: '1px solid #e2e8f0',
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <span style={{
-              fontFamily: 'monospace',
-              fontSize: '15px',
-              fontWeight: 700,
-              color: '#1e40af',
-            }}>{complaint.id}</span>
-            <span style={{
-              padding: '2px 10px',
-              borderRadius: '12px',
-              fontSize: '12px',
-              fontWeight: 600,
-              background: col.bg,
-              color: col.text,
-              border: `1px solid ${col.border}`,
-            }}>{complaint.status}</span>
-          </div>
-          <div style={{ fontSize: '13px', color: '#64748b' }}>
-            Submitted {formatDate(complaint.submittedAt)}
-          </div>
+    <SheetContent className="w-full gap-0 sm:max-w-lg">
+      <SheetHeader className="border-b pr-12">
+        <div className="flex items-center gap-2">
+          <SheetTitle className="font-mono text-base">{complaint.id}</SheetTitle>
+          <StatusBadge status={complaint.status} />
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'none',
-            border: 'none',
-            fontSize: '20px',
-            cursor: 'pointer',
-            color: '#94a3b8',
-            padding: '0 4px',
-            lineHeight: 1,
-          }}
-        >×</button>
-      </div>
+        <SheetDescription>Submitted {formatDateTime(complaint.submittedAt)}</SheetDescription>
+      </SheetHeader>
 
-      {/* Scrollable Body */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-
-        {/* Category & Subject */}
-        <Section title="Complaint Details">
-          <InfoRow label="Category">
-            <span>{CATEGORY_ICONS[complaint.category]} {complaint.category}</span>
-          </InfoRow>
-          <InfoRow label="Subject">
-            <span style={{ fontWeight: 600, color: '#1e293b' }}>{complaint.subject}</span>
-          </InfoRow>
-          <div style={{ marginTop: '10px' }}>
-            <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '6px' }}>
-              Description
-            </div>
-            <div style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              padding: '12px',
-              fontSize: '14px',
-              color: '#374151',
-              lineHeight: 1.6,
-              whiteSpace: 'pre-wrap',
-            }}>
-              {complaint.description}
-            </div>
-          </div>
+      <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-4">
+        <Section title="Complaint details">
+          <InfoList>
+            <InfoRow label="Category">
+              <CategoryLabel category={complaint.category} />
+            </InfoRow>
+            <InfoRow label="Subject">
+              <span className="font-semibold">{complaint.subject}</span>
+            </InfoRow>
+          </InfoList>
+          <p className="mt-3 rounded-lg border bg-muted/40 p-3 text-sm leading-relaxed whitespace-pre-wrap">{complaint.description}</p>
         </Section>
 
-        {/* Booking & Flight */}
-        <Section title="Booking & Flight">
-          <InfoRow label="Booking Ref">
-            <code style={codeStyle}>{complaint.bookingRef}</code>
-          </InfoRow>
-          <InfoRow label="Flight">
-            <code style={codeStyle}>{complaint.flightNumber}</code>
-          </InfoRow>
-          <InfoRow label="Flight Date">
-            <span>{complaint.flightDate}</span>
-          </InfoRow>
+        <Section title="Booking & flight">
+          <InfoList>
+            <InfoRow label="Booking ref">
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px]">{complaint.bookingRef}</code>
+            </InfoRow>
+            <InfoRow label="Flight">
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px]">{complaint.flightNumber}</code>
+            </InfoRow>
+            <InfoRow label="Flight date">{complaint.flightDate}</InfoRow>
+          </InfoList>
         </Section>
 
-        {/* Passenger */}
-        <Section title="Passenger Information">
-          <InfoRow label="Name">
-            <span style={{ fontWeight: 600 }}>{complaint.passengerName}</span>
-          </InfoRow>
-          <InfoRow label="Email">
-            <a href={`mailto:${complaint.passengerEmail}`} style={{ color: '#3b82f6' }}>
-              {complaint.passengerEmail}
-            </a>
-          </InfoRow>
+        <Section title="Passenger">
+          <InfoList>
+            <InfoRow label="Name">
+              <span className="font-semibold">{complaint.passengerName}</span>
+            </InfoRow>
+            <InfoRow label="Email">
+              <a href={`mailto:${complaint.passengerEmail}`} className="text-primary underline-offset-4 hover:underline">
+                {complaint.passengerEmail}
+              </a>
+            </InfoRow>
+          </InfoList>
         </Section>
 
-        {/* Status Management */}
-        <Section title="Case Management">
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px' }}>
-              Update Status
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        <Section title="Case management">
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium text-muted-foreground">Status</p>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Set status">
               {ALL_STATUSES.map((s) => {
-                const sc = STATUS_COLORS[s]
-                const isActive = complaint.status === s
+                const active = complaint.status === s
                 return (
-                  <button
+                  <Button
                     key={s}
-                    onClick={() => changeStatus(s)}
-                    style={{
-                      padding: '5px 12px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      border: `1.5px solid ${isActive ? sc.border : '#e2e8f0'}`,
-                      background: isActive ? sc.bg : '#fff',
-                      color: isActive ? sc.text : '#64748b',
-                      transition: 'all 0.15s',
-                    }}
+                    size="xs"
+                    variant={active ? 'default' : 'outline'}
+                    aria-pressed={active}
+                    onClick={() => !active && update({ status: s })}
                   >
                     {s}
-                  </button>
+                  </Button>
                 )
               })}
             </div>
           </div>
 
-          {/* Supervisor toggle */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '12px',
-            background: complaint.supervisorInvolved ? '#fee2e2' : '#f8fafc',
-            borderRadius: '8px',
-            border: `1px solid ${complaint.supervisorInvolved ? '#fca5a5' : '#e2e8f0'}`,
-          }}>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: complaint.supervisorInvolved ? '#991b1b' : '#374151' }}>
-                🔴 Supervisor Involved
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                Flag this case as requiring supervisor review
-              </div>
+          <div
+            className={cn(
+              'mt-4 flex items-center justify-between gap-4 rounded-lg border p-3',
+              complaint.supervisorInvolved && 'border-red-200 bg-red-50',
+            )}
+          >
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor={ids.supervisor} className={cn('gap-1.5', complaint.supervisorInvolved && 'text-red-800')}>
+                <Flag
+                  className={cn('size-4', complaint.supervisorInvolved ? 'text-red-600' : 'text-muted-foreground')}
+                  aria-hidden="true"
+                />
+                Supervisor involved
+              </Label>
+              <p className="text-xs text-muted-foreground">Flag this case as needing supervisor review.</p>
             </div>
-            <button
-              onClick={toggleSupervisor}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: 'none',
-                background: complaint.supervisorInvolved ? '#dc2626' : '#3b82f6',
-                color: '#fff',
-              }}
-            >
-              {complaint.supervisorInvolved ? 'Remove' : 'Flag'}
-            </button>
+            <Switch
+              id={ids.supervisor}
+              checked={complaint.supervisorInvolved}
+              onCheckedChange={(checked) => update({ supervisorInvolved: checked })}
+            />
           </div>
         </Section>
 
-        {/* Notes / Timeline */}
-        <Section title={`Notes & Activity (${complaint.notes.length})`}>
+        <Section title={`Notes & activity (${complaint.notes.length})`}>
           {complaint.notes.length === 0 ? (
-            <div style={{ fontSize: '13px', color: '#94a3b8', textAlign: 'center', padding: '12px 0' }}>
-              No notes yet
-            </div>
+            <p className="py-2 text-center text-sm text-muted-foreground">No notes yet.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+            <ul className="flex flex-col gap-2">
               {complaint.notes.map((note) => (
-                <div
+                <li
                   key={note.id}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    background: note.isInternal ? '#fefce8' : '#f0fdf4',
-                    border: `1px solid ${note.isInternal ? '#fde047' : '#86efac'}`,
-                  }}
+                  className={cn(
+                    'rounded-lg border p-3',
+                    note.isInternal ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50',
+                  )}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#374151' }}>
-                      {note.isInternal ? '🔒 Internal' : '📤 Customer-facing'} · {note.author}
+                  <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1 font-semibold">
+                      {note.isInternal ? (
+                        <Lock className="size-3.5" aria-hidden="true" />
+                      ) : (
+                        <Send className="size-3.5" aria-hidden="true" />
+                      )}
+                      {note.isInternal ? 'Internal' : 'Customer-facing'} · {note.author}
                     </span>
-                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>{formatDate(note.createdAt)}</span>
+                    <span className="text-muted-foreground">{formatDateTime(note.createdAt)}</span>
                   </div>
-                  <div style={{ fontSize: '13px', color: '#374151', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                    {note.content}
-                  </div>
-                </div>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
 
-          {/* Add Note Form */}
-          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
-            <input
-              placeholder="Your name"
-              value={staffName}
-              onChange={(e) => setStaffName(e.target.value)}
-              style={{ ...inputStyle, marginBottom: '8px', fontSize: '13px' }}
-            />
-            <textarea
-              placeholder="Add a note or response..."
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              rows={3}
-              style={{ ...inputStyle, resize: 'vertical', display: 'block', width: '100%' }}
-            />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={isInternal}
-                  onChange={(e) => setIsInternal(e.target.checked)}
-                />
-                Internal note only
-              </label>
-              <button
-                onClick={addNote}
-                disabled={!noteText.trim()}
-                style={{
-                  padding: '7px 16px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: noteText.trim() ? '#3b82f6' : '#e2e8f0',
-                  color: noteText.trim() ? '#fff' : '#94a3b8',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: noteText.trim() ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Add Note
-              </button>
+          <form
+            className="mt-4 flex flex-col gap-3 border-t pt-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              addNote()
+            }}
+          >
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={ids.name}>Your name</Label>
+              <Input id={ids.name} value={staffName} onChange={(e) => setStaffName(e.target.value)} />
             </div>
-          </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={ids.note}>Note</Label>
+              <textarea
+                id={ids.note}
+                rows={3}
+                placeholder="Add a note or response…"
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                className="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Checkbox id={ids.internal} checked={isInternal} onCheckedChange={(checked) => setIsInternal(checked === true)} />
+                <Label htmlFor={ids.internal} className="font-normal">
+                  Internal note only
+                </Label>
+              </div>
+              <Button type="submit" size="sm" disabled={!noteText.trim()}>
+                Add note
+              </Button>
+            </div>
+          </form>
         </Section>
       </div>
-    </div>
+    </SheetContent>
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div style={{ marginBottom: '20px' }}>
-      <div style={{
-        fontSize: '11px',
-        fontWeight: 700,
-        color: '#94a3b8',
-        textTransform: 'uppercase',
-        letterSpacing: '0.08em',
-        marginBottom: '10px',
-        paddingBottom: '6px',
-        borderBottom: '1px solid #f1f5f9',
-      }}>
-        {title}
-      </div>
+    <section>
+      <h3 className="mb-3 border-b pb-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</h3>
       {children}
-    </div>
+    </section>
   )
 }
 
-function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+function InfoList({ children }: { children: ReactNode }) {
+  return <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 text-sm">{children}</dl>
+}
+
+function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
-      <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, minWidth: '90px', paddingTop: '1px' }}>
-        {label}
-      </div>
-      <div style={{ fontSize: '14px', color: '#374151', flex: 1 }}>
-        {children}
-      </div>
-    </div>
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="m-0 min-w-0 break-words">{children}</dd>
+    </>
   )
 }
-
-const codeStyle: React.CSSProperties = {
-  fontFamily: 'monospace',
-  background: '#f1f5f9',
-  padding: '1px 6px',
-  borderRadius: '4px',
-  fontSize: '13px',
-  color: '#1e293b',
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 10px',
-  borderRadius: '8px',
-  border: '1.5px solid #e2e8f0',
-  fontSize: '14px',
-  outline: 'none',
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-}
-

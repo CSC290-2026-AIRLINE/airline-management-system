@@ -143,9 +143,25 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
 
           {GROUPS.map((group) => (
             <NavGroup key={group.label} label={group.label}>
-              {group.items.map((item) => (
-                <PendingItem key={item.label} item={item} indent />
-              ))}
+              {group.items.map((item) =>
+                item.to ? (
+                  <SidebarMenuItem key={item.label}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                      tooltip={item.label}
+                      className="pl-4"
+                    >
+                      <Link to={item.to}>
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : (
+                  <PendingItem key={item.label} item={item} indent />
+                ),
+              )}
             </NavGroup>
           ))}
           <SidebarGroup className="py-1">

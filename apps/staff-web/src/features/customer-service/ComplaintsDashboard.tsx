@@ -1,54 +1,45 @@
-import { useState, useEffect } from 'react'
-import type { Complaint, ComplaintStatus, ComplaintCategory } from './types'
-import {
-  loadComplaints,
-  updateComplaint,
-  STATUS_COLORS,
-  CATEGORY_ICONS,
-} from './types'
+import { useEffect, useState } from 'react'
+import { Flag, Inbox, Search } from 'lucide-react'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardContent } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Sheet } from '@staff-web/components/ui/sheet'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { cn } from '@staff-web/lib/utils'
+import type { Complaint, ComplaintCategory, ComplaintStatus } from './types'
+import { loadComplaints, updateComplaint } from './types'
+import { CategoryLabel, StatusBadge } from './ComplaintBadges'
 import { ComplaintDetailPanel } from './ComplaintDetailPanel'
+import { formatDateTime } from './format'
 
 const ALL_STATUSES: ComplaintStatus[] = ['Pending', 'In Review', 'Escalated', 'Resolved', 'Closed']
 const ALL_CATEGORIES: ComplaintCategory[] = ['Employee', 'Flight', 'Food']
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+const REFRESH_MS = 2000
 
 export function ComplaintsDashboard() {
-  const [complaints, setComplaints] = useState<Complaint[]>([])
+  const [complaints, setComplaints] = useState<Complaint[]>(loadComplaints)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<ComplaintStatus | 'All'>('All')
   const [filterCategory, setFilterCategory] = useState<ComplaintCategory | 'All'>('All')
-  const [selected, setSelected] = useState<Complaint | null>(null)
-  const [lastRefresh, setLastRefresh] = useState(Date.now())
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  // Poll localStorage so new User submissions appear automatically
+  // Poll localStorage so new customer submissions appear automatically.
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLastRefresh(Date.now())
-    }, 2000)
+    const interval = setInterval(() => setComplaints(loadComplaints()), REFRESH_MS)
     return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => {
-    setComplaints(loadComplaints())
-  }, [lastRefresh])
+  // Derived from the list, so the open panel picks up changes from the poll too.
+  const selected = complaints.find((c) => c.id === selectedId) ?? null
 
   function handleUpdate(updated: Complaint) {
     updateComplaint(updated)
     setComplaints(loadComplaints())
-    setSelected(updated)
   }
 
+  const q = search.trim().toLowerCase()
   const filtered = complaints.filter((c) => {
-    const q = search.toLowerCase()
     const matchSearch =
       !q ||
       c.id.toLowerCase().includes(q) ||
@@ -61,283 +52,147 @@ export function ComplaintsDashboard() {
     return matchSearch && matchStatus && matchCategory
   })
 
-  // Stats
-  const stats: Record<ComplaintStatus, number> = {
-    Pending: 0,
-    'In Review': 0,
-    Escalated: 0,
-    Resolved: 0,
-    Closed: 0,
-  }
-  complaints.forEach((c) => { stats[c.status] = (stats[c.status] ?? 0) + 1 })
+  const counts = Object.fromEntries(ALL_STATUSES.map((s) => [s, complaints.filter((c) => c.status === s).length])) as Record<
+    ComplaintStatus,
+    number
+  >
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif', background: '#f8fafc' }}>
-      {/* ── Sidebar ── */}
-      <aside style={{
-        width: '220px',
-        background: '#1e293b',
-        color: '#94a3b8',
-        display: 'flex',
-        flexDirection: 'column',
-        flexShrink: 0,
-      }}>
-        <div style={{ padding: '24px 20px 16px', borderBottom: '1px solid #334155' }}>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>
-            ✈️ AMS Staff
-          </div>
-          <div style={{ fontSize: '12px', color: '#64748b' }}>Customer Service Admin</div>
-        </div>
-        <nav style={{ padding: '12px 0' }}>
-          {[
-            { label: '📋 Complaints', active: true },
-            { label: '🔔 Notifications', active: false },
-            { label: '📊 Reports', active: false },
-            { label: '⚙️ Settings', active: false },
-          ].map(({ label, active }) => (
-            <div
-              key={label}
-              style={{
-                padding: '10px 20px',
-                fontSize: '14px',
-                cursor: 'pointer',
-                background: active ? '#0f172a' : 'transparent',
-                color: active ? '#fff' : '#94a3b8',
-                borderLeft: active ? '3px solid #3b82f6' : '3px solid transparent',
-              }}
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:p-6 lg:p-8">
+      <header className="flex flex-col gap-2">
+        <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">Complaints</h1>
+        <p className="text-sm text-muted-foreground">
+          {complaints.length} total · {counts.Pending} pending · refreshes every {REFRESH_MS / 1000} seconds
+        </p>
+      </header>
+
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
+        {ALL_STATUSES.map((s) => {
+          const active = filterStatus === s
+          return (
+            <Button
+              key={s}
+              size="sm"
+              variant={active ? 'default' : 'outline'}
+              aria-pressed={active}
+              onClick={() => setFilterStatus(active ? 'All' : s)}
             >
-              {label}
-            </div>
-          ))}
-        </nav>
-        <div style={{ marginTop: 'auto', padding: '16px 20px', borderTop: '1px solid #334155', fontSize: '12px', color: '#475569' }}>
-          G16 · Customer Service
-        </div>
-      </aside>
+              {s}
+              <span className={cn('tabular-nums', active ? 'opacity-80' : 'text-muted-foreground')}>{counts[s]}</span>
+            </Button>
+          )
+        })}
+      </div>
 
-      {/* ── Main Area ── */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
-        <header style={{
-          background: '#fff',
-          borderBottom: '1px solid #e2e8f0',
-          padding: '16px 28px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '16px',
-        }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>
-              Complaints Inbox
-            </h1>
-            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-              {complaints.length} total · {stats.Pending} pending
-            </p>
+      <Card className="gap-0 py-0">
+        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search
+              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              type="search"
+              aria-label="Search complaints"
+              placeholder="Search by case ID, name, email, booking ref or flight"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8"
+            />
           </div>
-          <div style={{ fontSize: '13px', color: '#94a3b8' }}>
-            Auto-refresh every 2s
-          </div>
-        </header>
-
-        {/* Stats Bar */}
-        <div style={{
-          background: '#fff',
-          borderBottom: '1px solid #e2e8f0',
-          padding: '12px 28px',
-          display: 'flex',
-          gap: '12px',
-        }}>
-          {ALL_STATUSES.map((s) => {
-            const col = STATUS_COLORS[s]
-            return (
-              <div
-                key={s}
-                onClick={() => setFilterStatus(filterStatus === s ? 'All' : s)}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '20px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  background: filterStatus === s ? col.bg : '#f1f5f9',
-                  color: filterStatus === s ? col.text : '#64748b',
-                  border: `1.5px solid ${filterStatus === s ? col.border : 'transparent'}`,
-                  transition: 'all 0.15s',
-                  userSelect: 'none',
-                }}
-              >
-                {s} <span style={{ fontWeight: 400 }}>({stats[s]})</span>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Filters & Search */}
-        <div style={{
-          padding: '14px 28px',
-          display: 'flex',
-          gap: '12px',
-          alignItems: 'center',
-          background: '#f8fafc',
-          borderBottom: '1px solid #e2e8f0',
-        }}>
-          <input
-            type="text"
-            placeholder="🔍  Search by Case ID, name, booking ref, flight..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              flex: 1,
-              padding: '9px 14px',
-              borderRadius: '8px',
-              border: '1.5px solid #e2e8f0',
-              fontSize: '14px',
-              outline: 'none',
-              background: '#fff',
-            }}
-          />
-          <select
+          <NativeSelect
+            aria-label="Filter by category"
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value as ComplaintCategory | 'All')}
-            style={selectStyle}
+            className="sm:w-44"
           >
-            <option value="All">All Categories</option>
-            {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_ICONS[c]} {c}</option>)}
-          </select>
+            <NativeSelectOption value="All">All categories</NativeSelectOption>
+            {ALL_CATEGORIES.map((c) => (
+              <NativeSelectOption key={c} value={c}>
+                {c}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
         </div>
 
-        {/* Table Area */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px' }}>
+        <CardContent className="p-0">
           {filtered.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              padding: '80px 20px',
-              color: '#94a3b8',
-            }}>
-              <div style={{ fontSize: '48px', marginBottom: '12px' }}>📭</div>
-              <div style={{ fontSize: '16px', fontWeight: 600, color: '#64748b' }}>No complaints found</div>
-              <div style={{ fontSize: '14px', marginTop: '4px' }}>
+            <div className="flex flex-col items-center gap-2 px-4 py-16 text-center">
+              <Inbox className="size-10 text-muted-foreground" aria-hidden="true" />
+              <p className="font-semibold text-foreground">No complaints found</p>
+              <p className="text-sm text-muted-foreground">
                 {complaints.length === 0
                   ? 'No complaints have been submitted yet. They will appear here automatically.'
                   : 'Try adjusting your search or filters.'}
-              </div>
+              </p>
             </div>
           ) : (
-            <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-              {/* Table Header */}
-              <div style={tableHeaderStyle}>
-                <div style={{ flex: '0 0 150px' }}>Case ID</div>
-                <div style={{ flex: '0 0 110px' }}>Category</div>
-                <div style={{ flex: 1 }}>Subject</div>
-                <div style={{ flex: '0 0 160px' }}>Passenger</div>
-                <div style={{ flex: '0 0 120px' }}>Flight</div>
-                <div style={{ flex: '0 0 120px' }}>Status</div>
-                <div style={{ flex: '0 0 150px' }}>Submitted</div>
-              </div>
-              {/* Rows */}
-              {filtered.map((c) => {
-                const col = STATUS_COLORS[c.status]
-                const isSelected = selected?.id === c.id
-                return (
-                  <div
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">Case ID</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Passenger</TableHead>
+                  <TableHead>Flight</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="pr-4">Submitted</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((c) => (
+                  <TableRow
                     key={c.id}
-                    onClick={() => setSelected(c)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0',
-                      padding: '14px 20px',
-                      borderBottom: '1px solid #f1f5f9',
-                      cursor: 'pointer',
-                      background: isSelected ? '#eff6ff' : (c.status === 'Pending' ? '#fffbeb' : '#fff'),
-                      transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = '#f8fafc'
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) (e.currentTarget as HTMLDivElement).style.background =
-                        c.status === 'Pending' ? '#fffbeb' : '#fff'
-                    }}
+                    data-state={c.id === selectedId ? 'selected' : undefined}
+                    onClick={() => setSelectedId(c.id)}
+                    className={cn('cursor-pointer', c.status === 'Pending' && 'bg-amber-50/60')}
                   >
-                    <div style={{ flex: '0 0 150px', fontWeight: 700, fontSize: '13px', color: '#1e40af', fontFamily: 'monospace' }}>
-                      {c.supervisorInvolved && <span title="Supervisor involved" style={{ marginRight: '4px' }}>🔴</span>}
-                      {c.id}
-                    </div>
-                    <div style={{ flex: '0 0 110px', fontSize: '13px' }}>
-                      {CATEGORY_ICONS[c.category]} {c.category}
-                    </div>
-                    <div style={{ flex: 1, fontSize: '14px', color: '#1e293b', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '12px' }}>
-                      {c.subject}
-                    </div>
-                    <div style={{ flex: '0 0 160px', fontSize: '13px', color: '#475569' }}>
-                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{c.passengerName}</div>
-                      <div style={{ fontSize: '12px' }}>{c.passengerEmail}</div>
-                    </div>
-                    <div style={{ flex: '0 0 120px', fontSize: '13px', fontFamily: 'monospace', color: '#475569' }}>
-                      {c.flightNumber}<br />
-                      <span style={{ fontSize: '12px' }}>{c.flightDate}</span>
-                    </div>
-                    <div style={{ flex: '0 0 120px' }}>
-                      <span style={{
-                        padding: '3px 10px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        background: col.bg,
-                        color: col.text,
-                        border: `1px solid ${col.border}`,
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {c.status}
-                      </span>
-                    </div>
-                    <div style={{ flex: '0 0 150px', fontSize: '12px', color: '#94a3b8' }}>
-                      {formatDate(c.submittedAt)}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                    <TableCell className="pl-4">
+                      {/* The row is clickable; this button is the keyboard and screen-reader way in. */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedId(c.id)
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-sm font-mono text-sm font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {c.supervisorInvolved && (
+                          <>
+                            <Flag className="size-3.5 text-red-600" aria-hidden="true" />
+                            <span className="sr-only">Supervisor involved, </span>
+                          </>
+                        )}
+                        {c.id}
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <CategoryLabel category={c.category} />
+                    </TableCell>
+                    <TableCell className="max-w-64 truncate font-medium">{c.subject}</TableCell>
+                    <TableCell>
+                      <div className="font-medium">{c.passengerName}</div>
+                      <div className="text-xs text-muted-foreground">{c.passengerEmail}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-mono">{c.flightNumber}</div>
+                      <div className="text-xs text-muted-foreground">{c.flightDate}</div>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={c.status} />
+                    </TableCell>
+                    <TableCell className="pr-4 text-xs text-muted-foreground">{formatDateTime(c.submittedAt)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* ── Detail Panel ── */}
-      {selected && (
-        <ComplaintDetailPanel
-          complaint={selected}
-          onUpdate={handleUpdate}
-          onClose={() => setSelected(null)}
-        />
-      )}
+      <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelectedId(null)}>
+        {selected && <ComplaintDetailPanel complaint={selected} onUpdate={handleUpdate} />}
+      </Sheet>
     </div>
   )
 }
-
-const selectStyle: React.CSSProperties = {
-  padding: '9px 14px',
-  borderRadius: '8px',
-  border: '1.5px solid #e2e8f0',
-  fontSize: '14px',
-  outline: 'none',
-  background: '#fff',
-  cursor: 'pointer',
-  minWidth: '150px',
-}
-
-const tableHeaderStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  padding: '10px 20px',
-  background: '#f8fafc',
-  borderBottom: '2px solid #e2e8f0',
-  fontSize: '12px',
-  fontWeight: 700,
-  color: '#64748b',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  gap: '0',
-}
-
