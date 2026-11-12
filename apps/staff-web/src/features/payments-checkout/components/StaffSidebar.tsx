@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { LogOut } from 'lucide-react'
+import { CreditCard, LogOut } from 'lucide-react'
 import { cn } from '@staff-web/lib/utils'
 import flythonMark from '../assets/flython-mark.svg'
 
@@ -13,10 +13,11 @@ interface StaffSidebarProps {
 const CLOSED_GROUPS = ['Operations', 'Commercial', 'Airport & Onboard'] as const
 
 /**
- * The Customer Management group, open in the frames.
+ * The Payments & Refunds screens, under Customer Management (the same grouping Feature 5b's sidebar uses).
  *
  * The two payment screens are this feature's; the other three belong to Feature 5b, the compensation feature and
- * Feature 5c, so they are drawn dimmed rather than linked to a screen that does not exist.
+ * Feature 5c, so they are drawn dimmed rather than linked to a screen that does not exist. When the branches meet, give
+ * each one its `to`.
  */
 const CUSTOMER_MANAGEMENT = [
   { to: '/payments/lookup', label: 'Payment Lookup' },
@@ -71,38 +72,45 @@ export function StaffSidebar({ roleName, onSignOut }: StaffSidebarProps) {
           </span>
           Customer Management
         </p>
-        <ul className="m-0 list-none p-0 pl-3">
-          {CUSTOMER_MANAGEMENT.map((item) => {
-            const active = item.to !== null && pathname.startsWith(item.to)
-            if (item.to === null) {
+        <div className="pl-3">
+          {/* The same sub-heading Feature 5b's sidebar has: the five payment screens sit one step under it. */}
+          <p className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white">
+            <CreditCard className="size-4 shrink-0" aria-hidden="true" />
+            Payments &amp; Refunds
+          </p>
+          <ul className="m-0 list-none p-0 pl-5">
+            {CUSTOMER_MANAGEMENT.map((item) => {
+              const active = item.to !== null && pathname.startsWith(item.to)
+              if (item.to === null) {
+                return (
+                  <li key={item.label}>
+                    <span
+                      aria-disabled="true"
+                      title="Coming with another feature"
+                      className="block cursor-not-allowed rounded-lg px-3 py-2 text-sm text-white/55"
+                    >
+                      {item.label}
+                    </span>
+                  </li>
+                )
+              }
               return (
                 <li key={item.label}>
-                  <span
-                    aria-disabled="true"
-                    title="Coming with another feature"
-                    className="block cursor-not-allowed rounded-lg px-3 py-2 text-sm text-white/55"
+                  <Link
+                    to={item.to}
+                    aria-current={active ? 'page' : undefined}
+                    className={cn(
+                      'block rounded-lg px-3 py-2 text-sm transition-colors',
+                      active ? 'bg-navy-active font-medium text-white' : 'text-white/80 hover:bg-white/5 hover:text-white',
+                    )}
                   >
                     {item.label}
-                  </span>
+                  </Link>
                 </li>
               )
-            }
-            return (
-              <li key={item.label}>
-                <Link
-                  to={item.to}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'block rounded-lg px-3 py-2 text-sm transition-colors',
-                    active ? 'bg-navy-active font-medium text-white' : 'text-white/80 hover:bg-white/5 hover:text-white',
-                  )}
-                >
-                  {item.label}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
+            })}
+          </ul>
+        </div>
 
         <p className="px-2 py-2 text-sm text-white/80">Administration</p>
       </nav>
