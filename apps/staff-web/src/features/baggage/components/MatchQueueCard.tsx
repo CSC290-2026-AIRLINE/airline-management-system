@@ -8,9 +8,10 @@ import {
   MATCH_STATUS_TONES,
   bagRef,
   caseShortNumber,
+  matchLevelText,
   matchRef,
 } from '../constants'
-import { F10Card, FormError, Pill } from './primitives'
+import { F10Card, FormError, LIST_CARD, LIST_PAD, MobileList, MobileRow, Pill } from './primitives'
 
 /** "Card / Match queue": open matches first, strong on top (the API's order). Rows select a match for the detail card. */
 export function MatchQueueCard({
@@ -29,8 +30,8 @@ export function MatchQueueCard({
   onSelect: (id: string) => void
 }) {
   return (
-    <F10Card aria-labelledby="match-queue" className="gap-3 px-0 pt-5 pb-2">
-      <div className="flex items-center gap-3 px-5">
+    <F10Card aria-labelledby="match-queue" className={LIST_CARD}>
+      <div className={cn('flex items-center gap-3', LIST_PAD)}>
         <h2 id="match-queue" className="m-0 flex-1 font-sans text-[22px] font-semibold text-[#14213d]">
           Match queue
         </h2>
@@ -38,12 +39,12 @@ export function MatchQueueCard({
       </div>
 
       {error && (
-        <div className="px-5">
+        <div className={LIST_PAD}>
           <FormError message={error} />
         </div>
       )}
 
-      <table className="w-full table-fixed border-collapse text-left">
+      <table className="w-full table-fixed border-collapse text-left max-md:hidden">
         <thead>
           <tr className="border-b border-[#d8dce6] text-sm font-medium text-[#677287]">
             <th scope="col" className="w-[132px] py-2.5 pr-3 pl-5 font-medium max-md:w-[104px]">
@@ -113,6 +114,19 @@ export function MatchQueueCard({
             })}
         </tbody>
       </table>
+      <MobileList label="Match queue" loading={loading} empty={matches.length === 0 && !error ? 'No matches here.' : null}>
+        {matches.map((m) => (
+          <MobileRow
+            key={m.id}
+            title={`${caseShortNumber(m.report.caseNumber)} · ${m.report.passengerFirstName} ${m.report.passengerLastName}`}
+            pill={<Pill tone={MATCH_LEVEL_TONES[m.level]}>{matchLevelText(m.level, m.reasons)}</Pill>}
+            line={`Found bag ${bagRef(m.foundBag.id)}`}
+            meta={MATCH_STATUS_LABELS[m.status]}
+            selected={m.id === selectedId}
+            onSelect={() => onSelect(m.id)}
+          />
+        ))}
+      </MobileList>
     </F10Card>
   )
 }

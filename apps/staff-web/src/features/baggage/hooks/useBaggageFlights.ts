@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useFoundBagApi, type BaggageFlight } from '../api/found-bags'
+import { errorMessage } from './useFoundBags'
 
 /**
  * Flights that landed at an airport in the last few days, for the "Came off flight" picker. A failed lookup leaves the
@@ -75,4 +76,35 @@ export function useFlight(id: string | null | undefined) {
   }, [id])
 
   return { flight: state.forId === id ? state.flight : null, loading: !!id && state.forId !== id }
+}
+
+/** Diverted flights of the last few days that still have bags in the hold to add. */
+export function useDivertedFlights() {
+  const api = useFoundBagApi()
+  const [reloadKey, setReloadKey] = useState(0)
+  const [state, setState] = useState<{ forKey: number | null; error: string | null; flights: BaggageFlight[] }>({
+    forKey: null,
+    error: null,
+    flights: [],
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .divertedFlights()
+      .then((flights) => {
+        if (!cancelled) setState({ forKey: reloadKey, error: null, flights })
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setState((prev) => ({ ...prev, forKey: reloadKey, error: errorMessage(e) }))
+      })
+    return () => {
+      cancelled = true
+    }
+    // See useFlightsInto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey])
+
+  // Only the first load shows as loading, so the card does not flash after adding bags.
+  return { loading: state.forKey === null, error: state.error, flights: state.flights, reload: () => setReloadKey((k) => k + 1) }
 }

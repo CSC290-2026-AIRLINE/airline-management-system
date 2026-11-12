@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common'
 import type { ValidationError } from '@nestjs/common'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
-import type { FoundBag } from './common/found-bag.types'
+import type { FoundBag, FoundBagListItem } from './common/found-bag.types'
 import type { BagTrackingHistory } from './common/bag-location.types'
 import { BagTrackingService } from './bag-tracking.service'
 import { RecordMoveDto } from './dto/record-move.dto'
@@ -79,7 +79,7 @@ export class FoundBagController {
   }
 
   @Get()
-  list(@Query() query: ListFoundBagsQuery): Promise<FoundBag[]> {
+  list(@Query() query: ListFoundBagsQuery): Promise<FoundBagListItem[]> {
     return this.service.list(query)
   }
 

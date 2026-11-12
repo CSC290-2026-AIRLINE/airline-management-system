@@ -4,10 +4,12 @@ import {
   useFoundBagApi,
   type BagTrackingHistory,
   type FoundBag,
+  type FoundBagListItem,
   type RecordFoundBagBody,
   type RecordMoveBody,
 } from '../api/found-bags'
-import { FALLBACK_AIRPORTS, type BagColour, type BagType, type FoundBagStatus } from '../constants'
+import type { BagColour, BagType, FoundBagStatus } from '../constants'
+import { usePoll } from './usePoll'
 
 export interface Airport {
   code: string
@@ -18,9 +20,7 @@ interface ListState {
   /** Which status filter and reload the data belongs to; while it differs from the current one, the list is loading. */
   forKey: string | null
   error: string | null
-  bags: FoundBag[]
-  /** Current airport of each bag, from its latest location event. */
-  nowAt: Record<string, string>
+  bags: FoundBagListItem[]
   airports: Airport[]
 }
 
@@ -30,28 +30,21 @@ export function errorMessage(e: unknown): string {
 }
 
 /**
- * The Found bags list, its status filter, and the airports for the dropdowns. "Now at" needs one history call per bag
- * because the list endpoint does not return the current location yet.
+ * The Found bags list (each bag with where it is now), its status filter, and the airports (Feature 2's airport
+ * table) for the dropdowns.
  */
 export function useFoundBagList(status: FoundBagStatus | undefined) {
   const api = useFoundBagApi()
   const [reloadKey, setReloadKey] = useState(0)
-  const [state, setState] = useState<ListState>({ forKey: null, error: null, bags: [], nowAt: {}, airports: FALLBACK_AIRPORTS })
+  const [state, setState] = useState<ListState>({ forKey: null, error: null, bags: [], airports: [] })
   const key = `${status ?? 'all'}:${reloadKey}`
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const [bags, stations] = await Promise.all([api.list(status), api.stations().catch(() => [])])
-        const histories = await Promise.allSettled(bags.map((b) => api.history(b.id)))
-        if (cancelled) return
-        const nowAt: Record<string, string> = {}
-        histories.forEach((h, i) => {
-          nowAt[bags[i].id] = h.status === 'fulfilled' && h.value.current ? h.value.current.airportCode : bags[i].foundAirport
-        })
-        const airports = stations.length > 0 ? stations.map((s) => ({ code: s.airportCode, name: s.airportName })) : FALLBACK_AIRPORTS
-        setState({ forKey: key, error: null, bags, nowAt, airports })
+        const [bags, airports] = await Promise.all([api.list(status), api.airports()])
+        if (!cancelled) setState({ forKey: key, error: null, bags, airports })
       } catch (e: unknown) {
         if (!cancelled) setState((prev) => ({ ...prev, forKey: key, error: errorMessage(e) }))
       }
@@ -62,6 +55,12 @@ export function useFoundBagList(status: FoundBagStatus | undefined) {
     // The API functions close over `fetchWithAuth`, which is recreated every render; see `useFoundBagApi`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
+
+  // Quiet refresh: swap in fresh rows only when no reload is in flight, so nothing flashes.
+  usePoll(async () => {
+    const bags = await api.list(status)
+    setState((prev) => (prev.forKey === key ? { ...prev, error: null, bags } : prev))
+  })
 
   async function record(body: RecordFoundBagBody): Promise<FoundBag> {
     const bag = await api.record(body)

@@ -196,7 +196,8 @@ export function MatchDetailCard({
   }
   if (!match) {
     return (
-      <F10Card>
+      // On phones the queue is on its own screen, so the prompt to pick a match is not needed there.
+      <F10Card className="max-md:hidden">
         <p className="text-sm text-[#677287]">Choose a match in the queue to compare the report with the found bag.</p>
       </F10Card>
     )
@@ -215,7 +216,10 @@ export function MatchDetailCard({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <h2 id="match-detail-title" className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d]">
+        <h2
+          id="match-detail-title"
+          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+        >
           {matchRef(match.id)}
         </h2>
         <Pill tone={MATCH_STATUS_TONES[match.status]}>{MATCH_STATUS_LABELS[match.status]}</Pill>

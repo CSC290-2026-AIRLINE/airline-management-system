@@ -14,6 +14,8 @@ export interface LostReportCase {
   flightNumber: string
   flightDate: string
   flightOrigin: string
+  /** Where the flight landed: the diversion airport when it was diverted. */
+  flightDestination: string
   reportedByCustomerId: string | null
   reportedByStaffId: string | null
   tagNumber: string | null
@@ -52,6 +54,39 @@ export interface BagCostSummary {
   costs: BagCost[]
 }
 
+/** A ticketed passenger and flight on a booking (backend `BookingCoupon`). Only `confirmed` coupons can have a case. */
+export interface BookingCoupon {
+  bookingPassengerId: string
+  passengerId: string
+  firstName: string
+  lastName: string
+  flightId: string
+  flightNumber: string
+  flightDate: string
+  status: string
+}
+
+export interface BookingLookup {
+  bookingReference: string
+  contactEmail: string
+  contactPhone: string | null
+  coupons: BookingCoupon[]
+}
+
+/** Body of `POST /api/staff/lost-reports`. Contact details left out are taken from the booking. */
+export interface CreateLostReportBody {
+  bookingReference: string
+  passengerId: string
+  flightId: string
+  bagType: BagType
+  colour: BagColour
+  tagNumber?: string
+  brand?: string
+  description?: string
+  contactEmail?: string
+  contactPhone?: string
+}
+
 export interface AddBagCostBody {
   kind: BagCostKind
   amount: number
@@ -64,6 +99,10 @@ export function useLostReportApi() {
 
   return {
     list: () => send<LostReportCase[]>('/api/staff/lost-reports'),
+    lookupBooking: (reference: string) => send<BookingLookup>(`/api/staff/lost-reports/bookings/${encodeURIComponent(reference)}`),
+    create: (body: CreateLostReportBody) => send<LostReportCase>('/api/staff/lost-reports', { method: 'POST', body: JSON.stringify(body) }),
+    createFromFoundBag: (foundBagId: string) =>
+      send<LostReportCase>('/api/staff/lost-reports/from-found-bag', { method: 'POST', body: JSON.stringify({ foundBagId }) }),
     costs: (id: string) => send<BagCostSummary>(`/api/staff/lost-reports/${id}/costs`),
     addCost: (id: string, body: AddBagCostBody) =>
       send<BagCost>(`/api/staff/lost-reports/${id}/costs`, { method: 'POST', body: JSON.stringify(body) }),

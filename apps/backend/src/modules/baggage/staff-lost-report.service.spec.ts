@@ -32,7 +32,12 @@ function reportRow(data: Record<string, unknown>) {
     updated_at: SIM_NOW,
     ...data,
     passenger: { first_name: 'Somchai', last_name: 'Jaidee' },
-    flight: data.flight ?? { flight_number: 'FT101', service_date: FLIGHT_DATE, route: { origin: 'BKK' } },
+    flight: data.flight ?? {
+      flight_number: 'FT101',
+      service_date: FLIGHT_DATE,
+      actual_destination: null,
+      route: { origin: 'BKK', destination: 'HKT' },
+    },
     booking_coupon: { booking_passenger: { booking: { booking_reference: 'ABC234' } } },
   }
 }
@@ -113,6 +118,8 @@ describe('StaffLostReportService.createAtDesk', () => {
       bookingReference: 'ABC234',
       passengerLastName: 'Jaidee',
       flightNumber: 'FT101',
+      flightOrigin: 'BKK',
+      flightDestination: 'HKT',
       reportedByStaffId: STAFF_ID,
     })
   })
@@ -311,13 +318,25 @@ describe('StaffLostReportService reads', () => {
     expect(db.lost_bag_report.findUnique).toHaveBeenCalledTimes(1)
   })
 
-  it('projects the departure airport from the flight route for staff case filtering', async () => {
+  it('projects departure airports and actual destinations for staff cases', async () => {
     const { svc, db } = makeSvc()
     db.lost_bag_report.findMany.mockResolvedValue([
-      reportRow({ flight: { flight_number: 'FT101', service_date: FLIGHT_DATE, route: { origin: 'BKK' } } }),
+      reportRow({
+        flight: {
+          flight_number: 'FT101',
+          service_date: FLIGHT_DATE,
+          actual_destination: null,
+          route: { origin: 'BKK', destination: 'HKT' },
+        },
+      }),
       reportRow({
         id: '88888888-8888-4888-8888-888888888888',
-        flight: { flight_number: 'FT202', service_date: FLIGHT_DATE, route: { origin: 'CNX' } },
+        flight: {
+          flight_number: 'FT202',
+          service_date: FLIGHT_DATE,
+          actual_destination: 'USM',
+          route: { origin: 'CNX', destination: 'BKK' },
+        },
       }),
     ])
 
@@ -326,11 +345,19 @@ describe('StaffLostReportService reads', () => {
     expect(db.lost_bag_report.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
-          flight: { select: { flight_number: true, service_date: true, route: { select: { origin: true } } } },
+          flight: {
+            select: {
+              flight_number: true,
+              service_date: true,
+              actual_destination: true,
+              route: { select: { origin: true, destination: true } },
+            },
+          },
         }),
       }),
     )
     expect(cases.map((item) => item.flightOrigin)).toEqual(['BKK', 'CNX'])
+    expect(cases.map((item) => item.flightDestination)).toEqual(['HKT', 'USM'])
   })
 
   it('lists with combined filters, newest first, and short-circuits malformed ones', async () => {

@@ -72,16 +72,6 @@ export const STATUS_TONES: Record<FoundBagStatus, PillTone> = {
   continued_with_flight: 'grey',
 }
 
-/**
- * Airports to offer when no station contact is saved yet: Feature 2's seeded network. found_airport and
- * bag_location_event.airport_code are foreign keys to the airport table, so other codes would be refused.
- */
-export const FALLBACK_AIRPORTS: { code: string; name: string }[] = [
-  { code: 'BKK', name: 'Suvarnabhumi' },
-  { code: 'CNX', name: 'Chiang Mai' },
-  { code: 'HKT', name: 'Phuket' },
-]
-
 /** 0, the airline code 789, then 6 digits (Feature 6). Same rule as the backend's BAGGAGE_TAG_PATTERN. */
 export const BAGGAGE_TAG_PATTERN = /^0\d{9}$/
 

@@ -247,7 +247,10 @@ export function DeliveryDetailCard({
   return (
     <F10Card aria-labelledby="delivery-detail-title">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 id="delivery-detail-title" className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d]">
+        <h2
+          id="delivery-detail-title"
+          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+        >
           {delivery.caseNumber}
         </h2>
         <Pill tone={DELIVERY_STATUS_TONES[delivery.status]}>{DELIVERY_STATUS_LABELS[delivery.status]}</Pill>

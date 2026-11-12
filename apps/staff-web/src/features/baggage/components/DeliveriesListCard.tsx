@@ -2,11 +2,13 @@ import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { cn } from '@staff-web/lib/utils'
 import type { BagDelivery } from '../api/bag-deliveries'
 import { DELIVERY_STATUS_LABELS, DELIVERY_STATUS_TONES, caseShortNumber, deliveryDestination, formatBaht } from '../constants'
-import { F10Card, FormError, Pill } from './primitives'
+import { PAGE_SIZE, usePage } from '../hooks/usePage'
+import { F10Card, FormError, LIST_CARD, LIST_PAD, MobileList, MobileRow, Pager, Pill } from './primitives'
 
 /** "Card / Waiting to be sent" from frame 06. Rows select a delivery for the detail card. */
 export function DeliveriesListCard({
   deliveries,
+  pageKey,
   title,
   meta,
   loading,
@@ -15,6 +17,8 @@ export function DeliveriesListCard({
   onSelect,
 }: {
   deliveries: BagDelivery[]
+  /** The filter shown; a new one goes back to the first page. */
+  pageKey: string
   title: string
   meta: string
   loading: boolean
@@ -22,9 +26,10 @@ export function DeliveriesListCard({
   selectedId: string | undefined
   onSelect: (reportId: string) => void
 }) {
+  const paged = usePage(deliveries, pageKey)
   return (
-    <F10Card aria-labelledby="deliveries-list" className="gap-3 px-0 pt-5 pb-2">
-      <div className="flex items-center gap-3 px-5">
+    <F10Card aria-labelledby="deliveries-list" className={LIST_CARD}>
+      <div className={cn('flex items-center gap-3', LIST_PAD)}>
         <h2 id="deliveries-list" className="m-0 flex-1 font-sans text-[22px] font-semibold text-[#14213d]">
           {title}
         </h2>
@@ -32,12 +37,12 @@ export function DeliveriesListCard({
       </div>
 
       {error && (
-        <div className="px-5">
+        <div className={LIST_PAD}>
           <FormError message={error} />
         </div>
       )}
 
-      <table className="w-full table-fixed border-collapse text-left">
+      <table className="w-full table-fixed border-collapse text-left max-md:hidden">
         <thead>
           <tr className="border-b border-[#d8dce6] text-sm font-medium text-[#677287]">
             <th scope="col" className="w-[120px] py-2.5 pr-3 pl-5 font-medium max-md:w-[96px]">
@@ -71,7 +76,7 @@ export function DeliveriesListCard({
             </tr>
           )}
           {!loading &&
-            deliveries.map((d) => {
+            paged.items.map((d) => {
               const selected = d.reportId === selectedId
               const destination = deliveryDestination(d)
               const cost = Number(d.totalCost)
@@ -113,6 +118,32 @@ export function DeliveriesListCard({
             })}
         </tbody>
       </table>
+      <MobileList label={title} loading={loading} empty={deliveries.length === 0 && !error ? 'No deliveries here.' : null}>
+        {paged.items.map((d) => {
+          const cost = Number(d.totalCost)
+          return (
+            <MobileRow
+              key={d.id}
+              title={`${caseShortNumber(d.caseNumber)} · ${d.passengerFirstName} ${d.passengerLastName}`}
+              pill={<Pill tone={DELIVERY_STATUS_TONES[d.status]}>{DELIVERY_STATUS_LABELS[d.status]}</Pill>}
+              line={deliveryDestination(d) ?? 'Not chosen yet'}
+              meta={cost > 0 ? `Cost ${formatBaht(cost)}` : 'No cost yet'}
+              selected={d.reportId === selectedId}
+              onSelect={() => onSelect(d.reportId)}
+            />
+          )
+        })}
+      </MobileList>
+      {!loading && (
+        <Pager
+          page={paged.page}
+          pageCount={paged.pageCount}
+          total={paged.total}
+          pageSize={PAGE_SIZE}
+          label="Deliveries pages"
+          onPage={paged.setPage}
+        />
+      )}
     </F10Card>
   )
 }

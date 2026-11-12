@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
+import { FLOWN_CHECK_IN_STATUSES } from './found-bag-lifecycle.service'
 import { AIRPORT_CODE_PATTERN, UUID_PATTERN } from './common/patterns'
 
 /** A flight as the baggage desk names it: "FY 204 · BKK to HKT · 20 Oct". Read only; Feature 2 owns flights. */
@@ -14,6 +15,13 @@ export interface BaggageFlight {
   destination: string
   arrivedAt: Date
   departsAt: Date
+}
+
+/** An airport bags can be found at or sent to. Read only; Feature 2 owns airports. */
+export interface BaggageAirport {
+  code: string
+  name: string
+  city: string
 }
 
 /** How far back a found bag can still be matched to the flight it came off. */
@@ -120,6 +128,51 @@ export class BaggageFlightService {
     })
 
     return rows.map(toFlight)
+  }
+
+  /**
+   * Diverted flights that landed in the last few days and still have bags to add, newest first. A flight counts once
+   * Feature 2 sets its status to diverted and names the airport it landed at, and drops off once every tagged bag in its
+   * hold has a found bag (the same bags `recordDiversion` would add).
+   */
+  async divertedRecently(): Promise<BaggageFlight[]> {
+    const now = this.clock.now().getTime()
+    const rows = await this.db.flight.findMany({
+      where: {
+        status: 'diverted',
+        actual_destination: { not: null },
+        arr_at: { gte: new Date(now - ARRIVAL_WINDOW_DAYS * DAY_MS), lte: new Date(now + DAY_MS) },
+        check_in: {
+          some: {
+            status: { in: FLOWN_CHECK_IN_STATUSES },
+            checked_bag: {
+              some: {
+                status: 'tagged',
+                deleted_at: null,
+                tag_number: { not: null },
+                found_bag: { none: { status: { not: 'continued_with_flight' } } },
+              },
+            },
+          },
+        },
+      },
+      select: SELECT,
+      orderBy: { arr_at: 'desc' },
+      take: 50,
+    })
+
+    return rows.map(toFlight)
+  }
+
+  /** Active airports, by code. found_airport and bag_location_event.airport_code are foreign keys to this table. */
+  async airports(): Promise<BaggageAirport[]> {
+    const rows = await this.db.airport.findMany({
+      where: { is_active: true },
+      select: { iata_code: true, name: true, city: true },
+      orderBy: { iata_code: 'asc' },
+    })
+
+    return rows.map((row) => ({ code: row.iata_code, name: row.name, city: row.city }))
   }
 
   async get(id: string): Promise<BaggageFlight> {
