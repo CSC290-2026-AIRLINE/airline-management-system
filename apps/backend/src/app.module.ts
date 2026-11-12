@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { CheckinBoardingModule } from './modules/checkin-boarding/checkin-boarding.module'
 import { validateEnv } from './config/env.validation'
+import { PricingModule } from './modules/pricing/pricing.module'
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { validateEnv } from './config/env.validation'
     DbModule,
     AuthModule,
     AdminConsoleModule,
+    PricingModule,
     CheckinBoardingModule.register('db'),
   ],
   controllers: [AppController],
