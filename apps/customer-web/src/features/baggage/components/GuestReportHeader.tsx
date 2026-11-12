@@ -1,15 +1,20 @@
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useLocation } from '@tanstack/react-router'
 // The shared header's look, reused as is (the shared FlythonHeader itself needs a signed-in app session).
 import '../../../components/FlythonHeader.css'
 import './GuestReportHeader.css'
 
 /**
- * The Flython header for a signed-out visitor on Report a lost bag. Only public destinations: the home page, this page,
- * and sign-in (which comes back here). No profile, signed-in status or case access, and no app session needed.
+ * The Flython header for a signed-out visitor on the public baggage pages. Only public destinations: the home page,
+ * Report a lost bag, guest case tracking, and sign-in. No profile, signed-in status or signed-in case access, and no app
+ * session needed.
  */
 export function GuestReportHeader() {
   const [isNavigationOpen, setIsNavigationOpen] = useState(false)
+  const pathname = useLocation({ select: (location) => location.pathname })
+  const isTracking = pathname === '/track-lost-bag'
+  // After signing in: back to reporting, or on to the signed-in My bag case when the guest was tracking a case.
+  const signInRedirect = isTracking ? '/lost-bag-case' : '/report-lost-bag'
 
   return (
     <header className="flython-header">
@@ -49,17 +54,25 @@ export function GuestReportHeader() {
           </div>
           <div className="flython-header__menu-links">
             <Link
-              aria-current="page"
-              className="flython-header__link flython-header__link--active"
+              aria-current={isTracking ? undefined : 'page'}
+              className={isTracking ? 'flython-header__link' : 'flython-header__link flython-header__link--active'}
               to="/report-lost-bag"
               onClick={() => setIsNavigationOpen(false)}
             >
               Lost bag
             </Link>
+            <Link
+              aria-current={isTracking ? 'page' : undefined}
+              className={isTracking ? 'flython-header__link flython-header__link--active' : 'flython-header__link'}
+              to="/track-lost-bag"
+              onClick={() => setIsNavigationOpen(false)}
+            >
+              My bag case
+            </Link>
           </div>
         </nav>
 
-        <Link className="flython-header__profile guest-report-header__sign-in" to="/login" search={{ redirect: '/report-lost-bag' }}>
+        <Link className="flython-header__profile guest-report-header__sign-in" to="/login" search={{ redirect: signInRedirect }}>
           Sign in
         </Link>
       </div>

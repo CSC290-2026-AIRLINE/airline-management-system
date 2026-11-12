@@ -394,13 +394,18 @@ test('the guest confirmation reads only the minimal result and promises no email
   assert.doesNotMatch(GUEST_CONFIRMATION_NOTE, /email|emailed|sent you/i)
 })
 
-test('guests get no way into the signed-in case page; customers keep both', () => {
-  assert.deepEqual(caseAccessActionsFor('guest'), { openCreatedCase: false, checkMyCase: false })
-  assert.deepEqual(caseAccessActionsFor('customer'), { openCreatedCase: true, checkMyCase: true })
+test('guests get no way into the signed-in case page, only public tracking; customers keep both', () => {
+  assert.deepEqual(caseAccessActionsFor('guest'), { openCreatedCase: false, checkMyCase: false, guestCaseTracking: true })
+  assert.deepEqual(caseAccessActionsFor('customer'), { openCreatedCase: true, checkMyCase: true, guestCaseTracking: false })
 
   const page = source('PassengerLostBagReportPage.tsx')
   assert.match(page, /\{caseAccess\.openCreatedCase && \(/)
   assert.match(page, /\{caseAccess\.checkMyCase && \(/)
+  // The guest confirmation's "Check my case" goes to public tracking with the case number only.
+  assert.match(
+    page,
+    /\{caseAccess\.guestCaseTracking && \([\s\S]*?navigate\(\{ to: '\/track-lost-bag', search: \{ case: pageState\.caseNumber \} \}\)[\s\S]*?Check my case/,
+  )
   // My bag case stays behind the authenticated layout.
   assert.match(source('../../../routes/_authenticated/lost-bag-case.tsx'), /createFileRoute\('\/_authenticated\/lost-bag-case'\)/)
 })
@@ -428,10 +433,13 @@ test('guest follow-up copy promises no online tracking, delivery choice or email
 test('the guest header is session-free and links only to public pages', () => {
   const header = source('../components/GuestReportHeader.tsx')
   assert.doesNotMatch(header, /useAppAuth|AppAuthProvider|useAuth|useUser|Profile|Signed in/, 'no session, profile or signed-in status')
-  // Only the public routes: home, this page, and sign-in (returning here). No dashboard or My bag case.
-  assert.deepEqual([...header.matchAll(/to="([^"]+)"/g)].map((m) => m[1]).sort(), ['/', '/login', '/report-lost-bag'])
-  assert.doesNotMatch(header, /\/dashboard|\/lost-bag-case/)
-  assert.match(header, /search=\{\{ redirect: '\/report-lost-bag' \}\}/)
+  // Links go only to public routes: home, reporting, guest tracking and sign-in. Never to the dashboard or the signed-in
+  // My bag case; that page is only where sign-in continues to (it still requires the session).
+  const links = [...header.matchAll(/to="([^"]+)"/g)].map((m) => m[1]).sort()
+  assert.deepEqual(links, ['/', '/login', '/report-lost-bag', '/track-lost-bag'])
+  assert.doesNotMatch(header, /to="\/(dashboard|lost-bag-case)"|\/dashboard/)
+  assert.match(header, /const signInRedirect = isTracking \? '\/lost-bag-case' : '\/report-lost-bag'/)
+  assert.match(header, /search=\{\{ redirect: signInRedirect \}\}/)
   // The shared header is reused for its look only, never modified or rendered here.
   assert.match(header, /import '\.\.\/\.\.\/\.\.\/components\/FlythonHeader\.css'/)
   assert.doesNotMatch(header, /<FlythonHeader/)

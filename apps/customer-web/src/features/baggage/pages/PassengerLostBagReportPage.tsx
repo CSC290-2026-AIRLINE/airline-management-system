@@ -449,10 +449,19 @@ function LostBagReportForm(props: ReportFormProps) {
               )
             )}
             <div className="passenger-report-success__actions">
-              {/* Opening a case online needs a signed-in account; guests only get "Report another bag". */}
+              {/* Signed in: the authenticated My bag case. Guests: the public read-only tracking page, case number only. */}
               {caseAccess.openCreatedCase && (
                 <button className="passenger-report-button" type="button" onClick={openCreatedCase}>
                   {bagOwnerName ? 'Open the case' : 'Open my case'}
+                </button>
+              )}
+              {caseAccess.guestCaseTracking && (
+                <button
+                  className="passenger-report-button"
+                  type="button"
+                  onClick={() => void navigate({ to: '/track-lost-bag', search: { case: pageState.caseNumber } })}
+                >
+                  Check my case
                 </button>
               )}
               <button className="passenger-report-button passenger-report-button--secondary" type="button" onClick={reportAnotherBag}>

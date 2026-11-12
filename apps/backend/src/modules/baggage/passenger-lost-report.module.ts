@@ -20,6 +20,8 @@ import { GuestLostReportFlightsController } from './guest-lost-report-flights.co
 import { GuestLostReportTravellersController } from './guest-lost-report-travellers.controller'
 import { GuestLostReportController } from './guest-lost-report.controller'
 import { GuestBookingLookupService } from './guest-booking-lookup.service'
+import { GuestLostReportCaseLookupController } from './guest-lost-report-case-lookup.controller'
+import { GuestCaseLookupService } from './guest-case-lookup.service'
 
 @Module({
   imports: [AuditModule, BaggageModule],
@@ -30,10 +32,12 @@ import { GuestBookingLookupService } from './guest-booking-lookup.service'
     GuestLostReportFlightsController,
     GuestLostReportTravellersController,
     GuestLostReportController,
+    GuestLostReportCaseLookupController,
   ],
   providers: [
     BaggageCustomerGuard,
     GuestBookingLookupService,
+    GuestCaseLookupService,
     PassengerDeliveryChoiceService,
     PassengerCaseSummaryService,
     PrismaReportRepository,

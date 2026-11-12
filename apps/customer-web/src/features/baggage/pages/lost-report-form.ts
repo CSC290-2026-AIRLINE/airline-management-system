@@ -531,10 +531,17 @@ export function parseGuestReportResult(value: unknown): GuestReportResult | null
 export const GUEST_CONFIRMATION_NOTE =
   'Save this case number. Quote it with your booking reference and surname whenever you contact airline staff about this bag.'
 
-/** My bag case (/lost-bag-case) is a signed-in page, so guests are offered neither way into it. */
-export function caseAccessActionsFor(mode: 'customer' | 'guest'): { openCreatedCase: boolean; checkMyCase: boolean } {
+/**
+ * My bag case (/lost-bag-case) is a signed-in page, so guests are offered neither way into it. Guests instead get the
+ * public, read-only guest case tracking page (prefilled with the case number only).
+ */
+export function caseAccessActionsFor(mode: 'customer' | 'guest'): {
+  openCreatedCase: boolean
+  checkMyCase: boolean
+  guestCaseTracking: boolean
+} {
   const signedIn = mode === 'customer'
-  return { openCreatedCase: signedIn, checkMyCase: signedIn }
+  return { openCreatedCase: signedIn, checkMyCase: signedIn, guestCaseTracking: !signedIn }
 }
 
 /** The guest confirmation banner: states only what happened (the report was received), not that anything was emailed. */

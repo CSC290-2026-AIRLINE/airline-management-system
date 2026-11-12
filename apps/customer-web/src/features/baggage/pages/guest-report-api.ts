@@ -6,12 +6,14 @@ import {
   type EligibleTraveller,
   type GuestReportResult,
 } from './lost-report-form.ts'
+import { normalizeGuestCaseLookup, parseGuestCaseSummary, type GuestCaseLookupInput, type GuestCaseSummary } from './guest-case-tracking.ts'
 
 /** The public guest endpoints (no sign-in). */
 export const GUEST_REPORT_PATHS = {
   flights: '/api/guest/lost-report-flights',
   travellers: '/api/guest/lost-report-travellers',
   reports: '/api/guest/lost-reports',
+  caseLookup: '/api/guest/lost-report-case-lookup',
 } as const
 
 export interface GuestApiOptions {
@@ -100,4 +102,28 @@ export async function submitGuestLostReport(formData: FormData, options: GuestAp
     }
   }
   return { ok: true, result }
+}
+
+export type GuestCaseLookupResult = { ok: true; summary: GuestCaseSummary } | { ok: false; message: string }
+
+const CASE_NOT_FOUND = 'We could not find a case with that case number, booking reference and surname. Check the details and try again.'
+
+/** Opens a case read only. Every verification failure gets the same message, so it reveals nothing about which field was wrong. */
+export async function lookUpGuestCase(input: GuestCaseLookupInput, options: GuestApiOptions): Promise<GuestCaseLookupResult> {
+  const body = normalizeGuestCaseLookup(input)
+  let response: Response
+  try {
+    response = await jsonRequest(options, GUEST_REPORT_PATHS.caseLookup, body)
+  } catch {
+    return { ok: false, message: NETWORK_ERROR }
+  }
+  if (!response.ok) {
+    const parsed = (await response.json().catch(() => null)) as { code?: unknown } | null
+    return {
+      ok: false,
+      message: parsed?.code === 'INVALID_REPORT' ? CASE_NOT_FOUND : 'Your case could not be opened right now. Try again.',
+    }
+  }
+  const summary = parseGuestCaseSummary(await response.json().catch(() => null))
+  return summary ? { ok: true, summary } : { ok: false, message: 'Your case could not be opened right now. Try again.' }
 }
