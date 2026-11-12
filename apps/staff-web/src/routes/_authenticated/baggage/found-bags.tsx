@@ -27,6 +27,7 @@ function FoundBagsRoute() {
       status={status}
       onSelect={(id) => void navigate({ search: (prev) => ({ ...prev, bag: id }) })}
       onStatusChange={(s) => void navigate({ search: (prev) => ({ ...prev, status: s }) })}
+      onCaseOpened={(id) => void navigate({ to: '/baggage/lost-bag-cases', search: { case: id } })}
     />
   )
 }

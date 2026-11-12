@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLostReportApi, type AddBagCostBody, type BagCostSummary, type LostReportCase } from '../api/lost-reports'
 import { errorMessage } from './useFoundBags'
+import { usePoll } from './usePoll'
 
 interface ListState {
   /** Which reload the data belongs to; while it differs from the current one, the list is loading. */
@@ -34,6 +35,12 @@ export function useLostReports() {
     // The API functions close over `fetchWithAuth`, which is recreated every render; see `useFoundBagApi`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadKey])
+
+  // Quiet refresh: swap in fresh rows only when no reload is in flight, so nothing flashes.
+  usePoll(async () => {
+    const cases = await api.list()
+    setState((prev) => (prev.forKey === reloadKey ? { ...prev, error: null, cases } : prev))
+  })
 
   const { forKey, ...data } = state
   return { ...data, loading: forKey !== reloadKey, reload: () => setReloadKey((k) => k + 1) }

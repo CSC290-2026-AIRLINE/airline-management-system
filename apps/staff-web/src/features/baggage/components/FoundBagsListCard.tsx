@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { Input } from '@staff-web/components/ui/input'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { cn } from '@staff-web/lib/utils'
-import type { FoundBag } from '../api/found-bags'
+import type { FoundBagListItem } from '../api/found-bags'
 import { FOUND_BAG_STATUSES, STATUS_LABELS, STATUS_TONES, bagRef, bagSummary, type FoundBagStatus } from '../constants'
-import { Chip, F10Card, FIELD_BOX, FormError, Pill } from './primitives'
+import { PAGE_SIZE, usePage } from '../hooks/usePage'
+import { Chip, F10Card, FIELD_BOX, FilterRow, FormError, LIST_CARD, LIST_PAD, MobileList, MobileRow, Pager, Pill } from './primitives'
 
 /** "Card / Found bags list": search, status chips and the table. Rows select a bag for the detail card. */
 export function FoundBagsListCard({
   bags,
-  nowAt,
   loading,
   error,
   status,
@@ -17,8 +17,7 @@ export function FoundBagsListCard({
   selectedId,
   onSelect,
 }: {
-  bags: FoundBag[]
-  nowAt: Record<string, string>
+  bags: FoundBagListItem[]
   loading: boolean
   error: string | null
   status: FoundBagStatus | undefined
@@ -29,10 +28,11 @@ export function FoundBagsListCard({
   const [search, setSearch] = useState('')
   const query = search.trim()
   const shown = query ? bags.filter((b) => b.tagNumber?.includes(query)) : bags
+  const paged = usePage(shown, `${status ?? 'all'}:${query}`)
 
   return (
-    <F10Card aria-labelledby="found-bags-list" className="gap-3 px-0 pt-5 pb-2">
-      <div className="flex items-center gap-3 px-5 max-md:flex-col max-md:items-stretch">
+    <F10Card aria-labelledby="found-bags-list" className={LIST_CARD}>
+      <div className={cn('flex items-center gap-3 max-md:flex-col max-md:items-stretch', LIST_PAD)}>
         <h2 id="found-bags-list" className="m-0 font-sans flex-1 text-[22px] font-semibold text-[#14213d]">
           Found bags
         </h2>
@@ -46,25 +46,26 @@ export function FoundBagsListCard({
         />
       </div>
 
-      <div role="group" aria-label="Status" className="flex flex-wrap items-center gap-2 px-5">
-        <span className="text-sm font-medium text-[#677287]">Status</span>
-        <Chip active={!status} onClick={() => onStatusChange(undefined)}>
-          All
-        </Chip>
-        {FOUND_BAG_STATUSES.map((s) => (
-          <Chip key={s} active={status === s} onClick={() => onStatusChange(s)}>
-            {STATUS_LABELS[s]}
+      <div className={LIST_PAD}>
+        <FilterRow label="Status">
+          <Chip active={!status} onClick={() => onStatusChange(undefined)}>
+            All
           </Chip>
-        ))}
+          {FOUND_BAG_STATUSES.map((s) => (
+            <Chip key={s} active={status === s} onClick={() => onStatusChange(s)}>
+              {STATUS_LABELS[s]}
+            </Chip>
+          ))}
+        </FilterRow>
       </div>
 
       {error && (
-        <div className="px-5">
+        <div className={LIST_PAD}>
           <FormError message={error} />
         </div>
       )}
 
-      <table className="w-full table-fixed border-collapse text-left">
+      <table className="w-full table-fixed border-collapse text-left max-md:hidden">
         <thead>
           <tr className="border-b border-[#d8dce6] text-sm font-medium text-[#677287]">
             <th scope="col" className="py-2.5 pr-3 pl-5 font-medium">
@@ -98,7 +99,7 @@ export function FoundBagsListCard({
             </tr>
           )}
           {!loading &&
-            shown.map((bag) => {
+            paged.items.map((bag) => {
               const selected = bag.id === selectedId
               const diverted = bag.source === 'diverted_flight'
               return (
@@ -129,7 +130,7 @@ export function FoundBagsListCard({
                     </button>
                   </td>
                   <td className="py-3 pr-3 text-base text-[#14213d]">{bag.tagNumber ?? 'No tag'}</td>
-                  <td className="py-3 pr-3 text-base text-[#14213d]">{nowAt[bag.id] ?? bag.foundAirport}</td>
+                  <td className="py-3 pr-3 text-base text-[#14213d]">{bag.nowAt}</td>
                   <td className="py-3 pr-5">
                     <Pill tone={STATUS_TONES[bag.status]}>{STATUS_LABELS[bag.status]}</Pill>
                   </td>
@@ -138,6 +139,33 @@ export function FoundBagsListCard({
             })}
         </tbody>
       </table>
+      <MobileList
+        label="Found bags"
+        loading={loading}
+        empty={shown.length === 0 && !error ? (query ? 'No found bag has that tag number.' : 'No found bags here yet.') : null}
+      >
+        {paged.items.map((bag) => (
+          <MobileRow
+            key={bag.id}
+            title={`${bagRef(bag.id)}${bag.source === 'diverted_flight' ? ' · diverted flight' : ''}`}
+            pill={<Pill tone={STATUS_TONES[bag.status]}>{STATUS_LABELS[bag.status]}</Pill>}
+            line={bagSummary(bag)}
+            meta={`${bag.tagNumber ? `Tag ${bag.tagNumber}` : 'No tag'} · now at ${bag.nowAt}`}
+            selected={bag.id === selectedId}
+            onSelect={() => onSelect(bag.id)}
+          />
+        ))}
+      </MobileList>
+      {!loading && (
+        <Pager
+          page={paged.page}
+          pageCount={paged.pageCount}
+          total={paged.total}
+          pageSize={PAGE_SIZE}
+          label="Found bags pages"
+          onPage={paged.setPage}
+        />
+      )}
     </F10Card>
   )
 }

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { FOUND_BAG_CLOCK, FOUND_BAG_RECORDED_LISTENERS, type FoundBagRecordedListener } from './common/found-bag.ports'
+import { BaggageDeskController } from './baggage-desk.controller'
 import { BaggageFlightController } from './baggage-flight.controller'
 import { BaggageSettingsController } from './baggage-settings.controller'
 import { BaggageSettingsService } from './baggage-settings.service'
@@ -42,6 +43,7 @@ import { StaffNotificationService } from './staff-notification.service'
     StaffNotificationController,
     BaggageFlightController,
     BaggageSettingsController,
+    BaggageDeskController,
   ],
   providers: [
     FoundBagService,

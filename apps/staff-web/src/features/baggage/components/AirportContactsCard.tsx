@@ -5,7 +5,8 @@ import { Input } from '@staff-web/components/ui/input'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import type { SaveStationContactBody, StationContact } from '../api/found-bags'
 import { errorMessage } from '../hooks/useFoundBags'
-import { F10Card, FIELD_BOX, Field, FormError } from './primitives'
+import { cn } from '@staff-web/lib/utils'
+import { F10Card, FIELD_BOX, Field, FormError, LIST_CARD, LIST_PAD } from './primitives'
 
 /** Same rules as the backend's SaveStationContactDto. */
 const PHONE_PATTERN = /^\+?[0-9 ()-]{6,30}$/
@@ -175,10 +176,13 @@ export function AirportContactsCard({
   const [editing, setEditing] = useState<StationContact | null | undefined>(undefined)
 
   return (
-    <F10Card aria-labelledby="airport-contacts" className="gap-3 px-0 pt-5 pb-2">
-      <div className="flex items-start gap-3 px-5">
+    <F10Card aria-labelledby="airport-contacts" className={LIST_CARD}>
+      <div className={cn('flex items-start gap-3', LIST_PAD)}>
         <div className="flex flex-1 flex-col gap-1">
-          <h2 id="airport-contacts" className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d]">
+          <h2
+            id="airport-contacts"
+            className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+          >
             Airport contacts
           </h2>
           <p className="text-base text-[#677287]">Call the station that holds a bag.</p>
@@ -189,12 +193,12 @@ export function AirportContactsCard({
       </div>
 
       {error && (
-        <div className="px-5">
+        <div className={LIST_PAD}>
           <FormError message={error} />
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-md:hidden">
         <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
           <thead>
             <tr className="border-b border-[#d8dce6] text-sm text-[#677287]">
@@ -279,6 +283,58 @@ export function AirportContactsCard({
           </tbody>
         </table>
       </div>
+
+      {/* Phones get one card per airport instead of the wide table. */}
+      <ul aria-label="Airport contacts" className="flex flex-col gap-3 md:hidden">
+        {loading &&
+          [0, 1].map((i) => (
+            <li key={i}>
+              <Skeleton className="h-[120px] w-full rounded-xl" />
+            </li>
+          ))}
+        {!loading && contacts.length === 0 && !error && (
+          <li className="rounded-xl border border-[#cbd5e1] bg-white px-4 py-6 text-center text-sm text-[#677287]">
+            No airport desk saved yet. Use Add airport to save the first one.
+          </li>
+        )}
+        {!loading &&
+          contacts.map((c) => (
+            <li key={c.airportCode} className="flex flex-col gap-2 rounded-xl border border-[#cbd5e1] bg-white p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-base text-[#14213d]">
+                    {c.airportCode} · {c.deskName}
+                  </span>
+                  <span className="truncate text-xs text-[#677287]">
+                    {c.city && c.city !== c.airportName ? `${c.city} ${c.airportName}` : c.airportName}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-label={`Edit ${c.airportCode} contact`}
+                  className={SMALL_BUTTON}
+                  onClick={() => setEditing(c)}
+                >
+                  Edit
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <a href={`tel:${c.phone.replace(/[^+\d]/g, '')}`} className="flex-1 text-base text-[#14213d] hover:underline">
+                  {c.phone}
+                </a>
+                <CopyButton text={c.phone} label={`Copy ${c.airportCode} phone number`} />
+              </div>
+              {c.email ? (
+                <a href={`mailto:${c.email}`} className="truncate text-sm text-[#14213d] hover:underline">
+                  {c.email}
+                </a>
+              ) : (
+                <span className="text-sm text-[#677287]">No email</span>
+              )}
+            </li>
+          ))}
+      </ul>
 
       {editing !== undefined && (
         <ContactDialog

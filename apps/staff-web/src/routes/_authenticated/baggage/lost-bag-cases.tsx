@@ -29,10 +29,10 @@ function LostBagCasesRoute() {
     <LostBagCasesPage
       selectedId={search.case}
       filter={search.status ?? 'active'}
-      flightFrom={search.from}
+      from={search.from}
       onSelect={(id) => void navigate({ search: (prev) => ({ ...prev, case: id }) })}
       onFilterChange={(f) => void navigate({ search: (prev) => ({ ...prev, status: f === 'active' ? undefined : f }) })}
-      onFlightFromChange={(origin) => void navigate({ search: (prev) => ({ ...prev, from: origin }) })}
+      onFromChange={(from) => void navigate({ search: (prev) => ({ ...prev, from }) })}
     />
   )
 }

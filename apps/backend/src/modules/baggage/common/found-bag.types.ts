@@ -34,3 +34,9 @@ export interface FoundBag {
   createdAt: Date
   updatedAt: Date
 }
+
+/** A row of the found bag list: the bag and the airport it is at now (its latest location event), in one call. */
+export interface FoundBagListItem extends FoundBag {
+  /** Airport of the latest location event; the found airport when none is recorded. A bag in transit counts where it was sent from. */
+  nowAt: string
+}

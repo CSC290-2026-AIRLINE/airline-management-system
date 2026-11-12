@@ -1,76 +1,70 @@
 import { Logger } from '@nestjs/common'
-jest.mock('./found-bag-lifecycle.service', () => ({
-  FoundBagLifecycleService: class FoundBagLifecycleService {},
-}))
-import { FoundBagLifecycleService } from './found-bag-lifecycle.service'
-import { FoundBagUnclaimedRunner } from './found-bag-unclaimed.runner'
+import type { FoundBagLifecycleService } from './found-bag-lifecycle.service'
+import { FoundBagUnclaimedRunner, UNCLAIMED_SWEEP_INTERVAL_MS } from './found-bag-unclaimed.runner'
+
+jest.mock('./found-bag-lifecycle.service', () => ({ FoundBagLifecycleService: class {} }))
+
+const RESULT = { unclaimedAfterDays: 30, cutoff: new Date('2026-10-01T00:00:00Z'), marked: 0 }
+
+function makeRunner(markUnclaimed: jest.Mock) {
+  return new FoundBagUnclaimedRunner({ markUnclaimed } as unknown as FoundBagLifecycleService)
+}
 
 describe('FoundBagUnclaimedRunner', () => {
-  const result = { unclaimedAfterDays: 90, cutoff: new Date('2026-07-23T00:00:00.000Z'), marked: 0 }
-
   afterEach(() => {
     jest.useRealTimers()
     jest.restoreAllMocks()
   })
 
-  it('sweeps immediately at startup and repeats periodically', async () => {
+  it('sweeps at startup and then on every interval, as the system', async () => {
     jest.useFakeTimers()
-    const markUnclaimed = jest.fn().mockResolvedValue(result)
-    const runner = new FoundBagUnclaimedRunner({ markUnclaimed } as unknown as FoundBagLifecycleService)
+    const markUnclaimed = jest.fn().mockResolvedValue(RESULT)
+    const runner = makeRunner(markUnclaimed)
 
     runner.onModuleInit()
     await Promise.resolve()
     expect(markUnclaimed).toHaveBeenCalledTimes(1)
-
-    await jest.advanceTimersByTimeAsync(60_000)
-    expect(markUnclaimed).toHaveBeenCalledTimes(2)
-    runner.onModuleDestroy()
-  })
-
-  it('runs as the system, without a staff actor', async () => {
-    jest.useFakeTimers()
-    const markUnclaimed = jest.fn().mockResolvedValue(result)
-    const runner = new FoundBagUnclaimedRunner({ markUnclaimed } as unknown as FoundBagLifecycleService)
-
-    runner.onModuleInit()
-    await Promise.resolve()
     expect(markUnclaimed).toHaveBeenCalledWith()
+
+    await jest.advanceTimersByTimeAsync(UNCLAIMED_SWEEP_INTERVAL_MS)
+    expect(markUnclaimed).toHaveBeenCalledTimes(2)
+
     runner.onModuleDestroy()
+    await jest.advanceTimersByTimeAsync(UNCLAIMED_SWEEP_INTERVAL_MS)
+    expect(markUnclaimed).toHaveBeenCalledTimes(2)
   })
 
-  it('suppresses overlapping local sweeps and resumes on a later interval', async () => {
-    jest.useFakeTimers()
-    let completeSweep!: (value: typeof result) => void
+  it('skips a sweep while the last one is still running', async () => {
+    let finish!: (value: typeof RESULT) => void
     const markUnclaimed = jest
       .fn()
-      .mockImplementationOnce(() => new Promise((resolve) => (completeSweep = resolve)))
-      .mockResolvedValue(result)
-    const runner = new FoundBagUnclaimedRunner({ markUnclaimed } as unknown as FoundBagLifecycleService)
+      .mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+      .mockResolvedValue(RESULT)
+    const runner = makeRunner(markUnclaimed)
 
-    runner.onModuleInit()
-    await jest.advanceTimersByTimeAsync(120_000)
+    const first = runner.sweep()
+    await runner.sweep()
     expect(markUnclaimed).toHaveBeenCalledTimes(1)
 
-    completeSweep(result)
-    await Promise.resolve()
-    await jest.advanceTimersByTimeAsync(60_000)
+    finish(RESULT)
+    await first
+    await runner.sweep()
     expect(markUnclaimed).toHaveBeenCalledTimes(2)
-    runner.onModuleDestroy()
   })
 
-  it('logs sweep failures and continues on the next interval', async () => {
-    jest.useFakeTimers()
-    const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation()
-    const markUnclaimed = jest.fn().mockRejectedValueOnce(new Error('database unavailable')).mockResolvedValue(result)
-    const runner = new FoundBagUnclaimedRunner({ markUnclaimed } as unknown as FoundBagLifecycleService)
+  it('logs a failed sweep and keeps going', async () => {
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
+    const markUnclaimed = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockResolvedValue({ ...RESULT, marked: 2 })
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined)
+    const runner = makeRunner(markUnclaimed)
 
-    runner.onModuleInit()
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(logger).toHaveBeenCalledWith('Found-bag unclaimed sweep failed', expect.any(String))
+    await runner.sweep()
+    expect(error).toHaveBeenCalledWith('Unclaimed bag sweep failed', expect.stringContaining('db down'))
 
-    await jest.advanceTimersByTimeAsync(60_000)
-    expect(markUnclaimed).toHaveBeenCalledTimes(2)
-    runner.onModuleDestroy()
+    await runner.sweep()
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('Marked 2 held bag(s) unclaimed'))
   })
 })

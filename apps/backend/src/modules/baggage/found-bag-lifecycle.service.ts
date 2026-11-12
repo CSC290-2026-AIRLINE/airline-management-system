@@ -16,7 +16,7 @@ export const DEFAULT_UNCLAIMED_AFTER_DAYS = 90
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /** A check-in whose bags went into the hold. */
-const FLOWN_CHECK_IN_STATUSES = ['checked_in', 'boarded']
+export const FLOWN_CHECK_IN_STATUSES = ['checked_in', 'boarded']
 
 export interface DiversionResult {
   flightId: string
@@ -54,9 +54,9 @@ function requireStaff(staffId: string): void {
 }
 
 /**
- * Diverted-flight bags and the unclaimed timeout. There is no scheduler or Feature 2 event consumer in the backend yet,
- * so staff trigger both through the API; a cron job or event handler can call the same methods later (the audit actor
- * is then the system). Both write what they changed to audit_log.
+ * Diverted-flight bags and the unclaimed timeout. Staff add a diverted flight's bags from the Found bags page (Feature 2
+ * has no event to listen to yet), and FoundBagUnclaimedRunner runs the unclaimed sweep every minute as the system.
+ * Both write what they changed to audit_log.
  */
 @Injectable()
 export class FoundBagLifecycleService {

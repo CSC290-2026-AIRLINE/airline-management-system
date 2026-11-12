@@ -156,6 +156,41 @@ function CheckDivertedBag({
   )
 }
 
+/** "Open a case for the owner": a tagged held bag whose passenger has not reported it yet. */
+function OpenOwnerCase({ onOpen }: { onOpen: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function open() {
+    setBusy(true)
+    setError(null)
+    try {
+      await onOpen()
+    } catch (e: unknown) {
+      setError(errorMessage(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h3 className={H4}>Owner has not reported it?</h3>
+      <p className="text-base text-[#677287]">The tag is on a booking, so a case can be opened for its owner with this bag as the match.</p>
+      <FormError message={error} />
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          disabled={busy}
+          onClick={() => void open()}
+          className="h-auto rounded-lg bg-[#14213d] px-3.5 py-2 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90"
+        >
+          {busy ? 'Opening…' : 'Open case for owner'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /** "Add a location" (frame 02). The event's airport comes from the bag's current place, so it is shown, not picked. */
 function AddLocation({
   history,
@@ -287,6 +322,7 @@ export function FoundBagDetailCard({
   onRecordMove,
   onCompleteDetails,
   onContinueWithFlight,
+  onOpenOwnerCase,
 }: {
   bag: FoundBag | null
   history: BagTrackingHistory | null
@@ -296,6 +332,7 @@ export function FoundBagDetailCard({
   onRecordMove: (body: RecordMoveBody) => Promise<void>
   onCompleteDetails: (bagType: BagType, colour: BagColour) => Promise<void>
   onContinueWithFlight: () => Promise<void>
+  onOpenOwnerCase: () => Promise<void>
 }) {
   const cameOff = useFlight(bag?.flightId)
 
@@ -316,7 +353,8 @@ export function FoundBagDetailCard({
   }
   if (!bag || !history) {
     return (
-      <F10Card>
+      // On phones the list is on its own screen, so the prompt to pick a bag is not needed there.
+      <F10Card className="max-md:hidden">
         <p className="text-sm text-[#677287]">Choose a bag in the list to see where it has been and add a location.</p>
       </F10Card>
     )
@@ -325,6 +363,8 @@ export function FoundBagDetailCard({
   const diverted = bag.source === 'diverted_flight'
   const needsCheck = diverted && (!bag.bagType || !bag.colour) && bag.status === 'held'
   const closed = bag.status === 'delivered' || bag.status === 'continued_with_flight'
+  // Same rule as POST /lost-reports/from-found-bag: a held bag with a known tag, type and colour.
+  const canOpenCase = bag.status === 'held' && !!bag.checkedBagId && !!bag.tagNumber && !!bag.bagType && !!bag.colour
   const nowAt = history.current?.airportCode ?? bag.foundAirport
   const nowAtName = airports.find((a) => a.code === nowAt)?.name
 
@@ -336,7 +376,10 @@ export function FoundBagDetailCard({
         </p>
       )}
       <div className="flex flex-wrap items-center gap-3">
-        <h2 id="bag-detail-title" className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d]">
+        <h2
+          id="bag-detail-title"
+          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+        >
           {bagRef(bag.id)}
         </h2>
         <Pill tone={STATUS_TONES[bag.status]}>{STATUS_LABELS[bag.status]}</Pill>
@@ -355,6 +398,13 @@ export function FoundBagDetailCard({
         <>
           <Separator className="bg-[#d8dce6]" />
           <CheckDivertedBag onSave={onCompleteDetails} onContinue={onContinueWithFlight} />
+          <Separator className="bg-[#d8dce6]" />
+        </>
+      )}
+
+      {canOpenCase && (
+        <>
+          <OpenOwnerCase key={bag.id} onOpen={onOpenOwnerCase} />
           <Separator className="bg-[#d8dce6]" />
         </>
       )}
