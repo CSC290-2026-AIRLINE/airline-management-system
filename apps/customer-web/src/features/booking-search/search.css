@@ -148,6 +148,16 @@
   font-size: 13px;
   color: var(--f3-navy);
 }
+/* A label, its control and the message under it. The control and the message are siblings of the label, so the
+   message is not read as part of the name of the field. */
+.f3-search-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.f3-search-field > label {
+  display: block;
+}
 /* `:where` keeps this rule's specificity low, so the read-only field styling of the booking flow still wins. */
 .f3-search :is(input:where(:not([type='checkbox'])), select) {
   width: 100%;
@@ -163,11 +173,28 @@
 .f3-search input::placeholder {
   color: #7b8494;
 }
-/* The staff console's field focus: a navy border with a 50% navy ring (`focus-visible:border-ring focus-visible:ring-[3px] ring-ring/50`). */
-.f3-search :is(input:not([type='checkbox']), select, .cw-select-trigger):focus-visible {
+/* The staff console's field focus: a navy border with a 50% navy ring (`focus-visible:border-ring focus-visible:ring-[3px] ring-ring/50`).
+   The date field is named here too, so it does not get the orange outline every other button on the page has. */
+.f3-search :is(input:not([type='checkbox']), select, .cw-select-trigger, .cw-date-trigger):focus-visible {
   outline: none;
   border-color: var(--f3-primary);
   box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
+}
+/* A field that holds a wrong value is marked before it is touched, so the form is not red while it is still empty. */
+.f3-search :is(input:not([type='checkbox']), .cw-select-trigger)[aria-invalid='true'] {
+  border-color: #b8171f;
+}
+/* A wrong date keeps its red border when it has the focus, like the other fields. */
+.f3-search .cw-date-trigger[aria-invalid='true']:focus-visible {
+  border-color: #b8171f;
+  box-shadow: 0 0 0 3px rgba(184, 23, 31, 0.35);
+}
+.f3-search-field-error {
+  margin: 0;
+  color: #b8171f;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
 }
 .f3-search-route-fields {
   display: grid;
@@ -177,7 +204,8 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
-  align-items: end;
+  /* The fields line up at the top, so a message under one of them does not push that field up or down. */
+  align-items: start;
 }
 .f3-search-form.is-one_way .f3-search-leg-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -187,6 +215,9 @@
 }
 .f3-search-leg-actions {
   display: flex;
+  align-self: start;
+  /* The label above a field is 20px of text and a 6px gap, so the buttons sit on the field row, not on the label. */
+  margin-top: 26px;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
@@ -194,10 +225,13 @@
 }
 .f3-search-party-row {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
   margin-top: 20px;
+}
+.f3-search-party-row .f3-search-primary {
+  margin-top: 26px;
 }
 .f3-search-party {
   display: grid;
@@ -599,6 +633,10 @@
   }
   .f3-search-party-row .f3-search-primary {
     width: 100%;
+    margin-top: 0;
+  }
+  .f3-search-leg-actions {
+    margin-top: 0;
   }
   .f3-search-result-tools {
     justify-content: flex-start;
@@ -639,6 +677,7 @@
   }
   .f3-search-input,
   .cw-select-trigger,
+  .cw-date-trigger,
   .f3-search-primary {
     min-height: 44px;
   }
