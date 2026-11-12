@@ -9,6 +9,7 @@ import { BaggageModule } from './modules/baggage/baggage.module'
 import { validateEnv } from './config/env.validation'
 import { BaggageLifecycleModule } from './modules/baggage/baggage-lifecycle.module'
 import { PassengerLostReportModule } from './modules/baggage/passenger-lost-report.module'
+import { PricingModule } from './modules/pricing/pricing.module'
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PassengerLostReportModule } from './modules/baggage/passenger-lost-repo
     BaggageModule,
     BaggageLifecycleModule,
     PassengerLostReportModule,
+    PricingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

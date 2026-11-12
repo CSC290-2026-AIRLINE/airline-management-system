@@ -18,6 +18,7 @@ import { useRoleAccess } from '../hooks/useRoleAccess'
 import { featureLabel } from '../feature-labels'
 import { AdminErrorCard } from '../components/AdminErrorCard'
 import { NoAccessScreen } from '../components/NoAccessScreen'
+import { SidebarPreview } from '../components/SidebarPreview'
 import type { ScreenDto, StaffRow } from '../types'
 
 /* Helpers --------------------------------------------------------------- */
@@ -108,7 +109,7 @@ function splitColumns(groups: DisplayGroup[]): DisplayGroup[][] {
 
 /* Shared class lists ------------------------------------------------------ */
 
-const LOCKED_TIP = 'Core and Admin screens can’t be given or taken away'
+const LOCKED_TIP = 'Core and Admin screens can’t be given or taken away, and an admin role always sees every screen'
 
 /** What the save panel under the card is showing. */
 type Panel = { kind: 'idle' } | { kind: 'saved'; reason: string; previous: string[]; staffCount: number }
@@ -183,7 +184,8 @@ export function RoleAccessPage() {
   /** Whether a screen shows as ticked: core for everyone, admin screens for an admin role, the rest by grant. */
   function shownChecked(s: ScreenDto, granted: Set<string>): boolean {
     if (s.kind === 'core') return true
-    if (s.kind === 'admin') return !!currentRole?.is_admin
+    if (currentRole?.is_admin) return true
+    if (s.kind === 'admin') return false
     return granted.has(s.id)
   }
 
@@ -202,7 +204,7 @@ export function RoleAccessPage() {
   }
 
   function toggle(screenId: string, kind: ScreenDto['kind']) {
-    if (kind !== 'assignable' || !roleId) return
+    if (kind !== 'assignable' || !roleId || currentRole?.is_admin) return
     const base = pending ?? new Set(registry.granted)
     const next = new Set(base)
     if (next.has(screenId)) next.delete(screenId)
@@ -246,7 +248,7 @@ export function RoleAccessPage() {
     const role = currentRole
     if (!role) return []
     return registry.screens.flatMap((g) =>
-      g.screens.filter((s) => (s.kind === 'core' ? true : s.kind === 'admin' ? role.is_admin : registry.granted.has(s.id))),
+      g.screens.filter((s) => (s.kind === 'core' || role.is_admin ? true : s.kind === 'admin' ? false : registry.granted.has(s.id))),
     )
   }, [currentRole, registry.granted, registry.screens])
 
@@ -387,7 +389,7 @@ export function RoleAccessPage() {
                       </header>
                       <ul>
                         {group.screens.map((s) => {
-                          const locked = s.kind !== 'assignable'
+                          const locked = s.kind !== 'assignable' || !!currentRole?.is_admin
                           const checked = shownChecked(s, granted)
                           const unsaved = !locked && pending !== null && checked !== registry.granted.has(s.id)
                           const row = (
@@ -591,22 +593,10 @@ export function RoleAccessPage() {
             )}
           </div>
 
-          <div className="flex max-h-80 flex-col gap-1 overflow-y-auto rounded-xl bg-navy px-3.5 py-4">
-            <p className="text-xs font-semibold text-white/70 uppercase">
-              {previewPerson ? `${previewPerson.first_name} ${previewPerson.last_name}` : (currentRole?.name ?? 'This role')} sees
-            </p>
-            {previewSees.length === 0 ? (
-              <p className="px-2.5 py-2 text-sm text-white/70">No screens yet.</p>
-            ) : (
-              previewSees.map((s) => (
-                <div key={s.id} className="flex items-center gap-2 rounded-md px-2.5 py-2">
-                  <span className="text-sm font-medium text-white">{s.name}</span>
-                  <span className="flex-1" />
-                  {s.kind === 'core' && <span className="text-xs font-semibold text-white/70">Core</span>}
-                </div>
-              ))
-            )}
-          </div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase">
+            {previewPerson ? `${previewPerson.first_name} ${previewPerson.last_name}` : (currentRole?.name ?? 'This role')} sees
+          </p>
+          <SidebarPreview screens={previewSees} roleName={currentRole?.name ?? 'This role'} />
           <p className="text-xs text-muted-foreground">Unsaved changes on this page aren’t included until you save.</p>
           <div className="flex justify-end">
             <Button type="button" className="h-auto bg-primary py-3 text-sm text-white" onClick={() => setPreviewOpen(false)}>
