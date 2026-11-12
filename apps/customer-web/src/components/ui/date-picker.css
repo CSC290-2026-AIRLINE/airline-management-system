@@ -1,0 +1,346 @@
+/*
+ * The shared date field and its calendar. It follows the customer-web dropdown (`select.css`): the same field metrics
+ * as an input, the same white panel with the same border, shadow and 150ms fade-and-zoom when the popup opens.
+ *
+ * The popup is portalled to the body, so it cannot read the page-scoped `--f3-*` variables; every colour below falls
+ * back to the value the pages use.
+ */
+
+.cw-date-trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--f3-input-border, #dbe0eb);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--f3-ink, #0a1424);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cw-date-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* The same field focus as the other text boxes: a navy border with a 50% navy ring.
+   A page that gives every button an orange outline has to name this trigger in its own field rule, the way the pages
+   already name `.cw-select-trigger`. */
+.cw-date-trigger:focus-visible {
+  outline: none;
+  border-color: var(--f3-primary, #102544);
+  box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
+}
+
+/* A field that failed validation. */
+.cw-date-trigger.is-invalid {
+  border-color: #b8171f;
+}
+
+.cw-date-trigger.is-invalid:focus-visible {
+  border-color: #b8171f;
+  box-shadow: 0 0 0 3px rgba(184, 23, 31, 0.35);
+}
+
+/* A read-only date is plain text, like the other read-only fields on the passenger form. */
+.cw-date-static {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--f3-input-border, #dbe0eb);
+  border-radius: 8px;
+  background: #f7f9fc;
+  color: #475569;
+  font-family: inherit;
+  font-size: var(--cw-date-font-size, 15px);
+}
+
+.cw-date-static.is-invalid {
+  border-color: #b8171f;
+}
+
+/* The chosen text. The pages set `font: inherit` on buttons, so the size is set here rather than on the trigger.
+   A page that uses a different field size sets `--cw-date-font-size`. */
+.cw-date-value {
+  display: block;
+  overflow: hidden;
+  font-size: var(--cw-date-font-size, 15px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cw-date-value.is-empty {
+  color: #7b8494;
+}
+
+.cw-date-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--f3-muted, #677287);
+  opacity: 0.6;
+}
+
+/* The calendar */
+
+.cw-date-content {
+  z-index: 50;
+  box-sizing: border-box;
+  width: 288px;
+  padding: 12px;
+  border: 1px solid var(--f3-border, #d9dfe9);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--f3-ink, #0a1424);
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  font-size: 13px;
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.cw-date-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.cw-date-header-selects {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  gap: 6px;
+}
+
+.cw-date-select {
+  appearance: none;
+  padding: 5px 10px;
+  border: 1px solid var(--f3-input-border, #dbe0eb);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--f3-ink, #0a1424);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cw-date-select:focus-visible {
+  outline: none;
+  border-color: var(--f3-primary, #102544);
+  box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
+}
+
+.cw-date-nav {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--f3-input-border, #dbe0eb);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--f3-navy, #14213d);
+  cursor: pointer;
+}
+
+.cw-date-nav:hover {
+  border-color: var(--f3-primary, #102544);
+}
+
+.cw-date-nav:focus-visible {
+  outline: none;
+  border-color: var(--f3-primary, #102544);
+  box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
+}
+
+.cw-date-nav svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cw-date-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.cw-date-weekdays span {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--f3-muted, #677287);
+}
+
+.cw-date-grid {
+  display: grid;
+  gap: 2px;
+}
+
+.cw-date-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.cw-date-cell {
+  display: flex;
+  justify-content: center;
+}
+
+.cw-date-day {
+  display: flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--f3-ink, #0a1424);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.cw-date-day:hover:not(:disabled) {
+  background: var(--f3-neutral-soft, #f4f6fa);
+}
+
+.cw-date-day:focus-visible {
+  outline: none;
+  border-color: var(--f3-primary, #102544);
+  box-shadow: 0 0 0 2px rgba(16, 37, 68, 0.35);
+}
+
+/* The chosen day is dark, so the focus ring needs a light gap to show up on it. */
+.cw-date-day.is-selected:focus-visible {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--f3-primary, #102544);
+}
+
+/* A day in the month before or after the one on screen. */
+.cw-date-day.is-outside {
+  color: #b3bcca;
+}
+
+/* Today, when it is not the chosen day. */
+.cw-date-day.is-today {
+  border-color: var(--f3-primary, #102544);
+  font-weight: 700;
+}
+
+.cw-date-day.is-selected {
+  background: var(--f3-primary, #102544);
+  border-color: var(--f3-primary, #102544);
+  color: #fff;
+  font-weight: 600;
+}
+
+.cw-date-day.is-selected:hover:not(:disabled) {
+  background: #1c3e6a;
+}
+
+.cw-date-day:disabled {
+  color: #c8cfdb;
+  cursor: not-allowed;
+}
+
+.cw-date-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--f3-line, #e6e8ef);
+}
+
+.cw-date-footer-button {
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--f3-navy, #14213d);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cw-date-footer-button:hover:not(:disabled) {
+  background: var(--f3-neutral-soft, #f4f6fa);
+}
+
+.cw-date-footer-button:disabled {
+  color: var(--f3-muted, #677287);
+  cursor: not-allowed;
+}
+
+.cw-date-footer-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
+}
+
+/* The same 150ms fade and zoom the dropdown uses. */
+.cw-date-content[data-state='open'] {
+  animation: cw-date-smooth-in 150ms ease;
+}
+
+.cw-date-content[data-state='closed'] {
+  animation: cw-date-smooth-out 150ms ease;
+}
+
+@keyframes cw-date-smooth-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cw-date-smooth-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-date-content[data-state='open'],
+  .cw-date-content[data-state='closed'] {
+    animation: none;
+  }
+}
