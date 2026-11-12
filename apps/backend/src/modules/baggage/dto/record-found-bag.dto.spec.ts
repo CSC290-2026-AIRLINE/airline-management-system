@@ -45,6 +45,11 @@ describe('SaveStationContactDto', () => {
   it('accepts a desk with phone and optional email, and rejects a bad phone or email', async () => {
     expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: '+66 2 134 0000' })).toEqual([])
     expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: 'call me' })).toEqual(['phone'])
-    expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: '021340000', email: 'nope' })).toEqual(['email'])
+    expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: '(02) 134-0000' })).toEqual(['phone'])
+    expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: '021340000' })).toEqual(['phone'])
+    expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: '+44 20 7946 00000' })).toEqual(['phone'])
+    expect(await errorsFor(SaveStationContactDto, { deskName: 'Baggage Services', phone: '+66 2 134 0000', email: 'nope' })).toEqual([
+      'email',
+    ])
   })
 })

@@ -1,5 +1,5 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator'
-import { CONTACT_PHONE_PATTERN } from './create-staff-lost-report.dto'
+import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator'
+import { IsPhoneNumber } from '../common/phone-number'
 
 /** Body of `POST /api/staff/lost-reports/from-found-bag`: open a case for the owner of a tagged found bag. */
 export class ReportFromFoundBagDto {
@@ -19,6 +19,6 @@ export class ReportFromFoundBagDto {
 
   @IsOptional()
   @IsString()
-  @Matches(CONTACT_PHONE_PATTERN, { message: 'contactPhone must be digits, spaces, +, - or brackets' })
+  @IsPhoneNumber()
   contactPhone?: string
 }

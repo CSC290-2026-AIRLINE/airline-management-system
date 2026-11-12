@@ -1,4 +1,5 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator'
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsPhoneNumber } from '../common/phone-number'
 
 /** Body of `PUT /api/staff/station-contacts/:airportCode`. The airport comes from the path. */
 export class SaveStationContactDto {
@@ -8,7 +9,7 @@ export class SaveStationContactDto {
   deskName: string
 
   @IsString()
-  @Matches(/^\+?[0-9 ()-]{6,30}$/, { message: 'phone must be digits, spaces, +, - or brackets' })
+  @IsPhoneNumber()
   phone: string
 
   @IsOptional()

@@ -32,6 +32,8 @@ describe('CreateStaffLostReportDto', () => {
     expect(await errorsFor(CreateStaffLostReportDto, { ...desk, bookingReference: 'ABC-23' })).toEqual(['bookingReference'])
     expect(await errorsFor(CreateStaffLostReportDto, { ...desk, tagNumber: '1234567890' })).toEqual(['tagNumber'])
     expect(await errorsFor(CreateStaffLostReportDto, { ...desk, contactEmail: 'nope' })).toEqual(['contactEmail'])
+    expect(await errorsFor(CreateStaffLostReportDto, { ...desk, contactPhone: '02-134-0000' })).toEqual(['contactPhone'])
+    expect(await errorsFor(CreateStaffLostReportDto, { ...desk, contactPhone: '081 234 5678' })).toEqual(['contactPhone'])
     expect(await errorsFor(CreateStaffLostReportDto, { ...desk, reportedByStaffId: UUID })).toEqual(['reportedByStaffId'])
   })
 })

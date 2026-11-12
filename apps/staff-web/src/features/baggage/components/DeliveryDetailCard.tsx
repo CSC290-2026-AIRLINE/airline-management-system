@@ -20,6 +20,7 @@ import {
   type DeliveryType,
 } from '../constants'
 import { errorMessage } from '../hooks/useFoundBags'
+import { displayPhone } from '../phone-number'
 import { CaseCosts } from './CaseCosts'
 import { HandOverForm } from './HandOverForm'
 import { F10Card, FIELD_BOX, Field, FormError, Pill, SelectBox } from './primitives'
@@ -242,7 +243,7 @@ export function DeliveryDetailCard({
 
   const canChoose = delivery.status === 'waiting_choice' || delivery.status === 'preparing'
   const steps = nextSteps(delivery)
-  const contact = delivery.contactPhone ?? delivery.contactEmail ?? '–'
+  const contact = (delivery.contactPhone && displayPhone(delivery.contactPhone)) ?? delivery.contactEmail ?? '–'
 
   return (
     <F10Card aria-labelledby="delivery-detail-title">

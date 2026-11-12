@@ -1,8 +1,7 @@
 import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator'
 import { BAG_COLOURS, BAG_TYPES, type BagColour, type BagType } from '../common/baggage.constants'
 import { BAGGAGE_TAG_PATTERN } from '../common/baggage-tag.util'
-
-export const CONTACT_PHONE_PATTERN = /^\+?[0-9 ()-]{6,30}$/
+import { IsPhoneNumber } from '../common/phone-number'
 
 /**
  * Body of `POST /api/staff/lost-reports`: a passenger at the desk reports a missing bag. The staff member comes from
@@ -49,6 +48,6 @@ export class CreateStaffLostReportDto {
 
   @IsOptional()
   @IsString()
-  @Matches(CONTACT_PHONE_PATTERN, { message: 'contactPhone must be digits, spaces, +, - or brackets' })
+  @IsPhoneNumber()
   contactPhone?: string
 }

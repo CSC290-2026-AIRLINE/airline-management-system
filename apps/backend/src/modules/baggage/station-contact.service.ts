@@ -3,6 +3,7 @@ import type { station_contact } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/patterns'
+import { formatPhoneNumber, phoneNumberProblem } from './common/phone-number'
 
 /** The baggage desk at an airport, so staff can call the station holding a bag. */
 export interface StationContact {
@@ -92,7 +93,13 @@ export class StationContactService {
       throw invalid('Desk name and phone are required')
     }
 
-    const data = { desk_name: deskName, phone, email, updated_at: new Date(), updated_by: input.staffId }
+    const storedPhone = formatPhoneNumber(phone)
+
+    if (!storedPhone) {
+      throw invalid(phoneNumberProblem(phone) ?? 'Check the phone number.')
+    }
+
+    const data = { desk_name: deskName, phone: storedPhone, email, updated_at: new Date(), updated_by: input.staffId }
 
     try {
       const row = await this.db.station_contact.upsert({

@@ -14,13 +14,13 @@ import {
   type BagType,
 } from '../constants'
 import { errorMessage } from '../hooks/useFoundBags'
+import { formatPhoneNumber, phoneNumberProblem } from '../phone-number'
 import { F10Card, FIELD_BOX, Field, FormError, SelectBox } from './primitives'
 
 const TYPE_OPTIONS = BAG_TYPES.map((t) => ({ value: t, label: BAG_TYPE_LABELS[t] }))
 const COLOUR_OPTIONS = BAG_COLOURS.map((c) => ({ value: c, label: colourLabel(c) }))
 const BOOKING_REFERENCE = /^[A-Za-z0-9]{6}$/
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const PHONE = /^\+?[0-9 ()-]{6,30}$/
 
 function couponKey(c: BookingCoupon): string {
   return `${c.passengerId}:${c.flightId}`
@@ -102,7 +102,8 @@ function CaseDetails({
   const [brand, setBrand] = useState('')
   const [description, setDescription] = useState('')
   const [contactEmail, setContactEmail] = useState(booking.contactEmail)
-  const [contactPhone, setContactPhone] = useState(booking.contactPhone ?? '')
+  const bookingPhone = booking.contactPhone ?? ''
+  const [contactPhone, setContactPhone] = useState(formatPhoneNumber(bookingPhone) ?? bookingPhone)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -112,8 +113,18 @@ function CaseDetails({
     if (!coupon) return 'Choose the passenger and flight.'
     if (tagNumber.trim() && !BAGGAGE_TAG_PATTERN.test(tagNumber.trim())) return 'Use 10 digits for the tag: 0, then 789, then 6 digits.'
     if (contactEmail.trim() && !EMAIL.test(contactEmail.trim())) return 'Check the email address.'
-    if (contactPhone.trim() && !PHONE.test(contactPhone.trim())) return 'Use digits, spaces, +, - or brackets for the phone number.'
+    if (phoneToSend() === null) return phoneNumberProblem(contactPhone)
     return null
+  }
+
+  /**
+   * The phone to send: undefined when blank or still the booking's own phone (the backend then uses the booking's),
+   * null when what was typed is not a phone number.
+   */
+  function phoneToSend(): string | null | undefined {
+    const typed = contactPhone.trim()
+    if (!typed || typed === bookingPhone.trim() || typed === formatPhoneNumber(bookingPhone)) return undefined
+    return formatPhoneNumber(typed)
   }
 
   async function submit(e: FormEvent) {
@@ -136,7 +147,7 @@ function CaseDetails({
         brand: brand.trim() || undefined,
         description: description.trim() || undefined,
         contactEmail: contactEmail.trim() || undefined,
-        contactPhone: contactPhone.trim() || undefined,
+        contactPhone: phoneToSend() ?? undefined,
       })
       onCreated(report)
     } catch (err: unknown) {
@@ -229,8 +240,10 @@ function CaseDetails({
                 id="nc-phone"
                 type="tel"
                 maxLength={30}
+                placeholder="e.g. +66 81 234 5678"
                 value={contactPhone}
                 onChange={(e) => setContactPhone(e.target.value)}
+                onBlur={() => setContactPhone((v) => formatPhoneNumber(v) ?? v)}
                 className={FIELD_BOX}
               />
             </Field>

@@ -6,10 +6,9 @@ import { Skeleton } from '@staff-web/components/ui/skeleton'
 import type { SaveStationContactBody, StationContact } from '../api/found-bags'
 import { errorMessage } from '../hooks/useFoundBags'
 import { cn } from '@staff-web/lib/utils'
+import { displayPhone, formatPhoneNumber, phoneHref, phoneNumberProblem } from '../phone-number'
 import { F10Card, FIELD_BOX, Field, FormError, LIST_CARD, LIST_PAD } from './primitives'
 
-/** Same rules as the backend's SaveStationContactDto. */
-const PHONE_PATTERN = /^\+?[0-9 ()-]{6,30}$/
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const AIRPORT_PATTERN = /^[A-Za-z]{3}$/
 
@@ -57,7 +56,8 @@ function ContactDialog({
   function check(): string | null {
     if (!contact && !AIRPORT_PATTERN.test(airportCode.trim())) return 'Airport must be a 3-letter code, for example BKK.'
     if (!deskName.trim()) return 'Enter the desk name.'
-    if (!PHONE_PATTERN.test(phone.trim())) return 'Phone can use digits, spaces, +, - and brackets (6 to 30 characters).'
+    const phoneProblem = phoneNumberProblem(phone)
+    if (phoneProblem) return phoneProblem
     if (email.trim() && !EMAIL_PATTERN.test(email.trim())) return 'Enter a valid email, or leave it blank.'
     return null
   }
@@ -74,7 +74,7 @@ function ContactDialog({
     try {
       await onSave((contact?.airportCode ?? airportCode).trim().toUpperCase(), {
         deskName: deskName.trim(),
-        phone: phone.trim(),
+        phone: formatPhoneNumber(phone) ?? phone.trim(),
         email: email.trim() || undefined,
       })
       onOpenChange(false)
@@ -127,6 +127,7 @@ function ContactDialog({
               placeholder="e.g. +66 2 000 4101"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              onBlur={() => setPhone((v) => formatPhoneNumber(v) ?? v)}
               className={FIELD_BOX}
             />
           </Field>
@@ -249,13 +250,10 @@ export function AirportContactsCard({
                   <td className="py-3 pr-3 text-base text-[#14213d]">{c.deskName}</td>
                   <td className="py-3 pr-3">
                     <div className="flex items-center gap-2">
-                      <a
-                        href={`tel:${c.phone.replace(/[^+\d]/g, '')}`}
-                        className="text-base whitespace-nowrap text-[#14213d] hover:underline"
-                      >
-                        {c.phone}
+                      <a href={phoneHref(c.phone)} className="text-base whitespace-nowrap text-[#14213d] hover:underline">
+                        {displayPhone(c.phone)}
                       </a>
-                      <CopyButton text={c.phone} label={`Copy ${c.airportCode} phone number`} />
+                      <CopyButton text={displayPhone(c.phone)} label={`Copy ${c.airportCode} phone number`} />
                     </div>
                   </td>
                   <td className="truncate py-3 pr-3 text-base text-[#14213d]">
@@ -320,10 +318,10 @@ export function AirportContactsCard({
                 </Button>
               </div>
               <div className="flex items-center gap-2">
-                <a href={`tel:${c.phone.replace(/[^+\d]/g, '')}`} className="flex-1 text-base text-[#14213d] hover:underline">
-                  {c.phone}
+                <a href={phoneHref(c.phone)} className="flex-1 text-base text-[#14213d] hover:underline">
+                  {displayPhone(c.phone)}
                 </a>
-                <CopyButton text={c.phone} label={`Copy ${c.airportCode} phone number`} />
+                <CopyButton text={displayPhone(c.phone)} label={`Copy ${c.airportCode} phone number`} />
               </div>
               {c.email ? (
                 <a href={`mailto:${c.email}`} className="truncate text-sm text-[#14213d] hover:underline">

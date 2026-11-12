@@ -3,6 +3,7 @@ import type { BagMatch } from '../api/bag-matches'
 import type { FoundBag } from '../api/found-bags'
 import type { AddBagCostBody, BagCostSummary, LostReportCase } from '../api/lost-reports'
 import { REPORT_STATUS_LABELS, REPORT_STATUS_TONES, bagSummary, formatEventTime, formatFlightDate } from '../constants'
+import { displayPhone } from '../phone-number'
 import { CaseCosts } from './CaseCosts'
 import { CaseMatches } from './CaseMatches'
 import { F10Card, Pill } from './primitives'
@@ -39,7 +40,7 @@ export function CaseDetailCard({
     remove: (costId: string) => Promise<void>
   }
 }) {
-  const contact = report.contactPhone ?? report.contactEmail ?? 'Not given'
+  const contact = (report.contactPhone && displayPhone(report.contactPhone)) ?? report.contactEmail ?? 'Not given'
 
   return (
     <F10Card aria-labelledby="case-detail-title">

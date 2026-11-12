@@ -141,6 +141,22 @@ describe('StaffLostReportService.createAtDesk', () => {
     )
   })
 
+  it('stores a typed Thai phone grouped and refuses one without + and the country code', async () => {
+    const { svc, db } = makeSvc()
+
+    await svc.createAtDesk({ ...deskInput, contactPhone: '+66899990000' })
+    expect(db.lost_bag_report.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ contact_phone: '+66 89 999 0000' }) }),
+    )
+
+    db.lost_bag_report.create.mockClear()
+    await expect(svc.createAtDesk({ ...deskInput, contactPhone: '089 999 0000' })).rejects.toMatchObject({
+      code: 'INVALID_REPORT',
+      status: 400,
+    })
+    expect(db.lost_bag_report.create).not.toHaveBeenCalled()
+  })
+
   it('reports an unknown booking, passenger or flight as BOOKING_NOT_FOUND', async () => {
     const { svc, db } = makeSvc()
     db.booking_coupon.findFirst.mockResolvedValue(null)

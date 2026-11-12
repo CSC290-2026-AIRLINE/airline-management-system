@@ -70,6 +70,23 @@ describe('StationContactService', () => {
     )
   })
 
+  it('stores a Thai number in the grouped +66 form', async () => {
+    const { svc, db } = makeSvc()
+
+    await svc.save({ ...input, phone: '+6653000001' })
+
+    expect(db.station_contact.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: expect.objectContaining({ phone: '+66 53 000 001' }) }),
+    )
+  })
+
+  it('refuses a phone without + and the country code', async () => {
+    const { svc, db } = makeSvc()
+
+    await expect(svc.save({ ...input, phone: '02 134 0000' })).rejects.toMatchObject({ code: 'INVALID_STATION_CONTACT', status: 400 })
+    expect(db.station_contact.upsert).not.toHaveBeenCalled()
+  })
+
   it('rejects a missing desk name or phone', async () => {
     const { svc, db } = makeSvc()
 

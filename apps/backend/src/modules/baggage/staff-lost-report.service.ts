@@ -17,6 +17,7 @@ import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { BookingLookup, LostReportCase } from './common/lost-report.types'
 import { UUID_PATTERN, prismaErrorCode } from './common/patterns'
+import { formatPhoneNumber, phoneNumberProblem } from './common/phone-number'
 
 /** Same rule as the CHECK on booking.booking_reference. */
 export const BOOKING_REFERENCE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/
@@ -132,6 +133,26 @@ function requireStaff(staffId: string): void {
 /** Blank strings count as not given, so a form that sends '' falls back to the booking's contact. */
 function clean(value: string | null | undefined): string | null {
   return value?.trim() || null
+}
+
+/**
+ * The phone typed at the desk in its stored form (see formatPhoneNumber), or the booking's phone when none was typed.
+ * The booking's phone is tidied the same way when it can be, and kept as it is when it cannot.
+ */
+function contactPhone(typed: string | null | undefined, bookingPhone: string | null): string | null {
+  const given = clean(typed)
+
+  if (!given) {
+    return bookingPhone ? (formatPhoneNumber(bookingPhone) ?? bookingPhone) : null
+  }
+
+  const phone = formatPhoneNumber(given)
+
+  if (!phone) {
+    throw invalid(phoneNumberProblem(given) ?? 'Check the contact phone number.')
+  }
+
+  return phone
 }
 
 /**
@@ -293,7 +314,7 @@ export class StaffLostReportService {
       brand: clean(input.brand),
       description: clean(input.description),
       contactEmail: clean(input.contactEmail) ?? booking.contact_email,
-      contactPhone: clean(input.contactPhone) ?? booking.contact_phone,
+      contactPhone: contactPhone(input.contactPhone, booking.contact_phone),
     })
   }
 
@@ -367,7 +388,7 @@ export class StaffLostReportService {
       brand: bag.brand,
       description: clean(input.description) ?? bag.description,
       contactEmail: clean(input.contactEmail) ?? booking.contact_email,
-      contactPhone: clean(input.contactPhone) ?? booking.contact_phone,
+      contactPhone: contactPhone(input.contactPhone, booking.contact_phone),
     })
   }
 
