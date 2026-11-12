@@ -17,6 +17,8 @@ import { PassengerLostReportTravellersController } from './passenger-lost-report
 import { PassengerCaseSummaryService } from './passenger-case-summary.service'
 import { LOST_REPORT_PHOTO_S3_CLIENT, LostReportPhotoStorage } from './lost-report-photo.storage'
 import { GuestLostReportFlightsController } from './guest-lost-report-flights.controller'
+import { GuestLostReportTravellersController } from './guest-lost-report-travellers.controller'
+import { GuestLostReportController } from './guest-lost-report.controller'
 import { GuestBookingLookupService } from './guest-booking-lookup.service'
 
 @Module({
@@ -26,6 +28,8 @@ import { GuestBookingLookupService } from './guest-booking-lookup.service'
     PassengerLostReportFlightsController,
     PassengerLostReportTravellersController,
     GuestLostReportFlightsController,
+    GuestLostReportTravellersController,
+    GuestLostReportController,
   ],
   providers: [
     BaggageCustomerGuard,
