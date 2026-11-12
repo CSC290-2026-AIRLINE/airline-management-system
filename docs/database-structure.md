@@ -62,7 +62,7 @@ Instead:
 2. Coordinate cross-module relationships with the affected teams.
 3. Submit the requested model/field/relation changes to the Database Team.
 4. The DB Team updates the centralized Prisma schema and creates the migration.
-5. After the change is merged, feature developers regenerate the Prisma client as needed.
+5. After the change is merged, feature developers pull and run `npm run db:generate` to regenerate the Prisma client.
 
 The previously documented `db/schema-docs/<module>.md` workflow is **not present in the current repository**. The DB Leads can add that structure later if the team adopts it.
 
