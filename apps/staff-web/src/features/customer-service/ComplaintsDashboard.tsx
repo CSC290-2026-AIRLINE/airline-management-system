@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Flag, Inbox, Search } from 'lucide-react'
+import { useEffect, useEffectEvent, useState } from 'react'
+import { Inbox, Search } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
@@ -7,64 +8,78 @@ import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/nativ
 import { Sheet } from '@staff-web/components/ui/sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { cn } from '@staff-web/lib/utils'
-import type { Complaint, ComplaintCategory, ComplaintStatus } from './types'
-import { loadComplaints, updateComplaint } from './types'
-import { CategoryLabel, StatusBadge } from './ComplaintBadges'
+import { errorMessage, useComplaintsApi } from './api'
+import { StatusBadge, TypeLabel } from './ComplaintBadges'
 import { ComplaintDetailPanel } from './ComplaintDetailPanel'
 import { formatDateTime } from './format'
+import { ALL_STATUSES, ALL_TYPES, STATUS_LABEL, TYPE_LABEL, humanize, type CaseStatus, type Complaint, type ComplaintType } from './types'
 
-const ALL_STATUSES: ComplaintStatus[] = ['Pending', 'In Review', 'Escalated', 'Resolved', 'Closed']
-const ALL_CATEGORIES: ComplaintCategory[] = ['Employee', 'Flight', 'Food']
-const REFRESH_MS = 2000
+const REFRESH_MS = 10_000
 
 export function ComplaintsDashboard() {
-  const [complaints, setComplaints] = useState<Complaint[]>(loadComplaints)
+  const api = useComplaintsApi()
+  const [complaints, setComplaints] = useState<Complaint[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState<ComplaintStatus | 'All'>('All')
-  const [filterCategory, setFilterCategory] = useState<ComplaintCategory | 'All'>('All')
+  const [filterStatus, setFilterStatus] = useState<CaseStatus | 'all'>('all')
+  const [filterType, setFilterType] = useState<ComplaintType | 'all'>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Bumped after a change in the drawer, which restarts the effect below and so reloads the list at once.
+  const [reloadToken, setReloadToken] = useState(0)
 
-  // Poll localStorage so new customer submissions appear automatically.
+  const fetchList = useEffectEvent(() => api.list())
+
+  // Load now, then poll so new customer complaints show up without a reload.
   useEffect(() => {
-    const interval = setInterval(() => setComplaints(loadComplaints()), REFRESH_MS)
-    return () => clearInterval(interval)
-  }, [])
+    let cancelled = false
+    const tick = () =>
+      fetchList().then(
+        (rows) => {
+          if (cancelled) return
+          setComplaints(rows)
+          setLoadError(null)
+        },
+        (e: unknown) => {
+          if (!cancelled) setLoadError(errorMessage(e))
+        },
+      )
+    void tick()
+    const interval = setInterval(() => void tick(), REFRESH_MS)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [reloadToken])
 
-  // Derived from the list, so the open panel picks up changes from the poll too.
-  const selected = complaints.find((c) => c.id === selectedId) ?? null
-
-  function handleUpdate(updated: Complaint) {
-    updateComplaint(updated)
-    setComplaints(loadComplaints())
-  }
-
+  const all = complaints ?? []
   const q = search.trim().toLowerCase()
-  const filtered = complaints.filter((c) => {
+  const filtered = all.filter((c) => {
     const matchSearch =
-      !q ||
-      c.id.toLowerCase().includes(q) ||
-      c.passengerName.toLowerCase().includes(q) ||
-      c.passengerEmail.toLowerCase().includes(q) ||
-      c.bookingRef.toLowerCase().includes(q) ||
-      c.flightNumber.toLowerCase().includes(q)
-    const matchStatus = filterStatus === 'All' || c.status === filterStatus
-    const matchCategory = filterCategory === 'All' || c.category === filterCategory
-    return matchSearch && matchStatus && matchCategory
+      !q || [c.caseNumber, c.passengerName, c.contactEmail ?? '', c.flightNumber ?? ''].some((field) => field.toLowerCase().includes(q))
+    const matchStatus = filterStatus === 'all' || c.status === filterStatus
+    const matchType = filterType === 'all' || c.type === filterType
+    return matchSearch && matchStatus && matchType
   })
 
-  const counts = Object.fromEntries(ALL_STATUSES.map((s) => [s, complaints.filter((c) => c.status === s).length])) as Record<
-    ComplaintStatus,
-    number
-  >
+  const counts = Object.fromEntries(ALL_STATUSES.map((s) => [s, all.filter((c) => c.status === s).length])) as Record<CaseStatus, number>
+  const selected = all.find((c) => c.id === selectedId) ?? null
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:p-6 lg:p-8">
       <header className="flex flex-col gap-2">
         <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">Complaints</h1>
         <p className="text-sm text-muted-foreground">
-          {complaints.length} total · {counts.Pending} pending · refreshes every {REFRESH_MS / 1000} seconds
+          {complaints === null
+            ? 'Loading complaints…'
+            : `${all.length} total · ${counts.with_supervisor} waiting for a supervisor · refreshes every ${REFRESH_MS / 1000} seconds`}
         </p>
       </header>
+
+      {loadError && (
+        <Alert variant="destructive">
+          <AlertDescription className="block">Could not load complaints: {loadError}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
         {ALL_STATUSES.map((s) => {
@@ -75,9 +90,9 @@ export function ComplaintsDashboard() {
               size="sm"
               variant={active ? 'default' : 'outline'}
               aria-pressed={active}
-              onClick={() => setFilterStatus(active ? 'All' : s)}
+              onClick={() => setFilterStatus(active ? 'all' : s)}
             >
-              {s}
+              {STATUS_LABEL[s]}
               <span className={cn('tabular-nums', active ? 'opacity-80' : 'text-muted-foreground')}>{counts[s]}</span>
             </Button>
           )
@@ -94,34 +109,36 @@ export function ComplaintsDashboard() {
             <Input
               type="search"
               aria-label="Search complaints"
-              placeholder="Search by case ID, name, email, booking ref or flight"
+              placeholder="Search by case number, passenger, email or flight"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8"
             />
           </div>
           <NativeSelect
-            aria-label="Filter by category"
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value as ComplaintCategory | 'All')}
+            aria-label="Filter by type"
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as ComplaintType | 'all')}
             className="sm:w-44"
           >
-            <NativeSelectOption value="All">All categories</NativeSelectOption>
-            {ALL_CATEGORIES.map((c) => (
-              <NativeSelectOption key={c} value={c}>
-                {c}
+            <NativeSelectOption value="all">All types</NativeSelectOption>
+            {ALL_TYPES.map((t) => (
+              <NativeSelectOption key={t} value={t}>
+                {TYPE_LABEL[t]}
               </NativeSelectOption>
             ))}
           </NativeSelect>
         </div>
 
         <CardContent className="p-0">
-          {filtered.length === 0 ? (
+          {complaints === null && !loadError ? (
+            <p className="px-4 py-16 text-center text-sm text-muted-foreground">Loading complaints…</p>
+          ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-4 py-16 text-center">
               <Inbox className="size-10 text-muted-foreground" aria-hidden="true" />
               <p className="font-semibold text-foreground">No complaints found</p>
               <p className="text-sm text-muted-foreground">
-                {complaints.length === 0
+                {all.length === 0
                   ? 'No complaints have been submitted yet. They will appear here automatically.'
                   : 'Try adjusting your search or filters.'}
               </p>
@@ -130,13 +147,13 @@ export function ComplaintsDashboard() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="pl-4">Case ID</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Subject</TableHead>
+                  <TableHead className="pl-4">Case</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Complaint</TableHead>
                   <TableHead>Passenger</TableHead>
-                  <TableHead>Flight</TableHead>
+                  <TableHead>Owner</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="pr-4">Submitted</TableHead>
+                  <TableHead className="pr-4">Opened</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -145,7 +162,7 @@ export function ComplaintsDashboard() {
                     key={c.id}
                     data-state={c.id === selectedId ? 'selected' : undefined}
                     onClick={() => setSelectedId(c.id)}
-                    className={cn('cursor-pointer', c.status === 'Pending' && 'bg-amber-50/60')}
+                    className={cn('cursor-pointer', c.status === 'with_supervisor' && 'bg-amber-50/60')}
                   >
                     <TableCell className="pl-4">
                       {/* The row is clickable; this button is the keyboard and screen-reader way in. */}
@@ -155,33 +172,30 @@ export function ComplaintsDashboard() {
                           e.stopPropagation()
                           setSelectedId(c.id)
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-sm font-mono text-sm font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded-sm font-mono text-sm font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        {c.supervisorInvolved && (
-                          <>
-                            <Flag className="size-3.5 text-red-600" aria-hidden="true" />
-                            <span className="sr-only">Supervisor involved, </span>
-                          </>
-                        )}
-                        {c.id}
+                        {c.caseNumber}
                       </button>
                     </TableCell>
                     <TableCell>
-                      <CategoryLabel category={c.category} />
+                      <TypeLabel type={c.type} />
                     </TableCell>
-                    <TableCell className="max-w-64 truncate font-medium">{c.subject}</TableCell>
+                    <TableCell className="max-w-72">
+                      <div className="font-medium">
+                        {humanize(c.issue ?? c.location ?? '')}
+                        {c.flightNumber && <span className="font-mono font-normal text-muted-foreground"> · {c.flightNumber}</span>}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">{c.description}</div>
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium">{c.passengerName}</div>
-                      <div className="text-xs text-muted-foreground">{c.passengerEmail}</div>
+                      <div className="text-xs text-muted-foreground">{c.contactEmail}</div>
                     </TableCell>
-                    <TableCell>
-                      <div className="font-mono">{c.flightNumber}</div>
-                      <div className="text-xs text-muted-foreground">{c.flightDate}</div>
-                    </TableCell>
+                    <TableCell className="text-sm">{c.ownerName ?? <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell>
                       <StatusBadge status={c.status} />
                     </TableCell>
-                    <TableCell className="pr-4 text-xs text-muted-foreground">{formatDateTime(c.submittedAt)}</TableCell>
+                    <TableCell className="pr-4 text-xs text-muted-foreground">{formatDateTime(c.openedAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -191,7 +205,7 @@ export function ComplaintsDashboard() {
       </Card>
 
       <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelectedId(null)}>
-        {selected && <ComplaintDetailPanel complaint={selected} onUpdate={handleUpdate} />}
+        {selected && <ComplaintDetailPanel key={selected.id} complaintId={selected.id} onChanged={() => setReloadToken((n) => n + 1)} />}
       </Sheet>
     </div>
   )

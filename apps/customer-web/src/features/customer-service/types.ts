@@ -1,96 +1,85 @@
-// Shared complaint types — mirrors apps/staff-web/src/features/customer-service/types.ts
-// When the backend is ready, replace localStorage calls with API calls.
+// Mirrors ComplaintView in apps/backend/src/modules/customer-service/complaint.view.ts (the customer's view: no internal
+// events and no staff names).
 
-export type ComplaintCategory = 'Employee' | 'Flight' | 'Food'
+export type ComplaintType = 'employee' | 'flight' | 'food'
+export type CaseStatus = 'with_supervisor' | 'assigned' | 'resolved' | 'closed'
 
-export type ComplaintStatus =
-  | 'Pending'
-  | 'In Review'
-  | 'Escalated'
-  | 'Resolved'
-  | 'Closed'
-
-export interface ComplaintNote {
+export interface CaseEvent {
   id: string
-  author: string
-  content: string
-  createdAt: string // ISO string
-  isInternal: boolean
+  type: string
+  actor: 'staff' | 'complainant' | 'system'
+  toValue: string | null
+  occurredAt: string
 }
 
 export interface Complaint {
-  id: string // e.g. CS-2026-00001
-  category: ComplaintCategory
-  subject: string
-  description: string
-  // Booking & flight info
-  bookingRef: string
-  flightNumber: string
-  flightDate: string
-  // Passenger info
+  id: string
+  caseNumber: string
+  type: ComplaintType
+  status: CaseStatus
   passengerName: string
-  passengerEmail: string
-  // Status management
-  status: ComplaintStatus
-  assignedTo: string | null
-  supervisorInvolved: boolean
-  // Timeline
-  submittedAt: string // ISO string
-  updatedAt: string // ISO string
-  notes: ComplaintNote[]
+  contactEmail: string | null
+  location: string | null
+  staffName: string | null
+  flightNumber: string | null
+  serviceDate: string | null
+  issue: string | null
+  description: string
+  openedAt: string
+  updatedAt: string
+  events?: CaseEvent[]
 }
 
-const STORAGE_KEY = 'cs_complaints'
-
-export function loadComplaints(): Complaint[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    return JSON.parse(raw) as Complaint[]
-  } catch {
-    return []
-  }
+/** The body of POST /api/complaints. */
+export interface NewComplaint {
+  type: ComplaintType
+  location?: string
+  staff_name?: string
+  flight_number?: string
+  service_date?: string
+  issue?: string
+  description: string
 }
 
-export function saveComplaints(complaints: Complaint[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(complaints))
-}
-
-export function addComplaint(complaint: Complaint): void {
-  const list = loadComplaints()
-  list.unshift(complaint)
-  saveComplaints(list)
-}
-
-export function findComplaint(id: string): Complaint | undefined {
-  return loadComplaints().find((c) => c.id === id)
-}
-
-export function generateCaseId(): string {
-  const year = new Date().getFullYear()
-  const existing = loadComplaints()
-  const num = existing.length + 1
-  return `CS-${year}-${String(num).padStart(5, '0')}`
-}
-
-export const CATEGORY_ICONS: Record<ComplaintCategory, string> = {
-  Employee: '👤',
-  Flight: '✈️',
-  Food: '🍽️',
-}
-
-export const STATUS_COLORS: Record<ComplaintStatus, { bg: string; text: string; border: string }> = {
-  Pending: { bg: '#fef9c3', text: '#854d0e', border: '#fde047' },
-  'In Review': { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
-  Escalated: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
-  Resolved: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
-  Closed: { bg: '#f3f4f6', text: '#374151', border: '#d1d5db' },
-}
-
-export const STATUS_STEPS: { status: ComplaintStatus; label: string; description: string }[] = [
-  { status: 'Pending', label: 'Submitted', description: 'Your complaint has been received.' },
-  { status: 'In Review', label: 'Under Review', description: 'Our team is reviewing your complaint.' },
-  { status: 'Escalated', label: 'Escalated', description: 'Your case has been escalated to a supervisor.' },
-  { status: 'Resolved', label: 'Resolved', description: 'Your complaint has been resolved.' },
-  { status: 'Closed', label: 'Closed', description: 'This case has been closed.' },
+export const TYPES: { value: ComplaintType; icon: string; label: string; desc: string }[] = [
+  { value: 'employee', icon: '👤', label: 'Employee', desc: 'Conduct, attitude or service of staff' },
+  { value: 'flight', icon: '✈️', label: 'Flight', desc: 'Delay, cancellation, seat or cleanliness' },
+  { value: 'food', icon: '🍽️', label: 'Food', desc: 'Meal quality, allergies or a missing meal' },
 ]
+
+// The options the backend accepts (customer-service.constants.ts).
+export const LOCATIONS = [
+  { value: 'check_in', label: 'Check-in counter' },
+  { value: 'gate', label: 'Boarding gate' },
+  { value: 'onboard', label: 'On board' },
+  { value: 'call_centre', label: 'Call centre' },
+  { value: 'other', label: 'Somewhere else' },
+]
+export const FLIGHT_ISSUES = [
+  { value: 'delay', label: 'Delay' },
+  { value: 'cancellation', label: 'Cancellation' },
+  { value: 'seat', label: 'Seat' },
+  { value: 'cleanliness', label: 'Cleanliness' },
+  { value: 'other', label: 'Something else' },
+]
+export const FOOD_ISSUES = [
+  { value: 'wrong_meal', label: 'Wrong meal' },
+  { value: 'quality', label: 'Quality' },
+  { value: 'allergy', label: 'Allergy' },
+  { value: 'missing', label: 'Missing meal' },
+  { value: 'other', label: 'Something else' },
+]
+
+/** The customer's progress steps, one per status. */
+export const STATUS_STEPS: { status: CaseStatus; label: string; description: string }[] = [
+  { status: 'with_supervisor', label: 'Submitted', description: 'Your complaint has been received and is waiting for an agent.' },
+  { status: 'assigned', label: 'In progress', description: 'A customer service agent is handling your case.' },
+  { status: 'resolved', label: 'Resolved', description: 'Your complaint has been resolved.' },
+  { status: 'closed', label: 'Closed', description: 'This case has been closed.' },
+]
+
+export const STATUS_LABEL = Object.fromEntries(STATUS_STEPS.map((s) => [s.status, s.label])) as Record<CaseStatus, string>
+
+export function optionLabel(options: { value: string; label: string }[], value: string | null): string {
+  return options.find((o) => o.value === value)?.label ?? value ?? ''
+}
