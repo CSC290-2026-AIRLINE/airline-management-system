@@ -614,6 +614,17 @@
   font-weight: 700;
 }
 
+/* Guest confirmation: the green "report sent" banner, in the page's existing success green. */
+.passenger-report-success__banner {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.95rem;
+  border-radius: 0.55rem;
+  background: #e7f5ec;
+  color: #157443;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .passenger-report-success h2 {
   margin: 0;
   color: var(--report-ink);

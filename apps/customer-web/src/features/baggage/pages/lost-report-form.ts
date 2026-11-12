@@ -348,3 +348,194 @@ export function buildCreateLostReportFormData(
   formData.append('photo', photo)
   return formData
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Guest (no-account) reporting. The mode follows Clerk's sign-in state only; guest data never carries server ids for the
+// flight, and the bag owner is the traveller the guest picks, re-verified by the server on submission.
+
+export type ReportingMode = 'customer' | 'guest' | 'pending'
+
+/**
+ * Signed in with Clerk: the authenticated customer flow, even when the app session exchange later fails (that shows the
+ * customer flow's own error; it never falls back to guest). Signed out: guest. Not loaded yet: decide nothing.
+ */
+export function reportingModeFor(clerk: { isLoaded: boolean; isSignedIn: boolean | null | undefined }): ReportingMode {
+  if (!clerk.isLoaded) return 'pending'
+  return clerk.isSignedIn ? 'customer' : 'guest'
+}
+
+/** A flight from the guest endpoints: number + date identify it; the server sends no flight id. */
+export interface GuestFlight {
+  flightNumber: string
+  serviceDate: string
+  origin: string
+  destination: string
+}
+
+/** POST /api/guest/lost-reports success body. */
+export interface GuestReportResult {
+  caseNumber: string
+  status: string
+  flightNumber: string
+  serviceDate: string
+  bagType: PassengerBagType
+  colour: PassengerBagColour
+  tagNumber: string | null
+}
+
+/** A local-only key for the flight select. Never sent to the server. */
+export function guestFlightKey(flight: Pick<GuestFlight, 'flightNumber' | 'serviceDate'>): string {
+  return `guest:${flight.flightNumber}:${flight.serviceDate}`
+}
+
+function isGuestFlight(value: unknown): value is GuestFlight {
+  if (typeof value !== 'object' || value === null) return false
+  const flight = value as Record<string, unknown>
+  return (
+    typeof flight.flightNumber === 'string' &&
+    typeof flight.serviceDate === 'string' &&
+    typeof flight.origin === 'string' &&
+    typeof flight.destination === 'string'
+  )
+}
+
+function toEligibleGuestFlight(flight: GuestFlight): EligibleFlight {
+  return {
+    flightId: guestFlightKey(flight),
+    flightNumber: flight.flightNumber,
+    serviceDate: flight.serviceDate,
+    origin: flight.origin,
+    destination: flight.destination,
+  }
+}
+
+/** POST /api/guest/lost-report-flights body, mapped for the form. */
+export function usableGuestFlights(value: unknown): EligibleFlight[] {
+  return Array.isArray(value) ? value.filter(isGuestFlight).map(toEligibleGuestFlight) : []
+}
+
+/**
+ * POST /api/guest/lost-report-travellers body, mapped for "Whose bag is it?". Each traveller keeps their own flights, so
+ * only a flight that traveller holds can be selected for them.
+ */
+export function usableGuestTravellers(value: unknown): EligibleTraveller[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter(
+      (item): item is { travellerId: string; displayName: string; flights: unknown[] } =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as Record<string, unknown>).travellerId === 'string' &&
+        typeof (item as Record<string, unknown>).displayName === 'string' &&
+        Array.isArray((item as Record<string, unknown>).flights),
+    )
+    .map((item) => ({
+      bookingPassengerId: item.travellerId,
+      displayName: item.displayName,
+      isYou: false,
+      flights: item.flights.filter(isGuestFlight).map(toEligibleGuestFlight),
+    }))
+    .filter((traveller) => traveller.flights.length > 0)
+}
+
+/** Guests always choose whose bag it is; until they do, no flight is offered. */
+export function guestFlightsForSelection(travellers: EligibleTraveller[], selectedTravellerId: string): EligibleFlight[] {
+  return travellers.find((traveller) => traveller.bookingPassengerId === selectedTravellerId)?.flights ?? []
+}
+
+/** One traveller: chosen for the guest. Several: the guest picks. */
+export function defaultGuestTravellerId(travellers: EligibleTraveller[]): string {
+  return travellers.length === 1 ? travellers[0].bookingPassengerId : ''
+}
+
+/** The guest form's own errors: the field rules, a chosen traveller, and a flight that traveller holds. */
+export function validateGuestLostReportForm(
+  values: LostBagFormValues,
+  travellers: EligibleTraveller[],
+  selectedTravellerId: string,
+): Record<string, string> {
+  const errors = validateLostReportForm(values, guestFlightsForSelection(travellers, selectedTravellerId))
+  if (!travellers.some((traveller) => traveller.bookingPassengerId === selectedTravellerId)) {
+    errors.traveller = 'Choose whose bag it is.'
+  }
+  return errors
+}
+
+/**
+ * The guest report as multipart form data, with the backend DTO's field names. The flight is sent as its number and
+ * date, taken from the selected traveller's own flights; flightId, bookingPassengerId and passengerId are never sent.
+ */
+export function buildGuestLostReportFormData(
+  values: LostBagFormValues,
+  travellers: EligibleTraveller[],
+  selectedTravellerId: string,
+  photo: File | null,
+): FormData {
+  if (Object.keys(validateGuestLostReportForm(values, travellers, selectedTravellerId)).length > 0) {
+    throw new Error('Cannot create a guest lost report from invalid form values.')
+  }
+  const flight = guestFlightsForSelection(travellers, selectedTravellerId).find((item) => item.flightId === values.flightId)
+  if (!flight) throw new Error('The selected flight does not belong to the selected traveller.')
+
+  const formData = new FormData()
+  formData.append('bookingReference', values.bookingReference.trim().toUpperCase())
+  formData.append('surname', values.surname.trim())
+  formData.append('travellerId', selectedTravellerId)
+  formData.append('flightNumber', flight.flightNumber)
+  formData.append('serviceDate', flight.serviceDate)
+  formData.append('bagType', values.bagType)
+  formData.append('colour', values.colour)
+  const optional: Array<[string, string]> = [
+    ['tagNumber', values.tagNumber],
+    ['brand', values.brand],
+    ['description', values.description],
+    ['contactEmail', values.contactEmail],
+    ['contactPhone', values.contactPhone],
+  ]
+  for (const [key, value] of optional) {
+    const trimmed = value.trim()
+    if (trimmed) formData.append(key, trimmed)
+  }
+  if (photo) formData.append('photo', photo)
+  return formData
+}
+
+/** Accepts only the minimal guest success body. */
+export function parseGuestReportResult(value: unknown): GuestReportResult | null {
+  if (typeof value !== 'object' || value === null) return null
+  const body = value as Record<string, unknown>
+  if (
+    typeof body.caseNumber !== 'string' ||
+    !body.caseNumber ||
+    typeof body.status !== 'string' ||
+    typeof body.flightNumber !== 'string' ||
+    typeof body.serviceDate !== 'string' ||
+    !PASSENGER_BAG_TYPES.some(([type]) => type === body.bagType) ||
+    !PASSENGER_BAG_COLOURS.some(([colour]) => colour === body.colour) ||
+    !(body.tagNumber === null || typeof body.tagNumber === 'string')
+  ) {
+    return null
+  }
+  return {
+    caseNumber: body.caseNumber,
+    status: body.status,
+    flightNumber: body.flightNumber,
+    serviceDate: body.serviceDate,
+    bagType: body.bagType as PassengerBagType,
+    colour: body.colour as PassengerBagColour,
+    tagNumber: body.tagNumber,
+  }
+}
+
+/** Shown after a guest report. It claims nothing that did not happen (no email is promised). */
+export const GUEST_CONFIRMATION_NOTE =
+  'Save this case number. Quote it with your booking reference and surname whenever you contact airline staff about this bag.'
+
+/** My bag case (/lost-bag-case) is a signed-in page, so guests are offered neither way into it. */
+export function caseAccessActionsFor(mode: 'customer' | 'guest'): { openCreatedCase: boolean; checkMyCase: boolean } {
+  const signedIn = mode === 'customer'
+  return { openCreatedCase: signedIn, checkMyCase: signedIn }
+}
+
+/** The guest confirmation banner: states only what happened (the report was received), not that anything was emailed. */
+export const GUEST_SUCCESS_MESSAGE = 'Report sent successfully.'
