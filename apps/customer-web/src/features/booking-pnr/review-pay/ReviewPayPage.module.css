@@ -32,8 +32,11 @@
 
 .header h1 {
   margin: 0 0 6px;
+  font-family: var(--f3-font);
   font-size: 30px;
   line-height: 1.15;
+  /* The global h1 rule tracks -1.68px for the 56 px home hero. The page titles follow the flight search instead. */
+  letter-spacing: -0.6px;
   color: var(--f3-ink);
 }
 
