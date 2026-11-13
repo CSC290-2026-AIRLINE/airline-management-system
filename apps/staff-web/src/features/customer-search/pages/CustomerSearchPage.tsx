@@ -11,9 +11,18 @@ import { PageFrame } from '../components/PageFrame'
 import { PaginationBar, SegmentedControl } from '../components/ListControls'
 import { PeopleCardList } from '../components/PeopleCardList'
 import { PeopleTable } from '../components/PeopleTable'
-import { useCustomerSearchApi, type ProfileScope, type SearchPassengersResponse } from '../lib/api'
+import { useCustomerSearchApi, type SearchPassengersResponse } from '../lib/api'
 import { toPage } from '../lib/search'
-import { DEFAULT_PAGE_SIZE, MOBILE_PAGE_SIZE, withCustomerSearch, type ResolvedCustomerSearch } from '../lib/searchParams'
+import {
+  backToParent,
+  DEFAULT_PAGE_SIZE,
+  MOBILE_PAGE_SIZE,
+  openPerson,
+  profileScopeFor,
+  toPersonKind,
+  withCustomerSearch,
+  type ResolvedCustomerSearch,
+} from '../lib/searchParams'
 import { MOBILE_QUERY, useMediaQuery } from '../lib/useMediaQuery'
 import { toPerson, toProfilePerson } from '../lib/person'
 import { personName } from '../lib/format'
@@ -104,7 +113,7 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
   // Which of the Artifact's two detail routes the open profile is read from. The Account
   // holders tab has its own route; every other tab — and a deep link whose tab does not match
   // the person — reads the passenger route, which answers for both kinds.
-  const profileScope: ProfileScope = search.type === 'account-holder' ? 'accountHolder' : 'passenger'
+  const profileScope = profileScopeFor(search.personType)
   const profileKey = `${attempt}|${search.person ?? ''}|${profileScope}`
 
   // Results are tagged with the request they came from, so a response that
@@ -200,21 +209,34 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
     [onSearchChange, search],
   )
 
+  /** Opens a person from the result list. It has no parent, so `← Back` closes it. */
   const handleSelect = useCallback(
     (person: Person) => {
       setSaveError(null)
-      onSearchChange(withCustomerSearch(search, { person: person.id }))
+      onSearchChange(openPerson(search, person, null))
     },
     [onSearchChange, search],
   )
 
-  const handleSelectById = useCallback(
-    (personId: string) => {
+  /**
+   * Opens a person from the open profile — a saved traveller or a linked account. The person carries its own kind, so the
+   * profile is read from the route that answers for that kind, and the profile it was opened from is recorded so `← Back`
+   * returns to it rather than closing the whole panel.
+   */
+  const handleSelectPerson = useCallback(
+    (person: Person) => {
       setSaveError(null)
-      onSearchChange(withCustomerSearch(search, { person: personId }))
+      const parent = selected ? { id: selected.id, type: toPersonKind(selected.type) } : null
+      onSearchChange(openPerson(search, person, parent))
     },
-    [onSearchChange, search],
+    [onSearchChange, search, selected],
   )
+
+  /** `← Back` returns to the profile the open one was opened from, and closes the profile when it came from the list. */
+  const handleBack = useCallback(() => {
+    setSaveError(null)
+    onSearchChange(backToParent(search))
+  }, [onSearchChange, search])
 
   const handleClearSearch = useCallback(() => {
     setDraftQuery('')
@@ -372,8 +394,8 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
               <CustomerDetail
                 person={selected}
                 variant="mobile"
-                onBack={() => onSearchChange(withCustomerSearch(search, { person: null }))}
-                onSelectPerson={handleSelectById}
+                onBack={handleBack}
+                onSelectPerson={handleSelectPerson}
                 onCorrectIdentity={(person) => onSearchChange(withCustomerSearch(search, { correct: person.id }))}
               />
             ) : (
@@ -415,9 +437,9 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
                 <CustomerDetail
                   person={selected}
                   variant="desktop"
-                  onBack={() => onSearchChange(withCustomerSearch(search, { person: null }))}
+                  onBack={handleBack}
                   onClose={() => onSearchChange(withCustomerSearch(search, { person: null }))}
-                  onSelectPerson={handleSelectById}
+                  onSelectPerson={handleSelectPerson}
                   onCorrectIdentity={(person) => onSearchChange(withCustomerSearch(search, { correct: person.id }))}
                 />
               ) : (

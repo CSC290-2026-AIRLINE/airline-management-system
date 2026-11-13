@@ -20,13 +20,15 @@ customer-search/
 Every screen in the section is composed from four pieces of URL state, so a
 filtered view can be linked, reloaded, and stepped through with browser Back:
 
-| URL query      | Value                                      |
-| -------------- | ------------------------------------------ |
-| `q`            | search term                                |
-| `type`         | `all` \| `account-holder` \| `traveller`   |
-| `page`, `size` | pagination                                 |
-| `person`       | id of the open profile                     |
-| `correct`      | id whose "Correct identity" dialog is open |
+| URL query          | Value                                      |
+| ------------------ | ------------------------------------------ |
+| `q`                | search term                                |
+| `type`             | `all` \| `account-holder` \| `traveller`   |
+| `page`, `size`     | pagination                                 |
+| `person`           | id of the open profile                     |
+| `personType`       | kind of the open profile                   |
+| `from`, `fromType` | the profile the open one was opened from   |
+| `correct`          | id whose "Correct identity" dialog is open |
 
 The URL is kebab-case; the API's own `type` is camelCase. `lib/api.ts` maps the
 filter on the way out and `lib/searchParams.ts` on the way in, so
@@ -47,11 +49,14 @@ a tab, a page beyond the first, or an open profile.
 | Full-width results table    | no `person`                                                               |
 | Split list + profile        | `person` set, desktop                                                     |
 | Card list                   | `person` set (desktop list column) or no `person` (mobile)                |
-| Mobile profile, list hidden | `person` set, mobile — `← Back` clears it                                 |
+| Mobile profile, list hidden | `person` set, mobile                                                      |
 | Correct identity dialog     | `correct` set — desktop uses a comparison table, mobile stacks the fields |
 | Empty / no results          | no match for `q` — type filter and pager drop out, per the design         |
 | Loading                     | skeleton rows while the list request is in flight                         |
 | Error                       | message + `Try again`, driven by a rejected request                       |
+
+`← Back` returns to the profile the open one was opened from — a saved traveller or a linked
+account — and closes the profile when it was opened from the result list.
 
 ## DATA SOURCE — the real backend
 
@@ -62,24 +67,31 @@ mock and no fallback: with the backend down the screens show the error state.
 `AuthProvider.fetchWithAuth`, so the Bearer token and its single automatic
 refresh are the platform's, never this feature's:
 
-| Call                                         | Used for                                                 |
-| -------------------------------------------- | -------------------------------------------------------- |
-| `GET /api/staff/customers?q&page&size`       | the results list on the Account holders tab              |
-| `GET /api/staff/passengers?q&type&page&size` | the results list on the All and Travellers tabs          |
-| `GET /api/staff/customers/:id`               | the open profile, when the Account holders tab opened it |
-| `GET /api/staff/passengers/:id`              | the open profile in every other case                     |
-| `PUT /api/staff/passengers/:id/identity`     | "Save correction"                                        |
+| Call                                         | Used for                                        |
+| -------------------------------------------- | ----------------------------------------------- |
+| `GET /api/staff/customers?q&page&size`       | the results list on the Account holders tab     |
+| `GET /api/staff/passengers?q&type&page&size` | the results list on the All and Travellers tabs |
+| `GET /api/staff/customers/:id`               | the open profile, when it is an account holder  |
+| `GET /api/staff/passengers/:id`              | the open profile, when it is a traveller        |
+| `PUT /api/staff/passengers/:id/identity`     | "Save correction"                               |
 
 The Artifact lists account-holder reads as their own routes, so the Account holders tab calls
 `GET /api/staff/customers` rather than filtering `GET /api/staff/passengers?type=accountHolder`.
 That route takes no `type` — it only ever answers with account holders — and it applies the
 same search rules, ordering and paging as the passenger list, so the tab behaves identically.
 
-Both detail routes take the **passenger id**, and both answer with the same shape, so the
-Account holders tab reads its profiles from `/api/staff/customers/:id` and everything else from
-`/api/staff/passengers/:id`. The passenger route answers for a holder as well as a traveller,
-which is what makes the fallback safe: a deep link to `?person=…` whose tab does not match the
-person still resolves instead of `404`.
+Both detail routes take the **passenger id** and answer with the same shape, but the
+account-holder route answers an account holder and `404`s a traveller. The route therefore
+follows the **person**, not the tab the person was opened from: `/api/staff/customers/:id` for
+an account holder, `/api/staff/passengers/:id` for a traveller. The passenger route answers for a
+holder as well as a traveller, which is what makes it the safe fallback for a profile whose kind
+the URL does not carry — a deep link to `?person=…` still resolves instead of `404`.
+
+That kind travels in the `personType` search param, because the type tab says what the _list_
+shows and not what the open person _is_: opening a saved traveller leaves the Account holders tab
+selected, and reading that traveller from the account-holder route would `404` with
+`Passenger … is not an account holder`. `from` and `fromType` record the profile the open one
+was opened from, so `← Back` returns to it instead of closing the panel.
 
 `lib/person.ts` maps the wire responses onto this feature's `Person`. Nullability
 is preserved rather than defaulted, so "not on record" renders as an em dash

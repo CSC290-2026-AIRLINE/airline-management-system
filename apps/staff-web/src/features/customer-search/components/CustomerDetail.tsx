@@ -23,7 +23,7 @@ interface CustomerDetailProps {
   /** Optional `← Back` control; mobile always shows it because the list is hidden. */
   onBack?: () => void
   onClose?: () => void
-  onSelectPerson: (personId: string) => void
+  onSelectPerson: (person: Person) => void
   onCorrectIdentity?: (person: Person) => void
 }
 
@@ -110,7 +110,7 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
                   <button
                     type="button"
                     className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent/50"
-                    onClick={() => onSelectPerson(saved.person.id)}
+                    onClick={() => onSelectPerson(saved.person)}
                   >
                     <Avatar person={saved.person} size="sm" />
                     <span className="flex-1 font-medium">{personName(saved.person)}</span>
@@ -137,7 +137,7 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
                 </TableHeader>
                 <TableBody>
                   {person.savedTravellers.map((saved) => (
-                    <TableRow key={saved.person.id} className="cursor-pointer" onClick={() => onSelectPerson(saved.person.id)}>
+                    <TableRow key={saved.person.id} className="cursor-pointer" onClick={() => onSelectPerson(saved.person)}>
                       <TableCell className="font-medium">{personName(saved.person)}</TableCell>
                       <TableCell>{saved.relationship ? <Badge variant="secondary">{saved.relationship}</Badge> : null}</TableCell>
                       <TableCell>{formatDateOfBirth(saved.person.dateOfBirth)}</TableCell>
@@ -149,7 +149,7 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
                           size="sm"
                           onClick={(event) => {
                             event.stopPropagation()
-                            onSelectPerson(saved.person.id)
+                            onSelectPerson(saved.person)
                           }}
                         >
                           View
@@ -173,7 +173,7 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
                 <button
                   type="button"
                   className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent/50"
-                  onClick={() => onSelectPerson(link.person.id)}
+                  onClick={() => onSelectPerson(link.person)}
                 >
                   <Avatar person={link.person} />
                   <span className="flex min-w-0 flex-1 flex-col">

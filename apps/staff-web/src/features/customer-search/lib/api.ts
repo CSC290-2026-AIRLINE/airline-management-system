@@ -140,11 +140,10 @@ const API_TYPE: Record<PersonFilter, PassengerSummaryResponse['type'] | 'all'> =
 /**
  * Which of the Artifact's two detail routes to read.
  *
- * The Account holders tab is served by `/api/staff/customers`, so a profile opened from it is
- * read from `/api/staff/customers/:id`. Everything else — the All and Travellers tabs, and a
- * deep link straight to `?person=…` where the tab is not known to match — reads the passenger
- * route, which answers for a holder as well as a traveller. That fallback is why a cold link to
- * an account holder still resolves instead of 404ing.
+ * `/api/staff/customers/:id` answers an account holder and 404s a traveller, while
+ * `/api/staff/passengers/:id` answers a holder as well as a traveller. The scope
+ * therefore follows the person and not the tab they were opened from — see
+ * `profileScopeFor` in `lib/searchParams.ts`, which is where that decision is made.
  */
 export type ProfileScope = 'accountHolder' | 'passenger'
 
