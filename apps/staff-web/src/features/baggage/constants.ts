@@ -301,12 +301,12 @@ export const ID_DOCUMENT_LABELS: Record<IdDocumentType, string> = {
   driving_licence: 'Driving licence',
 }
 
-export const COLLECTORS = ['passenger', 'representative'] as const
+/** Only the passenger collects the bag. */
+export const COLLECTORS = ['passenger'] as const
 export type Collector = (typeof COLLECTORS)[number]
 
 export const COLLECTOR_LABELS: Record<Collector, string> = {
   passenger: 'Passenger',
-  representative: 'Someone sent by the passenger',
 }
 
 export type OwnershipMismatch = 'booking_reference' | 'last_name' | 'document_type' | 'document_number'

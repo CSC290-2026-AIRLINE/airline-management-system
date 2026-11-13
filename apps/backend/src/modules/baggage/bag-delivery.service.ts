@@ -86,6 +86,8 @@ export interface DeliveryChoiceResult {
 
 export interface DeliveryStatusInput {
   staffId: string
+  /** The signed-in user (user.id), the actor of the audit row. */
+  userId: string
   deliveryId: string
   status: StaffDeliveryStatus
   note?: string | null
@@ -99,7 +101,6 @@ export interface HandOverInput {
   identity: PresentedIdentity
   /** Staff saw the document and its photo and name belong to the person collecting the bag. */
   documentChecked: boolean
-  representativeName?: string | null
   note?: string | null
 }
 
@@ -207,7 +208,6 @@ function toOwnershipCheck(
     passed: after.passed,
     mismatches,
     collector,
-    representativeName: typeof after.representativeName === 'string' ? after.representativeName : null,
     documentType,
     documentLast4: typeof after.documentLast4 === 'string' ? after.documentLast4 : '',
     staffName: typeof after.staffId === 'string' ? (staffNames.get(after.staffId) ?? null) : null,
@@ -218,10 +218,6 @@ function toOwnershipCheck(
 function notFound(): FoundBagError {
   return new FoundBagError(FOUND_BAG_ERROR_CODES.DELIVERY_NOT_FOUND, 'Delivery not found')
 }
-
-/** Temporary: representative handover is refused until an approved owner-authorisation procedure exists. */
-export const REPRESENTATIVE_HANDOVER_UNAVAILABLE =
-  'Handover to someone sent by the passenger is temporarily unavailable. The passenger must collect the bag in person.'
 
 function invalid(message: string): FoundBagError {
   return new FoundBagError(FOUND_BAG_ERROR_CODES.INVALID_DELIVERY, message)
@@ -387,11 +383,12 @@ export class BagDeliveryService {
 
     const note = input.note?.trim() || null
     const { report_id: reportId } = await this.findDelivery(input.deliveryId)
+    const actor = await this.audit.resolveActor(input.userId)
     const now = new Date()
     const at = this.clock.now()
 
     await this.db.$transaction(async (tx) => {
-      const { delivery, bagId } = await this.lockCaseAndBag(tx, reportId, input.deliveryId)
+      const { report: lockedReport, delivery, bagId } = await this.lockCaseAndBag(tx, reportId, input.deliveryId)
       const pickup = delivery.delivery_type === 'airport_pickup'
 
       const last = await tx.bag_location_event.findFirst({
@@ -489,6 +486,22 @@ export class BagDeliveryService {
       if (report.count !== 1) {
         throw wrongStatus('This case has changed; reload and try again')
       }
+
+      await this.audit.write(
+        {
+          actor,
+          sourceFeature: AUDIT_SOURCE_FEATURE,
+          action: 'status_change',
+          entityType: DELIVERY_ENTITY,
+          entityId: delivery.id,
+          summary: `Delivery for lost bag case ${lockedReport.case_number} set ${input.status.replace(/_/g, ' ')}`,
+          reason: note,
+          before: { status: delivery.status },
+          after: { status: input.status, foundBagId: bagId, staffId: input.staffId, reportId },
+          occurredAt: at,
+        },
+        tx,
+      )
     })
 
     return this.getById(input.deliveryId)
@@ -504,19 +517,16 @@ export class BagDeliveryService {
     requireStaff(input.staffId)
 
     const identity = input.identity
-    const representativeName = input.representativeName?.trim() || null
     const note = input.note?.trim() || null
 
-    if (!COLLECTORS.includes(identity.collector) || !ID_DOCUMENT_TYPES.includes(identity.documentType)) {
-      throw invalid('Invalid collector or document type')
+    // Only the passenger collects the bag (the spec has no handover to someone they send). Refused before any read,
+    // lock, audit row or state change.
+    if (!COLLECTORS.includes(identity.collector)) {
+      throw invalid('Only the passenger can collect the bag')
     }
 
-    // TEMPORARY RESTRICTION: nothing yet shows that the passenger authorised a representative to collect their bag (the
-    // booking reference and surname alone do not), so representative handover is refused until an approved
-    // owner-authorisation procedure exists. It is refused here, before any read, lock, audit row or state change. When
-    // it is allowed again, restore the "Enter the representative's name" check that used to follow the document checks.
-    if (identity.collector === 'representative') {
-      throw invalid(REPRESENTATIVE_HANDOVER_UNAVAILABLE)
+    if (!ID_DOCUMENT_TYPES.includes(identity.documentType)) {
+      throw invalid('Invalid document type')
     }
 
     if (input.documentChecked !== true) {
@@ -573,7 +583,6 @@ export class BagDeliveryService {
             passed: result.passed,
             mismatches: result.mismatches,
             collector: identity.collector,
-            representativeName,
             documentType: identity.documentType,
             documentLast4: last4,
             documentChecked: true,
@@ -613,14 +622,12 @@ export class BagDeliveryService {
         throw wrongStatus('This bag has no location yet')
       }
 
-      const who = identity.collector === 'passenger' ? 'passenger' : `representative ${representativeName}`
-
       await tx.bag_location_event.create({
         data: {
           found_bag_id: bagId,
           airport_code: last.airport_code,
           action: 'delivered',
-          note: `Handed to ${who}; ${identity.documentType.replace('_', ' ')} ending ${last4}${note ? `. ${note}` : ''}`,
+          note: `Handed to passenger; ${identity.documentType.replace('_', ' ')} ending ${last4}${note ? `. ${note}` : ''}`,
           staff_id: input.staffId,
           occurred_at: at,
         },
@@ -677,14 +684,14 @@ export class BagDeliveryService {
 
   /** lockCase, then the case's confirmed bag: always in this order. */
   private async lockCaseAndBag(tx: Prisma.TransactionClient, reportId: string, deliveryId: string) {
-    const { delivery } = await this.lockCase(tx, reportId, deliveryId)
+    const { report, delivery } = await this.lockCase(tx, reportId, deliveryId)
     const bagId = await this.confirmedBagId(reportId, tx)
 
     if (!(await lockFoundBag(tx, bagId))) {
       throw wrongStatus('This case has no confirmed bag')
     }
 
-    return { delivery, bagId }
+    return { report, delivery, bagId }
   }
 
   private async listChecks(deliveryId: string): Promise<OwnershipCheck[]> {

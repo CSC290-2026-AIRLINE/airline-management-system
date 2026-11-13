@@ -38,7 +38,7 @@ export class BagMatchController {
   @Post()
   @HttpCode(201)
   link(@CurrentBaggageStaff() staff: BaggageStaff, @Body() dto: LinkBagMatchDto): Promise<BagMatch> {
-    return this.review.link({ ...dto, staffId: staff.staffId })
+    return this.review.link({ ...dto, staffId: staff.staffId, actor: baggageAuditActor(staff) })
   }
 
   /**

@@ -165,7 +165,7 @@ export class FoundBagLifecycleService {
   }
 
   /** Staff add the type and colour of a diverted-flight bag once they have checked it. */
-  async completeDetails(staffId: string, foundBagId: string, input: CompleteDetailsInput): Promise<FoundBag> {
+  async completeDetails(staffId: string, foundBagId: string, input: CompleteDetailsInput, actor: AuditActor): Promise<FoundBag> {
     requireStaff(staffId)
 
     if (!BAG_TYPES.some((type) => type === input.bagType) || !BAG_COLOURS.some((colour) => colour === input.colour)) {
@@ -206,6 +206,20 @@ export class FoundBagLifecycleService {
         throw invalidStatus('This bag has changed; reload and try again')
       }
 
+      await this.audit.write(
+        {
+          actor,
+          sourceFeature: AUDIT_SOURCE_FEATURE,
+          action: 'update',
+          entityType: 'found_bag',
+          entityId: foundBagId,
+          summary: `Diverted-flight bag checked: ${input.colour} ${input.bagType}`,
+          before: { bagType: bag.bagType, colour: bag.colour },
+          after: { bagType: input.bagType, colour: input.colour, staffId },
+        },
+        tx,
+      )
+
       return tx.found_bag.findUniqueOrThrow({ where: { id: foundBagId } })
     })
 
@@ -216,7 +230,7 @@ export class FoundBagLifecycleService {
    * The bag stayed on the diverted flight and flew on to its destination. The row is closed (continued_with_flight)
    * and a sent event records where it went, so the bag can be recorded again if it goes missing there.
    */
-  async continueWithFlight(staffId: string, foundBagId: string): Promise<FoundBag> {
+  async continueWithFlight(staffId: string, foundBagId: string, actor: AuditActor): Promise<FoundBag> {
     requireStaff(staffId)
 
     const bag = await this.findBag(foundBagId)
@@ -249,6 +263,20 @@ export class FoundBagLifecycleService {
       if (count !== 1) {
         throw invalidStatus('This bag has changed; reload and try again')
       }
+
+      await this.audit.write(
+        {
+          actor,
+          sourceFeature: AUDIT_SOURCE_FEATURE,
+          action: 'status_change',
+          entityType: 'found_bag',
+          entityId: foundBagId,
+          summary: `Diverted-flight bag continued with flight to ${destination ?? 'its destination'}`,
+          before: { status: 'held' },
+          after: { status: 'continued_with_flight', destination, staffId },
+        },
+        tx,
+      )
 
       if (destination && destination !== bag.foundAirport) {
         await tx.bag_location_event.create({
@@ -292,11 +320,14 @@ export class FoundBagLifecycleService {
         return { unclaimedAfterDays, cutoff, marked: 0 }
       }
 
-      // The same conditions again, so a bag matched since the read above is left alone.
-      const { count } = await tx.found_bag.updateMany({
+      // The same conditions again, so a bag matched since the read above is left alone; the audit row names only the
+      // bags this update really changed.
+      const marked = await tx.found_bag.updateManyAndReturn({
         where: { id: { in: ids }, ...due },
         data: { status: 'unclaimed', updated_at: new Date() },
+        select: { id: true },
       })
+      const count = marked.length
 
       if (count > 0) {
         await this.audit.write(
@@ -307,7 +338,7 @@ export class FoundBagLifecycleService {
             entityType: 'found_bag',
             summary: `${count} held bag(s) marked unclaimed after ${unclaimedAfterDays} days`,
             before: { status: 'held' },
-            after: { status: 'unclaimed', foundBagIds: ids, cutoff },
+            after: { status: 'unclaimed', foundBagIds: marked.map((r) => r.id), cutoff },
           },
           tx,
         )

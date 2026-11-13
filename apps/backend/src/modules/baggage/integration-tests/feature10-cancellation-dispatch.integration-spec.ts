@@ -99,7 +99,12 @@ function reportRepository(client: PrismaClient, gate?: LockGate): PrismaReportRe
 
 function deliveryService(client: PrismaClient, gate?: LockGate): BagDeliveryService {
   const clock: FoundBagClock = { now: () => SIMULATION_NOW }
-  return new BagDeliveryService(serviceDb(client, gate), {} as AuditService, clock)
+  // Audit rows are not what this suite checks; the stub keeps setStatus's audit write out of the lock timing.
+  const audit = {
+    resolveActor: () => Promise.resolve({ type: 'staff', id: null, role: null }),
+    write: () => Promise.resolve({ id: '', seq: '0' }),
+  }
+  return new BagDeliveryService(serviceDb(client, gate), audit as unknown as AuditService, clock)
 }
 
 async function assertDatabaseIdentity(client: PrismaClient, connectionString: string): Promise<void> {
@@ -659,7 +664,7 @@ async function refusedCancellationThenDispatch(
   ])
   await withTimeout(cancellationReady, 'cancellation to acquire the report lock')
 
-  const dispatch = delivery.setStatus({ staffId, deliveryId: fixture.deliveryId, status: 'in_transit' })
+  const dispatch = delivery.setStatus({ staffId, userId: staffId, deliveryId: fixture.deliveryId, status: 'in_transit' })
   try {
     await withTimeout(dispatchGate.attempted.promise, 'dispatch to attempt the report lock')
     await waitForDatabaseLockWait(clients.observer, dispatchGate.backendPid)
@@ -689,7 +694,7 @@ async function dispatchWins(
   const cancellationGate = lockGate(false)
   const delivery = deliveryService(clients.dispatch, dispatchGate)
   const repository = reportRepository(clients.cancel, cancellationGate)
-  const dispatch = delivery.setStatus({ staffId, deliveryId: fixture.deliveryId, status: 'in_transit' })
+  const dispatch = delivery.setStatus({ staffId, userId: staffId, deliveryId: fixture.deliveryId, status: 'in_transit' })
   const dispatchReady = Promise.race([
     dispatchGate.acquired.promise,
     dispatch.then(() => Promise.reject(new Error('Dispatch completed before acquiring its report lock'))),
@@ -732,7 +737,12 @@ async function historicalMovementDoesNotBlock(fixture: FixtureCase, client: Pris
     events: 3,
   })
 
-  const dispatched = await deliveryService(client).setStatus({ staffId, deliveryId: fixture.deliveryId, status: 'in_transit' })
+  const dispatched = await deliveryService(client).setStatus({
+    staffId,
+    userId: staffId,
+    deliveryId: fixture.deliveryId,
+    status: 'in_transit',
+  })
   assert.equal(dispatched.status, 'in_transit')
   assert.deepEqual(await readState(client, fixture), {
     report: 'delivering',
@@ -762,7 +772,7 @@ async function failedDispatchRollsBack(fixture: FixtureCase, client: PrismaClien
 
   try {
     const delivery = deliveryService(client)
-    await assert.rejects(delivery.setStatus({ staffId, deliveryId: fixture.deliveryId, status: 'in_transit' }))
+    await assert.rejects(delivery.setStatus({ staffId, userId: staffId, deliveryId: fixture.deliveryId, status: 'in_transit' }))
     assert.deepEqual(await readState(client, fixture), {
       report: 'matched',
       foundBag: 'matched',

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { BaggageApiError } from '../api/found-bags'
 import { useNotificationApi, type StaffNotification } from '../api/notifications'
 import { UNREACHABLE_RETRY_MS } from './useRetryWhileUnreachable'
 
@@ -46,11 +47,17 @@ export function useStaffNotifications() {
           setItems(feed.items)
           setError(false)
         })
-        .catch(() => {
+        .catch((e: unknown) => {
           if (cancelled) return
           setError(true)
-          // Ask again soon rather than at the next poll, so the badge fills in once the backend is up.
-          retry = window.setTimeout(() => void load(), UNREACHABLE_RETRY_MS)
+          // An unreachable server is asked again soon rather than at the next poll, so the badge fills in once the
+          // backend is up. A refusal waits for the next poll, and only one retry waits at a time.
+          if (e instanceof BaggageApiError && e.status === 0 && retry === undefined) {
+            retry = window.setTimeout(() => {
+              retry = undefined
+              void load()
+            }, UNREACHABLE_RETRY_MS)
+          }
         })
 
     void load()

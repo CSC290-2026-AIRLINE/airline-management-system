@@ -133,10 +133,10 @@ function makeWorld() {
           await gates.foundBagRead
           return foundBags.filter((b) => b.status === 'held' && b.found_at <= where.found_at.lte).map(({ id }) => ({ id }))
         },
-        updateMany: ({ where, data }: { where: { id: { in: string[] }; found_at: { lte: Date } }; data: { status: string } }) => {
+        updateManyAndReturn: ({ where, data }: { where: { id: { in: string[] }; found_at: { lte: Date } }; data: { status: string } }) => {
           const hits = foundBags.filter((b) => where.id.in.includes(b.id) && b.status === 'held' && b.found_at <= where.found_at.lte)
           writes.push(() => hits.forEach((b) => (b.status = data.status)))
-          return Promise.resolve({ count: hits.length })
+          return Promise.resolve(hits.map(({ id }) => ({ id })))
         },
       },
       lost_bag_report: {

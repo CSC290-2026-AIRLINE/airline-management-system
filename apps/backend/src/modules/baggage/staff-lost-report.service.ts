@@ -12,6 +12,7 @@ import {
   type ReportStatus,
 } from './common/baggage.constants'
 import { isValidBaggageTag } from './common/baggage-tag.util'
+import { MATCHABLE_REPORT_STATUSES, OPEN_MATCH_STATUSES } from './common/bag-match.types'
 import { CASE_NUMBER_PATTERN, formatCaseNumber } from './common/case-number.util'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
@@ -27,6 +28,8 @@ const LIVE_REPORT_STATUSES: ReportStatus[] = ['open', 'matched', 'delivering', '
 
 export interface DeskReportInput {
   staffId: string
+  /** Who is signed in, for the audit row. */
+  actor: AuditActor
   bookingReference: string
   passengerId: string
   flightId: string
@@ -41,6 +44,8 @@ export interface DeskReportInput {
 
 export interface FoundBagReportInput {
   staffId: string
+  /** Who is signed in, for the audit row. */
+  actor: AuditActor
   foundBagId: string
   description?: string | null
   contactEmail?: string | null
@@ -57,6 +62,9 @@ export interface LostReportFilter {
 /** What a new report needs once the passenger, flight and bag are known. */
 interface NewReport {
   staffId: string
+  actor: AuditActor
+  /** How the case was opened, for the audit summary. */
+  openedFrom: 'desk' | 'found_bag'
   bookingPassengerId: string
   passengerId: string
   flightId: string
@@ -293,11 +301,15 @@ export class StaffLostReportService {
     if (tagNumber) {
       const checkedBag = await this.db.checked_bag.findFirst({
         where: { tag_number: tagNumber, deleted_at: null },
-        select: { check_in: { select: { booking_passenger_id: true } } },
+        select: { check_in: { select: { booking_passenger_id: true, flight_id: true } } },
       })
 
       if (checkedBag?.check_in.booking_passenger_id !== coupon.booking_passenger_id) {
         throw new FoundBagError(FOUND_BAG_ERROR_CODES.TAG_NOT_ON_BOOKING, 'Baggage tag does not belong to this booking passenger')
+      }
+
+      if (checkedBag.check_in.flight_id !== flightId) {
+        throw new FoundBagError(FOUND_BAG_ERROR_CODES.TAG_NOT_ON_BOOKING, 'Baggage tag was checked in for another flight')
       }
     }
 
@@ -305,6 +317,8 @@ export class StaffLostReportService {
 
     return this.insert({
       staffId,
+      actor: input.actor,
+      openedFrom: 'desk',
       bookingPassengerId: coupon.booking_passenger_id,
       passengerId,
       flightId,
@@ -374,11 +388,30 @@ export class StaffLostReportService {
       throw new FoundBagError(FOUND_BAG_ERROR_CODES.INVALID_STATUS, 'Add the bag type and colour before opening a case')
     }
 
+    // A live case that is already suggested for this bag (for example the passenger reported it without the tag) is the
+    // owner's case: staff confirm that match instead of opening a second case for the same bag.
+    const suggested = await this.db.lost_bag_report.findFirst({
+      where: {
+        status: { in: MATCHABLE_REPORT_STATUSES },
+        bag_match: { some: { found_bag_id: foundBagId, status: { in: OPEN_MATCH_STATUSES } } },
+      },
+      select: { case_number: true },
+    })
+
+    if (suggested) {
+      throw new FoundBagError(
+        FOUND_BAG_ERROR_CODES.REPORT_EXISTS,
+        `Lost bag case ${suggested.case_number} is already matched with this bag; review it in Match review`,
+      )
+    }
+
     const checkIn = bag.checked_bag.check_in
     const booking = checkIn.booking_coupon.booking_passenger.booking
 
     return this.insert({
       staffId,
+      actor: input.actor,
+      openedFrom: 'found_bag',
       bookingPassengerId: checkIn.booking_passenger_id,
       passengerId: checkIn.passenger_id,
       flightId: checkIn.flight_id,
@@ -452,7 +485,7 @@ export class StaffLostReportService {
         // A number burnt by a failed insert is fine: case numbers only need to be unique, not gapless.
         const [seq] = await tx.$queryRaw<{ nextval: bigint | number }[]>`SELECT nextval('lost_bag_case_seq')`
 
-        return tx.lost_bag_report.create({
+        const created = await tx.lost_bag_report.create({
           data: {
             case_number: formatCaseNumber(reportedAt, Number(seq.nextval)),
             booking_passenger_id: report.bookingPassengerId,
@@ -473,6 +506,29 @@ export class StaffLostReportService {
           },
           include: REPORT_INCLUDE,
         })
+
+        await this.audit.write(
+          {
+            actor: report.actor,
+            sourceFeature: AUDIT_SOURCE_FEATURE,
+            action: 'create',
+            entityType: 'lost_bag_report',
+            entityId: created.id,
+            summary: `Lost bag case ${created.case_number} opened ${report.openedFrom === 'desk' ? 'at the baggage desk' : 'for the owner of a found bag'}`,
+            after: {
+              caseNumber: created.case_number,
+              flightId: report.flightId,
+              tagNumber: report.tagNumber,
+              bagType: report.bagType,
+              colour: report.colour,
+              staffId: report.staffId,
+            },
+            occurredAt: reportedAt,
+          },
+          tx,
+        )
+
+        return created
       })
 
       return toLostReportCase(row)

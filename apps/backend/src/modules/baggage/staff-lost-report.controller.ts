@@ -84,7 +84,7 @@ export class StaffLostReportController {
   @Post()
   @HttpCode(201)
   async create(@CurrentBaggageStaff() staff: BaggageStaff, @Body() dto: CreateStaffLostReportDto): Promise<LostReportCase> {
-    const report = await this.reports.createAtDesk({ ...dto, staffId: staff.staffId })
+    const report = await this.reports.createAtDesk({ ...dto, staffId: staff.staffId, actor: baggageAuditActor(staff) })
     await this.matching.suggestForReport(report.id)
     return report
   }
@@ -93,7 +93,7 @@ export class StaffLostReportController {
   @Post('from-found-bag')
   @HttpCode(201)
   async createFromFoundBag(@CurrentBaggageStaff() staff: BaggageStaff, @Body() dto: ReportFromFoundBagDto): Promise<LostReportCase> {
-    const report = await this.reports.createFromFoundBag({ ...dto, staffId: staff.staffId })
+    const report = await this.reports.createFromFoundBag({ ...dto, staffId: staff.staffId, actor: baggageAuditActor(staff) })
     // Suggests the bag the case came from as a strong match, ready for Match review.
     await this.matching.suggestForReport(report.id)
     return report

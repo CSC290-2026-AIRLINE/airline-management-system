@@ -1,5 +1,6 @@
 import { BagTrackingService, currentLocation } from './bag-tracking.service'
 import type { DbService } from '@backend/db/db.service'
+import type { AuditActor, AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import type { BagLocationEvent } from './common/bag-location.types'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -36,13 +37,39 @@ function makeSvc(opts: { status?: string | null; last?: EventRow | null } = {}) 
     $transaction: jest.fn(),
   }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db))
+  const audit = { write: jest.fn().mockResolvedValue({ id: 'a-1', seq: '1' }) }
 
-  return { svc: new BagTrackingService(db as unknown as DbService, { now: () => SIM_NOW }), db }
+  return { svc: new BagTrackingService(db as unknown as DbService, audit as unknown as AuditService, { now: () => SIM_NOW }), db, audit }
 }
 
-const base = { staffId: STAFF_ID, foundBagId: BAG_ID }
+const ACTOR: AuditActor = { type: 'staff', id: '99999999-9999-4999-8999-999999999999', role: 'baggage' }
+
+const base = { staffId: STAFF_ID, foundBagId: BAG_ID, actor: ACTOR }
 
 describe('BagTrackingService.recordMove', () => {
+  it('writes the move to audit_log in the same transaction', async () => {
+    const { svc, db, audit } = makeSvc()
+
+    await svc.recordMove({ ...base, action: 'sent', toAirport: 'BKK' })
+
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: ACTOR,
+        action: 'create',
+        entityType: 'bag_location_event',
+        after: expect.objectContaining({ foundBagId: BAG_ID, action: 'sent', airportCode: 'NRT' }),
+      }),
+      db,
+    )
+  })
+
+  it('writes no audit row when the move is refused', async () => {
+    const { svc, audit } = makeSvc({ last: eventRow('sent', 'NRT', 'BKK') })
+
+    await expect(svc.recordMove({ ...base, action: 'held' })).rejects.toMatchObject({ code: 'INVALID_MOVE' })
+    expect(audit.write).not.toHaveBeenCalled()
+  })
+
   it('sends a bag from where it is, with the flight', async () => {
     const { svc, db } = makeSvc()
 

@@ -1,7 +1,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import type { Prisma, found_bag } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
-import { BAG_TYPES, BAG_COLOURS, MAX_LIST_ROWS, type BagType, type BagColour } from './common/baggage.constants'
+import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
+import { AUDIT_SOURCE_FEATURE, BAG_TYPES, BAG_COLOURS, MAX_LIST_ROWS, type BagType, type BagColour } from './common/baggage.constants'
 import { isValidBaggageTag } from './common/baggage-tag.util'
 import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/patterns'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
@@ -17,6 +18,8 @@ import {
 
 export interface RecordFoundBagInput {
   staffId: string
+  /** Who is signed in, for the audit row. */
+  actor: AuditActor
   foundAirport: string
   bagType: BagType
   colour: BagColour
@@ -54,6 +57,7 @@ function alreadyRecorded(): FoundBagError {
 export class FoundBagService {
   constructor(
     private readonly db: DbService,
+    private readonly audit: AuditService,
     @Inject(FOUND_BAG_CLOCK) private readonly clock: FoundBagClock,
     @Optional() @Inject(FOUND_BAG_RECORDED_LISTENERS) private readonly listeners: readonly FoundBagRecordedListener[] = [],
   ) {}
@@ -106,7 +110,7 @@ export class FoundBagService {
     let row: found_bag
 
     try {
-      // The bag and its first tracking event are written together, so a found bag always has a location.
+      // The bag, its first tracking event and its audit row are written together, so a found bag always has a location.
       row = await this.db.$transaction(async (tx) => {
         const created = await tx.found_bag.create({
           data: {
@@ -136,6 +140,20 @@ export class FoundBagService {
             occurred_at: created.found_at,
           },
         })
+
+        await this.audit.write(
+          {
+            actor: input.actor,
+            sourceFeature: AUDIT_SOURCE_FEATURE,
+            action: 'create',
+            entityType: 'found_bag',
+            entityId: created.id,
+            summary: `Found bag recorded at ${foundAirport}`,
+            after: { foundAirport, tagNumber, flightId, bagType: input.bagType, colour: input.colour, staffId },
+            occurredAt: created.found_at,
+          },
+          tx,
+        )
 
         return created
       })

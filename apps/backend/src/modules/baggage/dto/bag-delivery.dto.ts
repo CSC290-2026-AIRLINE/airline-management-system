@@ -51,13 +51,8 @@ export class HandOverBagDto {
   @MaxLength(100)
   lastName: string
 
-  @IsIn(COLLECTORS)
+  @IsIn(COLLECTORS, { message: 'Only the passenger can collect the bag' })
   collector: Collector
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  representativeName?: string
 
   @IsIn(ID_DOCUMENT_TYPES)
   documentType: IdDocumentType

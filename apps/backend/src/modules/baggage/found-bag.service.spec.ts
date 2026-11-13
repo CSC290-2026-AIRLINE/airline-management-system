@@ -1,5 +1,6 @@
 import { FoundBagService } from './found-bag.service'
 import type { DbService } from '@backend/db/db.service'
+import type { AuditActor, AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import type { CheckedBagRecord, FoundBagRecordedListener } from './common/found-bag.ports'
 import type { FoundBag } from './common/found-bag.types'
 
@@ -42,13 +43,17 @@ function makeSvc() {
       return Promise.resolve()
     },
   }
-  const svc = new FoundBagService(db as unknown as DbService, { now: () => SIM_NOW }, [listener])
+  const audit = { write: jest.fn().mockResolvedValue({ id: 'a-1', seq: '1' }) }
+  const svc = new FoundBagService(db as unknown as DbService, audit as unknown as AuditService, { now: () => SIM_NOW }, [listener])
 
-  return { svc, db, recorded }
+  return { svc, db, recorded, audit }
 }
+
+const ACTOR: AuditActor = { type: 'staff', id: '99999999-9999-4999-8999-999999999999', role: 'baggage' }
 
 const validInput = {
   staffId: STAFF_ID,
+  actor: ACTOR,
   foundAirport: 'NRT',
   bagType: 'suitcase' as const,
   colour: 'black' as const,
@@ -61,6 +66,17 @@ const knownCheckedBag = {
 }
 
 describe('FoundBagService.record', () => {
+  it('writes the audit row in the same transaction, at the simulation time', async () => {
+    const { svc, db, audit } = makeSvc()
+
+    await svc.record(validInput)
+
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: ACTOR, sourceFeature: '10', action: 'create', entityType: 'found_bag', occurredAt: SIM_NOW }),
+      db,
+    )
+  })
+
   it('writes a held staff row with the simulation time', async () => {
     const { svc, db } = makeSvc()
 

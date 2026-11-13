@@ -68,7 +68,7 @@ export class BagDeliveryController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: SetDeliveryStatusDto,
   ): Promise<BagDeliveryDetail> {
-    return this.deliveries.setStatus({ ...dto, staffId: staff.staffId, deliveryId: id })
+    return this.deliveries.setStatus({ ...dto, staffId: staff.staffId, userId: staff.id, deliveryId: id })
   }
 
   /** Checks the person collecting the bag against the case, then hands it over. A failed check answers OWNERSHIP_NOT_VERIFIED. */
@@ -79,14 +79,13 @@ export class BagDeliveryController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: HandOverBagDto,
   ): Promise<BagDeliveryDetail> {
-    const { representativeName, note, documentChecked, ...identity } = dto
+    const { note, documentChecked, ...identity } = dto
     return this.deliveries.handOver({
       staffId: staff.staffId,
       userId: staff.id,
       deliveryId: id,
       identity,
       documentChecked,
-      representativeName,
       note,
     })
   }

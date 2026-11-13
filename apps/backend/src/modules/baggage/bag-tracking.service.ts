@@ -1,10 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { bag_location_event } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
+import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
 import type { BagLocation, BagLocationAction, BagLocationEvent, BagTrackingHistory, StaffMoveAction } from './common/bag-location.types'
 import { STAFF_MOVE_ACTIONS } from './common/bag-location.types'
 import { RECOVERY_CASE_STATUSES, lockFoundBag, lockLostReport } from './common/case-locks'
-import type { ReportStatus } from './common/baggage.constants'
+import { AUDIT_SOURCE_FEATURE, type ReportStatus } from './common/baggage.constants'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { FoundBagStatus } from './common/found-bag.types'
@@ -12,6 +13,8 @@ import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/pa
 
 export interface RecordMoveInput {
   staffId: string
+  /** Who is signed in, for the audit row. */
+  actor: AuditActor
   foundBagId: string
   action: StaffMoveAction
   /** Required for sent: the station the bag goes to. */
@@ -77,6 +80,7 @@ function notFound(): FoundBagError {
 export class BagTrackingService {
   constructor(
     private readonly db: DbService,
+    private readonly audit: AuditService,
     @Inject(FOUND_BAG_CLOCK) private readonly clock: FoundBagClock,
   ) {}
 
@@ -185,7 +189,7 @@ export class BagTrackingService {
           throw invalidMove(`This bag is already at ${airportCode}`)
         }
 
-        await tx.bag_location_event.create({
+        const event = await tx.bag_location_event.create({
           data: {
             found_bag_id: foundBagId,
             airport_code: airportCode,
@@ -197,6 +201,20 @@ export class BagTrackingService {
             occurred_at: this.clock.now(),
           },
         })
+
+        await this.audit.write(
+          {
+            actor: input.actor,
+            sourceFeature: AUDIT_SOURCE_FEATURE,
+            action: 'create',
+            entityType: 'bag_location_event',
+            entityId: event.id,
+            summary: `Bag ${action} at ${airportCode}${action === 'sent' ? ` to ${toAirport}` : ''}`,
+            after: { foundBagId, action, airportCode, toAirport: event.to_airport, sentOnFlightId: event.sent_on_flight_id, staffId },
+            occurredAt: event.occurred_at,
+          },
+          tx,
+        )
       })
     } catch (e) {
       // Foreign key: the destination airport, flight or staff member does not exist.

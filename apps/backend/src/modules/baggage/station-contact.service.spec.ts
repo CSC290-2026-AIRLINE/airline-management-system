@@ -1,5 +1,6 @@
 import { StationContactService } from './station-contact.service'
 import type { DbService } from '@backend/db/db.service'
+import type { AuditActor, AuditService } from '@backend/modules/admin-console/audit/audit.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
@@ -25,14 +26,45 @@ function makeSvc() {
       findUnique: jest.fn().mockResolvedValue(row()),
       upsert: jest.fn().mockResolvedValue(row()),
     },
+    $transaction: jest.fn(),
   }
+  db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db))
+  const audit = { write: jest.fn().mockResolvedValue({ id: 'a-1', seq: '1' }) }
 
-  return { svc: new StationContactService(db as unknown as DbService), db }
+  return { svc: new StationContactService(db as unknown as DbService, audit as unknown as AuditService), db, audit }
 }
 
-const input = { staffId: STAFF_ID, airportCode: 'bkk', deskName: ' Baggage Services ', phone: '+66 2 134 0000', email: '' }
+const ACTOR: AuditActor = { type: 'staff', id: '99999999-9999-4999-8999-999999999999', role: 'baggage' }
+
+const input = { staffId: STAFF_ID, actor: ACTOR, airportCode: 'bkk', deskName: ' Baggage Services ', phone: '+66 2 134 0000', email: '' }
 
 describe('StationContactService', () => {
+  it('writes a change to audit_log with what it was before', async () => {
+    const { svc, db, audit } = makeSvc()
+
+    await svc.save(input)
+
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: ACTOR,
+        action: 'update',
+        entityType: 'station_contact',
+        entityId: 'BKK',
+        before: expect.objectContaining({ deskName: 'Baggage Services' }),
+      }),
+      db,
+    )
+  })
+
+  it('writes a new contact to audit_log as a create', async () => {
+    const { svc, db, audit } = makeSvc()
+    db.station_contact.findUnique.mockResolvedValueOnce(null)
+
+    await svc.save(input)
+
+    expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ action: 'create', before: undefined }), db)
+  })
+
   it('lists contacts with the airport name, by airport code', async () => {
     const { svc, db } = makeSvc()
 

@@ -28,7 +28,8 @@ interface ListState {
 export function errorMessage(e: unknown): string {
   if (e instanceof BaggageApiError) {
     if (e.status === 401) return 'Your sign-in has ended. Reload the page to sign in again.'
-    if (e.status === 403) return 'You need a staff account to use the baggage desk.'
+    // A 403 from the role guard has no baggage code; a coded one (such as SELF_CONFIRM) carries its own message.
+    if (e.status === 403 && e.code === 'HTTP_403') return 'You need the baggage staff role to use the baggage desk.'
     return e.message
   }
   return e instanceof Error ? e.message : 'Something went wrong. Try again.'

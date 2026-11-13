@@ -1,7 +1,7 @@
 import { GUARDS_METADATA } from '@nestjs/common/constants'
 import { IS_PUBLIC_KEY } from '@backend/auth/decorators/public.decorator'
 import { BagDeliveryController } from './bag-delivery.controller'
-import { BagDeliveryService, OWNERSHIP_CHECK_ENTITY, REPRESENTATIVE_HANDOVER_UNAVAILABLE } from './bag-delivery.service'
+import { BagDeliveryService, OWNERSHIP_CHECK_ENTITY } from './bag-delivery.service'
 import { BaggageStaffGuard } from './guards/baggage-staff.guard'
 import type { DbService } from '@backend/db/db.service'
 import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
@@ -157,7 +157,6 @@ describe('BagDeliveryService', () => {
             passed: false,
             mismatches: ['last_name'],
             collector: 'passenger',
-            representativeName: null,
             documentType: 'passport',
             documentLast4: '4567',
             staffId: STAFF_ID,
@@ -178,7 +177,6 @@ describe('BagDeliveryService', () => {
           passed: false,
           mismatches: ['last_name'],
           collector: 'passenger',
-          representativeName: null,
           documentType: 'passport',
           documentLast4: '4567',
           staffName: 'Krit Sukjai',
@@ -282,11 +280,32 @@ describe('BagDeliveryService', () => {
   })
 
   describe('setStatus', () => {
+    it('writes the status change to audit_log in the same transaction', async () => {
+      const { svc, db, audit } = makeSvc({ status: 'preparing' }, 'matched')
+      db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'NRT', action: 'arrived', to_airport: null })
+
+      await svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'in_transit', note: ' by courier ' })
+
+      expect(audit.resolveActor).toHaveBeenCalledWith(USER_ID)
+      expect(audit.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'status_change',
+          entityType: 'bag_delivery',
+          entityId: DELIVERY_ID,
+          reason: 'by courier',
+          before: { status: 'preparing' },
+          after: expect.objectContaining({ status: 'in_transit', staffId: STAFF_ID }),
+          occurredAt: SIM_NOW,
+        }),
+        db,
+      )
+    })
+
     it('locks the case, then the bag, and sets the case delivering in the same transaction', async () => {
       const { svc, db, locks } = makeSvc({ status: 'preparing' }, 'matched')
       db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'NRT', action: 'arrived', to_airport: null })
 
-      await svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })
+      await svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })
 
       expect(db.$transaction).toHaveBeenCalledTimes(1)
       expect(locks).toEqual(['lost_bag_report', 'found_bag'])
@@ -309,7 +328,9 @@ describe('BagDeliveryService', () => {
           pickup_airport: null,
         })
 
-      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })).rejects.toMatchObject({
+      await expect(
+        svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'in_transit' }),
+      ).rejects.toMatchObject({
         code: 'INVALID_STATUS',
       })
       expect(db.bag_location_event.create).not.toHaveBeenCalled()
@@ -320,7 +341,9 @@ describe('BagDeliveryService', () => {
       db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'NRT', action: 'arrived', to_airport: null })
       db.found_bag.updateMany.mockResolvedValue({ count: 0 })
 
-      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })).rejects.toMatchObject({
+      await expect(
+        svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'in_transit' }),
+      ).rejects.toMatchObject({
         code: 'INVALID_STATUS',
       })
       expect(db.bag_delivery.updateMany).not.toHaveBeenCalled()
@@ -331,7 +354,9 @@ describe('BagDeliveryService', () => {
       db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'NRT', action: 'arrived', to_airport: null })
       db.lost_bag_report.updateMany.mockResolvedValue({ count: 0 })
 
-      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })).rejects.toMatchObject({
+      await expect(
+        svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'in_transit' }),
+      ).rejects.toMatchObject({
         code: 'INVALID_STATUS',
       })
     })
@@ -339,7 +364,9 @@ describe('BagDeliveryService', () => {
     it('refuses to send the bag of a closed case', async () => {
       const { svc, db, locks } = makeSvc({ status: 'preparing' }, 'closed')
 
-      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })).rejects.toMatchObject({
+      await expect(
+        svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'in_transit' }),
+      ).rejects.toMatchObject({
         code: 'INVALID_STATUS',
       })
       expect(locks).toEqual(['lost_bag_report'])
@@ -350,7 +377,7 @@ describe('BagDeliveryService', () => {
       const { svc, db } = makeSvc({ status: 'preparing' })
       db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'NRT', action: 'arrived', to_airport: null })
 
-      await svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })
+      await svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })
 
       expect(db.bag_location_event.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ found_bag_id: FOUND_BAG_ID, airport_code: 'NRT', action: 'out_for_delivery', staff_id: STAFF_ID }),
@@ -366,7 +393,7 @@ describe('BagDeliveryService', () => {
       const { svc, db } = makeSvc({ status: 'preparing', delivery_type: 'airport_pickup', pickup_airport: 'NRT' })
       db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'BKK', action: 'held', to_airport: null })
 
-      await svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })
+      await svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })
 
       expect(db.bag_location_event.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ airport_code: 'BKK', action: 'sent', to_airport: 'NRT' }),
@@ -377,7 +404,7 @@ describe('BagDeliveryService', () => {
       const { svc, db } = makeSvc({ status: 'in_transit', delivery_type: 'airport_pickup', pickup_airport: 'NRT' })
       db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'BKK', action: 'sent', to_airport: 'NRT' })
 
-      await svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'ready_for_pickup' })
+      await svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'ready_for_pickup' })
 
       expect(db.bag_location_event.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ airport_code: 'NRT', action: 'arrived' }),
@@ -392,7 +419,9 @@ describe('BagDeliveryService', () => {
       const { svc, db } = makeSvc({ status: 'preparing', delivery_type: 'airport_pickup', pickup_airport: 'NRT' })
       db.bag_location_event.findFirst.mockResolvedValue({ airport_code: 'BKK', action: 'held', to_airport: null })
 
-      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'ready_for_pickup' })).rejects.toMatchObject({
+      await expect(
+        svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'ready_for_pickup' }),
+      ).rejects.toMatchObject({
         code: 'INVALID_STATUS',
       })
       expect(db.bag_delivery.updateMany).not.toHaveBeenCalled()
@@ -401,7 +430,9 @@ describe('BagDeliveryService', () => {
     it('refuses ready for pickup for a delivery to an address', async () => {
       const { svc } = makeSvc({ status: 'preparing' })
 
-      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'ready_for_pickup' })).rejects.toMatchObject({
+      await expect(
+        svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'ready_for_pickup' }),
+      ).rejects.toMatchObject({
         code: 'INVALID_STATUS',
       })
     })
@@ -409,7 +440,9 @@ describe('BagDeliveryService', () => {
     it('refuses to send a bag still waiting for the passenger', async () => {
       const { svc } = makeSvc({ status: 'waiting_choice', delivery_type: null })
 
-      await expect(svc.setStatus({ staffId: STAFF_ID, deliveryId: DELIVERY_ID, status: 'in_transit' })).rejects.toMatchObject({
+      await expect(
+        svc.setStatus({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, status: 'in_transit' }),
+      ).rejects.toMatchObject({
         code: 'INVALID_STATUS',
       })
     })
@@ -507,39 +540,32 @@ describe('BagDeliveryService', () => {
       expect(audit.write).not.toHaveBeenCalled()
     })
 
-    it.each([
-      ['with a name and a checked document', 'Mira Haddad'],
-      ['without a name', undefined],
-    ])(
-      'refuses representative handover (temporary restriction) %s, before reading, locking, auditing or changing anything',
-      async (_label, representativeName) => {
-        const { svc, db, audit, locks } = makeSvc()
+    it('hands the bag only to the passenger: anyone else is refused before reading, locking, auditing or changing anything', async () => {
+      const { svc, db, audit, locks } = makeSvc()
 
-        await expect(
-          svc.handOver({
-            staffId: STAFF_ID,
-            userId: USER_ID,
-            deliveryId: DELIVERY_ID,
-            documentChecked: true,
-            representativeName,
-            // Booking reference and surname match the case: the refusal does not depend on them.
-            identity: { ...IDENTITY, collector: 'representative', documentType: 'national_id' },
-          }),
-        ).rejects.toMatchObject({ code: 'INVALID_DELIVERY', message: REPRESENTATIVE_HANDOVER_UNAVAILABLE })
+      await expect(
+        svc.handOver({
+          staffId: STAFF_ID,
+          userId: USER_ID,
+          deliveryId: DELIVERY_ID,
+          documentChecked: true,
+          // Booking reference and surname match the case: the refusal does not depend on them.
+          identity: { ...IDENTITY, collector: 'representative' as never, documentType: 'national_id' },
+        }),
+      ).rejects.toMatchObject({ code: 'INVALID_DELIVERY', message: 'Only the passenger can collect the bag' })
 
-        expect(db.bag_delivery.findUnique).not.toHaveBeenCalled()
-        expect(db.$transaction).not.toHaveBeenCalled()
-        expect(locks).toEqual([])
-        expect(db.bag_delivery.updateMany).not.toHaveBeenCalled()
-        expect(db.found_bag.updateMany).not.toHaveBeenCalled()
-        expect(db.lost_bag_report.updateMany).not.toHaveBeenCalled()
-        expect(db.bag_location_event.create).not.toHaveBeenCalled()
-        expect(audit.resolveActor).not.toHaveBeenCalled()
-        expect(audit.write).not.toHaveBeenCalled()
-      },
-    )
+      expect(db.bag_delivery.findUnique).not.toHaveBeenCalled()
+      expect(db.$transaction).not.toHaveBeenCalled()
+      expect(locks).toEqual([])
+      expect(db.bag_delivery.updateMany).not.toHaveBeenCalled()
+      expect(db.found_bag.updateMany).not.toHaveBeenCalled()
+      expect(db.lost_bag_report.updateMany).not.toHaveBeenCalled()
+      expect(db.bag_location_event.create).not.toHaveBeenCalled()
+      expect(audit.resolveActor).not.toHaveBeenCalled()
+      expect(audit.write).not.toHaveBeenCalled()
+    })
 
-    it('still hands the bag to the passenger in person after the restriction', async () => {
+    it('hands the bag to the passenger in person', async () => {
       const { svc, db } = makeSvc()
 
       await svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, documentChecked: true, identity: IDENTITY })

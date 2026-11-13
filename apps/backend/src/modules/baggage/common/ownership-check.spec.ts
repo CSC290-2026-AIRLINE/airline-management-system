@@ -49,14 +49,6 @@ describe('checkOwnership', () => {
   it('does not compare a document when no passport is on file', () => {
     expect(checkOwnership({ ...OWNER, passportNumber: null }, presented({ documentNumber: 'XY0000000' })).passed).toBe(true)
   })
-
-  it("does not compare a representative's own document with the passenger's", () => {
-    expect(checkOwnership(OWNER, presented({ collector: 'representative', documentNumber: 'XY0000000' })).passed).toBe(true)
-  })
-
-  it('still needs the booking details from a representative', () => {
-    expect(checkOwnership(OWNER, presented({ collector: 'representative', lastName: 'Becker' })).mismatches).toEqual(['last_name'])
-  })
 })
 
 describe('helpers', () => {

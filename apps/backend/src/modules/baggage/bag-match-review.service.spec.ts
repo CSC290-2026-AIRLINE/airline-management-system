@@ -15,10 +15,10 @@ const OTHER_STAFF_ID = '99999999-9999-4999-8999-999999999999'
 const ACTOR: AuditActor = { type: 'staff', id: '44444444-4444-4444-8444-444444444444', role: 'baggage' }
 const SIM_NOW = new Date('2026-10-30T08:00:00Z')
 
-/** list(): reviewed rows always; a pending suggestion only while its case is open or lost. */
+/** list(): reviewed rows always; a pending suggestion only while its case is open or lost and its bag is still held. */
 const ACTIONABLE_OR_REVIEWED = [
   { status: { notIn: ['suggested', 'under_review'] } },
-  { lost_bag_report: { status: { in: ['open', 'lost'] } } },
+  { lost_bag_report: { status: { in: ['open', 'lost'] } }, found_bag: { status: 'held' } },
 ]
 
 function prismaError(code: string) {
@@ -174,7 +174,7 @@ describe('BagMatchReviewService.list', () => {
     expect(where.OR).toEqual(ACTIONABLE_OR_REVIEWED)
   })
 
-  it('keeps reviewed history but leaves out pending suggestions on cancelled, closed or matched cases', async () => {
+  it('keeps reviewed history but leaves out pending suggestions on cancelled, closed or matched cases and on bags no longer held', async () => {
     const { svc, db } = makeSvc()
     const rows = [
       matchRow({ id: 'pending-open' }),
@@ -184,28 +184,49 @@ describe('BagMatchReviewService.list', () => {
       matchRow({ id: 'pending-matched', lost_bag_report: { ...matchRow().lost_bag_report, status: 'matched' } }),
       matchRow({ id: 'confirmed-cancelled', status: 'confirmed', lost_bag_report: { ...matchRow().lost_bag_report, status: 'cancelled' } }),
       matchRow({ id: 'rejected-cancelled', status: 'rejected', lost_bag_report: { ...matchRow().lost_bag_report, status: 'cancelled' } }),
+      matchRow({ id: 'pending-unclaimed-bag', found_bag: { ...matchRow().found_bag, status: 'unclaimed' } }),
+      matchRow({ id: 'pending-continued-bag', found_bag: { ...matchRow().found_bag, status: 'continued_with_flight' } }),
+      matchRow({ id: 'rejected-unclaimed-bag', status: 'rejected', found_bag: { ...matchRow().found_bag, status: 'unclaimed' } }),
     ]
     // Evaluate the where clause the service builds against the rows, as the database would.
-    type Clause = { status?: { notIn: string[] }; lost_bag_report?: { status: { in: string[] } } }
+    type Clause = { status?: { notIn: string[] }; lost_bag_report?: { status: { in: string[] } }; found_bag?: { status: string } }
     const holds = (clause: Clause, row: (typeof rows)[number]) =>
       clause.status
         ? !clause.status.notIn.includes(row.status)
-        : (clause.lost_bag_report?.status.in.includes(row.lost_bag_report.status) ?? false)
+        : (clause.lost_bag_report?.status.in.includes(row.lost_bag_report.status) ?? false) &&
+          (clause.found_bag === undefined || clause.found_bag.status === row.found_bag.status)
     db.bag_match.findMany.mockImplementation(({ where }: { where: { OR: Clause[] } }) =>
       Promise.resolve(rows.filter((row) => where.OR.some((clause) => holds(clause, row)))),
     )
 
     const ids = (await svc.list()).map((m) => m.id).sort()
 
-    expect(ids).toEqual(['confirmed-cancelled', 'pending-lost', 'pending-open', 'rejected-cancelled'])
+    expect(ids).toEqual(['confirmed-cancelled', 'pending-lost', 'pending-open', 'rejected-cancelled', 'rejected-unclaimed-bag'])
   })
 })
 
 describe('BagMatchReviewService.link', () => {
+  it('writes the link to audit_log in the same transaction', async () => {
+    const { svc, db, audit } = makeSvc()
+
+    await svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })
+
+    expect(db.$transaction).toHaveBeenCalledTimes(1)
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: ACTOR,
+        action: 'create',
+        entityType: 'bag_match',
+        after: expect.objectContaining({ level: 'manual', reportId: REPORT_ID, foundBagId: FOUND_BAG_ID, staffId: STAFF_ID }),
+      }),
+      db,
+    )
+  })
+
   it('adds a manual match linked by the staff member', async () => {
     const { svc, db } = makeSvc()
 
-    const match = await svc.link({ staffId: STAFF_ID, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })
+    const match = await svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })
 
     expect(db.bag_match.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -218,12 +239,12 @@ describe('BagMatchReviewService.link', () => {
   it('refuses a case that already has its bag, and a bag that is not held', async () => {
     const { svc, db } = makeSvc()
     db.lost_bag_report.findUnique.mockResolvedValueOnce({ status: 'matched' })
-    await expect(svc.link({ staffId: STAFF_ID, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
+    await expect(svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
       code: 'MATCH_CLOSED',
     })
 
     db.found_bag.findUnique.mockResolvedValueOnce({ status: 'unclaimed' })
-    await expect(svc.link({ staffId: STAFF_ID, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
+    await expect(svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
       code: 'MATCH_CLOSED',
     })
   })
@@ -232,7 +253,7 @@ describe('BagMatchReviewService.link', () => {
     const { svc, db } = makeSvc()
     db.bag_match.create.mockRejectedValue(prismaError('P2002'))
 
-    await expect(svc.link({ staffId: STAFF_ID, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
+    await expect(svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
       code: 'MATCH_EXISTS',
     })
   })
@@ -240,12 +261,12 @@ describe('BagMatchReviewService.link', () => {
   it('answers not found for a missing case or bag', async () => {
     const { svc, db } = makeSvc()
     db.lost_bag_report.findUnique.mockResolvedValueOnce(null)
-    await expect(svc.link({ staffId: STAFF_ID, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
+    await expect(svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
       code: 'REPORT_NOT_FOUND',
     })
 
     db.found_bag.findUnique.mockResolvedValueOnce(null)
-    await expect(svc.link({ staffId: STAFF_ID, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
+    await expect(svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
       code: 'FOUND_BAG_NOT_FOUND',
     })
   })

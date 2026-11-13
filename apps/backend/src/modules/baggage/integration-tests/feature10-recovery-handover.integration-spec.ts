@@ -380,7 +380,7 @@ async function main(): Promise<void> {
     const audit = new AuditService(db, clock)
     const matching = new BagMatchingService(db, clock)
     const checkedBags = new PrismaCheckedBagLookup(db)
-    const foundBags = new FoundBagService(db, clock, [matching])
+    const foundBags = new FoundBagService(db, audit, clock, [matching])
     const repository = new PrismaReportRepository(db)
     const reportService = new ReportService(
       repository,
@@ -396,7 +396,7 @@ async function main(): Promise<void> {
     const passengerController = new PassengerLostReportController(reportService, passengerChoices, caseSummaries, matching)
     const foundController = new FoundBagController(
       foundBags,
-      new BagTrackingService(db, clock),
+      new BagTrackingService(db, audit, clock),
       new FoundBagLifecycleService(db, audit, clock),
       matching,
     )

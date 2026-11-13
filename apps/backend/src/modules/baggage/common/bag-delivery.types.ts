@@ -19,8 +19,8 @@ export const CHOICE_OPEN_STATUSES: DeliveryStatus[] = ['waiting_choice', 'prepar
 export const ID_DOCUMENT_TYPES = ['passport', 'national_id', 'driving_licence'] as const
 export type IdDocumentType = (typeof ID_DOCUMENT_TYPES)[number]
 
-/** Who came for the bag: the passenger, or someone they sent with the booking details. */
-export const COLLECTORS = ['passenger', 'representative'] as const
+/** Who can collect the bag. The F10 spec hands a bag only to its passenger; there is no handover to someone they send. */
+export const COLLECTORS = ['passenger'] as const
 export type Collector = (typeof COLLECTORS)[number]
 
 /**
@@ -36,7 +36,6 @@ export interface OwnershipCheck {
   passed: boolean
   mismatches: OwnershipMismatch[]
   collector: Collector
-  representativeName: string | null
   documentType: IdDocumentType
   documentLast4: string
   staffName: string | null

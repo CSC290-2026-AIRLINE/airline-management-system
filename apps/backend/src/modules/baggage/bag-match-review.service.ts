@@ -33,6 +33,8 @@ export interface MatchFilter {
 
 export interface LinkInput {
   staffId: string
+  /** Who is signed in, for the audit row. */
+  actor: AuditActor
   reportId: string
   foundBagId: string
 }
@@ -197,9 +199,13 @@ export class BagMatchReviewService {
       where.found_bag_id = foundBagId
     }
 
-    // A pending suggestion is only actionable while its case can still be matched. Suggestions left on a cancelled,
-    // closed or already-matched case stay stored as history but are not offered for review; reviewed rows always show.
-    where.OR = [{ status: { notIn: OPEN_MATCH_STATUSES } }, { lost_bag_report: { status: { in: MATCHABLE_REPORT_STATUSES } } }]
+    // A pending suggestion is only actionable while its case can still be matched and its bag is still held. Suggestions
+    // left on a cancelled, closed or already-matched case, or on a bag that turned unclaimed or flew on with its diverted
+    // flight, stay stored as history but are not offered for review; reviewed rows always show.
+    where.OR = [
+      { status: { notIn: OPEN_MATCH_STATUSES } },
+      { lost_bag_report: { status: { in: MATCHABLE_REPORT_STATUSES } }, found_bag: { status: 'held' } },
+    ]
 
     // The newest rows; reviewOrder then puts open and strong matches first.
     const rows = await this.db.bag_match.findMany({
@@ -253,19 +259,39 @@ export class BagMatchReviewService {
 
     const now = new Date()
 
+    const suggestedAt = this.clock.now()
+
     try {
-      const row = await this.db.bag_match.create({
-        data: {
-          report_id: reportId,
-          found_bag_id: foundBagId,
-          match_level: 'manual',
-          status: 'suggested',
-          linked_by: staffId,
-          suggested_at: this.clock.now(),
-          created_at: now,
-          updated_at: now,
-        },
-        include: MATCH_INCLUDE,
+      const row = await this.db.$transaction(async (tx) => {
+        const created = await tx.bag_match.create({
+          data: {
+            report_id: reportId,
+            found_bag_id: foundBagId,
+            match_level: 'manual',
+            status: 'suggested',
+            linked_by: staffId,
+            suggested_at: suggestedAt,
+            created_at: now,
+            updated_at: now,
+          },
+          include: MATCH_INCLUDE,
+        })
+
+        await this.audit.write(
+          {
+            actor: input.actor,
+            sourceFeature: AUDIT_SOURCE_FEATURE,
+            action: 'create',
+            entityType: BAG_MATCH_ENTITY,
+            entityId: created.id,
+            summary: `Found bag linked by hand to lost bag case ${created.lost_bag_report.case_number}`,
+            after: { status: 'suggested', level: 'manual', reportId, foundBagId, staffId },
+            occurredAt: suggestedAt,
+          },
+          tx,
+        )
+
+        return created
       })
 
       return toBagMatch(row)

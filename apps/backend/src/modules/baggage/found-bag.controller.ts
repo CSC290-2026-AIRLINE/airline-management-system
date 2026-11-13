@@ -56,7 +56,7 @@ export class FoundBagController {
   @Post()
   @HttpCode(201)
   record(@CurrentBaggageStaff() staff: BaggageStaff, @Body() dto: RecordFoundBagDto): Promise<FoundBag> {
-    return this.service.record({ ...dto, staffId: staff.staffId })
+    return this.service.record({ ...dto, staffId: staff.staffId, actor: baggageAuditActor(staff) })
   }
 
   /** Add a held found bag for every tagged bag in the hold of a diverted flight. Safe to call again. */
@@ -102,7 +102,7 @@ export class FoundBagController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: RecordMoveDto,
   ): Promise<BagTrackingHistory> {
-    return this.tracking.recordMove({ ...dto, foundBagId: id, staffId: staff.staffId })
+    return this.tracking.recordMove({ ...dto, foundBagId: id, staffId: staff.staffId, actor: baggageAuditActor(staff) })
   }
 
   /** Add the type and colour of a diverted-flight bag after staff check it. */
@@ -112,7 +112,7 @@ export class FoundBagController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
     @Body() dto: CompleteFoundBagDetailsDto,
   ): Promise<FoundBag> {
-    const bag = await this.lifecycle.completeDetails(staff.staffId, id, dto)
+    const bag = await this.lifecycle.completeDetails(staff.staffId, id, dto, baggageAuditActor(staff))
     // The type and colour can now give possible matches.
     await this.matching.suggestForFoundBags([bag.id])
     return bag
@@ -125,6 +125,6 @@ export class FoundBagController {
     @CurrentBaggageStaff() staff: BaggageStaff,
     @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
   ): Promise<FoundBag> {
-    return this.lifecycle.continueWithFlight(staff.staffId, id)
+    return this.lifecycle.continueWithFlight(staff.staffId, id, baggageAuditActor(staff))
   }
 }

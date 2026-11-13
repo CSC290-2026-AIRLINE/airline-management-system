@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import type { station_contact } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
+import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
+import { AUDIT_SOURCE_FEATURE } from './common/baggage.constants'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { AIRPORT_CODE_PATTERN, UUID_PATTERN, prismaErrorCode } from './common/patterns'
 import { formatPhoneNumber, phoneNumberProblem } from './common/phone-number'
@@ -19,6 +21,8 @@ export interface StationContact {
 
 export interface SaveStationContactInput {
   staffId: string
+  /** Who is signed in, for the audit row. */
+  actor: AuditActor
   airportCode: string
   deskName: string
   phone: string
@@ -52,7 +56,10 @@ function invalid(message: string): FoundBagError {
 
 @Injectable()
 export class StationContactService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: AuditService,
+  ) {}
 
   async list(): Promise<StationContact[]> {
     const rows = await this.db.station_contact.findMany({ include: WITH_AIRPORT, orderBy: { airport_code: 'asc' } })
@@ -102,11 +109,34 @@ export class StationContactService {
     const data = { desk_name: deskName, phone: storedPhone, email, updated_at: new Date(), updated_by: input.staffId }
 
     try {
-      const row = await this.db.station_contact.upsert({
-        where: { airport_code: airportCode },
-        create: { airport_code: airportCode, ...data },
-        update: data,
-        include: WITH_AIRPORT,
+      const row = await this.db.$transaction(async (tx) => {
+        const before = await tx.station_contact.findUnique({
+          where: { airport_code: airportCode },
+          select: { desk_name: true, phone: true, email: true },
+        })
+
+        const saved = await tx.station_contact.upsert({
+          where: { airport_code: airportCode },
+          create: { airport_code: airportCode, ...data },
+          update: data,
+          include: WITH_AIRPORT,
+        })
+
+        await this.audit.write(
+          {
+            actor: input.actor,
+            sourceFeature: AUDIT_SOURCE_FEATURE,
+            action: before ? 'update' : 'create',
+            entityType: 'station_contact',
+            entityId: airportCode,
+            summary: `Baggage desk contact for ${airportCode} ${before ? 'changed' : 'added'}`,
+            before: before ? { deskName: before.desk_name, phone: before.phone, email: before.email } : undefined,
+            after: { deskName, phone: storedPhone, email, staffId: input.staffId },
+          },
+          tx,
+        )
+
+        return saved
       })
 
       return toContact(row)

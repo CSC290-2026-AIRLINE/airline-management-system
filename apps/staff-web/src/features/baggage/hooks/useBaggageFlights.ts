@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useFoundBagApi, type BaggageFlight } from '../api/found-bags'
+import { useFoundBagApi, type BaggageAirport, type BaggageFlight } from '../api/found-bags'
 import { errorMessage } from './useFoundBags'
 import { useRetryWhileUnreachable } from './useRetryWhileUnreachable'
 
@@ -111,4 +111,27 @@ export function useDivertedFlights() {
 
   // Only the first load shows as loading, so the card does not flash after adding bags.
   return { loading: state.forKey === null, error: state.error, flights: state.flights, reload }
+}
+
+/** Active airports from Feature 2's airport table, for airport pickers. A failed lookup leaves the list empty. */
+export function useAirports() {
+  const api = useFoundBagApi()
+  const [airports, setAirports] = useState<BaggageAirport[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .airports()
+      .catch(() => [])
+      .then((list) => {
+        if (!cancelled) setAirports(list)
+      })
+    return () => {
+      cancelled = true
+    }
+    // See useFlightsInto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return airports
 }

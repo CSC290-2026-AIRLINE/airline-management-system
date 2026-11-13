@@ -19,6 +19,7 @@ import {
   type DeliveryStatus,
   type DeliveryType,
 } from '../constants'
+import { useAirports } from '../hooks/useBaggageFlights'
 import { errorMessage } from '../hooks/useFoundBags'
 import { displayPhone } from '../phone-number'
 import { CaseCosts } from './CaseCosts'
@@ -75,11 +76,13 @@ function ChoiceForm({ delivery, onSave }: { delivery: BagDelivery; onSave: (body
   const [error, setError] = useState<string | null>(null)
   const pickup = type === 'airport_pickup'
   const id = (field: string) => `choice-${field}-${delivery.id}`
+  const airports = useAirports()
+  const airportOptions = airports.map((a) => ({ value: a.code, label: `${a.code} · ${a.name}` }))
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (pickup && !/^[A-Za-z]{3}$/.test(airport.trim())) {
-      setError('Enter the 3-letter code of the pickup airport.')
+      setError('Choose the pickup airport.')
       return
     }
     if (!pickup && !address.trim()) {
@@ -107,13 +110,13 @@ function ChoiceForm({ delivery, onSave }: { delivery: BagDelivery; onSave: (body
       </Field>
       {pickup ? (
         <Field label="Pickup airport" htmlFor={id('airport')}>
-          <Input
+          <SelectBox
             id={id('airport')}
-            maxLength={3}
-            placeholder="NRT"
             value={airport}
-            onChange={(e) => setAirport(e.target.value)}
-            className={`${FIELD_BOX} uppercase`}
+            onValueChange={setAirport}
+            options={airportOptions}
+            placeholder={airportOptions.length > 0 ? 'Choose an airport' : 'No airports'}
+            disabled={airportOptions.length === 0}
           />
         </Field>
       ) : (
@@ -180,8 +183,7 @@ function StatusForm({
 }
 
 function CheckItem({ check }: { check: OwnershipCheck }) {
-  const who =
-    check.collector === 'representative' && check.representativeName ? check.representativeName : COLLECTOR_LABELS[check.collector]
+  const who = COLLECTOR_LABELS[check.collector]
   return (
     <li className="flex flex-col gap-1 rounded-lg bg-[#f4f6fa] px-3.5 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">

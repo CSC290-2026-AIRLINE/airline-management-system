@@ -7,7 +7,6 @@ export interface OwnershipCheck {
   passed: boolean
   mismatches: OwnershipMismatch[]
   collector: Collector
-  representativeName: string | null
   documentType: IdDocumentType
   documentLast4: string
   staffName: string | null
@@ -57,7 +56,6 @@ export interface HandOverBody {
   bookingReference: string
   lastName: string
   collector: Collector
-  representativeName?: string
   documentType: IdDocumentType
   documentNumber: string
   documentChecked: boolean

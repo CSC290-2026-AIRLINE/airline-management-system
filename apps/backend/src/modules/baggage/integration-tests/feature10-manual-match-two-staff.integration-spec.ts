@@ -12,7 +12,7 @@ import { JwtAuthGuard } from '@backend/auth/guards/jwt-auth.guard'
 import { BagMatchController } from '@backend/modules/baggage/bag-match.controller'
 import { BagMatchReviewService } from '@backend/modules/baggage/bag-match-review.service'
 import { FoundBagService } from '@backend/modules/baggage/found-bag.service'
-import { BaggageStaffGuard, type BaggageStaff } from '@backend/modules/baggage/guards/baggage-staff.guard'
+import { BaggageStaffGuard, baggageAuditActor, type BaggageStaff } from '@backend/modules/baggage/guards/baggage-staff.guard'
 import { PrismaBookingVerification } from '@backend/modules/baggage/prisma-booking.verification'
 import { PrismaCaseNumberSequence } from '@backend/modules/baggage/prisma-case-number.sequence'
 import { PrismaCheckedBagLookup } from '@backend/modules/baggage/prisma-checked-bag.lookup'
@@ -430,8 +430,9 @@ async function main(): Promise<void> {
       description: `Synthetic manual-match report ${RUN_TAG}`,
       contactEmail: `manual-${RUN_TAG}@example.invalid`,
     })
-    const foundBag = await new FoundBagService(db, clock).record({
+    const foundBag = await new FoundBagService(db, audit, clock).record({
       staffId: staffA.staffId,
+      actor: baggageAuditActor(staffA),
       foundAirport: reference.route.origin,
       bagType: 'suitcase',
       colour: 'black',
@@ -455,7 +456,11 @@ async function main(): Promise<void> {
     assert.equal((await client.found_bag.findUniqueOrThrow({ where: { id: foundBag.id } })).status, 'held')
     assert.equal(await client.bag_delivery.count({ where: { report_id: report.id } }), 0)
     const auditFilter = { source_feature: '10', entity_type: 'bag_match', entity_id: linked.id } as const
-    assert.equal(await client.audit_log.count({ where: auditFilter }), 0)
+    // The link itself is audited (create, by Staff A); no review row exists yet.
+    const linkAudits = await client.audit_log.findMany({ where: auditFilter, orderBy: { seq: 'asc' } })
+    assert.equal(linkAudits.length, 1)
+    assert.equal(linkAudits[0].action, 'create')
+    assert.equal(linkAudits[0].actor_id, fixture.staffAUserId)
 
     const beforeSelf = {
       match: await client.bag_match.findUniqueOrThrow({ where: { id: linked.id } }),
@@ -495,12 +500,13 @@ async function main(): Promise<void> {
     assert.equal(finalReport.status, 'matched')
     assert.equal(finalBag.status, 'matched')
     assert.equal(delivery?.status, 'waiting_choice')
-    assert.equal(audits.length, 1)
-    assert.equal(audits[0].action, 'status_change')
-    assert.equal(audits[0].actor_type, 'staff')
-    assert.equal(audits[0].actor_id, fixture.staffBUserId)
-    assert.equal(audits[0].is_sensitive, false)
-    const afterAudit = audits[0].after as { status?: string; reportId?: string; foundBagId?: string; staffId?: string } | null
+    assert.equal(audits.length, 2)
+    assert.equal(audits[0].action, 'create')
+    assert.equal(audits[1].action, 'status_change')
+    assert.equal(audits[1].actor_type, 'staff')
+    assert.equal(audits[1].actor_id, fixture.staffBUserId)
+    assert.equal(audits[1].is_sensitive, false)
+    const afterAudit = audits[1].after as { status?: string; reportId?: string; foundBagId?: string; staffId?: string } | null
     assert.equal(afterAudit?.status, 'confirmed')
     assert.equal(afterAudit?.reportId, report.id)
     assert.equal(afterAudit?.foundBagId, foundBag.id)
@@ -509,7 +515,7 @@ async function main(): Promise<void> {
     const after = await snapshotExistingFeature10Records(client, before.ids)
     assert.equal(after.serialized, before.serialized)
     console.log('PASS: distinct synthetic staff identities passed real JWT and BaggageStaffGuard checks')
-    console.log('PASS: Staff A linked suggested manual match; states unchanged, no delivery or link audit')
+    console.log('PASS: Staff A linked suggested manual match; states unchanged, no delivery, link audited as Staff A')
     console.log('PASS: Staff A self-confirm returned SELF_CONFIRM / 403 without changes')
     console.log('PASS: Staff B confirmed; report/bag matched; waiting_choice delivery and Staff B audit recorded')
     console.log('PASS: all pre-existing Feature 10 snapshots remain unchanged')

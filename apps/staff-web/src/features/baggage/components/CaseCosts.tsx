@@ -36,6 +36,8 @@ export function CaseCosts({
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  /** The cost waiting for "Remove" to be pressed a second time. */
+  const [confirmId, setConfirmId] = useState<string | null>(null)
 
   async function run(action: () => Promise<void>) {
     setBusy(true)
@@ -80,17 +82,38 @@ export function CaseCosts({
                 <span className="text-sm font-medium whitespace-nowrap text-[#677287]">{BAG_COST_KIND_LABELS[c.kind]}</span>
                 <span className="flex min-w-0 flex-1 items-center justify-end gap-1 text-base text-[#14213d]">
                   {formatBaht(c.amount)}
-                  {/* Not in Figma: the API can take back a cost entered by mistake. */}
-                  <button
-                    type="button"
-                    aria-label={`Remove ${BAG_COST_KIND_LABELS[c.kind].toLowerCase()} cost of ${formatBaht(c.amount)}`}
-                    title="Remove cost"
-                    disabled={busy}
-                    onClick={() => void run(() => onRemove(c.id))}
-                    className="rounded p-0.5 text-[#677287] outline-none hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-                  >
-                    <X className="size-3.5" aria-hidden />
-                  </button>
+                  {/* Not in Figma: a cost entered by mistake can be taken back, after a second press. */}
+                  {confirmId === c.id ? (
+                    <span className="flex items-center gap-1 text-sm">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void run(() => onRemove(c.id)).then(() => setConfirmId(null))}
+                        className="rounded px-1 font-semibold text-danger outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setConfirmId(null)}
+                        className="rounded px-1 text-[#677287] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                      >
+                        Keep
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${BAG_COST_KIND_LABELS[c.kind].toLowerCase()} cost of ${formatBaht(c.amount)}`}
+                      title="Remove cost"
+                      disabled={busy}
+                      onClick={() => setConfirmId(c.id)}
+                      className="rounded p-0.5 text-[#677287] outline-none hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                    >
+                      <X className="size-3.5" aria-hidden />
+                    </button>
+                  )}
                 </span>
               </li>
             ))}

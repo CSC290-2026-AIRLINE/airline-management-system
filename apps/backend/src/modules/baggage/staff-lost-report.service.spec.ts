@@ -68,7 +68,10 @@ function makeSvc() {
   }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db))
 
-  const audit = { recordSensitiveView: jest.fn().mockResolvedValue({ id: 'a-1', seq: '1' }) }
+  const audit = {
+    recordSensitiveView: jest.fn().mockResolvedValue({ id: 'a-1', seq: '1' }),
+    write: jest.fn().mockResolvedValue({ id: 'a-2', seq: '2' }),
+  }
 
   return {
     svc: new StaffLostReportService(db as unknown as DbService, audit as unknown as AuditService, { now: () => SIM_NOW }),
@@ -79,6 +82,7 @@ function makeSvc() {
 
 const deskInput = {
   staffId: STAFF_ID,
+  actor: ACTOR,
   bookingReference: 'abc234',
   passengerId: PASSENGER_ID,
   flightId: FLIGHT_ID,
@@ -189,23 +193,56 @@ describe('StaffLostReportService.createAtDesk', () => {
 
   it('accepts a tag only when it is on this booking passenger', async () => {
     const { svc, db } = makeSvc()
-    db.checked_bag.findFirst.mockResolvedValue({ check_in: { booking_passenger_id: BOOKING_PASSENGER_ID } })
+    db.checked_bag.findFirst.mockResolvedValue({ check_in: { booking_passenger_id: BOOKING_PASSENGER_ID, flight_id: FLIGHT_ID } })
 
     await svc.createAtDesk({ ...deskInput, tagNumber: '0123456789' })
     expect(db.lost_bag_report.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ tag_number: '0123456789' }) }),
     )
 
-    db.checked_bag.findFirst.mockResolvedValue({ check_in: { booking_passenger_id: '99999999-9999-4999-8999-999999999999' } })
+    db.checked_bag.findFirst.mockResolvedValue({
+      check_in: { booking_passenger_id: '99999999-9999-4999-8999-999999999999', flight_id: FLIGHT_ID },
+    })
     await expect(svc.createAtDesk({ ...deskInput, tagNumber: '0123456789' })).rejects.toMatchObject({ code: 'TAG_NOT_ON_BOOKING' })
 
     db.checked_bag.findFirst.mockResolvedValue(null)
     await expect(svc.createAtDesk({ ...deskInput, tagNumber: '0123456789' })).rejects.toMatchObject({ code: 'TAG_NOT_ON_BOOKING' })
   })
 
+  it("refuses a tag checked in for another of the passenger's flights", async () => {
+    const { svc, db } = makeSvc()
+    db.checked_bag.findFirst.mockResolvedValue({
+      check_in: { booking_passenger_id: BOOKING_PASSENGER_ID, flight_id: '88888888-8888-4888-8888-888888888888' },
+    })
+
+    await expect(svc.createAtDesk({ ...deskInput, tagNumber: '0123456789' })).rejects.toMatchObject({
+      code: 'TAG_NOT_ON_BOOKING',
+      message: 'Baggage tag was checked in for another flight',
+    })
+    expect(db.lost_bag_report.create).not.toHaveBeenCalled()
+  })
+
+  it('writes the new case to audit_log in the same transaction', async () => {
+    const { svc, audit } = makeSvc()
+
+    await svc.createAtDesk(deskInput)
+
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: ACTOR,
+        sourceFeature: '10',
+        action: 'create',
+        entityType: 'lost_bag_report',
+        entityId: REPORT_ID,
+        occurredAt: SIM_NOW,
+      }),
+      expect.anything(),
+    )
+  })
+
   it('refuses a second live case for the same tag, early and on the unique index', async () => {
     const { svc, db } = makeSvc()
-    db.checked_bag.findFirst.mockResolvedValue({ check_in: { booking_passenger_id: BOOKING_PASSENGER_ID } })
+    db.checked_bag.findFirst.mockResolvedValue({ check_in: { booking_passenger_id: BOOKING_PASSENGER_ID, flight_id: FLIGHT_ID } })
     db.lost_bag_report.findFirst.mockResolvedValueOnce({ id: REPORT_ID })
 
     await expect(svc.createAtDesk({ ...deskInput, tagNumber: '0123456789' })).rejects.toMatchObject({ code: 'REPORT_EXISTS', status: 409 })
@@ -240,7 +277,7 @@ describe('StaffLostReportService.createFromFoundBag', () => {
     const { svc, db } = makeSvc()
     db.found_bag.findUnique.mockResolvedValue(heldTaggedBag)
 
-    await svc.createFromFoundBag({ staffId: STAFF_ID, foundBagId: FOUND_BAG_ID, contactPhone: '+66 2 000 0000' })
+    await svc.createFromFoundBag({ staffId: STAFF_ID, actor: ACTOR, foundBagId: FOUND_BAG_ID, contactPhone: '+66 2 000 0000' })
 
     expect(db.lost_bag_report.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -263,7 +300,7 @@ describe('StaffLostReportService.createFromFoundBag', () => {
 
   it('needs a known, held bag with its type and colour', async () => {
     const { svc, db } = makeSvc()
-    const input = { staffId: STAFF_ID, foundBagId: FOUND_BAG_ID }
+    const input = { staffId: STAFF_ID, actor: ACTOR, foundBagId: FOUND_BAG_ID }
 
     await expect(svc.createFromFoundBag(input)).rejects.toMatchObject({ code: 'FOUND_BAG_NOT_FOUND', status: 404 })
 
@@ -276,6 +313,25 @@ describe('StaffLostReportService.createFromFoundBag', () => {
     db.found_bag.findUnique.mockResolvedValue({ ...heldTaggedBag, bag_type: null })
     await expect(svc.createFromFoundBag(input)).rejects.toMatchObject({ code: 'INVALID_STATUS' })
 
+    expect(db.lost_bag_report.create).not.toHaveBeenCalled()
+  })
+
+  it('does not open a second case when a live case is already suggested for the bag', async () => {
+    const { svc, db } = makeSvc()
+    db.found_bag.findUnique.mockResolvedValue(heldTaggedBag)
+    db.lost_bag_report.findFirst.mockResolvedValueOnce({ case_number: 'LB-2026-000041' })
+
+    await expect(svc.createFromFoundBag({ staffId: STAFF_ID, actor: ACTOR, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
+      code: 'REPORT_EXISTS',
+      message: 'Lost bag case LB-2026-000041 is already matched with this bag; review it in Match review',
+    })
+    expect(db.lost_bag_report.findFirst).toHaveBeenCalledWith({
+      where: {
+        status: { in: ['open', 'lost'] },
+        bag_match: { some: { found_bag_id: FOUND_BAG_ID, status: { in: ['suggested', 'under_review'] } } },
+      },
+      select: { case_number: true },
+    })
     expect(db.lost_bag_report.create).not.toHaveBeenCalled()
   })
 })
