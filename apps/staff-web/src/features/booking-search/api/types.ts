@@ -22,7 +22,7 @@ export interface CabinAvailability {
   fareClassId: string
   // For display, for example "Y".
   fareClassCode: string
-  // Feature 4's quote; null while the pricing stub is in use.
+  // Feature 4's quote; null when Feature 4 refused the option (see unavailableReason).
   fareQuoteId: string | null
   // Price per passenger (D2); the trip total is pricePerPassenger x (adults + children).
   pricePerPassenger: number
