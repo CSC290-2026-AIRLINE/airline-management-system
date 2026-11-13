@@ -19,7 +19,7 @@ export class CheckoutStub implements CheckoutPort {
   ) {}
   async charge(request: ChargeRequest, transaction?: BookingTransaction): Promise<PaymentResult> {
     if (process.env.NODE_ENV === 'production') throw new BookingError('SEAT_NOT_ALLOWED', 'Development checkout is unavailable', 404)
-    if (!Number.isFinite(request.amount) || request.amount < 0 || request.currency !== 'USD' || !request.idempotencyKey)
+    if (!Number.isFinite(request.amount) || request.amount < 0 || !/^[A-Z]{3}$/.test(request.currency) || !request.idempotencyKey)
       throw new BookingError('SEAT_NOT_ALLOWED', 'Invalid seat payment', 422)
     const charge = async (tx: BookingTransaction): Promise<PaymentResult> => {
       const booking = await tx.booking.findUnique({

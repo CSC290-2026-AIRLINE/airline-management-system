@@ -65,4 +65,15 @@ describe('CheckoutStub', () => {
       process.env.NODE_ENV = previous
     }
   })
+  it('accepts a booking in another currency', async () => {
+    booking.findUnique.mockResolvedValue({ customer_id: 'customer', currency: 'THB', status: 'confirmed' })
+    const thb = { ...input, amount: 360, currency: 'THB' }
+    await expect(stub.charge(thb, tx)).resolves.toEqual({ paymentId: 'payment', amount: 360, currency: 'THB' })
+    expect(payment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ currency: 'THB' }) }))
+  })
+  it('refuses a value that is not a currency code', async () => {
+    await expect(stub.charge({ ...input, currency: 'usd' }, tx)).rejects.toMatchObject({ code: 'SEAT_NOT_ALLOWED', status: 422 })
+    await expect(stub.charge({ ...input, currency: 'US' }, tx)).rejects.toMatchObject({ code: 'SEAT_NOT_ALLOWED', status: 422 })
+    expect(payment.create).not.toHaveBeenCalled()
+  })
 })
