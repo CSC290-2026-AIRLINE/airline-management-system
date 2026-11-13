@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link } from '@tanstack/react-router'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { FlightSearchPage, type SearchItinerary } from '../../../../../customer-web/src/features/booking-search/pages/FlightSearchPage'
 import type { FlightSearchUrlState } from '../../../../../customer-web/src/features/booking-search/search-params'
@@ -322,9 +323,9 @@ function StaffBookingContent() {
                     <button className="f3-search-secondary" type="button" onClick={startNewBooking}>
                       Start a new booking
                     </button>
-                    <a className="f3-search-primary" href={`/booking-lookup?reference=${encodeURIComponent(held.reference)}`}>
+                    <Link className="f3-search-primary" to="/booking-lookup" search={{ reference: held.reference }}>
                       Open booking lookup
-                    </a>
+                    </Link>
                   </div>
                 </section>
               )}
