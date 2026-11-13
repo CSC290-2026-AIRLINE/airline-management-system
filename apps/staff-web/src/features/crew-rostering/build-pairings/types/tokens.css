@@ -14,10 +14,10 @@
 @import '@fontsource/merriweather/900.css';
 
 @theme {
-  /* Theme color palette */
+  /* Theme color palette. `primary` (navy) and `gold` (the accent the mockups call
+     secondary) come from the shared staff theme in `src/index.css`; redefining them here
+     would lose to it anyway, since that `@theme` block is read after this file. */
   --color-primary-text: #010101;
-  --color-primary: #0f203e;
-  --color-secondary: #ff9f00;
   --color-card-bg: #ffffff;
   --color-border-desc: #c4c6c5;
   --color-page-bg: #f4f6f8;
@@ -44,7 +44,6 @@
   --color-green-line: #b9e3cd;
   --color-label: #5b6475;
   --color-slate: #7f8aa0;
-  --color-nav-active: #2b4373;
   --color-table-head: #e3e9f1;
 
   /* Band behind a strip that sits into the page rather than on it, e.g. the wizard
@@ -77,16 +76,5 @@
   to {
     opacity: 1;
     transform: translate(-50%, 0);
-  }
-}
-
-/* The starter styles in index.css cap `#root` at 1126px and centre its text. The crew rostering pages fill the
- * viewport (sidebar + main), as the admin console does, so they opt out. `:has()` keeps every other page as it was. */
-@layer base {
-  #root:has(.crew-shell) {
-    width: 100%;
-    max-width: none;
-    border: 0;
-    text-align: left;
   }
 }

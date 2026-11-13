@@ -20,7 +20,7 @@ import {
 import flythonMark from '../assets/flython-mark.svg'
 import flythonLogoMark from '../assets/flython-logo-mark.svg'
 import sidebarPattern from '../assets/sidebar-pattern.png'
-import { ADMIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM, type NavItem } from '../nav-items'
+import { ADMIN_ITEMS, CREW_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM, type NavItem } from '../nav-items'
 
 /**
  * These screens belong to other feature teams and have no routes in this app yet, so they are listed as disabled
@@ -132,6 +132,24 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             {PRICING_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label} className="pl-4">
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Crew & Rostering">
+            {CREW_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={item.match.some((path) => pathname === path || pathname.startsWith(path + '/'))}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
                   <Link to={item.to}>
                     <item.icon />
                     <span>{item.label}</span>

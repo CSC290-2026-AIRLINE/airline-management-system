@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { cn } from '@staff-web/lib/utils'
 import flythonMark from '../assets/flython-mark.svg'
 import sidebarPattern from '../assets/sidebar-pattern.png'
-import { ADMIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM } from '../nav-items'
+import { ADMIN_ITEMS, CREW_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM } from '../nav-items'
 import type { ScreenDto } from '../types'
 
 interface PreviewItem {
@@ -34,7 +34,7 @@ function Group({ label, items, indent = true }: { label?: string; items: Preview
 
 /**
  * A non-interactive copy of the live sidebar (same groups, icons, colours and texture) showing only what `screens` lets
- * a role open. A pricing/admin item matches by its registered screen code; the other teams' items have no code yet, so
+ * a role open. A pricing/admin/crew item matches by its registered screen code; the other teams' items have no code yet, so
  * they match a registered screen of the same name.
  */
 export function SidebarPreview({ screens, roleName }: { screens: ScreenDto[]; roleName: string }) {
@@ -68,6 +68,7 @@ export function SidebarPreview({ screens, roleName }: { screens: ScreenDto[]; ro
       <div className="min-h-0 flex-1 overflow-y-auto" aria-hidden="true">
         <Group label="Administration" items={ADMIN_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
         <Group label="Pricing & Fare Rules" items={PRICING_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
+        <Group label="Crew & Rostering" items={CREW_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
         {GROUPS.map((g) => (
           <Group key={g.label} label={g.label} items={g.items.map((i) => ({ ...i, visible: byName(i.label) }))} />
         ))}

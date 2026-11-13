@@ -10,9 +10,7 @@
  * its own.
  */
 import { useState } from 'react'
-import { MOCK_SIMULATION_CLOCK, MOCK_SIMULATION_CLOCK_SHORT } from '../build-pairings/types/mock-data'
-import { BottomUnsavedBar, MobileTopBar, SidebarNav, TabsNav } from '../shared/app-shell'
-import { useAccount } from '../shared/use-account'
+import { BottomUnsavedBar, TabsNav } from '../shared/app-shell'
 import { AlertBanner } from '../shared/ui'
 import { CompanyRulesCard } from './components/company-rules-card'
 import { CountryLanguagesTable } from './components/country-languages-table'
@@ -34,8 +32,6 @@ const TABS = [
 
 export function SetupRulePage() {
   const state = useSetupRule()
-  const account = useAccount()
-
   const [tab, setTab] = useState<RuleTab>('legality')
   const [editingDefaults, setEditingDefaults] = useState(false)
   const [addingRule, setAddingRule] = useState(false)
@@ -64,16 +60,8 @@ export function SetupRulePage() {
   }
 
   return (
-    <div className="crew-shell flex min-h-screen w-full flex-col bg-page-bg lg:flex-row">
-      <SidebarNav activeItem="rules" simulationClock={MOCK_SIMULATION_CLOCK} userName={account.full} onSignOut={account.signOut} />
-      <MobileTopBar
-        simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT}
-        userName={account.short}
-        activeItem="rules"
-        onSignOut={account.signOut}
-      />
-
-      <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
+    <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
         <header>
           <h1 className="text-xl font-extrabold tracking-tight text-primary-text uppercase sm:text-2xl">Rules</h1>
           <p className="mt-1 text-sm text-primary-text/60">Limits every assignment is checked against. The strictest rule wins.</p>
@@ -131,7 +119,7 @@ export function SetupRulePage() {
             onSave={save}
           />
         )}
-      </main>
+      </div>
 
       {editingDefaults && state.defaults && (
         <EditDefaultLimitsModal

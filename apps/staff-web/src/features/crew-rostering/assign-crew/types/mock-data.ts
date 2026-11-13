@@ -1,7 +1,5 @@
-import { MOCK_ROSTER_RUN, MOCK_SIMULATION_CLOCK } from '../../build-pairings/types/mock-data'
+import { MOCK_ROSTER_RUN } from '../../build-pairings/types/mock-data'
 import type { AirportCode, LocalDate } from './types'
-
-export { MOCK_SIMULATION_CLOCK }
 
 /**
  * The window the wizard pages open on when the URL does not carry one. Everything else

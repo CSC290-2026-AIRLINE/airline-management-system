@@ -3,7 +3,7 @@ import { AssignCrewPage } from '@staff-web/features/crew-rostering/assign-crew/a
 import { parseWindowSearch } from '@staff-web/features/crew-rostering/shared/window-search'
 
 // `dateFrom`, `dateTo` and `base` carry the window between the wizard pages.
-export const Route = createFileRoute('/_authenticated/assign-crew')({
+export const Route = createFileRoute('/_authenticated/_crew/assign-crew')({
   validateSearch: parseWindowSearch,
   component: AssignCrewPage,
 })

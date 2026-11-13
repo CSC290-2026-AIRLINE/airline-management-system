@@ -7,6 +7,6 @@ import { Outlet, createFileRoute } from '@tanstack/react-router'
  * under this file, which makes it a layout: without an `<Outlet />` the profile
  * would have nowhere to render. The directory itself is the index route.
  */
-export const Route = createFileRoute('/_authenticated/setup-crew')({
+export const Route = createFileRoute('/_authenticated/_crew/setup-crew')({
   component: () => <Outlet />,
 })

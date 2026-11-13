@@ -11,9 +11,6 @@
  */
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MOCK_SIMULATION_CLOCK, MOCK_SIMULATION_CLOCK_SHORT } from '../build-pairings/types/mock-data'
-import { MobileTopBar, SidebarNav } from '../shared/app-shell'
-import { useAccount } from '../shared/use-account'
 import { AlertBanner, ChevronLeftIcon, EmptyFaceIcon, Toast } from '../shared/ui'
 import { CrewDirectoryTable, NoCrewMatchState } from './components/crew-directory-table'
 import { CrewFilterBar } from './components/crew-filter-bar'
@@ -26,7 +23,6 @@ import type { Certification, CertificationInput } from './types/types'
 
 export function SetupCrewPage({ crewId }: { crewId?: string }) {
   const state = useSetupCrew()
-  const account = useAccount()
   const navigate = useNavigate()
 
   const [creating, setCreating] = useState(false)
@@ -47,16 +43,8 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
   }
 
   return (
-    <div className="crew-shell flex min-h-screen w-full flex-col bg-page-bg lg:flex-row">
-      <SidebarNav activeItem="crew" simulationClock={MOCK_SIMULATION_CLOCK} userName={account.full} onSignOut={account.signOut} />
-      <MobileTopBar
-        simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT}
-        userName={account.short}
-        activeItem="crew"
-        onSignOut={account.signOut}
-      />
-
-      <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
+    <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
         {crew ? (
           <>
             <button
@@ -121,7 +109,7 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
             )}
           </>
         )}
-      </main>
+      </div>
 
       {state.notice && <Toast message={state.notice.message} shortMessage={state.notice.shortMessage} onDismiss={state.dismissNotice} />}
 
