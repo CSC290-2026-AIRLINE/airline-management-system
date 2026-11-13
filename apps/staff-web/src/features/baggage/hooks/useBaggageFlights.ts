@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useFoundBagApi, type BaggageFlight } from '../api/found-bags'
 import { errorMessage } from './useFoundBags'
+import { useRetryWhileUnreachable } from './useRetryWhileUnreachable'
 
 /**
  * Flights that landed at an airport in the last few days, for the "Came off flight" picker. A failed lookup leaves the
@@ -105,6 +106,9 @@ export function useDivertedFlights() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadKey])
 
+  const reload = () => setReloadKey((k) => k + 1)
+  useRetryWhileUnreachable(state.error, reload)
+
   // Only the first load shows as loading, so the card does not flash after adding bags.
-  return { loading: state.forKey === null, error: state.error, flights: state.flights, reload: () => setReloadKey((k) => k + 1) }
+  return { loading: state.forKey === null, error: state.error, flights: state.flights, reload }
 }

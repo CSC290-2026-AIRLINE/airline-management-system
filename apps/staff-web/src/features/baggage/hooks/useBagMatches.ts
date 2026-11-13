@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useBagMatchApi, type BagMatch } from '../api/bag-matches'
 import { useFoundBagApi, type FoundBag } from '../api/found-bags'
 import { errorMessage } from './useFoundBags'
+import { useRetryWhileUnreachable } from './useRetryWhileUnreachable'
 import { usePoll } from './usePoll'
 
 interface ListState {
@@ -44,6 +45,7 @@ export function useBagMatches() {
   })
 
   const reload = () => setReloadKey((k) => k + 1)
+  useRetryWhileUnreachable(state.error, reload)
 
   async function link(reportId: string, foundBagId: string): Promise<BagMatch> {
     const match = await api.link(reportId, foundBagId)

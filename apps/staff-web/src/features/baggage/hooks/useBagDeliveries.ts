@@ -7,6 +7,7 @@ import {
   type HandOverBody,
 } from '../api/bag-deliveries'
 import { errorMessage } from './useFoundBags'
+import { useRetryWhileUnreachable } from './useRetryWhileUnreachable'
 import { usePoll } from './usePoll'
 
 interface ListState {
@@ -78,6 +79,7 @@ export function useBagDeliveries(selectedCaseId: string | undefined) {
   }, [detailKey])
 
   const reload = () => setReloadKey((k) => k + 1)
+  useRetryWhileUnreachable(list.error, reload)
 
   async function run(action: () => Promise<unknown>): Promise<void> {
     try {

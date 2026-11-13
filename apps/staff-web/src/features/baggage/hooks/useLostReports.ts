@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLostReportApi, type AddBagCostBody, type BagCostSummary, type LostReportCase } from '../api/lost-reports'
 import { errorMessage } from './useFoundBags'
+import { useRetryWhileUnreachable } from './useRetryWhileUnreachable'
 import { usePoll } from './usePoll'
 
 interface ListState {
@@ -43,7 +44,10 @@ export function useLostReports() {
   })
 
   const { forKey, ...data } = state
-  return { ...data, loading: forKey !== reloadKey, reload: () => setReloadKey((k) => k + 1) }
+  const reload = () => setReloadKey((k) => k + 1)
+  useRetryWhileUnreachable(state.error, reload)
+
+  return { ...data, loading: forKey !== reloadKey, reload }
 }
 
 interface CostState {

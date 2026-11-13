@@ -130,7 +130,10 @@ export interface BaggageDesk {
   roleName: string
 }
 
-/** Any non-2xx answer from `/api/staff/*`. The baggage endpoints answer `{ code, message }`. */
+/** Shown while the backend cannot be reached (not started yet, restarting, or the network is down). */
+export const SERVER_UNREACHABLE_MESSAGE = "Can't reach the baggage server. Trying again…"
+
+/** Any non-2xx answer from `/api/staff/*`, or status 0 when no answer came. The baggage endpoints answer `{ code, message }`. */
 export class BaggageApiError extends Error {
   readonly status: number
   readonly code: string
@@ -157,17 +160,24 @@ async function readError(res: Response): Promise<BaggageApiError> {
 }
 
 /**
- * Sends a JSON request to a staff baggage endpoint and reads the answer, or throws a `BaggageApiError`. A 204 answer
- * resolves to `undefined`.
+ * Sends a JSON request to a staff baggage endpoint and reads the answer, or throws a `BaggageApiError` (status 0 when
+ * the server could not be reached). A 204 answer resolves to `undefined`.
  */
 export function useBaggageSend() {
   const { fetchWithAuth } = useAppAuth()
 
   return async function send<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetchWithAuth(path, {
-      ...init,
-      headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
-    })
+    let res: Response
+    try {
+      res = await fetchWithAuth(path, {
+        ...init,
+        headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+      })
+    } catch (e: unknown) {
+      // fetch rejects with a TypeError ("Failed to fetch") when no answer comes back at all.
+      if (e instanceof TypeError) throw new BaggageApiError(0, 'SERVER_UNREACHABLE', SERVER_UNREACHABLE_MESSAGE)
+      throw e
+    }
     if (!res.ok) throw await readError(res)
     return (res.status === 204 ? undefined : await res.json()) as T
   }

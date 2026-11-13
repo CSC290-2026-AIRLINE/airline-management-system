@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useFoundBagApi } from '../api/found-bags'
+import { UNREACHABLE_RETRY_MS } from './useRetryWhileUnreachable'
 
 /** How often the clock is asked again, so a shift of the simulation clock shows up. */
 const REFRESH_MS = 60_000
@@ -16,6 +17,7 @@ export function useBaggageDesk() {
 
   useEffect(() => {
     let cancelled = false
+    let retry: number | undefined
     async function load() {
       try {
         const answer = await api.desk()
@@ -23,7 +25,9 @@ export function useBaggageDesk() {
         const now = new Date(answer.now)
         setDesk({ offsetMs: now.getTime() - Date.now(), roleName: answer.roleName, now })
       } catch {
-        // Keep the last answer; the sidebar shows a dash until one arrives.
+        // Keep the last answer; the sidebar shows a dash until one arrives. Ask again soon rather than in a minute,
+        // so a page opened before the backend was up fills in once it is.
+        if (!cancelled) retry = window.setTimeout(() => void load(), UNREACHABLE_RETRY_MS)
       }
     }
     void load()
@@ -31,6 +35,7 @@ export function useBaggageDesk() {
     const tick = window.setInterval(() => setDesk((d) => (d ? { ...d, now: new Date(Date.now() + d.offsetMs) } : d)), TICK_MS)
     return () => {
       cancelled = true
+      window.clearTimeout(retry)
       window.clearInterval(refresh)
       window.clearInterval(tick)
     }

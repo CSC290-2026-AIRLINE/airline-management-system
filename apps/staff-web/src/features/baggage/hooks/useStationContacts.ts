@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useFoundBagApi, type SaveStationContactBody, type StationContact } from '../api/found-bags'
 import { errorMessage } from './useFoundBags'
+import { useRetryWhileUnreachable } from './useRetryWhileUnreachable'
 
 interface State {
   loading: boolean
@@ -12,6 +13,7 @@ interface State {
 export function useStationContacts() {
   const api = useFoundBagApi()
   const [state, setState] = useState<State>({ loading: true, error: null, contacts: [] })
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -28,7 +30,9 @@ export function useStationContacts() {
     }
     // The API functions close over `fetchWithAuth`, which is recreated every render; see `useFoundBagApi`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [reloadKey])
+
+  useRetryWhileUnreachable(state.error, () => setReloadKey((k) => k + 1))
 
   async function save(airportCode: string, body: SaveStationContactBody): Promise<void> {
     const saved = await api.saveStation(airportCode, body)

@@ -10,6 +10,7 @@ import {
 } from '../api/found-bags'
 import type { BagColour, BagType, FoundBagStatus } from '../constants'
 import { usePoll } from './usePoll'
+import { useRetryWhileUnreachable } from './useRetryWhileUnreachable'
 
 export interface Airport {
   code: string
@@ -25,7 +26,11 @@ interface ListState {
 }
 
 export function errorMessage(e: unknown): string {
-  if (e instanceof BaggageApiError) return e.status === 403 ? 'You need a staff account to use the baggage desk.' : e.message
+  if (e instanceof BaggageApiError) {
+    if (e.status === 401) return 'Your sign-in has ended. Reload the page to sign in again.'
+    if (e.status === 403) return 'You need a staff account to use the baggage desk.'
+    return e.message
+  }
   return e instanceof Error ? e.message : 'Something went wrong. Try again.'
 }
 
@@ -68,8 +73,11 @@ export function useFoundBagList(status: FoundBagStatus | undefined) {
     return bag
   }
 
+  const reload = () => setReloadKey((k) => k + 1)
+  useRetryWhileUnreachable(state.error, reload)
+
   const { forKey, ...data } = state
-  return { ...data, loading: forKey !== key, record, reload: () => setReloadKey((k) => k + 1) }
+  return { ...data, loading: forKey !== key, record, reload }
 }
 
 interface DetailState {

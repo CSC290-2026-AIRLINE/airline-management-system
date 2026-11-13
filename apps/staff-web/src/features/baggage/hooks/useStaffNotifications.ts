@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNotificationApi, type StaffNotification } from '../api/notifications'
+import { UNREACHABLE_RETRY_MS } from './useRetryWhileUnreachable'
 
 /** How often the feed is read again while a baggage page is open. */
 const POLL_MS = 60_000
@@ -36,7 +37,8 @@ export function useStaffNotifications() {
 
   useEffect(() => {
     let cancelled = false
-    const load = () =>
+    let retry: number | undefined
+    const load = (): Promise<void> =>
       api
         .feed()
         .then((feed) => {
@@ -45,13 +47,17 @@ export function useStaffNotifications() {
           setError(false)
         })
         .catch(() => {
-          if (!cancelled) setError(true)
+          if (cancelled) return
+          setError(true)
+          // Ask again soon rather than at the next poll, so the badge fills in once the backend is up.
+          retry = window.setTimeout(() => void load(), UNREACHABLE_RETRY_MS)
         })
 
     void load()
     const timer = window.setInterval(() => void load(), POLL_MS)
     return () => {
       cancelled = true
+      window.clearTimeout(retry)
       window.clearInterval(timer)
     }
     // The API functions close over `fetchWithAuth`, which is recreated every render; see `useFoundBagApi`.
