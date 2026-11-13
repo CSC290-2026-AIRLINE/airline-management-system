@@ -250,12 +250,13 @@ function sanitiseHeld(value: unknown): HoldBookingResponse | null {
   if (typeof raw.reference !== 'string' || !raw.reference) return null
   if (typeof raw.total !== 'number' || !Number.isFinite(raw.total) || raw.total < 0) return null
   const holdExpiresAt = readText(raw.holdExpiresAt, 40)
+  const currency = readText(raw.currency, 8)
   if (!holdExpiresAt || !Number.isFinite(Date.parse(holdExpiresAt))) return null
   return {
     bookingId: readText(raw.bookingId, 64),
     reference: raw.reference,
     total: raw.total,
-    currency: readText(raw.currency, 8) || 'USD',
+    currency: /^[A-Z]{3}$/.test(currency) ? currency : 'USD',
     holdExpiresAt,
   }
 }

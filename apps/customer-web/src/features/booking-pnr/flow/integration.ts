@@ -13,6 +13,7 @@ export interface SeatChoice {
 // A owns navigation and draft state; C supplies the actual seat UI.
 export interface BookingSeatStepProps {
   itinerary: SearchItinerary
+  currency: string
   travellers: TravellerDraft[]
   choices: SeatChoice[]
   busy: boolean
@@ -40,7 +41,8 @@ export function priceChangedDetails(value: unknown): PriceChangedDetails | null 
     typeof details.newTotal !== 'number' ||
     !Number.isFinite(details.newTotal) ||
     details.newTotal < 0 ||
-    details.currency !== 'USD'
+    typeof details.currency !== 'string' ||
+    !/^[A-Z]{3}$/.test(details.currency)
   )
     return null
   return details as PriceChangedDetails

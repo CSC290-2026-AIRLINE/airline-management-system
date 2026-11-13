@@ -1,5 +1,6 @@
 import type { SeatPickerProps } from '../components/contracts'
 import type { Cabin } from '../api/types'
+import { formatMoney } from '../lib/format'
 import './seat-picker.css'
 
 type SeatPickerWithCabinProps = SeatPickerProps & { selectedCabin?: Cabin }
@@ -16,6 +17,7 @@ const legend = [
 
 export function SeatPicker({
   seats,
+  currency,
   selectedSeatCode,
   disabledSeatCodes = [],
   passengerLabel,
@@ -57,7 +59,7 @@ export function SeatPicker({
                 const selected = selectedSeatCode === seat.seatCode
                 const disabled = seat.state !== 'available' || disabledSeatCodes.includes(seat.seatCode)
                 const seatState = seat.state === 'available' && disabled ? 'unavailable' : seat.state
-                const label = `${seat.seatCode}, ${seat.type.replace('_', ' ')}, ${seatState}${seat.fee > 0 ? `, ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(seat.fee)}` : ''}`
+                const label = `${seat.seatCode}, ${seat.type.replace('_', ' ')}, ${seatState}${seat.fee > 0 ? `, ${formatMoney(seat.fee, currency)}` : ''}`
                 return (
                   <button
                     key={seat.seatCode}
@@ -71,7 +73,7 @@ export function SeatPicker({
                     <span>{seat.state === 'taken' || seat.state === 'blocked' ? '×' : seat.column}</span>
                     {seat.fee > 0 && (
                       <span className="seat-picker__fee" aria-hidden="true">
-                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(seat.fee)}
+                        {formatMoney(seat.fee, currency)}
                       </span>
                     )}
                   </button>

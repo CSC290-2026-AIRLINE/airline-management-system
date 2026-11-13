@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Cabin, SeatMap } from '../api/types'
+import { formatMoney } from '../lib/format'
 import { SeatPicker } from './SeatPicker'
 import './seat-selection.css'
 
@@ -23,6 +24,7 @@ export interface SelectedSeat {
 }
 
 interface SeatSelectionProps {
+  currency: string
   passengers: SeatSelectionPassenger[]
   segments: SeatSelectionSegment[]
   initialSeats?: SelectedSeat[]
@@ -30,7 +32,7 @@ interface SeatSelectionProps {
   onBack: () => void
 }
 
-export function SeatSelection({ passengers, segments, initialSeats = [], onContinue, onBack }: SeatSelectionProps) {
+export function SeatSelection({ currency, passengers, segments, initialSeats = [], onContinue, onBack }: SeatSelectionProps) {
   const eligible = passengers.filter((passenger) => passenger.type !== 'infant')
   const [passengerId, setPassengerId] = useState(eligible[0]?.id ?? '')
   const [flightId, setFlightId] = useState(segments[0]?.flightId ?? '')
@@ -72,6 +74,7 @@ export function SeatSelection({ passengers, segments, initialSeats = [], onConti
       <div className="seat-selection__layout">
         <SeatPicker
           seats={segment.seatMap.rows.flatMap((row) => row.seats)}
+          currency={currency}
           selectedSeatCode={selected?.seatCode ?? null}
           selectedCabin={segment.cabin}
           disabledSeatCodes={[
@@ -98,7 +101,7 @@ export function SeatSelection({ passengers, segments, initialSeats = [], onConti
           })}
           <p>Infants travel on an adult’s lap and do not need a seat.</p>
           <p className="seat-selection__fees">
-            Seat fees <strong>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(fee)}</strong>
+            Seat fees <strong>{formatMoney(fee, currency)}</strong>
           </p>
           {exitSelected && (
             <p className="seat-selection__warning" role="status">

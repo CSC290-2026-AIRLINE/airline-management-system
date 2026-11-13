@@ -12,12 +12,12 @@ import {
 import { resolveDemoPassengers } from '../../../../../customer-web/src/features/booking-pnr/passengers/demo-passengers'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { BookForCustomerRequest, HoldBookingResponse } from '../api/types'
+import { lookupMoney as money } from '../booking-lookup/lookup-utils'
 import { useDemoStaffBooking } from './useDemoStaffBooking'
 import { clearBookingDraft, readBookingDraft, saveBookingDraft, type StaffBookingStep } from './booking-draft'
 import '../../../../../customer-web/src/features/booking-pnr/flow/flow.css'
 import './staff-booking.css'
 
-const usd = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', currencyDisplay: 'code' }).format(value)
 class StaffBookingBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() {
@@ -63,6 +63,7 @@ function StaffBookingContent() {
   const customer = data.customers.find((row) => row.id === customerId)
   const customerMissing = !data.loading && !data.error && !!customerId && !customer
   const activeStep: StaffBookingStep = customerMissing && step !== 'held' ? 'search' : step
+  const tripCurrency = held?.currency ?? itinerary?.selections[0]?.fare.currency ?? 'USD'
 
   /* Keeps the draft in this tab so a refresh comes back to the same step. */
   useEffect(() => {
@@ -309,7 +310,7 @@ function StaffBookingContent() {
                   <h2>{held.reference}</h2>
                   <p>{customer ? `Booked for ${customer.name}.` : 'Booked for the selected customer.'} This booking is not confirmed.</p>
                   <p>
-                    Total: <strong>{usd(held.total)}</strong>
+                    Total: <strong>{money(held.total, held.currency)}</strong>
                   </p>
                   <p>
                     Hold expires{' '}
@@ -343,7 +344,7 @@ function StaffBookingContent() {
                   </p>
                 </article>
               ))}
-              <strong>{usd(itinerary.expectedTotal)}</strong>
+              <strong>{money(itinerary.expectedTotal, tripCurrency)}</strong>
               <p>The hold lasts 15 minutes from booking creation.</p>
             </aside>
           </div>

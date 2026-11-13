@@ -29,8 +29,8 @@ interface SearchProps {
 type Sort = FlightSearchSort
 /** What came back from a search. */
 type SearchOutcome = { status: 'found'; response: FlightSearchResponse } | { status: 'failed'; message: string } | { status: 'stale' }
-const money = (value: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', currencyDisplay: 'code' }).format(value)
+const money = (value: number, currency: string) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency, currencyDisplay: 'code' }).format(value)
 const time = (value: string) =>
   new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(value))
 const day = (value: string) =>
@@ -209,6 +209,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
   }, [])
   const party = (submitted?.adults ?? 0) + (submitted?.children ?? 0)
   const total = selected.reduce((sum, selection) => sum + (selection?.fare.pricePerPassenger ?? 0), 0) * party
+  const tripCurrency = selected.find((selection) => !!selection)?.fare.currency ?? 'USD'
   const picked = selected.filter(Boolean).length
   const complete = !!submitted && picked === submitted.legs.length
   const noResults = result?.legs.some((leg) => leg.options.length === 0)
@@ -371,7 +372,9 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                                     aria-pressed={pickedFare}
                                     onClick={() => pickFare(legIndex, flight, fare)}
                                   >
-                                    <strong>{fare.unavailableReason ? 'Not available' : money(fare.pricePerPassenger)}</strong>
+                                    <strong>
+                                      {fare.unavailableReason ? 'Not available' : money(fare.pricePerPassenger, fare.currency)}
+                                    </strong>
                                     <small className={fare.seatsLeft <= 4 ? 'f3-search-low' : ''}>
                                       {fare.unavailableReason
                                         ? fare.unavailableReason
@@ -402,7 +405,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
               <div className="f3-search-total">
                 <div>
                   <span>Total</span>
-                  <strong>{money(total)}</strong>
+                  <strong>{money(total, tripCurrency)}</strong>
                 </div>
                 {onContinue && (
                   <button
