@@ -50,12 +50,15 @@ const PRICING_ERROR_MAP: Record<string, { code: BookingErrorCode; status: number
 const UNKNOWN_PRICING_CODE = 'PRICING_ERROR'
 
 // Feature 3's seat layout names a seat 'standard' or 'exit'; Feature 4 prices 'normal' and 'exit_row'. The two
-// vocabularies meet here, so the seat map can ask for the fee of a seat it drew.
+// vocabularies meet here, so the seat map and the quote can ask about the seat they drew.
 const PRICING_SEAT_TYPES: Record<string, string> = {
   standard: 'normal',
   exit: 'exit_row',
   extra_legroom: 'extra_legroom',
 }
+
+// The seat type Feature 4 prices. A name Feature 4 already knows is passed through unchanged.
+const pricingSeatType = (seatType: string): string => PRICING_SEAT_TYPES[seatType] ?? seatType
 
 @Injectable()
 export class PricingAdapter implements PricingPort {
@@ -78,7 +81,7 @@ export class PricingAdapter implements PricingPort {
       const quote = (await this.fareQuotes.create({
         flight_id: request.flightId,
         fare_class_id: request.fareClassId,
-        seat_type: request.seatType,
+        ...(request.seatType ? { seat_type: pricingSeatType(request.seatType) } : {}),
         promo_code: request.promoCode,
       })) as unknown as QuoteRow
       const rows = quote.lines ?? quote.fare_quote_line ?? []
@@ -97,8 +100,7 @@ export class PricingAdapter implements PricingPort {
 
   async seatFee(request: SeatFeeRequest): Promise<number> {
     try {
-      const seatType = PRICING_SEAT_TYPES[request.seatType] ?? request.seatType
-      const fee = await this.seatFees.lookup(request.cabin, seatType)
+      const fee = await this.seatFees.lookup(request.cabin, pricingSeatType(request.seatType))
       return Number(fee.amount)
     } catch (error) {
       throw this.translate(error)

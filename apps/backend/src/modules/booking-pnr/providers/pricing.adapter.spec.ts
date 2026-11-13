@@ -94,6 +94,26 @@ describe('PricingAdapter', () => {
       expect(quote.lines).toEqual([{ kind: 'base', label: 'Base fare', amount: 100 }])
       expect(quote.fareRuleSnapshot).toBeNull()
     })
+
+    it("maps Feature 3's seat types when it asks for a quote", async () => {
+      create.mockResolvedValue({ id: 'quote-3', fare_class_id: 'class-1', currency: 'USD', total_amount: '100.00' })
+
+      await adapter.quote({ flightId: 'flight-1', cabin: 'economy', fareClassId: 'class-1', seatType: 'standard' })
+      await adapter.quote({ flightId: 'flight-1', cabin: 'economy', fareClassId: 'class-1', seatType: 'exit' })
+      await adapter.quote({ flightId: 'flight-1', cabin: 'economy', fareClassId: 'class-1', seatType: 'extra_legroom' })
+
+      expect(create).toHaveBeenNthCalledWith(1, expect.objectContaining({ seat_type: 'normal' }))
+      expect(create).toHaveBeenNthCalledWith(2, expect.objectContaining({ seat_type: 'exit_row' }))
+      expect(create).toHaveBeenNthCalledWith(3, expect.objectContaining({ seat_type: 'extra_legroom' }))
+    })
+
+    it('leaves the seat type out when the caller has none', async () => {
+      create.mockResolvedValue({ id: 'quote-4', fare_class_id: 'class-1', currency: 'USD', total_amount: '100.00' })
+
+      await adapter.quote({ flightId: 'flight-1', cabin: 'economy', fareClassId: 'class-1' })
+
+      expect(create.mock.calls[0][0]).not.toHaveProperty('seat_type')
+    })
   })
 
   describe('baseCurrency', () => {
