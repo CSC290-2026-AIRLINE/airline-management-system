@@ -1,4 +1,8 @@
-import { BagDeliveryService, OWNERSHIP_CHECK_ENTITY } from './bag-delivery.service'
+import { GUARDS_METADATA } from '@nestjs/common/constants'
+import { IS_PUBLIC_KEY } from '@backend/auth/decorators/public.decorator'
+import { BagDeliveryController } from './bag-delivery.controller'
+import { BagDeliveryService, OWNERSHIP_CHECK_ENTITY, REPRESENTATIVE_HANDOVER_UNAVAILABLE } from './bag-delivery.service'
+import { BaggageStaffGuard } from './guards/baggage-staff.guard'
 import type { DbService } from '@backend/db/db.service'
 import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import type { PresentedIdentity } from './common/ownership-check'
@@ -503,18 +507,56 @@ describe('BagDeliveryService', () => {
       expect(audit.write).not.toHaveBeenCalled()
     })
 
-    it("needs the representative's name", async () => {
-      const { svc } = makeSvc()
+    it.each([
+      ['with a name and a checked document', 'Mira Haddad'],
+      ['without a name', undefined],
+    ])(
+      'refuses representative handover (temporary restriction) %s, before reading, locking, auditing or changing anything',
+      async (_label, representativeName) => {
+        const { svc, db, audit, locks } = makeSvc()
 
-      await expect(
-        svc.handOver({
-          staffId: STAFF_ID,
-          userId: USER_ID,
-          deliveryId: DELIVERY_ID,
-          documentChecked: true,
-          identity: { ...IDENTITY, collector: 'representative' },
-        }),
-      ).rejects.toMatchObject({ code: 'INVALID_DELIVERY' })
+        await expect(
+          svc.handOver({
+            staffId: STAFF_ID,
+            userId: USER_ID,
+            deliveryId: DELIVERY_ID,
+            documentChecked: true,
+            representativeName,
+            // Booking reference and surname match the case: the refusal does not depend on them.
+            identity: { ...IDENTITY, collector: 'representative', documentType: 'national_id' },
+          }),
+        ).rejects.toMatchObject({ code: 'INVALID_DELIVERY', message: REPRESENTATIVE_HANDOVER_UNAVAILABLE })
+
+        expect(db.bag_delivery.findUnique).not.toHaveBeenCalled()
+        expect(db.$transaction).not.toHaveBeenCalled()
+        expect(locks).toEqual([])
+        expect(db.bag_delivery.updateMany).not.toHaveBeenCalled()
+        expect(db.found_bag.updateMany).not.toHaveBeenCalled()
+        expect(db.lost_bag_report.updateMany).not.toHaveBeenCalled()
+        expect(db.bag_location_event.create).not.toHaveBeenCalled()
+        expect(audit.resolveActor).not.toHaveBeenCalled()
+        expect(audit.write).not.toHaveBeenCalled()
+      },
+    )
+
+    it('still hands the bag to the passenger in person after the restriction', async () => {
+      const { svc, db } = makeSvc()
+
+      await svc.handOver({ staffId: STAFF_ID, userId: USER_ID, deliveryId: DELIVERY_ID, documentChecked: true, identity: IDENTITY })
+
+      expect(db.bag_delivery.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'delivered' }) }),
+      )
+      expect(db.lost_bag_report.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'closed' }) }),
+      )
+    })
+
+    it('keeps the hand-over route behind the baggage staff guard', () => {
+      const guards = Reflect.getMetadata(GUARDS_METADATA, BagDeliveryController) as unknown[]
+
+      expect(guards).toContain(BaggageStaffGuard)
+      expect(Reflect.getMetadata(IS_PUBLIC_KEY, BagDeliveryController)).toBeUndefined()
     })
 
     it('rolls back when the bag or the case did not update', async () => {

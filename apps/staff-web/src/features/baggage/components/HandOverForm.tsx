@@ -7,7 +7,14 @@ import { COLLECTORS, COLLECTOR_LABELS, ID_DOCUMENT_LABELS, ID_DOCUMENT_TYPES, ty
 import { errorMessage } from '../hooks/useFoundBags'
 import { FIELD_BOX, Field, FormError, SelectBox } from './primitives'
 
-const COLLECTOR_OPTIONS = COLLECTORS.map((c) => ({ value: c, label: COLLECTOR_LABELS[c] }))
+/**
+ * TEMPORARY RESTRICTION: only the passenger can collect the bag. Handover to someone sent by the passenger is refused by
+ * the server until an approved owner-authorisation procedure exists, so it is not offered here either.
+ */
+const AVAILABLE_COLLECTORS: readonly Collector[] = COLLECTORS.filter((c) => c === 'passenger')
+const COLLECTOR_OPTIONS = AVAILABLE_COLLECTORS.map((c) => ({ value: c, label: COLLECTOR_LABELS[c] }))
+const REPRESENTATIVE_UNAVAILABLE_NOTE =
+  'Handover to someone sent by the passenger is temporarily unavailable. The passenger must collect the bag in person.'
 const DOCUMENT_OPTIONS = ID_DOCUMENT_TYPES.map((d) => ({ value: d, label: ID_DOCUMENT_LABELS[d] }))
 
 /**
@@ -35,6 +42,10 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
     }
     if (documentNumber.replace(/[^A-Za-z0-9]/g, '').length < 4) {
       setError('Enter the full document number.')
+      return
+    }
+    if (!AVAILABLE_COLLECTORS.includes(collector)) {
+      setError(REPRESENTATIVE_UNAVAILABLE_NOTE)
       return
     }
     if (collector === 'representative' && !representativeName.trim()) {
@@ -73,6 +84,9 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
       <Field label="Collected by" htmlFor={id('collector')}>
         <SelectBox id={id('collector')} value={collector} onValueChange={(v) => setCollector(v as Collector)} options={COLLECTOR_OPTIONS} />
       </Field>
+      <p role="note" className="m-0 rounded-lg bg-[#fff4dd] px-3 py-2 text-sm leading-normal text-[#76551d]">
+        {REPRESENTATIVE_UNAVAILABLE_NOTE}
+      </p>
       {collector === 'representative' && (
         <Field label="Name of the person collecting" htmlFor={id('rep')}>
           <Input

@@ -219,6 +219,10 @@ function notFound(): FoundBagError {
   return new FoundBagError(FOUND_BAG_ERROR_CODES.DELIVERY_NOT_FOUND, 'Delivery not found')
 }
 
+/** Temporary: representative handover is refused until an approved owner-authorisation procedure exists. */
+export const REPRESENTATIVE_HANDOVER_UNAVAILABLE =
+  'Handover to someone sent by the passenger is temporarily unavailable. The passenger must collect the bag in person.'
+
 function invalid(message: string): FoundBagError {
   return new FoundBagError(FOUND_BAG_ERROR_CODES.INVALID_DELIVERY, message)
 }
@@ -507,16 +511,20 @@ export class BagDeliveryService {
       throw invalid('Invalid collector or document type')
     }
 
+    // TEMPORARY RESTRICTION: nothing yet shows that the passenger authorised a representative to collect their bag (the
+    // booking reference and surname alone do not), so representative handover is refused until an approved
+    // owner-authorisation procedure exists. It is refused here, before any read, lock, audit row or state change. When
+    // it is allowed again, restore the "Enter the representative's name" check that used to follow the document checks.
+    if (identity.collector === 'representative') {
+      throw invalid(REPRESENTATIVE_HANDOVER_UNAVAILABLE)
+    }
+
     if (input.documentChecked !== true) {
       throw invalid('Check the photo and name on the document first')
     }
 
     if (documentLast4(identity.documentNumber).length < 4) {
       throw invalid('Enter the document number shown')
-    }
-
-    if (identity.collector === 'representative' && !representativeName) {
-      throw invalid("Enter the representative's name")
     }
 
     const { report_id: reportId } = await this.findDelivery(input.deliveryId)
