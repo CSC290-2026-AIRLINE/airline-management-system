@@ -27,6 +27,12 @@ export function Dialog({ open, title, description, onClose, children, footer }: 
     if (!open && dialog.open) {
       dialog.close()
     }
+
+    return () => {
+      if (dialog.open) {
+        dialog.close()
+      }
+    }
   }, [open])
 
   useEffect(() => {
