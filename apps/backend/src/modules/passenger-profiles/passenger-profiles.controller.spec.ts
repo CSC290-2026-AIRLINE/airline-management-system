@@ -937,7 +937,7 @@ describe('Staff authorization on all F7 staff endpoints', () => {
     expect(response.body.error.code).toBe('FORBIDDEN')
     expect(db.staff.findFirst).toHaveBeenCalledWith({
       where: { user_id: customerId, deleted_at: null, user: { type: 'staff', disabled_at: null, deleted_at: null } },
-      select: { id: true, role: { select: { code: true } } },
+      select: { id: true, role: { select: { code: true, is_admin: true } } },
     })
     expect(db.passenger.findMany).not.toHaveBeenCalled()
     expect(db.passenger.findFirst).not.toHaveBeenCalled()

@@ -16,6 +16,7 @@ import type { CreateWatchlistEntryDto, UpdateWatchlistEntryDto } from './dto/wat
 import type { ListWatchlistDto } from './dto/list-watchlist.dto'
 import { WatchlistAuditService, type WatchlistActor } from './watchlist.audit'
 import { WatchlistClock } from './watchlist.clock'
+import { canUseSecurityScreens } from '@backend/modules/screening/security-role'
 import { WATCHLIST_COUNTRY_CODES } from './watchlist.constants'
 import { watchlistDetail, watchlistSummary } from './watchlist.response'
 
@@ -31,9 +32,10 @@ export class WatchlistService {
   private async actor(userId: string): Promise<WatchlistActor> {
     const staff = await this.db.staff.findFirst({
       where: { user_id: userId, deleted_at: null, user: { type: 'staff', disabled_at: null, deleted_at: null } },
-      select: { id: true, role: { select: { code: true } } },
+      select: { id: true, role: { select: { code: true, is_admin: true } } },
     })
-    if (!staff || staff.role.code !== 'security') throw new ForbiddenException('A staff account with the security role is required')
+    if (!staff || !canUseSecurityScreens(staff.role))
+      throw new ForbiddenException('A staff account with the security or admin role is required')
     return { userId, staffId: staff.id, role: staff.role.code }
   }
 

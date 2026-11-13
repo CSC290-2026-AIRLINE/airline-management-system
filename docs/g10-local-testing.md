@@ -46,7 +46,7 @@ Sign out and sign in again, then open:
 - http://localhost:6161/security-screening/watchlist
 - http://localhost:6161/security-screening/screening-queue
 
-The `security` role belongs to the application database, not Clerk. An admin role alone does not grant access to these APIs. A 401 indicates missing or expired authentication; a 403 indicates insufficient access or an unavailable staff account. Keep the existing guards enabled.
+The `security` role belongs to the application database, not Clerk. Admin roles (`is_admin`) can open these screens too; any other role needs the `security` role. A 401 indicates missing or expired authentication; a 403 indicates insufficient access or an unavailable staff account. Keep the existing guards enabled.
 
 ## Verify persisted data
 

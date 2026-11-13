@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { CheckDto, CheckPipe } from './dto/screening.dto'
@@ -31,6 +31,8 @@ export async function identityChecks(tx: Prisma.TransactionClient, flightId: str
 
 @Injectable()
 export class ScreeningCheckService {
+  private readonly logger = new Logger(ScreeningCheckService.name)
+
   constructor(
     private readonly context: ScreeningContext,
     private readonly matcher: ScreeningMatcher,
@@ -43,8 +45,28 @@ export class ScreeningCheckService {
   }
 
   // Internal provider API only; never expose this method through a public controller.
+  // Screening that cannot run must not block a purchase but must not let a passenger board: check-in fails closed (held, "see an
+  // agent") and booking fails open, with the skipped screening recorded. Caller mistakes (HttpException) still surface as errors.
   async checkSystem(source: string, request: CheckDto) {
-    return this.context.runSystem((tx, now) => this.checkSystemInTransaction(tx, now, source, request))
+    try {
+      return await this.context.runSystem((tx, now) => this.checkSystemInTransaction(tx, now, source, request))
+    } catch (error) {
+      const trigger = request?.triggerPoint
+      if (error instanceof HttpException && error.getStatus() < 500) throw error
+      if (trigger !== 'check_in' && trigger !== 'booking') throw error
+      this.logger.error(`Screening could not run for ${trigger}: ${error instanceof Error ? error.message : String(error)}`)
+      await this.context
+        .runSystem((tx, now) =>
+          this.audit.record(tx, { source }, now, 'create', 'screening_skipped', undefined, {
+            triggerPoint: trigger,
+            passengerId: request.passengerId,
+            flightId: request.flightId,
+            outcome: trigger === 'check_in' ? 'held' : 'clear',
+          }),
+        )
+        .catch(() => undefined)
+      return { skipped: true as const, outcome: trigger === 'check_in' ? ('held' as const) : ('clear' as const) }
+    }
   }
 
   async checkSystemInTransaction(tx: Prisma.TransactionClient, now: Date, source: string, request: CheckDto, entryId?: string) {
@@ -63,8 +85,9 @@ export class ScreeningCheckService {
     const passenger = await tx.passenger.findFirst({ where: { id: input.passengerId, deleted_at: null } })
     const flight = await tx.flight.findUnique({ where: { id: input.flightId }, select: { id: true, dep_at: true, status: true } })
     if (!passenger || !flight) throw new NotFoundException('Passenger or flight was not found')
-    if (!passenger.nationality || !/^[a-z]{2}$/.test(passenger.nationality))
-      throw new BadRequestException('Passenger nationality is required in lowercase alpha-2 format')
+    // A missing nationality is allowed (a passport match can still be Probable); a malformed one is not.
+    if (passenger.nationality && !/^[a-z]{2}$/.test(passenger.nationality))
+      throw new BadRequestException('Passenger nationality must be in lowercase alpha-2 format')
     if (['cancelled', 'departed', 'arrived'].includes(flight.status) || flight.dep_at <= now)
       throw new BadRequestException('Screening requires an upcoming, non-cancelled flight')
     const history = await identityChecks(tx, input.flightId, passenger)
@@ -138,7 +161,9 @@ export class ScreeningCheckService {
       const rows = await tx.screening_check.createManyAndReturn({ data: inserts, select: { id: true } })
       checkIds.push(...rows.map((row) => row.id))
     }
-    if (!checkIds.length && !reusedCheckIds.length && !matches.length) {
+    // A new_entry or entry_change pass writes rows only for hits; a clean pass leaves no row.
+    const hitsOnly = input.triggerPoint === 'new_entry' || input.triggerPoint === 'entry_change'
+    if (!hitsOnly && !checkIds.length && !reusedCheckIds.length && !matches.length) {
       const existing = repeatable
         ? null
         : await tx.screening_check.findFirst({
@@ -173,7 +198,8 @@ export class ScreeningCheckService {
       checkIds,
       reusedCheckIds,
       skippedEntryIds,
-      outcome,
+      // Booking never blocks the purchase, so it always reports clear; the real clearance is still audited above.
+      outcome: input.triggerPoint === 'booking' ? ('clear' as const) : outcome,
       now: now.toISOString(),
       integrations: { checkIn: 'not_connected' },
     }

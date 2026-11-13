@@ -103,6 +103,11 @@ describe('WatchlistService', () => {
     },
   )
 
+  it('lets an admin role use the watchlist', async () => {
+    db.staff.findFirst.mockResolvedValue({ id: staffId, role: { code: 'super_admin', is_admin: true } })
+    await expect(service.list(userId, new ListWatchlistDto())).resolves.toBeDefined()
+  })
+
   it('requires a non-deleted staff linked to a non-disabled, non-deleted staff user', async () => {
     await service.list(userId, new ListWatchlistDto())
     expect(db.staff.findFirst).toHaveBeenCalledWith(

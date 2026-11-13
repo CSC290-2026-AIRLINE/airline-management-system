@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { ScreeningAudit, ScreeningContext } from './screening.context'
 import { ScreeningCheckService } from './screening-check.service'
@@ -95,8 +95,12 @@ describe('ScreeningCheckService', () => {
     ])
     expect((await service.check(userId, input)).outcome).toBe('denied')
   })
-  it('rejects missing nationality and departed flights before creating checks', async () => {
+  it('screens a passenger with no nationality', async () => {
     tx.passenger.findFirst.mockResolvedValue(passengerFixture({ nationality: null }))
+    await expect(service.check(userId, input)).resolves.toMatchObject({ outcome: 'clear' })
+  })
+  it('rejects malformed nationality and departed flights before creating checks', async () => {
+    tx.passenger.findFirst.mockResolvedValue(passengerFixture({ nationality: 'THA' }))
     await expect(service.check(userId, input)).rejects.toBeInstanceOf(BadRequestException)
     tx.passenger.findFirst.mockResolvedValue(passengerFixture())
     tx.flight.findUnique.mockResolvedValue({ id: flightId, dep_at: now, status: 'scheduled' })
@@ -116,9 +120,29 @@ describe('ScreeningCheckService', () => {
           after: expect.objectContaining({ source: 'booking_pnr', triggerPoint }),
         }),
       })
-      expect(tx.screening_check.create).toHaveBeenCalledWith({ data: expect.objectContaining({ match_level: 'none', outcome: 'clear' }) })
+      if (triggerPoint === 'new_entry' || triggerPoint === 'entry_change') expect(tx.screening_check.create).not.toHaveBeenCalled()
+      else
+        expect(tx.screening_check.create).toHaveBeenCalledWith({ data: expect.objectContaining({ match_level: 'none', outcome: 'clear' }) })
     },
   )
+  it('always reports clear at booking, even when a confirmed match is on file', async () => {
+    tx.screening_check.findMany.mockResolvedValue([
+      { ...checkFixture(), screening_review: [reviewFixture({ decision: 'confirmed', revision: 1 })] },
+    ])
+    expect((await service.checkSystem('booking_pnr', { ...input, triggerPoint: 'booking' })).outcome).toBe('clear')
+  })
+  it('fails closed at check-in and open at booking when screening cannot run, and records the skip', async () => {
+    tx.passenger.findFirst.mockRejectedValue(new Error('database down'))
+    expect(await service.checkSystem('check_in', input)).toEqual({ skipped: true, outcome: 'held' })
+    expect(await service.checkSystem('booking_pnr', { ...input, triggerPoint: 'booking' })).toEqual({ skipped: true, outcome: 'clear' })
+    expect(tx.audit_log.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ entity_type: 'screening_skipped', after: expect.objectContaining({ triggerPoint: 'check_in' }) }),
+    })
+  })
+  it('still rejects caller mistakes instead of failing safe', async () => {
+    tx.passenger.findFirst.mockResolvedValue(null)
+    await expect(service.checkSystem('check_in', input)).rejects.toBeInstanceOf(NotFoundException)
+  })
   it.each(['identity_change', 'entry_change', 'new_entry'] as const)(
     'flags a strong %s match without holding or denying automatically',
     async (triggerPoint) => {

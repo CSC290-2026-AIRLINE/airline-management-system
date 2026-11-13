@@ -163,7 +163,7 @@ describe('Screening authorization through the JWT guard and real services', () =
     await send(route).expect(route.status)
     expect(tx.staff.findFirst).toHaveBeenCalledWith({
       where: { user_id: userId, deleted_at: null, user: { type: 'staff', disabled_at: null, deleted_at: null } },
-      select: { id: true, role: { select: { code: true } } },
+      select: { id: true, role: { select: { code: true, is_admin: true } } },
     })
     expect(tx.audit_log.create).toHaveBeenCalledWith(
       expect.objectContaining({

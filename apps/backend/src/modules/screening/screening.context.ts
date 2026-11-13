@@ -9,6 +9,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { canUseSecurityScreens } from './security-role'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 
 export interface ScreeningActor {
@@ -44,9 +45,10 @@ export class ScreeningContext {
         async (tx) => {
           const staff = await tx.staff.findFirst({
             where: { user_id: userId, deleted_at: null, user: { type: 'staff', disabled_at: null, deleted_at: null } },
-            select: { id: true, role: { select: { code: true } } },
+            select: { id: true, role: { select: { code: true, is_admin: true } } },
           })
-          if (!staff || staff.role.code !== 'security') throw new ForbiddenException('A staff account with the security role is required')
+          if (!staff || !canUseSecurityScreens(staff.role))
+            throw new ForbiddenException('A staff account with the security or admin role is required')
           return work(tx, { userId, staffId: staff.id, role: staff.role.code }, this.clock.now())
         },
         { isolationLevel: 'Serializable' },

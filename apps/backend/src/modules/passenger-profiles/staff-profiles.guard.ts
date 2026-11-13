@@ -28,7 +28,7 @@ export class StaffProfilesGuard implements CanActivate {
   async requireStaff(userId: string) {
     const staff = await this.db.staff.findFirst({
       where: { user_id: userId, deleted_at: null, user: { type: 'staff', disabled_at: null, deleted_at: null } },
-      select: { id: true, role: { select: { code: true } } },
+      select: { id: true, role: { select: { code: true, is_admin: true } } },
     })
     if (!staff) throw new ForbiddenException('An active staff account is required')
     return staff
