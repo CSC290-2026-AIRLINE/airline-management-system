@@ -1,9 +1,11 @@
 import 'reflect-metadata'
 import path from 'node:path'
-import { Logger } from '@nestjs/common'
-import { createPgAdapter } from '@backend/db/pg-adapter'
-import type { DbService } from '@backend/db/db.service'
-import { PrismaClient } from '@backend/db/generated/prisma/client'
+import { Logger, Module } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { NestFactory } from '@nestjs/core'
+import { DbService } from '@backend/db/db.service'
+import type { EnvConfig } from '@backend/config/env.validation'
+import { BOOKING_CLOCK, SEAT_MAP_PORT, type BookingClock } from '../contracts'
 import { SystemBookingClock } from '../common/booking-clock'
 import { SeatMapStub } from '../stubs/seat-map.stub'
 import { AssistanceService } from './assistance.service'
@@ -15,6 +17,22 @@ try {
   // .env is optional when DATABASE_URL comes from the shell
 }
 
+@Module({
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
+  providers: [
+    { provide: DbService, useFactory: (config: ConfigService<EnvConfig, true>) => new DbService(config), inject: [ConfigService] },
+    AssistanceService,
+    {
+      provide: AssistanceSeedService,
+      useFactory: (db: DbService, assistance: AssistanceService, clock: BookingClock) => new AssistanceSeedService(db, assistance, clock),
+      inject: [DbService, AssistanceService, BOOKING_CLOCK],
+    },
+    { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
+    { provide: SEAT_MAP_PORT, useClass: SeatMapStub },
+  ],
+})
+class AssistanceSeedModule {}
+
 async function main() {
   if (process.env.NODE_ENV === 'production') throw new Error('Assistance seed is for local development only')
   const connectionString = process.env.DATABASE_URL
@@ -22,16 +40,12 @@ async function main() {
   if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(connectionString).hostname))
     throw new Error('Assistance seed requires a local database')
 
-  const db = new PrismaClient({ adapter: createPgAdapter(connectionString) })
+  const app = await NestFactory.createApplicationContext(AssistanceSeedModule)
   try {
-    await db.$connect()
-    const clock = new SystemBookingClock()
-    const assistance = new AssistanceService(clock, new SeatMapStub())
-    const seeder = new AssistanceSeedService(db as unknown as DbService, assistance, clock)
-    const result = await seeder.seed()
+    const result = await app.get(AssistanceSeedService).seed()
     Logger.log(`Assistance seed: ${result.created} requests added; booking ${result.reference}. Refresh /assistance.`, 'AssistanceSeed')
   } finally {
-    await db.$disconnect()
+    await app.close()
   }
 }
 void main().catch((error: unknown) => {
