@@ -36,6 +36,7 @@ const API = process.env.API_URL ?? `http://localhost:${process.env.PORT ?? 8080}
 const DEMO_CLERK_ID = 'f03-seed-customer'
 const ADULT_PASSPORT = 'F03SEED001'
 const CHILD_PASSPORT = 'F03SEED002'
+const SMOKE_PRICING_RULE_ID = 'f0300000-0000-4000-8000-000000000001'
 const PROMO_CODE = 'SAVE10'
 const SMOKE_CONTACT = 'feature3.customer@example.com'
 const ROUTE = { origin: 'BKK', destination: 'HKT' }
@@ -395,9 +396,9 @@ async function setInventory(flightId: string, data: { held_count?: number; award
 }
 
 /**
- * A quote of an earlier run would be reused instead of a new one, and a reused quote keeps the seats it was priced
- * with. The live quotes of the smoke flight are expired first, so the run always prices the inventory as it is now.
- * The rows stay in the database as the audit trail they are.
+ * A quote of an earlier run would be reused instead of a new one, and a reused quote keeps the rules and seats it was
+ * priced with. The live quotes of the search flights are expired first, so the run always exercises the current rules;
+ * the availability flight's quotes are expired again before its inventory check. The rows stay as an audit trail.
  */
 async function expireSmokeQuotes(flightId: string): Promise<number> {
   const expired = await prisma.fare_quote.updateMany({
@@ -425,6 +426,10 @@ async function main(): Promise<void> {
 
   const cleanedUp = await cancelPriorSmokeBookings(fixtures)
   if (cleanedUp) console.log(`Cancelled ${cleanedUp} active booking(s) left on the smoke flights by an earlier run.\n`)
+
+  const expiredSearchQuotes = await Promise.all(Object.values(fixtures.flights).map((flight) => expireSmokeQuotes(flight.id)))
+  const searchQuotesExpired = expiredSearchQuotes.reduce((total, count) => total + count, 0)
+  if (searchQuotesExpired) console.log(`Expired ${searchQuotesExpired} live quote(s) so this run uses the current pricing rules.\n`)
 
   const quotesBefore = await prisma.fare_quote.count()
   quotesAtStart = quotesBefore
@@ -502,6 +507,47 @@ async function main(): Promise<void> {
   const yQuoteTotal = quoteTotals.get(quoteKey(fixtures.flights.y.id, 'Y')) ?? 0
   const qQuoteTotal = quoteTotals.get(quoteKey(fixtures.flights.q.id, 'Q')) ?? 0
   const seated = 2
+
+  await check('the seeded urgency pricing rule is applied to the Y quote', async () => {
+    assert(Boolean(yFare?.fareQuoteId), 'The Y class has no fare quote.')
+    const rule = await prisma.pricing_rule.findUnique({
+      where: { id: SMOKE_PRICING_RULE_ID },
+      select: {
+        rule_group: true,
+        min_days_out: true,
+        max_days_out: true,
+        adjustment_pct: true,
+        is_active: true,
+        deleted_at: true,
+      },
+    })
+    assert(Boolean(rule), `The smoke pricing rule ${SMOKE_PRICING_RULE_ID} is missing. Run npm run db:seed:f03 -w apps/backend.`)
+    assert(
+      rule!.rule_group === 'urgency' && rule!.min_days_out === 10 && rule!.max_days_out === 11,
+      'The smoke pricing rule does not match the 10-11 day urgency window.',
+    )
+    assert(rule!.is_active && rule!.deleted_at === null, 'The smoke pricing rule is inactive or deleted.')
+    const configuredRatePct = Number(rule!.adjustment_pct)
+    assert(configuredRatePct === 5, `The smoke pricing rule is ${configuredRatePct}%, not 5%.`)
+
+    const lines = await prisma.fare_quote_line.findMany({
+      where: { fare_quote_id: yFare!.fareQuoteId! },
+      select: { kind: true, source_id: true, rate_pct: true, amount: true },
+    })
+    const baseLine = lines.find((line) => line.kind === 'base')
+    const ruleLine = lines.find((line) => line.kind === 'rule' && line.source_id === SMOKE_PRICING_RULE_ID)
+    assert(Boolean(baseLine), 'The Y quote has no base-fare line.')
+    assert(Boolean(ruleLine), 'The Y quote has no line for the seeded urgency pricing rule.')
+    const appliedRatePct = Number(ruleLine!.rate_pct)
+    const appliedAmount = Number(ruleLine!.amount)
+    assert(appliedRatePct === 5, `The quote applies ${appliedRatePct}% instead of 5%.`)
+    const expectedAdjustment = Math.round(Number(baseLine!.amount) * 5) / 100
+    assert(
+      Math.round(appliedAmount * 100) === Math.round(expectedAdjustment * 100),
+      `The rule line is ${appliedAmount}, not ${expectedAdjustment}.`,
+    )
+    return `urgency +5% adds ${money(appliedAmount)} to the ${money(Number(baseLine!.amount))} base fare`
+  })
 
   // 2. Hold prices the party and refuses a total that does not match.
   let yReference = ''
@@ -591,7 +637,16 @@ async function main(): Promise<void> {
       assert(response.status === 201, `The hold answered ${response.status}: ${JSON.stringify(response.body)}`)
       const expected = Math.round(promoQuoteTotal * seated * 100) / 100
       assert(Math.round(response.body.total * 100) === Math.round(expected * 100), `The hold says ${response.body.total}, not ${expected}.`)
-      const booking = await prisma.booking.findUnique({ where: { booking_reference: response.body.reference }, select: { id: true } })
+      assert(
+        response.body.currency === fixtures.baseCurrency,
+        `The promo hold is in ${response.body.currency}, not ${fixtures.baseCurrency}.`,
+      )
+      const booking = await prisma.booking.findUnique({
+        where: { booking_reference: response.body.reference },
+        select: { id: true, currency: true },
+      })
+      assert(Boolean(booking), 'The promo booking row is missing.')
+      assert(booking!.currency === fixtures.baseCurrency, `The promo booking is in ${booking!.currency}, not ${fixtures.baseCurrency}.`)
       const coupons = await prisma.booking_coupon.findMany({ where: { booking_id: booking!.id }, select: { fare_quote_id: true } })
       assert(
         coupons.every((coupon) => coupon.fare_quote_id === promoQuoteId),

@@ -33,6 +33,7 @@ const ROUTES = [
 const DEMO_CUSTOMER_CLERK_ID = 'f03-seed-customer'
 const DEMO_PASSENGER_PASSPORT = 'F03SEED001'
 const EXTRA_PASSENGER_PASSPORT = 'F03SEED002'
+const SMOKE_PRICING_RULE_ID = 'f0300000-0000-4000-8000-000000000001'
 
 // The service dates the demo flights fly on. The last one is far enough ahead for the Q class, which can only be
 // bought seven days before departure, so it flies on its own aircraft.
@@ -175,6 +176,50 @@ async function seedBaseFares(
   return seeded
 }
 
+async function seedPricingRule(): Promise<{ id: string; priority: number; created: boolean }> {
+  const existing = await prisma.pricing_rule.findUnique({ where: { id: SMOKE_PRICING_RULE_ID } })
+  const otherRules = await prisma.pricing_rule.findMany({
+    where: { id: { not: SMOKE_PRICING_RULE_ID }, rule_group: 'urgency', deleted_at: null },
+    select: { priority: true },
+  })
+  const usedPriorities = new Set(otherRules.map((rule) => rule.priority))
+  let priority = existing?.priority ?? 90
+  while (usedPriorities.has(priority)) priority += 1
+
+  const rule = await prisma.pricing_rule.upsert({
+    where: { id: SMOKE_PRICING_RULE_ID },
+    update: {
+      rule_group: 'urgency',
+      name: 'F03 smoke urgency +5%',
+      priority,
+      min_days_out: 10,
+      max_days_out: 11,
+      min_seats_left_pct: null,
+      max_seats_left_pct: null,
+      month: null,
+      start_date: null,
+      end_date: null,
+      fare_class_id: null,
+      adjustment_pct: 5,
+      is_active: true,
+      deleted_at: null,
+    },
+    create: {
+      id: SMOKE_PRICING_RULE_ID,
+      rule_group: 'urgency',
+      name: 'F03 smoke urgency +5%',
+      priority,
+      min_days_out: 10,
+      max_days_out: 11,
+      adjustment_pct: 5,
+      is_active: true,
+    },
+    select: { id: true, priority: true },
+  })
+
+  return { ...rule, created: !existing }
+}
+
 async function seedFlights(
   routes: Array<{ id: string; origin: string; destination: string }>,
   aircraft: { primary: { id: string }; farAhead: { id: string } },
@@ -273,6 +318,7 @@ async function main() {
   const aircraft = await seedAircraft()
   const fareClasses = await seedFareClasses()
   const baseFares = await seedBaseFares(routes, fareClasses)
+  const pricingRule = await seedPricingRule()
   const flights = await seedFlights(routes, aircraft)
   const { customer, passenger, extraPassenger } = await seedCustomer()
 
@@ -284,6 +330,9 @@ async function main() {
   for (const baseFare of baseFares) {
     console.log(`base_fare ${baseFare.label}: ${baseFare.id} ${baseFare.amount}${baseFare.created ? ' (created)' : ' (existing)'}`)
   }
+  console.log(
+    `pricing_rule ${pricingRule.id}: urgency priority ${pricingRule.priority}, +5% for 10-11 days${pricingRule.created ? ' (created)' : ' (existing)'}`,
+  )
   for (const flight of flights) {
     console.log(`flight ${flight.flightNumber} on ${flight.serviceDate.toISOString().slice(0, 10)}: ${flight.id}`)
   }
