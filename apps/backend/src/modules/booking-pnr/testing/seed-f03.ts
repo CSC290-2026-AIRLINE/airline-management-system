@@ -34,6 +34,18 @@ const DEMO_CUSTOMER_CLERK_ID = 'f03-seed-customer'
 const DEMO_PASSENGER_PASSPORT = 'F03SEED001'
 const EXTRA_PASSENGER_PASSPORT = 'F03SEED002'
 
+// The service dates the demo flights fly on. The last one is far enough ahead for the Q class, which can only be
+// bought seven days before departure, so it flies on its own aircraft.
+const SERVICE_DAYS = [
+  { offset: 1, aircraft: 'primary' },
+  { offset: 2, aircraft: 'primary' },
+  { offset: 3, aircraft: 'primary' },
+  { offset: 10, aircraft: 'farAhead' },
+] as const
+
+// The base fares of the two demo fare classes, in the base currency. Same amounts as the pricing smoke.
+const BASE_FARES: Record<'Y' | 'Q', string> = { Y: '1000.00', Q: '100.00' }
+
 function futureServiceDate(offsetDays: number): Date {
   const now = new Date()
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offsetDays))
@@ -74,7 +86,7 @@ async function seedAircraft() {
     },
   })
 
-  return prisma.aircraft.upsert({
+  const primary = await prisma.aircraft.upsert({
     where: { tail_number: 'HS-F03A' },
     update: {},
     create: {
@@ -84,10 +96,25 @@ async function seedAircraft() {
       base_airport_code: 'BKK',
     },
   })
+
+  // A second aircraft for the flights far ahead: the pricing smoke puts its own flights on the first one on the same
+  // day, and an aircraft can only fly one flight at a time.
+  const farAhead = await prisma.aircraft.upsert({
+    where: { tail_number: 'HS-F03B' },
+    update: {},
+    create: {
+      tail_number: 'HS-F03B',
+      aircraft_type_id: aircraftType.id,
+      entry_into_service_date: new Date('2024-01-01T00:00:00Z'),
+      base_airport_code: 'BKK',
+    },
+  })
+
+  return { primary, farAhead }
 }
 
-async function seedFareClass() {
-  return prisma.fare_class.upsert({
+async function seedFareClasses() {
+  const y = await prisma.fare_class.upsert({
     where: { code: 'Y' },
     update: {},
     create: {
@@ -102,16 +129,61 @@ async function seedFareClass() {
       change_fee_pct: 0,
     },
   })
+
+  const q = await prisma.fare_class.upsert({
+    where: { code: 'Q' },
+    update: {},
+    create: {
+      code: 'Q',
+      cabin: 'economy',
+      name: 'Economy Saver',
+      min_advance_purchase_days: 7,
+    },
+  })
+
+  return { Y: y, Q: q }
+}
+
+// The base fares the demo routes are sold at. A fare that is already there is left alone, so an amount staff changed
+// in the app survives a re-seed.
+async function seedBaseFares(
+  routes: Array<{ id: string; origin: string; destination: string }>,
+  fareClasses: Record<'Y' | 'Q', { id: string }>,
+): Promise<Array<{ id: string; label: string; amount: string; created: boolean }>> {
+  const seeded: Array<{ id: string; label: string; amount: string; created: boolean }> = []
+
+  for (const route of routes) {
+    for (const code of ['Y', 'Q'] as const) {
+      const fareClassId = fareClasses[code].id
+      const existing = await prisma.base_fare.findFirst({
+        where: { route_id: route.id, fare_class_id: fareClassId, deleted_at: null },
+      })
+      const row =
+        existing ??
+        (await prisma.base_fare.create({
+          data: { route_id: route.id, fare_class_id: fareClassId, amount: BASE_FARES[code] },
+        }))
+      seeded.push({
+        id: row.id,
+        label: `${code} ${route.origin}-${route.destination}`,
+        amount: Number(row.amount).toFixed(2),
+        created: !existing,
+      })
+    }
+  }
+
+  return seeded
 }
 
 async function seedFlights(
   routes: Array<{ id: string; origin: string; destination: string }>,
-  aircraftId: string,
+  aircraft: { primary: { id: string }; farAhead: { id: string } },
 ): Promise<Array<{ id: string; flightNumber: string; serviceDate: Date }>> {
   const created: Array<{ id: string; flightNumber: string; serviceDate: Date }> = []
 
-  for (let offset = 1; offset <= 3; offset++) {
-    const serviceDate = futureServiceDate(offset)
+  for (const day of SERVICE_DAYS) {
+    const serviceDate = futureServiceDate(day.offset)
+    const aircraftId = aircraft[day.aircraft].id
     for (const [index, route] of routes.entries()) {
       const flightNumber = `F3090${index + 1}`
       const scheduledDepAt = new Date(serviceDate.getTime() + (9 + index * 3) * 60 * 60 * 1000)
@@ -199,14 +271,19 @@ async function seedCustomer() {
 async function main() {
   const routes = await seedAirportsAndRoutes()
   const aircraft = await seedAircraft()
-  const fareClass = await seedFareClass()
-  const flights = await seedFlights(routes, aircraft.id)
+  const fareClasses = await seedFareClasses()
+  const baseFares = await seedBaseFares(routes, fareClasses)
+  const flights = await seedFlights(routes, aircraft)
   const { customer, passenger, extraPassenger } = await seedCustomer()
 
   console.log('Feature 3 seed complete.')
   console.log(`customer_id: ${customer.id}`)
   console.log(`passenger_ids: ${passenger.id}, ${extraPassenger.id}`)
-  console.log(`fare_class_id (Y): ${fareClass.id}`)
+  console.log(`fare_class_id (Y): ${fareClasses.Y.id}`)
+  console.log(`fare_class_id (Q): ${fareClasses.Q.id}`)
+  for (const baseFare of baseFares) {
+    console.log(`base_fare ${baseFare.label}: ${baseFare.id} ${baseFare.amount}${baseFare.created ? ' (created)' : ' (existing)'}`)
+  }
   for (const flight of flights) {
     console.log(`flight ${flight.flightNumber} on ${flight.serviceDate.toISOString().slice(0, 10)}: ${flight.id}`)
   }

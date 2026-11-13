@@ -17,12 +17,21 @@ describe('PricingAdapter', () => {
   const redeem = jest.fn()
   const findCoupons = jest.fn()
   const findBooking = jest.fn()
+  const getBaseCurrency = jest.fn()
   const db = {
     booking_coupon: { findMany: findCoupons },
     booking: { findUnique: findBooking },
   } as unknown as DbService
   const clock = { now: () => NOW }
-  const adapter = new PricingAdapter({ create, fee } as never, { lookup } as never, { checkPromo, redeem } as never, db, clock)
+  const settings = { getBaseCurrency }
+  const adapter = new PricingAdapter(
+    { create, fee } as never,
+    { lookup } as never,
+    { checkPromo, redeem } as never,
+    db,
+    clock,
+    settings as never,
+  )
 
   beforeEach(() => {
     jest.resetAllMocks()
@@ -84,6 +93,15 @@ describe('PricingAdapter', () => {
 
       expect(quote.lines).toEqual([{ kind: 'base', label: 'Base fare', amount: 100 }])
       expect(quote.fareRuleSnapshot).toBeNull()
+    })
+  })
+
+  describe('baseCurrency', () => {
+    it('returns the pricing setting base currency', async () => {
+      getBaseCurrency.mockResolvedValue('THB')
+
+      await expect(adapter.baseCurrency()).resolves.toBe('THB')
+      expect(getBaseCurrency).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -295,6 +313,14 @@ describe('PricingAdapter', () => {
 
       expect(fee).not.toHaveBeenCalled()
       expect(quote).toEqual({ currency: 'USD', fee: 0, refund: 0 })
+    })
+
+    it('uses the booking currency when no quote currency is available', async () => {
+      findBooking.mockResolvedValue({ currency: 'THB' })
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(quote).toEqual({ currency: 'THB', fee: 0, refund: 0 })
     })
 
     it('keeps the whole price of a coupon without a quote', async () => {

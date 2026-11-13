@@ -140,9 +140,10 @@ export class CheckinSeatProvider implements SeatProvider {
       if (!reference) throw new NotFoundException('Seat hold not found')
       // Match the booking-confirmation and cancellation lock order before touching the seat row.
       const bookings = await tx.$queryRaw<
-        Array<{ status: string }>
-      >`SELECT status FROM booking WHERE id = ${reference.booking_coupon.booking_id}::uuid FOR UPDATE`
-      if (bookings[0]?.status !== 'confirmed') throw new BookingError('BOOKING_CLOSED', 'Booking is no longer confirmed')
+        Array<{ status: string; currency: string }>
+      >`SELECT status, currency FROM booking WHERE id = ${reference.booking_coupon.booking_id}::uuid FOR UPDATE`
+      const booking = bookings[0]
+      if (!booking || booking.status !== 'confirmed') throw new BookingError('BOOKING_CLOSED', 'Booking is no longer confirmed')
       const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM seat_assignment WHERE id = ${lockId}::uuid FOR UPDATE`
       if (!rows.length) throw new NotFoundException('Seat hold not found')
       const held = await tx.seat_assignment.findUniqueOrThrow({ where: { id: lockId } })
@@ -199,7 +200,7 @@ export class CheckinSeatProvider implements SeatProvider {
             {
               bookingId: reference.booking_coupon.booking_id,
               amount: Number(held.fee_amount),
-              currency: 'USD',
+              currency: booking.currency,
               idempotencyKey: `seat:${lockId}`,
               purchaseRef: `seat_assignment:${lockId}`,
             },
@@ -214,7 +215,7 @@ export class CheckinSeatProvider implements SeatProvider {
             booking_id: reference.booking_coupon.booking_id,
             purchase_ref: `seat_assignment:${lockId}`,
             status: 'captured',
-            currency: 'USD',
+            currency: booking.currency,
             amount_total: held.fee_amount,
           },
           select: { id: true },

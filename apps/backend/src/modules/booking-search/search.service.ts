@@ -79,6 +79,8 @@ export class SearchService {
           orderBy: { code: 'asc' },
         })
       : []
+    let baseCurrency = ''
+    if (fares.length) baseCurrency = await this.pricing.baseCurrency()
     const options = new Map<string, SearchOption>()
     for (const flight of flights) {
       const cabins: SearchFare[] = []
@@ -105,7 +107,7 @@ export class SearchService {
             fareClassCode: fare.code,
             fareQuoteId: null,
             pricePerPassenger: 0,
-            currency: 'USD',
+            currency: baseCurrency,
             seatsLeft,
             unavailableReason: error instanceof BookingError ? error.message : 'Fare quote unavailable',
           })

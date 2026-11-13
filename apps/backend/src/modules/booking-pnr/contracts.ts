@@ -143,6 +143,7 @@ export interface SeatFeeRequest {
 }
 
 export interface PricingPort {
+  baseCurrency: () => Promise<string>
   quote: (request: FareQuoteRequest) => Promise<FareQuote>
   cancelQuote: (request: CancelQuoteRequest) => Promise<CancelQuote>
   seatFee: (request: SeatFeeRequest) => Promise<number>

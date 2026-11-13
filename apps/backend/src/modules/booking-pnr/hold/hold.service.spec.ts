@@ -29,7 +29,7 @@ const request: HoldBookingDto = {
 }
 const adults = [{ id: 'adult', date_of_birth: new Date('1990-01-01') }] as passenger[]
 function fixture() {
-  const created = { id: 'booking', booking_reference: 'ABC234', currency: 'USD', hold_expires_at: new Date(now.getTime() + 900000) }
+  const created = { id: 'booking', booking_reference: 'ABC234', currency: 'THB', hold_expires_at: new Date(now.getTime() + 900000) }
   const tx = {
     $executeRaw: jest.fn(() => Promise.resolve(1)),
     booking: { findUnique: jest.fn(() => Promise.resolve(null as unknown)), create: jest.fn(() => Promise.resolve(created)) },
@@ -50,7 +50,7 @@ function fixture() {
   }
   const inventory = { lock: jest.fn(() => Promise.resolve()), hold: jest.fn(() => Promise.resolve()) }
   const pricing = {
-    quote: jest.fn(() => Promise.resolve({ currency: 'USD', fareClassId: 'fare', fareQuoteId: null, pricePerPassenger: 148.5 })),
+    quote: jest.fn(() => Promise.resolve({ currency: 'THB', fareClassId: 'fare', fareQuoteId: null, pricePerPassenger: 148.5 })),
   }
   const seats = { holdForBooking: jest.fn(() => Promise.resolve()) }
   const requests = { createForHold: jest.fn(() => Promise.resolve()) }
@@ -113,7 +113,13 @@ describe('HoldService', () => {
       holdExpiresAt: '2026-11-09T08:15:00.000Z',
     })
     expect(tx.booking.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ customer_id: 'customer', status: 'held', booked_at: now, booked_by_staff_id: null }),
+      data: expect.objectContaining({
+        customer_id: 'customer',
+        status: 'held',
+        booked_at: now,
+        booked_by_staff_id: null,
+        currency: 'THB',
+      }),
     })
     expect(tx.booking_coupon.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ status: 'held', price_total: '148.50', passenger_id: 'adult', flight_id: 'flight' })],
@@ -134,9 +140,45 @@ describe('HoldService', () => {
     await expect(service.createForUser('user', 'key', { ...request, expectedTotal: 100 })).rejects.toMatchObject({
       code: 'PRICE_CHANGED',
       status: 409,
-      details: { previousTotal: 100, newTotal: 148.5, currency: 'USD' },
+      details: { previousTotal: 100, newTotal: 148.5, currency: 'THB' },
     })
     expect(tx.booking.create).not.toHaveBeenCalled()
+    expect(inventory.hold).not.toHaveBeenCalled()
+  })
+
+  it('rejects quotes in different currencies before holding inventory', async () => {
+    const { service, tx, inventory, pricing } = fixture()
+    const nextFlight = {
+      ...flight,
+      id: 'flight-2',
+      dep_at: new Date('2026-11-10T11:00:00Z'),
+      scheduled_arr_at: new Date('2026-11-10T13:00:00Z'),
+    }
+    tx.flight.findMany.mockResolvedValueOnce([flight, nextFlight])
+    tx.fare_class.findMany.mockResolvedValueOnce([
+      { id: 'fare', cabin: 'economy' },
+      { id: 'fare-2', cabin: 'economy' },
+    ])
+    pricing.quote
+      .mockResolvedValueOnce({ currency: 'THB', fareClassId: 'fare', fareQuoteId: null, pricePerPassenger: 148.5 })
+      .mockResolvedValueOnce({ currency: 'EUR', fareClassId: 'fare-2', fareQuoteId: null, pricePerPassenger: 148.5 })
+
+    await expect(
+      service.createForUser('user', 'key', {
+        ...request,
+        tripType: 'multi_city',
+        segments: [request.segments[0], { ...request.segments[0], flightId: 'flight-2', fareClassId: 'fare-2' }],
+      }),
+    ).rejects.toMatchObject({ status: 422 })
+    expect(inventory.hold).not.toHaveBeenCalled()
+    expect(tx.booking.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects currencies that are not three uppercase letters', async () => {
+    const { service, inventory, pricing } = fixture()
+    pricing.quote.mockResolvedValueOnce({ currency: 'thb', fareClassId: 'fare', fareQuoteId: null, pricePerPassenger: 148.5 })
+
+    await expect(service.createForUser('user', 'key', request)).rejects.toMatchObject({ status: 422 })
     expect(inventory.hold).not.toHaveBeenCalled()
   })
 

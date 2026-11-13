@@ -36,20 +36,22 @@ function fixture(flights = [flight()]) {
   }
   const availability = jest.fn(() => Promise.resolve(flights.map((f) => ({ flightId: f.id, cabin: 'economy', seatsLeft: 12 }))))
   const quote = jest.fn(() => Promise.resolve({ fareQuoteId: null, fareClassId: 'fare-y', pricePerPassenger: 148.5, currency: 'USD' }))
+  const baseCurrency = jest.fn(() => Promise.resolve('THB'))
   const service = new SearchService(
     db as unknown as DbService,
     { availability } as unknown as InventoryPort,
-    { quote } as unknown as PricingPort,
+    { quote, baseCurrency } as unknown as PricingPort,
     { now: () => now },
   )
-  return { service, db, availability, quote }
+  return { service, db, availability, quote, baseCurrency }
 }
 
 describe('SearchService', () => {
   it('batches inventory once, carries quote ids, and preserves numeric counts above nine', async () => {
-    const { service, availability, quote } = fixture()
+    const { service, availability, quote, baseCurrency } = fixture()
     const result = await service.search(request)
     expect(availability).toHaveBeenCalledTimes(1)
+    expect(baseCurrency).toHaveBeenCalledTimes(1)
     expect(quote).toHaveBeenCalledWith({ flightId: 'flight-a', cabin: 'economy', fareClassId: 'fare-y' })
     expect(result.legs[0].options[0]).toMatchObject({
       flightId: 'flight-a',
@@ -83,17 +85,22 @@ describe('SearchService', () => {
   })
 
   it('returns an empty leg without a pricing call when no flights match', async () => {
-    const { service, quote } = fixture([])
+    const { service, quote, baseCurrency } = fixture([])
     expect(await service.search(request)).toEqual({ legs: [{ leg: request.legs[0], options: [] }] })
     expect(quote).not.toHaveBeenCalled()
+    expect(baseCurrency).not.toHaveBeenCalled()
   })
 
   it('preserves a pricing rejection as an unavailable option without exposing unknown errors', async () => {
-    const { service, quote } = fixture()
+    const { service, quote, baseCurrency } = fixture()
     quote.mockRejectedValueOnce(new BookingError('BOOKING_CLOSED', 'Advance purchase window closed'))
-    expect((await service.search(request)).legs[0].options[0].cabins[0].unavailableReason).toBe('Advance purchase window closed')
+    const unavailable = (await service.search(request)).legs[0].options[0].cabins[0]
+    expect(unavailable.unavailableReason).toBe('Advance purchase window closed')
+    expect(unavailable.currency).toBe('THB')
+    expect(baseCurrency).toHaveBeenCalledTimes(1)
     quote.mockRejectedValueOnce(new Error('internal database details'))
     expect((await service.search(request)).legs[0].options[0].cabins[0].unavailableReason).toBe('Fare quote unavailable')
+    expect(baseCurrency).toHaveBeenCalledTimes(2)
   })
 
   it('groups outbound and return options by leg and date', async () => {

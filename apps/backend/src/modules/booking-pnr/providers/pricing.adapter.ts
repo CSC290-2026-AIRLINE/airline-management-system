@@ -3,6 +3,7 @@ import { DbService } from '@backend/db/db.service'
 import { FareQuoteService } from '@backend/modules/pricing/fare-quote/fare-quote.service'
 import { PromoCodeService } from '@backend/modules/pricing/promo-code/promo-code.service'
 import { SeatFeeService } from '@backend/modules/pricing/seat-fee/seat-fee.service'
+import { SettingService } from '@backend/modules/pricing/setting/setting.service'
 import { BookingError, type BookingErrorCode } from '../common/booking-error'
 import {
   BOOKING_CLOCK,
@@ -64,7 +65,12 @@ export class PricingAdapter implements PricingPort {
     private readonly promoCodes: PromoCodeService,
     private readonly db: DbService,
     @Inject(BOOKING_CLOCK) private readonly clock: BookingClock,
+    private readonly settings: SettingService,
   ) {}
+
+  async baseCurrency(): Promise<string> {
+    return this.settings.getBaseCurrency()
+  }
 
   // Feature 4 prices one passenger for one flight, cabin and fare class, so its total is the price per passenger.
   async quote(request: FareQuoteRequest): Promise<FareQuote> {

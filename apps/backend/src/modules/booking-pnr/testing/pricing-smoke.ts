@@ -146,6 +146,7 @@ interface SmokeFixtures {
   }
   seatsFlight: { id: string; created: boolean }
   promoId: string
+  baseCurrency: string
   baseFares: Record<string, number>
   createdBaseFare: string[]
 }
@@ -275,6 +276,12 @@ async function loadFixtures(): Promise<SmokeFixtures> {
   const taxes = await prisma.tax_fee.count({ where: { deleted_at: null } })
   assert(taxes > 0, 'No tax fees are seeded. Run npm run db:seed.')
 
+  const currencySetting = await prisma.pricing_setting.findUnique({
+    where: { key: 'base_currency' },
+    select: { value: true },
+  })
+  assert(Boolean(currencySetting), 'pricing_setting.base_currency is missing. Run npm run db:seed.')
+
   const promo = await prisma.promo_code.findFirst({ where: { code: PROMO_CODE, deleted_at: null }, select: { id: true, used_count: true } })
   assert(Boolean(promo), `The promo code ${PROMO_CODE} is missing. Run npm run db:seed.`)
 
@@ -304,6 +311,7 @@ async function loadFixtures(): Promise<SmokeFixtures> {
     flights: { y: yFlight, promo: promoFlight, q: qFlight },
     seatsFlight,
     promoId: promo!.id,
+    baseCurrency: currencySetting!.value,
     baseFares: amounts,
     createdBaseFare: created,
   }
@@ -507,7 +515,7 @@ async function main(): Promise<void> {
     assert(response.status === 201, `The hold answered ${response.status}: ${JSON.stringify(response.body)}`)
     const expected = Math.round(yQuoteTotal * seated * 100) / 100
     assert(Math.round(response.body.total * 100) === Math.round(expected * 100), `The hold says ${response.body.total}, not ${expected}.`)
-    assert(response.body.currency === 'USD', `The hold is in ${response.body.currency}, not USD.`)
+    assert(response.body.currency === fixtures.baseCurrency, `The hold is in ${response.body.currency}, not ${fixtures.baseCurrency}.`)
 
     const booking = await prisma.booking.findUnique({
       where: { booking_reference: response.body.reference },
@@ -515,6 +523,7 @@ async function main(): Promise<void> {
     })
     assert(Boolean(booking), 'The booking row is missing.')
     assert(booking!.status === 'held', `The booking is ${booking!.status}, not held.`)
+    assert(booking!.currency === fixtures.baseCurrency, `The booking is in ${booking!.currency}, not ${fixtures.baseCurrency}.`)
     const coupons = await prisma.booking_coupon.findMany({
       where: { booking_id: booking!.id },
       select: { fare_quote_id: true, price_total: true, status: true },
