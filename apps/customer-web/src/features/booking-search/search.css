@@ -273,13 +273,29 @@
 .f3-search-secondary:hover {
   border-color: var(--f3-navy);
 }
+/* The remove-leg control sits next to the "add another leg" button, so it is drawn as a matching outlined button in
+   the danger colour instead of an underlined word: a link reads as navigation, and the destructive action needs the
+   weight of a button to sit apart from the additive one beside it. */
 .f3-search-remove {
-  border: 0;
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid #e7b8bc;
+  border-radius: 8px;
+  background: #fff;
   color: #b8171f;
-  text-decoration: underline;
-  padding: 8px 0;
+  font-weight: 500;
   white-space: nowrap;
+}
+.f3-search-remove:hover {
+  border-color: #b8171f;
+  background: #fdecec;
+}
+.f3-search-remove svg {
+  flex: none;
 }
 .f3-search-error {
   padding: 12px 16px;
