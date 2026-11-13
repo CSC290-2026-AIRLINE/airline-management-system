@@ -1,0 +1,1054 @@
+{
+  "source": "CS26 UIUX Integrated Project.fig",
+  "fileKey": "k0RcfWTHCPfKPfYjRaAH2R",
+  "exportedAt": "2026-11-12T07:26:52.718Z",
+  "note": "Direct exported prototype actions; shared-component overrides must also be considered. Not a claim of implementation parity.",
+  "states": [
+    {
+      "id": "5122:30664",
+      "name": "F14 / TEMPLATE / Staff"
+    },
+    {
+      "id": "5124:30672",
+      "name": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week"
+    },
+    {
+      "id": "5124:30993",
+      "name": "O1b / Staff / Operations dashboard \u2014 Revenue per seat before refunds"
+    },
+    {
+      "id": "5124:31316",
+      "name": "O2 / Staff / Operations dashboard \u2014 Grouped by day"
+    },
+    {
+      "id": "5124:31803",
+      "name": "O3 / Staff / Operations dashboard \u2014 Grouped by month (Jul\u2013Sep)"
+    },
+    {
+      "id": "5124:32096",
+      "name": "O4 / Staff / Operations dashboard \u2014 Route BKK-NRT"
+    },
+    {
+      "id": "5124:32413",
+      "name": "O5 / Staff / Drill-down \u2014 On-time, week of 15 Sep"
+    },
+    {
+      "id": "5124:32942",
+      "name": "O6 / Staff / Drill-down \u2014 Delay cause: Weather"
+    },
+    {
+      "id": "5124:33470",
+      "name": "O7 / Staff / Drill-down \u2014 Business load factor"
+    },
+    {
+      "id": "5124:33999",
+      "name": "O8 / Staff / Data refresh \u2014 Running"
+    },
+    {
+      "id": "5124:34326",
+      "name": "O9 / Staff / Data refresh \u2014 Already running (blocked)"
+    },
+    {
+      "id": "5124:34649",
+      "name": "O10 / Staff / Data refresh \u2014 Done"
+    },
+    {
+      "id": "5124:34972",
+      "name": "O11 / Staff / Data refresh \u2014 Last refresh failed"
+    },
+    {
+      "id": "5124:35295",
+      "name": "O12 / Staff / Empty \u2014 No flights for this route and dates"
+    },
+    {
+      "id": "5124:35371",
+      "name": "O13 / Staff / Error \u2014 From date after To date"
+    },
+    {
+      "id": "5124:35694",
+      "name": "O14 / Staff / Export \u2014 CSV ready"
+    },
+    {
+      "id": "5126:30876",
+      "name": "O15 / Staff / Export \u2014 PDF print view"
+    },
+    {
+      "id": "5126:31183",
+      "name": "O16 / Staff / No access \u2014 Operations dashboard (FORBIDDEN)"
+    },
+    {
+      "id": "5126:31205",
+      "name": "Fn1 / Staff / Financial report \u2014 Sep 2026"
+    },
+    {
+      "id": "5126:31460",
+      "name": "Fn2 / Staff / Financial report \u2014 Aug 2026"
+    },
+    {
+      "id": "5126:31713",
+      "name": "Fn3 / Staff / Financial report \u2014 Jul 2026"
+    },
+    {
+      "id": "5126:31966",
+      "name": "Fn4 / Staff / Financial report \u2014 Oct 2026, partial month"
+    },
+    {
+      "id": "5126:32223",
+      "name": "Fn5 / Staff / Financial report \u2014 Sep 2026, not computed yet"
+    },
+    {
+      "id": "5126:32425",
+      "name": "Fn6 / Staff / Financial report \u2014 Sep 2026, route BKK-NRT"
+    },
+    {
+      "id": "5126:32678",
+      "name": "Fn7 / Staff / Export \u2014 Financial CSV ready"
+    },
+    {
+      "id": "5131:30980",
+      "name": "O5b / Staff / Drill-down \u2014 Revenue per seat, week of 15 Sep"
+    },
+    {
+      "id": "5131:31508",
+      "name": "O5c / Staff / Drill-down \u2014 Bookings and cancellations, week of 15 Sep"
+    },
+    {
+      "id": "5131:32036",
+      "name": "O5d / Staff / Drill-down \u2014 On-time, all 77 flights"
+    },
+    {
+      "id": "5131:33771",
+      "name": "O6b / Staff / Drill-down \u2014 Weather, all 22 flights"
+    },
+    {
+      "id": "5131:34515",
+      "name": "O17 / Staff / Edge case \u2014 Load factor over 100%"
+    },
+    {
+      "id": "5131:34836",
+      "name": "Fn8 / Staff / Export \u2014 Financial report PDF print view"
+    },
+    {
+      "id": "5147:31068",
+      "name": "Fn9 / Staff / Financial report \u2014 Month picker open"
+    },
+    {
+      "id": "5150:31083",
+      "name": "O5e / Staff / Drill-down \u2014 Flights, week of 1 Sep"
+    },
+    {
+      "id": "5150:31503",
+      "name": "O5f / Staff / Drill-down \u2014 Flights, week of 8 Sep"
+    },
+    {
+      "id": "5150:31941",
+      "name": "O5g / Staff / Drill-down \u2014 Flights, week of 22 Sep"
+    },
+    {
+      "id": "5150:32379",
+      "name": "O5h / Staff / Drill-down \u2014 Flights, week of 29 Sep"
+    },
+    {
+      "id": "5150:32781",
+      "name": "O6c / Staff / Drill-down \u2014 Delay cause: Technical"
+    },
+    {
+      "id": "5150:33182",
+      "name": "O6d / Staff / Drill-down \u2014 Delay cause: Air traffic control"
+    },
+    {
+      "id": "5150:33583",
+      "name": "O6e / Staff / Drill-down \u2014 Delay cause: Airport operations"
+    },
+    {
+      "id": "5150:33984",
+      "name": "O6f / Staff / Drill-down \u2014 Delay cause: Crew"
+    },
+    {
+      "id": "5150:34385",
+      "name": "O6g / Staff / Drill-down \u2014 Delay cause: Other"
+    },
+    {
+      "id": "5150:34768",
+      "name": "O6h / Staff / Drill-down \u2014 Delay cause: Security"
+    },
+    {
+      "id": "5150:35169",
+      "name": "O7b / Staff / Drill-down \u2014 Economy load factor"
+    },
+    {
+      "id": "5179:31558",
+      "name": "F14 / Export menu / Operations"
+    },
+    {
+      "id": "5179:31576",
+      "name": "F14 / Export menu / Finance"
+    },
+    {
+      "id": "5208:31400",
+      "name": "O7c / Staff / Drill-down \u2014 Premium Economy load factor"
+    },
+    {
+      "id": "5208:31811",
+      "name": "O7d / Staff / Drill-down \u2014 First load factor"
+    },
+    {
+      "id": "5242:31752",
+      "name": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week \u00b7 Mobile"
+    },
+    {
+      "id": "5248:33213",
+      "name": "O1b / Staff / Operations dashboard \u2014 Revenue per seat before refunds \u00b7 Mobile"
+    },
+    {
+      "id": "5248:33732",
+      "name": "O2 / Staff / Operations dashboard \u2014 Grouped by day \u00b7 Mobile"
+    },
+    {
+      "id": "5248:34057",
+      "name": "O3 / Staff / Operations dashboard \u2014 Grouped by month (Jul\u2013Sep) \u00b7 Mobile"
+    },
+    {
+      "id": "5248:34406",
+      "name": "O4 / Staff / Operations dashboard \u2014 Route BKK-NRT \u00b7 Mobile"
+    },
+    {
+      "id": "5248:34877",
+      "name": "O5 / Staff / Drill-down \u2014 On-time, week of 15 Sep \u00b7 Mobile"
+    },
+    {
+      "id": "5248:35311",
+      "name": "O6 / Staff / Drill-down \u2014 Delay cause: Weather \u00b7 Mobile"
+    },
+    {
+      "id": "5248:35763",
+      "name": "O7 / Staff / Drill-down \u2014 Business load factor \u00b7 Mobile"
+    },
+    {
+      "id": "5248:36122",
+      "name": "O8 / Staff / Data refresh \u2014 Running \u00b7 Mobile"
+    },
+    {
+      "id": "5248:36477",
+      "name": "O9 / Staff / Data refresh \u2014 Already running (blocked) \u00b7 Mobile"
+    },
+    {
+      "id": "5248:36832",
+      "name": "O10 / Staff / Data refresh \u2014 Done \u00b7 Mobile"
+    },
+    {
+      "id": "5248:37187",
+      "name": "O11 / Staff / Data refresh \u2014 Last refresh failed \u00b7 Mobile"
+    },
+    {
+      "id": "5248:37283",
+      "name": "O12 / Staff / Empty \u2014 No flights for this route and dates \u00b7 Mobile"
+    },
+    {
+      "id": "5248:37634",
+      "name": "O13 / Staff / Error \u2014 From date after To date \u00b7 Mobile"
+    },
+    {
+      "id": "5248:37990",
+      "name": "O14 / Staff / Export \u2014 CSV ready \u00b7 Mobile"
+    },
+    {
+      "id": "5248:38295",
+      "name": "O15 / Staff / Export \u2014 PDF print view \u00b7 Mobile"
+    },
+    {
+      "id": "5248:38318",
+      "name": "O16 / Staff / No access \u2014 Operations dashboard (FORBIDDEN) \u00b7 Mobile"
+    },
+    {
+      "id": "5248:38573",
+      "name": "Fn1 / Staff / Financial report \u2014 Sep 2026 \u00b7 Mobile"
+    },
+    {
+      "id": "5248:38824",
+      "name": "Fn2 / Staff / Financial report \u2014 Aug 2026 \u00b7 Mobile"
+    },
+    {
+      "id": "5248:39075",
+      "name": "Fn3 / Staff / Financial report \u2014 Jul 2026 \u00b7 Mobile"
+    },
+    {
+      "id": "5248:39329",
+      "name": "Fn4 / Staff / Financial report \u2014 Oct 2026, partial month \u00b7 Mobile"
+    },
+    {
+      "id": "5248:39531",
+      "name": "Fn5 / Staff / Financial report \u2014 Sep 2026, not computed yet \u00b7 Mobile"
+    },
+    {
+      "id": "5248:39781",
+      "name": "Fn6 / Staff / Financial report \u2014 Sep 2026, route BKK-NRT \u00b7 Mobile"
+    },
+    {
+      "id": "5248:40037",
+      "name": "Fn7 / Staff / Export \u2014 Financial CSV ready \u00b7 Mobile"
+    },
+    {
+      "id": "5248:40468",
+      "name": "O5b / Staff / Drill-down \u2014 Revenue per seat, week of 15 Sep \u00b7 Mobile"
+    },
+    {
+      "id": "5248:40902",
+      "name": "O5c / Staff / Drill-down \u2014 Bookings and cancellations, week of 15 Sep \u00b7 Mobile"
+    },
+    {
+      "id": "5248:41427",
+      "name": "O5d / Staff / Drill-down \u2014 On-time, all 77 flights \u00b7 Mobile"
+    },
+    {
+      "id": "5248:41915",
+      "name": "O6b / Staff / Drill-down \u2014 Weather, all 22 flights \u00b7 Mobile"
+    },
+    {
+      "id": "5248:42278",
+      "name": "O17 / Staff / Edge case \u2014 Load factor over 100% \u00b7 Mobile"
+    },
+    {
+      "id": "5248:42502",
+      "name": "Fn8 / Staff / Export \u2014 Financial report PDF print view \u00b7 Mobile"
+    },
+    {
+      "id": "5248:42782",
+      "name": "Fn9 / Staff / Financial report \u2014 Month picker open \u00b7 Mobile"
+    },
+    {
+      "id": "5248:43233",
+      "name": "O5e / Staff / Drill-down \u2014 Flights, week of 1 Sep \u00b7 Mobile"
+    },
+    {
+      "id": "5248:43705",
+      "name": "O5f / Staff / Drill-down \u2014 Flights, week of 8 Sep \u00b7 Mobile"
+    },
+    {
+      "id": "5248:44177",
+      "name": "O5g / Staff / Drill-down \u2014 Flights, week of 22 Sep \u00b7 Mobile"
+    },
+    {
+      "id": "5248:44613",
+      "name": "O5h / Staff / Drill-down \u2014 Flights, week of 29 Sep \u00b7 Mobile"
+    },
+    {
+      "id": "5248:45046",
+      "name": "O6c / Staff / Drill-down \u2014 Delay cause: Technical \u00b7 Mobile"
+    },
+    {
+      "id": "5248:45479",
+      "name": "O6d / Staff / Drill-down \u2014 Delay cause: Air traffic control \u00b7 Mobile"
+    },
+    {
+      "id": "5248:45912",
+      "name": "O6e / Staff / Drill-down \u2014 Delay cause: Airport operations \u00b7 Mobile"
+    },
+    {
+      "id": "5248:46345",
+      "name": "O6f / Staff / Drill-down \u2014 Delay cause: Crew \u00b7 Mobile"
+    },
+    {
+      "id": "5248:46760",
+      "name": "O6g / Staff / Drill-down \u2014 Delay cause: Other \u00b7 Mobile"
+    },
+    {
+      "id": "5248:47193",
+      "name": "O6h / Staff / Drill-down \u2014 Delay cause: Security \u00b7 Mobile"
+    },
+    {
+      "id": "5248:47645",
+      "name": "O7b / Staff / Drill-down \u2014 Economy load factor \u00b7 Mobile"
+    },
+    {
+      "id": "5248:48097",
+      "name": "O7c / Staff / Drill-down \u2014 Premium Economy load factor \u00b7 Mobile"
+    },
+    {
+      "id": "5248:48549",
+      "name": "O7d / Staff / Drill-down \u2014 First load factor \u00b7 Mobile"
+    },
+    {
+      "id": "5257:32271",
+      "name": "F14 / Mobile export menu / Operations"
+    },
+    {
+      "id": "5257:32285",
+      "name": "F14 / Mobile export menu / Finance"
+    },
+    {
+      "id": "5339:33361",
+      "name": "F14 / Staff sidebar"
+    },
+    {
+      "id": "5803:37269",
+      "name": "Fn10 / Staff / No access \u2014 Financial report (FORBIDDEN)"
+    },
+    {
+      "id": "5984:42974",
+      "name": "Staff / menu \u00b7 Mobile"
+    },
+    {
+      "id": "6012:42817",
+      "name": "Fn10 / Staff / No access \u2014 Financial report (FORBIDDEN) \u00b7 Mobile"
+    }
+  ],
+  "edges": [
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30676",
+      "name": "F14 Staff sidebar",
+      "path": "F14 Staff sidebar",
+      "event": "ON_CLICK",
+      "target": "5339:33349",
+      "targetName": "State=Collapsed",
+      "navigation": "SWAP_STATE",
+      "connection": "INTERNAL_NODE"
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30697",
+      "name": "Input",
+      "path": "Content / Filters / Filter fields / Field / Route / Input",
+      "event": "ON_CLICK",
+      "target": "5124:32096",
+      "targetName": "O4 / Staff / Operations dashboard \u2014 Route BKK-NRT",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30702",
+      "name": "Input",
+      "path": "Content / Filters / Filter fields / Field / From / Input",
+      "event": "ON_CLICK",
+      "target": "5124:35371",
+      "targetName": "O13 / Staff / Error \u2014 From date after To date",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30706",
+      "name": "Input",
+      "path": "Content / Filters / Filter fields / Field / To / Input",
+      "event": "ON_CLICK",
+      "target": "5124:35295",
+      "targetName": "O12 / Staff / Empty \u2014 No flights for this route and dates",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30711",
+      "name": "Seg / Day",
+      "path": "Content / Filters / Filter fields / Group by / Segmented / Group by / Seg / Day",
+      "event": "ON_CLICK",
+      "target": "5124:31316",
+      "targetName": "O2 / Staff / Operations dashboard \u2014 Grouped by day",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30715",
+      "name": "Seg / Month",
+      "path": "Content / Filters / Filter fields / Group by / Segmented / Group by / Seg / Month",
+      "event": "ON_CLICK",
+      "target": "5124:31803",
+      "targetName": "O3 / Staff / Operations dashboard \u2014 Grouped by month (Jul\u2013Sep)",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30785",
+      "name": "Hit / 1 Sep",
+      "path": "Content / Chart row / Card / On-time performance / Chart / On-time / Hit / 1 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:31083",
+      "targetName": "O5e / Staff / Drill-down \u2014 Flights, week of 1 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30786",
+      "name": "Hit / 8 Sep",
+      "path": "Content / Chart row / Card / On-time performance / Chart / On-time / Hit / 8 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:31503",
+      "targetName": "O5f / Staff / Drill-down \u2014 Flights, week of 8 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30787",
+      "name": "Hit / 15 Sep",
+      "path": "Content / Chart row / Card / On-time performance / Chart / On-time / Hit / 15 Sep",
+      "event": "ON_CLICK",
+      "target": "5124:32413",
+      "targetName": "O5 / Staff / Drill-down \u2014 On-time, week of 15 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30788",
+      "name": "Hit / 22 Sep",
+      "path": "Content / Chart row / Card / On-time performance / Chart / On-time / Hit / 22 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:31941",
+      "targetName": "O5g / Staff / Drill-down \u2014 Flights, week of 22 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30789",
+      "name": "Hit / 29 Sep",
+      "path": "Content / Chart row / Card / On-time performance / Chart / On-time / Hit / 29 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:32379",
+      "targetName": "O5h / Staff / Drill-down \u2014 Flights, week of 29 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5208:32277",
+      "name": "Hit / First",
+      "path": "Content / Chart row / Card / Load factor by cabin / Chart / Load factor / Hit / First",
+      "event": "ON_CLICK",
+      "target": "5208:31811",
+      "targetName": "O7d / Staff / Drill-down \u2014 First load factor",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5208:32278",
+      "name": "Hit / Business",
+      "path": "Content / Chart row / Card / Load factor by cabin / Chart / Load factor / Hit / Business",
+      "event": "ON_CLICK",
+      "target": "5124:33470",
+      "targetName": "O7 / Staff / Drill-down \u2014 Business load factor",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5208:32279",
+      "name": "Hit / Premium Economy",
+      "path": "Content / Chart row / Card / Load factor by cabin / Chart / Load factor / Hit / Premium Economy",
+      "event": "ON_CLICK",
+      "target": "5208:31400",
+      "targetName": "O7c / Staff / Drill-down \u2014 Premium Economy load factor",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5208:32280",
+      "name": "Hit / Economy",
+      "path": "Content / Chart row / Card / Load factor by cabin / Chart / Load factor / Hit / Economy",
+      "event": "ON_CLICK",
+      "target": "5150:35169",
+      "targetName": "O7b / Staff / Drill-down \u2014 Economy load factor",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30838",
+      "name": "Seg / Before refunds",
+      "path": "Content / Chart row / Card / Revenue per seat / Refund toggle / Segmented / Refunds / Seg / Before refunds",
+      "event": "ON_CLICK",
+      "target": "5124:30993",
+      "targetName": "O1b / Staff / Operations dashboard \u2014 Revenue per seat before refunds",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30866",
+      "name": "Hit / 1 Sep",
+      "path": "Content / Chart row / Card / Revenue per seat / Chart / Revenue per seat / Hit / 1 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:31083",
+      "targetName": "O5e / Staff / Drill-down \u2014 Flights, week of 1 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30867",
+      "name": "Hit / 8 Sep",
+      "path": "Content / Chart row / Card / Revenue per seat / Chart / Revenue per seat / Hit / 8 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:31503",
+      "targetName": "O5f / Staff / Drill-down \u2014 Flights, week of 8 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30868",
+      "name": "Hit / 15 Sep",
+      "path": "Content / Chart row / Card / Revenue per seat / Chart / Revenue per seat / Hit / 15 Sep",
+      "event": "ON_CLICK",
+      "target": "5131:30980",
+      "targetName": "O5b / Staff / Drill-down \u2014 Revenue per seat, week of 15 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30869",
+      "name": "Hit / 22 Sep",
+      "path": "Content / Chart row / Card / Revenue per seat / Chart / Revenue per seat / Hit / 22 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:31941",
+      "targetName": "O5g / Staff / Drill-down \u2014 Flights, week of 22 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30870",
+      "name": "Hit / 29 Sep",
+      "path": "Content / Chart row / Card / Revenue per seat / Chart / Revenue per seat / Hit / 29 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:32379",
+      "targetName": "O5h / Staff / Drill-down \u2014 Flights, week of 29 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30918",
+      "name": "Hit / 1 Sep",
+      "path": "Content / Chart row / Card / Bookings vs cancellations / Chart / Bookings / Hit / 1 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:31083",
+      "targetName": "O5e / Staff / Drill-down \u2014 Flights, week of 1 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30919",
+      "name": "Hit / 8 Sep",
+      "path": "Content / Chart row / Card / Bookings vs cancellations / Chart / Bookings / Hit / 8 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:31503",
+      "targetName": "O5f / Staff / Drill-down \u2014 Flights, week of 8 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30920",
+      "name": "Hit / 15 Sep",
+      "path": "Content / Chart row / Card / Bookings vs cancellations / Chart / Bookings / Hit / 15 Sep",
+      "event": "ON_CLICK",
+      "target": "5131:31508",
+      "targetName": "O5c / Staff / Drill-down \u2014 Bookings and cancellations, week of 15 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30921",
+      "name": "Hit / 22 Sep",
+      "path": "Content / Chart row / Card / Bookings vs cancellations / Chart / Bookings / Hit / 22 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:31941",
+      "targetName": "O5g / Staff / Drill-down \u2014 Flights, week of 22 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30922",
+      "name": "Hit / 29 Sep",
+      "path": "Content / Chart row / Card / Bookings vs cancellations / Chart / Bookings / Hit / 29 Sep",
+      "event": "ON_CLICK",
+      "target": "5150:32379",
+      "targetName": "O5h / Staff / Drill-down \u2014 Flights, week of 29 Sep",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30929",
+      "name": "Cause / Weather",
+      "path": "Content / Card / Top delay causes / Cause / Weather",
+      "event": "ON_CLICK",
+      "target": "5124:32942",
+      "targetName": "O6 / Staff / Drill-down \u2014 Delay cause: Weather",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30938",
+      "name": "Cause / Technical",
+      "path": "Content / Card / Top delay causes / Cause / Technical",
+      "event": "ON_CLICK",
+      "target": "5150:32781",
+      "targetName": "O6c / Staff / Drill-down \u2014 Delay cause: Technical",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30947",
+      "name": "Cause / Air traffic control",
+      "path": "Content / Card / Top delay causes / Cause / Air traffic control",
+      "event": "ON_CLICK",
+      "target": "5150:33182",
+      "targetName": "O6d / Staff / Drill-down \u2014 Delay cause: Air traffic control",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30956",
+      "name": "Cause / Airport operations",
+      "path": "Content / Card / Top delay causes / Cause / Airport operations",
+      "event": "ON_CLICK",
+      "target": "5150:33583",
+      "targetName": "O6e / Staff / Drill-down \u2014 Delay cause: Airport operations",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30965",
+      "name": "Cause / Crew",
+      "path": "Content / Card / Top delay causes / Cause / Crew",
+      "event": "ON_CLICK",
+      "target": "5150:33984",
+      "targetName": "O6f / Staff / Drill-down \u2014 Delay cause: Crew",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30974",
+      "name": "Cause / Other",
+      "path": "Content / Card / Top delay causes / Cause / Other",
+      "event": "ON_CLICK",
+      "target": "5150:34385",
+      "targetName": "O6g / Staff / Drill-down \u2014 Delay cause: Other",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5124:30983",
+      "name": "Cause / Security",
+      "path": "Content / Card / Top delay causes / Cause / Security",
+      "event": "ON_CLICK",
+      "target": "5150:34768",
+      "targetName": "O6h / Staff / Drill-down \u2014 Delay cause: Security",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5131:35081",
+      "name": "Link / Preview: load factor over 100%",
+      "path": "Content / Link / Preview: load factor over 100%",
+      "event": "ON_CLICK",
+      "target": "5131:34515",
+      "targetName": "O17 / Staff / Edge case \u2014 Load factor over 100%",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5124:30672",
+      "screenName": "O1 / Staff / Operations dashboard \u2014 Sep 2026, by week",
+      "control": "5203:31510",
+      "name": "Button / Refresh",
+      "path": "Header status / Button / Refresh",
+      "event": "ON_CLICK",
+      "target": "5124:33999",
+      "targetName": "O8 / Staff / Data refresh \u2014 Running",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5126:31205",
+      "screenName": "Fn1 / Staff / Financial report \u2014 Sep 2026",
+      "control": "5126:31209",
+      "name": "F14 Staff sidebar",
+      "path": "F14 Staff sidebar",
+      "event": "ON_CLICK",
+      "target": "5339:33349",
+      "targetName": "State=Collapsed",
+      "navigation": "SWAP_STATE",
+      "connection": "INTERNAL_NODE"
+    },
+    {
+      "screen": "5126:31205",
+      "screenName": "Fn1 / Staff / Financial report \u2014 Sep 2026",
+      "control": "5126:31227",
+      "name": "Input",
+      "path": "Content / Filters / Filter fields / Field / Route / Input",
+      "event": "ON_CLICK",
+      "target": "5126:32425",
+      "targetName": "Fn6 / Staff / Financial report \u2014 Sep 2026, route BKK-NRT",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5126:31205",
+      "screenName": "Fn1 / Staff / Financial report \u2014 Sep 2026",
+      "control": "5146:31075",
+      "name": "Month select",
+      "path": "Content / Filters / Filter fields / Field / Month / Month picker / Month select",
+      "event": "ON_CLICK",
+      "target": "5147:31068",
+      "targetName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5126:31205",
+      "screenName": "Fn1 / Staff / Financial report \u2014 Sep 2026",
+      "control": "5127:31107",
+      "name": "Link / Preview: not computed yet",
+      "path": "Link / Preview: not computed yet",
+      "event": "ON_HOVER",
+      "target": "4629:26629",
+      "navigation": "SWAP_STATE",
+      "connection": "INTERNAL_NODE"
+    },
+    {
+      "screen": "5126:31205",
+      "screenName": "Fn1 / Staff / Financial report \u2014 Sep 2026",
+      "control": "5127:31107",
+      "name": "Link / Preview: not computed yet",
+      "path": "Link / Preview: not computed yet",
+      "event": "ON_CLICK",
+      "target": "5126:32223",
+      "targetName": "Fn5 / Staff / Financial report \u2014 Sep 2026, not computed yet",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5126:31205",
+      "screenName": "Fn1 / Staff / Financial report \u2014 Sep 2026",
+      "control": "5203:31568",
+      "name": "Button / Open monthly report",
+      "path": "Header status / Button / Open monthly report",
+      "event": "ON_CLICK",
+      "target": "2186:7323",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5147:31078",
+      "name": "Input",
+      "path": "Content / Filters / Filter fields / Field / Route / Input",
+      "event": "ON_CLICK",
+      "target": "5126:32425",
+      "targetName": "Fn6 / Staff / Financial report \u2014 Sep 2026, route BKK-NRT",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5147:31291",
+      "name": "Link / Preview: not computed yet",
+      "path": "Link / Preview: not computed yet",
+      "event": "ON_HOVER",
+      "target": "4629:26629",
+      "navigation": "SWAP_STATE",
+      "connection": "INTERNAL_NODE"
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5147:31291",
+      "name": "Link / Preview: not computed yet",
+      "path": "Link / Preview: not computed yet",
+      "event": "ON_CLICK",
+      "target": "5126:32223",
+      "targetName": "Fn5 / Staff / Financial report \u2014 Sep 2026, not computed yet",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5147:31293",
+      "name": "F14 Staff sidebar",
+      "path": "F14 Staff sidebar",
+      "event": "ON_CLICK",
+      "target": "5339:33349",
+      "targetName": "State=Collapsed",
+      "navigation": "SWAP_STATE",
+      "connection": "INTERNAL_NODE"
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5147:31294",
+      "name": "Backdrop (click outside to close)",
+      "path": "Backdrop (click outside to close)",
+      "event": "ON_CLICK",
+      "target": "5126:31205",
+      "targetName": "Fn1 / Staff / Financial report \u2014 Sep 2026",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5147:31332",
+      "name": "Month / Jul 2026",
+      "path": "Month picker popover / Months / Row / Month / Jul 2026",
+      "event": "ON_CLICK",
+      "target": "5126:31713",
+      "targetName": "Fn3 / Staff / Financial report \u2014 Jul 2026",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5147:31335",
+      "name": "Month / Aug 2026",
+      "path": "Month picker popover / Months / Row / Month / Aug 2026",
+      "event": "ON_CLICK",
+      "target": "5126:31460",
+      "targetName": "Fn2 / Staff / Financial report \u2014 Aug 2026",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5147:31338",
+      "name": "Month / Sep 2026",
+      "path": "Month picker popover / Months / Row / Month / Sep 2026",
+      "event": "ON_CLICK",
+      "target": "5126:31205",
+      "targetName": "Fn1 / Staff / Financial report \u2014 Sep 2026",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5147:31342",
+      "name": "Month / Oct 2026",
+      "path": "Month picker popover / Months / Row / Month / Oct 2026",
+      "event": "ON_CLICK",
+      "target": "5126:31966",
+      "targetName": "Fn4 / Staff / Financial report \u2014 Oct 2026, partial month",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": true
+    },
+    {
+      "screen": "5147:31068",
+      "screenName": "Fn9 / Staff / Financial report \u2014 Month picker open",
+      "control": "5203:31616",
+      "name": "Button / Open monthly report",
+      "path": "Header status / Button / Open monthly report",
+      "event": "ON_CLICK",
+      "target": "2186:7323",
+      "navigation": "NAVIGATE",
+      "connection": "INTERNAL_NODE",
+      "resetScroll": false
+    }
+  ],
+  "frameCount": 97,
+  "directActionCount": 1838
+}

@@ -4,16 +4,18 @@ interface KpiCardProps {
   label: string
   value: string
   hint: string
+  comparison?: string
+  trend?: 'good' | 'bad' | 'neutral'
 }
 
-/** One headline number. The hint says what the number is made of, so it can be checked against the tables. */
-export function KpiCard({ label, value, hint }: KpiCardProps) {
+export function KpiCard({ label, value, hint, comparison, trend = 'neutral' }: KpiCardProps) {
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-1 px-5">
-        <p className="m-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className="m-0 font-heading text-2xl font-bold tabular-nums text-primary">{value}</p>
-        <p className="m-0 text-xs text-muted-foreground">{hint}</p>
+    <Card className="bi-kpi">
+      <CardContent>
+        <p className="bi-kpi-label">{label}</p>
+        <p className="bi-kpi-value">{value}</p>
+        <p className="bi-kpi-hint">{hint}</p>
+        {comparison && <p className={`bi-kpi-comparison bi-trend-${trend}`}>{comparison}</p>}
       </CardContent>
     </Card>
   )

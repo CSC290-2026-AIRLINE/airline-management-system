@@ -1,4 +1,4 @@
-import { toMonth } from './bi-finance.service'
+import { BiFinanceService, toMonth } from './bi-finance.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
@@ -35,5 +35,22 @@ describe('toMonth', () => {
 
   it('has no margin when there is no revenue', () => {
     expect(toMonth({ ...row, revenue: 0 }).margin_pct).toBeNull()
+  })
+})
+
+describe('scheduled maintenance payments', () => {
+  it('uses the simulation date and only reads live, scheduled maintenance payments in due-date order', async () => {
+    const payments = [
+      { id: 'payment-1', payee: 'HS-FYE', description: 'Engine shop visit', amount: 14800000, due_date: '2026-10-14', status: 'scheduled' },
+    ]
+    const query = jest.fn().mockResolvedValue(payments)
+    const service = new BiFinanceService({ $queryRaw: query } as never)
+    await expect(service.upcomingPayments('2026-10-05')).resolves.toEqual(payments)
+    const [strings, today] = query.mock.calls[0] as [TemplateStringsArray, string]
+    const sql = strings.join('?')
+    expect(today).toBe('2026-10-05')
+    expect(sql).toContain("category = 'maintenance' AND status = 'scheduled' AND deleted_at IS NULL")
+    expect(sql).toContain('due_date >= ?::date')
+    expect(sql).toContain('ORDER BY due_date, id')
   })
 })

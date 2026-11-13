@@ -32,6 +32,15 @@ export interface BiFinanceMonth {
   partial: boolean
 }
 
+export interface BiScheduledPayment {
+  id: string
+  payee: string
+  description: string | null
+  amount: number
+  due_date: string
+  status: 'scheduled'
+}
+
 /**
  * Monthly finance from `finance_monthly_summary`, which Feature 4 owns and fills. This service only reads it.
  * The table has no route column, so finance is for the whole airline.
@@ -58,6 +67,17 @@ export class BiFinanceService {
     const current = await this.row(chosen)
     const previous = await this.row(previousMonth(chosen))
     return { current, previous, months }
+  }
+
+  /** Read the existing Feature 4 schedule without changing its records. */
+  upcomingPayments(today: string): Promise<BiScheduledPayment[]> {
+    return this.db.$queryRaw<BiScheduledPayment[]>`
+      SELECT id::text AS id, payee, description, amount::float8 AS amount,
+        to_char(due_date, 'YYYY-MM-DD') AS due_date, status
+      FROM payment_schedule
+      WHERE category = 'maintenance' AND status = 'scheduled' AND deleted_at IS NULL
+        AND due_date >= ${today}::date
+      ORDER BY due_date, id`
   }
 
   private async row(month: string): Promise<BiFinanceMonth | null> {

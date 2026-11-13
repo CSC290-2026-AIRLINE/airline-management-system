@@ -11,6 +11,11 @@ export function useChartImage(name: BiChartName, filters: BiFilters) {
   const api = useBiApi()
   const [result, setResult] = useState<ImageResult | null>(null)
   const requestKey = `${name}?${filterQuery(filters)}`
+  const [selection, setSelection] = useState(requestKey)
+  if (selection !== requestKey) {
+    setSelection(requestKey)
+    setResult(null)
+  }
 
   useEffect(() => {
     let active = true
@@ -33,7 +38,7 @@ export function useChartImage(name: BiChartName, filters: BiFilters) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestKey])
 
-  const current = result?.requestKey === requestKey ? result : null
+  const current = selection === requestKey && result?.requestKey === requestKey ? result : null
   return {
     url: current && 'url' in current ? current.url : null,
     loading: current === null,

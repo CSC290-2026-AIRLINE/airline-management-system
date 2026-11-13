@@ -5,6 +5,7 @@ import { BiDashboardsController } from './bi-dashboards.controller'
 import { BiEtlService } from './bi-etl.service'
 import { BiQueryService } from './bi-query.service'
 import { BiFinanceService } from './bi-finance.service'
+import { BiStaffGuard } from './bi-staff.guard'
 
 /**
  * Feature 14: Business Intelligence dashboards. The backend rebuilds the `bi_*` copy (BiEtlService), reads it (BiQueryService),
@@ -13,7 +14,7 @@ import { BiFinanceService } from './bi-finance.service'
 @Module({
   imports: [AdminConsoleModule],
   controllers: [BiDashboardsController],
-  providers: [BiEtlService, BiQueryService, BiFinanceService],
+  providers: [BiEtlService, BiQueryService, BiFinanceService, BiStaffGuard],
 })
 export class BiDashboardsModule implements OnModuleInit {
   constructor(private readonly admin: AdminConsoleService) {}

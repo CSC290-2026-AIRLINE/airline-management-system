@@ -11,12 +11,13 @@ import {
   Query,
   Res,
   UsePipes,
+  UseGuards,
   ValidationPipe,
 } from '@nestjs/common'
 import type { Response } from 'express'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
-import { BiFinanceService, type BiFinanceMonth } from './bi-finance.service'
+import { BiFinanceService, type BiFinanceMonth, type BiScheduledPayment } from './bi-finance.service'
 import { computeKpis, sumMetrics } from './bi-rates'
 import { BiEtlService } from './bi-etl.service'
 import { BiQueryService } from './bi-query.service'
@@ -36,6 +37,7 @@ import type { BiChartName } from './charts/chart-builders'
 import { BiFilterDto, BiFinanceQueryDto } from './dto/bi-filter.dto'
 import type { BiDailyMetric, BiKpis, BiRouteMetric, BiRunSummary } from './dto/bi-dashboards.types'
 import { CABIN_KEYS } from './dto/bi-options'
+import { BiStaffGuard } from './bi-staff.guard'
 
 const CABIN_LABELS: Record<(typeof CABIN_KEYS)[number], string> = {
   economy: 'Economy',
@@ -44,8 +46,9 @@ const CABIN_LABELS: Record<(typeof CABIN_KEYS)[number], string> = {
   first: 'First',
 }
 
-/** `/api/bi/*`. Every route needs a signed-in user (the global JWT guard). Staff roles are not enforced yet. */
+/** `/api/bi/*`. The global JWT guard authenticates the user; the local guard requires active staff. */
 @Controller('bi')
+@UseGuards(BiStaffGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class BiDashboardsController {
   constructor(
@@ -56,8 +59,13 @@ export class BiDashboardsController {
 
   /** Latest successful run, the most recent run, and whether a refresh is in progress. */
   @Get('status')
-  status(): Promise<{ latest_success: BiRunSummary | null; last_run: BiRunSummary | null; refreshing: boolean }> {
-    return this.query.status()
+  async status(): Promise<{
+    latest_success: BiRunSummary | null
+    last_run: BiRunSummary | null
+    refreshing: boolean
+    simulation_now: string
+  }> {
+    return { ...(await this.query.status()), simulation_now: this.etl.simulationNow() }
   }
 
   /** Rebuilds the reporting copy now. Blocks until the run finishes; a second call while one runs gets 409. */
@@ -102,6 +110,18 @@ export class BiDashboardsController {
   @Get('bookings')
   bookings(@Query() filter: BiFilterDto) {
     return this.query.bookingsByRoute(filter)
+  }
+
+  /** Booking-date totals matching the bookings drill-down, including the selected route. */
+  @Get('export/bookings.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async exportBookings(@Query() filter: BiFilterDto, @Res({ passthrough: true }) res: Response): Promise<string> {
+    res.setHeader('Content-Disposition', 'attachment; filename="bookings.csv"')
+    const rows = await this.query.bookingsByRoute(filter)
+    return toCsv(
+      ['booking_date', 'origin', 'destination', 'bookings', 'cancellations'],
+      rows.map((row) => [row.booking_date, row.origin, row.destination, row.booking_count, row.cancellation_count]),
+    )
   }
 
   /** One row per route with its rates, for the route table. */
@@ -152,6 +172,12 @@ export class BiDashboardsController {
     @Query() query: BiFinanceQueryDto,
   ): Promise<{ current: BiFinanceMonth | null; previous: BiFinanceMonth | null; months: string[] }> {
     return this.financeService.forMonth(query.month)
+  }
+
+  /** Fleet-wide scheduled maintenance payments, due from the simulation's current date. */
+  @Get('finance/payments')
+  upcomingPayments(): Promise<BiScheduledPayment[]> {
+    return this.financeService.upcomingPayments(this.etl.simulationNow().slice(0, 10))
   }
 
   /** The finance lines as CSV, with the change against the previous month. */

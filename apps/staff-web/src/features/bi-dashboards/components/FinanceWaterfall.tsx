@@ -1,40 +1,99 @@
+import { useId } from 'react'
 import { formatMoney } from '../lib-format'
+import { ChartHit } from './InteractiveCharts'
+import { BI_COLORS } from '../chart-colors'
+import { TooltipProvider } from '@staff-web/components/ui/tooltip'
 
 export interface WaterfallStep {
   label: string
-  /** The amount for this step. Totals (revenue, profit) are shown from zero; costs step down from the running total. */
   value: number
   total?: boolean
 }
 
-/** Revenue, then each deduction, then profit. Drawn as HTML bars so it prints and needs no chart library. */
+/** Vertical waterfall with independent signed ranges, including a loss below the zero line. */
 export function FinanceWaterfall({ steps }: { steps: WaterfallStep[] }) {
-  const top = Math.max(...steps.map((s) => (s.total ? Math.abs(s.value) : 0)), 1)
-  // Each step's bar runs from where the previous step left the running total, so the positions are computed up front.
-  const bars = steps.reduce<{ step: WaterfallStep; start: number; end: number }[]>((acc, step) => {
-    const before = acc.length ? acc[acc.length - 1].end : 0
-    const from = step.total ? 0 : before
-    const to = step.total ? step.value : before + step.value
-    return [...acc, { step, start: Math.min(from, to), end: to }]
+  const titleId = useId()
+  const bars = steps.reduce<(WaterfallStep & { from: number; to: number })[]>((result, step) => {
+    const from = step.total ? 0 : (result.at(-1)?.to ?? 0)
+    const to = step.total ? step.value : from + step.value
+    return [...result, { ...step, from, to }]
   }, [])
+  const low = Math.min(0, ...bars.flatMap((bar) => [bar.from, bar.to]))
+  const high = Math.max(1, ...bars.flatMap((bar) => [bar.from, bar.to]))
+  const rough = (high - low) / 4
+  const magnitude = 10 ** Math.floor(Math.log10(rough))
+  const step = Math.ceil(rough / magnitude) * magnitude
+  const min = Math.floor(low / step) * step
+  const max = Math.ceil(high / step) * step
+  const left = 52,
+    right = 1006,
+    top = 22,
+    bottom = 252
+  const y = (value: number) => bottom - ((value - min) / (max - min)) * (bottom - top)
+  const groupWidth = (right - left) / Math.max(steps.length, 1)
+  const width = Math.min(72, groupWidth * 0.65)
+  const short = (v: number) => `${v < 0 ? '−' : ''}${Math.abs(v / 1_000_000).toFixed(1)}M`
+  const ticks = Array.from({ length: Math.round((max - min) / step) + 1 }, (_, index) => min + index * step)
+  if (!steps.length) return <div className="bi-chart-empty">No report data for this month.</div>
   return (
-    <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Revenue to profit">
-      {bars.map(({ step, start, end }) => {
-        const width = (Math.abs(end - start) / top) * 100
-        const left = (start / top) * 100
-        return (
-          <li key={step.label} className="grid grid-cols-[10rem_1fr_7rem] items-center gap-3 text-sm">
-            <span className="text-foreground">{step.label}</span>
-            <span className="relative h-5 rounded bg-muted">
-              <span
-                className={`absolute top-0 h-5 rounded ${step.total ? 'bg-primary' : step.value < 0 ? 'bg-destructive/70' : 'bg-success'}`}
-                style={{ left: `${Math.max(0, left)}%`, width: `${Math.max(0.5, width)}%` }}
-              />
-            </span>
-            <span className="text-right font-medium">{formatMoney(step.value)}</span>
-          </li>
-        )
-      })}
-    </ol>
+    <TooltipProvider delayDuration={80}>
+      <div className="bi-plot-scroll">
+        <svg className="bi-waterfall-plot" viewBox="0 0 1017 286" role="group" aria-labelledby={titleId}>
+          <title id={titleId}>From revenue to profit, THB</title>
+          <g className="bi-chart-axis">
+            <text x={0} y={10} className="bi-axis-title">
+              THB
+            </text>
+            {ticks.map((tick) => (
+              <g key={tick}>
+                <line x1={left} x2={right} y1={y(tick)} y2={y(tick)} stroke="#e6e9ef" />
+                <text x={left - 10} y={y(tick) + 4} textAnchor="end">
+                  {tick === 0 ? '0' : `${Math.round(tick / 1_000_000)}M`}
+                </text>
+              </g>
+            ))}
+          </g>
+          {bars.map((bar, index) => {
+            const x = left + (index + 0.5) * groupWidth - width / 2
+            const barTop = y(Math.max(bar.from, bar.to))
+            const height = Math.abs(y(bar.to) - y(bar.from))
+            const color =
+              index === 0
+                ? BI_COLORS.navy
+                : bar.total
+                  ? bar.value < 0
+                    ? BI_COLORS.red
+                    : BI_COLORS.green
+                  : index < 3
+                    ? '#8fa4ca'
+                    : BI_COLORS.blue
+            return (
+              <g key={bar.label}>
+                <rect x={x} y={barTop} width={width} height={Math.max(height, 1)} fill={color} />
+                <text x={x + width / 2} y={barTop - 6} textAnchor="middle" className="bi-data-label">
+                  {short(bar.value)}
+                </text>
+                {index < bars.length - 1 && (
+                  <line x1={x + width} x2={x + groupWidth} y1={y(bar.to)} y2={y(bar.to)} stroke="#8fa4ca" strokeDasharray="3 2" />
+                )}
+                <text x={x + width / 2} y={270} textAnchor="middle" className="bi-chart-axis">
+                  {bar.label}
+                </text>
+                <ChartHit
+                  x={left + index * groupWidth}
+                  y={top}
+                  width={groupWidth}
+                  height={bottom - top}
+                  detail={`${bar.label}: ฿${formatMoney(bar.value)}`}
+                  description={
+                    bar.total ? 'Total for the selected report month.' : `Remaining after this deduction: ฿${formatMoney(bar.to)}.`
+                  }
+                />
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+    </TooltipProvider>
   )
 }

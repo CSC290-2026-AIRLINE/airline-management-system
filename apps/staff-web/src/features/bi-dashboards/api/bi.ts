@@ -14,6 +14,7 @@ export interface BiRun {
 }
 
 export interface BiStatus {
+  simulation_now?: string
   latest_success: BiRun | null
   last_run: BiRun | null
   refreshing: boolean
@@ -110,6 +111,15 @@ export interface BiFinanceMonth {
   partial: boolean
 }
 
+export interface BiScheduledPayment {
+  id: string
+  payee: string
+  description: string | null
+  amount: number
+  due_date: string
+  status: 'scheduled'
+}
+
 export interface BiFinanceResponse {
   current: BiFinanceMonth | null
   previous: BiFinanceMonth | null
@@ -181,10 +191,11 @@ export function useBiApi() {
     getCabins: (filters: BiFilters) => getJson<BiCabinRow[]>(`/api/bi/cabins?${filterQuery(filters)}`),
     getBookingsSeries: (filters: BiFilters) => getJson<BiPeriodBookings[]>(`/api/bi/bookings-series?${filterQuery(filters)}`),
     getBookingsByRoute: (filters: BiFilters) =>
-      getJson<BiBookingRouteRow[]>(`/api/bi/bookings?${filterQuery(filters, { withRoute: false })}`),
+      getJson<BiBookingRouteRow[]>(`/api/bi/bookings?${filterQuery(filters)}`),
     getDelayCauses: (filters: BiFilters) => getJson<BiDelayCause[]>(`/api/bi/delay-causes?${filterQuery(filters)}`),
     getFlights: (filters: BiFilters) => getJson<BiFlight[]>(`/api/bi/flights?${filterQuery(filters)}`),
     getFinance: (month: string | null) => getJson<BiFinanceResponse>(`/api/bi/finance${month ? `?month=${month}` : ''}`),
+    getFinancePayments: () => getJson<BiScheduledPayment[]>('/api/bi/finance/payments'),
     refresh: () => getJson<BiRun>('/api/bi/refresh', { method: 'POST' }),
     getChartBlob: async (name: BiChartName, filters: BiFilters): Promise<Blob> => {
       const res = await getResponse(`/api/bi/charts/${name}?${filterQuery(filters)}`)

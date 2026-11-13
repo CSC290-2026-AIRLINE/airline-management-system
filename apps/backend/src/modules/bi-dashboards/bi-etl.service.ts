@@ -27,6 +27,11 @@ export class BiEtlService implements OnModuleInit {
     private readonly clock: SimulationClock,
   ) {}
 
+  /** The shared business clock, exposed for the read-only dashboard status. */
+  simulationNow(): string {
+    return this.clock.now().toISOString()
+  }
+
   /** A run still `running` at startup died with the previous process, so it is marked failed. */
   async onModuleInit(): Promise<void> {
     await this.db.$executeRaw`
