@@ -11,12 +11,18 @@ const NOW = new Date('2026-11-13T00:00:00.000Z')
 
 describe('PricingAdapter', () => {
   const create = jest.fn()
+  const fee = jest.fn()
   const lookup = jest.fn()
   const checkPromo = jest.fn()
   const redeem = jest.fn()
-  const db = {} as DbService
+  const findCoupons = jest.fn()
+  const findBooking = jest.fn()
+  const db = {
+    booking_coupon: { findMany: findCoupons },
+    booking: { findUnique: findBooking },
+  } as unknown as DbService
   const clock = { now: () => NOW }
-  const adapter = new PricingAdapter({ create } as never, { lookup } as never, { checkPromo, redeem } as never, db, clock)
+  const adapter = new PricingAdapter({ create, fee } as never, { lookup } as never, { checkPromo, redeem } as never, db, clock)
 
   beforeEach(() => {
     jest.resetAllMocks()
@@ -198,7 +204,117 @@ describe('PricingAdapter', () => {
     })
   })
 
-  it('does not cancel a quote yet', async () => {
-    await expect(adapter.cancelQuote({ bookingId: 'booking-1' })).rejects.toThrow('cancelQuote not implemented yet')
+  describe('cancelQuote', () => {
+    beforeEach(() => {
+      findCoupons.mockResolvedValue([])
+      findBooking.mockResolvedValue({ currency: 'USD' })
+    })
+
+    it('prices a refundable coupon from its quote and refunds the rest', async () => {
+      findCoupons.mockResolvedValue([{ price_total: '120.00', fare_quote_id: 'quote-1' }])
+      fee.mockResolvedValue({ fare_quote_id: 'quote-1', type: 'cancel', allowed: true, flat: 20, pct: 0, fee: 20, currency: 'USD' })
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(findCoupons).toHaveBeenCalledWith({
+        where: { booking_id: 'booking-1', status: 'confirmed' },
+        select: { price_total: true, fare_quote_id: true },
+      })
+      expect(fee).toHaveBeenCalledWith('quote-1', 'cancel')
+      expect(quote).toEqual({ currency: 'USD', fee: 20, refund: 100 })
+    })
+
+    it('never takes a fee larger than what the coupon was paid for', async () => {
+      findCoupons.mockResolvedValue([{ price_total: '80.00', fare_quote_id: 'quote-1' }])
+      fee.mockResolvedValue({ fare_quote_id: 'quote-1', type: 'cancel', allowed: true, flat: 0, pct: 0, fee: 500, currency: 'USD' })
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(quote).toEqual({ currency: 'USD', fee: 80, refund: 0 })
+    })
+
+    it('keeps the whole price of a coupon that is not refundable', async () => {
+      findCoupons.mockResolvedValue([{ price_total: '150.50', fare_quote_id: 'quote-1' }])
+      fee.mockResolvedValue({ fare_quote_id: 'quote-1', type: 'cancel', allowed: false, flat: 0, pct: 0, fee: null, currency: 'EUR' })
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(quote).toEqual({ currency: 'EUR', fee: 150.5, refund: 0 })
+    })
+
+    it('adds up the coupons of a booking', async () => {
+      findCoupons.mockResolvedValue([
+        { price_total: '120.00', fare_quote_id: 'quote-1' },
+        { price_total: '100.00', fare_quote_id: 'quote-2' },
+      ])
+      fee.mockResolvedValueOnce({ fare_quote_id: 'quote-1', type: 'cancel', allowed: true, flat: 20, pct: 0, fee: 20, currency: 'USD' })
+      fee.mockResolvedValueOnce({ fare_quote_id: 'quote-2', type: 'cancel', allowed: true, flat: 30, pct: 0, fee: 30, currency: 'USD' })
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(quote).toEqual({ currency: 'USD', fee: 50, refund: 170 })
+      expect(fee).toHaveBeenCalledTimes(2)
+    })
+
+    it('asks Feature 4 once for two coupons sold under the same quote', async () => {
+      findCoupons.mockResolvedValue([
+        { price_total: '120.00', fare_quote_id: 'quote-1' },
+        { price_total: '100.00', fare_quote_id: 'quote-1' },
+      ])
+      fee.mockResolvedValue({ fare_quote_id: 'quote-1', type: 'cancel', allowed: true, flat: 20, pct: 0, fee: 20, currency: 'USD' })
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(fee).toHaveBeenCalledTimes(1)
+      expect(fee).toHaveBeenCalledWith('quote-1', 'cancel')
+      expect(quote).toEqual({ currency: 'USD', fee: 40, refund: 180 })
+    })
+
+    it('prices nothing for a booking without coupons', async () => {
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(fee).not.toHaveBeenCalled()
+      expect(quote).toEqual({ currency: 'USD', fee: 0, refund: 0 })
+    })
+
+    it('keeps the whole price of a coupon without a quote', async () => {
+      findCoupons.mockResolvedValue([{ price_total: '120.00', fare_quote_id: null }])
+      findBooking.mockResolvedValue({ currency: 'THB' })
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(fee).not.toHaveBeenCalled()
+      expect(quote).toEqual({ currency: 'THB', fee: 120, refund: 0 })
+    })
+
+    it('keeps the whole price of a coupon whose quote is gone', async () => {
+      findCoupons.mockResolvedValue([{ price_total: '120.00', fare_quote_id: 'quote-1' }])
+      fee.mockRejectedValue(new NotFoundException(pricingError(PricingErrorCode.QUOTE_NOT_FOUND, 'Fare quote quote-1 not found')))
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(quote).toEqual({ currency: 'USD', fee: 120, refund: 0 })
+    })
+
+    it('prices only the coupons the caller asked for', async () => {
+      findCoupons.mockResolvedValue([{ price_total: '100.00', fare_quote_id: 'quote-2' }])
+      fee.mockResolvedValue({ fare_quote_id: 'quote-2', type: 'cancel', allowed: true, flat: 10, pct: 0, fee: 10, currency: 'USD' })
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1', couponIds: ['coupon-2'] })
+
+      expect(findCoupons).toHaveBeenCalledWith({
+        where: { booking_id: 'booking-1', status: 'confirmed', id: { in: ['coupon-2'] } },
+        select: { price_total: true, fare_quote_id: true },
+      })
+      expect(quote).toEqual({ currency: 'USD', fee: 10, refund: 90 })
+    })
+
+    it('falls back to USD when the booking has no currency', async () => {
+      findBooking.mockResolvedValue(null)
+
+      const quote = await adapter.cancelQuote({ bookingId: 'booking-1' })
+
+      expect(quote).toEqual({ currency: 'USD', fee: 0, refund: 0 })
+    })
   })
 })

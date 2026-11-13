@@ -1,4 +1,4 @@
-import { HttpException, Inject, Injectable } from '@nestjs/common'
+import { HttpException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { FareQuoteService } from '@backend/modules/pricing/fare-quote/fare-quote.service'
 import { PromoCodeService } from '@backend/modules/pricing/promo-code/promo-code.service'
@@ -8,6 +8,7 @@ import {
   BOOKING_CLOCK,
   type BookingClock,
   type CancelQuote,
+  type CancelQuoteRequest,
   type FareQuote,
   type FareQuoteRequest,
   type PricingPort,
@@ -31,6 +32,9 @@ interface QuoteRow {
   lines?: QuoteLineRow[]
   fare_quote_line?: QuoteLineRow[]
 }
+
+// Feature 4's cancellation fee for one quote: allowed says the fare is refundable, fee is null when it is not.
+type QuoteFee = Awaited<ReturnType<FareQuoteService['fee']>>
 
 // Feature 4's error codes that mean something specific to a booking.
 const PRICING_ERROR_MAP: Record<string, { code: BookingErrorCode; status: number }> = {
@@ -97,9 +101,68 @@ export class PricingAdapter implements PricingPort {
     }
   }
 
-  // Not written yet: Feature 4's cancellation fee lives on the quote's snapshot and needs the booking's coupons.
-  cancelQuote(): Promise<CancelQuote> {
-    return Promise.reject(new Error('cancelQuote not implemented yet'))
+  // The cancellation fee and the refund of a booking, priced from Feature 4's quote snapshots (B6). Every coupon of
+  // the booking carries its own price and the quote it was sold under; a coupon without a quote (the stub prices
+  // nothing) cannot be refunded, so its whole price becomes the fee.
+  async cancelQuote(request: CancelQuoteRequest): Promise<CancelQuote> {
+    try {
+      const where = {
+        booking_id: request.bookingId,
+        status: 'confirmed',
+        ...(request.couponIds ? { id: { in: request.couponIds } } : {}),
+      }
+      const [coupons, booking] = await Promise.all([
+        this.db.booking_coupon.findMany({ where, select: { price_total: true, fare_quote_id: true } }),
+        this.db.booking.findUnique({ where: { id: request.bookingId }, select: { currency: true } }),
+      ])
+
+      // One fee per quote: two coupons sold under the same quote ask Feature 4 once. A quote that is gone cannot be
+      // refunded, so it is read as no fee at all and the coupon's whole price becomes the fee.
+      const fees = new Map<string, Promise<QuoteFee | null>>()
+      const quoteFee = (fareQuoteId: string): Promise<QuoteFee | null> => {
+        const cached = fees.get(fareQuoteId)
+        if (cached) return cached
+        const pending = this.fareQuotes.fee(fareQuoteId, 'cancel').catch((error: unknown) => {
+          if (error instanceof NotFoundException) return null
+          throw error
+        })
+        fees.set(fareQuoteId, pending)
+        return pending
+      }
+
+      let fee = 0
+      let refund = 0
+      let currency: string | null = null
+
+      for (const coupon of coupons) {
+        const priceTotal = Number(coupon.price_total)
+        if (!coupon.fare_quote_id) {
+          fee += priceTotal
+          continue
+        }
+
+        const quote = await quoteFee(coupon.fare_quote_id)
+        if (!quote) {
+          fee += priceTotal
+          continue
+        }
+
+        currency ??= quote.currency
+        if (!quote.allowed) {
+          fee += priceTotal
+          continue
+        }
+
+        // The fee never exceeds what the coupon was paid for.
+        const couponFee = Math.min(quote.fee ?? 0, priceTotal)
+        fee += couponFee
+        refund += priceTotal - couponFee
+      }
+
+      return { currency: currency ?? booking?.currency ?? 'USD', fee, refund }
+    } catch (error) {
+      throw this.translate(error)
+    }
   }
 
   // A Feature 4 error becomes a Feature 3 error. The pricing code and its details travel in the booking error, so
