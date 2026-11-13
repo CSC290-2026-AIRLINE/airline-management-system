@@ -6,10 +6,26 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { validateEnv } from './config/env.validation'
+import { AssignCrewModule } from './modules/crew-rostering/assign-crew/assign-crew.module'
+import { BuildPairingModule } from './modules/crew-rostering/build-pairing/build-pairing.module'
+import { FixPublishModule } from './modules/crew-rostering/fix-publish/fix-publish.module'
+import { SetupCrewModule } from './modules/crew-rostering/setup-crew/setup-crew.module'
+import { SetupRuleModule } from './modules/crew-rostering/setup-rule/setup-rule.module'
 import { PricingModule } from './modules/pricing/pricing.module'
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), DbModule, AuthModule, AdminConsoleModule, PricingModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    DbModule,
+    AuthModule,
+    AdminConsoleModule,
+    BuildPairingModule,
+    AssignCrewModule,
+    FixPublishModule,
+    SetupCrewModule,
+    SetupRuleModule,
+    PricingModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
