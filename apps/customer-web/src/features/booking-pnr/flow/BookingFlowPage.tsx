@@ -174,6 +174,9 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
       } else if (cause instanceof ApiError && cause.code === 'SEAT_UNAVAILABLE') {
         setSeatConflict(true)
         setError('Those seats are no longer available. Return to flights and choose another option.')
+      } else if (cause instanceof ApiError && cause.code === 'FARE_UNAVAILABLE') {
+        // A sold-out fare class is not a seat conflict, so the seat dialog stays closed.
+        setError('This fare is no longer available. Return to flights and choose another option.')
       } else setError(cause instanceof Error ? cause.message : 'We could not create your booking. Please try again.')
     } finally {
       inFlight.current = false

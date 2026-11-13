@@ -165,9 +165,11 @@ function StaffBookingContent() {
       setError(
         cause instanceof ApiError && cause.code === 'PRICE_CHANGED'
           ? 'The fare has changed. Return to flights and check the new price. No booking was held.'
-          : cause instanceof Error
-            ? cause.message
-            : 'We could not create the booking. Please try again.',
+          : cause instanceof ApiError && cause.code === 'FARE_UNAVAILABLE'
+            ? 'This fare is no longer available. Return to flights and choose another option. No booking was held.'
+            : cause instanceof Error
+              ? cause.message
+              : 'We could not create the booking. Please try again.',
       )
     } finally {
       inFlight.current = false

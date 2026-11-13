@@ -188,13 +188,13 @@ describe('PricingAdapter', () => {
       await expect(adapter.quote({ flightId: 'flight-1', cabin: 'economy', fareClassId: 'class-1' })).rejects.toBe(original)
     })
 
-    it('turns a sold-out fare class into SEAT_UNAVAILABLE', async () => {
+    it('turns a sold-out fare class into FARE_UNAVAILABLE', async () => {
       create.mockRejectedValue(
         new ConflictException(pricingError(PricingErrorCode.FARE_CLASS_UNAVAILABLE, 'No seats are left in this fare class')),
       )
 
       await expect(adapter.quote({ flightId: 'flight-1', cabin: 'economy', fareClassId: 'class-1' })).rejects.toMatchObject({
-        code: 'SEAT_UNAVAILABLE',
+        code: 'FARE_UNAVAILABLE',
         status: 409,
         message: 'No seats are left in this fare class',
         details: { pricingCode: 'FARE_CLASS_UNAVAILABLE' },

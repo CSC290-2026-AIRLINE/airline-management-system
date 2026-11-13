@@ -39,7 +39,7 @@ type QuoteFee = Awaited<ReturnType<FareQuoteService['fee']>>
 
 // Feature 4's error codes that mean something specific to a booking.
 const PRICING_ERROR_MAP: Record<string, { code: BookingErrorCode; status: number }> = {
-  FARE_CLASS_UNAVAILABLE: { code: 'SEAT_UNAVAILABLE', status: 409 },
+  FARE_CLASS_UNAVAILABLE: { code: 'FARE_UNAVAILABLE', status: 409 },
   FLIGHT_CANCELLED: { code: 'FLIGHT_NOT_FOR_SALE', status: 409 },
   FLIGHT_DEPARTED: { code: 'FLIGHT_NOT_FOR_SALE', status: 409 },
   QUOTE_EXPIRED: { code: 'BOOKING_CLOSED', status: 409 },
