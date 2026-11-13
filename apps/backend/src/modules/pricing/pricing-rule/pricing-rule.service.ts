@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { RULE_GROUPS, RULE_GROUP_FIELDS, type RuleConditionField, type RuleGroup } from '../pricing.constants'
+import { PricingAudit } from '../pricing.audit'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
 import { CreatePricingRuleDto } from './dto/create-pricing-rule.dto'
 import { ListPricingRulesDto } from './dto/list-pricing-rules.dto'
@@ -42,7 +43,10 @@ function toDbDate(value: string | null | undefined): Date | null | undefined {
 
 @Injectable()
 export class PricingRuleService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
 
   // Sorted the way the engine applies them: urgency → load → month → period, then by priority.
   async findAll(filter: ListPricingRulesDto = {}) {
@@ -66,7 +70,7 @@ export class PricingRuleService {
     return rule
   }
 
-  async create(dto: CreatePricingRuleDto) {
+  async create(dto: CreatePricingRuleDto, userId: string) {
     this.assertConditions(dto.rule_group, conditionsOf(dto))
     if (dto.fare_class_id) {
       await this.assertFareClassLive(dto.fare_class_id)
@@ -74,16 +78,24 @@ export class PricingRuleService {
     const priority = dto.priority ?? (await this.nextPriority(dto.rule_group))
     await this.assertPriorityFree(dto.rule_group, priority)
     try {
-      return await this.db.pricing_rule.create({
-        data: { ...dto, priority, start_date: toDbDate(dto.start_date), end_date: toDbDate(dto.end_date) },
-        include: INCLUDE_LABELS,
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.pricing_rule.create({
+          data: { ...dto, priority, start_date: toDbDate(dto.start_date), end_date: toDbDate(dto.end_date) },
+          include: INCLUDE_LABELS,
+        })
+        await this.audit.write(
+          userId,
+          { action: 'create', entityType: 'pricing_rule', entityId: row.id, summary: `Created pricing rule ${row.name}`, after: row },
+          tx,
+        )
+        return row
       })
     } catch (error) {
       throw this.mapUniqueViolation(error, dto.rule_group, priority)
     }
   }
 
-  async update(id: string, dto: UpdatePricingRuleDto) {
+  async update(id: string, dto: UpdatePricingRuleDto, userId: string) {
     const current = await this.findOne(id)
     const group = current.rule_group as RuleGroup
     // Checked on the row as it will be after the change, so a PATCH cannot leave it half-valid.
@@ -95,10 +107,25 @@ export class PricingRuleService {
       await this.assertPriorityFree(group, dto.priority, id)
     }
     try {
-      return await this.db.pricing_rule.update({
-        where: { id },
-        data: { ...dto, start_date: toDbDate(dto.start_date), end_date: toDbDate(dto.end_date), updated_at: new Date() },
-        include: INCLUDE_LABELS,
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.pricing_rule.update({
+          where: { id },
+          data: { ...dto, start_date: toDbDate(dto.start_date), end_date: toDbDate(dto.end_date), updated_at: new Date() },
+          include: INCLUDE_LABELS,
+        })
+        await this.audit.write(
+          userId,
+          {
+            action: 'update',
+            entityType: 'pricing_rule',
+            entityId: id,
+            summary: `Updated pricing rule ${row.name}`,
+            before: current,
+            after: row,
+          },
+          tx,
+        )
+        return row
       })
     } catch (error) {
       throw this.mapUniqueViolation(error, group, dto.priority)
@@ -106,15 +133,22 @@ export class PricingRuleService {
   }
 
   // Soft delete. The gap left in the priorities is harmless; quotes already made keep their own rule lines.
-  async remove(id: string) {
-    await this.findOne(id)
+  async remove(id: string, userId: string) {
+    const existing = await this.findOne(id)
     const now = new Date()
-    await this.db.pricing_rule.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+    await this.db.$transaction(async (tx) => {
+      await tx.pricing_rule.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+      await this.audit.write(
+        userId,
+        { action: 'delete', entityType: 'pricing_rule', entityId: id, summary: `Deleted pricing rule ${existing.name}`, before: existing },
+        tx,
+      )
+    })
   }
 
   // Writes priorities 1, 2, 3… in the order of `ids`. A direct swap would collide on the (rule_group, priority) unique
   // index, so in one transaction every live rule of the group is first moved up by REORDER_OFFSET, then given its slot.
-  async reorder({ rule_group, ids }: ReorderPricingRulesDto) {
+  async reorder({ rule_group, ids }: ReorderPricingRulesDto, userId: string) {
     const live = await this.db.pricing_rule.findMany({ where: { rule_group, deleted_at: null }, select: { id: true } })
     const liveIds = new Set(live.map((rule) => rule.id))
     const missing = [...liveIds].filter((id) => !ids.includes(id))
@@ -129,10 +163,29 @@ export class PricingRuleService {
     }
 
     const now = new Date()
-    await this.db.$transaction([
-      this.db.pricing_rule.updateMany({ where: { rule_group, deleted_at: null }, data: { priority: { increment: REORDER_OFFSET } } }),
-      ...ids.map((id, index) => this.db.pricing_rule.update({ where: { id }, data: { priority: index + 1, updated_at: now } })),
-    ])
+    const before = await this.db.pricing_rule.findMany({
+      where: { rule_group, deleted_at: null },
+      select: { id: true, priority: true },
+      orderBy: { priority: 'asc' },
+    })
+    await this.db.$transaction(async (tx) => {
+      await tx.pricing_rule.updateMany({ where: { rule_group, deleted_at: null }, data: { priority: { increment: REORDER_OFFSET } } })
+      for (const [index, id] of ids.entries()) {
+        await tx.pricing_rule.update({ where: { id }, data: { priority: index + 1, updated_at: now } })
+      }
+      await this.audit.write(
+        userId,
+        {
+          action: 'update',
+          entityType: 'pricing_rule',
+          entityId: rule_group,
+          summary: `Reordered ${rule_group} pricing rules`,
+          before: before.map((rule) => rule.id),
+          after: ids,
+        },
+        tx,
+      )
+    })
     return this.findAll({ rule_group })
   }
 

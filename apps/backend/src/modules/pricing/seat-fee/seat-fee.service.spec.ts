@@ -1,5 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit, runTransactionsOn } from '../pricing.testing'
 import type { SettingService } from '../setting/setting.service'
 import type { TaxFeeService } from '../tax-fee/tax-fee.service'
 import { SeatFeeService } from './seat-fee.service'
@@ -15,17 +17,27 @@ const AIRPORT_FEE = { code: 'APT', name: 'Airport fee', kind: 'fee', calc_type: 
 const taxFees = { findAll: jest.fn() }
 const settings = { getBaseCurrency: jest.fn() }
 
+const AUDIT_USER = 'user-1'
+
 describe('SeatFeeService', () => {
   let service: SeatFeeService
+  const audit = mockAudit()
   const db = {
     seat_fee: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
   }
 
   beforeEach(() => {
     jest.resetAllMocks()
+    audit.write.mockResolvedValue(undefined)
+    runTransactionsOn(db)
     taxFees.findAll.mockResolvedValue([VAT, AIRPORT_FEE])
     settings.getBaseCurrency.mockResolvedValue('USD')
-    service = new SeatFeeService(db as unknown as DbService, taxFees as unknown as TaxFeeService, settings as unknown as SettingService)
+    service = new SeatFeeService(
+      db as unknown as DbService,
+      audit as unknown as PricingAudit,
+      taxFees as unknown as TaxFeeService,
+      settings as unknown as SettingService,
+    )
   })
 
   it('lists only live seat fees', async () => {
@@ -48,7 +60,7 @@ describe('SeatFeeService', () => {
   it('refuses a cabin + seat type that already has a live fee', async () => {
     db.seat_fee.findFirst.mockResolvedValue(seatFee)
 
-    const error = await service.create({ cabin: 'economy', seat_type: 'exit_row', amount: 400 }).catch((e: unknown) => e)
+    const error = await service.create({ cabin: 'economy', seat_type: 'exit_row', amount: 400 }, AUDIT_USER).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
     expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'SEAT_FEE_EXISTS' } })
@@ -59,14 +71,16 @@ describe('SeatFeeService', () => {
     db.seat_fee.findFirst.mockResolvedValue(null)
     db.seat_fee.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
 
-    await expect(service.create({ cabin: 'economy', seat_type: 'exit_row', amount: 300 })).rejects.toBeInstanceOf(ConflictException)
+    await expect(service.create({ cabin: 'economy', seat_type: 'exit_row', amount: 300 }, AUDIT_USER)).rejects.toBeInstanceOf(
+      ConflictException,
+    )
   })
 
   it('allows re-adding a pair after it was soft deleted', async () => {
     db.seat_fee.findFirst.mockResolvedValue(null)
     db.seat_fee.create.mockResolvedValue(seatFee)
 
-    await service.create({ cabin: 'economy', seat_type: 'exit_row', amount: 300 })
+    await service.create({ cabin: 'economy', seat_type: 'exit_row', amount: 300 }, AUDIT_USER)
 
     expect(db.seat_fee.findFirst).toHaveBeenCalledWith({ where: expect.objectContaining({ deleted_at: null }) })
     expect(db.seat_fee.create).toHaveBeenCalled()
@@ -75,7 +89,7 @@ describe('SeatFeeService', () => {
   it('checks the final pair when only seat_type changes on update', async () => {
     db.seat_fee.findFirst.mockResolvedValueOnce(seatFee).mockResolvedValueOnce({ ...seatFee, id: 'other', seat_type: 'normal' })
 
-    await expect(service.update(ID, { seat_type: 'normal' })).rejects.toBeInstanceOf(ConflictException)
+    await expect(service.update(ID, { seat_type: 'normal' }, AUDIT_USER)).rejects.toBeInstanceOf(ConflictException)
     expect(db.seat_fee.findFirst).toHaveBeenLastCalledWith({
       where: { cabin: 'economy', seat_type: 'normal', deleted_at: null, id: { not: ID } },
     })
@@ -83,20 +97,27 @@ describe('SeatFeeService', () => {
   })
 
   it('sets updated_at on update', async () => {
+    const updated = { ...seatFee, amount: 350 }
     db.seat_fee.findFirst.mockResolvedValueOnce(seatFee)
+    db.seat_fee.update.mockResolvedValue(updated)
 
-    await service.update(ID, { amount: 350 })
+    await service.update(ID, { amount: 350 }, AUDIT_USER)
 
     expect(db.seat_fee.update).toHaveBeenCalledWith({
       where: { id: ID },
       data: expect.objectContaining({ amount: 350, updated_at: expect.any(Date) }),
     })
+    expect(audit.write).toHaveBeenCalledWith(
+      AUDIT_USER,
+      expect.objectContaining({ action: 'update', entityType: 'seat_fee', entityId: ID, before: seatFee, after: updated }),
+      db,
+    )
   })
 
   it('soft deletes and never hard deletes', async () => {
     db.seat_fee.findFirst.mockResolvedValue(seatFee)
 
-    await service.remove(ID)
+    await service.remove(ID, AUDIT_USER)
 
     expect(db.seat_fee.update).toHaveBeenCalledWith({
       where: { id: ID },

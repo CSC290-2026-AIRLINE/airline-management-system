@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit } from '../pricing.testing'
 import type { CreatePricingRuleDto } from './dto/create-pricing-rule.dto'
 import { PricingRuleService } from './pricing-rule.service'
 
@@ -38,8 +40,11 @@ async function errorOf(promise: Promise<unknown>): Promise<BadRequestException> 
   throw new Error('Expected the call to be rejected')
 }
 
+const AUDIT_USER = 'user-1'
+
 describe('PricingRuleService', () => {
   let service: PricingRuleService
+  const audit = mockAudit()
   const db = {
     pricing_rule: {
       findMany: jest.fn(),
@@ -55,17 +60,35 @@ describe('PricingRuleService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
-    service = new PricingRuleService(db as unknown as DbService)
+    audit.write.mockResolvedValue(undefined)
+    // The audit entry reads the written row back, so a write must return one.
+    db.pricing_rule.create.mockResolvedValue({ id: 'rule-new', name: 'H-7' })
+    db.pricing_rule.update.mockResolvedValue({ id: 'rule-new', name: 'H-7' })
+    db.$transaction.mockImplementation((work: (client: typeof db) => Promise<unknown>) => work(db))
+    service = new PricingRuleService(db as unknown as DbService, audit as unknown as PricingAudit)
   })
 
   describe('create', () => {
     const urgency: CreatePricingRuleDto = { rule_group: 'urgency', name: 'H-7', max_days_out: 7, adjustment_pct: 10 }
 
+    it('writes a create audit entry in the same transaction', async () => {
+      db.pricing_rule.aggregate.mockResolvedValue({ _max: { priority: 0 } })
+      db.pricing_rule.findFirst.mockResolvedValue(null)
+
+      await service.create(urgency, AUDIT_USER)
+
+      expect(audit.write).toHaveBeenCalledWith(
+        AUDIT_USER,
+        expect.objectContaining({ action: 'create', entityType: 'pricing_rule', entityId: 'rule-new' }),
+        db,
+      )
+    })
+
     it('adds the rule at the end of its group when no priority is given', async () => {
       db.pricing_rule.aggregate.mockResolvedValue({ _max: { priority: 3 } })
       db.pricing_rule.findFirst.mockResolvedValue(null)
 
-      await service.create(urgency)
+      await service.create(urgency, AUDIT_USER)
 
       expect(db.pricing_rule.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ priority: 4 }) }))
     })
@@ -74,7 +97,10 @@ describe('PricingRuleService', () => {
       db.pricing_rule.aggregate.mockResolvedValue({ _max: { priority: null } })
       db.pricing_rule.findFirst.mockResolvedValue(null)
 
-      await service.create({ rule_group: 'period', name: 'Songkran', start_date: '2026-04-10', end_date: '2026-04-16', adjustment_pct: 25 })
+      await service.create(
+        { rule_group: 'period', name: 'Songkran', start_date: '2026-04-10', end_date: '2026-04-16', adjustment_pct: 25 },
+        AUDIT_USER,
+      )
 
       expect(db.pricing_rule.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -88,7 +114,7 @@ describe('PricingRuleService', () => {
     })
 
     it("refuses another group's condition columns", async () => {
-      const error = await errorOf(service.create({ ...urgency, month: 12 }))
+      const error = await errorOf(service.create({ ...urgency, month: 12 }, AUDIT_USER))
 
       expect(error).toBeInstanceOf(BadRequestException)
       expect(error.getResponse()).toMatchObject({ error: { code: 'PRICING_RULE_INVALID', details: { fields: ['month'] } } })
@@ -107,14 +133,14 @@ describe('PricingRuleService', () => {
         { rule_group: 'period', name: 'x', start_date: '2026-04-16', end_date: '2026-04-10', adjustment_pct: 5 },
       ],
     ])('refuses %s', async (_label, dto) => {
-      await expect(service.create(dto)).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.create(dto, AUDIT_USER)).rejects.toBeInstanceOf(BadRequestException)
       expect(db.pricing_rule.create).not.toHaveBeenCalled()
     })
 
     it('refuses a fare class that does not exist', async () => {
       db.fare_class.findFirst.mockResolvedValue(null)
 
-      const error = await errorOf(service.create({ ...urgency, fare_class_id: CLASS_ID }))
+      const error = await errorOf(service.create({ ...urgency, fare_class_id: CLASS_ID }, AUDIT_USER))
 
       expect(error).toBeInstanceOf(NotFoundException)
       expect(error.getResponse()).toMatchObject({ error: { code: 'FARE_CLASS_NOT_FOUND' } })
@@ -123,7 +149,7 @@ describe('PricingRuleService', () => {
     it('refuses a priority already used in the group', async () => {
       db.pricing_rule.findFirst.mockResolvedValue({ id: OTHER_ID })
 
-      const error = await errorOf(service.create({ ...urgency, priority: 1 }))
+      const error = await errorOf(service.create({ ...urgency, priority: 1 }, AUDIT_USER))
 
       expect(error).toBeInstanceOf(ConflictException)
       expect(error.getResponse()).toMatchObject({ error: { code: 'PRICING_RULE_PRIORITY_TAKEN', details: { pricing_rule_id: OTHER_ID } } })
@@ -133,7 +159,7 @@ describe('PricingRuleService', () => {
       db.pricing_rule.findFirst.mockResolvedValue(null)
       db.pricing_rule.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
 
-      await expect(service.create({ ...urgency, priority: 2 })).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.create({ ...urgency, priority: 2 }, AUDIT_USER)).rejects.toBeInstanceOf(ConflictException)
     })
   })
 
@@ -141,7 +167,7 @@ describe('PricingRuleService', () => {
     it('throws PRICING_RULE_NOT_FOUND for a missing or deleted rule', async () => {
       db.pricing_rule.findFirst.mockResolvedValue(null)
 
-      const error = await errorOf(service.update(RULE_ID, { name: 'x' }))
+      const error = await errorOf(service.update(RULE_ID, { name: 'x' }, AUDIT_USER))
 
       expect(error).toBeInstanceOf(NotFoundException)
       expect(error.getResponse()).toMatchObject({ error: { code: 'PRICING_RULE_NOT_FOUND' } })
@@ -150,19 +176,19 @@ describe('PricingRuleService', () => {
     it('checks the merged row, so a PATCH cannot clear the only condition', async () => {
       db.pricing_rule.findFirst.mockResolvedValue({ ...storedUrgency, min_days_out: null })
 
-      await expect(service.update(RULE_ID, { max_days_out: null })).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.update(RULE_ID, { max_days_out: null }, AUDIT_USER)).rejects.toBeInstanceOf(BadRequestException)
     })
 
     it('checks min <= max against the stored value', async () => {
       db.pricing_rule.findFirst.mockResolvedValue(storedUrgency) // max_days_out 7
 
-      await expect(service.update(RULE_ID, { min_days_out: 10 })).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.update(RULE_ID, { min_days_out: 10 }, AUDIT_USER)).rejects.toBeInstanceOf(BadRequestException)
     })
 
     it('updates and sets updated_at', async () => {
       db.pricing_rule.findFirst.mockResolvedValue(storedUrgency)
 
-      await service.update(RULE_ID, { adjustment_pct: 12.5 })
+      await service.update(RULE_ID, { adjustment_pct: 12.5 }, AUDIT_USER)
 
       expect(db.pricing_rule.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -175,7 +201,7 @@ describe('PricingRuleService', () => {
     it('refuses a priority taken by another rule in the group', async () => {
       db.pricing_rule.findFirst.mockResolvedValueOnce(storedUrgency).mockResolvedValueOnce({ id: OTHER_ID })
 
-      await expect(service.update(RULE_ID, { priority: 2 })).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.update(RULE_ID, { priority: 2 }, AUDIT_USER)).rejects.toBeInstanceOf(ConflictException)
       expect(db.pricing_rule.update).not.toHaveBeenCalled()
     })
   })
@@ -183,19 +209,27 @@ describe('PricingRuleService', () => {
   it('soft deletes', async () => {
     db.pricing_rule.findFirst.mockResolvedValue(storedUrgency)
 
-    await service.remove(RULE_ID)
+    await service.remove(RULE_ID, AUDIT_USER)
 
     expect(db.pricing_rule.update).toHaveBeenCalledWith({
       where: { id: RULE_ID },
       data: expect.objectContaining({ deleted_at: expect.any(Date) }),
     })
+    expect(audit.write).toHaveBeenCalledWith(
+      AUDIT_USER,
+      expect.objectContaining({ action: 'delete', entityType: 'pricing_rule', entityId: RULE_ID, before: storedUrgency }),
+      db,
+    )
   })
 
   describe('reorder', () => {
     it('shifts the whole group first, then writes 1, 2, 3 in one transaction', async () => {
-      db.pricing_rule.findMany.mockResolvedValueOnce([{ id: RULE_ID }, { id: OTHER_ID }]).mockResolvedValueOnce([])
+      db.pricing_rule.findMany
+        .mockResolvedValueOnce([{ id: RULE_ID }, { id: OTHER_ID }])
+        .mockResolvedValueOnce([{ id: RULE_ID }, { id: OTHER_ID }])
+        .mockResolvedValueOnce([])
 
-      await service.reorder({ rule_group: 'urgency', ids: [OTHER_ID, RULE_ID] })
+      await service.reorder({ rule_group: 'urgency', ids: [OTHER_ID, RULE_ID] }, AUDIT_USER)
 
       expect(db.pricing_rule.updateMany).toHaveBeenCalledWith({
         where: { rule_group: 'urgency', deleted_at: null },
@@ -204,13 +238,17 @@ describe('PricingRuleService', () => {
       expect(db.pricing_rule.update).toHaveBeenNthCalledWith(1, { where: { id: OTHER_ID }, data: expect.objectContaining({ priority: 1 }) })
       expect(db.pricing_rule.update).toHaveBeenNthCalledWith(2, { where: { id: RULE_ID }, data: expect.objectContaining({ priority: 2 }) })
       expect(db.$transaction).toHaveBeenCalledTimes(1)
-      expect(db.$transaction.mock.calls[0][0]).toHaveLength(3)
+      expect(audit.write).toHaveBeenCalledWith(
+        AUDIT_USER,
+        expect.objectContaining({ action: 'update', entityType: 'pricing_rule', before: [RULE_ID, OTHER_ID], after: [OTHER_ID, RULE_ID] }),
+        db,
+      )
     })
 
     it('refuses a list that leaves out a live rule or names an unknown one', async () => {
       db.pricing_rule.findMany.mockResolvedValue([{ id: RULE_ID }, { id: OTHER_ID }])
 
-      const error = await errorOf(service.reorder({ rule_group: 'urgency', ids: [RULE_ID, CLASS_ID] }))
+      const error = await errorOf(service.reorder({ rule_group: 'urgency', ids: [RULE_ID, CLASS_ID] }, AUDIT_USER))
 
       expect(error).toBeInstanceOf(BadRequestException)
       expect(error.getResponse()).toMatchObject({

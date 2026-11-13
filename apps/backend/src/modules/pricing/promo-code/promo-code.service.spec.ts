@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit } from '../pricing.testing'
 import type { CreatePromoCodeDto } from './dto/create-promo-code.dto'
 import { PromoCodeService } from './promo-code.service'
 
@@ -42,8 +44,11 @@ async function errorOf(promise: Promise<unknown>): Promise<BadRequestException> 
   throw new Error('Expected the call to be rejected')
 }
 
+const AUDIT_USER = 'user-1'
+
 describe('PromoCodeService', () => {
   let service: PromoCodeService
+  const audit = mockAudit()
   const db = {
     promo_code: {
       findMany: jest.fn(),
@@ -55,14 +60,19 @@ describe('PromoCodeService', () => {
     $transaction: jest.fn(),
   }
   const tx = {
+    promo_code: db.promo_code,
     promo_redemption: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), createMany: jest.fn(), update: jest.fn() },
     $executeRaw: jest.fn(),
   }
 
   beforeEach(() => {
     jest.resetAllMocks()
+    audit.write.mockResolvedValue(undefined)
+    // The audit entry reads the written row back, so a write must return one.
+    db.promo_code.create.mockResolvedValue({ id: 'promo-new', code: 'NEW' })
+    db.promo_code.update.mockResolvedValue({ id: 'promo-new', code: 'NEW' })
     db.$transaction.mockImplementation((work: (client: typeof tx) => Promise<unknown>) => work(tx))
-    service = new PromoCodeService(db as unknown as DbService)
+    service = new PromoCodeService(db as unknown as DbService, audit as unknown as PricingAudit)
   })
 
   describe('findAll', () => {
@@ -96,7 +106,7 @@ describe('PromoCodeService', () => {
     it('stores a percentage code with real dates', async () => {
       db.promo_code.findFirst.mockResolvedValue(null)
 
-      await service.create(save10)
+      await service.create(save10, AUDIT_USER)
 
       expect(db.promo_code.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -111,13 +121,16 @@ describe('PromoCodeService', () => {
     it('accepts a fixed amount with unlimited uses', async () => {
       db.promo_code.findFirst.mockResolvedValue(null)
 
-      await service.create({
-        code: 'KMUTT500',
-        kind: 'corporate',
-        discount_amount: 500,
-        valid_from: '2026-01-01T00:00:00Z',
-        valid_to: '2027-01-01T00:00:00Z',
-      })
+      await service.create(
+        {
+          code: 'KMUTT500',
+          kind: 'corporate',
+          discount_amount: 500,
+          valid_from: '2026-01-01T00:00:00Z',
+          valid_to: '2027-01-01T00:00:00Z',
+        },
+        AUDIT_USER,
+      )
 
       expect(db.promo_code.create).toHaveBeenCalledTimes(1)
     })
@@ -128,7 +141,7 @@ describe('PromoCodeService', () => {
       ['valid_from after valid_to', { valid_from: '2026-12-02T00:00:00Z' }],
       ['valid_from equal to valid_to', { valid_from: '2026-12-01T00:00:00Z' }],
     ])('refuses %s', async (_label, change) => {
-      const error = await errorOf(service.create({ ...save10, ...change }))
+      const error = await errorOf(service.create({ ...save10, ...change }, AUDIT_USER))
 
       expect(error).toBeInstanceOf(BadRequestException)
       expect(error.getResponse()).toMatchObject({ error: { code: 'PROMO_CODE_INVALID' } })
@@ -138,7 +151,7 @@ describe('PromoCodeService', () => {
     it('refuses a code already used by a live row', async () => {
       db.promo_code.findFirst.mockResolvedValue({ id: OTHER_ID })
 
-      const error = await errorOf(service.create(save10))
+      const error = await errorOf(service.create(save10, AUDIT_USER))
 
       expect(error).toBeInstanceOf(ConflictException)
       expect(error.getResponse()).toMatchObject({ error: { code: 'PROMO_CODE_TAKEN', details: { promo_code_id: OTHER_ID } } })
@@ -148,7 +161,7 @@ describe('PromoCodeService', () => {
       db.promo_code.findFirst.mockResolvedValue(null)
       db.promo_code.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
 
-      await expect(service.create(save10)).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.create(save10, AUDIT_USER)).rejects.toBeInstanceOf(ConflictException)
     })
   })
 
@@ -156,7 +169,7 @@ describe('PromoCodeService', () => {
     it('switches a percentage code to a fixed amount when the old value is cleared', async () => {
       db.promo_code.findFirst.mockResolvedValue(stored)
 
-      await service.update(PROMO_ID, { discount_pct: null, discount_amount: 50 })
+      await service.update(PROMO_ID, { discount_pct: null, discount_amount: 50 }, AUDIT_USER)
 
       expect(db.promo_code.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -169,20 +182,20 @@ describe('PromoCodeService', () => {
     it('checks the merged row, so adding a second discount is refused', async () => {
       db.promo_code.findFirst.mockResolvedValue(stored)
 
-      await expect(service.update(PROMO_ID, { discount_amount: 50 })).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.update(PROMO_ID, { discount_amount: 50 }, AUDIT_USER)).rejects.toBeInstanceOf(BadRequestException)
       expect(db.promo_code.update).not.toHaveBeenCalled()
     })
 
     it('checks a new valid_to against the stored valid_from', async () => {
       db.promo_code.findFirst.mockResolvedValue(stored)
 
-      await expect(service.update(PROMO_ID, { valid_to: '2026-10-01T00:00:00Z' })).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.update(PROMO_ID, { valid_to: '2026-10-01T00:00:00Z' }, AUDIT_USER)).rejects.toBeInstanceOf(BadRequestException)
     })
 
     it('refuses max_uses below the uses already counted', async () => {
       db.promo_code.findFirst.mockResolvedValue(stored) // used_count 3
 
-      const error = await errorOf(service.update(PROMO_ID, { max_uses: 2 }))
+      const error = await errorOf(service.update(PROMO_ID, { max_uses: 2 }, AUDIT_USER))
 
       expect(error).toBeInstanceOf(BadRequestException)
       expect(error.getResponse()).toMatchObject({ error: { details: { fields: ['max_uses'] } } })
@@ -191,7 +204,7 @@ describe('PromoCodeService', () => {
     it('allows clearing max_uses to make a code unlimited', async () => {
       db.promo_code.findFirst.mockResolvedValue(stored)
 
-      await service.update(PROMO_ID, { max_uses: null })
+      await service.update(PROMO_ID, { max_uses: null }, AUDIT_USER)
 
       expect(db.promo_code.update).toHaveBeenCalledTimes(1)
     })
@@ -199,7 +212,7 @@ describe('PromoCodeService', () => {
     it('leaves the dates alone when they are not sent', async () => {
       db.promo_code.findFirst.mockResolvedValue(stored)
 
-      await service.update(PROMO_ID, { is_active: false })
+      await service.update(PROMO_ID, { is_active: false }, AUDIT_USER)
 
       const { data } = db.promo_code.update.mock.calls[0][0] as { data: Record<string, unknown> }
       expect(data.valid_from).toBeUndefined()
@@ -209,7 +222,7 @@ describe('PromoCodeService', () => {
     it('refuses a code taken by another row', async () => {
       db.promo_code.findFirst.mockResolvedValueOnce(stored).mockResolvedValueOnce({ id: OTHER_ID })
 
-      await expect(service.update(PROMO_ID, { code: 'OTHER' })).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.update(PROMO_ID, { code: 'OTHER' }, AUDIT_USER)).rejects.toBeInstanceOf(ConflictException)
       expect(db.promo_code.update).not.toHaveBeenCalled()
     })
   })
@@ -217,12 +230,17 @@ describe('PromoCodeService', () => {
   it('soft deletes', async () => {
     db.promo_code.findFirst.mockResolvedValue(stored)
 
-    await service.remove(PROMO_ID)
+    await service.remove(PROMO_ID, AUDIT_USER)
 
     expect(db.promo_code.update).toHaveBeenCalledWith({
       where: { id: PROMO_ID },
       data: expect.objectContaining({ deleted_at: expect.any(Date) }),
     })
+    expect(audit.write).toHaveBeenCalledWith(
+      AUDIT_USER,
+      expect.objectContaining({ action: 'delete', entityType: 'promo_code', entityId: PROMO_ID, before: stored }),
+      tx,
+    )
   })
 
   describe('findQuotes', () => {
@@ -351,6 +369,11 @@ describe('PromoCodeService', () => {
       expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
       expect(db.$transaction).toHaveBeenCalledTimes(1)
       expect(result).toMatchObject({ booking_ref: 'BK-1', status: 'redeemed', already_redeemed: false })
+      expect(audit.write).toHaveBeenCalledWith(
+        null,
+        expect.objectContaining({ action: 'create', entityType: 'promo_redemption', after: row }),
+        tx,
+      )
     })
 
     it('returns the first result and counts nothing for a repeat of the same booking_ref', async () => {
@@ -445,6 +468,7 @@ describe('PromoCodeService', () => {
       await service.release(PROMO_ID, 'BK-1')
 
       expect(tx.promo_redemption.update).toHaveBeenCalledWith({ where: { id: 'r1' }, data: { status: 'released', released_at: NOW } })
+      expect(audit.write).toHaveBeenCalledWith(null, expect.objectContaining({ action: 'update', entityType: 'promo_redemption' }), tx)
       expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
     })
 
