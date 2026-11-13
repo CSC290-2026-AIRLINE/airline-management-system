@@ -46,6 +46,8 @@ export function GatePage({ api }: { api: StaffApi }) {
   const [gateMessage, setGateMessage] = useState<string | null>(null)
   const [reference, setReference] = useState('')
   const [camera, setCamera] = useState(false)
+  /** Whether the last scan came from the webcam, so "Scan next" brings back the way the agent was working. */
+  const [fromCamera, setFromCamera] = useState(false)
   /** The reference of the last scan, to find its row in the passenger list. */
   const [lastReference, setLastReference] = useState<string | null>(null)
   const [manualCount, setManualCount] = useState('')
@@ -133,12 +135,13 @@ export function GatePage({ api }: { api: StaffApi }) {
   }
 
   const doScan = async (value: string) => {
-    if (!flight) return
+    if (!flight || busy) return
     setBusy(true)
     setError(null)
-    setLastReference(value.trim().toUpperCase())
     try {
-      setScan(await api.scan(gateId, { flightId: flight.id, reference: value }))
+      const result = await api.scan(gateId, { flightId: flight.id, reference: value })
+      setScan(result)
+      setLastReference(value.trim().toUpperCase())
       setReference('')
       await load()
     } catch (err) {
@@ -151,13 +154,14 @@ export function GatePage({ api }: { api: StaffApi }) {
   /** A pass read by the webcam: the camera pauses until the agent asks for the next passenger. */
   const onDecode = (value: string) => {
     setCamera(false)
+    setFromCamera(true)
     void doScan(value)
   }
 
   const scanNext = () => {
     setScan(null)
     setLastReference(null)
-    setCamera(true)
+    setCamera(fromCamera)
   }
 
   /** Feature 6 owns the gate of each flight: apply the moves, then drop the state of the old gate. */
@@ -379,7 +383,7 @@ export function GatePage({ api }: { api: StaffApi }) {
             variant="outline"
             size="sm"
             className={SECONDARY_BUTTON}
-            disabled={!flight}
+            disabled={busy || !flight}
             onClick={() => setCamera((on) => !on)}
           >
             {camera ? 'Stop camera' : 'Start camera'}
@@ -391,6 +395,7 @@ export function GatePage({ api }: { api: StaffApi }) {
           className="flex flex-col gap-2"
           onSubmit={(event) => {
             event.preventDefault()
+            setFromCamera(false)
             void doScan(reference)
           }}
         >
@@ -446,7 +451,7 @@ export function GatePage({ api }: { api: StaffApi }) {
               ) : null}
               {scan.reason === 'WRONG_GATE' && scan.correctGate ? <div>Correct gate: {scan.correctGate}</div> : null}
               <div>
-                <Button type="button" className={PRIMARY_BUTTON} onClick={scanNext}>
+                <Button type="button" className={PRIMARY_BUTTON} disabled={busy} onClick={scanNext}>
                   Scan next
                 </Button>
               </div>

@@ -5,6 +5,8 @@ import { referenceFromQr } from './camera-scan.ts'
 
 /** Ten decodes a second is plenty for a pass held up to a webcam and keeps the laptop quiet. */
 const FRAME_MS = 100
+/** A pass already read is ignored this long: time enough for the passenger to lower the phone after "Scan next". */
+const IGNORE_SAME_MS = 3000
 
 /**
  * The webcam view of the gate: while active it streams the default camera and calls `onDecode` for every frame
@@ -13,6 +15,8 @@ const FRAME_MS = 100
 export function CameraScan({ active, onDecode }: { active: boolean; onDecode: (reference: string) => void }) {
   const video = useRef<HTMLVideoElement>(null)
   const decode = useRef(onDecode)
+  /** The last pass read and when, so a phone still in frame after "Scan next" is not read again at once. */
+  const last = useRef<{ reference: string; at: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Plain http on a LAN address has no mediaDevices at all; only HTTPS and localhost do.
   const supported = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
@@ -39,7 +43,14 @@ export function CameraScan({ active, onDecode }: { active: boolean; onDecode: (r
       const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const code = jsQR(image.data, image.width, image.height, { inversionAttempts: 'dontInvert' })
       const reference = code ? referenceFromQr(code.data) : null
-      if (reference) decode.current(reference)
+      if (!reference) return
+      const now = Date.now()
+      if (last.current?.reference === reference && now - last.current.at < IGNORE_SAME_MS) return
+      // One read per activation: the loop stops here, before the parent re-renders, so a slow frame cannot fire twice.
+      if (timer) clearInterval(timer)
+      timer = null
+      last.current = { reference, at: now }
+      decode.current(reference)
     }
 
     navigator.mediaDevices
@@ -52,6 +63,7 @@ export function CameraScan({ active, onDecode }: { active: boolean; onDecode: (r
         stream = media
         element.srcObject = media
         await element.play()
+        if (cancelled) return
         setError(null)
         timer = setInterval(readFrame, FRAME_MS)
       })
