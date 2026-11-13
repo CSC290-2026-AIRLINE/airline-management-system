@@ -11,7 +11,7 @@ Both are part of the root npm workspace and are deployed as separate Nginx conta
 
 ## Current repository structure
 
-The customer application includes the Feature 7 passenger-profiles implementation; staff-web still uses the baseline scaffold. The shared application structure is:
+The customer application includes the Feature 7 passenger-profiles implementation; staff-web includes the customer-search feature for passenger/account lookup and identity correction. The shared application structure is:
 
 ```text
 apps/<customer-web|staff-web>/
@@ -35,7 +35,7 @@ apps/<customer-web|staff-web>/
 └── package.json
 ```
 
-Customer-web currently has `src/features/passenger-profiles/` with Profile, first-sign-in setup, saved-passenger dialogs and Clerk email/photo integration. Thin authenticated route files render these pages. Other planned feature folders have not yet been implemented. See `apps/customer-web/src/features/passenger-profiles/README.md` for implemented behavior and pending integrations.
+Customer-web currently has `src/features/passenger-profiles/` with Profile, first-sign-in setup, saved-passenger dialogs and Clerk email/photo integration. Thin authenticated route files render these pages. Staff-web has `src/features/customer-search/` and its thin authenticated route. Other planned feature folders have not yet been implemented. See `apps/customer-web/src/features/passenger-profiles/README.md` for implemented behavior and pending integrations.
 
 ## Planned feature organization
 
