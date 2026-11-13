@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@backend/db/generated/prisma/client'
+import { DEMO_CABINS, demoAircraftLayout, demoAwardLimit, demoCabinCapacity } from '../seats/demo-layout'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '..', '..', '.env'))
@@ -44,8 +45,14 @@ const SERVICE_DAYS = [
   { offset: 10, aircraft: 'farAhead' },
 ] as const
 
-// The base fares of the two demo fare classes, in the base currency. Same amounts as the pricing smoke.
-const BASE_FARES: Record<'Y' | 'Q', string> = { Y: '1000.00', Q: '100.00' }
+// The demo fare classes' base fares, in the base currency. Same amounts as the pricing smoke.
+const BASE_FARES: Record<'Y' | 'Q' | 'W' | 'J' | 'F', string> = {
+  Y: '1000.00',
+  Q: '100.00',
+  W: '1800.00',
+  J: '3200.00',
+  F: '5000.00',
+}
 
 function futureServiceDate(offsetDays: number): Date {
   const now = new Date()
@@ -70,6 +77,7 @@ async function seedAirportsAndRoutes() {
 }
 
 async function seedAircraft() {
+  const layout = demoAircraftLayout()
   const aircraftType = await prisma.aircraft_type.upsert({
     where: { code: 'F03A320' },
     update: {},
@@ -77,7 +85,7 @@ async function seedAircraft() {
       code: 'F03A320',
       manufacturer: 'Airbus',
       model: 'A320',
-      layout: { rows: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'], exitRows: [12], extraLegroomRows: [1, 2, 3] },
+      layout,
       hold_weight_limit_kg: 3000,
       max_takeoff_weight_kg: 78000,
       max_range_km: 6100,
@@ -115,21 +123,25 @@ async function seedAircraft() {
 }
 
 async function seedFareClasses() {
-  const y = await prisma.fare_class.upsert({
-    where: { code: 'Y' },
-    update: {},
-    create: {
-      code: 'Y',
-      cabin: 'economy',
-      name: 'Economy Saver',
-      refundable: true,
-      changeable: true,
-      cancel_fee_flat: 100,
-      cancel_fee_pct: 0,
-      change_fee_flat: 50,
-      change_fee_pct: 0,
-    },
-  })
+  const yFareClass = {
+    name: 'Economy Flex',
+    refundable: true,
+    changeable: true,
+    cancel_fee_flat: 500,
+    cancel_fee_pct: 5,
+    change_fee_flat: 300,
+    change_fee_pct: 0,
+  }
+  const existingY = await prisma.fare_class.findFirst({ where: { code: 'Y', deleted_at: null } })
+  const y = existingY
+    ? await prisma.fare_class.update({ where: { id: existingY.id }, data: yFareClass })
+    : await prisma.fare_class.create({
+        data: {
+          code: 'Y',
+          cabin: 'economy',
+          ...yFareClass,
+        },
+      })
 
   const q = await prisma.fare_class.upsert({
     where: { code: 'Q' },
@@ -142,19 +154,37 @@ async function seedFareClasses() {
     },
   })
 
-  return { Y: y, Q: q }
+  const w = await prisma.fare_class.upsert({
+    where: { code: 'W' },
+    update: {},
+    create: { code: 'W', cabin: 'premium_economy', name: 'Premium Economy', refundable: true, changeable: true, cancel_fee_pct: 10 },
+  })
+
+  const j = await prisma.fare_class.upsert({
+    where: { code: 'J' },
+    update: {},
+    create: { code: 'J', cabin: 'business', name: 'Business', refundable: true, changeable: true },
+  })
+
+  const f = await prisma.fare_class.upsert({
+    where: { code: 'F' },
+    update: {},
+    create: { code: 'F', cabin: 'first', name: 'First', refundable: true, changeable: true },
+  })
+
+  return { Y: y, Q: q, W: w, J: j, F: f }
 }
 
 // The base fares the demo routes are sold at. A fare that is already there is left alone, so an amount staff changed
 // in the app survives a re-seed.
 async function seedBaseFares(
   routes: Array<{ id: string; origin: string; destination: string }>,
-  fareClasses: Record<'Y' | 'Q', { id: string }>,
+  fareClasses: Record<'Y' | 'Q' | 'W' | 'J' | 'F', { id: string }>,
 ): Promise<Array<{ id: string; label: string; amount: string; created: boolean }>> {
   const seeded: Array<{ id: string; label: string; amount: string; created: boolean }> = []
 
   for (const route of routes) {
-    for (const code of ['Y', 'Q'] as const) {
+    for (const code of Object.keys(BASE_FARES) as Array<keyof typeof BASE_FARES>) {
       const fareClassId = fareClasses[code].id
       const existing = await prisma.base_fare.findFirst({
         where: { route_id: route.id, fare_class_id: fareClassId, deleted_at: null },
@@ -256,11 +286,14 @@ async function seedFlights(
         },
       })
 
-      await prisma.seat_inventory.upsert({
-        where: { flight_id_cabin: { flight_id: flight.id, cabin: 'economy' } },
-        update: {},
-        create: { flight_id: flight.id, cabin: 'economy', capacity: 180, award_limit: 10 },
-      })
+      for (const { cabin } of DEMO_CABINS) {
+        const capacity = demoCabinCapacity(cabin)
+        await prisma.seat_inventory.upsert({
+          where: { flight_id_cabin: { flight_id: flight.id, cabin } },
+          update: { capacity },
+          create: { flight_id: flight.id, cabin, capacity, award_limit: demoAwardLimit(cabin) },
+        })
+      }
 
       created.push({ id: flight.id, flightNumber, serviceDate })
     }
@@ -327,6 +360,7 @@ async function main() {
   console.log(`passenger_ids: ${passenger.id}, ${extraPassenger.id}`)
   console.log(`fare_class_id (Y): ${fareClasses.Y.id}`)
   console.log(`fare_class_id (Q): ${fareClasses.Q.id}`)
+  console.log(`fare_class_ids (W/J/F): ${fareClasses.W.id}, ${fareClasses.J.id}, ${fareClasses.F.id}`)
   for (const baseFare of baseFares) {
     console.log(`base_fare ${baseFare.label}: ${baseFare.id} ${baseFare.amount}${baseFare.created ? ' (created)' : ' (existing)'}`)
   }

@@ -3,6 +3,8 @@ import path from 'node:path'
 import { JwtService } from '@nestjs/jwt'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@backend/db/generated/prisma/client'
+import type { Cabin } from '../contracts'
+import { DEMO_CABINS, demoAwardLimit, demoCabinCapacity } from '../seats/demo-layout'
 
 /**
  * Batch 5: the Feature 3 and Feature 4 money flow against the real development database.
@@ -19,7 +21,7 @@ import { PrismaClient } from '@backend/db/generated/prisma/client'
  *   npm run start:dev -w apps/backend
  *   npm run f03:pricing-smoke -w apps/backend
  *
- * It provisions only what the seeds do not have: the base fares of the two fare classes it quotes and the future
+ * It provisions only what the seeds do not have: base fares and future
  * flights far enough ahead for the non-refundable fare class. It never deletes anything: quotes, bookings and
  * redemptions are an audit trail, so they stay in the database for the report. The only rows it moves are the seats
  * it holds by hand on its own flight, and the live quotes of that flight, which it expires so a repeated run prices
@@ -40,18 +42,23 @@ const SMOKE_PRICING_RULE_ID = 'f0300000-0000-4000-8000-000000000001'
 const PROMO_CODE = 'SAVE10'
 const SMOKE_CONTACT = 'feature3.customer@example.com'
 const ROUTE = { origin: 'BKK', destination: 'HKT' }
-const SMOKE_FLIGHT_NUMBERS = { y: 'SMK901', promo: 'SMK902', q: 'SMK903', seats: 'SMK904' } as const
+const SMOKE_FLIGHT_NUMBERS = { y: 'SMK901', promo: 'SMK902', q: 'SMK903', business: 'SMK905', seats: 'SMK904' } as const
 const AIRCRAFT_TAIL = 'HS-F03A'
 const DAY_MS = 86_400_000
 const BLOCK_MINUTES = 85
-const CAPACITY = 180
 // Far enough ahead for the Q class, which can only be bought seven days before departure.
 const DAYS_AHEAD = 10
 // The seat availability flight flies a day after the searched one, so the search never prices it and the quote it
 // gets is always a new one.
 const SEATS_DAYS_AHEAD = DAYS_AHEAD + 1
 // Y is refundable, so its cancellation fee has to be smaller than the fare to leave a refund.
-const BASE_FARES: Record<string, string> = { Y: '1000.00', Q: '100.00' }
+const BASE_FARES: Record<string, string> = {
+  Y: '1000.00',
+  Q: '100.00',
+  W: '1800.00',
+  J: '3200.00',
+  F: '5000.00',
+}
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -144,6 +151,7 @@ interface SmokeFixtures {
     y: { id: string; created: boolean }
     promo: { id: string; created: boolean }
     q: { id: string; created: boolean }
+    business: { id: string; created: boolean }
   }
   seatsFlight: { id: string; created: boolean }
   promoId: string
@@ -202,31 +210,41 @@ async function ensureSmokeFlight(
     where: { flight_number_service_date: { flight_number: flightNumber, service_date: serviceDate } },
     select: { id: true, status: true, dep_at: true },
   })
+  let flightId: string
+  let created: boolean
   if (existing) {
-    const inventory = await prisma.seat_inventory.findUnique({ where: { flight_id_cabin: { flight_id: existing.id, cabin: 'economy' } } })
-    if (!inventory) {
-      await prisma.seat_inventory.create({ data: { flight_id: existing.id, cabin: 'economy', capacity: CAPACITY, award_limit: 10 } })
-    }
-    return { id: existing.id, created: false }
+    flightId = existing.id
+    created = false
+  } else {
+    const departure = await freeDeparture(aircraftId, serviceDate)
+    const arrival = new Date(departure.getTime() + BLOCK_MINUTES * 60_000)
+    const flight = await prisma.flight.create({
+      data: {
+        flight_number: flightNumber,
+        service_date: serviceDate,
+        route_id: routeId,
+        scheduled_dep_at: departure,
+        scheduled_arr_at: arrival,
+        dep_at: departure,
+        arr_at: arrival,
+        aircraft_id: aircraftId,
+        status: 'scheduled',
+      },
+    })
+    flightId = flight.id
+    created = true
   }
 
-  const departure = await freeDeparture(aircraftId, serviceDate)
-  const arrival = new Date(departure.getTime() + BLOCK_MINUTES * 60_000)
-  const flight = await prisma.flight.create({
-    data: {
-      flight_number: flightNumber,
-      service_date: serviceDate,
-      route_id: routeId,
-      scheduled_dep_at: departure,
-      scheduled_arr_at: arrival,
-      dep_at: departure,
-      arr_at: arrival,
-      aircraft_id: aircraftId,
-      status: 'scheduled',
-    },
-  })
-  await prisma.seat_inventory.create({ data: { flight_id: flight.id, cabin: 'economy', capacity: CAPACITY, award_limit: 10 } })
-  return { id: flight.id, created: true }
+  for (const { cabin } of DEMO_CABINS) {
+    const capacity = demoCabinCapacity(cabin)
+    await prisma.seat_inventory.upsert({
+      where: { flight_id_cabin: { flight_id: flightId, cabin } },
+      update: { capacity },
+      create: { flight_id: flightId, cabin, capacity, award_limit: demoAwardLimit(cabin) },
+    })
+  }
+
+  return { id: flightId, created }
 }
 
 async function loadFixtures(): Promise<SmokeFixtures> {
@@ -267,12 +285,14 @@ async function loadFixtures(): Promise<SmokeFixtures> {
     assert(Boolean(fareClasses[code]), `Fare class ${code} is missing or inactive. Run npm run db:seed.`)
   }
 
-  const seatFees = await prisma.seat_fee.findMany({ where: { cabin: 'economy', deleted_at: null }, select: { seat_type: true } })
-  for (const seatType of ['normal', 'exit_row', 'extra_legroom']) {
-    assert(
-      seatFees.some((row) => row.seat_type === seatType),
-      `The economy seat fee ${seatType} is missing. Run npm run db:seed.`,
-    )
+  const seatFees = await prisma.seat_fee.findMany({ where: { deleted_at: null }, select: { cabin: true, seat_type: true } })
+  for (const { cabin } of DEMO_CABINS) {
+    for (const seatType of ['normal', 'exit_row', 'extra_legroom']) {
+      assert(
+        seatFees.some((row) => row.cabin === cabin && row.seat_type === seatType),
+        `The ${cabin} seat fee ${seatType} is missing. Run npm run db:seed.`,
+      )
+    }
   }
   const taxes = await prisma.tax_fee.count({ where: { deleted_at: null } })
   assert(taxes > 0, 'No tax fees are seeded. Run npm run db:seed.')
@@ -293,6 +313,7 @@ async function loadFixtures(): Promise<SmokeFixtures> {
   const yFlight = await ensureSmokeFlight(route!.id, aircraft!.id, SMOKE_FLIGHT_NUMBERS.y, serviceDate)
   const promoFlight = await ensureSmokeFlight(route!.id, aircraft!.id, SMOKE_FLIGHT_NUMBERS.promo, serviceDate)
   const qFlight = await ensureSmokeFlight(route!.id, aircraft!.id, SMOKE_FLIGHT_NUMBERS.q, serviceDate)
+  const businessFlight = await ensureSmokeFlight(route!.id, aircraft!.id, SMOKE_FLIGHT_NUMBERS.business, serviceDate)
 
   const seatsDate = new Date(Date.now() + SEATS_DAYS_AHEAD * DAY_MS)
   seatsDate.setUTCHours(0, 0, 0, 0)
@@ -309,7 +330,7 @@ async function loadFixtures(): Promise<SmokeFixtures> {
     routeId: route!.id,
     fareClasses,
     flightDate,
-    flights: { y: yFlight, promo: promoFlight, q: qFlight },
+    flights: { y: yFlight, promo: promoFlight, q: qFlight, business: businessFlight },
     seatsFlight,
     promoId: promo!.id,
     baseCurrency: currencySetting!.value,
@@ -375,6 +396,7 @@ function holdBody(
   fareQuoteId: string | null,
   expectedTotal: number,
   promoCode?: string,
+  options: { cabin?: Cabin; seats?: Array<{ passengerId: string; flightId: string; seatCode: string }> } = {},
 ): Record<string, unknown> {
   return {
     tripType: 'one_way',
@@ -383,16 +405,17 @@ function holdBody(
       { passengerId: fixtures.adultId, passengerType: 'adult' },
       { passengerId: fixtures.childId, passengerType: 'child' },
     ],
-    segments: [{ flightId, cabin: 'economy', fareClassId, fareQuoteId }],
+    segments: [{ flightId, cabin: options.cabin ?? 'economy', fareClassId, fareQuoteId }],
     contactEmail: SMOKE_CONTACT,
     expectedTotal,
     ...(promoCode ? { promoCode } : {}),
+    ...(options.seats ? { seats: options.seats } : {}),
   }
 }
 
 /** Moves the seats of the smoke flight by hand, the way a booking would. */
 async function setInventory(flightId: string, data: { held_count?: number; award_limit?: number }): Promise<void> {
-  await prisma.seat_inventory.updateMany({ where: { flight_id: flightId }, data })
+  await prisma.seat_inventory.updateMany({ where: { flight_id: flightId, cabin: 'economy' }, data })
 }
 
 /**
@@ -504,6 +527,7 @@ async function main(): Promise<void> {
 
   const yFare = optionFor(fixtures.flights.y.id)?.cabins.find((fare) => fare.fareClassCode === 'Y' && fare.fareQuoteId)
   const qFare = optionFor(fixtures.flights.q.id)?.cabins.find((fare) => fare.fareClassCode === 'Q' && fare.fareQuoteId)
+  const businessFare = optionFor(fixtures.flights.business.id)?.cabins.find((fare) => fare.fareClassCode === 'J' && fare.fareQuoteId)
   const yQuoteTotal = quoteTotals.get(quoteKey(fixtures.flights.y.id, 'Y')) ?? 0
   const qQuoteTotal = quoteTotals.get(quoteKey(fixtures.flights.q.id, 'Q')) ?? 0
   const seated = 2
@@ -588,6 +612,62 @@ async function main(): Promise<void> {
     )
     yReference = response.body.reference
     return `reference ${yReference}, ${money(response.body.total)} = ${money(yQuoteTotal)} x ${seated}`
+  })
+
+  await check('a business fare can be quoted, held and given business seats', async () => {
+    assert(Boolean(businessFare?.fareQuoteId), 'The J class was not priced for the business flight.')
+    const expected = Math.round(businessFare!.pricePerPassenger * seated * 100) / 100
+    const response = await api('/bookings', {
+      body: holdBody(fixtures, fixtures.flights.business.id, businessFare!.fareClassId, businessFare!.fareQuoteId, expected, undefined, {
+        cabin: 'business',
+        seats: [
+          { passengerId: fixtures.adultId, flightId: fixtures.flights.business.id, seatCode: '2A' },
+          { passengerId: fixtures.childId, flightId: fixtures.flights.business.id, seatCode: '2B' },
+        ],
+      }),
+      token: fixtures.token,
+      headers: { 'idempotency-key': `smoke-business-${randomUUID()}` },
+    })
+    assert(response.status === 201, `The business hold answered ${response.status}: ${JSON.stringify(response.body)}`)
+    assert(Math.round(response.body.total * 100) === Math.round(expected * 100), `The hold says ${response.body.total}, not ${expected}.`)
+    assert(response.body.currency === fixtures.baseCurrency, `The hold is in ${response.body.currency}, not ${fixtures.baseCurrency}.`)
+
+    const booking = await prisma.booking.findUnique({
+      where: { booking_reference: response.body.reference },
+      select: { id: true, status: true },
+    })
+    assert(Boolean(booking), 'The business booking row is missing.')
+    assert(booking!.status === 'held', `The business booking is ${booking!.status}, not held.`)
+
+    const coupons = await prisma.booking_coupon.findMany({
+      where: { booking_id: booking!.id },
+      select: { id: true, fare_quote_id: true, price_total: true },
+    })
+    assert(coupons.length === seated, `The business booking has ${coupons.length} coupon(s), not ${seated}.`)
+    for (const coupon of coupons) {
+      assert(coupon.fare_quote_id === businessFare!.fareQuoteId, 'A business coupon does not carry the J fare quote.')
+      assert(
+        Math.round(Number(coupon.price_total) * 100) === Math.round(businessFare!.pricePerPassenger * 100),
+        'A business coupon is not priced at the J quote.',
+      )
+    }
+
+    const segments = await prisma.booking_segment.findMany({ where: { booking_id: booking!.id }, select: { cabin: true } })
+    assert(segments.length === 1 && segments[0].cabin === 'business', 'The booking segment is not in business cabin.')
+
+    const assignments = await prisma.seat_assignment.findMany({
+      where: { booking_coupon_id: { in: coupons.map((coupon) => coupon.id) } },
+      select: { seat_code: true, status: true },
+    })
+    assert(assignments.length === seated, `The business booking has ${assignments.length} seat assignment(s), not ${seated}.`)
+    assert(
+      assignments.every((assignment) => assignment.status === 'held'),
+      'A business seat is not held.',
+    )
+    const seatCodes = assignments.map((assignment) => assignment.seat_code).sort()
+    assert(seatCodes.join(',') === '2A,2B', `The held business seats are ${seatCodes.join(', ')}, not 2A and 2B.`)
+
+    return `reference ${response.body.reference}, ${money(response.body.total)} = ${money(businessFare!.pricePerPassenger)} x ${seated}, seats ${seatCodes.join('/')}`
   })
 
   await check('a hold with the wrong total is refused and writes nothing', async () => {
@@ -760,11 +840,8 @@ async function main(): Promise<void> {
     const response = await api(`/flights/${fixtures.flights.y.id}/seat-map`, { token: fixtures.token })
     assert(response.status === 200, `The seat map answered ${response.status}: ${JSON.stringify(response.body)}`)
 
-    const seatFees = await prisma.seat_fee.findMany({
-      where: { cabin: 'economy', deleted_at: null },
-      select: { seat_type: true, amount: true },
-    })
-    const amounts = new Map(seatFees.map((row) => [row.seat_type, Number(row.amount)]))
+    const seatFees = await prisma.seat_fee.findMany({ where: { deleted_at: null }, select: { cabin: true, seat_type: true, amount: true } })
+    const amounts = new Map(seatFees.map((row) => [`${row.cabin}:${row.seat_type}`, Number(row.amount)]))
     const mapping: Record<string, string> = { standard: 'normal', exit: 'exit_row', extra_legroom: 'extra_legroom' }
 
     const seen = new Map<string, number>()
@@ -772,8 +849,8 @@ async function main(): Promise<void> {
       for (const seat of row.seats ?? []) {
         const key = `${seat.cabin}:${seat.type}`
         seen.set(key, (seen.get(key) ?? 0) + 1)
-        const expected = amounts.get(mapping[seat.type] ?? seat.type)
-        assert(expected !== undefined, `There is no economy seat fee for ${seat.type}.`)
+        const expected = amounts.get(`${seat.cabin}:${mapping[seat.type] ?? seat.type}`)
+        assert(expected !== undefined, `There is no ${seat.cabin} seat fee for ${seat.type}.`)
         assert(Math.round(seat.fee * 100) === Math.round(expected * 100), `A ${seat.type} seat costs ${seat.fee}, not ${expected}.`)
       }
     }
@@ -787,8 +864,8 @@ async function main(): Promise<void> {
   smokeFlightId = seatsFlightId
   await check('a quote sees the real seats left of the cabin', async () => {
     await expireSmokeQuotes(seatsFlightId)
-    // 152 seats of 180 are held and 10 more are kept for awards, so 18 cash seats are left: 10 percent.
-    await setInventory(seatsFlightId, { held_count: 152, award_limit: 10 })
+    // 59 of 138 seats are held and 10 more are kept for awards, so 69 cash seats are left: 50 percent.
+    await setInventory(seatsFlightId, { held_count: 59, award_limit: 10 })
 
     const response = await api('/fare-quotes', {
       body: { flight_id: seatsFlightId, fare_class_id: fixtures.fareClasses.Y },
@@ -799,13 +876,13 @@ async function main(): Promise<void> {
     const quote = await prisma.fare_quote.findUnique({ where: { id: response.body.id }, select: { seats_left_pct: true } })
     assert(Boolean(quote), 'The quote is not in the database.')
     const seatsLeftPct = Number(quote!.seats_left_pct)
-    assert(seatsLeftPct === 10, `The quote says ${seatsLeftPct} percent seats left, not 10.`)
-    return `seats_left_pct ${seatsLeftPct.toFixed(2)} with 18 cash seats of 180`
+    assert(seatsLeftPct === 50, `The quote says ${seatsLeftPct} percent seats left, not 50.`)
+    return `seats_left_pct ${seatsLeftPct.toFixed(2)} with 69 cash seats of ${demoCabinCapacity('economy')}`
   })
 
   await check('a sold-out cabin is refused', async () => {
-    // 170 seats are held and 10 more are kept for awards: no cash seats are left.
-    await setInventory(seatsFlightId, { held_count: 170, award_limit: 10 })
+    // 128 seats are held and 10 more are kept for awards: no cash seats are left.
+    await setInventory(seatsFlightId, { held_count: demoCabinCapacity('economy') - 10, award_limit: 10 })
 
     const response = await api('/fare-quotes', {
       body: { flight_id: seatsFlightId, fare_class_id: fixtures.fareClasses.Q },
