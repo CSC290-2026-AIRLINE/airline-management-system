@@ -2,6 +2,7 @@ import 'reflect-metadata'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
+import { Logger } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
@@ -101,6 +102,18 @@ describe('SearchService', () => {
     quote.mockRejectedValueOnce(new Error('internal database details'))
     expect((await service.search(request)).legs[0].options[0].cabins[0].unavailableReason).toBe('Fare quote unavailable')
     expect(baseCurrency).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the search alive when the base currency cannot be read', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+    const { service, quote, baseCurrency } = fixture()
+    baseCurrency.mockRejectedValueOnce(new Error('pricing settings unavailable'))
+    quote.mockRejectedValueOnce(new BookingError('BOOKING_CLOSED', 'Advance purchase window closed'))
+    const option = (await service.search(request)).legs[0].options[0]
+    expect(option.cabins[0].currency).toBe('USD')
+    expect(option.cabins[0].unavailableReason).toBe('Advance purchase window closed')
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 
   it('groups outbound and return options by leg and date', async () => {
