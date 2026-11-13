@@ -10,6 +10,14 @@ import { SeatChangeService } from './seat-change.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@nestjs/config', () => ({ ConfigService: class {} }))
+// BookingPnrModule now imports the pricing module, whose DTOs are built with @nestjs/mapped-types. That package is
+// ESM only, so Jest cannot load it. The wiring test never inspects a DTO, so the mapped types are pass-throughs.
+jest.mock('@nestjs/mapped-types', () => ({
+  PartialType: (classRef: unknown) => classRef,
+  PickType: (classRef: unknown) => classRef,
+  OmitType: (classRef: unknown) => classRef,
+  IntersectionType: (...classRefs: unknown[]) => classRefs[classRefs.length - 1],
+}))
 
 @Global()
 @Module({

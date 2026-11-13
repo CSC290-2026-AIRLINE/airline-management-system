@@ -100,6 +100,7 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
         <BookingSeatChange
           key={coupon.couponId}
           seatMap={map}
+          currency={booking.currency}
           cabin={segment.cabin}
           passengerName={`${passenger.firstName} ${passenger.lastName}`}
           currentSeat={coupon.seatCode}

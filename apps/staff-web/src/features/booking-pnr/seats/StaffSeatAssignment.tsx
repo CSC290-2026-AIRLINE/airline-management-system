@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { Button } from '@staff-web/components/ui/button'
 import type { BookingDetail, SeatMap } from '../api/types'
+import { lookupMoney } from '../booking-lookup/lookup-utils'
 
 export function StaffSeatAssignment({
   booking,
@@ -123,8 +124,7 @@ export function StaffSeatAssignment({
                 .filter((seat) => seat.cabin === segment?.cabin && seat.state === 'available')
                 .map((seat) => (
                   <option value={seat.seatCode} key={seat.seatCode}>
-                    {seat.seatCode} · {seat.type.replace('_', ' ')} ·{' '}
-                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(seat.fee)}
+                    {seat.seatCode} · {seat.type.replace('_', ' ')} · {lookupMoney(seat.fee, booking.currency)}
                   </option>
                 ))}
             </select>

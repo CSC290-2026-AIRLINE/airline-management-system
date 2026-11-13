@@ -258,8 +258,11 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
 
 /** What the cancel overlay says after the booking is cancelled. */
 function cancelNotice(result: CancelBookingResult): string {
+  if (result.milesReturned && result.milesReturned > 0) {
+    return `Booking cancelled. ${result.milesReturned} miles have been returned.`
+  }
   if (result.refund > 0) {
-    return `Booking cancelled. A refund of ${formatMoney(result.refund, result.currency)} goes back to your card through refunds (feature 5b).`
+    return `Booking cancelled. A refund of ${formatMoney(result.refund, result.currency)} will be returned to your original payment method.`
   }
   return 'Booking cancelled. Nothing was charged.'
 }

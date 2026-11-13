@@ -71,7 +71,7 @@ export class AssistanceSeedService {
       }),
     ])
     if (!customer) throw new Error('Run npm run db:seed:f03 -w apps/backend first')
-    if (!staff) throw new Error('Sign in with a provisioned local staff account before seeding assistance')
+    if (!staff) throw new Error('Run npm run db:seed -w apps/backend or sign in with a provisioned local staff account first')
     let booking = await this.db.booking.findFirst({
       where: { idempotency_key: MARKER, customer_id: customer.id },
       select: { id: true, booking_reference: true },

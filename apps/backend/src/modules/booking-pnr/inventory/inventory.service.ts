@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import type { seat_inventory } from '@backend/db/generated/prisma/client'
 import { BookingError } from '../common/booking-error'
+import { cashSeats } from './inventory.math'
 import {
   BOOKING_CLOCK,
   type BookingClock,
@@ -17,10 +18,6 @@ function orderedKeys(keys: InventoryKey[]): InventoryKey[] {
   return [...new Map(keys.map((key) => [`${key.flightId}/${key.cabin}`, key])).values()].sort((a, b) =>
     a.flightId < b.flightId ? -1 : a.flightId > b.flightId ? 1 : a.cabin < b.cabin ? -1 : a.cabin > b.cabin ? 1 : 0,
   )
-}
-
-function cashSeats(row: seat_inventory): number {
-  return Math.max(0, row.capacity - row.held_count - row.sold_count - (row.award_limit - row.award_held_count - row.award_sold_count))
 }
 
 function nonNegative(value: number): void {

@@ -21,6 +21,7 @@ import {
 import { priceChangedDetails, validateSeatChoices, type FlowComponents, type SeatChoice } from './integration'
 import type { AssistanceValue } from '../components/contracts'
 import type { PriceChangedDetails } from '../api/types'
+import { formatMoney } from '../lib/format'
 import controls from '../styles/controls.module.css'
 import '../styles/tokens.css'
 import './flow.css'
@@ -173,6 +174,9 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
       } else if (cause instanceof ApiError && cause.code === 'SEAT_UNAVAILABLE') {
         setSeatConflict(true)
         setError('Those seats are no longer available. Return to flights and choose another option.')
+      } else if (cause instanceof ApiError && cause.code === 'FARE_UNAVAILABLE') {
+        // A sold-out fare class is not a seat conflict, so the seat dialog stays closed.
+        setError('This fare is no longer available. Return to flights and choose another option.')
       } else setError(cause instanceof Error ? cause.message : 'We could not create your booking. Please try again.')
     } finally {
       inFlight.current = false
@@ -188,6 +192,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
         <Link to="/search">Search flights</Link>
       </main>
     )
+  const tripCurrency = held?.currency ?? itinerary.selections[0]?.fare.currency ?? 'USD'
   if (step === 1)
     return (
       <FlightSearchPage
@@ -298,6 +303,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
               <SeatStep
                 {...{
                   itinerary,
+                  currency: tripCurrency,
                   travellers,
                   choices,
                   busy,
@@ -403,11 +409,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
           <p>
             {itinerary.request.adults} adults · {itinerary.request.children} children · {itinerary.request.infants} infants
           </p>
-          <strong>
-            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', currencyDisplay: 'code' }).format(
-              itinerary.expectedTotal,
-            )}
-          </strong>
+          <strong>{formatMoney(itinerary.expectedTotal, tripCurrency)}</strong>
           <p>Seats are held for 15 minutes only after you finish the Seat step.</p>
         </aside>
       </div>

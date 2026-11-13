@@ -52,7 +52,7 @@ describe('CheckinSeatProvider', () => {
     findCheckIn.mockResolvedValue(null)
     staff.findFirst.mockResolvedValue({ id: 'staff', role: { code: 'admin' } })
     audit.write.mockResolvedValue({ id: 'audit', seq: '1' })
-    checkout.charge.mockResolvedValue({ paymentId: 'payment', amount: 12, currency: 'USD' })
+    checkout.charge.mockResolvedValue({ paymentId: 'payment', amount: 12, currency: 'THB' })
     payment.findFirst.mockResolvedValue({ id: 'payment' })
     findCoupon.mockResolvedValue({
       id: 'coupon',
@@ -64,7 +64,7 @@ describe('CheckinSeatProvider', () => {
     layouts.getSeatMap.mockResolvedValue({ rows: [{ seats: [{ seatCode: '12A', cabin: 'economy', type: 'exit', blocked: false }] }] })
     maps.seatMap.mockResolvedValue({ rows: [{ seats: [{ code: '12A', status: 'free', fee: 0 }] }] })
     create.mockResolvedValue({ id: 'lock' })
-    query.mockResolvedValue([{ id: 'lock', status: 'confirmed' }])
+    query.mockResolvedValue([{ id: 'lock', status: 'confirmed', currency: 'THB' }])
     findUnique.mockResolvedValue({ booking_coupon: { booking_id: 'booking' } })
     findCouponById.mockResolvedValue({
       status: 'confirmed',
@@ -133,9 +133,20 @@ describe('CheckinSeatProvider', () => {
     })
     await provider.confirm('lock', { payWithCheckout: true })
     expect(checkout.charge).toHaveBeenCalledWith(
-      { bookingId: 'booking', amount: 12, currency: 'USD', idempotencyKey: 'seat:lock', purchaseRef: 'seat_assignment:lock' },
+      { bookingId: 'booking', amount: 12, currency: 'THB', idempotencyKey: 'seat:lock', purchaseRef: 'seat_assignment:lock' },
       tx,
     )
+    expect(payment.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'payment',
+        booking_id: 'booking',
+        purchase_ref: 'seat_assignment:lock',
+        status: 'captured',
+        currency: 'THB',
+        amount_total: 12,
+      },
+      select: { id: true },
+    })
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ payment_id: 'payment', status: 'assigned' }) }),
     )

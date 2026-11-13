@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import type { SeatMap } from '../api/types'
 import type { BookingSeatStepProps } from '../flow/integration'
+import { formatMoney } from '../lib/format'
 import { SeatPicker } from './SeatPicker'
 import './seat-selection.css'
 
 export function BookingSeatStep({
   itinerary,
+  currency,
   travellers,
   choices,
   busy,
@@ -101,6 +103,7 @@ export function BookingSeatStep({
           <div className="seat-selection__layout">
             <SeatPicker
               seats={allSeats}
+              currency={currency}
               selectedCabin={selection.fare.cabin}
               selectedSeatCode={selected?.seatCode ?? null}
               passengerLabel={`${traveller.givenName} ${traveller.familyName}`}
@@ -140,7 +143,7 @@ export function BookingSeatStep({
                 ))}
               <p>Infants travel on an adult’s lap. Exit-row seats have eligibility rules.</p>
               <p className="seat-selection__fees">
-                Seat fees <strong>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(seatFees)}</strong>
+                Seat fees <strong>{formatMoney(seatFees, currency)}</strong>
               </p>
               {exitSelected && (
                 <p className="seat-selection__warning" role="status">

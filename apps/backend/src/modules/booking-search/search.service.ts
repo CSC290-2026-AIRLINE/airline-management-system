@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { BookingError } from '../booking-pnr/common/booking-error'
 import {
@@ -40,6 +40,8 @@ function isCabin(value: string): value is Cabin {
 
 @Injectable()
 export class SearchService {
+  private readonly logger = new Logger(SearchService.name)
+
   constructor(
     private readonly db: DbService,
     @Inject(INVENTORY_PORT) private readonly inventory: InventoryPort,
@@ -79,6 +81,17 @@ export class SearchService {
           orderBy: { code: 'asc' },
         })
       : []
+    // The base currency only fills the currency of an option whose quote failed; a priced option carries the
+    // currency of its own quote. A settings failure must not take the whole search down with it.
+    let baseCurrency = 'USD'
+    if (fares.length) {
+      try {
+        baseCurrency = await this.pricing.baseCurrency()
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'unknown error'
+        this.logger.warn(`Base currency unavailable, falling back to USD: ${reason}`)
+      }
+    }
     const options = new Map<string, SearchOption>()
     for (const flight of flights) {
       const cabins: SearchFare[] = []
@@ -105,7 +118,7 @@ export class SearchService {
             fareClassCode: fare.code,
             fareQuoteId: null,
             pricePerPassenger: 0,
-            currency: 'USD',
+            currency: baseCurrency,
             seatsLeft,
             unavailableReason: error instanceof BookingError ? error.message : 'Fare quote unavailable',
           })

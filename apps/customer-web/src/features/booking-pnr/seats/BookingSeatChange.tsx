@@ -7,6 +7,7 @@ import './seat-selection.css'
 
 interface BookingSeatChangeProps {
   seatMap: SeatMap
+  currency: string
   cabin: Cabin
   passengerName: string
   currentSeat: string | null
@@ -19,6 +20,7 @@ interface BookingSeatChangeProps {
 // Booking Detail supplies the authorized API callback after the seat-change route is connected.
 export function BookingSeatChange({
   seatMap,
+  currency,
   cabin,
   passengerName,
   currentSeat,
@@ -79,6 +81,7 @@ export function BookingSeatChange({
       <SeatTakenDialog open={taken} seatCode={selected} onClose={chooseAnother} onChooseAnother={chooseAnother} />
       <SeatPicker
         seats={seats}
+        currency={currency}
         selectedCabin={cabin}
         selectedSeatCode={selected}
         passengerLabel={passengerName}

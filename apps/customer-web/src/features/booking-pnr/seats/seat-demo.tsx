@@ -56,6 +56,7 @@ export function SeatDemo() {
         Flights — Passengers — <strong>Seats</strong> — Review &amp; pay
       </p>
       <SeatSelection
+        currency="USD"
         passengers={passengers}
         segments={segments}
         onContinue={setChoices}

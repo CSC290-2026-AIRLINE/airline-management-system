@@ -272,7 +272,7 @@ describe('ConfirmService.confirmBooking', () => {
     await h.service.confirmBooking('ABC123')
 
     expect(h.pricing.redeem).toHaveBeenCalledTimes(2)
-    expect(h.pricing.redeem).toHaveBeenCalledWith('SAVE10', 'quote-1')
-    expect(h.pricing.redeem).toHaveBeenCalledWith('FALL', 'quote-2')
+    expect(h.pricing.redeem).toHaveBeenCalledWith('SAVE10', 'quote-1', 'ABC123')
+    expect(h.pricing.redeem).toHaveBeenCalledWith('FALL', 'quote-2', 'ABC123')
   })
 })

@@ -25,7 +25,6 @@ const { DemoBookingCustomerService } = load('modules/booking-pnr/staff/demo-book
 const { DemoPassengerController } = load('modules/booking-pnr/hold/demo-passenger.controller')
 const { DemoPassengerService } = load('modules/booking-pnr/hold/demo-passenger.service')
 const { JwtAuthGuard } = load('auth/guards/jwt-auth.guard')
-const { PricingStub } = load('modules/booking-pnr/stubs/pricing.stub')
 const { BookingErrorFilter } = load('modules/booking-pnr/common/booking-error.filter')
 const { BookingError } = load('modules/booking-pnr/common/booking-error')
 const admin = new Pool({ connectionString: 'postgresql://postgres:postgrespassword@localhost:5432/postgres' })
@@ -91,7 +90,18 @@ async function main() {
       if (rejectSeats) throw new BookingError('SEAT_UNAVAILABLE', 'Seat was just taken')
     },
   }
-  const holds = new HoldService(db, inventory, new PricingStub(), seats, { createForHold: async () => {} }, clock)
+  // Test double: this harness checks hold transaction behaviour, not pricing.
+  const pricing = {
+    quote: async (request) => ({
+      fareQuoteId: null,
+      fareClassId: request.fareClassId,
+      currency: 'USD',
+      pricePerPassenger: 148.5,
+      fareRuleSnapshot: null,
+      lines: [{ kind: 'fare', label: 'Fare', amount: 148.5 }],
+    }),
+  }
+  const holds = new HoldService(db, inventory, pricing, seats, { createForHold: async () => {} }, clock)
   const demoConfig = new ConfigService({ NODE_ENV: 'development' })
   const demos = new DemoPassengerService(db, demoConfig)
   const jwt = new JwtService({ secret: randomBytes(32).toString('hex') })

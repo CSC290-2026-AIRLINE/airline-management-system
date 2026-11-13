@@ -115,7 +115,7 @@ export interface FareQuoteLine {
 }
 
 export interface FareQuote {
-  // Feature 4's fare_quote.id. Null only from the stub (no fare_quote row exists), so the coupon stores null.
+  // Feature 4's fare_quote.id. Null only for a lap infant, which is not priced, so the coupon stores null.
   fareQuoteId: string | null
   fareClassId: string
   currency: string
@@ -143,11 +143,12 @@ export interface SeatFeeRequest {
 }
 
 export interface PricingPort {
+  baseCurrency: () => Promise<string>
   quote: (request: FareQuoteRequest) => Promise<FareQuote>
   cancelQuote: (request: CancelQuoteRequest) => Promise<CancelQuote>
   seatFee: (request: SeatFeeRequest) => Promise<number>
-  // Counts the promo use once per quote at confirm (B1). Feature 4's promo-code.service.ts `redeem` in PR #35.
-  redeem: (promoCode: string, fareQuoteId: string) => Promise<void>
+  // Counts the promo use once per quote at confirm (B1). Feature 4's `PromoCodeService.redeem`.
+  redeem: (promoCode: string, fareQuoteId: string, bookingRef: string) => Promise<void>
 }
 
 // An award seat has no fare class (booking_segment.fare_class_id is null for miles).

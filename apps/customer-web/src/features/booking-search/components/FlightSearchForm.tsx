@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { XIcon } from 'lucide-react'
 import type { FlightSearchFormProps } from './contracts'
 import type { FlightSearchLeg, TripType } from '../api/types'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
@@ -152,9 +153,12 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
     )
   } else {
     value.legs.forEach((leg, index) => {
+      /* Every multi-city row is numbered, so the "Remove leg N" button names a row the form actually shows. The
+         one-way form has a single row and keeps the plain "From". */
+      const fromLabel = value.tripType === 'multi_city' || index > 0 ? `Leg ${index + 1} · From` : 'From'
       rows.push(
         <div className="f3-search-leg-row" key={index}>
-          {airportSelect(leg, index, 'origin', index > 0 ? `Leg ${index + 1} · From` : 'From')}
+          {airportSelect(leg, index, 'origin', fromLabel)}
           {airportSelect(leg, index, 'destination', 'To')}
           {dateField(leg, index, 'Depart', index > 0 ? value.legs[index - 1].date || today() : today())}
           {value.tripType === 'multi_city' && index === lastLeg && (
@@ -163,9 +167,9 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
                 <button
                   className="f3-search-remove"
                   type="button"
-                  aria-label={`Remove leg ${index + 1}`}
                   onClick={() => onChange({ ...value, legs: value.legs.filter((_, position) => position !== index) })}
                 >
+                  <XIcon aria-hidden="true" size={15} strokeWidth={2.25} />
                   Remove leg {index + 1}
                 </button>
               )}

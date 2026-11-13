@@ -4,6 +4,7 @@ export type HoldBooking = (input: HoldBookingRequest, idempotencyKey: string) =>
 
 export interface SeatPickerProps {
   seats: SeatDefinition[]
+  currency: string
   selectedSeatCode: string | null
   disabledSeatCodes?: string[]
   passengerLabel?: string

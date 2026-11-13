@@ -9,7 +9,9 @@ import { HoldController } from './hold/hold.controller'
 import { HoldService } from './hold/hold.service'
 import { APP_FILTER } from '@nestjs/core'
 import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
+import { PricingModule } from '@backend/modules/pricing/pricing.module'
 import { BookingProviderAdapter, BOOKING_PROVIDER } from './providers/booking-provider.adapter'
+import { PricingAdapter } from './providers/pricing.adapter'
 import { CancelController } from './cancel/cancel.controller'
 import { CancelForFlightService } from './cancel/cancel-for-flight.service'
 import { CancelService } from './cancel/cancel.service'
@@ -44,7 +46,6 @@ import { CheckoutStub } from './stubs/checkout.stub'
 import { LocalFlightEventBus } from './stubs/flight-event-bus.stub'
 import { InventoryService } from './inventory/inventory.service'
 import { LoyaltyStub } from './stubs/loyalty.stub'
-import { PricingStub } from './stubs/pricing.stub'
 import { RefundStub } from './stubs/refund.stub'
 import { ScreeningStub } from './stubs/screening.stub'
 import { SeatMapStub } from './stubs/seat-map.stub'
@@ -74,7 +75,8 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
 
 @Module({
   // Feature 15's audit writer, for the staff cancellation entry (B7).
-  imports: [AuditModule],
+  // Feature 4's pricing module, so the pricing port is the real adapter.
+  imports: [AuditModule, PricingModule],
   controllers: [
     DevSeatPaymentController,
     DevConfirmController,
@@ -126,7 +128,7 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
     { provide: INVENTORY_PORT, useClass: InventoryService },
     { provide: SEAT_PORT, useClass: SeatService },
     { provide: SERVICE_REQUEST_PORT, useExisting: AssistanceService },
-    { provide: PRICING_PORT, useClass: PricingStub },
+    { provide: PRICING_PORT, useClass: PricingAdapter },
     { provide: LOYALTY_PORT, useClass: LoyaltyStub },
     { provide: CHECKOUT_PORT, useClass: CheckoutStub },
     { provide: REFUND_PORT, useClass: RefundStub },

@@ -119,10 +119,12 @@ export class HoldService {
         }),
       ),
     )
+    const currency = quotes[0]?.currency
+    if (!currency || !/^[A-Z]{3}$/.test(currency) || quotes.some((quote) => quote.currency !== currency))
+      invalidHold('Pricing returned an invalid quote')
     if (
       quotes.some(
         (quote, index) =>
-          quote.currency !== 'USD' ||
           quote.fareClassId !== request.segments[index].fareClassId ||
           !Number.isFinite(quote.pricePerPassenger) ||
           quote.pricePerPassenger < 0,
@@ -136,7 +138,7 @@ export class HoldService {
       throw new BookingError('PRICE_CHANGED', 'The itinerary price has changed', 409, {
         previousTotal: request.expectedTotal,
         newTotal: total,
-        currency: 'USD',
+        currency,
       })
     }
     const keys = request.segments.map((segment) => ({ flightId: segment.flightId, cabin: segment.cabin }))
@@ -153,7 +155,7 @@ export class HoldService {
         trip_type: request.tripType,
         status: 'held',
         payment_type: 'cash',
-        currency: 'USD',
+        currency,
         contact_email: request.contactEmail,
         contact_phone: request.contactPhone ?? null,
         idempotency_key: key,

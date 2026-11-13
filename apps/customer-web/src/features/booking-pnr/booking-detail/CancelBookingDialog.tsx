@@ -27,8 +27,10 @@ interface CancelBookingDialogProps {
 export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidState }: CancelBookingDialogProps) {
   const api = useBookingPnrApi()
   const apiRef = useRef(api)
+  const unpaid = booking.status === 'held'
   const [preview, setPreview] = useState<CancelPreview | null>(null)
-  const [isLoadingPreview, setIsLoadingPreview] = useState(true)
+  const [previewAttempt, setPreviewAttempt] = useState(0)
+  const [previewError, setPreviewError] = useState<ApiError | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
   // A passenger has checked in, so the booking can no longer be cancelled.
@@ -45,6 +47,12 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
 
   useEffect(() => {
     let cancelled = false
+
+    if (unpaid) {
+      return () => {
+        cancelled = true
+      }
+    }
 
     void (async () => {
       try {
@@ -63,11 +71,7 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
           // The hold expired: the page shows the expired booking instead of a raw error.
           onInvalidStateRef.current?.(apiError)
         } else {
-          setError(apiError)
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingPreview(false)
+          setPreviewError(apiError)
         }
       }
     })()
@@ -75,7 +79,13 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
     return () => {
       cancelled = true
     }
-  }, [booking.reference])
+  }, [booking.reference, previewAttempt, unpaid])
+
+  function handleRetryPreview() {
+    setPreview(null)
+    setPreviewError(null)
+    setPreviewAttempt((attempt) => attempt + 1)
+  }
 
   async function handleConfirm() {
     setIsCancelling(true)
@@ -98,7 +108,12 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
     }
   }
 
-  const unpaid = booking.status === 'held'
+  function handleClose() {
+    if (!isCancelling) {
+      onClose()
+    }
+  }
+
   const seats = seatCount(booking)
 
   return (
@@ -110,24 +125,24 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
           ? `Booking ${booking.reference} has not been paid. Cancelling releases your ${seats} held seat${seats === 1 ? '' : 's'} and the booking is closed. Nothing is charged.`
           : `${flightsCopy(booking.segments.length)} and all ${seats} seat${seats === 1 ? '' : 's'} will be released. This cannot be undone.`
       }
-      onClose={() => {
-        if (!isCancelling) {
-          onClose()
-        }
-      }}
+      onClose={handleClose}
       footer={
-        // The fee is only known once the preview has answered, so the booking can only be cancelled from there on.
-        isClosed || !preview ? (
-          <button type="button" className={controls.secondary} onClick={onClose}>
+        isClosed ? (
+          <button type="button" className={controls.secondary} onClick={handleClose} disabled={isCancelling}>
             Keep booking
           </button>
         ) : (
           <>
-            <button type="button" className={controls.secondary} onClick={onClose} disabled={isCancelling}>
+            <button type="button" className={controls.secondary} onClick={handleClose} disabled={isCancelling}>
               Keep booking
             </button>
-            <button type="button" className={controls.danger} onClick={() => void handleConfirm()} disabled={isCancelling}>
-              {isCancelling ? 'Cancelling…' : unpaid ? 'Yes, cancel' : 'Cancel booking'}
+            <button
+              type="button"
+              className={controls.danger}
+              onClick={() => void handleConfirm()}
+              disabled={(!unpaid && !preview) || isCancelling}
+            >
+              {isCancelling ? 'Cancelling…' : unpaid ? 'Yes, cancel' : 'Yes, cancel booking'}
             </button>
           </>
         )
@@ -137,38 +152,56 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
         <p className={styles.closed}>This booking can no longer be cancelled because a passenger has already checked in.</p>
       ) : null}
 
-      {isLoadingPreview ? <p className={styles.loading}>Working out the fee and the refund…</p> : null}
+      {previewError ? (
+        <div className={styles.previewError} role="alert">
+          <span>{previewError.message}</span>
+          <button type="button" className={styles.retry} onClick={handleRetryPreview}>
+            Try again
+          </button>
+        </div>
+      ) : null}
 
       {error ? <ApiErrorBanner error={error} /> : null}
 
-      {preview && !unpaid ? (
-        <table className={styles.table}>
+      {!unpaid && !isClosed ? (
+        <table className={styles.table} aria-busy={!preview && !previewError}>
           <tbody>
             <tr>
               <td>Total paid</td>
-              <td>{formatMoney(booking.total, preview.currency || booking.currency)}</td>
+              <td>
+                {preview ? (
+                  formatMoney(booking.total, preview.currency || booking.currency)
+                ) : (
+                  <span className={styles.skeleton} aria-hidden="true" />
+                )}
+              </td>
             </tr>
             <tr>
               <td>Cancellation fee</td>
-              <td className={styles.fee}>− {formatMoney(preview.fee, preview.currency || booking.currency)}</td>
+              <td className={styles.fee}>
+                {preview ? (
+                  `− ${formatMoney(preview.fee, preview.currency || booking.currency)}`
+                ) : (
+                  <span className={styles.skeleton} aria-hidden="true" />
+                )}
+              </td>
             </tr>
             <tr>
               <td>{booking.paymentType === 'miles' ? 'Miles returned' : 'Refund to card'}</td>
               <td className={styles.refund}>
-                {booking.paymentType === 'miles' && preview.milesReturned !== null && preview.milesReturned !== undefined
-                  ? `${preview.milesReturned} miles`
-                  : formatMoney(preview.refund, preview.currency || booking.currency)}
+                {preview ? (
+                  booking.paymentType === 'miles' && preview.milesReturned !== null && preview.milesReturned !== undefined ? (
+                    `${preview.milesReturned} miles`
+                  ) : (
+                    formatMoney(preview.refund, preview.currency || booking.currency)
+                  )
+                ) : (
+                  <span className={styles.skeleton} aria-hidden="true" />
+                )}
               </td>
             </tr>
           </tbody>
         </table>
-      ) : null}
-
-      {preview && !unpaid ? (
-        <p className={styles.note}>
-          The fee comes from the fare rules in pricing (feature 4). The refund is processed by refunds (feature 5b) and shown in your
-          booking.
-        </p>
       ) : null}
     </Dialog>
   )
