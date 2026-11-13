@@ -1,22 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useUser } from '@clerk/clerk-react'
-import { useAppAuth } from '../../auth/AuthProvider'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
+// Redirect before rendering so this route never mounts a component that navigates from an effect.
 export const Route = createFileRoute('/_authenticated/dashboard')({
-  component: Dashboard,
+  beforeLoad: () => {
+    throw redirect({ to: '/account/my-profile', replace: true })
+  },
 })
-
-function Dashboard() {
-  const { user: clerkUser } = useUser()
-  const { user, isLoading, logout } = useAppAuth()
-
-  return (
-    <div>
-      <h1>Welcome{user ? `, ${clerkUser?.firstName ?? user.email}` : ''}</h1>
-      <p>{clerkUser?.primaryEmailAddress?.emailAddress}</p>
-      <button type="button" className="counter" onClick={() => void logout()} disabled={isLoading}>
-        Log out
-      </button>
-    </div>
-  )
-}

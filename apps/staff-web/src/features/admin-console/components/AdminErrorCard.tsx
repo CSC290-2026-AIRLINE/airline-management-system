@@ -48,7 +48,7 @@ export function AdminErrorCard({ page, error, status, onRetry }: AdminErrorCardP
             <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-warning-soft text-base font-bold text-warning">
               !
             </span>
-            <h2 className="m-0 text-lg font-semibold text-foreground">{headline}</h2>
+            <h2 className="m-0 text-base font-semibold text-foreground">{headline}</h2>
           </header>
           <p className="mb-4 text-xs break-words text-muted-foreground">{error ?? 'Unknown error'}</p>
 
