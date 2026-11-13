@@ -1,32 +1,21 @@
-import { Outlet, createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router'
-import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import { StaffShell } from '@staff-web/features/checkin-boarding/components/StaffShell.tsx'
-import { PAGE_PATHS, pageFromPath } from '@staff-web/features/checkin-boarding/components/shell-nav.ts'
+import { Outlet, createFileRoute } from '@tanstack/react-router'
+import { AppShell } from '@staff-web/features/admin-console/AppShell'
+import { RequireStaff } from '@staff-web/features/admin-console/components/RequireStaff'
+import { CheckInLayout } from '@staff-web/features/checkin-boarding/components/CheckInLayout.tsx'
 
-/**
- * Layout for the Feature 6 staff screens: the sidebar, the page column and the account box.
- *
- * The screen is read from the URL, so a deep link lands on the right nav item, and the body comes from `<Outlet/>`.
- */
+/** Layout for every `/check-in/*` page: the global staff sidebar around the F6 page column. */
 export const Route = createFileRoute('/_authenticated/check-in')({
   component: CheckInWorkspace,
 })
 
 function CheckInWorkspace() {
-  const { location } = useRouterState()
-  const navigate = useNavigate()
-  const { user, logout } = useAppAuth()
-
   return (
-    <StaffShell
-      current={pageFromPath(location.pathname)}
-      onNavigate={(page) => void navigate({ to: PAGE_PATHS[page] })}
-      agentName={user?.email ?? 'Staff agent'}
-      /* shortcut: real time until Feature 1 exposes the simulation clock to the frontend. */
-      clock={new Date()}
-      onSignOut={() => void logout()}
-    >
-      <Outlet />
-    </StaffShell>
+    <RequireStaff>
+      <AppShell>
+        <CheckInLayout>
+          <Outlet />
+        </CheckInLayout>
+      </AppShell>
+    </RequireStaff>
   )
 }
