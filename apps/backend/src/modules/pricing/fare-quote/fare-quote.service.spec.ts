@@ -260,6 +260,12 @@ describe('FareQuoteService', () => {
       })
       applyRules.mockRestore()
     })
+
+    it('asks for the seats of the cabin of the fare class', async () => {
+      await service.create(dto)
+
+      expect(seats.seatsLeftPct).toHaveBeenCalledWith(FLIGHT_ID, 'economy')
+    })
   })
 
   describe('flight checks', () => {

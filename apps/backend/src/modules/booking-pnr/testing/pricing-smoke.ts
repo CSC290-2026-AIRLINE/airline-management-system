@@ -19,9 +19,11 @@ import { PrismaClient } from '@backend/db/generated/prisma/client'
  *   npm run start:dev -w apps/backend
  *   npm run f03:pricing-smoke -w apps/backend
  *
- * It provisions only what the seeds do not have: the base fares of the two fare classes it quotes and one future
- * flight far enough ahead for the non-refundable fare class. It never deletes anything: quotes, bookings and
- * redemptions are an audit trail, so they stay in the database for the report.
+ * It provisions only what the seeds do not have: the base fares of the two fare classes it quotes and the future
+ * flights far enough ahead for the non-refundable fare class. It never deletes anything: quotes, bookings and
+ * redemptions are an audit trail, so they stay in the database for the report. The only rows it moves are the seats
+ * it holds by hand on its own flight, and the live quotes of that flight, which it expires so a repeated run prices
+ * the inventory as it is now.
  */
 
 try {
@@ -37,13 +39,16 @@ const CHILD_PASSPORT = 'F03SEED002'
 const PROMO_CODE = 'SAVE10'
 const SMOKE_CONTACT = 'feature3.customer@example.com'
 const ROUTE = { origin: 'BKK', destination: 'HKT' }
-const SMOKE_FLIGHT_NUMBERS = { y: 'SMK901', promo: 'SMK902', q: 'SMK903' } as const
+const SMOKE_FLIGHT_NUMBERS = { y: 'SMK901', promo: 'SMK902', q: 'SMK903', seats: 'SMK904' } as const
 const AIRCRAFT_TAIL = 'HS-F03A'
 const DAY_MS = 86_400_000
 const BLOCK_MINUTES = 85
 const CAPACITY = 180
 // Far enough ahead for the Q class, which can only be bought seven days before departure.
 const DAYS_AHEAD = 10
+// The seat availability flight flies a day after the searched one, so the search never prices it and the quote it
+// gets is always a new one.
+const SEATS_DAYS_AHEAD = DAYS_AHEAD + 1
 // Y is refundable, so its cancellation fee has to be smaller than the fare to leave a refund.
 const BASE_FARES: Record<string, string> = { Y: '1000.00', Q: '100.00' }
 
@@ -61,6 +66,8 @@ interface CheckResult {
 
 const results: CheckResult[] = []
 let quotesAtStart = 0
+// The flight whose seats the smoke holds by hand, so the cleanup can release them.
+let smokeFlightId: string | null = null
 
 function record(name: string, status: CheckStatus, detail: string): void {
   results.push({ name, status, detail })
@@ -137,6 +144,7 @@ interface SmokeFixtures {
     promo: { id: string; created: boolean }
     q: { id: string; created: boolean }
   }
+  seatsFlight: { id: string; created: boolean }
   promoId: string
   baseFares: Record<string, number>
   createdBaseFare: string[]
@@ -278,6 +286,10 @@ async function loadFixtures(): Promise<SmokeFixtures> {
   const promoFlight = await ensureSmokeFlight(route!.id, aircraft!.id, SMOKE_FLIGHT_NUMBERS.promo, serviceDate)
   const qFlight = await ensureSmokeFlight(route!.id, aircraft!.id, SMOKE_FLIGHT_NUMBERS.q, serviceDate)
 
+  const seatsDate = new Date(Date.now() + SEATS_DAYS_AHEAD * DAY_MS)
+  seatsDate.setUTCHours(0, 0, 0, 0)
+  const seatsFlight = await ensureSmokeFlight(route!.id, aircraft!.id, SMOKE_FLIGHT_NUMBERS.seats, seatsDate)
+
   const token = new JwtService({ secret }).sign({ sub: user!.id, email: user!.email }, { expiresIn: '1h' })
 
   return {
@@ -290,6 +302,7 @@ async function loadFixtures(): Promise<SmokeFixtures> {
     fareClasses,
     flightDate,
     flights: { y: yFlight, promo: promoFlight, q: qFlight },
+    seatsFlight,
     promoId: promo!.id,
     baseFares: amounts,
     createdBaseFare: created,
@@ -327,7 +340,7 @@ async function searchSmokeFlights(fixtures: SmokeFixtures): Promise<SearchOption
 }
 
 async function cancelPriorSmokeBookings(fixtures: SmokeFixtures): Promise<number> {
-  const flightIds = Object.values(fixtures.flights).map((flight) => flight.id)
+  const flightIds = [...Object.values(fixtures.flights).map((flight) => flight.id), fixtures.seatsFlight.id]
   const prior = await prisma.booking.findMany({
     where: {
       contact_email: SMOKE_CONTACT,
@@ -366,6 +379,24 @@ function holdBody(
     expectedTotal,
     ...(promoCode ? { promoCode } : {}),
   }
+}
+
+/** Moves the seats of the smoke flight by hand, the way a booking would. */
+async function setInventory(flightId: string, data: { held_count?: number; award_limit?: number }): Promise<void> {
+  await prisma.seat_inventory.updateMany({ where: { flight_id: flightId }, data })
+}
+
+/**
+ * A quote of an earlier run would be reused instead of a new one, and a reused quote keeps the seats it was priced
+ * with. The live quotes of the smoke flight are expired first, so the run always prices the inventory as it is now.
+ * The rows stay in the database as the audit trail they are.
+ */
+async function expireSmokeQuotes(flightId: string): Promise<number> {
+  const expired = await prisma.fare_quote.updateMany({
+    where: { flight_id: flightId, expires_at: { gt: new Date() } },
+    data: { expires_at: new Date(Date.now() - 60_000) },
+  })
+  return expired.count
 }
 
 async function main(): Promise<void> {
@@ -687,6 +718,51 @@ async function main(): Promise<void> {
     return summary
   })
 
+  // 6. The quote asks Feature 3 for the seats of the cabin, and sees the real inventory.
+  const seatsFlightId = fixtures.seatsFlight.id
+  smokeFlightId = seatsFlightId
+  await check('a quote sees the real seats left of the cabin', async () => {
+    await expireSmokeQuotes(seatsFlightId)
+    // 152 seats of 180 are held and 10 more are kept for awards, so 18 cash seats are left: 10 percent.
+    await setInventory(seatsFlightId, { held_count: 152, award_limit: 10 })
+
+    const response = await api('/fare-quotes', {
+      body: { flight_id: seatsFlightId, fare_class_id: fixtures.fareClasses.Y },
+      token: fixtures.token,
+    })
+    assert(response.status === 201 || response.status === 200, `The quote answered ${response.status}: ${JSON.stringify(response.body)}`)
+
+    const quote = await prisma.fare_quote.findUnique({ where: { id: response.body.id }, select: { seats_left_pct: true } })
+    assert(Boolean(quote), 'The quote is not in the database.')
+    const seatsLeftPct = Number(quote!.seats_left_pct)
+    assert(seatsLeftPct === 10, `The quote says ${seatsLeftPct} percent seats left, not 10.`)
+    return `seats_left_pct ${seatsLeftPct.toFixed(2)} with 18 cash seats of 180`
+  })
+
+  await check('a sold-out cabin is refused', async () => {
+    // 170 seats are held and 10 more are kept for awards: no cash seats are left.
+    await setInventory(seatsFlightId, { held_count: 170, award_limit: 10 })
+
+    const response = await api('/fare-quotes', {
+      body: { flight_id: seatsFlightId, fare_class_id: fixtures.fareClasses.Q },
+      token: fixtures.token,
+    })
+    assert(response.status === 409, `The quote answered ${response.status}, not 409: ${JSON.stringify(response.body)}`)
+    assert(
+      response.body?.error?.code === 'FARE_CLASS_UNAVAILABLE',
+      `The error code is ${response.body?.error?.code}, not FARE_CLASS_UNAVAILABLE.`,
+    )
+    return '409 FARE_CLASS_UNAVAILABLE'
+  })
+
+  await check('the sold-out cabin leaves no quote behind', async () => {
+    const written = await prisma.fare_quote.count({
+      where: { flight_id: seatsFlightId, fare_class_id: fixtures.fareClasses.Q },
+    })
+    assert(written === 0, `The refused quote wrote ${written} fare_quote row(s).`)
+    return 'no fare_quote row for the sold-out class'
+  })
+
   report()
 }
 
@@ -707,6 +783,14 @@ main()
     process.exitCode = 1
   })
   .finally(async () => {
+    // The seats the smoke held by hand are released, so the flight is sellable again.
+    if (smokeFlightId) {
+      try {
+        await setInventory(smokeFlightId, { held_count: 0 })
+      } catch {
+        console.log('\nCould not release the held seats of the smoke flight.')
+      }
+    }
     try {
       const quotesAtEnd = await prisma.fare_quote.count()
       console.log(`\nfare_quote rows in the database: ${quotesAtEnd} (${quotesAtEnd - quotesAtStart} written by this run)`)

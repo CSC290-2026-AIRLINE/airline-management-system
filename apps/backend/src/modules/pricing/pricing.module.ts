@@ -1,6 +1,7 @@
 import { Module, type OnModuleInit } from '@nestjs/common'
 import { AdminConsoleModule } from '../admin-console/admin-console.module'
 import { AdminConsoleService } from '../admin-console/admin-console.service'
+import { BookingSeatAvailabilityModule } from '@backend/modules/booking-pnr/inventory/booking-seat-availability.module'
 import { BaggageChargeController, BaggageRateController } from './baggage-rate/baggage-rate.controller'
 import { BaggageRateService } from './baggage-rate/baggage-rate.service'
 import { CurrencyRateController } from './currency-rate/currency-rate.controller'
@@ -11,7 +12,6 @@ import { FareClassController, PublicFareClassController } from './fare-class/far
 import { FareClassService } from './fare-class/fare-class.service'
 import { FareQuoteController } from './fare-quote/fare-quote.controller'
 import { FareQuoteService } from './fare-quote/fare-quote.service'
-import { NoBookingsSeatAvailability, SeatAvailability } from './fare-quote/seat-availability'
 import { ExpenseController } from './finance/expense/expense.controller'
 import { ExpenseService } from './finance/expense/expense.service'
 import { FinanceSummaryController } from './finance/summary/finance-summary.controller'
@@ -33,7 +33,7 @@ import { TaxFeeController } from './tax-fee/tax-fee.controller'
 import { TaxFeeService } from './tax-fee/tax-fee.service'
 
 @Module({
-  imports: [AdminConsoleModule],
+  imports: [AdminConsoleModule, BookingSeatAvailabilityModule],
   controllers: [
     FareClassController,
     PublicFareClassController,
@@ -64,8 +64,6 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     PricingSimulatorService,
     PromoCodeService,
     FareQuoteService,
-    // Swap this one line for Feature 3b's provider when it exists.
-    { provide: SeatAvailability, useClass: NoBookingsSeatAvailability },
     SeatFeeService,
     TaxFeeService,
     CurrencyRateService,

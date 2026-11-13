@@ -110,7 +110,7 @@ export class FareQuoteService {
     if (live) return presentQuote(live, await this.displayTotal(live, dto.display_currency))
 
     // Only a new quote asks 3b: reusing a saved one calls nothing. A sold-out class is refused here.
-    const seatsLeftPct = await this.readSeatsLeftPct(flight.id)
+    const seatsLeftPct = await this.readSeatsLeftPct(flight.id, fareClass.cabin)
     if (seatsLeftPct <= 0) {
       throw new ConflictException(pricingError(PricingErrorCode.FARE_CLASS_UNAVAILABLE, 'No seats are left in this fare class'))
     }
@@ -315,10 +315,10 @@ export class FareQuoteService {
     return fareClass
   }
 
-  private async readSeatsLeftPct(flightId: string) {
+  private async readSeatsLeftPct(flightId: string, cabin: string) {
     let seatsLeftPct: number
     try {
-      seatsLeftPct = await this.seatAvailability.seatsLeftPct(flightId)
+      seatsLeftPct = await this.seatAvailability.seatsLeftPct(flightId, cabin)
     } catch {
       throw this.upstreamUnavailable()
     }
