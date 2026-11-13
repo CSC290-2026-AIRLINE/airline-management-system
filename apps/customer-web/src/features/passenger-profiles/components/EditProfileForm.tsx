@@ -1,10 +1,17 @@
 import { useState, type FormEvent } from 'react'
+import { Lock, Trash2 } from 'lucide-react'
+import { Button } from '@customer-web/components/ui/button'
+import { DialogFooter } from '@customer-web/components/ui/dialog'
+import { FieldGroup } from '@customer-web/components/ui/field'
+import { Input } from '@customer-web/components/ui/input'
 import { birthDateLabel, useProfile } from '@customer-web/features/passenger-profiles/profile-context'
-import ProfileAvatar from '@customer-web/features/passenger-profiles/components/ProfileAvatar'
-import UploadPhotoDialog from '@customer-web/features/passenger-profiles/components/UploadPhotoDialog'
-import RemovePhotoDialog from '@customer-web/features/passenger-profiles/components/RemovePhotoDialog'
 import ChangeEmailDialog from '@customer-web/features/passenger-profiles/components/ChangeEmailDialog'
-import removeIcon from '@customer-web/features/passenger-profiles/assets/remove.svg'
+import FormError from '@customer-web/features/passenger-profiles/components/FormError'
+import FormField from '@customer-web/features/passenger-profiles/components/FormField'
+import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
+import ProfileAvatar from '@customer-web/features/passenger-profiles/components/ProfileAvatar'
+import RemovePhotoDialog from '@customer-web/features/passenger-profiles/components/RemovePhotoDialog'
+import UploadPhotoDialog from '@customer-web/features/passenger-profiles/components/UploadPhotoDialog'
 import { errorMessage } from '../profile-api'
 
 export default function EditProfileForm({ onDone }: { onDone: () => void }) {
@@ -23,6 +30,11 @@ export default function EditProfileForm({ onDone }: { onDone: () => void }) {
   const [dialog, setDialog] = useState<'upload' | 'remove' | 'email' | null>(null)
   const [error, setError] = useState('')
   const fullName = `${profile.firstName} ${profile.lastName}`
+  const lockedFields = [
+    ['Date of birth', birthDateLabel(profile.dateOfBirth)],
+    ['Nationality', profile.nationality],
+    ['Gender', profile.gender],
+  ].filter(([, value]) => value && value !== 'Not set')
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (saving) return
@@ -53,155 +65,156 @@ export default function EditProfileForm({ onDone }: { onDone: () => void }) {
   }
   return (
     <>
-      <section className="profile-card profile-editing" aria-labelledby="edit-profile-title">
-        <header className="profile-card-header profile-editing-header">
-          <div>
-            <h2 id="edit-profile-title">Edit profile details</h2>
-            <p>You can change your names, passport and phone. Date of birth, gender and nationality are locked after their first save.</p>
-          </div>
-        </header>
-        <div className="profile-mobile-identity">
-          <ProfileAvatar name={fullName} photo={draft.photo} />
-          <div>
-            <h2>{fullName}</h2>
-            <p>{profile.email}</p>
-          </div>
-        </div>
-        <form onSubmit={save} className="profile-edit-form">
-          <div className="profile-edit-body">
-            <div className="profile-edit-fields">
-              <label className="profile-field profile-first-name">
-                First name (passport spelling)
-                <input
-                  name="firstName"
-                  autoComplete="given-name"
-                  required
-                  maxLength={80}
-                  disabled={saving}
-                  value={draft.firstName}
-                  onChange={(event) => setDraft({ ...draft, firstName: event.target.value })}
-                />
-                <small>Use the Latin spelling printed on your passport. Enter Thai names in the local-name fields.</small>
-              </label>
-              <label className="profile-field profile-last-name">
-                Last name
-                <input
-                  name="lastName"
-                  autoComplete="family-name"
-                  required
-                  maxLength={80}
-                  disabled={saving}
-                  value={draft.lastName}
-                  onChange={(event) => setDraft({ ...draft, lastName: event.target.value })}
-                />
-              </label>
-              <label className="profile-field">
-                Local first name (optional)
-                <input
-                  maxLength={80}
-                  value={draft.localFirstName}
-                  disabled={saving}
-                  onChange={(event) => setDraft({ ...draft, localFirstName: event.target.value })}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="profile-field">
-                Local last name (optional)
-                <input
-                  maxLength={80}
-                  value={draft.localLastName}
-                  disabled={saving}
-                  onChange={(event) => setDraft({ ...draft, localLastName: event.target.value })}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="profile-field">
-                Passport number (optional)
-                <input
-                  maxLength={30}
-                  value={draft.passportNumber}
-                  disabled={saving}
-                  onChange={(event) => setDraft({ ...draft, passportNumber: event.target.value })}
-                  autoComplete="off"
-                />
-                <small>Letters and digits only; spaces and hyphens are removed when saved.</small>
-              </label>
-              <div className="profile-field profile-edit-email">
-                <span>Email · managed by your sign-in account</span>
-                <div className="profile-readonly-email">
-                  <span>{profile.email}</span>
-                  <button className="profile-link" type="button" disabled={saving} onClick={() => setDialog('email')}>
-                    Change<span className="profile-desktop"> email</span>
-                  </button>
-                </div>
-                <small>A new email gets a 6-digit code and changes only after you confirm it.</small>
-              </div>
-              <label className="profile-field profile-edit-phone">
-                Phone
-                <input
-                  name="phone"
-                  autoComplete="tel"
-                  type="tel"
-                  maxLength={30}
-                  disabled={saving}
-                  pattern="\+?[0-9 \(\)\-]{7,30}"
-                  value={draft.phone}
-                  onChange={(event) => setDraft({ ...draft, phone: event.target.value })}
-                />
-              </label>
-              <div className="profile-locked-fields">
-                {[
-                  ['Date of birth', birthDateLabel(profile.dateOfBirth)],
-                  ['Nationality', profile.nationality],
-                  ['Gender', profile.gender],
-                ]
-                  .filter(([, value]) => value && value !== 'Not set')
-                  .map(([label, value]) => (
-                    <label key={label} className="profile-field">
-                      <span>{label}</span>
-                      <span className="profile-locked-input">
-                        <input readOnly value={value} aria-label={`${label}, locked`} />
-                        <span aria-hidden="true">🔒</span>
-                      </span>
-                    </label>
-                  ))}
-              </div>
-            </div>
-            <div className="profile-photo-column">
-              <div className="profile-desktop">
-                <ProfileAvatar name={fullName} photo={draft.photo} />
-              </div>
-              <div className="profile-photo-actions">
-                <button
+      <ProfileDialog
+        title="Edit profile details"
+        onClose={() => {
+          if (!saving) onDone()
+        }}
+        className="sm:max-w-2xl"
+      >
+        <p className="text-sm text-muted-foreground">Date of birth, gender and nationality can’t be changed.</p>
+        <form onSubmit={save} className="grid gap-6">
+          <div className="grid gap-6">
+            <div className="flex items-center gap-4">
+              <ProfileAvatar name={fullName} photo={draft.photo} />
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" disabled={saving} onClick={() => setDialog('upload')}>
+                  Upload photo
+                </Button>
+                <Button
                   type="button"
-                  className="profile-icon-button profile-button--danger"
+                  variant="outline"
+                  size="icon"
+                  className="text-destructive hover:text-destructive"
                   aria-label="Remove profile photo"
                   disabled={saving || !draft.photo}
                   onClick={() => setDialog('remove')}
                 >
-                  <img src={removeIcon} alt="" />
-                </button>
-                <button type="button" className="profile-button" disabled={saving} onClick={() => setDialog('upload')}>
-                  Upload photo
-                </button>
+                  <Trash2 />
+                </Button>
               </div>
             </div>
+            <FieldGroup>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField label="First name (passport spelling)">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      name="firstName"
+                      autoComplete="given-name"
+                      required
+                      maxLength={80}
+                      disabled={saving}
+                      value={draft.firstName}
+                      onChange={(event) => setDraft({ ...draft, firstName: event.target.value })}
+                    />
+                  )}
+                </FormField>
+                <FormField label="Last name">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      name="lastName"
+                      autoComplete="family-name"
+                      required
+                      maxLength={80}
+                      disabled={saving}
+                      value={draft.lastName}
+                      onChange={(event) => setDraft({ ...draft, lastName: event.target.value })}
+                    />
+                  )}
+                </FormField>
+                <FormField label="Local first name (optional)">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      maxLength={80}
+                      autoComplete="off"
+                      disabled={saving}
+                      value={draft.localFirstName}
+                      onChange={(event) => setDraft({ ...draft, localFirstName: event.target.value })}
+                    />
+                  )}
+                </FormField>
+                <FormField label="Local last name (optional)">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      maxLength={80}
+                      autoComplete="off"
+                      disabled={saving}
+                      value={draft.localLastName}
+                      onChange={(event) => setDraft({ ...draft, localLastName: event.target.value })}
+                    />
+                  )}
+                </FormField>
+              </div>
+              <FormField label="Passport number (optional)">
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    maxLength={30}
+                    autoComplete="off"
+                    disabled={saving}
+                    value={draft.passportNumber}
+                    onChange={(event) => setDraft({ ...draft, passportNumber: event.target.value })}
+                  />
+                )}
+              </FormField>
+              <FormField label="Email · managed by your sign-in account">
+                {({ id }) => (
+                  <div className="flex items-center gap-2">
+                    <Input id={id} readOnly disabled value={profile.email} />
+                    <Button type="button" variant="outline" disabled={saving} onClick={() => setDialog('email')}>
+                      <span>
+                        Change<span className="hidden sm:inline"> email</span>
+                      </span>
+                    </Button>
+                  </div>
+                )}
+              </FormField>
+              <FormField label="Phone">
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    name="phone"
+                    autoComplete="tel"
+                    type="tel"
+                    maxLength={30}
+                    disabled={saving}
+                    pattern="\+?[0-9 \(\)\-]{7,30}"
+                    value={draft.phone}
+                    onChange={(event) => setDraft({ ...draft, phone: event.target.value })}
+                  />
+                )}
+              </FormField>
+              {lockedFields.length > 0 && (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {lockedFields.map(([label, value]) => (
+                    <FormField key={label} label={label}>
+                      {({ id }) => (
+                        <div className="relative">
+                          <Input id={id} readOnly value={value} aria-label={`${label}, locked`} className="pr-9" />
+                          <Lock className="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                        </div>
+                      )}
+                    </FormField>
+                  ))}
+                </div>
+              )}
+            </FieldGroup>
+            {error && <FormError>{error}</FormError>}
           </div>
-          {error && (
-            <p className="profile-error" role="alert">
-              {error}
-            </p>
-          )}
-          <footer className="profile-edit-actions">
-            <button type="button" className="profile-button profile-cancel" disabled={saving} onClick={onDone}>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={saving} onClick={onDone}>
               Cancel
-            </button>
-            <button className="profile-button profile-button--primary" type="submit" disabled={saving}>
+            </Button>
+            <Button type="submit" disabled={saving}>
               {saving ? 'Saving…' : 'Save changes'}
-            </button>
-          </footer>
+            </Button>
+          </DialogFooter>
         </form>
-      </section>
+      </ProfileDialog>
       {dialog === 'upload' && (
         <UploadPhotoDialog
           onClose={() => setDialog(null)}

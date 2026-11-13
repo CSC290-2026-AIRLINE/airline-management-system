@@ -1,7 +1,18 @@
-import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
-import removeIcon from '@customer-web/features/passenger-profiles/assets/remove.svg'
 import { useState } from 'react'
+import { Trash2 } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@customer-web/components/ui/alert-dialog'
+import FormError from '@customer-web/features/passenger-profiles/components/FormError'
 import { errorMessage } from '../profile-api'
+
 export default function RemovePassengerDialog({
   name,
   onClose,
@@ -26,33 +37,36 @@ export default function RemovePassengerDialog({
     }
   }
   return (
-    <ProfileDialog
-      title={
-        <>
-          <span className="profile-desktop">Remove {name} from saved passengers?</span>
-          <span className="profile-mobile">Remove {name}?</span>
-        </>
-      }
-      onClose={() => {
-        if (!busy) onClose()
+    <AlertDialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose()
       }}
-      kind="profile-dialog--remove"
     >
-      <p>They won’t appear when you type a name while booking. Past bookings keep their details.</p>
-      {error && (
-        <p className="profile-error" role="alert">
-          {error}
-        </p>
-      )}
-      <footer>
-        <button className="profile-button" disabled={busy} onClick={onClose}>
-          Cancel
-        </button>
-        <button className="profile-button profile-button--danger" disabled={busy} onClick={() => void remove()}>
-          <img src={removeIcon} alt="" />
-          {busy ? 'Removing…' : 'Remove'}
-        </button>
-      </footer>
-    </ProfileDialog>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove {name} from saved passengers?</AlertDialogTitle>
+          <AlertDialogDescription>
+            They won’t appear when you type a name while booking. Past bookings keep their details.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {error && <FormError>{error}</FormError>}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={busy}
+            onClick={(event) => {
+              // Keep the dialog open while the request runs; it closes when the parent drops it after success.
+              event.preventDefault()
+              void remove()
+            }}
+          >
+            <Trash2 />
+            {busy ? 'Removing…' : 'Remove'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { Upload } from 'lucide-react'
+import { Button } from '@customer-web/components/ui/button'
+import { DialogFooter } from '@customer-web/components/ui/dialog'
+import FormError from '@customer-web/features/passenger-profiles/components/FormError'
 import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
+
 export default function UploadPhotoDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: (photo: string, file: File) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const reader = useRef<FileReader | null>(null)
@@ -48,8 +53,8 @@ export default function UploadPhotoDialog({ onClose, onConfirm }: { onClose: () 
     nextReader.readAsDataURL(file)
   }
   return (
-    <ProfileDialog title="Upload profile photo" onClose={onClose} kind="profile-dialog--upload" closeButton>
-      <p className="profile-fine">JPG or PNG · up to 5 MB</p>
+    <ProfileDialog title="Upload profile photo" onClose={onClose}>
+      <p className="text-sm text-muted-foreground">JPG or PNG · up to 5 MB</p>
       <div
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
@@ -57,52 +62,39 @@ export default function UploadPhotoDialog({ onClose, onConfirm }: { onClose: () 
           chooseFile(event.dataTransfer.files[0])
         }}
       >
-        <button type="button" className="profile-drop-zone" onClick={() => input.current?.click()}>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-auto w-full flex-col gap-2 border-dashed py-8 whitespace-normal"
+          onClick={() => input.current?.click()}
+        >
           {photo ? (
-            <img className="profile-photo-preview" src={photo} alt="Selected profile photo" />
+            <img className="size-24 rounded-full object-cover object-center" src={photo} alt="Selected profile photo" />
           ) : (
-            <span className="profile-upload-arrow" aria-hidden="true">
-              ↑
-            </span>
+            <Upload className="size-6 text-muted-foreground" aria-hidden="true" />
           )}
-          <strong>
-            {reading ? (
-              'Reading image…'
-            ) : photo ? (
-              'Choose a different photo'
-            ) : (
-              <>
-                <span className="profile-desktop">Drag a photo here or browse</span>
-                <span className="profile-mobile">Choose a photo</span>
-              </>
-            )}
-          </strong>
-          <span className="profile-fine">
-            <span className="profile-desktop">It’s shown to you and to staff helping you.</span>
-            <span className="profile-mobile">Tap to browse your device</span>
+          <span className="font-medium">
+            {reading ? 'Reading image…' : photo ? 'Choose a different photo' : 'Drag a photo here or browse'}
           </span>
-        </button>
+          <span className="text-xs font-normal text-muted-foreground">It’s shown to you and to staff helping you.</span>
+        </Button>
         <input ref={input} type="file" accept="image/jpeg,image/png" hidden onChange={(event) => chooseFile(event.target.files?.[0])} />
       </div>
-      {error && (
-        <p className="profile-error" role="alert">
-          {error}
-        </p>
-      )}
-      <footer>
-        <button className="profile-button" onClick={onClose}>
+      {error && <FormError>{error}</FormError>}
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>
           Cancel
-        </button>
-        <button
-          className="profile-button profile-button--primary"
+        </Button>
+        <Button
+          type="button"
           disabled={!photo || !file || reading}
           onClick={() => {
             if (file) onConfirm(photo, file)
           }}
         >
-          Upload<span className="profile-desktop"> photo</span>
-        </button>
-      </footer>
+          Upload photo
+        </Button>
+      </DialogFooter>
     </ProfileDialog>
   )
 }

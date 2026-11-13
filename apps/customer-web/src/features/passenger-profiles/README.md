@@ -13,7 +13,6 @@ passenger-profiles/
 │   └── FirstSignInPage.tsx
 ├── components/
 │   ├── EditProfileForm.tsx
-│   ├── CustomerNavigation.tsx
 │   ├── ProfileAvatar.tsx
 │   ├── SavedPassengers.tsx
 │   ├── ProfileDialog.tsx
@@ -54,7 +53,7 @@ ProfileDialog provides a native modal shell with focus containment, focus restor
 
 NationalitySelect is the searchable combobox on the first sign-in page. It is a text input with `role="combobox"` plus a `listbox`, driven entirely by `nationalityOptions` in `profile-api.ts`: 249 `[ISO code, nationality label, country name]` tuples sorted by label. `nationalitySearchText` matches a typed query against the label, the country name, the code and a small alias list, so the spellings people actually type work — "Thailand" finds Thai, "USA"/"uk"/"Turkey"/"Czech Republic"/"Ivory Coast" all resolve despite `Intl.DisplayNames` returning "Türkiye", "Czechia" and "Côte d'Ivoire". Arrow keys, Enter and Escape work, an unconfirmed query is cleared when the list closes, and typing past the list blocks submit until a choice is picked. No dependency was added.
 
-BirthDateInput is shared by the first sign-in page and PassengerDialog so both date-of-birth fields behave identically: typed digits are regrouped into `DD / MM / YYYY` as you go (`01021990` → `01 / 02 / 1990`), with day, month, year range, days-in-month and future-date checks reported inline through `onError`. The field uses `inputMode="numeric"` and `autoComplete="bday"` rather than a native date input, because the value is passport formatting, not a locale-picker value. Both forms use `parseBirthDateInput(value, today)` for complete submit validation and the same `birthDateProblem` helper as BirthDateInput, so their date rules cannot drift. Today is inclusive; calendar comparisons use UTC consistently with backend validation. BirthDateInput accepts a `today` prop for future shared-clock integration; until that service is ready, the browser date remains the frontend fallback per Database Team guidance. When the shared clock lands, both submit validation and the input must receive the same backend-supplied day. Locked DOB fields remain read-only.
+BirthDateInput is a shadcn date picker (Popover + Calendar with month and year dropdowns) shared by the first sign-in page and PassengerDialog so both date-of-birth fields behave identically. Future dates and years before 1900 cannot be selected. The form keeps the value as `DD / MM / YYYY`. Both forms use `parseBirthDateInput(value, today)` for complete submit validation and the same `birthDateProblem` helper as the picker's limits, so their date rules cannot drift. Today is inclusive; calendar comparisons use UTC consistently with backend validation. The picker accepts a `today` prop for future shared-clock integration; until that service is ready, the browser date remains the frontend fallback per Database Team guidance. When the shared clock lands, both submit validation and the picker must receive the same backend-supplied day. Locked DOB fields remain read-only.
 
 UploadPhotoDialog validates JPG/PNG files up to 5 MB and keeps a local preview until Save changes. The actual File is sent to `user.setProfileImage({ file })`, or `file: null` to remove it, using the installed Clerk SDK. No data URL is written to PostgreSQL. The backend then reads the provider's image URL and persists it through PUT `/me/photo`. If saving details succeeds but photo synchronization fails, the form explicitly reports partial success and remains open for retry. Photo storage is Clerk, rather than the currently unintegrated SeaweedFS service.
 
@@ -64,7 +63,7 @@ After primary-email confirmation, POST `/me/sync-identity` reads the authenticat
 
 For real OTP delivery, use the existing customer Clerk application's Email verification code setting, a signed-in account, and an inbox you control. Development instances may apply Clerk's testing-email or delivery restrictions. See the [Clerk email code flow](https://clerk.com/docs/guides/development/custom-flows/account-updates/add-email). No SMTP keys, custom OTP store, new login flow or schema change is required.
 
-CustomerNavigation is feature-scoped as requested. Airlines and Book are non-interactive labels. My Trips, Membership and Help also remain labels. Profile keeps the current page, and the mobile navigation supports expansion and Escape.
+The header is the app-wide `components/SiteHeader.tsx`, rendered once by the root route. Book, My Trips, Membership and Help are non-interactive labels; Profile links to `/account/my-profile`, and the mobile navigation supports expansion and Escape.
 
 Backgrounds use the supplied desktop and mobile aurora images; the mobile image applies at widths up to 700px. Figma icons retain their 16/18 px dimensions. Inter and Merriweather fonts and their licenses are bundled locally.
 

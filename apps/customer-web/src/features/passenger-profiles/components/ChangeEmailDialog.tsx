@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useReverification, useUser } from '@clerk/clerk-react'
+import { Button } from '@customer-web/components/ui/button'
+import { DialogFooter } from '@customer-web/components/ui/dialog'
+import { Input } from '@customer-web/components/ui/input'
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@customer-web/components/ui/input-otp'
+import FormError from '@customer-web/features/passenger-profiles/components/FormError'
+import FormField from '@customer-web/features/passenger-profiles/components/FormField'
+import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
+import { cn } from '@customer-web/lib/utils'
 import { useProfile } from '../profile-context'
 import { errorMessage } from '../profile-api'
 
@@ -24,17 +31,14 @@ export default function ChangeEmailDialog({ onClose }: { onClose: () => void }) 
   })
   const [email, setEmail] = useState('')
   const [step, setStep] = useState<'email' | 'code'>('email')
-  const [digits, setDigits] = useState<string[]>(Array(6).fill(''))
+  const [code, setCode] = useState('')
   const [status, setStatus] = useState('')
-  const inputs = useRef<(HTMLInputElement | null)[]>([])
+  const alreadyVerified = address?.verification.status === 'verified'
   useEffect(() => {
     if (!cooldown) return
     const timer = window.setTimeout(() => setCooldown(cooldown - 1), 1000)
     return () => window.clearTimeout(timer)
   }, [cooldown])
-  useEffect(() => {
-    if (step === 'code') inputs.current[0]?.focus()
-  }, [step])
   async function resend() {
     if (!address || busy || cooldown) return
     setBusy(true)
@@ -44,8 +48,7 @@ export default function ChangeEmailDialog({ onClose }: { onClose: () => void }) 
       await address.prepareVerification({ strategy: 'email_code' })
       setCooldown(30)
       setNotice('A new code has been sent. Use the most recent code.')
-      setDigits(Array(6).fill(''))
-      inputs.current[0]?.focus()
+      setCode('')
     } catch (error) {
       setStatus(errorMessage(error))
     } finally {
@@ -64,7 +67,7 @@ export default function ChangeEmailDialog({ onClose }: { onClose: () => void }) 
         const value = email.trim()
         if (value.toLowerCase() === user.primaryEmailAddress?.emailAddress.toLowerCase())
           throw new Error('Enter a different email address.')
-        // Suspend the native dialog so Clerk can display its session reverification modal if required.
+        // Hide the dialog so Clerk can display its session reverification modal if required.
         setSuspended(true)
         const existing = user.emailAddresses.find((item) => item.emailAddress.toLowerCase() === value.toLowerCase())
         const next = existing ?? (await createEmail(value))
@@ -84,7 +87,7 @@ export default function ChangeEmailDialog({ onClose }: { onClose: () => void }) 
       }
       if (!address) throw new Error('Start again and request a new code.')
       if (!confirmed) {
-        const verified = address.verification.status === 'verified' ? address : await address.attemptVerification({ code: digits.join('') })
+        const verified = address.verification.status === 'verified' ? address : await address.attemptVerification({ code })
         if (verified.verification.status !== 'verified') throw new Error('Enter the complete verification code.')
         setAddress(verified)
         setSuspended(true)
@@ -109,111 +112,83 @@ export default function ChangeEmailDialog({ onClose }: { onClose: () => void }) 
         if (!busy) onClose()
       }}
       suspended={suspended}
-      kind="profile-dialog--email"
       steps={
-        <div className="profile-email-steps">
-          <span className="profile-step-done">1 New email</span>
-          <span className="profile-desktop">→</span>
-          <span className={step === 'code' ? 'profile-step-current' : ''}>2 Enter code</span>
-        </div>
+        <ol className="flex items-center gap-2 text-xs text-muted-foreground" aria-label="Email change progress">
+          <li className="font-medium text-foreground">1 New email</li>
+          <li aria-hidden="true">→</li>
+          <li className={cn(step === 'code' && 'font-medium text-foreground')} aria-current={step === 'code' ? 'step' : undefined}>
+            2 Enter code
+          </li>
+        </ol>
       }
     >
-      <form onSubmit={submit}>
+      <form onSubmit={submit} className="grid gap-4">
         {step === 'email' ? (
-          <label className="profile-field">
-            New email
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              disabled={busy}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-            />
-          </label>
+          <FormField label="New email">
+            {({ id }) => (
+              <Input
+                id={id}
+                type="email"
+                autoComplete="email"
+                required
+                disabled={busy}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+              />
+            )}
+          </FormField>
         ) : (
           <>
-            <p>
-              {address?.verification.status === 'verified'
+            <p className="text-sm">
+              {alreadyVerified
                 ? `Your email ${email} is verified. Confirm to finish updating your profile.`
                 : `We sent a 6-digit code to ${email}. Your email changes only after you confirm it.`}
             </p>
-            <div
-              className="profile-code"
-              onPaste={(event) => {
-                const code = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-                if (!code) return
-                event.preventDefault()
-                setDigits(Array.from({ length: 6 }, (_, index) => code[index] ?? ''))
-                inputs.current[Math.min(code.length, 5)]?.focus()
-              }}
+            <InputOTP
+              maxLength={6}
+              autoFocus
+              autoComplete="one-time-code"
+              value={code}
+              onChange={setCode}
+              disabled={busy || confirmed || alreadyVerified}
+              aria-label="Verification code"
             >
-              {digits.map((digit, index) => (
-                <input
-                  key={index}
-                  ref={(element) => {
-                    inputs.current[index] = element
-                  }}
-                  aria-label={`Verification digit ${index + 1}`}
-                  inputMode="numeric"
-                  pattern="[0-9]"
-                  maxLength={1}
-                  required
-                  disabled={busy || confirmed || address?.verification.status === 'verified'}
-                  value={digit}
-                  autoComplete={index === 0 ? 'one-time-code' : 'off'}
-                  onChange={(event) => {
-                    const value = event.target.value.replace(/\D/g, '').slice(-1)
-                    setDigits(digits.map((item, position) => (position === index ? value : item)))
-                    if (value) inputs.current[index + 1]?.focus()
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Backspace' && !digit) inputs.current[index - 1]?.focus()
-                    if (event.key === 'ArrowLeft') inputs.current[index - 1]?.focus()
-                    if (event.key === 'ArrowRight') inputs.current[index + 1]?.focus()
-                  }}
-                />
-              ))}
-            </div>
-            <p className="profile-fine">
+              <InputOTPGroup>
+                {Array.from({ length: 6 }, (_, index) => (
+                  <InputOTPSlot key={index} index={index} aria-label={`Verification digit ${index + 1}`} />
+                ))}
+              </InputOTPGroup>
+            </InputOTP>
+            <p className="text-sm text-muted-foreground">
               Didn’t get it?{' '}
-              <button
+              <Button
                 type="button"
-                className="profile-link"
-                disabled={busy || cooldown > 0 || confirmed || address?.verification.status === 'verified'}
+                variant="link"
+                className="h-auto p-0"
+                disabled={busy || cooldown > 0 || confirmed || alreadyVerified}
                 onClick={() => void resend()}
               >
                 Resend code{cooldown > 0 ? ` (${cooldown}s)` : ''}
-              </button>{' '}
+              </Button>{' '}
               · Verification is handled by your sign-in provider (Clerk).
             </p>
           </>
         )}
         {notice && (
-          <p className="profile-fine" role="status">
+          <p className="text-sm text-muted-foreground" role="status">
             {notice}
           </p>
         )}
-        {status && (
-          <p className="profile-error" role="status">
-            {status}
-          </p>
-        )}
-        <footer>
-          <button type="button" className="profile-button" disabled={busy} onClick={onClose}>
+        {status && <FormError role="status">{status}</FormError>}
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
             Cancel
-          </button>
-          <button
-            className="profile-button profile-button--primary"
-            type="submit"
-            disabled={
-              busy || (step === 'code' && !confirmed && address?.verification.status !== 'verified' && digits.join('').length !== 6)
-            }
-          >
+          </Button>
+          <Button type="submit" disabled={busy || (step === 'code' && !confirmed && !alreadyVerified && code.length !== 6)}>
             {busy ? 'Please wait…' : confirmed ? 'Retry sync' : step === 'email' ? 'Continue' : 'Confirm email'}
-          </button>
-        </footer>
+          </Button>
+        </DialogFooter>
       </form>
     </ProfileDialog>
   )

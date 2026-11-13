@@ -1,3 +1,8 @@
-import { createFileRoute, Navigate } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/_authenticated/dashboard')({ component: () => <Navigate to="/account/my-profile" replace /> })
+// Redirect before rendering so this route never mounts a component that navigates from an effect.
+export const Route = createFileRoute('/_authenticated/dashboard')({
+  beforeLoad: () => {
+    throw redirect({ to: '/account/my-profile', replace: true })
+  },
+})

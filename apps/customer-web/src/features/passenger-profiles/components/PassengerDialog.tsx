@@ -1,12 +1,22 @@
 import { useState, type FormEvent } from 'react'
-import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
+import { Lock } from 'lucide-react'
+import { Button } from '@customer-web/components/ui/button'
+import { DialogFooter } from '@customer-web/components/ui/dialog'
+import { Input } from '@customer-web/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import BirthDateInput from '@customer-web/features/passenger-profiles/components/BirthDateInput'
-import NationalitySelect from './NationalitySelect'
+import FormError from '@customer-web/features/passenger-profiles/components/FormError'
+import FormField from '@customer-web/features/passenger-profiles/components/FormField'
+import NationalitySelect from '@customer-web/features/passenger-profiles/components/NationalitySelect'
+import ProfileDialog from '@customer-web/features/passenger-profiles/components/ProfileDialog'
 import { birthDateLabel, type Passenger } from '@customer-web/features/passenger-profiles/profile-context'
 import { errorMessage, nationalityCode, nationalityLabel } from '../profile-api'
 import { parseBirthDateInput } from '../birth-date'
 
 const relationships = ['Spouse', 'Parent', 'Child', 'Sibling', 'Guardian', 'Companion', 'Other']
+const genders = ['Female', 'Male', 'Other / unspecified']
+// Radix Select items cannot have an empty value, so "no relationship" travels as this sentinel.
+const NO_RELATIONSHIP = 'none'
 
 export default function PassengerDialog({
   passenger,
@@ -45,6 +55,14 @@ export default function PassengerDialog({
     if (saving) return
     if (!draft.firstName.trim() || !draft.lastName.trim()) {
       setError('Enter the first and last name as shown on the passport.')
+      return
+    }
+    if (!passenger && !draft.gender) {
+      setError('Select a gender.')
+      return
+    }
+    if (!passenger && !draft.nationalityCode) {
+      setError('Choose a nationality from the list.')
       return
     }
     let dateOfBirth = passenger?.dateOfBirth ?? ''
@@ -90,104 +108,121 @@ export default function PassengerDialog({
       onClose={() => {
         if (!saving) onClose()
       }}
-      kind="profile-dialog--passenger"
+      className="sm:max-w-xl"
     >
-      <p className="passenger-intro">Save family and companions you book for.</p>
-      <form className="profile-passenger-form" onSubmit={submit}>
-        <label className="profile-field">
-          Passenger’s relationship to you (optional)
-          <select
-            value={draft.relationship}
-            onChange={(event) => change('relationship', event.target.value)}
-            aria-describedby="passenger-relationship-hint"
-          >
-            <option value="">Not specified</option>
-            {relationships.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-          <small id="passenger-relationship-hint">
-            For example, Parent means this passenger is your parent. Your own details are in My Profile.
-          </small>
-        </label>
-        <div className="passenger-form-row">
-          <label className="profile-field">
-            First name (passport spelling)
-            <input
-              required
-              maxLength={80}
-              autoComplete="off"
-              placeholder="e.g. SOMCHAI"
-              value={draft.firstName}
-              onChange={(event) => change('firstName', event.target.value)}
-            />
-          </label>
-          <label className="profile-field">
-            Last name
-            <input
-              required
-              maxLength={80}
-              autoComplete="off"
-              placeholder="e.g. SARANPAT"
-              value={draft.lastName}
-              onChange={(event) => change('lastName', event.target.value)}
-            />
-          </label>
-        </div>
-        <p className="profile-fine">Use the Latin names printed on their passport. Thai names belong in the optional local-name fields.</p>
-        <div className="passenger-form-row">
-          <label className="profile-field">
-            Local first name (optional)
-            <input
-              maxLength={80}
-              placeholder="e.g. สมชาย"
-              value={draft.localFirstName}
-              onChange={(event) => change('localFirstName', event.target.value)}
-            />
-          </label>
-          <label className="profile-field">
-            Local last name (optional)
-            <input
-              maxLength={80}
-              placeholder="e.g. สารพัฒน์"
-              value={draft.localLastName}
-              onChange={(event) => change('localLastName', event.target.value)}
-            />
-          </label>
-        </div>
-        <div className="passenger-form-row passenger-form-row--three">
-          <label className="profile-field">
-            Date of birth
-            <BirthDateInput
-              value={draft.dateOfBirth}
-              onChange={(dateOfBirth) => change('dateOfBirth', dateOfBirth)}
-              onError={setError}
-              readOnly={!!passenger}
-              describedBy="passenger-lock-note"
-            />
-          </label>
-          <label className="profile-field">
-            Gender
-            <select
-              required
-              disabled={!!passenger}
-              value={draft.gender}
-              onChange={(event) => change('gender', event.target.value)}
-              aria-describedby="passenger-lock-note"
+      <form className="grid gap-4" onSubmit={submit}>
+        <FormField label="Relationship to you (optional)">
+          {({ id }) => (
+            <Select
+              value={draft.relationship || NO_RELATIONSHIP}
+              onValueChange={(value) => change('relationship', value === NO_RELATIONSHIP ? '' : value)}
             >
-              <option value="" disabled>
-                Select ▾
-              </option>
-              {['Female', 'Male', 'Other / unspecified'].map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-          </label>
+              <SelectTrigger id={id} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_RELATIONSHIP}>Not specified</SelectItem>
+                {relationships.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </FormField>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="First name (passport spelling)">
+            {({ id }) => (
+              <Input
+                id={id}
+                required
+                maxLength={80}
+                autoComplete="off"
+                placeholder="e.g. SOMCHAI"
+                value={draft.firstName}
+                onChange={(event) => change('firstName', event.target.value)}
+              />
+            )}
+          </FormField>
+          <FormField label="Last name">
+            {({ id }) => (
+              <Input
+                id={id}
+                required
+                maxLength={80}
+                autoComplete="off"
+                placeholder="e.g. SARANPAT"
+                value={draft.lastName}
+                onChange={(event) => change('lastName', event.target.value)}
+              />
+            )}
+          </FormField>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="Local first name (optional)">
+            {({ id }) => (
+              <Input
+                id={id}
+                maxLength={80}
+                placeholder="e.g. สมชาย"
+                value={draft.localFirstName}
+                onChange={(event) => change('localFirstName', event.target.value)}
+              />
+            )}
+          </FormField>
+          <FormField label="Local last name (optional)">
+            {({ id }) => (
+              <Input
+                id={id}
+                maxLength={80}
+                placeholder="e.g. สารพัฒน์"
+                value={draft.localLastName}
+                onChange={(event) => change('localLastName', event.target.value)}
+              />
+            )}
+          </FormField>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FormField label="Date of birth">
+            {({ id }) => (
+              <BirthDateInput
+                id={id}
+                value={draft.dateOfBirth}
+                onChange={(dateOfBirth) => change('dateOfBirth', dateOfBirth)}
+                onError={setError}
+                readOnly={!!passenger}
+                describedBy="passenger-lock-note"
+              />
+            )}
+          </FormField>
+          <FormField label="Gender">
+            {({ id }) => (
+              <Select required name="gender" disabled={!!passenger} value={draft.gender} onValueChange={(value) => change('gender', value)}>
+                <SelectTrigger id={id} aria-describedby="passenger-lock-note" className="w-full">
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent>
+                  {genders.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </FormField>
           {passenger ? (
-            <label className="profile-field">
-              Nationality
-              <input disabled value={draft.nationality || nationalityLabel(draft.nationalityCode)} aria-describedby="passenger-lock-note" />
-            </label>
+            <FormField label="Nationality">
+              {({ id }) => (
+                <Input
+                  id={id}
+                  disabled
+                  value={draft.nationality || nationalityLabel(draft.nationalityCode)}
+                  aria-describedby="passenger-lock-note"
+                />
+              )}
+            </FormField>
           ) : (
             <NationalitySelect
               value={draft.nationalityCode}
@@ -196,32 +231,31 @@ export default function PassengerDialog({
             />
           )}
         </div>
-        <label className="profile-field">
-          Passport number (optional)
-          <input
-            maxLength={30}
-            autoComplete="off"
-            placeholder="If known"
-            value={draft.passportNumber}
-            onChange={(event) => change('passportNumber', event.target.value)}
-          />
-        </label>
-        <p id="passenger-lock-note" className="passenger-lock-note">
-          🔒 Date of birth, gender and nationality can’t be changed after saving.
+        <FormField label="Passport number (optional)">
+          {({ id }) => (
+            <Input
+              id={id}
+              maxLength={30}
+              autoComplete="off"
+              placeholder="If known"
+              value={draft.passportNumber}
+              onChange={(event) => change('passportNumber', event.target.value)}
+            />
+          )}
+        </FormField>
+        <p id="passenger-lock-note" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Lock className="size-4 shrink-0" aria-hidden="true" />
+          Date of birth, gender and nationality can’t be changed after saving.
         </p>
-        {error && (
-          <p role="alert" className="profile-error">
-            {error}
-          </p>
-        )}
-        <footer>
-          <button type="button" className="profile-button" disabled={saving} onClick={onClose}>
+        {error && <FormError>{error}</FormError>}
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={saving} onClick={onClose}>
             Cancel
-          </button>
-          <button className="profile-button profile-button--primary" type="submit" disabled={saving}>
+          </Button>
+          <Button type="submit" disabled={saving}>
             {saving ? 'Saving…' : 'Save passenger'}
-          </button>
-        </footer>
+          </Button>
+        </DialogFooter>
       </form>
     </ProfileDialog>
   )

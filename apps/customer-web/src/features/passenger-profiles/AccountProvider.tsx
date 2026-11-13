@@ -12,7 +12,10 @@ import {
   type PassengerResponse,
   type ProfileResponse,
 } from './profile-api'
-import './profile.css'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import AccountPage from './components/AccountPage'
+import FormError from './components/FormError'
 
 export default function AccountProvider({ children }: { children: ReactNode }) {
   const pathname = useLocation({ select: (location) => location.pathname })
@@ -66,32 +69,39 @@ export default function AccountProvider({ children }: { children: ReactNode }) {
 
   if (!auth.isLoading && !auth.user)
     return (
-      <main className="account-page">
-        <section className="profile-card">
-          <h1>My Profile</h1>
-          <p role="alert">Your session could not be started. Please sign out and sign in again.</p>
-        </section>
-      </main>
+      <AccountPage>
+        <Card>
+          <CardHeader>
+            <CardTitle role="heading" aria-level={1}>
+              My Profile
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FormError>Your session could not be started. Please sign out and sign in again.</FormError>
+          </CardContent>
+        </Card>
+      </AccountPage>
     )
 
   if (loading || error || !profile)
     return (
-      <main className="account-page">
-        <nav className="account-navigation" aria-label="Customer navigation">
-          <span className="account-navigation__logo">Airlines</span>
-        </nav>
-        <div className="account-content">
-          <section className="profile-card" aria-busy={loading}>
-            <h1>My Profile</h1>
+      <AccountPage>
+        <Card aria-busy={loading}>
+          <CardHeader>
+            <CardTitle role="heading" aria-level={1}>
+              My Profile
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4">
             {loading ? (
-              <p role="status">Loading your profile…</p>
+              <p role="status" className="text-sm text-muted-foreground">
+                Loading your profile…
+              </p>
             ) : (
               <>
-                <p className="profile-error" role="alert">
-                  {error}
-                </p>
-                <button
-                  className="profile-button"
+                <FormError>{error}</FormError>
+                <Button
+                  className="justify-self-start"
                   onClick={() => {
                     setLoading(true)
                     setError('')
@@ -99,12 +109,12 @@ export default function AccountProvider({ children }: { children: ReactNode }) {
                   }}
                 >
                   Try again
-                </button>
+                </Button>
               </>
             )}
-          </section>
-        </div>
-      </main>
+          </CardContent>
+        </Card>
+      </AccountPage>
     )
 
   return (

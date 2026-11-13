@@ -1,11 +1,30 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Lock, Pencil } from 'lucide-react'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import AccountPage from '@customer-web/features/passenger-profiles/components/AccountPage'
+import ChangeEmailDialog from '@customer-web/features/passenger-profiles/components/ChangeEmailDialog'
 import EditProfileForm from '@customer-web/features/passenger-profiles/components/EditProfileForm'
-import CustomerNavigation from '@customer-web/features/passenger-profiles/components/CustomerNavigation'
-import { birthDateLabel, useProfile } from '@customer-web/features/passenger-profiles/profile-context'
 import ProfileAvatar from '@customer-web/features/passenger-profiles/components/ProfileAvatar'
 import SavedPassengers from '@customer-web/features/passenger-profiles/components/SavedPassengers'
-import ChangeEmailDialog from '@customer-web/features/passenger-profiles/components/ChangeEmailDialog'
-import editIcon from '@customer-web/features/passenger-profiles/assets/edit-profile.svg'
+import { birthDateLabel, useProfile } from '@customer-web/features/passenger-profiles/profile-context'
+
+function InfoRow({ label, locked, children }: { label: string; locked?: boolean; children: ReactNode }) {
+  return (
+    <div className="grid gap-0.5">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="flex min-w-0 items-center gap-2">
+        {children}
+        {locked && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Lock className="size-3" aria-label="Locked" />
+            <span className="hidden sm:inline">locked</span>
+          </span>
+        )}
+      </dd>
+    </div>
+  )
+}
 
 export default function MyProfilePage() {
   const { profile } = useProfile()
@@ -17,99 +36,65 @@ export default function MyProfilePage() {
     ['Nationality', profile.nationality || 'Not set'],
     ['Gender', profile.gender || 'Not set'],
   ]
+  const localName = [profile.localFirstName, profile.localLastName].filter(Boolean).join(' ')
   return (
-    <main className="account-page">
-      <CustomerNavigation />
-      <div className="account-content">
-        <header className="account-heading">
-          <h1>My Profile</h1>
-          <p>Manage your details, saved passengers and profile photo.</p>
-        </header>
-        {editing ? (
-          <EditProfileForm onDone={() => setEditing(false)} />
-        ) : (
-          <section className="profile-card profile-details" aria-labelledby="profile-title">
-            <header className="profile-card-header profile-details-header">
-              <div>
-                <h2 id="profile-title">Profile details</h2>
-                <p>Date of birth, gender and nationality are locked after setup. Email is managed by your sign-in account.</p>
-              </div>
-              <button type="button" className="profile-button profile-edit-link" onClick={() => setEditing(true)}>
-                <img src={editIcon} alt="" />
-                <span className="profile-desktop">Edit profile</span>
-                <span className="profile-sr-only profile-mobile">Edit profile</span>
-              </button>
-            </header>
-            <div className="profile-details-body">
-              <div className="profile-mobile-identity">
-                <ProfileAvatar name={fullName} photo={profile.photo} />
-                <div>
-                  <h2>{fullName}</h2>
-                  <p>{profile.email}</p>
-                </div>
-                <button type="button" className="profile-icon-button" onClick={() => setEditing(true)} aria-label="Edit profile">
-                  <img src={editIcon} alt="" />
-                </button>
-              </div>
-              <div className="profile-info-columns">
-                <dl className="profile-info profile-contact-info">
-                  <div className="profile-desktop">
-                    <dt>First name</dt>
-                    <dd>{profile.firstName}</dd>
-                  </div>
-                  <div className="profile-desktop">
-                    <dt>Last name</dt>
-                    <dd>{profile.lastName}</dd>
-                  </div>
-                  <div className="profile-email-row">
-                    <dt>Email</dt>
-                    <dd title={profile.email}>{profile.email}</dd>
-                    <button className="profile-link" onClick={() => setChangeEmail(true)}>
-                      Change<span className="profile-email-action-suffix"> email</span>
-                    </button>
-                  </div>
-                  <div className="profile-phone-row">
-                    <dt>Phone</dt>
-                    <dd>{profile.phone || 'Not set'}</dd>
-                  </div>
-                  {(profile.localFirstName || profile.localLastName) && (
-                    <div>
-                      <dt>Local name</dt>
-                      <dd>{[profile.localFirstName, profile.localLastName].filter(Boolean).join(' ')}</dd>
-                    </div>
-                  )}
-                  <div>
-                    <dt>Passport</dt>
-                    <dd>
-                      {profile.passportNumber
-                        ? `${'•'.repeat(Math.max(profile.passportNumber.length - 4, 0))}${profile.passportNumber.slice(-4)}`
-                        : 'Not set'}
-                    </dd>
-                  </div>
-                </dl>
-                <dl className="profile-info">
-                  {lockedRows.map(([label, value]) => (
-                    <div key={label}>
-                      <dt>{label}</dt>
-                      <dd>{value}</dd>
-                      {value !== 'Not set' && (
-                        <span className="profile-lock" aria-label="Locked">
-                          🔒<span className="profile-desktop"> locked</span>
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </dl>
-              </div>
-              <div className="profile-desktop profile-photo-column">
-                <ProfileAvatar name={fullName} photo={profile.photo} />
-              </div>
-            </div>
-          </section>
-        )}
-        <SavedPassengers />
-        {changeEmail && <ChangeEmailDialog onClose={() => setChangeEmail(false)} />}
-      </div>
-    </main>
+    <AccountPage>
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">My Profile</h1>
+        <p className="text-muted-foreground">Manage your details, saved passengers and profile photo.</p>
+      </header>
+      <Card aria-labelledby="profile-title">
+        <CardHeader>
+          <CardTitle id="profile-title" role="heading" aria-level={2}>
+            Profile details
+          </CardTitle>
+          <CardDescription>
+            Date of birth, gender and nationality are locked after setup. Email is managed by your sign-in account.
+          </CardDescription>
+          <CardAction>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <Pencil />
+              Edit profile
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col-reverse gap-6 sm:flex-row sm:justify-between">
+          <div className="grid flex-1 gap-6 sm:grid-cols-2">
+            <dl className="grid content-start gap-4">
+              <InfoRow label="First name">{profile.firstName}</InfoRow>
+              <InfoRow label="Last name">{profile.lastName}</InfoRow>
+              <InfoRow label="Email">
+                <span className="truncate" title={profile.email}>
+                  {profile.email}
+                </span>
+                <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setChangeEmail(true)}>
+                  <span>
+                    Change<span className="hidden sm:inline"> email</span>
+                  </span>
+                </Button>
+              </InfoRow>
+              <InfoRow label="Phone">{profile.phone || 'Not set'}</InfoRow>
+              {localName && <InfoRow label="Local name">{localName}</InfoRow>}
+              <InfoRow label="Passport">
+                {profile.passportNumber
+                  ? `${'•'.repeat(Math.max(profile.passportNumber.length - 4, 0))}${profile.passportNumber.slice(-4)}`
+                  : 'Not set'}
+              </InfoRow>
+            </dl>
+            <dl className="grid content-start gap-4">
+              {lockedRows.map(([label, value]) => (
+                <InfoRow key={label} label={label} locked={value !== 'Not set'}>
+                  {value}
+                </InfoRow>
+              ))}
+            </dl>
+          </div>
+          <ProfileAvatar name={fullName} photo={profile.photo} className="size-20 shrink-0 sm:size-28" />
+        </CardContent>
+      </Card>
+      {editing && <EditProfileForm onDone={() => setEditing(false)} />}
+      <SavedPassengers />
+      {changeEmail && <ChangeEmailDialog onClose={() => setChangeEmail(false)} />}
+    </AccountPage>
   )
 }

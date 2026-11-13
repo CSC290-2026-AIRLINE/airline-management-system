@@ -17,7 +17,7 @@ export function birthDateProblem(day: string, month: string, year: string, today
 /** Complete form validation uses the same rules as BirthDateInput, including on submit. */
 export function parseBirthDateInput(value: string, today: Date): { dateOfBirth: string; error: string } {
   const match = /^(\d{2})\s*\/\s*(\d{2})\s*\/\s*(\d{4})$/.exec(value.trim())
-  if (!match) return { dateOfBirth: '', error: 'Enter the date of birth as DD / MM / YYYY.' }
+  if (!match) return { dateOfBirth: '', error: 'Select the date of birth.' }
   const [, day, month, year] = match
   const error = birthDateProblem(day, month, year, today)
   return { dateOfBirth: error ? '' : year + '-' + month + '-' + day, error }

@@ -1,4 +1,10 @@
-import { useId, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { Check, ChevronsUpDown } from 'lucide-react'
+import { Button } from '@customer-web/components/ui/button'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@customer-web/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@customer-web/components/ui/popover'
+import FormField from '@customer-web/features/passenger-profiles/components/FormField'
+import { cn } from '@customer-web/lib/utils'
 import { nationalityOptions, nationalitySearchText } from '../profile-api'
 
 type Props = {
@@ -8,108 +14,59 @@ type Props = {
   onChange: (code: string) => void
 }
 
+/** Searchable nationality picker. The caller validates that a value was chosen when the form is submitted. */
 export default function NationalitySelect({ value, disabled, describedBy = 'setup-lock-warning', onChange }: Props) {
-  const id = useId()
-  const input = useRef<HTMLInputElement>(null)
-  const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
-  const [active, setActive] = useState(0)
+  const list = useRef<HTMLDivElement>(null)
   const label = nationalityOptions.find(([code]) => code === value)?.[1] ?? ''
-  const search = query.trim().toLowerCase()
-  const options = nationalityOptions.filter((option) => nationalitySearchText(option).includes(search))
-  function choose(code: string) {
-    onChange(code)
-    setQuery('')
-    setOpen(false)
-    input.current?.setCustomValidity('')
-  }
-  function close() {
-    setOpen(false)
-    setQuery('')
-  }
-  function move(index: number) {
-    setActive(index)
-    document.getElementById(`${id}-${index}`)?.scrollIntoView({ block: 'nearest' })
-  }
   return (
-    <div
-      className="profile-field nationality-select"
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) close()
-      }}
-    >
-      <label htmlFor={id}>Nationality</label>
-      <input
-        ref={input}
-        id={id}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={open}
-        aria-controls={`${id}-list`}
-        aria-activedescendant={open && options[active] ? `${id}-${active}` : undefined}
-        aria-describedby={describedBy}
-        autoComplete="off"
-        placeholder="Search nationality"
-        required
-        disabled={disabled}
-        value={open ? query : label || query}
-        onClick={() => {
-          if (!open) {
-            setQuery('')
-            setActive(0)
-            setOpen(true)
-          }
-        }}
-        onFocus={() => {
-          setQuery('')
-          setActive(0)
-          setOpen(true)
-        }}
-        onChange={(event) => {
-          setQuery(event.target.value)
-          setOpen(true)
-          setActive(0)
-          onChange('')
-          event.currentTarget.setCustomValidity(event.target.value ? 'Choose a nationality from the list.' : '')
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault()
-            setOpen(true)
-            move(Math.max(0, Math.min(options.length - 1, active + (event.key === 'ArrowDown' ? 1 : -1))))
-          } else if (event.key === 'Enter' && open) {
-            event.preventDefault()
-            if (options[active]) choose(options[active][0])
-          } else if (event.key === 'Escape') {
-            event.preventDefault()
-            close()
-          }
-        }}
-      />
-      {open && !disabled && (
-        <ul id={`${id}-list`} role="listbox" aria-label="Nationalities" className="nationality-options">
-          {options.map(([code, name, country], index) => (
-            <li
-              key={code}
-              id={`${id}-${index}`}
-              role="option"
-              aria-selected={value === code}
-              className={active === index ? 'is-active' : ''}
-              onPointerDown={(event) => event.preventDefault()}
-              onMouseEnter={() => setActive(index)}
-              onClick={() => choose(code)}
+    <FormField label="Nationality">
+      {({ id }) => (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              id={id}
+              type="button"
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              aria-describedby={describedBy}
+              disabled={disabled}
+              className="w-full justify-between font-normal"
             >
-              <span>{name}</span>
-              {country !== name && <span className="nationality-country">{country}</span>}
-            </li>
-          ))}
-          {!options.length && (
-            <li role="presentation" className="nationality-empty">
-              No match{search ? ` for “${search}”` : ''} — try a country name, e.g. “United Kingdom”
-            </li>
-          )}
-        </ul>
+              <span className={cn('truncate', !label && 'text-muted-foreground')}>{label || 'Search nationality'}</span>
+              <ChevronsUpDown className="opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Search nationality" onValueChange={() => list.current?.scrollTo({ top: 0 })} />
+              <CommandList ref={list}>
+                <CommandEmpty>No match — try a country name, e.g. “United Kingdom”</CommandEmpty>
+                <CommandGroup>
+                  {nationalityOptions.map((option) => {
+                    const [code, name, country] = option
+                    return (
+                      <CommandItem
+                        key={code}
+                        value={nationalitySearchText(option)}
+                        onSelect={() => {
+                          onChange(code)
+                          setOpen(false)
+                        }}
+                      >
+                        <Check className={cn(value === code ? 'opacity-100' : 'opacity-0')} />
+                        {name}
+                        {country !== name && <span className="ml-auto text-xs text-muted-foreground">{country}</span>}
+                      </CommandItem>
+                    )
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
       )}
-    </div>
+    </FormField>
   )
 }
