@@ -20,7 +20,7 @@ export function PaymentCard({ booking }: { booking: BookingDetail }) {
 
         <div className={styles.row}>
           <dt>Paid with</dt>
-          <dd className={styles.muted}>{miles ? 'Flython Miles' : 'Payment details come from checkout (feature 5a).'}</dd>
+          <dd className={styles.muted}>{miles ? 'Flython Miles' : 'Card payment'}</dd>
         </div>
 
         <div className={`${styles.row} ${styles.total}`}>
@@ -30,7 +30,9 @@ export function PaymentCard({ booking }: { booking: BookingDetail }) {
       </dl>
 
       <p className={styles.note}>
-        Cancelling shows the fee and refund before you confirm. Refunds go back to the original card through refunds (feature 5b).
+        {miles
+          ? 'Cancelling shows any fee and miles returned before you confirm.'
+          : 'Cancelling shows the fee and refund before you confirm. Any refund goes back to your original card.'}
       </p>
     </section>
   )
