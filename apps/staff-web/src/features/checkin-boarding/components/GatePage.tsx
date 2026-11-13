@@ -6,6 +6,7 @@ import { Label } from '@staff-web/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { ApiRequestError, F6_MOCK, type StaffApi } from '../api/index.ts'
 import type { FlightSummary, GateInfo, GateList, GateListEntry, Headcount, ScanResult } from '../api/types.ts'
+import { CameraScan } from './CameraScan.tsx'
 import { ErrorBanner } from './ErrorBanner.tsx'
 import { Message, Pill, StatusPill } from './pills.tsx'
 import { messageOf, numberOrNull } from './errors.ts'
@@ -44,6 +45,9 @@ export function GatePage({ api }: { api: StaffApi }) {
   const [called, setCalled] = useState(2)
   const [gateMessage, setGateMessage] = useState<string | null>(null)
   const [reference, setReference] = useState('')
+  const [camera, setCamera] = useState(false)
+  /** The reference of the last scan, to find its row in the passenger list. */
+  const [lastReference, setLastReference] = useState<string | null>(null)
   const [manualCount, setManualCount] = useState('')
   const [confirmClose, setConfirmClose] = useState(false)
   const [mismatch, setMismatch] = useState<string | null>(null)
@@ -114,11 +118,14 @@ export function GatePage({ api }: { api: StaffApi }) {
     ? [...list.police, ...list.groups['1'], ...list.groups['2'], ...list.groups['3'], ...list.groups['4']]
     : []
   const noShows = entries.filter((entry) => entry.status === 'no_show')
+  const scannedEntry = lastReference ? entries.find((entry) => entry.reference === lastReference) : undefined
   const plan = swapPlan(flights, gateId)
 
   const chooseGate = (id: string) => {
     setGateId(id)
     setScan(null)
+    setLastReference(null)
+    setCamera(false)
     setMismatch(null)
     setMismatchCount(null)
     setConfirmClose(false)
@@ -129,6 +136,7 @@ export function GatePage({ api }: { api: StaffApi }) {
     if (!flight) return
     setBusy(true)
     setError(null)
+    setLastReference(value.trim().toUpperCase())
     try {
       setScan(await api.scan(gateId, { flightId: flight.id, reference: value }))
       setReference('')
@@ -140,6 +148,18 @@ export function GatePage({ api }: { api: StaffApi }) {
     }
   }
 
+  /** A pass read by the webcam: the camera pauses until the agent asks for the next passenger. */
+  const onDecode = (value: string) => {
+    setCamera(false)
+    void doScan(value)
+  }
+
+  const scanNext = () => {
+    setScan(null)
+    setLastReference(null)
+    setCamera(true)
+  }
+
   /** Feature 6 owns the gate of each flight: apply the moves, then drop the state of the old gate. */
   const moveGates = async (moves: { flightId: string; gateId: string }[], message: string) => {
     setBusy(true)
@@ -148,6 +168,8 @@ export function GatePage({ api }: { api: StaffApi }) {
       for (const move of moves) await api.setGate(move.flightId, { gateId: move.gateId })
       // Another flight is at this gate now, so the old flight's state must not carry over.
       setScan(null)
+      setLastReference(null)
+      setCamera(false)
       setMismatch(null)
       setMismatchCount(null)
       setConfirmClose(false)
@@ -351,6 +373,20 @@ export function GatePage({ api }: { api: StaffApi }) {
 
       <Card className={PANEL}>
         <h2 className={PANEL_TITLE}>Scan boarding pass</h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={SECONDARY_BUTTON}
+            disabled={!flight}
+            onClick={() => setCamera((on) => !on)}
+          >
+            {camera ? 'Stop camera' : 'Start camera'}
+          </Button>
+          <p className={`m-0 ${MUTED}`}>Hold the passenger’s phone up to the webcam, or type the reference below.</p>
+        </div>
+        <CameraScan active={camera} onDecode={onDecode} />
         <form
           className="flex flex-col gap-2"
           onSubmit={(event) => {
@@ -386,7 +422,36 @@ export function GatePage({ api }: { api: StaffApi }) {
           </div>
         ) : null}
         {scan ? (
-          <Message tone={scan.event === 'boarded' ? 'success' : 'error'}>{scan.message}</Message>
+          <Message tone={scan.event === 'boarded' ? 'success' : 'error'} role="status">
+            <div className="flex flex-col gap-3">
+              <div className="font-semibold">{scan.message}</div>
+              {scan.passenger ? (
+                <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[15px]">
+                  <dt className="text-[#677287]">Passenger</dt>
+                  <dd className="m-0 flex flex-wrap items-center gap-2 text-[#0a1424]">
+                    {scan.passenger.name}
+                    {scannedEntry?.isPolice ? <Pill tone="warn">Police</Pill> : null}
+                    {scannedEntry?.specialAssistance.map((code) => (
+                      <Pill key={code} tone="warn">
+                        {code}
+                      </Pill>
+                    ))}
+                    {scannedEntry ? <StatusPill status={scannedEntry.status} /> : null}
+                  </dd>
+                  <dt className="text-[#677287]">Seat</dt>
+                  <dd className="m-0 text-[#0a1424]">{scan.passenger.seat}</dd>
+                  <dt className="text-[#677287]">Boarding group</dt>
+                  <dd className="m-0 text-[#0a1424]">{GROUP_LABELS[String(scan.passenger.boardingGroup) as keyof typeof GROUP_LABELS]}</dd>
+                </dl>
+              ) : null}
+              {scan.reason === 'WRONG_GATE' && scan.correctGate ? <div>Correct gate: {scan.correctGate}</div> : null}
+              <div>
+                <Button type="button" className={PRIMARY_BUTTON} onClick={scanNext}>
+                  Scan next
+                </Button>
+              </div>
+            </div>
+          </Message>
         ) : (
           <Message tone="info">
             {called >= 2 ? `Police and boarding groups 1 to ${called} called.` : 'Police and boarding group 1 called.'} Scan a pass to
