@@ -94,6 +94,26 @@ describe('PricingAdapter', () => {
       await expect(adapter.seatFee({ flightId: 'flight-1', cabin: 'economy', seatType: 'exit_row' })).resolves.toBe(12.5)
       expect(lookup).toHaveBeenCalledWith('economy', 'exit_row')
     })
+
+    it("maps Feature 3's seat types onto the ones Feature 4 prices", async () => {
+      lookup.mockResolvedValue({ amount: '12.50' })
+
+      await adapter.seatFee({ flightId: 'flight-1', cabin: 'economy', seatType: 'standard' })
+      await adapter.seatFee({ flightId: 'flight-1', cabin: 'economy', seatType: 'exit' })
+      await adapter.seatFee({ flightId: 'flight-1', cabin: 'economy', seatType: 'extra_legroom' })
+
+      expect(lookup).toHaveBeenNthCalledWith(1, 'economy', 'normal')
+      expect(lookup).toHaveBeenNthCalledWith(2, 'economy', 'exit_row')
+      expect(lookup).toHaveBeenNthCalledWith(3, 'economy', 'extra_legroom')
+    })
+
+    it('passes a seat type Feature 4 already knows straight through', async () => {
+      lookup.mockResolvedValue({ amount: '0' })
+
+      await adapter.seatFee({ flightId: 'flight-1', cabin: 'economy', seatType: 'normal' })
+
+      expect(lookup).toHaveBeenCalledWith('economy', 'normal')
+    })
   })
 
   describe('redeem', () => {

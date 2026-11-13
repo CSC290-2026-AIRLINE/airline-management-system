@@ -48,6 +48,14 @@ const PRICING_ERROR_MAP: Record<string, { code: BookingErrorCode; status: number
 // The code used when Feature 4 answers with an error that carries no pricing code of its own.
 const UNKNOWN_PRICING_CODE = 'PRICING_ERROR'
 
+// Feature 3's seat layout names a seat 'standard' or 'exit'; Feature 4 prices 'normal' and 'exit_row'. The two
+// vocabularies meet here, so the seat map can ask for the fee of a seat it drew.
+const PRICING_SEAT_TYPES: Record<string, string> = {
+  standard: 'normal',
+  exit: 'exit_row',
+  extra_legroom: 'extra_legroom',
+}
+
 @Injectable()
 export class PricingAdapter implements PricingPort {
   constructor(
@@ -83,7 +91,8 @@ export class PricingAdapter implements PricingPort {
 
   async seatFee(request: SeatFeeRequest): Promise<number> {
     try {
-      const fee = await this.seatFees.lookup(request.cabin, request.seatType)
+      const seatType = PRICING_SEAT_TYPES[request.seatType] ?? request.seatType
+      const fee = await this.seatFees.lookup(request.cabin, seatType)
       return Number(fee.amount)
     } catch (error) {
       throw this.translate(error)
@@ -102,8 +111,8 @@ export class PricingAdapter implements PricingPort {
   }
 
   // The cancellation fee and the refund of a booking, priced from Feature 4's quote snapshots (B6). Every coupon of
-  // the booking carries its own price and the quote it was sold under; a coupon without a quote (the stub prices
-  // nothing) cannot be refunded, so its whole price becomes the fee.
+  // the booking carries its own price and the quote it was sold under; a coupon without a quote (a lap infant, or a
+  // booking sold before the real adapter) cannot be refunded, so its whole price becomes the fee.
   async cancelQuote(request: CancelQuoteRequest): Promise<CancelQuote> {
     try {
       const where = {
