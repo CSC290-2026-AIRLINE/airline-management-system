@@ -1,4 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
+import { AlertCircle } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { DialogFooter } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { Textarea } from '@staff-web/components/ui/textarea'
 import { listTypes, type EntryFields, type WatchlistEntry } from '../watchlist.types'
 import { WatchlistSelect } from './WatchlistSelect'
 import { NationalitySelect } from './NationalitySelect'
@@ -88,28 +95,27 @@ export function WatchlistEntryForm({
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="wl-form">
-      <fieldset className="wl-form-fields" disabled={submitting} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-        <p>Use the spelling on the passport.</p>
+    <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
+      <fieldset className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" disabled={submitting}>
+        <p className="text-sm text-muted-foreground">Use the spelling on the passport.</p>
         {error && (
-          <p className="wl-error" role="alert">
-            {error}
-          </p>
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
-        <div className="wl-form-row">
-          <label>
-            First name
-            <input name="firstName" defaultValue={entry?.firstName} placeholder="e.g. SOMSAK" required maxLength={100} />
-          </label>
-          <label>
-            Last name
-            <input name="lastName" defaultValue={entry?.lastName} placeholder="e.g. JAIDEE" required maxLength={100} />
-          </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="First name" htmlFor="wl-first-name">
+            <Input id="wl-first-name" name="firstName" defaultValue={entry?.firstName} placeholder="e.g. SOMSAK" required maxLength={100} />
+          </Field>
+          <Field label="Last name" htmlFor="wl-last-name">
+            <Input id="wl-last-name" name="lastName" defaultValue={entry?.lastName} placeholder="e.g. JAIDEE" required maxLength={100} />
+          </Field>
         </div>
-        <div className="wl-form-row wl-identity-row">
-          <label>
-            Date of birth
-            <input
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Date of birth" htmlFor="wl-dob">
+            <Input
+              id="wl-dob"
               name="dateOfBirth"
               value={birthDate}
               onChange={(event) => {
@@ -121,14 +127,13 @@ export function WatchlistEntryForm({
               autoComplete="bday"
               maxLength={14}
             />
-          </label>
-          <div className="wl-field">
-            <span>Nationality</span>
+          </Field>
+          <Field label="Nationality">
             <NationalitySelect value={nationality} onChange={setNationality} />
-          </div>
-          <label>
-            Passport number (optional)
-            <input
+          </Field>
+          <Field label="Passport number (optional)" htmlFor="wl-passport">
+            <Input
+              id="wl-passport"
               name="passportNumber"
               defaultValue={entry?.passportNumber ?? ''}
               placeholder="Optional"
@@ -136,70 +141,91 @@ export function WatchlistEntryForm({
               autoCapitalize="characters"
               spellCheck={false}
             />
-          </label>
+          </Field>
         </div>
-        <div className="wl-form-row">
-          <div className="wl-field">
-            <span>List type</span>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="List type">
             <WatchlistSelect
               label="List type"
-              name="listType"
               value={listType}
               onChange={setListType}
-              field
-              options={[{ value: '', label: 'Select list type' }, ...Object.entries(listTypes).map(([value, label]) => ({ value, label }))]}
+              className="w-full"
+              placeholder="Select list type"
+              options={Object.entries(listTypes).map(([value, label]) => ({ value, label }))}
             />
-          </div>
-          <label>
-            Issuing authority
-            <input
+          </Field>
+          <Field label="Issuing authority" htmlFor="wl-authority">
+            <Input
+              id="wl-authority"
               name="issuingAuthority"
               defaultValue={entry?.issuingAuthority}
               placeholder="e.g. [Demo authority]"
               required
               maxLength={200}
             />
-          </label>
+          </Field>
         </div>
-        <div className="wl-form-row">
-          <div className="wl-field">
-            <span>Gender</span>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Gender">
             <WatchlistSelect
               label="Gender"
-              name="gender"
               value={gender}
               onChange={(value) => setGender(value as EntryFields['gender'])}
-              field
+              className="w-full"
+              placeholder="Select gender"
               options={[
-                { value: '', label: 'Select gender' },
                 { value: 'M', label: 'M · Male' },
                 { value: 'F', label: 'F · Female' },
                 { value: 'X', label: 'X · Unspecified' },
               ]}
             />
-          </div>
+          </Field>
         </div>
-        <label>
-          Reason
-          <textarea name="reason" defaultValue={entry?.reason} placeholder="e.g. Case reference DEMO-0142" maxLength={2000} />
-        </label>
-        <p className="wl-help">Matching uses passport + nationality first (Strong), then name + date of birth (Probable).</p>
-        {entry?.status === 'cleared' && <p className="wl-help">This entry is cleared. Saving changes keeps its cleared status.</p>}
-        <div className="wl-form-actions">
-          {entry?.status === 'active' && (
-            <button type="button" className="wl-danger-outline" onClick={onClear}>
+        <Field label="Reason" htmlFor="wl-reason">
+          <Textarea
+            id="wl-reason"
+            name="reason"
+            defaultValue={entry?.reason}
+            placeholder="e.g. Case reference DEMO-0142"
+            maxLength={2000}
+          />
+        </Field>
+        <p className="text-xs text-muted-foreground">
+          Matching uses passport + nationality first (Strong), then name + date of birth (Probable).
+        </p>
+        {entry?.status === 'cleared' && (
+          <p className="text-xs text-muted-foreground">This entry is cleared. Saving changes keeps its cleared status.</p>
+        )}
+        <DialogFooter className="sm:justify-between">
+          {entry?.status === 'active' ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="border-destructive text-destructive hover:text-destructive"
+              onClick={onClear}
+            >
               Clear entry
-            </button>
+            </Button>
+          ) : (
+            <span />
           )}
-          <span className="wl-spacer" />
-          <button type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button className="wl-primary" type="submit">
-            {submitting ? 'Saving…' : entry ? 'Save changes' : 'Add entry'}
-          </button>
-        </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button type="button" variant="outline" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button type="submit">{submitting ? 'Saving…' : entry ? 'Save changes' : 'Add entry'}</Button>
+          </div>
+        </DialogFooter>
       </fieldset>
     </form>
+  )
+}
+
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
+    </div>
   )
 }

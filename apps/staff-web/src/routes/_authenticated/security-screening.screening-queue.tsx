@@ -1,7 +1,8 @@
 import { SecurityAccessGate } from '@staff-web/features/security-screening/components/SecurityAccessGate'
 import { createFileRoute } from '@tanstack/react-router'
+import { AppShell } from '@staff-web/features/admin-console/AppShell'
+import { RequireStaff } from '@staff-web/features/admin-console/components/RequireStaff'
 import { ScreeningQueue } from '@staff-web/features/security-screening/ScreeningQueue'
-import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { validateQueueSearch } from '@staff-web/features/security-screening/queue-search'
 
 export const Route = createFileRoute('/_authenticated/security-screening/screening-queue')({
@@ -10,10 +11,13 @@ export const Route = createFileRoute('/_authenticated/security-screening/screeni
 })
 
 function ScreeningQueueRoute() {
-  const { logout } = useAppAuth()
   return (
-    <SecurityAccessGate>
-      <ScreeningQueue onSignOut={logout} />
-    </SecurityAccessGate>
+    <RequireStaff>
+      <AppShell>
+        <SecurityAccessGate>
+          <ScreeningQueue />
+        </SecurityAccessGate>
+      </AppShell>
+    </RequireStaff>
   )
 }

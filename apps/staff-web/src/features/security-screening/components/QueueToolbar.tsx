@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { Button } from '@staff-web/components/ui/button'
+import { Input } from '@staff-web/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { filterStatuses } from '../queue-search'
 import type { Filter, Sort } from '../types'
 
@@ -23,76 +25,45 @@ export function QueueToolbar({
   sort: Sort
   onSort: (value: Sort) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches)
-  useEffect(() => {
-    const query = window.matchMedia('(max-width: 767px)')
-    const update = () => setMobile(query.matches)
-    query.addEventListener('change', update)
-    return () => query.removeEventListener('change', update)
-  }, [])
   return (
-    <div className="sq-toolbar">
-      <div className="sq-filters" role="group" aria-label="Queue status">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Queue status">
         {filters.map((item) => (
-          <Link
-            key={item}
-            to="/security-screening/screening-queue"
-            search={(previous) => ({ ...previous, status: filterStatuses[item], review: undefined })}
-            resetScroll={false}
-            viewTransition
-            aria-current={filter === item ? 'page' : undefined}
-            className={filter === item ? 'sq-filter-active' : ''}
-            onClick={() => onFilter(item)}
-          >
-            {item} · {counts[item]}
-          </Link>
+          <Button key={item} asChild size="sm" variant={filter === item ? 'default' : 'outline'} className="rounded-full">
+            <Link
+              to="/security-screening/screening-queue"
+              search={(previous) => ({ ...previous, status: filterStatuses[item], review: undefined })}
+              resetScroll={false}
+              aria-current={filter === item ? 'page' : undefined}
+              onClick={() => onFilter(item)}
+            >
+              {item} · {counts[item]}
+            </Link>
+          </Button>
         ))}
       </div>
-      <div className="sq-search-sort">
-        <input
+      <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+        <Input
+          type="search"
           aria-label="Search passenger or flight"
           maxLength={100}
-          placeholder={mobile ? 'Search name or flight' : 'Search passenger or flight'}
+          placeholder="Search passenger or flight"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
+          className="min-w-44 flex-1 sm:w-64 sm:flex-none"
         />
-        <div
-          className="sq-sort"
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
-          }}
-        >
-          <button
-            className="sq-sort-trigger"
-            aria-expanded={open}
-            aria-controls="sq-sort-options"
-            onClick={() => setOpen(!open)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') setOpen(false)
-            }}
-          >
-            {sort}
-            <span>▾</span>
-          </button>
-          {open && (
-            <div className="sq-sort-options" id="sq-sort-options" role="group" aria-label="Sort queue">
-              {sorts.map((item) => (
-                <button
-                  key={item}
-                  aria-pressed={sort === item}
-                  onClick={() => {
-                    onSort(item)
-                    setOpen(false)
-                  }}
-                >
-                  <span>{sort === item ? '✓' : ''}</span>
-                  {item}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <Select value={sort} onValueChange={(value) => onSort(value as Sort)}>
+          <SelectTrigger aria-label="Sort queue" className="min-w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {sorts.map((item) => (
+              <SelectItem key={item} value={item}>
+                {item}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   )

@@ -6,7 +6,7 @@ Route: `/watchlist`, under the existing authenticated staff layout. The page use
 
 Both `/watchlist` and `/screening-queue` use `features/security-screening/components/ScreeningShell.tsx`. The Screening Queue design is the source for the sidebar, mobile menu, heading, spacing, typography, and tabs. The shell imports its fonts and styles, so either route can be opened directly.
 
-Watchlist owns only its toolbar, results, pagination, API hook, and entry dialogs. Its stylesheet is scoped to `wl-content` and `wl-dialog`; it does not control page geometry or restyle the Queue shell. The active tab is selected through `activeTab`. Tab links use the existing router. Queue review navigation still uses its callback, preserving review-state behavior.
+Watchlist owns only its toolbar, results, pagination, API hook, and entry dialogs. It is built from shadcn components (`Dialog`, `Select`, `Popover`, `Table`, `Badge`, `Alert`, `Input`, `Textarea`, `Button`) and Tailwind classes, with no stylesheet of its own; it does not control page geometry or restyle the Queue shell. The active tab is selected through `activeTab`. Tab links use the existing router. Queue review navigation still uses its callback, preserving review-state behavior.
 
 The held badge is optional and renders only for a known positive count. Watchlist reads the live count from the same Screening Queue API, refreshing it on page entry, window focus, and successful Watchlist changes. No placeholder count is supplied. Navigation and sign-out are disabled while a save is pending. Customer Search is disabled because this branch has no route for it.
 

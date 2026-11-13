@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { Gender, IdentityCorrection, Person } from '../types'
 import { EM_DASH, formatDateOfBirth, genderLabel, nationalityWithCode, parseInputDate, toInputDate } from '../lib/format'
 import { COUNTRY_OPTIONS } from '../lib/countries'
-import { Select } from './Select'
+import { Button } from '@staff-web/components/ui/button'
+import { Checkbox } from '@staff-web/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Textarea } from '@staff-web/components/ui/textarea'
+import { cn } from '@staff-web/lib/utils'
 
 /**
  * "Correct identity" — the only write action in this feature.
@@ -58,30 +66,12 @@ interface FormErrors {
 }
 
 export function CorrectIdentityDialog({ person, variant, saving = false, saveError = null, onClose, onSave }: CorrectIdentityDialogProps) {
-  const dialogRef = useRef<HTMLDivElement>(null)
-
   const [dateInput, setDateInput] = useState(() => toInputDate(person.dateOfBirth))
   const [gender, setGender] = useState<'nochange' | Gender>('nochange')
   const [nationality, setNationality] = useState<string>('nochange')
   const [reason, setReason] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   const [errors, setErrors] = useState<FormErrors>({})
-
-  useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null
-    dialogRef.current?.focus()
-    return () => previouslyFocused?.focus()
-  }, [])
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
 
   // An empty field means "leave this value as it is", which is also the state a
   // passenger with no date of birth on record starts in.
@@ -142,169 +132,187 @@ export function CorrectIdentityDialog({ person, variant, saving = false, saveErr
 
   const isMobile = variant === 'mobile'
 
+  const dateField = (
+    <>
+      <Input
+        type="text"
+        inputMode="numeric"
+        value={dateInput}
+        onChange={(event) => {
+          setDateInput(event.target.value)
+          if (errors.dateOfBirth) setErrors((prev) => ({ ...prev, dateOfBirth: undefined }))
+        }}
+        aria-label="Corrected date of birth"
+        aria-invalid={Boolean(errors.dateOfBirth)}
+      />
+      {errors.dateOfBirth ? <FieldError message={errors.dateOfBirth} /> : null}
+    </>
+  )
+  const genderField = (
+    <Select value={gender} onValueChange={(value) => setGender(value as Gender | 'nochange')}>
+      <SelectTrigger aria-label="Corrected gender" className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {GENDER_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+  const nationalityField = (
+    <Select value={nationality} onValueChange={setNationality}>
+      <SelectTrigger aria-label="Corrected nationality" className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="max-h-72">
+        {NATIONALITY_DROPDOWN.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+
   return (
-    <div className={`cs-overlay ${isMobile ? 'is-sheet' : ''}`}>
-      <button type="button" className="cs-overlay__backdrop" onClick={onClose} aria-label="Close without saving" tabIndex={-1} />
-      <div className="cs-dialog" role="dialog" aria-modal="true" aria-labelledby="cs-correct-identity-title" ref={dialogRef} tabIndex={-1}>
-        <form onSubmit={handleSubmit} noValidate>
-          <header className="cs-dialog__header">
-            <h2 className="cs-dialog__title" id="cs-correct-identity-title">
+    <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
+      <DialogContent
+        className={cn(
+          'max-h-[90dvh] overflow-y-auto text-foreground sm:max-w-xl',
+          isMobile &&
+            'top-auto bottom-0 max-w-full translate-y-0 rounded-b-none sm:top-[50%] sm:bottom-auto sm:translate-y-[-50%] sm:rounded-lg',
+        )}
+        showCloseButton={!saving}
+      >
+        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">
               {isMobile ? 'Correct identity' : `Correct identity · ${person.firstName} ${person.lastName}`}
-            </h2>
-            <p className="cs-dialog__subtitle">
+            </DialogTitle>
+            <DialogDescription>
               {isMobile
                 ? `${person.firstName} ${person.lastName} · Fix a mistake in date of birth, gender or nationality. Check the passport first.`
                 : 'Fix a mistake in date of birth, gender or nationality. Check it against the passport first.'}
-            </p>
-          </header>
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="cs-dialog__body">
-            {isMobile ? (
-              <div className="cs-fields">
-                <div className="cs-fields__row">
-                  <div className="cs-fields__head">
-                    <span className="cs-fields__label">Date of birth</span>
-                    <span className="cs-fields__now">Now: {formatDateOfBirth(person.dateOfBirth)}</span>
-                  </div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    className={`cs-input ${errors.dateOfBirth ? 'is-invalid' : ''}`}
-                    value={dateInput}
-                    onChange={(event) => {
-                      setDateInput(event.target.value)
-                      if (errors.dateOfBirth) setErrors((prev) => ({ ...prev, dateOfBirth: undefined }))
-                    }}
-                    aria-label="Corrected date of birth"
-                    aria-invalid={Boolean(errors.dateOfBirth)}
-                  />
-                  {errors.dateOfBirth ? <FieldError message={errors.dateOfBirth} /> : null}
+          {isMobile ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>Date of birth</Label>
+                  <span className="text-xs text-muted-foreground">Now: {formatDateOfBirth(person.dateOfBirth)}</span>
                 </div>
-
-                <div className="cs-fields__row">
-                  <div className="cs-fields__head">
-                    <span className="cs-fields__label">Gender</span>
-                    <span className="cs-fields__now">Now: {currentGender(person)}</span>
-                  </div>
-                  <Select value={gender} options={GENDER_OPTIONS} onChange={setGender} ariaLabel="Corrected gender" />
-                </div>
-
-                <div className="cs-fields__row">
-                  <div className="cs-fields__head">
-                    <span className="cs-fields__label">Nationality</span>
-                    <span className="cs-fields__now">Now: {nationalityWithCode(person.nationality)}</span>
-                  </div>
-                  <Select value={nationality} options={NATIONALITY_DROPDOWN} onChange={setNationality} ariaLabel="Corrected nationality" />
-                </div>
+                {dateField}
               </div>
-            ) : (
-              <table className="cs-correct">
-                <caption className="cs-visually-hidden">Correctable identity fields</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Field</th>
-                    <th scope="col">Current</th>
-                    <th scope="col">Corrected</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <th scope="row">Date of birth</th>
-                    <td>{formatDateOfBirth(person.dateOfBirth)}</td>
-                    <td>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className={`cs-input ${errors.dateOfBirth ? 'is-invalid' : ''}`}
-                        value={dateInput}
-                        onChange={(event) => {
-                          setDateInput(event.target.value)
-                          if (errors.dateOfBirth) setErrors((prev) => ({ ...prev, dateOfBirth: undefined }))
-                        }}
-                        aria-label="Corrected date of birth"
-                        aria-invalid={Boolean(errors.dateOfBirth)}
-                      />
-                      {errors.dateOfBirth ? <FieldError message={errors.dateOfBirth} /> : null}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Gender</th>
-                    <td>{currentGender(person)}</td>
-                    <td>
-                      <Select value={gender} options={GENDER_OPTIONS} onChange={setGender} ariaLabel="Corrected gender" />
-                    </td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Nationality</th>
-                    <td>{nationalityWithCode(person.nationality)}</td>
-                    <td>
-                      <Select
-                        value={nationality}
-                        options={NATIONALITY_DROPDOWN}
-                        onChange={setNationality}
-                        ariaLabel="Corrected nationality"
-                      />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            )}
-
-            <div className="cs-dialog__reason">
-              <label className="cs-label" htmlFor="cs-reason">
-                Reason (required)
-              </label>
-              <textarea
-                id="cs-reason"
-                className={`cs-textarea ${errors.reason ? 'is-invalid' : ''}`}
-                placeholder="e.g. Day and month were swapped at booking; passport checked at counter"
-                value={reason}
-                rows={2}
-                onChange={(event) => {
-                  setReason(event.target.value)
-                  if (errors.reason) setErrors((prev) => ({ ...prev, reason: undefined }))
-                }}
-                aria-invalid={Boolean(errors.reason)}
-                aria-describedby={errors.reason ? 'cs-reason-error' : undefined}
-              />
-              {errors.reason ? <FieldError id="cs-reason-error" message={errors.reason} /> : null}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>Gender</Label>
+                  <span className="text-xs text-muted-foreground">Now: {currentGender(person)}</span>
+                </div>
+                {genderField}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>Nationality</Label>
+                  <span className="text-xs text-muted-foreground">Now: {nationalityWithCode(person.nationality)}</span>
+                </div>
+                {nationalityField}
+              </div>
             </div>
+          ) : (
+            <Table>
+              <caption className="sr-only">Correctable identity fields</caption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Field</TableHead>
+                  <TableHead scope="col">Current</TableHead>
+                  <TableHead scope="col">Corrected</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableHead scope="row" className="font-medium text-foreground">
+                    Date of birth
+                  </TableHead>
+                  <TableCell>{formatDateOfBirth(person.dateOfBirth)}</TableCell>
+                  <TableCell>{dateField}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableHead scope="row" className="font-medium text-foreground">
+                    Gender
+                  </TableHead>
+                  <TableCell>{currentGender(person)}</TableCell>
+                  <TableCell>{genderField}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableHead scope="row" className="font-medium text-foreground">
+                    Nationality
+                  </TableHead>
+                  <TableCell>{nationalityWithCode(person.nationality)}</TableCell>
+                  <TableCell>{nationalityField}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          )}
 
-            <label className="cs-check">
-              <input
-                type="checkbox"
-                checked={confirmed}
-                onChange={(event) => {
-                  setConfirmed(event.target.checked)
-                  if (errors.confirmed) setErrors((prev) => ({ ...prev, confirmed: undefined }))
-                }}
-              />
-              <span>I checked the new values against the passenger’s passport.</span>
-            </label>
-            {errors.confirmed ? <FieldError message={errors.confirmed} /> : null}
-            {errors.change ? <FieldError message={errors.change} /> : null}
-
-            {/* A rejected save is the API's message, not a field error: the dialog stays open with everything typed in. */}
-            {saveError ? <FieldError message={saveError} /> : null}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cs-reason">Reason (required)</Label>
+            <Textarea
+              id="cs-reason"
+              placeholder="e.g. Day and month were swapped at booking; passport checked at counter"
+              value={reason}
+              rows={2}
+              onChange={(event) => {
+                setReason(event.target.value)
+                if (errors.reason) setErrors((prev) => ({ ...prev, reason: undefined }))
+              }}
+              aria-invalid={Boolean(errors.reason)}
+              aria-describedby={errors.reason ? 'cs-reason-error' : undefined}
+            />
+            {errors.reason ? <FieldError id="cs-reason-error" message={errors.reason} /> : null}
           </div>
 
-          <footer className="cs-dialog__footer">
-            <button type="button" className="cs-btn cs-btn--outline" onClick={onClose} disabled={saving}>
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="cs-confirmed"
+              checked={confirmed}
+              onCheckedChange={(value) => {
+                setConfirmed(value === true)
+                if (errors.confirmed) setErrors((prev) => ({ ...prev, confirmed: undefined }))
+              }}
+              className="mt-0.5"
+            />
+            <Label htmlFor="cs-confirmed" className="leading-snug font-normal">
+              I checked the new values against the passenger’s passport.
+            </Label>
+          </div>
+          {errors.confirmed ? <FieldError message={errors.confirmed} /> : null}
+          {errors.change ? <FieldError message={errors.change} /> : null}
+
+          {/* A rejected save is the API's message, not a field error: the dialog stays open with everything typed in. */}
+          {saveError ? <FieldError message={saveError} /> : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Cancel
-            </button>
-            <button type="submit" className="cs-btn cs-btn--primary" disabled={saving}>
+            </Button>
+            <Button type="submit" disabled={saving}>
               {saving ? 'Saving…' : 'Save correction'}
-            </button>
-          </footer>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 function FieldError({ id, message }: { id?: string; message: string }) {
   return (
-    <p className="cs-field-error" id={id} role="alert">
+    <p className="text-sm text-destructive" id={id} role="alert">
       {message}
     </p>
   )

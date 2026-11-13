@@ -1,145 +1,116 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useState, type KeyboardEvent } from 'react'
+import { Check, ChevronDown } from 'lucide-react'
+import { Button } from '@staff-web/components/ui/button'
+import { Input } from '@staff-web/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@staff-web/components/ui/popover'
+import { cn } from '@staff-web/lib/utils'
 import { nationalityLabel, nationalityOptions } from '../nationalities'
 
+/** Searchable nationality picker: a popover with a filter box over the list of country codes. */
 export function NationalitySelect({ value, onChange }: { value: string; onChange: (code: string) => void }) {
-  const id = useId()
-  const root = useRef<HTMLDivElement>(null)
-  const trigger = useRef<HTMLButtonElement>(null)
-  const list = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
-  const options = query.trim()
-    ? nationalityOptions.filter((option) => option.search.includes(query.trim().toLowerCase()))
-    : [{ value: '', label: 'Select nationality', search: '' }, ...nationalityOptions]
+  const term = query.trim().toLowerCase()
+  const options = term ? nationalityOptions.filter((option) => option.search.includes(term)) : nationalityOptions
 
-  useEffect(() => {
-    if (!open) return
-    const close = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('pointerdown', close)
-    return () => document.removeEventListener('pointerdown', close)
-  }, [open])
-  useEffect(() => {
-    if (!open || !list.current) return
-    const option = list.current.querySelector(`[data-index="${active}"]`)
-    if (!option) return
-    const bounds = list.current.getBoundingClientRect()
-    const item = option.getBoundingClientRect()
-    if (item.top < bounds.top) list.current.scrollTop -= bounds.top - item.top
-    else if (item.bottom > bounds.bottom) list.current.scrollTop += item.bottom - bounds.bottom
-  }, [active, open])
-
-  function choose(index: number) {
-    const option = options[index]
-    if (!option) return
-    onChange(option.value)
+  function choose(code: string) {
+    onChange(code)
     setOpen(false)
-    trigger.current?.focus()
-  }
-  function openMenu() {
-    setQuery('')
-    setActive(Math.max(0, nationalityOptions.findIndex((option) => option.value === value) + 1))
-    setOpen(true)
   }
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      event.stopPropagation()
-      setOpen(false)
-      trigger.current?.focus()
-    } else if (event.key === 'Tab') setOpen(false)
-    else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       if (options.length) setActive((active + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length)
     } else if (event.key === 'Enter') {
       event.preventDefault()
-      choose(active)
-    } else if (event.key === 'Home' && event.ctrlKey) {
-      event.preventDefault()
-      setActive(0)
-    } else if (event.key === 'End' && event.ctrlKey) {
-      event.preventDefault()
-      setActive(Math.max(0, options.length - 1))
+      if (options[active]) choose(options[active].value)
     }
   }
 
   return (
-    <div
-      className="wl-select wl-select-field wl-select-searchable"
-      ref={root}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (next) {
+          setQuery('')
+          setActive(
+            Math.max(
+              0,
+              nationalityOptions.findIndex((option) => option.value === value),
+            ),
+          )
+        }
       }}
     >
-      <input type="hidden" name="nationality" value={value} />
-      <button
-        ref={trigger}
-        type="button"
-        className={`wl-select-trigger${value ? '' : ' wl-placeholder'}`}
-        aria-label="Nationality"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? `${id}-popup` : undefined}
-        onClick={() => (open ? setOpen(false) : openMenu())}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault()
-            openMenu()
-          }
-        }}
-      >
-        <span>{nationalityLabel(value)}</span>
-        <span className="wl-select-arrow" aria-hidden="true">
-          ▾
-        </span>
-      </button>
-      {open && (
-        <div id={`${id}-popup`} className="wl-select-options wl-nationality-popup" role="dialog" aria-label="Choose nationality">
-          <input
-            type="search"
-            role="combobox"
-            aria-label="Search nationality"
-            placeholder="Search name or code"
-            autoFocus
-            aria-expanded="true"
-            aria-autocomplete="list"
-            aria-controls={`${id}-list`}
-            aria-activedescendant={options[active] ? `${id}-${active}` : undefined}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value)
-              setActive(0)
-            }}
-            onKeyDown={keyDown}
-          />
-          <div className="wl-nationality-list" ref={list} role="listbox" id={`${id}-list`} aria-label="Nationalities">
-            {options.map((option, index) => (
-              <div
-                id={`${id}-${index}`}
-                data-index={index}
-                key={option.value}
-                role="option"
-                aria-selected={value === option.value}
-                className={`${value === option.value ? 'wl-option-selected' : ''} ${active === index ? 'wl-option-active' : ''}`}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => choose(index)}
-              >
-                <span className="wl-option-check" aria-hidden="true">
-                  {value === option.value ? '✓' : ''}
-                </span>
-                <span>{option.label}</span>
-              </div>
-            ))}
-          </div>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-label="Nationality"
+          aria-expanded={open}
+          className={cn('w-full justify-between font-normal', !value && 'text-muted-foreground')}
+        >
+          <span className="truncate">{nationalityLabel(value)}</span>
+          <ChevronDown className="opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-(--radix-popover-trigger-width) min-w-64 p-2" align="start">
+        <Input
+          type="search"
+          aria-label="Search nationality"
+          placeholder="Search name or code"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setActive(0)
+          }}
+          onKeyDown={keyDown}
+          autoFocus
+        />
+        <div role="listbox" aria-label="Nationalities" className="mt-2 max-h-56 overflow-y-auto">
+          {!term && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              role="option"
+              aria-selected={!value}
+              className="w-full justify-start"
+              onClick={() => choose('')}
+            >
+              <Check className={cn(value && 'opacity-0')} />
+              Select nationality
+            </Button>
+          )}
+          {options.map((option, index) => (
+            <Button
+              key={option.value}
+              type="button"
+              variant="ghost"
+              size="sm"
+              role="option"
+              aria-selected={value === option.value}
+              ref={(node) => {
+                if (node && index === active) node.scrollIntoView({ block: 'nearest' })
+              }}
+              className={cn('w-full justify-start', index === active && 'bg-accent')}
+              onClick={() => choose(option.value)}
+              onMouseMove={() => setActive(index)}
+            >
+              <Check className={cn(value !== option.value && 'opacity-0')} />
+              {option.label}
+            </Button>
+          ))}
           {!options.length && (
-            <p className="wl-nationality-empty" role="status">
+            <p role="status" className="px-2 py-3 text-sm text-muted-foreground">
               No nationality found.
             </p>
           )}
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   )
 }

@@ -14,44 +14,49 @@ import {
   reviewStatus,
   sourceLabel,
 } from '../screening-model'
-import editIcon from '../assets/edit.svg'
+import { ArrowLeft, Pencil } from 'lucide-react'
+import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { cn } from '@staff-web/lib/utils'
 import { Badge } from './Badge'
 import { DecisionForm, MatchNotice } from './DecisionForm'
 import { ReviewDialog } from './ReviewDialog'
 
 function InfoCard({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <section className="sq-panel">
-      {title && <h3>{title}</h3>}
+    <Card className="gap-3 p-4">
+      {title && <h3 className="m-0 font-sans text-xs font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>}
       {children}
-    </section>
+    </Card>
   )
 }
 function Facts({ items }: { items: [string, string][] }) {
   return (
-    <dl className="sq-facts">
+    <dl className="flex flex-col gap-2 text-sm">
       {items.map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
+        <div key={label} className="grid grid-cols-[8rem_1fr] gap-2">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="min-w-0 break-words">{value}</dd>
         </div>
       ))}
     </dl>
   )
 }
 
-function ReviewHistoryNote({ review, text, expanded, id }: { review?: Decision; text: string; expanded: boolean; id: string }) {
+function ReviewHistoryNote({ review, text }: { review?: Decision; text: string }) {
   return review ? (
-    <div className="sq-review-history-note">
-      <span>By {review.by}</span>
-      <p id={id} hidden={!expanded}>
-        {review.note}
-      </p>
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs text-muted-foreground">By {review.by}</span>
+      <p>{review.note}</p>
     </div>
   ) : (
     <>{text}</>
   )
 }
+
+const compareTone = (record: ScreeningRecord, field: string, passenger: string, entry: string, index: number) =>
+  (record.comparisonMatches?.[index] ?? passenger === entry) ? 'Same' : field === 'Name' ? 'Similar' : 'Different'
 
 export function ScreeningReview({
   record,
@@ -77,109 +82,82 @@ export function ScreeningReview({
           ? 'name + DOB'
           : 'similar name'
   return (
-    <div className="sq-review">
-      <button className="sq-back" onClick={onBack} disabled={submission.saving}>
-        ← Back
-      </button>
+    <div className="flex flex-col gap-4">
+      <div>
+        <Button variant="ghost" size="sm" onClick={onBack} disabled={submission.saving}>
+          <ArrowLeft />
+          Back
+        </Button>
+      </div>
       {decision ? (
-        <div className="sq-detail-heading">
-          <h2>Decision details</h2>
-          <p>Read-only record of what was compared and the decision saved with its note.</p>
+        <div>
+          <h2 className="m-0 font-sans text-base font-semibold text-foreground">Decision details</h2>
+          <p className="text-sm text-muted-foreground">Read-only record of what was compared and the decision saved with its note.</p>
         </div>
       ) : (
-        <div className="sq-mobile-review-heading">
-          <h2>Screening Review</h2>
-        </div>
+        <h2 className="m-0 font-sans text-base font-semibold md:hidden text-foreground">Screening Review</h2>
       )}
-      <section className="sq-passenger-summary">
+      <Card className="flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2>{record.name}</h2>
-          <p>
+          <h2 className="m-0 font-sans text-base font-semibold text-foreground">{record.name}</h2>
+          <p className="text-sm text-muted-foreground">
             Check {record.id} · from {sourceLabel(record.triggerPoint)}
             {sourceLabel(record.triggerPoint) === 'booking' ? ' (3b)' : ''} · {record.outcome}{' '}
             {formatOccurredAt(record.occurredAt, record.now)}
           </p>
         </div>
-        <div className="sq-summary-badges">
+        <div className="flex flex-wrap gap-2">
           <Badge tone={displayStatus(record)}>{displayStatus(record)}</Badge>
           <Badge tone={record.match}>
             {record.match} · {matchDetail}
           </Badge>
         </div>
-        <div className={`sq-departure ${isUrgent(record) && !decision ? 'sq-depart-urgent' : ''}`}>
-          <span>DEPARTS</span>
+        <div className={cn('text-sm', isUrgent(record) && !decision && 'text-orange-700')}>
+          <span className="block text-xs text-muted-foreground uppercase">Departs</span>
           <strong>
-            <span className="sq-mobile-only">Departs </span>
             {formatDeparture(record.flight.departureAt, record.now)}
             {!decision && ` · ${remainingTime(record)}`}
           </strong>
         </div>
-      </section>
+      </Card>
       {!decision && (
-        <div className="sq-mobile-notice">
+        <div className="md:hidden">
           <MatchNotice record={record} />
         </div>
       )}
-      <div className="sq-review-grid">
-        <div className="sq-review-information">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-4">
           <InfoCard>
-            <table className="sq-comparison-table">
-              <thead>
-                <tr>
-                  {['FIELD', 'PASSENGER', 'WATCHLIST ENTRY', 'MATCH'].map((label) => (
-                    <th scope="col" key={label}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {['Field', 'Passenger', 'Watchlist entry', 'Match'].map((label) => (
+                    <TableHead scope="col" key={label}>
                       {label}
-                    </th>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {record.comparison.map(([field, passenger, entry], index) => (
-                  <tr key={field}>
-                    <td>{field}</td>
-                    <td>{passenger}</td>
-                    <td>{entry}</td>
-                    <td>
-                      <Badge
-                        tone={
-                          (record.comparisonMatches?.[index] ?? passenger === entry) ? 'Same' : field === 'Name' ? 'Similar' : 'Different'
-                        }
-                      >
-                        {(record.comparisonMatches?.[index] ?? passenger === entry) ? 'Same' : field === 'Name' ? 'Similar' : 'Different'}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="sq-comparison-mobile">
-              <div className="sq-compare-head">
-                <span>PASSENGER</span>
-                <span>WATCHLIST ENTRY</span>
-              </div>
-              {record.comparison.map(([field, passenger, entry], index) => (
-                <div className="sq-compare-field" key={field}>
-                  <div>
-                    <span>{field}</span>
-                    <Badge
-                      tone={
-                        (record.comparisonMatches?.[index] ?? passenger === entry) ? 'Same' : field === 'Name' ? 'Similar' : 'Different'
-                      }
-                    >
-                      {(record.comparisonMatches?.[index] ?? passenger === entry) ? 'Same' : field === 'Name' ? 'Similar' : 'Different'}
-                    </Badge>
-                  </div>
-                  <div>
-                    <span>{passenger}</span>
-                    <span>{entry}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {record.comparison.map(([field, passenger, entry], index) => {
+                  const tone = compareTone(record, field, passenger, entry, index)
+                  return (
+                    <TableRow key={field}>
+                      <TableCell className="font-medium">{field}</TableCell>
+                      <TableCell>{passenger}</TableCell>
+                      <TableCell>{entry}</TableCell>
+                      <TableCell>
+                        <Badge tone={tone}>{tone}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
           </InfoCard>
-          <div className="sq-info-pair">
-            <InfoCard title="BOOKING & FLIGHT">
-              {record.bookingSource === 'mock' && <p className="sq-fine-print">Demo booking details</p>}
+          <div className="grid gap-4 md:grid-cols-2">
+            <InfoCard title="Booking & flight">
+              {record.bookingSource === 'mock' && <p className="text-xs text-muted-foreground">Demo booking details</p>}
               <Facts
                 items={[
                   ['Booking', record.booking],
@@ -189,7 +167,7 @@ export function ScreeningReview({
                 ]}
               />
             </InfoCard>
-            <InfoCard title="WATCHLIST ENTRY">
+            <InfoCard title="Watchlist entry">
               <Facts
                 items={[
                   ['List type', record.listType],
@@ -200,72 +178,42 @@ export function ScreeningReview({
               />
             </InfoCard>
           </div>
-          <InfoCard title="SCREENING HISTORY">
-            <table className="sq-history-table">
-              <colgroup>
-                {[19.5, 16, 16, 16.5, 32].map((width, index) => (
-                  <col key={index} style={{ width: `${width}%` }} />
-                ))}
-              </colgroup>
-              <thead>
-                <tr>
-                  {['WHEN', 'FROM', 'MATCH', 'OUTCOME', 'NOTE'].map((label) => (
-                    <th key={label} scope="col">
+          <InfoCard title="Screening history">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {['When', 'From', 'Match', 'Outcome', 'Note'].map((label) => (
+                    <TableHead key={label} scope="col">
                       {label}
-                    </th>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {history.map((row, i) => {
                   const review = i < record.history.length ? record.historyReviews?.[i] : orderedReviews[i - record.history.length]
-                  const noteId = `sq-review-note-desktop-${review?.id ?? i}`
                   return (
-                    <tr key={i}>
+                    <TableRow key={i}>
                       {row.map((cell, j) => (
-                        <td key={j}>
-                          {j === 1 && review ? (
-                            'Review'
-                          ) : j === 4 ? (
-                            <ReviewHistoryNote review={review} text={cell} id={noteId} expanded={true} />
-                          ) : (
-                            cell
-                          )}
-                        </td>
+                        <TableCell key={j} className={j === 4 ? 'whitespace-normal' : undefined}>
+                          {j === 1 && review ? 'Review' : j === 4 ? <ReviewHistoryNote review={review} text={cell} /> : cell}
+                        </TableCell>
                       ))}
-                    </tr>
+                    </TableRow>
                   )
                 })}
-              </tbody>
-            </table>
-            <div className="sq-history-mobile">
-              {history.map((row, i) => {
-                const review = i < record.history.length ? record.historyReviews?.[i] : orderedReviews[i - record.history.length]
-                const noteId = `sq-review-note-mobile-${review?.id ?? i}`
-                return (
-                  <div key={i}>
-                    <div>
-                      <span>
-                        {row[0]} · {review ? 'Review' : row[1]}
-                      </span>
-                      <Badge tone={row[2]}>{row[2]}</Badge>
-                      <Badge tone={row[3]}>{row[3]}</Badge>
-                    </div>
-                    <div>
-                      <ReviewHistoryNote review={review} text={row[4]} id={noteId} expanded={true} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            {history.length === 1 && <p className="sq-fine-print sq-history-note">No earlier decision for this passenger on this entry.</p>}
+              </TableBody>
+            </Table>
+            {history.length === 1 && <p className="text-xs text-muted-foreground">No earlier decision for this passenger on this entry.</p>}
           </InfoCard>
         </div>
-        <aside className="sq-decision-column">
-          <InfoCard title="DECISION">
+        <aside className="flex flex-col gap-3">
+          <InfoCard title="Decision">
             {decision ? (
               <>
-                <Badge tone={reviewStatus(decision)}>{decisionLabel(record, decision)}</Badge>
+                <div>
+                  <Badge tone={reviewStatus(decision)}>{decisionLabel(record, decision)}</Badge>
+                </div>
                 <Facts
                   items={[
                     ['Decided by', `${decision.by} · Security`],
@@ -273,16 +221,16 @@ export function ScreeningReview({
                     ['Passport check', decision.passportCompared ? 'Compared in person ✓' : 'Not recorded'],
                   ]}
                 />
-                <h4>Note</h4>
-                <p className="sq-saved-note">{decision.note}</p>
+                <h4 className="m-0 font-sans text-sm font-semibold text-foreground">Note</h4>
+                <p className="text-sm">{decision.note}</p>
                 {decision.decision === 'confirmed' && (
-                  <p className="sq-error">Screening outcome: check-in denied. Authority notification is simulated.</p>
+                  <p className="text-sm text-destructive">Screening outcome: check-in denied. Authority notification is simulated.</p>
                 )}
               </>
             ) : (
               <>
-                <h4>Is this the person on the watchlist?</h4>
-                <div className="sq-desktop-notice">
+                <h4 className="m-0 font-sans text-sm font-semibold text-foreground">Is this the person on the watchlist?</h4>
+                <div className="max-md:hidden">
                   <MatchNotice record={record} />
                 </div>
                 <DecisionForm outcome={record.outcome} onSave={onSave} submission={submission} />
@@ -290,10 +238,10 @@ export function ScreeningReview({
             )}
           </InfoCard>
           {decision && (
-            <button className="sq-button sq-new-review" onClick={() => setDialogOpen(true)} disabled={submission.saving}>
-              <img src={editIcon} alt="" />
+            <Button variant="outline" onClick={() => setDialogOpen(true)} disabled={submission.saving}>
+              <Pencil />
               Add a new review
-            </button>
+            </Button>
           )}
         </aside>
       </div>

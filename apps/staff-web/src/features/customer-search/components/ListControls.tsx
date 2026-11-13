@@ -1,3 +1,6 @@
+import { Button } from '@staff-web/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 import { PAGE_SIZE_OPTIONS, type Page } from '../lib/search'
 import type { PersonFilter } from '../types'
 
@@ -16,20 +19,15 @@ interface SegmentedControlProps {
 
 export function SegmentedControl({ value, onChange }: SegmentedControlProps) {
   return (
-    <div className="cs-segmented" data-filter={value} role="radiogroup" aria-label="Filter people by type">
-      {FILTERS.map((filter) => (
-        <button
-          key={filter.value}
-          type="button"
-          role="radio"
-          aria-checked={value === filter.value}
-          className={`cs-segmented__option ${value === filter.value ? 'is-active' : ''}`}
-          onClick={() => onChange(filter.value)}
-        >
-          {filter.label}
-        </button>
-      ))}
-    </div>
+    <Tabs value={value} onValueChange={(next) => onChange(next as PersonFilter)}>
+      <TabsList aria-label="Filter people by type">
+        {FILTERS.map((filter) => (
+          <TabsTrigger key={filter.value} value={filter.value}>
+            {filter.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }
 
@@ -49,38 +47,38 @@ export function PaginationBar({ page, unit, onPageChange, onPageSizeChange, show
   const atEnd = page.page >= page.pageCount
 
   return (
-    <footer className="cs-pagination">
+    <footer className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
       {showRange ? (
-        <p className="cs-pagination__range">
+        <p className="text-muted-foreground">
           Showing {page.from}–{page.to} of {page.total.toLocaleString('en-GB')} {unit}
         </p>
       ) : (
         <span />
       )}
 
-      <div className="cs-pagination__controls">
-        <label className="cs-rows">
-          {showRowsLabel ? <span className="cs-rows__label">Rows</span> : null}
-          <span className="cs-select">
-            <select value={page.pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))} aria-label="Rows per page">
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </span>
-        </label>
-
-        <button type="button" className="cs-btn cs-btn--ghost" onClick={() => onPageChange(page.page - 1)} disabled={atStart}>
+      <div className="flex flex-wrap items-center gap-2">
+        {showRowsLabel ? <span className="text-muted-foreground">Rows</span> : null}
+        <Select value={String(page.pageSize)} onValueChange={(size) => onPageSizeChange(Number(size))}>
+          <SelectTrigger size="sm" aria-label="Rows per page" className="w-16">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent side="top">
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <SelectItem key={size} value={String(size)}>
+                {size}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button type="button" variant="outline" size="sm" onClick={() => onPageChange(page.page - 1)} disabled={atStart}>
           Previous
-        </button>
-        <span className="cs-pagination__page">
+        </Button>
+        <span className="text-muted-foreground">
           Page {page.page} of {page.pageCount}
         </span>
-        <button type="button" className="cs-btn cs-btn--ghost cs-btn--next" onClick={() => onPageChange(page.page + 1)} disabled={atEnd}>
+        <Button type="button" variant="outline" size="sm" onClick={() => onPageChange(page.page + 1)} disabled={atEnd}>
           Next
-        </button>
+        </Button>
       </div>
     </footer>
   )

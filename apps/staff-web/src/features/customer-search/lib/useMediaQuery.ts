@@ -24,5 +24,5 @@ export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, () => false)
 }
 
-/** Matches the `--cs-mobile` breakpoint used throughout `customer-search.css`. */
+/** Matches the `md` breakpoint (768px) used by the staff shell. */
 export const MOBILE_QUERY = '(max-width: 767px)'

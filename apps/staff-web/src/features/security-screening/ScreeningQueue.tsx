@@ -1,3 +1,7 @@
+import { CheckCircle2 } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { PageSelect } from './components/PageSelect'
 import { Component, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -21,41 +25,41 @@ class ScreeningBoundary extends Component<{ children: ReactNode }, { failed: boo
   }
   render() {
     return this.state.failed ? (
-      <div className="sq-empty">
-        <h2>Screening queue could not be displayed</h2>
-        <button className="sq-button" onClick={() => window.location.reload()}>
-          Reload
-        </button>
+      <div className="flex flex-col items-center gap-2 py-16 text-center">
+        <h2 className="m-0 font-sans text-base font-semibold text-foreground">Screening queue could not be displayed</h2>
+        <Button onClick={() => window.location.reload()}>Reload</Button>
       </div>
     ) : (
       this.props.children
     )
   }
 }
-export function ScreeningQueue({ onSignOut }: { onSignOut: () => void }) {
+export function ScreeningQueue() {
   return (
     <ScreeningBoundary>
-      <QueueContent onSignOut={onSignOut} />
+      <QueueContent />
     </ScreeningBoundary>
   )
 }
 function RequestState({ loading, error, onRetry }: { loading: boolean; error?: string; onRetry: () => void }) {
   return (
-    <div className="sq-empty" role={error ? 'alert' : 'status'} aria-live="polite">
-      <h2>{error ? 'Screening data could not be loaded' : 'Loading screening data…'}</h2>
+    <div className="flex flex-col items-center gap-2 py-16 text-center" role={error ? 'alert' : 'status'} aria-live="polite">
+      <h2 className="m-0 font-sans text-base font-semibold text-foreground">
+        {error ? 'Screening data could not be loaded' : 'Loading screening data…'}
+      </h2>
       {error && (
         <>
-          <p>{error}</p>
-          <button className="sq-button" onClick={onRetry}>
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button variant="outline" onClick={onRetry}>
             Try again
-          </button>
+          </Button>
         </>
       )}
-      {loading && <p>Please wait.</p>}
+      {loading && <p className="text-sm text-muted-foreground">Please wait.</p>}
     </div>
   )
 }
-function QueueContent({ onSignOut }: { onSignOut: () => void }) {
+function QueueContent() {
   const query = useSearch({ from: '/_authenticated/security-screening/screening-queue' })
   const navigate = useNavigate({ from: '/security-screening/screening-queue' })
   const { fetchWithAuth } = useAppAuth()
@@ -144,19 +148,18 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
       reviewing={!!selected && !latestReview(selected)}
       held={counts.Held}
       onQueue={goToQueue}
-      onSignOut={onSignOut}
       navigationDisabled={!!mutation?.saving}
     >
       {query.review ? (
         detail.loading || detailError ? (
           <RequestState loading={detail.loading} error={detailError} onRetry={reload} />
         ) : selected?.outcome === 'clear' ? (
-          <div className="sq-empty" role="status">
-            <h2>No review needed</h2>
-            <p>This check is clear and cannot be reviewed.</p>
-            <button className="sq-button" onClick={goToQueue}>
+          <div className="flex flex-col items-center gap-2 py-16 text-center" role="status">
+            <h2 className="m-0 font-sans text-base font-semibold text-foreground">No review needed</h2>
+            <p className="text-sm text-muted-foreground">This check is clear and cannot be reviewed.</p>
+            <Button variant="outline" onClick={goToQueue}>
               Back to queue
-            </button>
+            </Button>
           </div>
         ) : selected ? (
           <ScreeningReview
@@ -175,12 +178,12 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
           />
         ) : null
       ) : (
-        <>
+        <div className="flex flex-col gap-4">
           {banner && (
-            <div className="sq-success-banner" role="status">
-              <span>✓</span>
-              <span>{banner}</span>
-            </div>
+            <Alert role="status" className="border-emerald-200 bg-emerald-50 text-emerald-900">
+              <CheckCircle2 />
+              <AlertDescription className="text-emerald-900">{banner}</AlertDescription>
+            </Alert>
           )}
           <QueueToolbar
             filter={filter}
@@ -193,16 +196,12 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
             sort={sortLabels[query.sort ?? 'departure']}
             onSort={(value) => void navigate({ search: (previous) => ({ ...previous, sort: sortValues[value] }), resetScroll: false })}
           />
-          {description && <p className="sq-queue-description">{description}</p>}
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
           {queue.loading && !queueError ? (
-            <div className="sq-queue-loading" role="status" aria-label="Loading queue" aria-busy="true">
-              <span className="sq-sr-only">Loading screening data…</span>
+            <div className="flex flex-col gap-2" role="status" aria-label="Loading queue" aria-busy="true">
+              <span className="sr-only">Loading screening data…</span>
               {[0, 1, 2].map((row) => (
-                <div className="sq-loading-row" key={row}>
-                  <span />
-                  <span />
-                  <span />
-                </div>
+                <Skeleton className="h-14 w-full" key={row} />
               ))}
             </div>
           ) : queueError ? (
@@ -215,22 +214,18 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
                   decided={decided}
                   onOpen={(id) => void navigate({ search: (previous) => ({ ...previous, review: id }) })}
                 />
-                <div className="sq-pagination" aria-label="Queue pages">
-                  <button
-                    className="sq-button"
-                    disabled={page.index === 0}
-                    onClick={() => setPagination({ ...page, index: page.index - 1 })}
-                  >
+                <nav className="flex items-center justify-end gap-2" aria-label="Queue pages">
+                  <Button variant="outline" disabled={page.index === 0} onClick={() => setPagination({ ...page, index: page.index - 1 })}>
                     Previous
-                  </button>
+                  </Button>
                   <PageSelect
                     label="Queue page"
                     value={page.index}
                     count={page.cursors.length}
                     onChange={(index) => setPagination({ ...page, index })}
                   />
-                  <button
-                    className="sq-button"
+                  <Button
+                    variant="outline"
                     disabled={!queue.data.nextCursor}
                     onClick={() => {
                       if (queue.data?.nextCursor)
@@ -242,12 +237,12 @@ function QueueContent({ onSignOut }: { onSignOut: () => void }) {
                     }}
                   >
                     Next
-                  </button>
-                </div>
+                  </Button>
+                </nav>
               </>
             )
           )}
-        </>
+        </div>
       )}
     </ScreeningShell>
   )

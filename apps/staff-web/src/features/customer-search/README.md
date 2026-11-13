@@ -12,7 +12,7 @@ customer-search/
 ├── pages/CustomerSearchPage.tsx   # the whole screen; the route file stays thin
 ├── components/                     # presentational pieces it composes
 ├── lib/                            # API client, response mapping, URL state, formatting
-├── types.ts, customer-search.css
+├── types.ts
 ```
 
 ## Screens
@@ -206,14 +206,11 @@ list.
 
 ## Conventions used here
 
-- **No new dependencies.** Tailwind, shadcn/ui, Lucide and TanStack Query are
-  not installed in this app; styling is hand-written CSS on custom properties
-  (`customer-search.css`) and icons are inline SVG (`components/Icons.tsx`).
-  The listbox in `components/Select.tsx` is hand-rolled for the same reason.
+- **shadcn/ui and Tailwind.** The pages are built from the shared shadcn components in `src/components/ui/` (`Table`, `Dialog`,
+  `Select`, `Tabs`, `Card`, `Badge`, `Input`, `Textarea`, `Checkbox`, `Button`, `Skeleton`) and Lucide icons, with Tailwind classes. There
+  is no feature stylesheet. Headings carry `font-sans text-foreground` because the app scaffold's global `h1`/`h2` rule colours them
+  for dark mode.
 - **URL state, not component state,** for anything a user might want to share.
   Local `useState` is reserved for the in-progress search draft.
 - **Auth comes from the platform.** `AppShell` reads the session through the
   existing `AuthProvider`; this feature creates no second login or token flow.
-- `#root:has(.cs-app)` in `customer-search.css` cancels the shared 1126px
-  marketing shell from `index.css` for this route only, so unrelated routes are
-  untouched.

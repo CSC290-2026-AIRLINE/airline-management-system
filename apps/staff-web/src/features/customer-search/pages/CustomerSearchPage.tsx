@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import '../customer-search.css'
-import { AppShell } from '../components/AppShell'
 import { CorrectIdentityDialog } from '../components/CorrectIdentityDialog'
 import { CustomerDetail } from '../components/CustomerDetail'
 import { EmptyState } from '../components/EmptyState'
-import { SearchIcon } from '../components/Icons'
+import { Search } from 'lucide-react'
+import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
+import { PageFrame } from '../components/PageFrame'
 import { PaginationBar, SegmentedControl } from '../components/ListControls'
 import { PeopleCardList } from '../components/PeopleCardList'
 import { PeopleTable } from '../components/PeopleTable'
@@ -264,10 +267,10 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
   const isFiltered = search.q.trim().length > 0
 
   const panelHead = (
-    <header className="cs-panel__head">
-      <div className="cs-panel__heading">
-        <h2 className="cs-panel__title">{TITLE_LABEL[search.type]}</h2>
-        <p className="cs-panel__subtitle">
+    <header className="flex flex-wrap items-center justify-between gap-3 px-4 pt-4">
+      <div className="flex items-baseline gap-2">
+        <h2 className="m-0 font-sans text-base font-semibold text-foreground">{TITLE_LABEL[search.type]}</h2>
+        <p className="text-sm text-muted-foreground">
           {isMobile
             ? `· ${page.total.toLocaleString('en-GB')}`
             : // The API orders by surname; the mock's "most recent activity first" had no data behind it.
@@ -280,23 +283,19 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
   )
 
   const searchBar = (
-    <form className="cs-searchbar" onSubmit={handleSearchSubmit} role="search">
-      <div className="cs-searchbar__field">
-        <span className="cs-searchbar__icon">
-          <SearchIcon />
-        </span>
-        <input
+    <form className="flex gap-2" onSubmit={handleSearchSubmit} role="search">
+      <div className="relative flex-1">
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
           type="search"
-          className="cs-searchbar__input"
+          className="pl-9"
           value={draftQuery}
           onChange={(event) => setDraftQuery(event.target.value)}
           placeholder={isMobile ? SEARCH_PLACEHOLDER_MOBILE : SEARCH_PLACEHOLDER}
           aria-label="Search customers"
         />
       </div>
-      <button type="submit" className="cs-btn cs-btn--primary cs-searchbar__submit">
-        Search
-      </button>
+      <Button type="submit">Search</Button>
     </form>
   )
 
@@ -314,20 +313,20 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
   )
 
   const errorState = (hint: string) => (
-    <div className="cs-empty">
-      <p className="cs-empty__title">Customers could not be loaded</p>
-      <p className="cs-empty__hint">{hint}</p>
-      <button type="button" className="cs-btn cs-btn--outline" onClick={handleRetry}>
+    <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+      <p className="font-semibold">Customers could not be loaded</p>
+      <p className="text-sm text-muted-foreground">{hint}</p>
+      <Button type="button" variant="outline" onClick={handleRetry}>
         Try again
-      </button>
+      </Button>
     </div>
   )
 
   const loadingState = (
-    <div className="cs-skeleton" aria-busy="true">
-      <span className="cs-visually-hidden">Loading customers…</span>
+    <div className="flex flex-col gap-2 p-4" aria-busy="true">
+      <span className="sr-only">Loading customers…</span>
       {Array.from({ length: 5 }, (_, index) => (
-        <div className="cs-skeleton__row" key={index} />
+        <Skeleton className="h-12 w-full" key={index} />
       ))}
     </div>
   )
@@ -353,16 +352,16 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
     : null
 
   return (
-    <AppShell>
-      <p className="cs-visually-hidden" role="status">
+    <PageFrame>
+      <p className="sr-only" role="status">
         {announcement}
       </p>
 
-      <div className={`cs-page ${isMobile ? 'is-mobile' : ''}`}>
+      <div className="flex w-full flex-col gap-4">
         {!search.person || !isMobile ? (
-          <header className="cs-page__header">
-            <h1 className="cs-page__title">Customer Search</h1>
-            <p className="cs-page__subtitle">{isMobile ? SUBTITLE_MOBILE : SUBTITLE}</p>
+          <header className="flex flex-col gap-2">
+            <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">Customer Search</h1>
+            <p className="text-sm text-muted-foreground">{isMobile ? SUBTITLE_MOBILE : SUBTITLE}</p>
             {searchBar}
           </header>
         ) : null}
@@ -378,12 +377,12 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
                 onCorrectIdentity={(person) => onSearchChange(withCustomerSearch(search, { correct: person.id }))}
               />
             ) : (
-              <section className="cs-panel" aria-label="Profile">
+              <Card className="gap-0 py-0" aria-label="Profile">
                 {profilePanel}
-              </section>
+              </Card>
             )
           ) : (
-            <section className="cs-panel">
+            <Card className="gap-0 py-0">
               {panelHead}
               {listBody}
               {hasResults ? (
@@ -392,14 +391,14 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
                   {pagination(true)}
                 </>
               ) : null}
-            </section>
+            </Card>
           )
         ) : (
-          <div className={`cs-layout ${search.person ? 'is-split' : ''}`}>
+          <div className={search.person ? 'grid grid-cols-[22rem_minmax(0,1fr)] items-start gap-4' : ''}>
             {/* Keyed on the URL, not on `selected`, so the split opens immediately and
                 the profile fills in beside it rather than replacing the whole view. */}
             {search.person ? (
-              <section className="cs-panel cs-panel--list" aria-label="Search results">
+              <Card className="gap-0 py-0" aria-label="Search results">
                 {panelHead}
                 {listBody}
                 {hasResults ? (
@@ -408,10 +407,10 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
                     {pagination(false)}
                   </>
                 ) : null}
-              </section>
+              </Card>
             ) : null}
 
-            <section className="cs-panel cs-panel--main">
+            <Card className="min-w-0 gap-0 py-0">
               {selected ? (
                 <CustomerDetail
                   person={selected}
@@ -435,7 +434,7 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
                   </>
                 ))
               )}
-            </section>
+            </Card>
           </div>
         )}
       </div>
@@ -450,6 +449,6 @@ export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPag
           onSave={(correction) => void handleSaveCorrection(correction)}
         />
       ) : null}
-    </AppShell>
+    </PageFrame>
   )
 }

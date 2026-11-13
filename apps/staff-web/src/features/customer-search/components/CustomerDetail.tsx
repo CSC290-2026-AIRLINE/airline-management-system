@@ -1,6 +1,9 @@
 import type { Person } from '../types'
 import { EM_DASH, formatDateOfBirth, genderLabel, displayPassport, nationalityLabel, personName } from '../lib/format'
-import { ArrowRightIcon, ChevronLeftIcon, CloseIcon, PencilIcon } from './Icons'
+import { ArrowRight, ChevronLeft, Pencil, X } from 'lucide-react'
+import { Badge } from '@staff-web/components/ui/badge'
+import { Button } from '@staff-web/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { Avatar, DetailSection, ReadOnlyPill, TypeBadge } from './shared'
 
 /**
@@ -24,54 +27,51 @@ interface CustomerDetailProps {
   onCorrectIdentity?: (person: Person) => void
 }
 
-/** `cs-badge is-relationship is-spouse` — the stylesheet keys off the relationship text. */
-function relationshipClass(relationship: string | null): string {
-  return `cs-badge is-relationship${relationship ? ` is-${relationship.toLowerCase().replace(/\s+/g, '-')}` : ''}`
-}
-
 export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerson, onCorrectIdentity }: CustomerDetailProps) {
   const isMobile = variant === 'mobile'
   const isAccountHolder = person.type === 'accountHolder'
 
   return (
-    <article className={`cs-detail ${isMobile ? 'is-mobile' : ''}`} aria-label={`Profile for ${personName(person)}`}>
-      {/* The design puts `← Back` above the person row on both platforms. */}
+    <article className="flex flex-col gap-5 p-4 md:p-5" aria-label={`Profile for ${personName(person)}`}>
       {onBack ? (
-        <button type="button" className="cs-link cs-detail__back" onClick={onBack}>
-          <ChevronLeftIcon />
-          Back
-        </button>
+        <div>
+          <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+            <ChevronLeft />
+            Back
+          </Button>
+        </div>
       ) : null}
 
-      <header className="cs-detail__header">
+      <header className="flex flex-wrap items-center gap-3">
         <Avatar person={person} size="lg" />
-        <div className="cs-detail__heading">
-          <h2 className="cs-detail__name">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h2 className="m-0 font-sans flex flex-wrap items-baseline gap-2 text-xl font-semibold text-foreground">
             {person.firstName} {person.lastName}
             {/* Travellers carry their local name in the meta line instead, per the design. */}
-            {isAccountHolder && person.thaiName ? <span className="cs-detail__thai">{person.thaiName}</span> : null}
+            {isAccountHolder && person.thaiName ? (
+              <span className="text-base font-normal text-muted-foreground">{person.thaiName}</span>
+            ) : null}
           </h2>
-          <p className="cs-detail__meta">
+          <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <TypeBadge person={person} />
-            <span className="cs-detail__meta-text">
+            <span>
               {isAccountHolder
                 ? `Customer ID ${person.id}${person.memberSince ? ` · since ${person.memberSince}` : ''}`
                 : `${person.id}${person.thaiName ? ` · ${person.thaiName}` : ''} · no account`}
             </span>
           </p>
         </div>
-        {/* Both detail types carry the READ ONLY chip in the design. */}
         <ReadOnlyPill />
         {!isMobile && onClose ? (
-          <button type="button" className="cs-detail__close" onClick={onClose} aria-label={`Close ${personName(person)}`}>
-            <CloseIcon />
-          </button>
+          <Button type="button" variant="ghost" size="icon-sm" onClick={onClose} aria-label={`Close ${personName(person)}`}>
+            <X />
+          </Button>
         ) : null}
       </header>
 
       {isAccountHolder ? (
         <DetailSection title="Account information">
-          <dl className="cs-detail__grid">
+          <dl className="grid gap-4 sm:grid-cols-2">
             <Field label="Email" value={person.email ?? EM_DASH} />
             <Field label="Phone" value={person.phone ?? EM_DASH} />
             <Field label="Date of birth" value={formatDateOfBirth(person.dateOfBirth)} />
@@ -85,14 +85,14 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
           title="Traveller profile"
           action={
             onCorrectIdentity ? (
-              <button type="button" className="cs-btn cs-btn--outline" onClick={() => onCorrectIdentity(person)}>
-                <PencilIcon />
+              <Button type="button" variant="outline" size="sm" onClick={() => onCorrectIdentity(person)}>
+                <Pencil />
                 Correct identity
-              </button>
+              </Button>
             ) : null
           }
         >
-          <dl className="cs-detail__grid">
+          <dl className="grid gap-4 sm:grid-cols-2">
             <Field label="Date of birth" value={formatDateOfBirth(person.dateOfBirth)} />
             <Field label="Nationality" value={nationalityLabel(person.nationality)} />
             <Field label="Gender" value={genderLabel(person.gender)} />
@@ -104,73 +104,62 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
       {person.savedTravellers && person.savedTravellers.length > 0 ? (
         <DetailSection title="Saved travellers">
           {isMobile ? (
-            <ul className="cs-relations">
+            <ul className="flex flex-col divide-y rounded-md border">
               {person.savedTravellers.map((saved) => (
                 <li key={saved.person.id}>
-                  <button type="button" className="cs-relations__item" onClick={() => onSelectPerson(saved.person.id)}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent/50"
+                    onClick={() => onSelectPerson(saved.person.id)}
+                  >
                     <Avatar person={saved.person} size="sm" />
-                    <span className="cs-relations__name">{personName(saved.person)}</span>
-                    {saved.relationship ? <span className={relationshipClass(saved.relationship)}>{saved.relationship}</span> : null}
-                    <ArrowRightIcon className="cs-relations__chevron" />
+                    <span className="flex-1 font-medium">{personName(saved.person)}</span>
+                    {saved.relationship ? <Badge variant="secondary">{saved.relationship}</Badge> : null}
+                    <ArrowRight className="size-4 text-muted-foreground" />
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            /* Five columns do not fit the narrow profile panel, so the table
-               keeps its natural width and this wrapper scrolls it sideways
-               rather than letting the columns overlap. */
-            <div className="cs-table-scroll">
-              <table className="cs-relations-table">
-                <caption className="cs-visually-hidden">Travellers saved on this account</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Relationship</th>
-                    <th scope="col">Date of birth</th>
-                    <th scope="col">Nationality</th>
-                    <th scope="col">
-                      <span className="cs-visually-hidden">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+            <div className="rounded-md border">
+              <Table>
+                <caption className="sr-only">Travellers saved on this account</caption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">Name</TableHead>
+                    <TableHead scope="col">Relationship</TableHead>
+                    <TableHead scope="col">Date of birth</TableHead>
+                    <TableHead scope="col">Nationality</TableHead>
+                    <TableHead scope="col">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {person.savedTravellers.map((saved) => (
-                    <tr key={saved.person.id} className="cs-relations-table__row" onClick={() => onSelectPerson(saved.person.id)}>
-                      <td>
-                        <button
+                    <TableRow key={saved.person.id} className="cursor-pointer" onClick={() => onSelectPerson(saved.person.id)}>
+                      <TableCell className="font-medium">{personName(saved.person)}</TableCell>
+                      <TableCell>{saved.relationship ? <Badge variant="secondary">{saved.relationship}</Badge> : null}</TableCell>
+                      <TableCell>{formatDateOfBirth(saved.person.dateOfBirth)}</TableCell>
+                      <TableCell>{nationalityLabel(saved.person.nationality)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
                           type="button"
-                          className="cs-relations-table__link"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            onSelectPerson(saved.person.id)
-                          }}
-                        >
-                          {personName(saved.person)}
-                        </button>
-                      </td>
-                      <td>
-                        {saved.relationship ? <span className={relationshipClass(saved.relationship)}>{saved.relationship}</span> : null}
-                      </td>
-                      <td>{formatDateOfBirth(saved.person.dateOfBirth)}</td>
-                      <td>{nationalityLabel(saved.person.nationality)}</td>
-                      <td className="cs-relations-table__action">
-                        <button
-                          type="button"
-                          className="cs-link"
+                          variant="ghost"
+                          size="sm"
                           onClick={(event) => {
                             event.stopPropagation()
                             onSelectPerson(saved.person.id)
                           }}
                         >
                           View
-                          <ArrowRightIcon />
-                        </button>
-                      </td>
-                    </tr>
+                          <ArrowRight />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </DetailSection>
@@ -178,24 +167,28 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
 
       {person.linkedAccounts && person.linkedAccounts.length > 0 ? (
         <DetailSection title="Linked accounts">
-          <ul className="cs-linked">
+          <ul className="flex flex-col divide-y rounded-md border">
             {person.linkedAccounts.map((link) => (
               <li key={link.person.id}>
-                <button type="button" className="cs-linked__item" onClick={() => onSelectPerson(link.person.id)}>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent/50"
+                  onClick={() => onSelectPerson(link.person.id)}
+                >
                   <Avatar person={link.person} />
-                  <span className="cs-linked__body">
-                    <span className="cs-linked__name">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="font-medium">
                       {personName(link.person)} · {link.person.id}
                     </span>
-                    <span className="cs-linked__meta">
+                    <span className="text-xs text-muted-foreground">
                       {link.relationship ? `Saved as ${link.relationship} · ` : ''}
                       {link.lastBooked ? `last booked ${link.lastBooked}` : 'never booked'}
                     </span>
                   </span>
                   {!isMobile ? (
-                    <span className="cs-link cs-linked__open">
+                    <span className="inline-flex items-center gap-1 text-sm font-medium text-primary">
                       Open
-                      <ArrowRightIcon />
+                      <ArrowRight className="size-4" />
                     </span>
                   ) : null}
                 </button>
@@ -204,22 +197,15 @@ export function CustomerDetail({ person, variant, onBack, onClose, onSelectPerso
           </ul>
         </DetailSection>
       ) : null}
-
-      {/* Both informational sentences are gone: the desktop one about the audit
-          log and passport masking, and the mobile one this replaced. The
-          read-only behaviour they described is unchanged — this panel still
-          cannot be edited, and opening a profile is still recorded by Feature
-          15. The note was the last child of a column flex container, so its
-          `gap` went with it and nothing is left dangling here. */}
     </article>
   )
 }
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="cs-detail__field">
-      <dt className="cs-detail__label">{label}</dt>
-      <dd className="cs-detail__value">{value}</dd>
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm">{value}</dd>
     </div>
   )
 }

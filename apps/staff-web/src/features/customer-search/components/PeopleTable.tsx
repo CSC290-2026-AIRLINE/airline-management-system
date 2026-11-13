@@ -1,15 +1,9 @@
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import type { Person } from '../types'
 import { formatDateOfBirth, nationalityLabel } from '../lib/format'
 import { Avatar, TypeBadge } from './shared'
 
-/**
- * The full-width desktop table used when no person is selected.
- * Columns match the design: NAME | DATE OF BIRTH | NATIONALITY | ID.
- *
- * The wrapper scrolls sideways rather than letting the columns be crushed: the
- * table has a `min-width` below which its fixed columns would leave NAME too
- * narrow for an avatar and a name. See `cs-table-scroll` in the stylesheet.
- */
+/** The full-width desktop table used when no person is selected. Columns: Name | Date of birth | Nationality | ID. */
 
 interface PeopleTableProps {
   people: Person[]
@@ -18,50 +12,46 @@ interface PeopleTableProps {
 
 export function PeopleTable({ people, onSelect }: PeopleTableProps) {
   return (
-    <div className="cs-table-scroll">
-      <table className="cs-table">
-        <caption className="cs-visually-hidden">Customer search results</caption>
-        <thead>
-          <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Date of birth</th>
-            <th scope="col">Nationality</th>
-            <th scope="col">ID</th>
-          </tr>
-        </thead>
-        <tbody>
-          {people.map((person) => (
-            <tr key={person.id} className="cs-table__row" onClick={() => onSelect(person)}>
-              <td>
-                <button
-                  type="button"
-                  className="cs-table__name"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onSelect(person)
-                  }}
-                >
-                  <Avatar person={person} />
-                  <span className="cs-table__identity">
-                    <span className="cs-table__name-row">
-                      <span className="cs-table__fullname">
-                        {person.firstName} {person.lastName}
-                      </span>
-                      {person.thaiName ? <span className="cs-table__thai">{person.thaiName}</span> : null}
+    <Table>
+      <caption className="sr-only">Customer search results</caption>
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col">Name</TableHead>
+          <TableHead scope="col">Date of birth</TableHead>
+          <TableHead scope="col">Nationality</TableHead>
+          <TableHead scope="col">ID</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {people.map((person) => (
+          <TableRow key={person.id} className="cursor-pointer" onClick={() => onSelect(person)}>
+            <TableCell>
+              <button
+                type="button"
+                className="flex items-center gap-3 text-left"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onSelect(person)
+                }}
+              >
+                <Avatar person={person} />
+                <span className="flex flex-col items-start gap-1">
+                  <span className="flex flex-wrap items-baseline gap-2">
+                    <span className="font-medium">
+                      {person.firstName} {person.lastName}
                     </span>
-                    <span className="cs-table__badge">
-                      <TypeBadge person={person} />
-                    </span>
+                    {person.thaiName ? <span className="text-muted-foreground">{person.thaiName}</span> : null}
                   </span>
-                </button>
-              </td>
-              <td className="cs-table__cell">{formatDateOfBirth(person.dateOfBirth)}</td>
-              <td className="cs-table__cell">{nationalityLabel(person.nationality)}</td>
-              <td className="cs-table__cell cs-table__cell--id">{person.id}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                  <TypeBadge person={person} />
+                </span>
+              </button>
+            </TableCell>
+            <TableCell>{formatDateOfBirth(person.dateOfBirth)}</TableCell>
+            <TableCell>{nationalityLabel(person.nationality)}</TableCell>
+            <TableCell className="font-mono text-xs text-muted-foreground">{person.id}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }

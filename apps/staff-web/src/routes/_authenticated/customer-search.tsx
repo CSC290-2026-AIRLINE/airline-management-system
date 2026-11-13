@@ -1,4 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { AppShell } from '@staff-web/features/admin-console/AppShell'
+import { RequireStaff } from '@staff-web/features/admin-console/components/RequireStaff'
 import { CustomerSearchPage } from '@staff-web/features/customer-search/pages/CustomerSearchPage'
 import {
   parseCustomerSearch,
@@ -28,5 +30,11 @@ function CustomerSearchRoute() {
     void navigate({ search: toCustomerSearchParams(next) })
   }
 
-  return <CustomerSearchPage search={search} onSearchChange={onSearchChange} />
+  return (
+    <RequireStaff>
+      <AppShell>
+        <CustomerSearchPage search={search} onSearchChange={onSearchChange} />
+      </AppShell>
+    </RequireStaff>
+  )
 }
