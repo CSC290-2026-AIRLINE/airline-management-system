@@ -85,6 +85,15 @@ function fixture() {
 }
 
 describe('HoldService', () => {
+  it('does not report an existing passenger booking as a taken seat', async () => {
+    const { service, tx } = fixture()
+    tx.booking_coupon.createMany.mockRejectedValueOnce({ code: 'P2002', meta: { constraint: 'booking_coupon_person_uq' } })
+    await expect(service.createForUser('user', 'new-key', request)).rejects.toMatchObject({
+      code: 'INVALID_BOOKING_STATE',
+      message: 'A passenger already has an active booking on a selected flight',
+    })
+  })
+
   it('does not sell a cabin absent from the actual aircraft even if inventory rows are stale', async () => {
     const { service, layouts, inventory, pricing } = fixture()
     layouts.getSeatMap.mockResolvedValueOnce({ cabins: [], rows: [] })

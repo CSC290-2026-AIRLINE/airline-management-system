@@ -72,8 +72,9 @@ export class HoldService {
         (error) => isUniqueConstraintError(error) && JSON.stringify((error as { meta?: unknown }).meta ?? {}).includes('booking_reference'),
       )
     } catch (error) {
-      if (isUniqueConstraintError(error))
-        throw new BookingError('SEAT_UNAVAILABLE', 'A passenger already has an active booking on a selected flight')
+      if (isUniqueConstraintError(error) && JSON.stringify((error as { meta?: unknown }).meta ?? {}).includes('booking_coupon_person_uq'))
+        throw new BookingError('INVALID_BOOKING_STATE', 'A passenger already has an active booking on a selected flight')
+      if (isUniqueConstraintError(error)) throw new BookingError('SEAT_UNAVAILABLE', 'A selected seat is no longer available')
       throw error
     }
   }

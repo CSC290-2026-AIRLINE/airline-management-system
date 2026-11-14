@@ -121,8 +121,9 @@ export function SeatSelection({ currency, passengers, segments, initialSeats = [
                     onClick={() => setPassengerId(item.id)}
                   >
                     <span>
-                      <strong>{item.name}</strong>
-                      <small>{item.type}</small>
+                      <strong>
+                        {item.name} ({item.type})
+                      </strong>
                     </span>
                     <span className="seat-selection__seat-code">{choice?.seatCode ?? 'No seat yet'}</span>
                   </button>

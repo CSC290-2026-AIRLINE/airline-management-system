@@ -90,7 +90,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   }
   function continueToSeats() {
     if (!itinerary) return
-    const missingNote = Object.values(assistance).some((value) => ['UMNR', 'MEDA'].includes(value.serviceCode ?? '') && !value.note.trim())
+    const missingNote = Object.values(assistance).some(
+      (value) =>
+        (value.serviceCodes ?? (value.serviceCode ? [value.serviceCode] : [])).some((code) => code === 'UMNR' || code === 'MEDA') &&
+        !value.note.trim(),
+    )
     const missingDemo = demoMode && travellers.some((person) => !person.demoPassengerId)
     const message =
       (missingDemo ? 'Choose a demo traveller for every passenger.' : null) ??
@@ -149,9 +153,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
         seats,
         serviceRequests: travellers.flatMap((person) => {
           const value = assistance[person.key]
-          return value?.serviceCode
-            ? [{ passengerId: idFor(person.key), serviceCode: value.serviceCode, note: value.note.trim() || undefined }]
-            : []
+          return (value?.serviceCodes ?? (value?.serviceCode ? [value.serviceCode] : [])).map((serviceCode) => ({
+            passengerId: idFor(person.key),
+            serviceCode,
+            note: value.note.trim() || undefined,
+          }))
         }),
       }
       pendingRequest.current = request
@@ -311,6 +317,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                         <div className="f3-passenger-assistance">
                           <AssistanceFields
                             value={assistance[person.key] ?? { serviceCode: null, note: '' }}
+                            bookingMode
                             disabled={busy}
                             onChange={(value) => {
                               setAssistance((current) => ({ ...current, [person.key]: value }))

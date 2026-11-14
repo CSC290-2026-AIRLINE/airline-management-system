@@ -205,9 +205,8 @@ export function BookingSeatStep({
                     >
                       <span>
                         <strong>
-                          {person.givenName} {person.familyName}
+                          {person.givenName} {person.familyName} ({person.expectedType})
                         </strong>
-                        <small>{person.expectedType}</small>
                       </span>
                       <span className="seat-selection__seat-code">{seat?.seatCode ?? 'No seat yet'}</span>
                     </button>
@@ -222,14 +221,16 @@ export function BookingSeatStep({
                 Exit-row seats require an adult with no assistance request and no infant on their lap.
               </p>
             )}
-            <button
-              className={controls.link}
-              type="button"
-              disabled={busy || !choices.some((choice) => choice.flightId === flightId)}
-              onClick={() => onChange(choices.filter((choice) => choice.flightId !== flightId))}
-            >
-              Clear seats for this flight
-            </button>
+            {choices.some((choice) => choice.flightId === flightId) && (
+              <button
+                className={controls.link}
+                type="button"
+                disabled={busy}
+                onClick={() => onChange(choices.filter((choice) => choice.flightId !== flightId))}
+              >
+                Clear seats for this flight
+              </button>
+            )}
             <p className="seat-selection__fees">
               <span>Seat fees</span>
               <strong>{maps ? formatMoney(seatFees, currency) : '—'}</strong>

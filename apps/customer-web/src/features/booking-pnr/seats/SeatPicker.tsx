@@ -72,7 +72,9 @@ export function SeatPicker({
           </span>
         ))}
       </div>
-      {selectedCabin && <p className="seat-picker__cabin">{formatCabin(selectedCabin)} · Choose a seat to see its price</p>}
+      {selectedCabin && !bookingLegend && (
+        <p className="seat-picker__cabin">{formatCabin(selectedCabin)} · Choose a seat to see its price</p>
+      )}
       <div ref={mapRegion} className="seat-picker__rows" tabIndex={0} role="region" aria-label="Aircraft seat map, scroll to see all rows">
         <div className="seat-picker__row seat-picker__columns" aria-hidden="true">
           <span className="seat-picker__number" />
@@ -129,7 +131,7 @@ export function SeatPicker({
                         '×'
                       ) : seat.type === 'extra_legroom' ? (
                         <ArrowUp />
-                      ) : (
+                      ) : bookingLegend ? null : (
                         seat.column
                       )}
                     </span>

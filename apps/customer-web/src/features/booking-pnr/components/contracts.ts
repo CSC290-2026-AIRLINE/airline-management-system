@@ -15,6 +15,7 @@ export interface SeatPickerProps {
 
 export interface AssistanceValue {
   serviceCode: ServiceCode | null
+  serviceCodes?: ServiceCode[]
   note: string
 }
 
@@ -23,6 +24,7 @@ export interface AssistanceFieldsProps {
   onChange: (value: AssistanceValue) => void
   disabled?: boolean
   popupContainer?: HTMLElement | null
+  bookingMode?: boolean
 }
 
 export interface SeatTakenDialogProps {

@@ -34,13 +34,24 @@
   color: #677287;
   font-size: 14px;
 }
-.assistance-page__header .assistance-page__eyebrow {
-  margin-bottom: 6px;
-  color: #677287;
-  font-size: 12px;
+.assistance-page__badges {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.assistance-page__badges span {
+  padding: 4px 7px;
+  border-radius: 3px;
+  background: #1f408c;
+  color: #fff;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  line-height: 1;
+}
+.assistance-page__badges span + span {
+  border: 1px solid #bd9a56;
+  background: #fef4de;
+  color: #6d5021;
 }
 .assistance-queue {
   font-size: 14px;
@@ -281,6 +292,9 @@
   outline: none;
   border-color: #102544;
   box-shadow: 0 0 0 3px #10254425;
+}
+.assistance-queue__reason::placeholder {
+  color: #8993a4;
 }
 .assistance-queue__reason:disabled {
   opacity: 0.55;

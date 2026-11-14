@@ -20,6 +20,32 @@
   font-size: 13px;
   font-weight: 500;
 }
+.assistance-fields__checks {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 14px;
+  margin: 8px 0 12px;
+}
+.assistance-fields label.assistance-fields__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: #0a1424;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.assistance-fields__check input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #102544;
+}
+.assistance-fields__check input:focus-visible {
+  outline: 3px solid #fca311;
+  outline-offset: 2px;
+}
 .assistance-fields textarea {
   box-sizing: border-box;
   width: 100%;

@@ -280,6 +280,7 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
               onChange={(event) => setReason(event.target.value)}
               disabled={working}
               required
+              placeholder="Explain why this request cannot be accepted"
             />
           </label>
           {error && <p role="alert">{error}</p>}
