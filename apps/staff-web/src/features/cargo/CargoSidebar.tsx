@@ -14,7 +14,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from '@staff-web/components/ui/sidebar'
-import flythonMark from '@staff-web/features/admin-console/assets/flython-mark.svg'
+import flythonMark from '@staff-web/features/admin-console/assets/flython-logo-mark.svg'
 
 interface NavItem {
   to: string

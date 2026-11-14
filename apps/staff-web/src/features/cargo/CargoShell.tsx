@@ -4,7 +4,7 @@ import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@staff-web/components/ui/sidebar'
 import { useMyAccess } from '@staff-web/features/admin-console/components/MyAccessProvider'
 import { CargoSidebar } from './CargoSidebar'
-import flythonMark from '@staff-web/features/admin-console/assets/flython-mark.svg'
+import flythonMark from '@staff-web/features/admin-console/assets/flython-logo-mark.svg'
 
 export function CargoShell() {
   const { logout } = useAppAuth()
