@@ -308,7 +308,7 @@ export function StatusBadge({ status }: { status: 'passed' | 'failed' }) {
 export function AlertBanner({ tone, action, children }: { tone: 'success' | 'warning' | 'info'; action?: ReactNode; children: ReactNode }) {
   const styles = {
     success: 'border-valid/30 bg-valid-bg text-valid',
-    warning: 'border-secondary/40 bg-secondary/10 text-primary',
+    warning: 'border-gold/40 bg-gold/10 text-primary',
     info: 'border-primary/15 bg-info-bg text-primary',
   } as const
   const Icon = tone === 'success' ? CheckIcon : InfoIcon
@@ -388,18 +388,18 @@ export function StatCard({ label, value }: { label: string; value: string | numb
 // ---------------------------------------------------------------------------
 
 /**
- * Role pill. `Cabin Crew` is outlined in the secondary colour with navy text (the
- * secondary colour alone is too light to read on white) and `Captain` is solid navy;
+ * Role pill. `Cabin Crew` is outlined in gold with navy text (gold
+ * alone is too light to read on white) and `Captain` is solid navy;
  * the rest share the neutral treatment so the two that appear most often in a roster
  * stand out.
  */
 export function RoleBadge({ role }: { role: string }) {
   const styles =
-    role === 'Captain' ? 'bg-primary text-white' : role === 'Cabin Crew' ? 'bg-secondary/15 text-primary' : 'bg-page-bg text-primary'
+    role === 'Captain' ? 'bg-primary text-white' : role === 'Cabin Crew' ? 'bg-gold/15 text-primary' : 'bg-page-bg text-primary'
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${
-        role === 'Cabin Crew' ? 'border border-secondary/60' : ''
+        role === 'Cabin Crew' ? 'border border-gold/60' : ''
       } ${styles}`}
     >
       {role}
@@ -411,9 +411,9 @@ export function RoleBadge({ role }: { role: string }) {
 export function TagPill({ tone, children }: { tone: 'valid' | 'warning' | 'invalid' | 'neutral'; children: ReactNode }) {
   const styles = {
     valid: 'bg-valid-bg text-valid',
-    warning: 'bg-secondary/15 text-btn-yellow-hover',
+    warning: 'bg-gold/15 text-btn-yellow-hover',
     invalid: 'bg-invalid-bg text-invalid',
-    neutral: 'bg-secondary/20 text-btn-yellow-hover',
+    neutral: 'bg-gold/20 text-btn-yellow-hover',
   } as const
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide uppercase ${styles[tone]}`}>

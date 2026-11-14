@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import type { PromoInvalidReason } from '../pricing.constants'
+import { PricingAudit } from '../pricing.audit'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
 import { simNow } from '../fare-quote/sim-clock'
 import { CreatePromoCodeDto } from './dto/create-promo-code.dto'
@@ -30,7 +31,10 @@ function numberOrNull(value: { toString(): string } | null): number | null {
 
 @Injectable()
 export class PromoCodeService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
 
   // Inactive codes are hidden unless asked for, like fare classes and taxes.
   findAll(includeInactive = false) {
@@ -48,7 +52,7 @@ export class PromoCodeService {
     return promo
   }
 
-  async create(dto: CreatePromoCodeDto) {
+  async create(dto: CreatePromoCodeDto, userId: string) {
     const validFrom = new Date(dto.valid_from)
     const validTo = new Date(dto.valid_to)
     this.assertValues({
@@ -61,13 +65,21 @@ export class PromoCodeService {
     })
     await this.assertCodeFree(dto.code)
     try {
-      return await this.db.promo_code.create({ data: { ...dto, valid_from: validFrom, valid_to: validTo } })
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.promo_code.create({ data: { ...dto, valid_from: validFrom, valid_to: validTo } })
+        await this.audit.write(
+          userId,
+          { action: 'create', entityType: 'promo_code', entityId: row.id, summary: `Created promo code ${row.code}`, after: row },
+          tx,
+        )
+        return row
+      })
     } catch (error) {
       throw this.mapUniqueViolation(error, dto.code)
     }
   }
 
-  async update(id: string, dto: UpdatePromoCodeDto) {
+  async update(id: string, dto: UpdatePromoCodeDto, userId: string) {
     const current = await this.findOne(id)
     // Checked on the row as it will be after the change. Sending null clears a field, so switching a code from a
     // percentage to a fixed amount is { discount_pct: null, discount_amount: 50 }.
@@ -83,9 +95,24 @@ export class PromoCodeService {
       await this.assertCodeFree(dto.code, id)
     }
     try {
-      return await this.db.promo_code.update({
-        where: { id },
-        data: { ...dto, valid_from: toDate(dto.valid_from), valid_to: toDate(dto.valid_to), updated_at: new Date() },
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.promo_code.update({
+          where: { id },
+          data: { ...dto, valid_from: toDate(dto.valid_from), valid_to: toDate(dto.valid_to), updated_at: new Date() },
+        })
+        await this.audit.write(
+          userId,
+          {
+            action: 'update',
+            entityType: 'promo_code',
+            entityId: id,
+            summary: `Updated promo code ${row.code}`,
+            before: current,
+            after: row,
+          },
+          tx,
+        )
+        return row
       })
     } catch (error) {
       throw this.mapUniqueViolation(error, dto.code)
@@ -93,10 +120,17 @@ export class PromoCodeService {
   }
 
   // Soft delete: quotes and redemptions keep pointing at the row; the code can be reused afterwards.
-  async remove(id: string) {
-    await this.findOne(id)
+  async remove(id: string, userId: string) {
+    const existing = await this.findOne(id)
     const now = new Date()
-    await this.db.promo_code.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+    await this.db.$transaction(async (tx) => {
+      await tx.promo_code.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+      await this.audit.write(
+        userId,
+        { action: 'delete', entityType: 'promo_code', entityId: id, summary: `Deleted promo code ${existing.code}`, before: existing },
+        tx,
+      )
+    })
   }
 
   // The quotes carrying a code, for the Redeem card: staff know the code, never the quote id. `flight` and `route` belong
@@ -141,8 +175,8 @@ export class PromoCodeService {
   // first result and counts nothing. Only "used up" refuses; the price was agreed when the quote was made, so a promo
   // switched off or expired since then still counts. The increment is conditional, so two bookings racing for the last
   // use cannot both win, and throwing rolls the redemption row back.
-  async redeem(promoCodeId: string, { booking_ref, fare_quote_id }: RedeemPromoDto) {
-    await this.findOne(promoCodeId)
+  async redeem(promoCodeId: string, { booking_ref, fare_quote_id }: RedeemPromoDto, userId: string | null = null) {
+    const promo = await this.findOne(promoCodeId)
     const quote = await this.db.fare_quote.findUnique({ where: { id: fare_quote_id }, select: { id: true, promo_code_id: true } })
     if (!quote) {
       throw new NotFoundException(pricingError(PricingErrorCode.QUOTE_NOT_FOUND, `Fare quote ${fare_quote_id} not found`))
@@ -181,12 +215,24 @@ export class PromoCodeService {
             data: { status: 'redeemed', released_at: null, redeemed_at: simNow(), fare_quote_id },
           })
         : await tx.promo_redemption.findUniqueOrThrow({ where: { promo_code_id_booking_ref: key } })
+      await this.audit.write(
+        userId,
+        {
+          action: existing ? 'update' : 'create',
+          entityType: 'promo_redemption',
+          entityId: row.id,
+          summary: `Redeemed promo code ${promo.code} for booking ${booking_ref}`,
+          before: existing ?? undefined,
+          after: row,
+        },
+        tx,
+      )
       return this.redemptionResult(row, false)
     })
   }
 
   // When the booking is refunded or payment fails. Safe to retry: releasing a released use does nothing.
-  async release(promoCodeId: string, bookingRef: string) {
+  async release(promoCodeId: string, bookingRef: string, userId: string | null = null) {
     const key = { promo_code_id: promoCodeId, booking_ref: bookingRef }
     await this.db.$transaction(async (tx) => {
       const existing = await tx.promo_redemption.findUnique({ where: { promo_code_id_booking_ref: key } })
@@ -196,7 +242,19 @@ export class PromoCodeService {
         )
       }
       if (existing.status === 'released') return
-      await tx.promo_redemption.update({ where: { id: existing.id }, data: { status: 'released', released_at: simNow() } })
+      const released = await tx.promo_redemption.update({ where: { id: existing.id }, data: { status: 'released', released_at: simNow() } })
+      await this.audit.write(
+        userId,
+        {
+          action: 'update',
+          entityType: 'promo_redemption',
+          entityId: existing.id,
+          summary: `Released promo code use for booking ${bookingRef}`,
+          before: existing,
+          after: released,
+        },
+        tx,
+      )
       await tx.$executeRaw`UPDATE promo_code SET used_count = GREATEST(used_count - 1, 0), updated_at = now() WHERE id = ${promoCodeId}::uuid`
     })
   }

@@ -51,7 +51,7 @@ function rowStyle(item: FixBreak, selected: boolean): string {
   const border = selected
     ? 'border-primary-text'
     : item.resolution?.kind === 'overridden'
-      ? 'border-secondary/60'
+      ? 'border-gold/60'
       : item.resolution
         ? 'border-valid/40'
         : 'border-invalid/25'

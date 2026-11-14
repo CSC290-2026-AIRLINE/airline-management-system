@@ -1,4 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreateBaseFareDto } from './dto/create-base-fare.dto'
 import { ListBaseFaresDto } from './dto/list-base-fares.dto'
 import { UpdateBaseFareDto } from './dto/update-base-fare.dto'
@@ -27,18 +29,18 @@ export class BaseFareController {
   }
 
   @Post()
-  create(@Body() dto: CreateBaseFareDto) {
-    return this.baseFareService.create(dto)
+  create(@Body() dto: CreateBaseFareDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.baseFareService.create(dto, user.id)
   }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBaseFareDto) {
-    return this.baseFareService.update(id, dto)
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateBaseFareDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.baseFareService.update(id, dto, user.id)
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.baseFareService.remove(id)
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.baseFareService.remove(id, user.id)
   }
 }
