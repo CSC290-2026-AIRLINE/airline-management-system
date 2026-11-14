@@ -5,6 +5,7 @@ import type { AddBagCostBody, BagCostSummary, LostReportCase } from '../api/lost
 import { REPORT_STATUS_LABELS, REPORT_STATUS_TONES, bagSummary, formatEventTime, formatFlightDate } from '../constants'
 import { displayPhone } from '../phone-number'
 import { CaseCosts } from './CaseCosts'
+import { CasePhoto } from './CasePhoto'
 import { CaseMatches } from './CaseMatches'
 import { F10Card, Pill } from './primitives'
 
@@ -66,6 +67,8 @@ export function CaseDetailCard({
       {report.description && (
         <p className="rounded-lg bg-[#eef0f4] px-3.5 py-3 text-base break-words text-[#14213d]">“{report.description}”</p>
       )}
+
+      <CasePhoto key={`photo-${report.id}`} reportId={report.id} hasPhoto={report.photoUrl !== null} caseNumber={report.caseNumber} />
 
       <CaseMatches
         key={`matches-${report.id}`}

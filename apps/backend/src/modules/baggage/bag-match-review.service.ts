@@ -128,6 +128,7 @@ export function toBagMatch(row: MatchRow): BagMatch {
       description: report.description,
       reportedAt: report.reported_at,
       reportedByStaff: report.reported_by_staff_id !== null,
+      hasPhoto: report.photo_url !== null,
     },
     foundBag: {
       id: bag.id,

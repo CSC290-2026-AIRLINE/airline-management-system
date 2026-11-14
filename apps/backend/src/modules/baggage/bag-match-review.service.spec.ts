@@ -55,6 +55,7 @@ function matchRow(data: Record<string, unknown> = {}) {
       description: 'Yellow strap around the middle',
       reported_at: SIM_NOW,
       reported_by_staff_id: null,
+      photo_url: 'feature10/lost-reports/report/photo',
       passenger: { first_name: 'Lina', last_name: 'Haddad' },
       flight: { flight_number: 'FY117', service_date: SIM_NOW },
       booking_coupon: { booking_passenger: { booking: { booking_reference: 'H8LD3Q' } } },
@@ -116,7 +117,13 @@ describe('BagMatchReviewService.getById', () => {
       level: 'strong',
       status: 'suggested',
       score: 100,
-      report: { caseNumber: 'LB-2026-000118', passengerFirstName: 'Lina', bookingReference: 'H8LD3Q', flightNumber: 'FY117' },
+      report: {
+        caseNumber: 'LB-2026-000118',
+        passengerFirstName: 'Lina',
+        bookingReference: 'H8LD3Q',
+        flightNumber: 'FY117',
+        hasPhoto: true,
+      },
       foundBag: { foundAirport: 'BKK', currentAirport: 'SIN', flightNumber: 'FY117' },
     })
     expect(match.reasons).toEqual(expect.arrayContaining(['same_tag', 'owner_tag', 'same_brand', 'similar_description']))

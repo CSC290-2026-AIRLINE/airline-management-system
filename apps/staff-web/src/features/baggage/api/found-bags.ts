@@ -183,6 +183,23 @@ export function useBaggageSend() {
   }
 }
 
+/** Like `useBaggageSend`, for a file such as a photo: resolves to its bytes, or throws a `BaggageApiError`. */
+export function useBaggageFetchFile() {
+  const { fetchWithAuth } = useAppAuth()
+
+  return async function fetchFile(path: string): Promise<Blob> {
+    let res: Response
+    try {
+      res = await fetchWithAuth(path)
+    } catch (e: unknown) {
+      if (e instanceof TypeError) throw new BaggageApiError(0, 'SERVER_UNREACHABLE', SERVER_UNREACHABLE_MESSAGE)
+      throw e
+    }
+    if (!res.ok) throw await readError(res)
+    return res.blob()
+  }
+}
+
 /**
  * Staff baggage endpoints. The functions close over `fetchWithAuth`, which is recreated every render, so call them from
  * event handlers or a mount effect and never list them as effect dependencies.

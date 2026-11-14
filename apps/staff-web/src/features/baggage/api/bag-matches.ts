@@ -38,6 +38,8 @@ export interface BagMatch {
     description: string | null
     reportedAt: string
     reportedByStaff: boolean
+    /** The passenger attached a bag photo. */
+    hasPhoto: boolean
   }
   foundBag: {
     id: string

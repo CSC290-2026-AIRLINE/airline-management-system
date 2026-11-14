@@ -47,6 +47,8 @@ export interface MatchReportSide {
   description: string | null
   reportedAt: Date
   reportedByStaff: boolean
+  /** The passenger attached a bag photo (staff fetch it from GET staff/lost-reports/:id/photo). */
+  hasPhoto: boolean
 }
 
 /** The found-bag side of a match. currentAirport is where its latest tracking event puts it. */

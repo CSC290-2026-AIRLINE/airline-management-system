@@ -20,6 +20,7 @@ import {
   matchRef,
 } from '../constants'
 import { errorMessage } from '../hooks/useFoundBags'
+import { CasePhoto } from './CasePhoto'
 import { F10Card, FIELD_BOX, Field, FormError, Pill } from './primitives'
 
 type Verdict = 'same' | 'different' | 'none'
@@ -227,6 +228,13 @@ export function MatchDetailCard({
       </div>
 
       <Comparison match={match} />
+
+      <CasePhoto
+        key={`photo-${match.report.id}`}
+        reportId={match.report.id}
+        hasPhoto={match.report.hasPhoto}
+        caseNumber={match.report.caseNumber}
+      />
 
       <p className="text-sm text-[#677287]">
         Booking {match.report.bookingReference}

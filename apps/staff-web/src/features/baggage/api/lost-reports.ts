@@ -1,5 +1,5 @@
 import type { BagColour, BagCostKind, BagType, ReportStatus } from '../constants'
-import { useBaggageSend } from './found-bags'
+import { useBaggageFetchFile, useBaggageSend } from './found-bags'
 
 /** Same shape as the backend's `LostReportCase` (`apps/backend/src/modules/baggage/common/lost-report.types.ts`), dates as ISO strings. */
 export interface LostReportCase {
@@ -96,6 +96,7 @@ export interface AddBagCostBody {
 /** `/api/staff/lost-reports`. Same rule as `useFoundBagApi`: never list these functions as effect dependencies. */
 export function useLostReportApi() {
   const send = useBaggageSend()
+  const fetchFile = useBaggageFetchFile()
 
   return {
     list: () => send<LostReportCase[]>('/api/staff/lost-reports'),
@@ -103,6 +104,8 @@ export function useLostReportApi() {
     create: (body: CreateLostReportBody) => send<LostReportCase>('/api/staff/lost-reports', { method: 'POST', body: JSON.stringify(body) }),
     createFromFoundBag: (foundBagId: string) =>
       send<LostReportCase>('/api/staff/lost-reports/from-found-bag', { method: 'POST', body: JSON.stringify({ foundBagId }) }),
+    /** The bag photo the passenger attached to the case. */
+    photo: (id: string) => fetchFile(`/api/staff/lost-reports/${id}/photo`),
     costs: (id: string) => send<BagCostSummary>(`/api/staff/lost-reports/${id}/costs`),
     addCost: (id: string, body: AddBagCostBody) =>
       send<BagCost>(`/api/staff/lost-reports/${id}/costs`, { method: 'POST', body: JSON.stringify(body) }),

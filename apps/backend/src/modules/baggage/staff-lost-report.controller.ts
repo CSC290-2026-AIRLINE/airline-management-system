@@ -3,16 +3,21 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
+  StreamableFile,
+  UseFilters,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common'
 import type { ValidationError } from '@nestjs/common'
+import { BaggageErrorFilter } from './common/baggage-error.filter'
+import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import type { BagCost, BagCostSummary, BookingLookup, LostReportCase } from './common/lost-report.types'
 import { AddBagCostDto } from './dto/add-bag-cost.dto'
@@ -24,6 +29,7 @@ import { BaggageStaffGuard, CurrentBaggageStaff, baggageAuditActor, type Baggage
 import { BagCostService } from './bag-cost.service'
 import { StaffLostReportService } from './staff-lost-report.service'
 import { BagMatchingService } from './bag-matching.service'
+import { LostReportPhotoStorage } from './lost-report-photo.storage'
 
 /** Properties that only the cost body has, so their errors read as INVALID_COST. */
 const COST_PROPERTIES = new Set(['kind', 'amount', 'note'])
@@ -67,6 +73,7 @@ export class StaffLostReportController {
     private readonly reports: StaffLostReportService,
     private readonly costs: BagCostService,
     private readonly matching: BagMatchingService,
+    private readonly photos: LostReportPhotoStorage,
   ) {}
 
   /** The ticketed passengers and flights on a booking, to fill the desk form. Each lookup is logged as a sensitive view. */
@@ -102,6 +109,26 @@ export class StaffLostReportController {
   @Get(':id')
   getById(@Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string): Promise<LostReportCase> {
     return this.reports.getById(id)
+  }
+
+  /** The bag photo the passenger attached to their report, for the desk to compare with found bags. */
+  @Get(':id/photo')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @UseFilters(BaggageErrorFilter)
+  async getPhoto(@Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string): Promise<StreamableFile> {
+    const report = await this.reports.getById(id)
+    if (!report.photoUrl) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.PHOTO_NOT_FOUND, 'Lost baggage photo not found')
+    }
+
+    const photo = await this.photos.retrieve(report.id)
+    const extension = photo.contentType === 'image/png' ? 'png' : 'jpg'
+    return new StreamableFile(photo.body, {
+      type: photo.contentType,
+      disposition: `inline; filename="lost-baggage-photo.${extension}"`,
+      length: photo.contentLength,
+    })
   }
 
   @Get(':id/costs')
