@@ -427,10 +427,153 @@ export class CargoDeskService {
     })
   }
 
-  private async loadedCargoKg(
-    tx: Parameters<Parameters<DbService['$transaction']>[0]>[0],
-    flightId: string,
-  ): Promise<number> {
+  async listFlightsWithCargo(from: string, to: string) {
+    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
+    const flights = await this.db.flight.findMany({
+      where: {
+        service_date: { gte: new Date(from + 'T00:00:00Z'), lte: new Date(to + 'T00:00:00Z') },
+      },
+      orderBy: [{ service_date: 'asc' }, { dep_at: 'asc' }],
+      select: {
+        id: true,
+        flight_number: true,
+        service_date: true,
+        dep_at: true,
+        status: true,
+        aircraft_id: true,
+        aircraft: { select: { tail_number: true } },
+        cargo_booking: {
+          select: {
+            declared_weight_kg: true,
+            cargo_shipment_event: { orderBy: { seq: 'desc' }, take: 1, select: { status_after: true } },
+          },
+        },
+      },
+    })
+
+    const settings = await this.loadSettings()
+    const results: {
+      id: string
+      flightNumber: string
+      serviceDate: Date
+      depAt: Date
+      aircraft: string
+      status: string
+      bookingCount: number
+      committedKg: number
+      availableKg: number
+    }[] = []
+
+    for (const f of flights) {
+      const committed = f.cargo_booking
+        .filter((b) => {
+          const s = b.cargo_shipment_event[0]?.status_after
+          return s != null && COMMITTED.has(s)
+        })
+        .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
+
+      const bookingCount = f.cargo_booking.filter((b) => {
+        const s = b.cargo_shipment_event[0]?.status_after
+        return s != null && COMMITTED.has(s)
+      }).length
+
+      const capacity = await getAircraftCapacity(this.db, f.aircraft_id)
+      const seats = seatsTakenOnFlight(this.db, f.id)
+      const free = availableKg({
+        holdLimitKg: capacity.holdLimitKg,
+        sellableSeats: capacity.sellableSeats,
+        seatsTaken: seats,
+        reserveKgPerPax: settings.reserveKgPerPax,
+        floorPercent: settings.floorPercent,
+        committedKg: committed,
+      })
+
+      results.push({
+        id: f.id,
+        flightNumber: f.flight_number,
+        serviceDate: f.service_date,
+        depAt: f.dep_at,
+        aircraft: f.aircraft.tail_number,
+        status: f.status,
+        bookingCount,
+        committedKg: committed,
+        availableKg: free,
+      })
+    }
+
+    return results
+  }
+
+  async getFlightManifest(flightId: string) {
+    const flight = await this.db.flight.findUnique({
+      where: { id: flightId },
+      select: { id: true, flight_number: true, service_date: true, aircraft_id: true },
+    })
+    if (!flight) {
+      throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Flight not found' } })
+    }
+
+    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
+    const bookings = await this.db.cargo_booking.findMany({
+      where: { flight_id: flightId },
+      include: {
+        cargo_commodity_type: { select: { name: true } },
+        cargo_shipment_event: { orderBy: { seq: 'desc' }, take: 1, select: { status_after: true, measured_weight_kg: true } },
+      },
+      orderBy: { booked_at: 'asc' },
+    })
+
+    const rows = bookings.map((b) => {
+      const latestEvent = b.cargo_shipment_event[0]
+      const status = latestEvent?.status_after ?? 'unknown'
+      return {
+        id: b.id,
+        awbNumber: b.awb_number,
+        shipperName: b.shipper_name,
+        consigneeName: b.consignee_name,
+        commodityTypeName: b.cargo_commodity_type.name,
+        handlingClass: b.handling_class,
+        pieces: b.pieces,
+        declaredWeightKg: Number(b.declared_weight_kg),
+        measuredWeightKg: latestEvent?.measured_weight_kg ? Number(latestEvent.measured_weight_kg) : null,
+        status,
+      }
+    })
+
+    const activeRows = rows.filter((r) => COMMITTED.has(r.status))
+    const totalDeclaredKg = activeRows.reduce((s, r) => s + r.declaredWeightKg, 0)
+    const totalMeasuredKg = activeRows.reduce((s, r) => s + (r.measuredWeightKg ?? 0), 0)
+    const loadedCount = rows.filter((r) => r.status === 'loaded' || r.status === 'in_transit').length
+    const bookedCount = activeRows.length
+
+    const capacity = await getAircraftCapacity(this.db, flight.aircraft_id)
+    const seats = seatsTakenOnFlight(this.db, flight.id)
+    const settings = await this.loadSettings()
+    const committed = activeRows.reduce((s, r) => s + r.declaredWeightKg, 0)
+    const free = availableKg({
+      holdLimitKg: capacity.holdLimitKg,
+      sellableSeats: capacity.sellableSeats,
+      seatsTaken: seats,
+      reserveKgPerPax: settings.reserveKgPerPax,
+      floorPercent: settings.floorPercent,
+      committedKg: committed,
+    })
+
+    return {
+      flightNumber: flight.flight_number,
+      serviceDate: flight.service_date,
+      holdLimitKg: capacity.holdLimitKg,
+      committedKg: committed,
+      availableKg: free,
+      totalDeclaredKg,
+      totalMeasuredKg,
+      loadedCount,
+      bookedCount,
+      rows,
+    }
+  }
+
+  private async loadedCargoKg(tx: Parameters<Parameters<DbService['$transaction']>[0]>[0], flightId: string): Promise<number> {
     const bookings = await (tx as DbService).cargo_booking.findMany({
       where: { flight_id: flightId },
       select: {

@@ -197,6 +197,46 @@ export interface CargoSettingRow {
 
 export type CargoSettings = Record<string, string>
 
+/* ── Flight cargo types ───────────────────────────────────────────── */
+
+export interface FlightWithCargo {
+  id: string
+  flightNumber: string
+  serviceDate: string
+  depAt: string
+  aircraft: string
+  status: string
+  bookingCount: number
+  committedKg: number
+  availableKg: number
+}
+
+export interface ManifestRow {
+  id: string
+  awbNumber: string | null
+  shipperName: string
+  consigneeName: string
+  commodityTypeName: string
+  handlingClass: string
+  pieces: number
+  declaredWeightKg: number
+  measuredWeightKg: number | null
+  status: string
+}
+
+export interface FlightManifest {
+  flightNumber: string
+  serviceDate: string
+  holdLimitKg: number
+  committedKg: number
+  availableKg: number
+  totalDeclaredKg: number
+  totalMeasuredKg: number
+  loadedCount: number
+  bookedCount: number
+  rows: ManifestRow[]
+}
+
 /* ── Hook ──────────────────────────────────────────────────────────── */
 
 export function useCargoApi() {
@@ -277,5 +317,9 @@ export function useCargoApi() {
       send<TestToolResult>('/api/staff/cargo/test/bookings', { method: 'POST', body: JSON.stringify({ count }) }),
     simulateDeparture: (id: string) => send<{ status: string }>(`/api/staff/cargo/test/bookings/${id}/departed`, { method: 'POST' }),
     simulateArrival: (id: string) => send<{ status: string }>(`/api/staff/cargo/test/bookings/${id}/arrived`, { method: 'POST' }),
+
+    listFlightsWithCargo: (from: string, to: string) =>
+      send<FlightWithCargo[]>(`/api/staff/cargo/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+    getFlightManifest: (flightId: string) => send<FlightManifest>(`/api/staff/cargo/flights/${flightId}/manifest`),
   }
 }

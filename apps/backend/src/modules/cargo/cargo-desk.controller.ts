@@ -74,4 +74,18 @@ export class CargoDeskController {
   postEvent(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: PostEventDto) {
     return this.desk.postEvent(id, dto.event, dto.note)
   }
+
+  @Get('flights')
+  listFlightsWithCargo(@Query('from') from?: string, @Query('to') to?: string) {
+    if (!from || !to) {
+      const today = new Date().toISOString().slice(0, 10)
+      return this.desk.listFlightsWithCargo(from || today, to || today)
+    }
+    return this.desk.listFlightsWithCargo(from, to)
+  }
+
+  @Get('flights/:flightId/manifest')
+  getFlightManifest(@Param('flightId', new ParseUUIDPipe()) flightId: string) {
+    return this.desk.getFlightManifest(flightId)
+  }
 }
