@@ -382,6 +382,45 @@ export class CargoClaimsService {
     })
   }
 
+  async listCustomerClaims(customerId: string, opts: { offset: number; limit: number }) {
+    const claims = await this.db.cargo_claim.findMany({
+      where: { cargo_booking: { customer_id: customerId } },
+      include: {
+        cargo_claim_decision: { select: { decision: true, approved_amount: true, decided_at: true } },
+        cargo_booking: { select: { booking_ref: true, awb_number: true } },
+      },
+      orderBy: { filed_at: 'desc' },
+      skip: opts.offset,
+      take: opts.limit,
+    })
+
+    const total = await this.db.cargo_claim.count({
+      where: { cargo_booking: { customer_id: customerId } },
+    })
+
+    return {
+      data: claims.map((c) => ({
+        id: c.id,
+        claimRef: c.claim_ref,
+        bookingRef: c.cargo_booking.booking_ref,
+        awbNumber: c.cargo_booking.awb_number,
+        claimType: c.claim_type,
+        piecesAffected: c.pieces_affected,
+        claimedAmount: Number(c.claimed_amount),
+        currency: c.currency,
+        filedAt: c.filed_at,
+        decision: c.cargo_claim_decision
+          ? {
+              decision: c.cargo_claim_decision.decision,
+              approvedAmount: c.cargo_claim_decision.approved_amount ? Number(c.cargo_claim_decision.approved_amount) : null,
+              decidedAt: c.cargo_claim_decision.decided_at,
+            }
+          : null,
+      })),
+      total,
+    }
+  }
+
   async resolveStaffId(userId: string): Promise<string> {
     const staff = await this.db.staff.findFirst({
       where: { user_id: userId, deleted_at: null },

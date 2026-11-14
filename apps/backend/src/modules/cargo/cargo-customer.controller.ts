@@ -1,8 +1,64 @@
-import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common'
-import { IsIn, IsInt, IsNotEmpty, IsNumber, IsString, Min } from 'class-validator'
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import { IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
-import { DbService } from '@backend/db/db.service'
 import { CargoClaimsService } from './cargo-claims.service'
+import { CargoCustomerService } from './cargo-customer.service'
+
+class QuoteDto {
+  @IsString()
+  @IsNotEmpty()
+  route_id!: string
+
+  @IsString()
+  @IsNotEmpty()
+  ship_date!: string
+
+  @IsString()
+  @IsNotEmpty()
+  commodity_type_id!: string
+
+  @IsInt()
+  @Min(1)
+  pieces!: number
+
+  @IsNumber()
+  @Min(0.01)
+  weight_kg!: number
+
+  @IsNumber()
+  @Min(0.01)
+  volume_m3!: number
+
+  @IsString()
+  @IsNotEmpty()
+  description!: string
+
+  @IsOptional()
+  @IsString()
+  un_number?: string
+}
+
+class CreateBookingDto extends QuoteDto {
+  @IsString()
+  @IsNotEmpty()
+  shipper_company!: string
+
+  @IsOptional()
+  @IsString()
+  shipper_phone?: string
+
+  @IsString()
+  @IsNotEmpty()
+  consignee_name!: string
+
+  @IsString()
+  @IsNotEmpty()
+  consignee_address!: string
+
+  @IsOptional()
+  @IsString()
+  consignee_phone?: string
+}
 
 class FileClaimDto {
   @IsString()
@@ -26,13 +82,88 @@ class FileClaimDto {
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class CargoCustomerController {
   constructor(
-    private readonly db: DbService,
+    private readonly svc: CargoCustomerService,
     private readonly claims: CargoClaimsService,
   ) {}
 
+  // ── Routes and commodity types ────────────────────────────────────
+
+  @Get('routes')
+  listRoutes() {
+    return this.svc.listRoutes()
+  }
+
+  @Get('commodity-types')
+  listCommodityTypes() {
+    return this.svc.listCommodityTypes()
+  }
+
+  // ── Quotes and bookings ───────────────────────────────────────────
+
+  @Post('quotes')
+  async getQuote(@Body() dto: QuoteDto) {
+    return this.svc.getQuote({
+      routeId: dto.route_id,
+      shipDate: dto.ship_date,
+      commodityTypeId: dto.commodity_type_id,
+      pieces: dto.pieces,
+      declaredWeightKg: dto.weight_kg,
+      declaredVolumeM3: dto.volume_m3,
+      goodsDescription: dto.description,
+      unNumber: dto.un_number,
+    })
+  }
+
+  @Post('bookings')
+  async createBooking(@Body() dto: CreateBookingDto, @CurrentUser() user: { id: string }) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    return this.svc.createBooking(customerId, {
+      routeId: dto.route_id,
+      shipDate: dto.ship_date,
+      commodityTypeId: dto.commodity_type_id,
+      pieces: dto.pieces,
+      declaredWeightKg: dto.weight_kg,
+      declaredVolumeM3: dto.volume_m3,
+      goodsDescription: dto.description,
+      unNumber: dto.un_number,
+      shipperName: dto.shipper_company,
+      shipperPhone: dto.shipper_phone,
+      consigneeName: dto.consignee_name,
+      consigneeAddress: dto.consignee_address,
+      consigneePhone: dto.consignee_phone,
+    })
+  }
+
+  @Get('bookings')
+  async listMyBookings(
+    @CurrentUser() user: { id: string },
+    @Query('status') status?: string,
+    @Query('page') pageStr?: string,
+    @Query('page_size') pageSizeStr?: string,
+  ) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    const page = Math.max(1, Number(pageStr) || 1)
+    const pageSize = Math.min(100, Math.max(1, Number(pageSizeStr) || 20))
+    return this.svc.listMyBookings(customerId, { status: status || undefined, page, pageSize })
+  }
+
+  @Get('bookings/:id')
+  async getMyBooking(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: { id: string }) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    return this.svc.getMyBooking(customerId, id)
+  }
+
+  @Delete('bookings/:id')
+  async cancelMyBooking(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: { id: string }) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    return this.svc.cancelMyBooking(customerId, id)
+  }
+
+  // ── Claims ────────────────────────────────────────────────────────
+
   @Post('bookings/:id/claims')
   async fileClaim(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: FileClaimDto, @CurrentUser() user: { id: string }) {
-    const customerId = await this.resolveCustomerId(user.id)
+    const customerId = await this.svc.resolveCustomerId(user.id)
     return this.claims.fileClaim(id, customerId, {
       claim_type: dto.claim_type,
       pieces_affected: dto.pieces_affected,
@@ -43,60 +174,19 @@ export class CargoCustomerController {
 
   @Get('claims')
   async listMyClaims(@CurrentUser() user: { id: string }, @Query('page') pageStr?: string, @Query('page_size') pageSizeStr?: string) {
-    const customerId = await this.resolveCustomerId(user.id)
+    const customerId = await this.svc.resolveCustomerId(user.id)
     const page = Math.max(1, Number(pageStr) || 1)
     const pageSize = Math.min(100, Math.max(1, Number(pageSizeStr) || 20))
     const offset = (page - 1) * pageSize
 
-    const claims = await this.db.cargo_claim.findMany({
-      where: { cargo_booking: { customer_id: customerId } },
-      include: {
-        cargo_claim_decision: { select: { decision: true, approved_amount: true, decided_at: true } },
-        cargo_booking: { select: { booking_ref: true, awb_number: true } },
-      },
-      orderBy: { filed_at: 'desc' },
-      skip: offset,
-      take: pageSize,
-    })
-
-    const total = await this.db.cargo_claim.count({
-      where: { cargo_booking: { customer_id: customerId } },
-    })
+    const claims = await this.claims.listCustomerClaims(customerId, { offset, limit: pageSize })
 
     return {
-      data: claims.map((c) => ({
-        id: c.id,
-        claimRef: c.claim_ref,
-        bookingRef: c.cargo_booking.booking_ref,
-        awbNumber: c.cargo_booking.awb_number,
-        claimType: c.claim_type,
-        piecesAffected: c.pieces_affected,
-        claimedAmount: Number(c.claimed_amount),
-        currency: c.currency,
-        filedAt: c.filed_at,
-        decision: c.cargo_claim_decision
-          ? {
-              decision: c.cargo_claim_decision.decision,
-              approvedAmount: c.cargo_claim_decision.approved_amount ? Number(c.cargo_claim_decision.approved_amount) : null,
-              decidedAt: c.cargo_claim_decision.decided_at,
-            }
-          : null,
-      })),
+      data: claims.data,
       page,
       pageSize,
-      total,
-      totalPages: Math.ceil(total / pageSize),
+      total: claims.total,
+      totalPages: Math.ceil(claims.total / pageSize),
     }
-  }
-
-  private async resolveCustomerId(userId: string): Promise<string> {
-    const customer = await this.db.customer.findFirst({
-      where: { user_id: userId, deleted_at: null },
-      select: { id: true },
-    })
-    if (!customer) {
-      throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Customer account not found' } })
-    }
-    return customer.id
   }
 }
