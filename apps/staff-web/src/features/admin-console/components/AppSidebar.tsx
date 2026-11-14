@@ -17,9 +17,10 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '@staff-web/components/ui/sidebar'
-import flythonMark from '../assets/flython-mark.svg'
+import flythonLogo from '../assets/flython-logo.svg'
 import flythonLogoMark from '../assets/flython-logo-mark.svg'
 import sidebarPattern from '../assets/sidebar-pattern.png'
+import { groupKey, readOpen, writeOpen } from '../hooks/persisted-open'
 import { ADMIN_ITEMS, CHECKIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM, type NavItem } from '../nav-items'
 
 /**
@@ -39,13 +40,45 @@ function PendingItem({ item, indent = false }: { item: NavItem; indent?: boolean
   )
 }
 
+/** A screen whose team has registered a route. A plain link, so the page swaps in without remounting the sidebar frame. */
+function LinkedItem({
+  item,
+  pathname,
+  indent = false,
+}: {
+  item: NavItem & { to: NonNullable<NavItem['to']> }
+  pathname: string
+  indent?: boolean
+}) {
+  const prefix = item.activePrefix ?? item.to
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        isActive={pathname === prefix || pathname.startsWith(prefix + '/')}
+        tooltip={item.label}
+        className={indent ? 'pl-4' : undefined}
+      >
+        <Link to={item.to} search={item.to === '/security-screening/screening-queue' ? { status: 'needs-review' } : undefined}>
+          <item.icon />
+          <span>{item.label}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
+}
+
 /**
  * A sidebar group whose header opens and closes it. Closed = quiet and chevron right; open = bright and chevron down.
  * In the collapsed icon rail the header is hidden, a bar closes the group, and every item's icon shows, even in a closed group.
  */
 function NavGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <Collapsible defaultOpen className="group/collapsible">
+    <Collapsible
+      defaultOpen={readOpen(groupKey(label), true)}
+      onOpenChange={(open) => writeOpen(groupKey(label), open)}
+      className="group/collapsible"
+    >
       <SidebarGroup className="py-1">
         <SidebarGroupLabel asChild>
           <CollapsibleTrigger className="cursor-pointer text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:font-semibold data-[state=open]:text-sidebar-foreground">
@@ -84,19 +117,15 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
       />
       <SidebarHeader className="relative">
         <div className="flex items-center gap-2 px-2 py-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:px-0">
-          <img src={flythonMark} alt="" className="h-6 w-auto shrink-0 group-data-[collapsible=icon]:hidden" />
+          <img src={flythonLogo} alt="Flython Airline" className="h-10 w-auto shrink-0 group-data-[collapsible=icon]:hidden" />
           <button
             type="button"
             aria-label="Expand sidebar"
             onClick={toggleSidebar}
             className="hidden size-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-white/25 bg-white/15 shadow-md ring-sidebar-ring transition-colors group-data-[collapsible=icon]:flex hover:bg-white/25 focus-visible:ring-2"
           >
-            <img src={flythonLogoMark} alt="" className="h-auto w-5" />
+            <img src={flythonLogoMark} alt="" className="h-auto w-6" />
           </button>
-          <span className="flex flex-col font-heading leading-none font-bold group-data-[collapsible=icon]:hidden">
-            <span className="text-xl">Flython</span>
-            <span className="text-xs tracking-[0.3em]">AIRLINES</span>
-          </span>
           {/* Desktop collapse toggle (also Ctrl/Cmd+B). Collapsed, the logo below takes its place as the expand button. */}
           <SidebarTrigger aria-label="Collapse sidebar" className="ml-auto hidden md:inline-flex group-data-[collapsible=icon]:hidden" />
         </div>
@@ -156,9 +185,13 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
 
           {GROUPS.map((group) => (
             <NavGroup key={group.label} label={group.label}>
-              {group.items.map((item) => (
-                <PendingItem key={item.label} item={item} indent />
-              ))}
+              {group.items.map((item) =>
+                item.to ? (
+                  <LinkedItem key={item.label} item={{ ...item, to: item.to }} pathname={pathname} indent />
+                ) : (
+                  <PendingItem key={item.label} item={item} indent />
+                ),
+              )}
             </NavGroup>
           ))}
           <SidebarGroup className="py-1">
