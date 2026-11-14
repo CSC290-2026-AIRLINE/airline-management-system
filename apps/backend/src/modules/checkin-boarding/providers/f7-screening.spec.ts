@@ -28,9 +28,11 @@ describe('F7Screening', () => {
     await expect(provider.check(INPUT)).resolves.toEqual({ runId: 'run-3', outcome: 'held' })
   })
 
-  it('holds the passenger with no run id when screening could not run', async () => {
+  it('holds the passenger with a fresh run id when screening could not run, as the on-hold row needs one', async () => {
     const { provider } = screeningAnswering({ skipped: true, outcome: 'held' })
-    await expect(provider.check(INPUT)).resolves.toEqual({ runId: null, outcome: 'held' })
+    const result = await provider.check(INPUT)
+    expect(result.outcome).toBe('held')
+    expect(result.runId).toMatch(/^[0-9a-f-]{36}$/)
   })
 
   it('lets a caller mistake from feature 7 surface as an error', async () => {

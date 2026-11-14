@@ -88,7 +88,8 @@ decided by `register('memory' | 'db')` in `checkin-boarding.module.ts` — one l
 
 - **Screening** — in `db` mode, `F7Screening` calls feature 7's `checkSystem('checkin_boarding', …)` with the trigger
   `check_in` at the passport step. Feature 7's `denied` is held like `held`, and when screening cannot run feature 7
-  answers `held` with no run id, so a passenger is never cleared without a check. The `memory` mode keeps
+  answers `held` with no run id; `F7Screening` gives it a fresh one, since an on-hold check-in needs one. A passenger is
+  never cleared without a check. The `memory` mode keeps
   `FixtureScreening`, which holds a passport ending in `0000` **or** the surname Kowalski; Dana Kowalski matches both.
 - **Police** (`FixturePolice`) — feature 8's air-marshal service per flight. The marshal is recognised by his
   passport number (`TH1234567`, Narong Sukjai) in both modes: `DbBookings` reads `passenger.passport_number`, and the

@@ -141,7 +141,7 @@ export interface ScreeningProvider {
     flightId: string
     numberLast4: string
     lastName: string
-  }): Promise<{ runId: string | null; outcome: 'clear' | 'held' }>
+  }): Promise<{ runId: string; outcome: 'clear' | 'held' }>
 }
 
 /** Feature 8 owns air marshals on a flight. */
