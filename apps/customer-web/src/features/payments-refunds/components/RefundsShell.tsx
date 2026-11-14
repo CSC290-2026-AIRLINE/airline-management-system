@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { CustomerHeader } from './CustomerHeader'
-import { PageTabs, type PageTab } from './PageTabs'
+import { CustomerHeader } from '@customer-web/features/payments-checkout/components/CustomerHeader'
+import { PageTabs, type PageTab } from '@customer-web/features/payments-checkout/components/PageTabs'
 
 interface RefundsShellProps {
   title: string
@@ -17,18 +17,16 @@ interface RefundsShellProps {
 /**
  * The frame every Feature 5b customer page sits in: the floating header, the page heading, the page tabs and the body.
  *
- * The frames put "Receipts", "My refunds" and "My vouchers" side by side as page tabs. Receipts belongs to Feature 5a and
- * is not in this branch, so its tab is drawn but cannot be opened until the branches meet.
+ * The frames put "Receipts", "My refunds" and "My vouchers" side by side as page tabs. Receipts is Feature 5a's page.
  *
  * The `customer-shell` class is what the stylesheet keys the full-width layout off (`#root:has(.customer-shell)`).
  *
- * TODO(F5): `CustomerHeader`, `PageTabs` and `FilterChips` in this folder are copies of Feature 5a's. Keep one set of
- * them once the branches are merged.
+ * `CustomerHeader`, `PageTabs` and `FilterChips` are Feature 5a's, shared by both.
  */
 export function RefundsShell({ title, subtitle, current, action, children }: RefundsShellProps) {
   const navigate = useNavigate()
   const tabs: PageTab[] = [
-    { value: 'receipts', label: 'Receipts', disabled: true, hint: 'Coming with feature 5a' },
+    { value: 'receipts', label: 'Receipts' },
     { value: 'refunds', label: 'My refunds' },
     { value: 'vouchers', label: 'My vouchers' },
   ]
@@ -49,7 +47,9 @@ export function RefundsShell({ title, subtitle, current, action, children }: Ref
             tabs={tabs}
             value={current}
             ariaLabel="Receipts, refunds and vouchers"
-            onChange={(value) => void navigate({ to: value === 'vouchers' ? '/vouchers' : '/refunds' })}
+            onChange={(value) =>
+              void navigate({ to: value === 'vouchers' ? '/vouchers' : value === 'receipts' ? '/receipts' : '/refunds' })
+            }
           />
         </div>
 

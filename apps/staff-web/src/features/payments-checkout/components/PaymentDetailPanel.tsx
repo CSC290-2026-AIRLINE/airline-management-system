@@ -71,11 +71,12 @@ export function PaymentDetailPanel({ payment }: { payment: StaffPaymentDetailDto
               <Link to="/payments/exceptions">Open in Payment exceptions</Link>
             </Button>
           ) : (
-            /* Refunds are Feature 5b: the frame shows the button for a payment that has a refund, but this release cannot
-               open one yet. TODO(F5a): link to the refund the API returns for this payment. */
+            /* A refund asked for on this payment is Feature 5b's: the button opens it in the refund queue. */
             payment.refund_reference && (
-              <Button type="button" variant="outline" className="mt-3" disabled title="Coming with feature 5b">
-                Open refund {payment.refund_reference}
+              <Button variant="outline" className="mt-3" asChild>
+                <Link to="/payments/refunds/$refundId" params={{ refundId: payment.refund_reference }}>
+                  Open refund {payment.refund_reference}
+                </Link>
               </Button>
             )
           )}

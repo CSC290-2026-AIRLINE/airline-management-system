@@ -12,6 +12,8 @@ const FIELD_LABEL = 'text-xs text-muted-foreground'
 const FIELD_BOX = 'rounded-lg border border-line bg-card px-3 py-2.5 text-sm text-foreground'
 
 interface RefundRequestDialogProps {
+  /** Opened from a receipt: only that booking is offered. Left out, every booking with something to refund is. */
+  bookingReference?: string | null
   onClose: () => void
   /** Called after "View my refunds", so the page can show the new request. */
   onViewRefunds: () => void
@@ -26,10 +28,9 @@ interface RefundRequestDialogProps {
  * customer can only pick something real. The request is written to the `refund` table and waits in the staff queue, so
  * the reference on the "Request sent" step is the new refund's own and it shows up under "In progress".
  *
- * TODO(F5b): also open this from the "Request a refund" button on a receipt, once Feature 5a's receipts are in the same
- * branch.
+ * It is opened from "Request a refund" on My refunds, and from the same button on a receipt, which passes its booking.
  */
-export function RefundRequestDialog({ onClose, onViewRefunds, onSent }: RefundRequestDialogProps) {
+export function RefundRequestDialog({ bookingReference, onClose, onViewRefunds, onSent }: RefundRequestDialogProps) {
   const api = useRefundsApi()
   const [payments, setPayments] = useState<RefundablePaymentDto[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -48,7 +49,7 @@ export function RefundRequestDialog({ onClose, onViewRefunds, onSent }: RefundRe
     api
       .listRefundable()
       .then((result) => {
-        if (live) setPayments(result.items)
+        if (live) setPayments(bookingReference ? result.items.filter((item) => item.booking_reference === bookingReference) : result.items)
       })
       .catch((e: unknown) => {
         if (live) setLoadError(e instanceof Error ? e.message : 'We could not load what you can refund.')
@@ -56,9 +57,9 @@ export function RefundRequestDialog({ onClose, onViewRefunds, onSent }: RefundRe
     return () => {
       live = false
     }
-    // `api` is rebuilt every render, so it stays out of the list and the payments load once.
+    // `api` is rebuilt every render, so it stays out of the list and the payments load once per booking.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [bookingReference])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -142,7 +143,11 @@ export function RefundRequestDialog({ onClose, onViewRefunds, onSent }: RefundRe
           <p className="m-0 py-6 text-center text-sm text-muted-foreground">Loading what you can refund…</p>
         ) : !payment || !line ? (
           <div className="flex flex-col gap-5">
-            <p className="m-0 text-sm text-muted-foreground">You have no paid items that can be refunded right now.</p>
+            <p className="m-0 text-sm text-muted-foreground">
+              {bookingReference
+                ? `Nothing on ${bookingReference} can be refunded right now.`
+                : 'You have no paid items that can be refunded right now.'}
+            </p>
             <div className="flex justify-end">
               <Button type="button" variant="outline" onClick={onClose}>
                 Close

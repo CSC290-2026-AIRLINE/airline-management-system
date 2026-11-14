@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { Button } from '@customer-web/components/ui/button'
+import { RefundRequestDialog } from '@customer-web/features/payments-refunds/components/RefundRequestDialog'
 import {
   AIRPORT_CITIES,
   CARGO_REFUND_ACTION,
@@ -88,6 +90,8 @@ function downloadReceipt(receipt: ReceiptDetailDto): void {
  */
 export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
   const [showCreditNote, setShowCreditNote] = useState(false)
+  const [refundOpen, setRefundOpen] = useState(false)
+  const navigate = useNavigate()
   const refund = REFUND_STATE_COPY[receipt.refund_state]
   const { from, to } = ends(receipt)
   /* A flight that has already gone is written without its weekday, the way the frames write it. */
@@ -97,7 +101,7 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
   const download = receipt.document_type === 'invoice' ? 'Download invoice' : 'Download receipt'
   /* The frames' cargo panel offers its own button; a flight offers the refund its state allows. */
   const action = cargo ? CARGO_REFUND_ACTION : refund.action
-  const actionHint = cargo ? 'Coming with the cargo feature' : 'Coming with feature 5b'
+  const actionHint = cargo ? 'Coming with the cargo feature' : undefined
 
   return (
     <div className="flex flex-col gap-5">
@@ -205,9 +209,9 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
         <Button type="button" className="min-w-40 flex-1" onClick={() => downloadReceipt(receipt)}>
           {download}
         </Button>
-        {/* Refunds are Feature 5b. The frame shows the button; this release cannot take the request yet. */}
+        {/* A flight's refund is Feature 5b's: the button opens its request for this booking. Cargo has its own page. */}
         {action && (
-          <Button type="button" variant="outline" disabled title={actionHint}>
+          <Button type="button" variant="outline" disabled={cargo} title={actionHint} onClick={() => setRefundOpen(true)}>
             {action}
           </Button>
         )}
@@ -224,6 +228,15 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
 
       {/* The note under the buttons -------------------------------------- */}
       <p className="m-0 -mt-2 text-sm text-muted-foreground">{refundNote(receipt)}</p>
+
+      {refundOpen && (
+        <RefundRequestDialog
+          bookingReference={receipt.booking_reference}
+          onClose={() => setRefundOpen(false)}
+          onSent={() => undefined}
+          onViewRefunds={() => void navigate({ to: '/refunds' })}
+        />
+      )}
     </div>
   )
 }

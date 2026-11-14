@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { CircleAlert, Download, Search } from 'lucide-react'
 import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent } from '@customer-web/components/ui/card'
@@ -46,14 +47,15 @@ function exportReceipts(receipts: ReceiptSummaryDto[]) {
  * cash at all, a flight that has already gone, and a refunded booking with its credit note. The chips above the list
  * cut across the status — flights, cargo, the miles-and-cash ones, and the receipts a credit note is attached to.
  *
- * The frames put "My refunds" and "My vouchers" beside this list as tabs. Those are Features 5b and the compensation
- * feature, so they are drawn but not open.
+ * The frames put "My refunds" and "My vouchers" beside this list as tabs. Both are Feature 5b's pages, so the tabs open
+ * them.
  */
 export function ReceiptsPage() {
   const [filter, setFilter] = useState<ReceiptFilter>('all')
   const [search, setSearch] = useState('')
   const [openReceiptId, setOpenReceiptId] = useState<string | null>(null)
   const list = useReceipts(filter, search)
+  const navigate = useNavigate()
 
   return (
     <CustomerShell
@@ -71,10 +73,11 @@ export function ReceiptsPage() {
           ariaLabel="Receipts, refunds and vouchers"
           value="receipts"
           panelId="receipts-panel"
+          onChange={(next) => void navigate({ to: next === 'vouchers' ? '/vouchers' : '/refunds' })}
           tabs={[
             { value: 'receipts', label: 'Receipts' },
-            { value: 'refunds', label: 'My refunds', disabled: true, hint: 'Coming with feature 5b' },
-            { value: 'vouchers', label: 'My vouchers', disabled: true, hint: 'Coming with the compensation feature' },
+            { value: 'refunds', label: 'My refunds' },
+            { value: 'vouchers', label: 'My vouchers' },
           ]}
         />
 

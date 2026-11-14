@@ -1,9 +1,6 @@
 import type { ReactNode } from 'react'
-import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import { useMyAccess } from '@staff-web/features/admin-console/components/MyAccessProvider'
+import { AppShell } from '@staff-web/features/admin-console/AppShell'
 import { cn } from '@staff-web/lib/utils'
-import { StaffSidebar } from './StaffSidebar'
-import './payment-shell.css'
 
 interface StaffPageShellProps {
   title: string
@@ -12,41 +9,23 @@ interface StaffPageShellProps {
 }
 
 /**
- * The frame the payment screens sit in: the workspace sidebar, the feature pills, the page heading and the body.
+ * The frame the payment screens sit in: the global staff sidebar (the same one the Refund queue and the pricing screens
+ * use), the page heading and the body.
  *
- * This is the frames' staff view — the navy admin workspace on the left, "Feature 5" and "Staff view" above the
- * heading, and the signed-in member on the right.
+ * `RequireStaff` is on the `/payments` layout route, so `AppShell` can read the caller's role. The per-screen check
+ * stays in each page.
  */
 export function StaffPageShell({ title, subtitle, children }: StaffPageShellProps) {
-  const { logout } = useAppAuth()
-  const { role } = useMyAccess()
-  const roleName = role?.name ?? 'Admin'
-
   return (
-    <div className="payment-shell flex min-h-svh bg-page font-sans text-foreground">
-      <StaffSidebar roleName={roleName} onSignOut={() => void logout()} />
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* The feature pills --------------------------------------------- */}
-        <header className="flex items-center gap-3 px-8 pt-6 max-tablet:px-4">
-          <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold tracking-wide text-white uppercase">Feature 5</span>
-          <span className="rounded-md border border-warning/40 bg-warning-soft px-3 py-1 text-xs font-semibold tracking-wide text-foreground uppercase">
-            Staff view
-          </span>
-          <span className="ml-auto text-sm text-muted-foreground">{roleName}</span>
+    <AppShell>
+      <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
+        <header className="mb-6">
+          <h1 className="m-0 font-sans text-2xl font-semibold text-foreground">{title}</h1>
+          {subtitle && <p className="mt-1 mb-0 max-w-3xl text-sm text-muted-foreground">{subtitle}</p>}
         </header>
-
-        <main className="flex-1 px-8 pb-10 max-tablet:px-4">
-          {/* The heading ------------------------------------------------- */}
-          <div className="mt-6 mb-6">
-            <h1 className="m-0 font-sans text-4xl font-bold tracking-tight text-foreground max-tablet:text-3xl">{title}</h1>
-            {subtitle && <p className="mt-2 mb-0 max-w-3xl text-base text-muted-foreground">{subtitle}</p>}
-          </div>
-
-          {children}
-        </main>
-      </div>
-    </div>
+        {children}
+      </main>
+    </AppShell>
   )
 }
 
