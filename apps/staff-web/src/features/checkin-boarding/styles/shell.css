@@ -1,0 +1,6 @@
+/* Printing a pass or a bag tag: hide the global sidebar, the space it holds open and the phone top bar. */
+@media print {
+  .admin-shell:has(.f6-page) :is([data-slot='sidebar'], [data-slot='sidebar-gap'], [data-slot='sidebar-inset'] > header) {
+    display: none;
+  }
+}

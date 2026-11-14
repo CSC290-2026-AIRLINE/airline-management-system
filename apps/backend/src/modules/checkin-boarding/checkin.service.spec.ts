@@ -1,0 +1,739 @@
+import { Logger } from '@nestjs/common'
+import type { Actor } from './actor'
+import { canCustomerAccess } from './actor'
+import { CheckInService } from './checkin.service'
+import { SPECIMEN_LINE1, buildLine2, buildSpecimenLine2 } from './domain/mrz'
+import { CheckInError } from './errors'
+import { AIRPORTS, BOOKINGS, DEMO_NOW, FLIGHTS } from './providers/fixtures'
+import {
+  FixtureBookings,
+  FixtureClock,
+  FixtureFlights,
+  FixturePassengers,
+  FixturePayments,
+  FixturePolice,
+  FixturePricing,
+  FixtureScreening,
+  FixtureSeats,
+  FixtureSettings,
+  FixtureTiers,
+  LoggerAudit,
+  LoggerNotify,
+} from './providers/fixture-providers'
+import type { BookingPassenger, FlightRecord, PassengerProfile, PoliceProvider } from './providers/providers'
+import type { CheckInRecord } from './store/checkin-store'
+import { CheckInStore } from './store/checkin-store'
+
+const cust: Actor = { userId: 'user-anna', staffId: null }
+const staff: Actor = { userId: 'user-staff', staffId: 'staff-demo' }
+
+/** The demo passenger Sara Lopez with a specimen passport: a different given name, so the name flags. */
+const SARA_LINE1 = 'P<UTO' + 'LOPEZ'.padEnd(10, '<') + 'MARIA'.padEnd(29, '<')
+const SARA_LINE2 = buildLine2({ number: 'UTO123456', nationality3: 'UTO', dob: '910829', sex: 'F', expiry: '300415' })
+
+/** A second passenger with their own passport, for the seat hold ownership rule. */
+const SECOND_LINE1 = 'P<UTO' + 'PASSENGER'.padEnd(10, '<') + 'SECOND'.padEnd(29, '<')
+const SECOND_LINE2 = buildLine2({ number: 'SEC000001', nationality3: 'UTO', dob: '910829', sex: 'F', expiry: '300415' })
+
+/** One extra passport holder, for the duplicate document rule. */
+class PassengersWithExtra extends FixturePassengers {
+  extra: PassengerProfile | null = null
+
+  override async findByPassportNumber(n: string): Promise<PassengerProfile[]> {
+    const rows = await super.findByPassportNumber(n)
+    const extra = this.extra
+    return extra && extra.passportNumber === n ? [...rows, extra] : rows
+  }
+}
+
+/** The passport of the demo air marshal Narong Sukjai. */
+const NARONG_LINE1 = 'P<THA' + 'SUKJAI<<NARONG'.padEnd(39, '<')
+const NARONG_LINE2 = buildLine2({ number: 'TH1234567', nationality3: 'THA', dob: '850312', sex: 'M', expiry: '300415' })
+
+function build(over: { police?: PoliceProvider } = {}) {
+  const clock = new FixtureClock()
+  const store = new CheckInStore(clock)
+  const passengers = new PassengersWithExtra()
+  const seats = new FixtureSeats(clock)
+  const payments = new FixturePayments()
+  const audit = new LoggerAudit()
+  const notify = new LoggerNotify()
+  const svc = new CheckInService(
+    clock,
+    new FixtureFlights(),
+    new FixtureBookings(),
+    passengers,
+    seats,
+    new FixturePricing(),
+    payments,
+    new FixtureScreening(),
+    over.police ?? new FixturePolice(),
+    new FixtureTiers(),
+    notify,
+    audit,
+    new FixtureSettings(),
+    store,
+  )
+  return { svc, clock, store, passengers, payments, audit, notify, seats }
+}
+
+const addedBookings: BookingPassenger[] = []
+const addedFlights: FlightRecord[] = []
+
+function addBooking(booking: BookingPassenger): void {
+  addedBookings.push(booking)
+  BOOKINGS.push(booking)
+}
+
+function addFlight(flight: FlightRecord): void {
+  addedFlights.push(flight)
+  FLIGHTS.push(flight)
+}
+
+afterEach(() => {
+  for (const booking of addedBookings.splice(0)) {
+    const i = BOOKINGS.indexOf(booking)
+    if (i >= 0) BOOKINGS.splice(i, 1)
+  }
+  for (const flight of addedFlights.splice(0)) {
+    const i = FLIGHTS.indexOf(flight)
+    if (i >= 0) FLIGHTS.splice(i, 1)
+  }
+  jest.restoreAllMocks()
+})
+
+describe('CheckInService.start', () => {
+  it('start creates a started check-in for a paid booking in the window', async () => {
+    const { svc } = build()
+    const view = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(view).toMatchObject({
+      status: 'started',
+      steps: { document: false, seat: false, baggage: false, boardingPass: false },
+      window: { isOpen: true },
+    })
+    expect(view.booking).toEqual({ pnr: 'ER224F', bookingPassengerId: 'bp-er224f' })
+  })
+
+  it('customer view carries the bag and carry-on allowance', async () => {
+    const { svc } = build()
+    const view = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(view.allowance).toEqual({ freeKg: 20, tierBonusKg: 0, ratePerKg: 500, maxBagKg: 32, maxLinearCm: 158 })
+    expect(view.carryOn).toEqual({ maxKg: 7, maxLengthCm: 56, maxWidthCm: 36, maxHeightCm: 23 })
+  })
+
+  it('start is idempotent and returns the checked-in passenger as-is', async () => {
+    const { svc } = build()
+    const a = await svc.start(cust, { pnr: 'EC224G', lastName: 'Saetang' })
+    expect(a.status).toBe('checked_in')
+    expect(await svc.start(cust, { pnr: 'EC224G', lastName: 'Saetang' })).toMatchObject({ id: a.id })
+  })
+
+  it('start rejects unknown PNR, unpaid booking, cancelled flight and a closed window', async () => {
+    const { svc, clock } = build()
+    addFlight({
+      id: 'flt-test-cancelled',
+      flightNumber: 'FY 999',
+      serviceDate: '2026-11-11',
+      depAt: new Date('2026-11-11T04:00:00.000Z'),
+      status: 'cancelled',
+      origin: AIRPORTS.BKK,
+      destination: AIRPORTS.NRT,
+      routeId: 'rt-bkk-nrt',
+    })
+    addBooking({
+      bookingPassengerId: 'bp-test-unpaid',
+      bookingId: 'bk-test-unpaid',
+      pnr: 'XX000U',
+      paid: false,
+      flightId: 'flt-fy204',
+      passengerId: 'pax-test-unpaid',
+      firstName: 'Test',
+      lastName: 'Unpaid',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+      customerUserId: null,
+    })
+    addBooking({
+      bookingPassengerId: 'bp-test-cancelled',
+      bookingId: 'bk-test-cancelled',
+      pnr: 'XX000C',
+      paid: true,
+      flightId: 'flt-test-cancelled',
+      passengerId: 'pax-test-cancelled',
+      firstName: 'Test',
+      lastName: 'Cancelled',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+      customerUserId: null,
+    })
+
+    await expect(svc.start(cust, { pnr: 'ZZ9999', lastName: 'Nobody' })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(svc.start(cust, { pnr: 'XX000U', lastName: 'Unpaid' })).rejects.toMatchObject({
+      code: 'NOT_ELIGIBLE',
+      details: { reason: 'unpaid' },
+    })
+    await expect(svc.start(cust, { pnr: 'XX000C', lastName: 'Cancelled' })).rejects.toMatchObject({
+      code: 'NOT_ELIGIBLE',
+      details: { reason: 'flight_cancelled' },
+    })
+
+    clock.set(new Date(DEMO_NOW.getTime() + 2 * 3600_000))
+    await expect(svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })).rejects.toMatchObject({
+      code: 'WINDOW_CLOSED',
+      details: { closesAt: '2026-11-11T02:25:00.000Z' },
+    })
+  })
+
+  it('start hands an existing check-in to the caller who proved the booking', async () => {
+    const { svc, store, audit } = build()
+    const other: Actor = { userId: 'user-other', staffId: null }
+    const a = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    const spy = jest.spyOn(audit, 'record')
+    const b = await svc.start(other, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(b.id).toBe(a.id)
+    expect((await store.getCheckIn(a.id))!.status).toBe('started')
+    // The alpha has no owner column: the check-in id is the only wall, so the old caller may still act on it.
+    await expect(svc.get(cust, a.id)).resolves.toMatchObject({ id: a.id })
+    await expect(svc.submitDocument(other, a.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })).resolves.toBeTruthy()
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'check_in.start', summary: 'resumed' }))
+  })
+
+  it('start audits the sensitive view of an existing check-in', async () => {
+    const { svc, audit } = build()
+    const other: Actor = { userId: 'user-other', staffId: null }
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const spy = jest.spyOn(audit, 'record')
+    await svc.start(other, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'view_sensitive', isSensitive: true }))
+  })
+
+  it('start audits the new check-in', async () => {
+    const { svc, audit } = build()
+    const spy = jest.spyOn(audit, 'record')
+    await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'check_in.start' }))
+  })
+})
+
+describe('CheckInService.get', () => {
+  it('answers NOT_FOUND for an unknown check-in and a staff member may read it', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    // The alpha has no owner column: a customer who knows the check-in id may read it.
+    await expect(svc.get({ userId: 'user-other', staffId: null }, c.id)).resolves.toMatchObject({ id: c.id })
+    await expect(svc.get(cust, 'ci-unknown')).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(svc.get(staff, c.id)).resolves.toBeTruthy()
+  })
+
+  it('get audits view_sensitive once a document exists', async () => {
+    const { svc, audit } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    const spy = jest.spyOn(audit, 'record')
+    await svc.get(cust, c.id)
+    expect(spy).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'view_sensitive' }))
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    spy.mockClear()
+    await svc.get(cust, c.id)
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'view_sensitive', isSensitive: true }))
+  })
+})
+
+describe('CheckInService.submitDocument', () => {
+  it('accepts the specimen, flags nothing for Anna, fills her profile, stores only last4', async () => {
+    const { svc, store, passengers } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    const v = await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    expect(v.document).toMatchObject({ numberLast4: '02C3', nameMismatch: false, visaRequired: false, issuingCountry: 'ut' })
+    expect(v.steps.document).toBe(true)
+    expect(JSON.stringify(await store.getDocumentByCheckIn(c.id))).not.toContain('L898902C3')
+    expect(await passengers.byId('pax-er224f')).toMatchObject({ passportNumber: 'L898902C3', nationality: 'ut' })
+  })
+
+  it('reads the date of birth century from the clock, not from a fixed year', async () => {
+    const { svc, clock, passengers } = build()
+    clock.set(new Date('2025-06-01T00:00:00.000Z'))
+    addFlight({
+      id: 'flt-test-2025',
+      flightNumber: 'FY 998',
+      serviceDate: '2025-06-01',
+      depAt: new Date('2025-06-01T12:00:00.000Z'),
+      status: 'scheduled',
+      origin: AIRPORTS.BKK,
+      destination: AIRPORTS.NRT,
+      routeId: 'rt-bkk-nrt',
+    })
+    addBooking({
+      bookingPassengerId: 'bp-test-1926',
+      bookingId: 'bk-test-1926',
+      pnr: 'YR204F',
+      paid: true,
+      flightId: 'flt-test-2025',
+      passengerId: 'pax-test-1926',
+      firstName: 'Anna',
+      lastName: 'Eriksson',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+      customerUserId: null,
+    })
+    // The passport holder was born in 1926: with the clock on 2025 the MRZ year 26 must read 1926, not 2026.
+    passengers.extra = {
+      id: 'pax-other',
+      firstName: 'Anna',
+      lastName: 'Eriksson',
+      dateOfBirth: '1926-01-15',
+      gender: 'F',
+      nationality: 'ut',
+      passportNumber: 'L898902C3',
+    }
+    const c = await svc.start(cust, { pnr: 'YR204F', lastName: 'Eriksson' })
+    const l2 = buildLine2({ number: 'L898902C3', nationality3: 'UTO', dob: '260115', sex: 'F', expiry: '300415' })
+    await expect(svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: l2 })).resolves.toBeTruthy()
+  })
+
+  it('names the failed MRZ check', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    const l2 = buildSpecimenLine2()
+    await expect(
+      svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: l2.slice(0, 21) + '310415' + l2.slice(27) }),
+    ).rejects.toMatchObject({ code: 'MRZ_INVALID', details: { failedCheck: 'expiry' } })
+  })
+
+  it('blocks a passport expiring within 6 months', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    const l2 = buildLine2({ number: 'L898902C3', nationality3: 'UTO', dob: '740812', sex: 'F', expiry: '270401' })
+    await expect(svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: l2 })).rejects.toMatchObject({
+      code: 'PASSPORT_EXPIRING',
+    })
+  })
+
+  it('requires a visa number when the table says so', async () => {
+    const { svc } = build()
+    addBooking({
+      bookingPassengerId: 'bp-test-visa',
+      bookingId: 'bk-test-visa',
+      pnr: 'VS318X',
+      paid: true,
+      flightId: 'flt-fy318',
+      passengerId: 'pax-ec338d',
+      firstName: 'Sara',
+      lastName: 'Lopez',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+      customerUserId: null,
+    })
+    const c = await svc.start(cust, { pnr: 'VS318X', lastName: 'Lopez' })
+    await expect(svc.submitDocument(cust, c.id, { mrzLine1: SARA_LINE1, mrzLine2: SARA_LINE2 })).rejects.toMatchObject({
+      code: 'VISA_REQUIRED',
+    })
+    const v = await svc.submitDocument(cust, c.id, { mrzLine1: SARA_LINE1, mrzLine2: SARA_LINE2, visaNumber: 'V123' })
+    expect(v.document).toMatchObject({ visaRequired: true, visaNumber: 'V123', nameMismatch: true })
+  })
+
+  it('blocks a duplicate passport with a different identity and passes the same identity', async () => {
+    const { svc, passengers } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    passengers.extra = {
+      id: 'pax-other',
+      firstName: 'Someone',
+      lastName: 'Else',
+      dateOfBirth: '1974-08-12',
+      gender: 'F',
+      nationality: 'ut',
+      passportNumber: 'L898902C3',
+    }
+    await expect(svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })).rejects.toMatchObject({
+      code: 'DUPLICATE_DOCUMENT',
+    })
+    passengers.extra = {
+      id: 'pax-other',
+      firstName: 'Anna',
+      lastName: 'Eriksson',
+      dateOfBirth: '1974-08-12',
+      gender: 'F',
+      nationality: 'ut',
+      passportNumber: 'L898902C3',
+    }
+    await expect(svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })).resolves.toMatchObject({
+      document: { numberLast4: '02C3' },
+    })
+  })
+
+  it('a hyphen in the booking name is not another passenger', async () => {
+    const { svc, passengers } = build()
+    addBooking({
+      bookingPassengerId: 'bp-test-hyphen',
+      bookingId: 'bk-test-hyphen',
+      pnr: 'HY204F',
+      paid: true,
+      flightId: 'flt-fy204',
+      passengerId: 'pax-test-hyphen',
+      firstName: 'Anne-Marie',
+      lastName: 'Eriksson',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+      customerUserId: null,
+    })
+    passengers.extra = {
+      id: 'pax-other',
+      firstName: 'Anne Marie',
+      lastName: 'Eriksson',
+      dateOfBirth: '1974-08-12',
+      gender: 'F',
+      nationality: 'ut',
+      passportNumber: 'L898902C3',
+    }
+    const c = await svc.start(cust, { pnr: 'HY204F', lastName: 'Eriksson' })
+    await expect(svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })).resolves.toBeTruthy()
+  })
+
+  it('puts a held passenger on hold and later steps say ON_HOLD', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    const l2 = buildLine2({ number: 'HLD000000', nationality3: 'UTO', dob: '740812', sex: 'F', expiry: '300415' })
+    const v = await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: l2 })
+    expect(v.status).toBe('on_hold')
+    await expect(svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '7E' })).rejects.toMatchObject({ code: 'ON_HOLD' })
+    await expect(svc.complete(cust, c.id)).rejects.toMatchObject({ code: 'ON_HOLD' })
+  })
+
+  it('never logs an MRZ line', async () => {
+    const { svc } = build()
+    const log = jest.spyOn(Logger.prototype, 'log')
+    const warn = jest.spyOn(Logger.prototype, 'warn')
+    const error = jest.spyOn(Logger.prototype, 'error')
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    for (const spy of [log, warn, error]) {
+      for (const call of spy.mock.calls) {
+        expect(String(call[0])).not.toContain(SPECIMEN_LINE1)
+        expect(JSON.stringify(call)).not.toContain('L898902C3')
+      }
+    }
+  })
+
+  it('refuses a passport whose issuing country cannot be mapped', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await expect(
+      svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1.replace('UTO', 'XXA'), mrzLine2: buildSpecimenLine2() }),
+    ).rejects.toMatchObject({ code: 'MRZ_INVALID', details: { failedCheck: 'issuing_country' } })
+  })
+
+  it('stores the visa number only when the destination needs a visa', async () => {
+    const { svc } = build()
+    // Anna flies to NRT (jp) and her passport is 'ut': no visa is needed, so the number is not kept.
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    const v = await svc.submitDocument(cust, c.id, {
+      mrzLine1: SPECIMEN_LINE1,
+      mrzLine2: buildSpecimenLine2(),
+      visaNumber: 'V999',
+    })
+    expect(v.document).toMatchObject({ visaNumber: null, visaRequired: false })
+  })
+})
+
+describe('the check-in id', () => {
+  it('is a v4 UUID', async () => {
+    const { svc } = build()
+    const view = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(view.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+})
+
+describe('the ownership rule', () => {
+  const record = { passenger_id: 'pax-1' } as CheckInRecord
+  const booking = { customerUserId: 'user-anna' } as BookingPassenger
+
+  it('lets the customer of the booking in', () => {
+    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: 'user-anna' }, null)).toBe(true)
+  })
+
+  it('lets the customer of the passenger in', () => {
+    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: null }, { passengerId: 'pax-1' })).toBe(true)
+  })
+
+  it('lets a customer in with the check-in id alone; the UUID is the only wall', () => {
+    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: null }, null)).toBe(true)
+    expect(canCustomerAccess(record, cust, null, { passengerId: 'pax-2' })).toBe(true)
+    expect(canCustomerAccess(record, staff, null, null)).toBe(true)
+  })
+})
+
+describe('the seat map', () => {
+  it('shows the seat of the check-in the caller passes and hides the other cabin', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '18B' })
+    await svc.confirmSeat(cust, c.id, { lockId: lock.id })
+
+    const map = await svc.seatMap(cust, 'flt-fy204', c.id)
+    const seats = map.rows.flatMap((row) => row.seats)
+    expect(seats.find((seat) => seat.code === '18B')?.status).toBe('mine')
+    expect(seats.find((seat) => seat.code === '1C')?.status).toBe('blocked')
+
+    // Without the check-in there is no viewer: no seat is mine and no cabin is hidden.
+    const plain = await svc.seatMap(cust, 'flt-fy204')
+    const plainSeats = plain.rows.flatMap((row) => row.seats)
+    expect(plainSeats.some((seat) => seat.status === 'mine')).toBe(false)
+    expect(plainSeats.find((seat) => seat.code === '1C')?.status).not.toBe('blocked')
+  })
+})
+
+describe('CheckInService notifications', () => {
+  it('notifies with the F13 type codes', async () => {
+    const { svc, notify } = build()
+    const spy = jest.spyOn(notify, 'send')
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    await svc.complete(cust, c.id)
+    expect(spy).toHaveBeenCalledWith('boarding_pass_issued', expect.objectContaining({ checkInId: c.id }))
+    expect(spy).toHaveBeenCalledWith('check_in_completed', expect.objectContaining({ checkInId: c.id }))
+  })
+})
+
+describe('CheckInService seats', () => {
+  it('refuses an exit row for special assistance', async () => {
+    const { svc, store } = build()
+    const somchai = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-sa224b')!
+    await store.updateCheckIn(somchai.id, { status: 'started' })
+    await expect(svc.holdSeat(staff, 'flt-fy204', { checkInId: somchai.id, seatCode: '12A' })).rejects.toMatchObject({
+      code: 'VALIDATION',
+      details: { reason: 'exit_row_special_assistance' },
+    })
+  })
+
+  it('holdSeat refuses a check-in that belongs to another flight', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    await expect(svc.holdSeat(cust, 'flt-fy318', { checkInId: c.id, seatCode: '5C' })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
+  })
+
+  it('confirmSeat refuses a seat hold that belongs to another check-in', async () => {
+    const { svc, payments, seats } = build()
+    addBooking({
+      bookingPassengerId: 'bp-test-second',
+      bookingId: 'bk-test-second',
+      pnr: 'XX204B',
+      paid: true,
+      flightId: 'flt-fy204',
+      passengerId: 'pax-test-second',
+      firstName: 'Second',
+      lastName: 'Passenger',
+      cabin: 'economy',
+      fareClass: 'Y',
+      specialAssistance: [],
+      isPolice: false,
+      customerUserId: null,
+    })
+    const other: Actor = { userId: 'user-other', staffId: null }
+    const a = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, a.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const b = await svc.start(other, { pnr: 'XX204B', lastName: 'Passenger' })
+    await svc.submitDocument(other, b.id, { mrzLine1: SECOND_LINE1, mrzLine2: SECOND_LINE2 })
+
+    const lock = await svc.holdSeat(other, 'flt-fy204', { checkInId: b.id, seatCode: '4A' })
+    await expect(svc.confirmSeat(cust, a.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    expect(payments.charges).toHaveLength(0)
+    expect(await seats.assigned('bp-test-second')).toBeNull()
+  })
+
+  it('confirmSeat answers ON_HOLD for a passenger security is holding', async () => {
+    const { svc, seats } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '7E' })
+    await svc.applyScreeningResult(c.id, 'held')
+    await expect(svc.confirmSeat(cust, c.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'ON_HOLD' })
+    expect(await seats.assigned('bp-er224f')).toBeNull()
+  })
+
+  it('an expired seat hold is refused and nothing is charged', async () => {
+    const { svc, clock, payments } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '4A' })
+    clock.set(new Date(clock.now().getTime() + 6 * 60_000))
+    await expect(svc.confirmSeat(cust, c.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'LOCK_EXPIRED' })
+    expect(payments.charges).toHaveLength(0)
+  })
+
+  it('a paid seat that cannot be confirmed leaves the payment behind and says so', async () => {
+    const { svc, audit, seats } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '4A' })
+    jest.spyOn(seats, 'confirm').mockRejectedValue(new CheckInError(409, 'SEAT_TAKEN', 'the seat is gone'))
+    const spy = jest.spyOn(audit, 'record')
+
+    await expect(svc.confirmSeat(cust, c.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'SEAT_TAKEN' })
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'seat.payment_orphaned', entityType: 'payment', entityId: 'pay-1' }))
+  })
+
+  it('charges a paid seat, confirms, and a later change updates the pass in place', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '4A' })
+    expect(lock.fee).toBe(250)
+    const confirmed = await svc.confirmSeat(cust, c.id, { lockId: lock.id })
+    expect(confirmed.seat).toMatchObject({ code: '4A', fee: 250, paymentId: 'pay-1' })
+
+    const pass = await svc.complete(cust, c.id)
+    expect(pass.seat).toBe('4A')
+
+    const lock2 = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '18B' })
+    await svc.confirmSeat(cust, c.id, { lockId: lock2.id })
+    const after = await svc.boardingPass(cust, c.id)
+    expect(after.seat).toBe('18B')
+    expect(after.reference).toBe(pass.reference)
+  })
+})
+
+describe('CheckInService.complete', () => {
+  it('assigns a free standard seat, sets checked_in_at, group 4 for Anna', async () => {
+    const { svc, store } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const p = await svc.complete(cust, c.id)
+    expect(p.seat).toMatch(/^(?:[6-9]|1[0-9]|20)[A-F]$/)
+    expect(p.boardingGroup).toBe(4)
+    expect(p.gate).toBe('A1')
+    expect(p.boardingAt).toBe('2026-11-11T02:45:00.000Z')
+    expect(p.reference).toMatch(/^[A-HJ-NP-Z2-9]{8}$/)
+    expect(p.qrPayload).toBe(p.reference)
+    expect((await svc.get(cust, c.id)).status).toBe('checked_in')
+    expect((await store.getCheckIn(c.id))!.checked_in_at).toEqual(new Date(DEMO_NOW))
+  })
+
+  it('is idempotent', async () => {
+    const { svc, store } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const a = await svc.complete(cust, c.id)
+    const b = await svc.complete(cust, c.id)
+    expect(b.reference).toBe(a.reference)
+    expect(await store.listPasses()).toHaveLength(14)
+  })
+
+  it('two concurrent completes issue one pass', async () => {
+    const { svc, store } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const [a, b] = await Promise.all([svc.complete(cust, c.id), svc.complete(cust, c.id)])
+    expect(b.reference).toBe(a.reference)
+    expect(await store.passesForCheckIn(c.id)).toHaveLength(1)
+  })
+
+  it('the air marshal boards first, also when the police service knows nothing', async () => {
+    const { svc, store } = build({ police: { policePassengerIds: () => Promise.resolve([]) } })
+    // The memory mode seeds a pass for every demo booking, the database demo seeds none: the marshal cancels his
+    // first check-in and starts a new one, the way the demo of the database goes.
+    const seeded = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-pl224a')
+    if (!seeded) throw new Error('the air marshal is not seeded')
+    await store.cancelCheckIn(seeded.id)
+    const c = await svc.start(cust, { pnr: 'PL224A', lastName: 'Sukjai' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: NARONG_LINE1, mrzLine2: NARONG_LINE2 })
+    const pass = await svc.complete(cust, c.id)
+    expect(pass.boardingGroup).toBe(1)
+  })
+
+  it('without a document is INVALID_STATE', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await expect(svc.complete(cust, c.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+  })
+})
+
+describe('the check-in window', () => {
+  it('holdSeat answers WINDOW_CLOSED once the window closed', async () => {
+    const { svc, clock } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    clock.set(new Date(DEMO_NOW.getTime() + 2 * 3600_000))
+    await expect(svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '4A' })).rejects.toMatchObject({
+      code: 'WINDOW_CLOSED',
+    })
+  })
+
+  it('confirmSeat answers WINDOW_CLOSED once the window closed', async () => {
+    const { svc, clock } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '4A' })
+    clock.set(new Date(DEMO_NOW.getTime() + 2 * 3600_000))
+    await expect(svc.confirmSeat(cust, c.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'WINDOW_CLOSED' })
+  })
+
+  it('declareBags answers WINDOW_CLOSED once the window closed', async () => {
+    const { svc, clock } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    clock.set(new Date(DEMO_NOW.getTime() + 2 * 3600_000))
+    await expect(svc.declareBags(cust, c.id, { declaredBags: 2 })).rejects.toMatchObject({ code: 'WINDOW_CLOSED' })
+  })
+})
+
+describe('CheckInService.declareBags', () => {
+  it('validates 0..10 integers', async () => {
+    const { svc } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await expect(svc.declareBags(cust, c.id, { declaredBags: -1 })).rejects.toMatchObject({ code: 'VALIDATION' })
+    await expect(svc.declareBags(cust, c.id, { declaredBags: 11 })).rejects.toMatchObject({ code: 'VALIDATION' })
+    await expect(svc.declareBags(cust, c.id, { declaredBags: 1.5 })).rejects.toMatchObject({ code: 'VALIDATION' })
+    await expect(svc.declareBags(cust, c.id, { declaredBags: 2 })).resolves.toMatchObject({ declaredBags: 2 })
+  })
+})
+
+describe('CheckInService.applyScreeningResult', () => {
+  it('held after the pass puts the check-in on hold and clear restores checked_in', async () => {
+    const { svc, store } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    await svc.complete(cust, c.id)
+    await svc.applyScreeningResult(c.id, 'held')
+    expect((await store.getCheckIn(c.id))!.status).toBe('on_hold')
+    await svc.applyScreeningResult(c.id, 'clear')
+    expect((await store.getCheckIn(c.id))!.status).toBe('checked_in')
+  })
+
+  it('a hold before any screening run records a UUID run id (the column is uuid)', async () => {
+    const { svc, store } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.applyScreeningResult(c.id, 'held')
+    expect((await store.getCheckIn(c.id))!.screening_run_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+  })
+})
+
+describe('CheckInService.releaseExpiredHolds', () => {
+  it('releases the seat and marks no-show after the window closes', async () => {
+    const { svc, clock, store, seats } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '7E' })
+    await svc.confirmSeat(cust, c.id, { lockId: lock.id })
+    await svc.applyScreeningResult(c.id, 'held')
+    expect((await store.getCheckIn(c.id))!.status).toBe('on_hold')
+
+    clock.set(new Date(DEMO_NOW.getTime() + 3 * 3600_000))
+    expect(await svc.releaseExpiredHolds()).toBeGreaterThanOrEqual(1)
+    expect((await store.getCheckIn(c.id))!.status).toBe('no_show')
+    expect(await seats.assigned('bp-er224f')).toBeNull()
+  })
+})

@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { cn } from '@staff-web/lib/utils'
 import flythonLogo from '../assets/flython-logo.svg'
 import sidebarPattern from '../assets/sidebar-pattern.png'
-import { ADMIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM } from '../nav-items'
+import { ADMIN_ITEMS, CHECKIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM } from '../nav-items'
 import type { ScreenDto } from '../types'
 
 interface PreviewItem {
@@ -64,6 +64,7 @@ export function SidebarPreview({ screens, roleName }: { screens: ScreenDto[]; ro
       <div className="min-h-0 flex-1 overflow-y-auto" aria-hidden="true">
         <Group label="Administration" items={ADMIN_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
         <Group label="Pricing & Fare Rules" items={PRICING_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
+        <Group label="Check-in & Boarding" items={CHECKIN_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
         {GROUPS.map((g) => (
           <Group key={g.label} label={g.label} items={g.items.map((i) => ({ ...i, visible: byName(i.label) }))} />
         ))}
