@@ -23,7 +23,7 @@ interface NavItem {
 }
 
 const CARGO_ITEMS: NavItem[] = [
-  { to: '/cargo/desk', label: 'Cargo desk', icon: Package },
+  { to: '/cargo/bookings', label: 'Cargo desk', icon: Package },
   { to: '/cargo/flights', label: 'Flight cargo', icon: Plane },
   { to: '/cargo/claims', label: 'Claims', icon: ShieldAlert },
   { to: '/cargo/settings', label: 'Rates and settings', icon: Settings },
@@ -60,7 +60,7 @@ export function CargoSidebar({ roleName, onSignOut }: { roleName: string; onSign
               <SidebarMenu className="pl-4 group-data-[collapsible=icon]:pl-0">
                 {CARGO_ITEMS.map((item) => {
                   const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
-                  const hasRoute = item.to === '/cargo/settings'
+                  const hasRoute = item.to === '/cargo/settings' || item.to === '/cargo/bookings'
                   return (
                     <SidebarMenuItem key={item.to}>
                       {hasRoute ? (

@@ -28,6 +28,39 @@ async function readError(res: Response): Promise<CargoApiError> {
   return new CargoApiError(res.status, `HTTP_${res.status}`, res.statusText || 'Request failed')
 }
 
+/* ── Desk types ───────────────────────────────────────────────────── */
+
+export interface DeskBooking {
+  id: string
+  bookingRef: string
+  awbNumber: string | null
+  shipperName: string
+  consigneeName: string
+  flightNumber: string
+  flightServiceDate: string
+  commodityTypeName: string
+  pieces: number
+  quotedChargeableKg: number
+  quotedCharge: number
+  currency: string
+  status: string
+  bookedAt: string
+}
+
+export interface DeskListResult {
+  data: DeskBooking[]
+  counts: Record<string, number>
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
+export interface TestToolResult {
+  created?: { ref: string; awb: string | null }[]
+  error?: string
+}
+
 /* ── Types ─────────────────────────────────────────────────────────── */
 
 export interface CommodityType {
@@ -141,5 +174,19 @@ export function useCargoApi() {
       for (const row of rows) map[row.key] = row.value
       return map
     },
+
+    listBookings: (params: { status?: string; q?: string; page?: number; pageSize?: number }) => {
+      const qs = new URLSearchParams()
+      if (params.status && params.status !== 'all') qs.set('status', params.status)
+      if (params.q) qs.set('q', params.q)
+      if (params.page) qs.set('page', String(params.page))
+      if (params.pageSize) qs.set('page_size', String(params.pageSize))
+      const query = qs.toString()
+      return send<DeskListResult>(`/api/staff/cargo/bookings${query ? `?${query}` : ''}`)
+    },
+
+    createTestFlights: () => send<{ created?: string[]; error?: string }>('/api/staff/cargo/test/flights', { method: 'POST' }),
+    createTestBookings: (count = 1) =>
+      send<TestToolResult>('/api/staff/cargo/test/bookings', { method: 'POST', body: JSON.stringify({ count }) }),
   }
 }
