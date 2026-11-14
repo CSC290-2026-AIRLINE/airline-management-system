@@ -11,6 +11,7 @@
  * `compact` is the phone layout: no facts table or apply summary, shorter candidate cards.
  */
 import { useState, type ReactNode } from 'react'
+import { Link } from '@tanstack/react-router'
 import { Button, CheckIcon, EmptyFaceIcon } from '../../shared/ui'
 import { ROLE_LABELS, crewOn, languageName } from '../types/labels'
 import { ReplacementPicker } from './replacement-picker'
@@ -29,12 +30,27 @@ interface FixPanelProps {
   isBusy: boolean
   /** Company-rule breaks only. Law rules have no override, so the button is absent. */
   onOverride: (item: FixBreak) => void
-  onSwap: (breakId: string, candidateId: string) => void
+  onSwap: (breakId: string, candidateIds: readonly string[]) => void
+  /** The roster is live, so an empty seat with nobody legal can be left uncovered. */
+  isPublished?: boolean
+  onLeaveUncovered?: () => void
 }
 
-export function FixPanel({ item, notice, compact = false, base, openCount, rosterFor, isBusy, onOverride, onSwap }: FixPanelProps) {
+export function FixPanel({
+  item,
+  notice,
+  compact = false,
+  base,
+  openCount,
+  rosterFor,
+  isBusy,
+  onOverride,
+  onSwap,
+  isPublished = false,
+  onLeaveUncovered,
+}: FixPanelProps) {
   // Which candidate the operator picked, and for which item, so a pick never carries over to the next one.
-  const [pick, setPick] = useState<{ itemId: string; candidateId: string } | null>(null)
+  const [pick, setPick] = useState<{ itemId: string; ids: string[] } | null>(null)
 
   if (!item) {
     return (
@@ -51,10 +67,29 @@ export function FixPanel({ item, notice, compact = false, base, openCount, roste
   const closed = item.resolution !== undefined
   const set = item.replacement
   const assignment = rosterFor(item.legId)
-  // Nothing picked yet means the first legal candidate, so the common case is one click on the apply button.
-  const chosenId = pick?.itemId === item.id ? pick.candidateId : (set?.candidates.find((candidate) => candidate.allowed)?.member.id ?? null)
-  const chosen = set?.candidates.find((candidate) => candidate.member.id === chosenId && candidate.allowed)
-  const canSwap = !closed && chosen !== undefined
+  // Nothing picked yet means the first legal candidate(s): as many as the break is short, so the common case is one click.
+  const seats = Math.max(1, set?.seatsToFill ?? 1)
+  const legalIds = set?.candidates.filter((candidate) => candidate.allowed).map((candidate) => candidate.member.id) ?? []
+  const chosenIds = (pick?.itemId === item.id ? pick.ids : legalIds.slice(0, seats)).filter((id) => legalIds.includes(id))
+  const chosen = set?.candidates.filter((candidate) => chosenIds.includes(candidate.member.id)) ?? []
+  const canSwap = !closed && chosen.length > 0
+
+  function choose(candidateId: string) {
+    if (!item) return
+    const current = chosenIds
+    const next =
+      seats <= 1
+        ? [candidateId]
+        : current.includes(candidateId)
+          ? current.filter((id) => id !== candidateId)
+          : current.length < seats
+            ? [...current, candidateId]
+            : current
+    setPick({ itemId: item.id, ids: next })
+  }
+
+  // A live roster with an empty seat and nobody legal to put in it: the only move is to leave the leg uncovered.
+  const leaveUncovered = !closed && isPublished && !!onLeaveUncovered && item.code === 'NO_LEGAL_CREW' && (set?.allowedCount ?? 0) === 0
 
   return (
     <section
@@ -117,22 +152,46 @@ export function FixPanel({ item, notice, compact = false, base, openCount, roste
           {/* With nobody to offer, the picker prints its own blocked note; a second sentence asking
               for a swap that cannot happen would only argue with it. */}
           {!compact && set.candidates.length > 0 && <p className="mt-2 text-sm leading-relaxed text-primary-text/70">{set.instruction}</p>}
-          <ReplacementPicker
-            item={item}
-            chosenId={chosenId}
-            onChoose={(candidateId) => setPick({ itemId: item.id, candidateId })}
-            base={base}
-            leg={assignment?.leg}
-            compact={compact}
-          />
+          {set.seatsToFill > 1 && set.allowedCount > 0 && (
+            <p className="mt-2 text-sm leading-relaxed font-semibold text-primary-text/80">
+              {seatName(item)} is short {set.seatsToFill}. Pick up to {Math.min(set.seatsToFill, set.allowedCount)} and add them together;
+              each one is checked against the rules before it goes on.
+            </p>
+          )}
+          <ReplacementPicker item={item} chosenIds={chosenIds} onChoose={choose} base={base} leg={assignment?.leg} compact={compact} />
         </div>
       )}
 
-      {!compact && canSwap && chosen && (
-        <ApplySummary item={item} assignment={assignment} candidate={chosen.member} openCount={openCount} />
+      {!closed && set && set.allowedCount === 0 && <NobodyLegal item={item} base={base} compact={compact} />}
+
+      {!compact && canSwap && (
+        <ApplySummary
+          item={item}
+          assignment={assignment}
+          candidates={chosen.map((candidate) => candidate.member)}
+          seats={seats}
+          openCount={openCount}
+        />
       )}
 
-      {!closed && (
+      {!compact && leaveUncovered && <UncoveredSummary item={item} />}
+
+      {leaveUncovered && (
+        <div className={compact ? 'mt-5' : 'mt-6'}>
+          <p className="text-xs leading-relaxed text-primary-text/55">
+            {compact
+              ? `No legal ${seatName(item)}. ${item.flightNumber} is marked Uncovered; Feature 2 sees it in its impact preview.`
+              : 'No legal replacement. Ops can leave the leg uncovered and come back later.'}
+          </p>
+          <div className={`mt-3 flex ${compact ? 'flex-col' : 'justify-end'}`}>
+            <Button className={`h-11 ${compact ? 'w-full' : 'px-6'}`} disabled={isBusy} onClick={onLeaveUncovered}>
+              Leave {item.flightNumber} uncovered
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!closed && !leaveUncovered && (
         <div className={compact ? 'mt-5' : 'mt-6'}>
           <p className="text-xs leading-relaxed text-primary-text/55">{footnote(item)}</p>
           <div className={`mt-3 flex gap-3 ${compact ? 'flex-col' : 'flex-wrap justify-end'}`}>
@@ -146,13 +205,16 @@ export function FixPanel({ item, notice, compact = false, base, openCount, roste
                 Override with reason
               </Button>
             )}
-            {canSwap && chosen && (
+            {canSwap && (
               <Button
                 className={`h-11 ${compact ? 'order-first w-full' : 'px-6'}`}
                 disabled={isBusy}
-                onClick={() => onSwap(item.id, chosen.member.id)}
+                onClick={() => onSwap(item.id, chosenIds)}
               >
-                {swapLabel(item, chosen.member.name)}
+                {swapLabel(
+                  item,
+                  chosen.map((candidate) => candidate.member.name),
+                )}
               </Button>
             )}
           </div>
@@ -162,9 +224,11 @@ export function FixPanel({ item, notice, compact = false, base, openCount, roste
   )
 }
 
-/** What the button says: adding a person to a leg, swapping one onto it, or swapping one in for another. */
-function swapLabel(item: FixBreak, name: string): string {
-  if (item.removed || item.code === 'POLICE_MIN') return `Add ${name} to ${item.flightNumber}`
+/** What the button says: adding people to a leg, swapping one onto it, or swapping one in for another. */
+function swapLabel(item: FixBreak, names: string[]): string {
+  if (names.length > 1) return `Add ${names.length} ${seatName(item, true)} to ${item.flightNumber}`
+  const [name] = names
+  if (item.removed || item.code === 'POLICE_MIN' || item.code === 'NO_LEGAL_CREW') return `Add ${name} to ${item.flightNumber}`
   if (item.code === 'NO_LOCAL_CREW') return `Swap ${name} onto ${item.flightNumber}`
   return `Swap in ${name}`
 }
@@ -188,19 +252,31 @@ function footnote(item: FixBreak): string {
 function ApplySummary({
   item,
   assignment,
-  candidate,
+  candidates,
+  seats,
   openCount,
 }: {
   item: FixBreak
   assignment: LegAssignment | undefined
-  candidate: { name: string; role: keyof typeof ROLE_LABELS; languages: readonly string[] }
+  candidates: { name: string; role: keyof typeof ROLE_LABELS; languages: readonly string[] }[]
+  seats: number
   openCount: number
 }) {
-  const { name } = candidate
+  const [first] = candidates
+  const name = candidates.map((candidate) => candidate.name).join(', ')
   const flight = item.flightNumber
   const subject = assignment && item.subjectId ? crewOn(assignment).find((seat) => seat.member.id === item.subjectId) : undefined
-  const recheck = `Re-check rest, 28-day hours and overlap for ${name}.`
-  const remaining = `Remaining open breaks after this fix: ${Math.max(openCount - 1, 0)}.`
+  const recheck =
+    candidates.length > 1
+      ? `Re-check rest, 28-day hours and overlap for each of them.`
+      : `Re-check rest, 28-day hours and overlap for ${name}.`
+  // Whether this pick fills every seat the break is short; a smaller pick adds people but leaves the break open.
+  const fillsIt = candidates.length >= seats
+  const remaining = `Remaining open breaks after this fix: ${Math.max(openCount - (fillsIt ? 1 : 0), 0)}.`
+  // "1 of 4" on the roster fact: after adding these people the leg has this many.
+  const count = item.facts.map((fact) => /^(\d+) of (\d+)$/.exec(fact.value)).find((match) => match !== null)
+  const after = count ? `${Number(count[1]) + candidates.length} of ${count[2]}` : null
+  const seatLabel = seatName(item, candidates.length > 1)
 
   let title = 'If you apply this legal replacement'
   let lines: string[]
@@ -212,11 +288,15 @@ function ApplySummary({
       'Log the sick call and the change to the audit log (Feature 15).',
       'Crew duties are re-sent through Feature 13 (not connected yet).',
     ]
-  } else if (item.code === 'POLICE_MIN') {
-    const need = assignment?.policeRequired ?? 2
-    lines = [`Add ${name} as police on ${flight}.`, `${flight} then has ${need} of ${need} police.`, recheck, remaining]
+  } else if (item.code === 'POLICE_MIN' || item.code === 'NO_LEGAL_CREW') {
+    lines = [
+      `Add ${name} as ${seatLabel} on ${flight}.`,
+      ...(after ? [`${flight} then has ${after} ${seatName(item)}.`] : []),
+      recheck,
+      remaining,
+    ]
   } else if (item.code === 'NO_LOCAL_CREW') {
-    const spoken = candidate.languages.find((code) => assignment?.leg.localLanguages.includes(code))
+    const spoken = first?.languages.find((code) => assignment?.leg.localLanguages.includes(code))
     lines = [
       `Swap ${name} onto ${flight} as cabin crew.`,
       `${flight} then has 1 ${spoken ? languageName(spoken) : 'local-language'} speaker.`,
@@ -237,6 +317,63 @@ function ApplySummary({
   return (
     <div className="mt-6 rounded-xl border border-btn-yellow/60 bg-amber-tint/40 px-5 py-4">
       <p className="text-[11px] font-bold tracking-widest text-amber-ink uppercase">{title}</p>
+      <ul className="mt-2.5 flex flex-col gap-1.5 text-sm text-primary-text">
+        {lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      {!fillsIt && (
+        <p className="mt-2.5 text-xs font-semibold text-amber-ink">
+          {seats - candidates.length} more {seatName(item)} still needed after this; the break stays open until the leg is full.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Nobody at the base passes every rule for this seat. Law rules cannot be overridden, so the only way out is more
+ * crew (or freeing someone from another pairing): say so, and go straight to the page where crew are added.
+ */
+function NobodyLegal({ item, base, compact }: { item: FixBreak; base: string; compact: boolean }) {
+  const seat = seatName(item)
+  return (
+    <div className="mt-5 flex flex-col gap-3 rounded-xl border border-border-desc/60 bg-page-bg/60 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm leading-relaxed text-primary-text/75">
+        No {seat} based at {base} is free and legal for {item.flightNumber}.{' '}
+        {item.severity === 'law'
+          ? 'This is a law rule, so it cannot be overridden: add crew based at ' + base + ', or free one from another pairing in this run.'
+          : 'Add crew based at ' + base + ', free one from another pairing, or override it with a reason.'}
+        {!compact && ' New crew appear here as soon as you come back.'}
+      </p>
+      <Link
+        to="/setup-crew"
+        className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-border-desc/70 bg-white px-4 text-sm font-semibold text-primary-text transition-colors hover:bg-page-bg"
+      >
+        Open Crew
+      </Link>
+    </div>
+  )
+}
+
+function seatName(item: FixBreak, plural = false): string {
+  const role = (item.seatRole ? ROLE_LABELS[item.seatRole] : 'crew member').toLowerCase()
+  if (!plural) return role
+  return item.seatRole === 'cabin_crew' ? role : item.seatRole === 'police' ? 'police officers' : `${role}s`
+}
+
+/** "What happens now" — what leaving a seat empty on a live roster does, so nobody has to guess. */
+function UncoveredSummary({ item }: { item: FixBreak }) {
+  const seat = seatName(item)
+  const lines = [
+    `${item.flightNumber} is published without a ${seat} and marked Uncovered.`,
+    `The published roster shows ${item.flightNumber} as Not covered (NO_LEGAL_CREW).`,
+    'Feature 2 sees it in its impact preview.',
+    `Try again when a ${seat} becomes legal (for example after rest).`,
+  ]
+  return (
+    <div className="mt-6 rounded-xl border border-btn-yellow/60 bg-amber-tint/40 px-5 py-4">
+      <p className="text-[11px] font-bold tracking-widest text-amber-ink uppercase">What happens now</p>
       <ul className="mt-2.5 flex flex-col gap-1.5 text-sm text-primary-text">
         {lines.map((line) => (
           <li key={line}>{line}</li>

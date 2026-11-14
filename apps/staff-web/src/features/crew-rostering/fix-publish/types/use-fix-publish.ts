@@ -61,7 +61,8 @@ export interface FixPublishState {
   canPublish: boolean
   publishChecks: PublishCheck[]
   publish: () => void
-  swapIn: (breakId: string, candidateId: string) => void
+  /** Puts each chosen person on the seat, one request after the other; the first rejection stops the rest. */
+  swapIn: (breakId: string, candidateIds: readonly string[]) => void
   overrideBreak: (breakId: string, reason: string) => void
   /** True once a seat a sick call left open has been refilled. */
   isUpdated: boolean
@@ -74,6 +75,8 @@ export interface FixPublishState {
   rosterFor: (legId: string) => LegAssignment | undefined
   /** Legs that are still missing a seat. */
   uncoveredLegIds: readonly string[]
+  /** Pairings left in a new draft run after this roster was published: the next round starts in Assign crew with these. */
+  remainingPairings: number
 }
 
 export function useFixPublish(): FixPublishState {
@@ -145,14 +148,31 @@ export function useFixPublish(): FixPublishState {
   }, [])
 
   const swapIn = useCallback(
-    (breakId: string, candidateId: string) => {
-      if (isBusy) return
+    (breakId: string, candidateIds: readonly string[]) => {
+      if (isBusy || candidateIds.length === 0) return
       const target = breaks.find((item) => item.id === breakId)
-      const who = target?.replacement?.candidates.find((candidate) => candidate.member.id === candidateId)?.member.name
-      void edit(() => getApi().swap(breakId, candidateId)).then((answer) => {
+      const who = target?.replacement?.candidates.find((candidate) => candidate.member.id === candidateIds[0])?.member.name
+      let stoppedBy: string | null = null
+      void edit(async () => {
+        let last: FixOutcome | null = null
+        for (const candidateId of candidateIds) {
+          try {
+            last = await getApi().swap(breakId, candidateId)
+          } catch (error) {
+            // The first one failing is the whole edit failing; a later one leaves what was already added in place.
+            if (!last) throw error
+            stoppedBy = error instanceof Error ? error.message : 'A swap failed.'
+            break
+          }
+          if (last.closed) break
+        }
+        return last as FixOutcome
+      }).then((answer) => {
+        if (stoppedBy) setLoadError(stoppedBy)
         if (!answer || !('banner' in answer)) return
         setFixNotice(answer.banner)
-        setSelectedId(null)
+        // A seat still short keeps its item selected, so the next one can be added straight away.
+        if (answer.closed) setSelectedId(null)
         // On a live roster, filling an empty seat is the "roster updated" moment.
         if (answer.closed && status === 'published' && target) {
           setUpdateNote(`${who ?? 'A replacement'} filled the open seat on ${target.flightNumber}.`)
@@ -223,9 +243,12 @@ export function useFixPublish(): FixPublishState {
       }
       if (updateNote) return { tone: 'success', text: `Roster updated · ${updateNote}` }
       const range = formatDateRange(data.rosterRun.dateFrom, data.rosterRun.dateTo)
+      const left = data.remainingPairings
       return {
         tone: 'success',
-        text: `Roster published · ${range} · ${data.assignments.length} legs. Crew notification (Feature 13) is not connected yet.`,
+        text: `Roster published · ${range} · ${data.assignments.length} legs.${
+          left > 0 ? ` ${left} ${left === 1 ? 'pairing is' : 'pairings are'} still to crew: continue in Assign crew.` : ''
+        } Crew notification (Feature 13) is not connected yet.`,
       }
     }
 
@@ -285,5 +308,6 @@ export function useFixPublish(): FixPublishState {
     recheck,
     rosterFor,
     uncoveredLegIds: data?.uncoveredLegIds ?? [],
+    remainingPairings: data?.remainingPairings ?? 0,
   }
 }

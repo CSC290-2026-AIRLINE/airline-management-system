@@ -72,6 +72,8 @@ export interface ReplacementSet {
   availableLabel: string
   /** How many of the candidates may be selected. */
   allowedCount: number
+  /** Seats this break is short. More than 1 means several people can be added in one go. */
+  seatsToFill: number
   instruction: string
   /** What to say when nobody can be added. */
   blockedNote?: string
@@ -161,6 +163,8 @@ export interface FixPublishData {
   /** Legs with a seat nobody has filled yet. */
   uncoveredLegIds: string[]
   limits: RuleLimits | null
+  /** Pairings of this window still waiting in a newer draft run: what the publish left for the next round. */
+  remainingPairings: number
 }
 
 /** What an edit answers: the sentence for the panel, whether the item closed, and the new state. */

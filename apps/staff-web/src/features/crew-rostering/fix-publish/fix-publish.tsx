@@ -45,6 +45,10 @@ export function FixPublishPage() {
   const windowSearch = { dateFrom: state.params.dateFrom, dateTo: state.params.dateTo, base: state.params.base }
   const hasRun = state.rosterRun !== null
   const backToRoster = isPublished && hasOpen
+  const left = state.remainingPairings
+  // Pairings nobody crewed in this round wait in a new draft run: the next round starts in Assign crew with them, not from scratch.
+  const startNext = () => void navigate(left > 0 ? { to: '/assign-crew', search: windowSearch } : { to: '/build-pairings' })
+  const nextLabel = left > 0 ? `Crew the other ${left}` : 'Start next roster run'
   const base = state.rosterRun?.base ?? state.params.base
 
   const panelProps = {
@@ -55,6 +59,8 @@ export function FixPublishPage() {
     isBusy: state.isBusy,
     onOverride: setOverriding,
     onSwap: state.swapIn,
+    isPublished,
+    onLeaveUncovered: () => document.getElementById('published-roster')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
   }
 
   function pickAbsent(assignment: LegAssignment, memberId: string) {
@@ -132,8 +138,15 @@ export function FixPublishPage() {
               tone={state.banner.tone}
               action={
                 isPublished ? (
-                  <Button variant="highlight" className="h-10 shrink-0" onClick={() => void navigate({ to: '/build-pairings' })}>
-                    Start next roster run
+                  // A seat is still empty, so this run is not finished: Find cover comes first.
+                  <Button
+                    variant="highlight"
+                    className="h-10 shrink-0"
+                    disabled={hasOpen}
+                    title={hasOpen ? 'Cover the open seats first' : undefined}
+                    onClick={startNext}
+                  >
+                    {nextLabel}
                     <ArrowRightIcon className="h-4 w-4" />
                   </Button>
                 ) : (
@@ -256,9 +269,11 @@ export function FixPublishPage() {
         openCount={state.openBreaks.length}
         isPublished={isPublished}
         canPublish={state.canPublish}
+        canStartNext={!hasOpen}
         onBack={() => void navigate({ to: '/assign-crew', search: windowSearch })}
         onPublish={state.publish}
-        onNextRun={() => void navigate({ to: '/build-pairings' })}
+        onNextRun={startNext}
+        nextLabel={left > 0 ? `Crew the other ${left}` : 'Start next run'}
       />
 
       {overriding && (
@@ -305,16 +320,20 @@ function MobileBottomBar({
   openCount,
   isPublished,
   canPublish,
+  canStartNext,
   onBack,
   onPublish,
   onNextRun,
+  nextLabel,
 }: {
   openCount: number
   isPublished: boolean
   canPublish: boolean
+  canStartNext: boolean
   onBack: () => void
   onPublish: () => void
   onNextRun: () => void
+  nextLabel: string
 }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 bg-primary px-4 py-3 text-white md:left-(--sidebar-width) md:group-has-data-[collapsible=icon]/sidebar-wrapper:left-(--sidebar-width-icon) lg:hidden">
@@ -336,9 +355,10 @@ function MobileBottomBar({
         <button
           type="button"
           onClick={onNextRun}
-          className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-btn-yellow px-4 text-sm font-bold text-primary-text transition-colors hover:bg-btn-yellow-hover"
+          disabled={!canStartNext}
+          className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-btn-yellow px-4 text-sm font-bold text-primary-text transition-colors hover:bg-btn-yellow-hover disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/50"
         >
-          Start next run
+          {nextLabel}
           <ArrowRightIcon className="h-4 w-4" />
         </button>
       ) : (

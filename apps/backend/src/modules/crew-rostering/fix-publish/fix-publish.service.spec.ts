@@ -19,17 +19,29 @@ function fakeAudit() {
 }
 
 /** Just enough of `DbService` for `publish`, with the order of lock, re-check and writes recorded. */
-function setupPublish(options: { locked?: { status: string }; open?: number; pairings?: number; flipped?: number } = {}) {
-  const { locked = { status: 'draft' }, open = 0, pairings = 3, flipped = 1 } = options
+function setupPublish(
+  options: { locked?: { status: string }; open?: number; pairings?: number; flipped?: number; inRun?: string[]; crewed?: string[] } = {},
+) {
+  const { locked = { status: 'draft' }, open = 0, pairings = 3, flipped = 1, inRun = ['p-1', 'p-2', 'p-3'], crewed = inRun } = options
   const calls: string[] = []
   const tx = {
     $queryRaw: jest.fn(() => {
       calls.push('lock')
       return Promise.resolve([locked])
     }),
-    roster_run_pairing: { count: jest.fn().mockResolvedValue(pairings) },
-    rule_break: { count: jest.fn().mockResolvedValue(open) },
-    roster_run: { updateMany: jest.fn().mockResolvedValue({ count: flipped }) },
+    roster_run_pairing: {
+      count: jest.fn().mockResolvedValue(pairings),
+      findMany: jest.fn().mockResolvedValue(inRun.map((id) => ({ pairing_id: id }))),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    rule_break: { count: jest.fn().mockResolvedValue(open), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    roster_run: {
+      updateMany: jest.fn().mockResolvedValue({ count: flipped }),
+      findUniqueOrThrow: jest
+        .fn()
+        .mockResolvedValue({ base_airport: 'BKK', date_from: new Date('2026-09-15'), date_to: new Date('2026-09-19') }),
+      create: jest.fn().mockResolvedValue({ id: 'next-run' }),
+    },
   }
   const db = {
     roster_run: { findUnique: jest.fn().mockResolvedValue({ id: RUN, status: 'draft' }) },
@@ -40,6 +52,7 @@ function setupPublish(options: { locked?: { status: string }; open?: number; pai
       calls.push('check')
       return Promise.resolve()
     }),
+    scopeIds: jest.fn().mockResolvedValue(new Set(crewed)),
   }
   const audit = fakeAudit()
   const service = new FixPublishService(
@@ -64,6 +77,31 @@ describe('FixPublishService.publish', () => {
     expect(audit.resolveActor).toHaveBeenCalledWith('user-1')
     expect(audit.write).toHaveBeenCalledTimes(1)
     expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ sourceFeature: '8', action: 'status_change' }), tx)
+  })
+
+  it('publishes only the pairings somebody crewed and moves the rest into a new draft run for the same window', async () => {
+    const { service, tx } = setupPublish({ inRun: ['p-1', 'p-2', 'p-3', 'p-4'], crewed: ['p-1', 'p-2'] })
+
+    await service.publish(RUN, 'user-1')
+
+    expect(tx.roster_run.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ base_airport: 'BKK', status: 'draft' }) }),
+    )
+    expect(tx.rule_break.deleteMany).toHaveBeenCalledWith({ where: { roster_run_id: RUN, pairing_id: { in: ['p-3', 'p-4'] } } })
+    expect(tx.roster_run_pairing.updateMany).toHaveBeenCalledWith({
+      where: { roster_run_id: RUN, pairing_id: { in: ['p-3', 'p-4'] } },
+      data: { roster_run_id: 'next-run' },
+    })
+    expect(tx.roster_run.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: RUN, status: 'draft' } }))
+  })
+
+  it('makes no second run when every pairing in the run was crewed', async () => {
+    const { service, tx } = setupPublish({ inRun: ['p-1', 'p-2'], crewed: ['p-1', 'p-2'] })
+
+    await service.publish(RUN, 'user-1')
+
+    expect(tx.roster_run.create).not.toHaveBeenCalled()
+    expect(tx.roster_run_pairing.updateMany).not.toHaveBeenCalled()
   })
 
   it('refuses while a break is open, and does not flip the run', async () => {
@@ -276,5 +314,37 @@ describe('FixPublishService swap, who comes off', () => {
     expect(tx.pairing_leg_assignment.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ pairing_leg_id: 'leg-1', crew_id: 'c-speaker', role: 'cabin_crew' })],
     })
+  })
+})
+
+describe('FixPublishService.seatsToFill', () => {
+  const service = new FixPublishService(
+    {} as unknown as DbService,
+    {} as unknown as AssignCrewService,
+    fakeAudit() as unknown as AuditService,
+  )
+  const seatsToFill = (plan: unknown, world: unknown): number =>
+    (service as unknown as { seatsToFill: (plan: unknown, world: unknown) => number }).seatsToFill(plan, world)
+
+  const world = (assigned: { role: string }[]) => ({
+    pairings: [{ id: 'p-1', limits: { cabinCrewPerLeg: 4, minPoliceInternational: 2 } }],
+    assignments: assigned.map((item) => ({ legId: 'leg-1', role: item.role })),
+  })
+  const plan = (role: string, languages: string[] = []) => ({ mode: 'add', role, scope: [{ id: 'leg-1', pairingId: 'p-1' }], languages })
+
+  it('counts the cabin crew a leg is short, so three can be added in one go', () => {
+    expect(seatsToFill(plan('cabin_crew'), world([{ role: 'cabin_crew' }]))).toBe(3)
+    expect(seatsToFill(plan('cabin_crew'), world([]))).toBe(4)
+  })
+
+  it('counts the police a leg is short', () => {
+    expect(seatsToFill(plan('police'), world([{ role: 'police' }]))).toBe(1)
+    expect(seatsToFill(plan('police'), world([]))).toBe(2)
+  })
+
+  it('is one seat for a pilot, a local-language speaker, or a swap', () => {
+    expect(seatsToFill(plan('captain'), world([]))).toBe(1)
+    expect(seatsToFill(plan('cabin_crew', ['th']), world([]))).toBe(1)
+    expect(seatsToFill({ ...plan('cabin_crew'), mode: 'replace-subject' }, world([]))).toBe(1)
   })
 })
