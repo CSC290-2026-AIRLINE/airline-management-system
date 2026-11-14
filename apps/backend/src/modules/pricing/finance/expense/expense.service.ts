@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { PricingAudit } from '../../pricing.audit'
 import { PricingErrorCode, pricingError } from '../../pricing.errors'
 import { staffIdFor } from '../../pricing.staff'
 import { CreateExpenseDto } from './dto/create-expense.dto'
@@ -8,7 +9,10 @@ import { UpdateExpenseDto } from './dto/update-expense.dto'
 
 @Injectable()
 export class ExpenseService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
 
   findAll({ month, category }: ListExpensesDto = {}) {
     return this.db.expense.findMany({
@@ -27,21 +31,63 @@ export class ExpenseService {
 
   async create(dto: CreateExpenseDto, userId: string) {
     const staffId = await staffIdFor(this.db, userId)
-    return this.db.expense.create({ data: { ...dto, incurred_on: new Date(dto.incurred_on), created_by: staffId } })
-  }
-
-  async update(id: string, dto: UpdateExpenseDto) {
-    await this.findManual(id)
-    return this.db.expense.update({
-      where: { id },
-      data: { ...dto, ...(dto.incurred_on && { incurred_on: new Date(dto.incurred_on) }), updated_at: new Date() },
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.expense.create({ data: { ...dto, incurred_on: new Date(dto.incurred_on), created_by: staffId } })
+      await this.audit.write(
+        userId,
+        {
+          action: 'create',
+          entityType: 'expense',
+          entityId: row.id,
+          summary: `Created expense ${row.description ?? row.category}`,
+          after: row,
+        },
+        tx,
+      )
+      return row
     })
   }
 
-  async remove(id: string) {
-    await this.findManual(id)
+  async update(id: string, dto: UpdateExpenseDto, userId: string) {
+    const existing = await this.findManual(id)
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.expense.update({
+        where: { id },
+        data: { ...dto, ...(dto.incurred_on && { incurred_on: new Date(dto.incurred_on) }), updated_at: new Date() },
+      })
+      await this.audit.write(
+        userId,
+        {
+          action: 'update',
+          entityType: 'expense',
+          entityId: id,
+          summary: `Updated expense ${row.description ?? row.category}`,
+          before: existing,
+          after: row,
+        },
+        tx,
+      )
+      return row
+    })
+  }
+
+  async remove(id: string, userId: string) {
+    const existing = await this.findManual(id)
     const now = new Date()
-    await this.db.expense.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+    await this.db.$transaction(async (tx) => {
+      await tx.expense.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+      await this.audit.write(
+        userId,
+        {
+          action: 'delete',
+          entityType: 'expense',
+          entityId: id,
+          summary: `Deleted expense ${existing.description ?? existing.category}`,
+          before: existing,
+        },
+        tx,
+      )
+    })
   }
 
   // An expense from "mark paid" mirrors its paid schedule, so it is fixed through the schedule, never directly.

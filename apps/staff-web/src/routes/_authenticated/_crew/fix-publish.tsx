@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { BuildPairingsPage } from '@staff-web/features/crew-rostering/build-pairings/build-pairing'
+import { FixPublishPage } from '@staff-web/features/crew-rostering/fix-publish/fix-publish'
 import { parseWindowSearch } from '@staff-web/features/crew-rostering/shared/window-search'
 
 // `dateFrom`, `dateTo` and `base` carry the window between the wizard pages.
-export const Route = createFileRoute('/_authenticated/build-pairings')({
+export const Route = createFileRoute('/_authenticated/_crew/fix-publish')({
   validateSearch: parseWindowSearch,
-  component: BuildPairingsPage,
+  component: FixPublishPage,
 })

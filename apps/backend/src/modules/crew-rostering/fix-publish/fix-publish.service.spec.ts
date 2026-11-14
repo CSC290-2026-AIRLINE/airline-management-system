@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import type { AssignCrewService } from '../assign-crew/assign-crew.service'
 import { FixPublishService } from './fix-publish.service'
 
@@ -8,6 +9,14 @@ jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
 
 const RUN = '7c1b9d2e-3a44-4c1f-8f0a-5b6d7e8f9a00'
+
+/** Stands in for Feature 15's `AuditService`: the actor is resolved up front and every row goes through `write`. */
+function fakeAudit() {
+  return {
+    resolveActor: jest.fn().mockResolvedValue({ type: 'staff', id: 'user-1', role: 'ops' }),
+    write: jest.fn().mockResolvedValue({ id: 'audit-1', seq: '1' }),
+  }
+}
 
 /** Just enough of `DbService` for `publish`, with the order of lock, re-check and writes recorded. */
 function setupPublish(
@@ -24,7 +33,6 @@ function setupPublish(
     rule_break: { count: jest.fn().mockResolvedValue(open), deleteMany: jest.fn() },
     pairing_leg_assignment: { deleteMany: jest.fn() },
     roster_run: { updateMany: jest.fn().mockResolvedValue({ count: flipped }) },
-    audit_log: { create: jest.fn() },
   }
   const db = {
     roster_run: { findUnique: jest.fn().mockResolvedValue({ id: RUN, status: 'draft' }) },
@@ -38,35 +46,40 @@ function setupPublish(
     // Pairings nobody was assigned to are outside the batch.
     loadRun: jest.fn().mockResolvedValue({ outsideBatch }),
   }
-  const service = new FixPublishService(db as unknown as DbService, assign as unknown as AssignCrewService)
+  const audit = fakeAudit()
+  const service = new FixPublishService(
+    db as unknown as DbService,
+    assign as unknown as AssignCrewService,
+    audit as unknown as AuditService,
+  )
   jest
     .spyOn(service as unknown as { buildState: () => Promise<unknown> }, 'buildState')
     .mockResolvedValue({ rosterRun: { status: 'published' } })
-  return { service, tx, calls }
+  return { service, tx, calls, audit }
 }
 
 describe('FixPublishService.publish', () => {
   it('locks the run, re-checks it under the lock, then flips it once', async () => {
-    const { service, tx, calls } = setupPublish()
+    const { service, tx, calls, audit } = setupPublish()
 
     await service.publish(RUN, 'user-1')
 
     expect(calls).toEqual(['lock', 'check'])
     expect(tx.roster_run.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: RUN, status: 'draft' } }))
-    expect(tx.audit_log.create).toHaveBeenCalledTimes(1)
+    expect(audit.resolveActor).toHaveBeenCalledWith('user-1')
+    expect(audit.write).toHaveBeenCalledTimes(1)
+    expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ sourceFeature: '8', action: 'status_change' }), tx)
   })
 
   it('publishes only the pairings that were assigned crew, and returns the others to drafts', async () => {
-    const { service, tx } = setupPublish({ outsideBatch: ['p-2', 'p-3'] })
+    const { service, tx, audit } = setupPublish({ outsideBatch: ['p-2', 'p-3'] })
 
     await service.publish(RUN, 'user-1')
 
     expect(tx.rule_break.deleteMany).toHaveBeenCalledWith({ where: { roster_run_id: RUN, pairing_id: { in: ['p-2', 'p-3'] } } })
     expect(tx.pairing_leg_assignment.deleteMany).toHaveBeenCalledWith({ where: { pairing_id: { in: ['p-2', 'p-3'] } } })
     expect(tx.roster_run_pairing.deleteMany).toHaveBeenCalledWith({ where: { roster_run_id: RUN, pairing_id: { in: ['p-2', 'p-3'] } } })
-    expect(tx.audit_log.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ after: expect.objectContaining({ returned_to_drafts: 2 }) }) }),
-    )
+    expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ after: expect.objectContaining({ returned_to_drafts: 2 }) }), tx)
   })
 
   it('touches nothing when every pairing is in the batch', async () => {
@@ -93,18 +106,18 @@ describe('FixPublishService.publish', () => {
   })
 
   it('finds a run published by someone else while it waited for the lock, and stops before re-checking', async () => {
-    const { service, tx, calls } = setupPublish({ locked: { status: 'published' } })
+    const { service, calls, audit } = setupPublish({ locked: { status: 'published' } })
 
     await expect(service.publish(RUN, 'user-1')).rejects.toThrow(ConflictException)
     expect(calls).toEqual(['lock'])
-    expect(tx.audit_log.create).not.toHaveBeenCalled()
+    expect(audit.write).not.toHaveBeenCalled()
   })
 
   it('writes no second audit line when the guarded flip changes nothing', async () => {
-    const { service, tx } = setupPublish({ flipped: 0 })
+    const { service, audit } = setupPublish({ flipped: 0 })
 
     await expect(service.publish(RUN, 'user-1')).rejects.toThrow('already published')
-    expect(tx.audit_log.create).not.toHaveBeenCalled()
+    expect(audit.write).not.toHaveBeenCalled()
   })
 })
 
@@ -137,7 +150,7 @@ describe('FixPublishService cover rules', () => {
   }
 
   function judge(who: ReturnType<typeof member>, world: Record<string, unknown> = {}) {
-    const service = new FixPublishService({} as DbService, {} as AssignCrewService)
+    const service = new FixPublishService({} as DbService, {} as AssignCrewService, {} as AuditService)
     const candidateFor = (
       service as unknown as {
         candidateFor: (m: unknown, p: unknown, w: unknown) => { allowed: boolean; checks: { ok: boolean; reason?: string }[] }
@@ -235,7 +248,7 @@ describe('FixPublishService swap, who comes off', () => {
 
   type Internals = { leavingRows: (plan: unknown, world: unknown) => { id: string }[] }
   const leaving = (plan: unknown, over: Record<string, unknown> = {}) => {
-    const service = new FixPublishService({} as DbService, {} as AssignCrewService)
+    const service = new FixPublishService({} as DbService, {} as AssignCrewService, {} as AuditService)
     return (service as unknown as Internals).leavingRows(plan, { ...world, ...over }).map((item) => item.id)
   }
 
@@ -268,10 +281,9 @@ describe('FixPublishService swap, who comes off', () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       pairing_leg_assignment: { updateMany: jest.fn(), createMany: jest.fn() },
-      audit_log: { create: jest.fn() },
     }
     const db = { $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)) }
-    const service = new FixPublishService(db as unknown as DbService, {} as AssignCrewService)
+    const service = new FixPublishService(db as unknown as DbService, {} as AssignCrewService, fakeAudit() as unknown as AuditService)
     const internals = service as unknown as Record<'readBreak' | 'loadWorld' | 'planFor' | 'check', unknown>
     jest.spyOn(internals as { readBreak: () => Promise<unknown> }, 'readBreak').mockResolvedValue({
       id: 'brk-1',

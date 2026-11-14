@@ -182,7 +182,7 @@ function StatePill({ allowed, selected, best, compact }: { allowed: boolean; sel
   }
   if (compact) {
     return best ? (
-      <span className="shrink-0 rounded-full bg-secondary/30 px-2.5 py-0.5 text-[11px] font-bold text-amber-ink">Best match</span>
+      <span className="shrink-0 rounded-full bg-gold/30 px-2.5 py-0.5 text-[11px] font-bold text-amber-ink">Best match</span>
     ) : null
   }
   return selected ? (

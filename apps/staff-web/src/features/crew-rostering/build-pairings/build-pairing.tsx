@@ -7,13 +7,11 @@
  */
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MOCK_SIMULATION_CLOCK, MOCK_SIMULATION_CLOCK_SHORT } from './types/mock-data'
 import { suggestFixes, validatePairing } from './types/pairing-engine'
 import { useBuildPairings } from './types/use-build-pairings'
 import { useMediaQuery } from './types/use-media-query'
 import type { FlightLeg, Pairing } from './types/types'
-import { RosterRunBadge, SidebarNav, WizardSteps, MobileTopBar } from '../shared/app-shell'
-import { useAccount } from '../shared/use-account'
+import { RosterRunBadge, WizardSteps } from '../shared/app-shell'
 import { BuildSettingsCard, NoPairingsEmptyState, NoSelectionEmptyState } from './components/build-settings-card'
 import { GeneratedPairingsLabel, PairingCard } from './components/pairing-card'
 import { InspectorSheet } from './components/inspector-sheet'
@@ -26,7 +24,6 @@ import { DeletePairingModal } from './modals/delete-pairing-modal'
 
 export function BuildPairingsPage() {
   const state = useBuildPairings()
-  const account = useAccount()
   const navigate = useNavigate()
   const [editing, setEditing] = useState<Pairing | null>(null)
   const [deleting, setDeleting] = useState<Pairing | null>(null)
@@ -72,17 +69,9 @@ export function BuildPairingsPage() {
   }
 
   return (
-    <div className="crew-shell flex min-h-screen w-full flex-col bg-page-bg lg:flex-row">
-      <SidebarNav activeItem="roster-runs" simulationClock={MOCK_SIMULATION_CLOCK} userName={account.full} onSignOut={account.signOut} />
-      <MobileTopBar
-        simulationClockShort={MOCK_SIMULATION_CLOCK_SHORT}
-        userName={account.short}
-        activeItem="roster-runs"
-        onSignOut={account.signOut}
-      />
-
+    <div className="flex min-w-0 flex-1 flex-col">
       {/* Bottom padding clears the fixed commit footer on small screens. */}
-      <main className="flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 pb-28 sm:px-6 sm:py-7 lg:px-9 lg:pb-9">
+      <div className="flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 pb-28 sm:px-6 sm:py-7 lg:px-9 lg:pb-9">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase sm:text-3xl">Build pairings</h1>
@@ -178,7 +167,7 @@ export function BuildPairingsPage() {
             </div>
           </>
         )}
-      </main>
+      </div>
 
       {state.hasGenerated && state.pairings.length > 0 && (
         <CommitFooter metrics={state.metrics} canContinue={state.continueWindow !== null} onCommit={commit} onContinue={continueToAssign} />

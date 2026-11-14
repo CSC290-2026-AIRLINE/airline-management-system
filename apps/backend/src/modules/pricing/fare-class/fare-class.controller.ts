@@ -1,4 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreateFareClassDto } from './dto/create-fare-class.dto'
 import { UpdateFareClassDto } from './dto/update-fare-class.dto'
 import { UpdateFareRuleDto } from './dto/update-fare-rule.dto'
@@ -21,13 +23,13 @@ export class FareClassController {
   }
 
   @Post()
-  create(@Body() dto: CreateFareClassDto) {
-    return this.fareClassService.create(dto)
+  create(@Body() dto: CreateFareClassDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.fareClassService.create(dto, user.id)
   }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFareClassDto) {
-    return this.fareClassService.update(id, dto)
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFareClassDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.fareClassService.update(id, dto, user.id)
   }
 
   @Get(':id/rule')
@@ -36,14 +38,14 @@ export class FareClassController {
   }
 
   @Put(':id/rule')
-  updateRule(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFareRuleDto) {
-    return this.fareClassService.updateRule(id, dto)
+  updateRule(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFareRuleDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.fareClassService.updateRule(id, dto, user.id)
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.fareClassService.remove(id)
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.fareClassService.remove(id, user.id)
   }
 }
 

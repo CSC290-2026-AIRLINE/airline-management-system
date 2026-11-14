@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { SetupCrewPage } from '@staff-web/features/crew-rostering/setup-crew/setup-crew'
 
-export const Route = createFileRoute('/_authenticated/setup-crew/$crewId')({
+export const Route = createFileRoute('/_authenticated/_crew/setup-crew/$crewId')({
   component: RouteComponent,
 })
 

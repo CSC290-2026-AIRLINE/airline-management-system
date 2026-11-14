@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
+import { AuditService, type AuditWriteInput } from '@backend/modules/admin-console/audit/audit.service'
 import {
   AssignCrewService,
   type Context,
@@ -32,11 +33,13 @@ import { isoDate, shortName } from '../crew-format'
  *  · **A sick call is a removal, not a rule.** There is no `SICK_CALL` rule; taking
  *    somebody off leaves a seat empty, which the check reports as `NO_LEGAL_CREW`
  *    (or `POLICE_MIN`), with the person who came off read back from the old row.
- *  · **Overrides and swaps go to `audit_log`.** Its `action` is a fixed list, so both
- *    are `update`, with the detail in `summary`, `reason` and `after`. `actor_id` is the
- *    caller's `user.id`; `rule_break.overridden_by` is their `staff.id`.
- *  · Business timestamps should come from the simulation clock; feature 1 has no clock
- *    service yet, so the server clock stands in.
+ *  · **Swaps, overrides, sick calls and publish go to `audit_log`** through Feature 15's
+ *    `AuditService`, in the same transaction as the change. Its `action` is a fixed list,
+ *    so the first three are `update`, with the detail in `summary`, `reason` and `after`.
+ *    The actor is the caller's `user.id` with their role; `rule_break.overridden_by` is
+ *    their `staff.id`. The audit row's time comes from the simulation clock.
+ *  · The roster's own business timestamps (`assigned_at`, `resolved_at`, `published_at`)
+ *    still use the server clock.
  */
 
 export type Severity = 'law' | 'company'
@@ -292,7 +295,17 @@ export class FixPublishService {
   constructor(
     private readonly db: DbService,
     private readonly assignCrew: AssignCrewService,
+    private readonly audit: AuditService,
   ) {}
+
+  /** One Feature 8 audit row, written with the caller's transaction client so it commits or rolls back with the change. */
+  private async writeAudit(
+    tx: Prisma.TransactionClient,
+    actor: Awaited<ReturnType<AuditService['resolveActor']>>,
+    entry: Omit<AuditWriteInput, 'actor' | 'sourceFeature'>,
+  ): Promise<void> {
+    await this.audit.write({ actor, sourceFeature: '8', ...entry }, tx)
+  }
 
   /** The run Build pairings committed for exactly this base and window, with everything the page shows. */
   async getState(params: WindowParams): Promise<FixPublishState> {
@@ -336,6 +349,7 @@ export class FixPublishService {
     const fullName = `${chosen.first_name} ${chosen.last_name}`
     const role = plan.role
 
+    const actor = await this.audit.resolveActor(actorUserId)
     const outgoing = await this.db.$transaction(async (tx) => {
       // Run first, then crew: publish takes the run lock alone, so the two can never wait on each other in a circle.
       await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${brk.roster_run_id}::uuid FOR UPDATE`
@@ -371,19 +385,13 @@ export class FixPublishService {
       const left = [...new Set(leaving.map((row) => fresh.crewById.get(row.crewId)).filter((member): member is CrewDbRow => !!member))]
       const names = left.map((member) => shortName(member))
       const summary = `${shortName(chosen)} ${names.length > 0 ? `replaced ${names.join(', ')}` : 'added'} on ${pairingCode} · ${flightNumber}`
-      await tx.audit_log.create({
-        data: {
-          occurred_at: new Date(),
-          actor_type: 'staff',
-          actor_id: actorUserId ?? null,
-          source_feature: '8',
-          action: 'update',
-          entity_type: 'rule_break',
-          entity_id: breakId,
-          summary,
-          before: { rule: brk.rule, detail: brk.detail, crew: left.map((member) => member.id) },
-          after: { resolution: 'swap', short: CLOSED_VERB[role], crew: chosen.id, role, legs: scopeIds },
-        },
+      await this.writeAudit(tx, actor, {
+        action: 'update',
+        entityType: 'rule_break',
+        entityId: breakId,
+        summary,
+        before: { rule: brk.rule, detail: brk.detail, crew: left.map((member) => member.id) },
+        after: { resolution: 'swap', short: CLOSED_VERB[role], crew: chosen.id, role, legs: scopeIds },
       })
       return names
     })
@@ -416,26 +424,21 @@ export class FixPublishService {
     const world = await this.loadWorld(this.db, brk.roster_run_id)
     const flightNumber = world.legs.get(brk.pairing_leg_id)?.flightNumber ?? ''
 
+    const actor = await this.audit.resolveActor(actorUserId)
     await this.db.$transaction(async (tx) => {
       const done = await tx.rule_break.updateMany({
         where: { id: breakId, resolved_at: null },
         data: { resolved_at: new Date(), resolution: 'overridden', overridden_by: staff.id, override_reason: reason },
       })
       if (done.count === 0) throw new ConflictException('This item was closed while you were writing the reason')
-      await tx.audit_log.create({
-        data: {
-          occurred_at: new Date(),
-          actor_type: 'staff',
-          actor_id: actorUserId ?? null,
-          source_feature: '8',
-          action: 'update',
-          entity_type: 'rule_break',
-          entity_id: breakId,
-          summary: `${brk.rule} overridden on ${flightNumber}`,
-          reason,
-          before: { rule: brk.rule, detail: brk.detail },
-          after: { resolution: 'overridden', override_reason: reason },
-        },
+      await this.writeAudit(tx, actor, {
+        action: 'update',
+        entityType: 'rule_break',
+        entityId: breakId,
+        summary: `${brk.rule} overridden on ${flightNumber}`,
+        reason,
+        before: { rule: brk.rule, detail: brk.detail },
+        after: { resolution: 'overridden', override_reason: reason },
       })
     })
 
@@ -469,23 +472,18 @@ export class FixPublishService {
 
     const name = shortName(row.crew)
     const flightNumber = row.pairing_leg.flight.flight_number
+    const actor = await this.audit.resolveActor(actorUserId)
     await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
       await tx.pairing_leg_assignment.update({ where: { id: row.id }, data: { unassigned_at: new Date(), reason: input.reason } })
-      await tx.audit_log.create({
-        data: {
-          occurred_at: new Date(),
-          actor_type: 'staff',
-          actor_id: actorUserId ?? null,
-          source_feature: '8',
-          action: 'update',
-          entity_type: 'pairing_leg_assignment',
-          entity_id: row.id,
-          summary: `${name} came off ${flightNumber}`,
-          reason: input.reason,
-          before: { crew_id: input.memberId, role: row.role },
-          after: { unassigned: true },
-        },
+      await this.writeAudit(tx, actor, {
+        action: 'update',
+        entityType: 'pairing_leg_assignment',
+        entityId: row.id,
+        summary: `${name} came off ${flightNumber}`,
+        reason: input.reason,
+        before: { crew_id: input.memberId, role: row.role },
+        after: { unassigned: true },
       })
     })
 
@@ -509,6 +507,7 @@ export class FixPublishService {
     if (!run) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
     if (run.status === 'published') throw new ConflictException('This roster is already published')
 
+    const actor = await this.audit.resolveActor(actorUserId)
     await this.db.$transaction(
       async (tx) => {
         // The run row is locked before anything is read, so a swap or sick call cannot slip in between the check and
@@ -540,19 +539,13 @@ export class FixPublishService {
           data: { status: 'published', published_at: now, updated_at: now },
         })
         if (flipped.count === 0) throw new ConflictException('This roster is already published')
-        await tx.audit_log.create({
-          data: {
-            occurred_at: now,
-            actor_type: 'staff',
-            actor_id: actorUserId ?? null,
-            source_feature: '8',
-            action: 'status_change',
-            entity_type: 'roster_run',
-            entity_id: rosterRunId,
-            summary: 'Roster published',
-            before: { status: 'draft' },
-            after: { status: 'published', published_at: now.toISOString(), returned_to_drafts: outsideBatch.length },
-          },
+        await this.writeAudit(tx, actor, {
+          action: 'status_change',
+          entityType: 'roster_run',
+          entityId: rosterRunId,
+          summary: 'Roster published',
+          before: { status: 'draft' },
+          after: { status: 'published', published_at: now.toISOString(), returned_to_drafts: outsideBatch.length },
         })
       },
       { timeout: 30_000 },

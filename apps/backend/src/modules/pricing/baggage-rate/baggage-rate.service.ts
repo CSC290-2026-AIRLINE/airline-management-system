@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { PricingAudit } from '../pricing.audit'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
 import { CreateBaggageRateDto } from './dto/create-baggage-rate.dto'
 import { ListBaggageRatesDto } from './dto/list-baggage-rates.dto'
@@ -13,7 +14,10 @@ const INCLUDE_LABELS = {
 
 @Injectable()
 export class BaggageRateService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
 
   findAll(filter: ListBaggageRatesDto = {}) {
     return this.db.overweight_baggage_rate.findMany({
@@ -31,7 +35,7 @@ export class BaggageRateService {
     return rate
   }
 
-  async create(dto: CreateBaggageRateDto) {
+  async create(dto: CreateBaggageRateDto, userId: string) {
     const routeId = dto.route_id ?? null
     this.assertAllowanceBelowMax(dto.free_allowance_kg, dto.max_bag_kg ?? null)
     await this.assertFareClassLive(dto.fare_class_id)
@@ -40,13 +44,27 @@ export class BaggageRateService {
     }
     await this.assertPairFree(dto.fare_class_id, routeId)
     try {
-      return await this.db.overweight_baggage_rate.create({ data: { ...dto, route_id: routeId }, include: INCLUDE_LABELS })
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.overweight_baggage_rate.create({ data: { ...dto, route_id: routeId }, include: INCLUDE_LABELS })
+        await this.audit.write(
+          userId,
+          {
+            action: 'create',
+            entityType: 'overweight_baggage_rate',
+            entityId: row.id,
+            summary: `Created overweight baggage rate ${row.fare_class.code}`,
+            after: row,
+          },
+          tx,
+        )
+        return row
+      })
     } catch (error) {
       throw this.mapUniqueViolation(error)
     }
   }
 
-  async update(id: string, dto: UpdateBaggageRateDto) {
+  async update(id: string, dto: UpdateBaggageRateDto, userId: string) {
     const existing = await this.findOne(id)
     // Check the final combination, not just the fields that were sent.
     const fareClassId = dto.fare_class_id ?? existing.fare_class_id
@@ -64,10 +82,25 @@ export class BaggageRateService {
       await this.assertPairFree(fareClassId, routeId, id)
     }
     try {
-      return await this.db.overweight_baggage_rate.update({
-        where: { id },
-        data: { ...dto, updated_at: new Date() },
-        include: INCLUDE_LABELS,
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.overweight_baggage_rate.update({
+          where: { id },
+          data: { ...dto, updated_at: new Date() },
+          include: INCLUDE_LABELS,
+        })
+        await this.audit.write(
+          userId,
+          {
+            action: 'update',
+            entityType: 'overweight_baggage_rate',
+            entityId: id,
+            summary: `Updated overweight baggage rate ${row.fare_class.code}`,
+            before: existing,
+            after: row,
+          },
+          tx,
+        )
+        return row
       })
     } catch (error) {
       throw this.mapUniqueViolation(error)
@@ -75,10 +108,23 @@ export class BaggageRateService {
   }
 
   // Soft delete: the same fare class + route can be added again afterwards (the unique index only covers live rows).
-  async remove(id: string) {
-    await this.findOne(id)
+  async remove(id: string, userId: string) {
+    const existing = await this.findOne(id)
     const now = new Date()
-    await this.db.overweight_baggage_rate.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+    await this.db.$transaction(async (tx) => {
+      await tx.overweight_baggage_rate.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+      await this.audit.write(
+        userId,
+        {
+          action: 'delete',
+          entityType: 'overweight_baggage_rate',
+          entityId: id,
+          summary: `Deleted overweight baggage rate ${existing.fare_class.code}`,
+          before: existing,
+        },
+        tx,
+      )
+    })
   }
 
   // Charge for one bag: a rate for this route wins, otherwise the fare class default (route_id null).

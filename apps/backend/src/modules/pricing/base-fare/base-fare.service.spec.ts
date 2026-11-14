@@ -1,5 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit, runTransactionsOn } from '../pricing.testing'
 import { BaseFareService } from './base-fare.service'
 
 // The real DbService loads @nestjs/config (ESM only), which Jest cannot load. The tests never use it: they pass `db` below.
@@ -8,15 +10,26 @@ jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
 const ID = '11111111-1111-1111-1111-111111111111'
 const ROUTE_ID = '22222222-2222-2222-2222-222222222222'
 const FARE_CLASS_ID = '33333333-3333-3333-3333-333333333333'
-const baseFare = { id: ID, route_id: ROUTE_ID, fare_class_id: FARE_CLASS_ID, amount: 1500, deleted_at: null }
+const baseFare = {
+  id: ID,
+  route_id: ROUTE_ID,
+  fare_class_id: FARE_CLASS_ID,
+  amount: 1500,
+  deleted_at: null,
+  route: { origin: 'BKK', destination: 'CNX' },
+  fare_class: { code: 'Y', name: 'Economy', cabin: 'economy' },
+}
 const dto = { route_id: ROUTE_ID, fare_class_id: FARE_CLASS_ID, amount: 1500 }
 
 function codeOf(error: unknown) {
   return ((error as NotFoundException | ConflictException).getResponse() as { error: { code: string } }).error.code
 }
 
+const AUDIT_USER = 'user-1'
+
 describe('BaseFareService', () => {
   let service: BaseFareService
+  const audit = mockAudit()
   const db = {
     base_fare: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
     route: { findUnique: jest.fn(), findMany: jest.fn() },
@@ -25,7 +38,9 @@ describe('BaseFareService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
-    service = new BaseFareService(db as unknown as DbService)
+    audit.write.mockResolvedValue(undefined)
+    runTransactionsOn(db)
+    service = new BaseFareService(db as unknown as DbService, audit as unknown as PricingAudit)
   })
 
   // Happy-path lookups for create: route exists, fare class is live, pair is free.
@@ -73,15 +88,20 @@ describe('BaseFareService', () => {
     allowCreate()
     db.base_fare.create.mockResolvedValue(baseFare)
 
-    await expect(service.create(dto)).resolves.toEqual(baseFare)
+    await expect(service.create(dto, AUDIT_USER)).resolves.toEqual(baseFare)
     expect(db.base_fare.create).toHaveBeenCalledWith(expect.objectContaining({ data: dto }))
+    expect(audit.write).toHaveBeenCalledWith(
+      AUDIT_USER,
+      expect.objectContaining({ action: 'create', entityType: 'base_fare', entityId: ID, after: baseFare }),
+      db,
+    )
   })
 
   it('refuses an unknown route with ROUTE_NOT_FOUND', async () => {
     allowCreate()
     db.route.findUnique.mockResolvedValue(null)
 
-    const error = await service.create(dto).catch((e: unknown) => e)
+    const error = await service.create(dto, AUDIT_USER).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
     expect(codeOf(error)).toBe('ROUTE_NOT_FOUND')
@@ -92,7 +112,7 @@ describe('BaseFareService', () => {
     allowCreate()
     db.fare_class.findFirst.mockResolvedValue(null)
 
-    const error = await service.create(dto).catch((e: unknown) => e)
+    const error = await service.create(dto, AUDIT_USER).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
     expect(codeOf(error)).toBe('FARE_CLASS_NOT_FOUND')
@@ -103,7 +123,7 @@ describe('BaseFareService', () => {
     allowCreate()
     db.base_fare.findFirst.mockResolvedValue({ id: ID })
 
-    const error = await service.create(dto).catch((e: unknown) => e)
+    const error = await service.create(dto, AUDIT_USER).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
     expect(codeOf(error)).toBe('BASE_FARE_EXISTS')
@@ -114,28 +134,36 @@ describe('BaseFareService', () => {
     allowCreate()
     db.base_fare.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
 
-    const error = await service.create(dto).catch((e: unknown) => e)
+    const error = await service.create(dto, AUDIT_USER).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
     expect(codeOf(error)).toBe('BASE_FARE_EXISTS')
   })
 
   it('updates only the amount and sets updated_at', async () => {
+    const updated = { ...baseFare, amount: 1800 }
     db.base_fare.findFirst.mockResolvedValueOnce(baseFare)
+    db.base_fare.update.mockResolvedValue(updated)
 
-    await service.update(ID, { amount: 1800 })
+    await service.update(ID, { amount: 1800 }, AUDIT_USER)
 
     expect(db.base_fare.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: ID }, data: { amount: 1800, updated_at: expect.any(Date) } }),
+    )
+    expect(audit.write).toHaveBeenCalledWith(
+      AUDIT_USER,
+      expect.objectContaining({ action: 'update', entityId: ID, before: baseFare, after: updated }),
+      db,
     )
   })
 
   it('soft deletes and never hard deletes', async () => {
     db.base_fare.findFirst.mockResolvedValue(baseFare)
 
-    await service.remove(ID)
+    await service.remove(ID, AUDIT_USER)
 
     expect(db.base_fare.update).toHaveBeenCalledWith({ where: { id: ID }, data: expect.objectContaining({ deleted_at: expect.any(Date) }) })
     expect(db.base_fare.delete).not.toHaveBeenCalled()
+    expect(audit.write).toHaveBeenCalledWith(AUDIT_USER, expect.objectContaining({ action: 'delete', entityId: ID, before: baseFare }), db)
   })
 })

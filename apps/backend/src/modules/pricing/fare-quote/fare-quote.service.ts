@@ -11,6 +11,7 @@ import { DbService } from '@backend/db/db.service'
 import { FareClassService } from '../fare-class/fare-class.service'
 import { CurrencyRateService } from '../currency-rate/currency-rate.service'
 import { FARE_RULE_FIELDS, SEAT_TYPES, type SeatType } from '../pricing.constants'
+import { PricingAudit } from '../pricing.audit'
 import { PricingErrorCode, pricingError } from '../pricing.errors'
 import { PricingRuleService } from '../pricing-rule/pricing-rule.service'
 import { PromoCodeService } from '../promo-code/promo-code.service'
@@ -69,6 +70,7 @@ export class FareQuoteService {
     private readonly settings: SettingService,
     private readonly seatAvailability: SeatAvailability,
     private readonly currencyRates: CurrencyRateService,
+    private readonly audit: PricingAudit,
   ) {}
 
   // Returns the live shared quote for this key, or works out and saves a new one. The price is shared by everyone
@@ -76,7 +78,7 @@ export class FareQuoteService {
   //
   // Every check that can refuse a sale runs before the reuse lookup, even though the guide lists some of them under the
   // calculation: a saved quote must not keep selling a flight just cancelled or a promo just switched off.
-  async create(dto: CreateFareQuoteDto) {
+  async create(dto: CreateFareQuoteDto, userId: string | null = null) {
     const now = simNow()
     const seatType = this.checkSeatType(dto.seat_type)
     await this.checkDisplayCurrency(dto.display_currency)
@@ -158,7 +160,7 @@ export class FareQuoteService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify(key)}, 0))`
       const winner = await this.findLiveQuote(tx, key, now)
       if (winner) return winner
-      return tx.fare_quote.create({
+      const created = await tx.fare_quote.create({
         data: {
           ...key,
           currency,
@@ -172,6 +174,19 @@ export class FareQuoteService {
         },
         include: WITH_LINES,
       })
+      // Only a quote that was really created is audited; a reused one (the winner above) is not a new change.
+      await this.audit.write(
+        userId,
+        {
+          action: 'create',
+          entityType: 'fare_quote',
+          entityId: created.id,
+          summary: `Priced a fare quote of ${totalCents / 100} ${currency}`,
+          after: { ...key, currency, total_amount: totalCents / 100, expires_at: created.expires_at },
+        },
+        tx,
+      )
+      return created
     })
     return presentQuote(saved, await this.displayTotal(saved, dto.display_currency))
   }

@@ -9,7 +9,7 @@ import type { CompanyRule } from '../types/types'
  */
 export function CompanyRulesCard({ rules }: { rules: readonly CompanyRule[] }) {
   return (
-    <section className="rounded-xl border border-secondary/35 bg-secondary/12 px-4 py-4 sm:px-5">
+    <section className="rounded-xl border border-gold/35 bg-gold/12 px-4 py-4 sm:px-5">
       <h2 className="text-base font-bold text-primary-text">Company rules</h2>
       <p className="mt-0.5 text-xs text-primary-text/60">
         Local crew and police coverage can be overridden only with a written reason; Feature 15 records the decision.
@@ -19,7 +19,7 @@ export function CompanyRulesCard({ rules }: { rules: readonly CompanyRule[] }) {
         {rules.map((rule) => (
           <li
             key={rule.id}
-            className="inline-flex items-center gap-2 rounded-full bg-secondary/25 px-3 py-1.5 text-xs font-medium text-btn-yellow-hover"
+            className="inline-flex items-center gap-2 rounded-full bg-gold/25 px-3 py-1.5 text-xs font-medium text-btn-yellow-hover"
           >
             {rule.label}
             {rule.code && (
