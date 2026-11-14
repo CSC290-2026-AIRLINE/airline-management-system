@@ -54,7 +54,7 @@ export function refundFull(
 }
 
 // Requirements say to fall back to the reserve when baggage weight is unknown
-export function loadedBaggageKg(flightId: string): null {
+export function loadedBaggageKg(flightId: string): number | null {
   void flightId
   return null
 }
