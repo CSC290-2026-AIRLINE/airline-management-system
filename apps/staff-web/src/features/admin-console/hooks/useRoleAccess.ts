@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { RoleApiError } from '../api/roles'
+import { ApiError } from '../api/fetch'
 import type { RoleSummary, RoleScreensResponse, ScreenGroup } from '../types'
 
 interface UseRoleAccessState {
@@ -11,6 +12,8 @@ interface UseRoleAccessState {
   roles: RoleSummary[]
   /** screen_ids saved for the currently-selected role */
   granted: Set<string>
+  /** Set when the selected role came back `ROLE_NOT_FOUND` (it was removed since the list loaded). */
+  missingRoleId: string | null
 }
 
 /**
@@ -19,8 +22,19 @@ interface UseRoleAccessState {
  */
 function statusOf(e: unknown): number | undefined {
   if (e instanceof RoleApiError) return e.status
+  if (e instanceof ApiError) return e.status
   const m = /^\s*(\d{3})\b/.exec(e instanceof Error ? e.message : '')
   return m ? Number(m[1]) : undefined
+}
+
+/**
+ * The error code of a failed request, whichever client threw it — the Role access client answers with its own
+ * `RoleApiError`, the shared screen client with `ApiError`. Both carry the server's `code`.
+ */
+function codeOf(e: unknown): string | null {
+  if (e instanceof RoleApiError) return e.code
+  if (e instanceof ApiError) return e.code
+  return null
 }
 
 /**
@@ -44,6 +58,7 @@ export function useRoleAccess(
     screens: [],
     roles: [],
     granted: new Set(),
+    missingRoleId: null,
   })
   const [loadedRoleId, setLoadedRoleId] = useState<string | null>(null)
   /** Bumped by `reload()`; both fetch effects depend on it, so Retry refetches without a page reload. */
@@ -95,14 +110,15 @@ export function useRoleAccess(
       try {
         const r = await getRoleScreens(roleId)
         if (cancelled) return
-        setState((prev) => ({ ...prev, granted: new Set(r.screen_ids) }))
+        setState((prev) => ({ ...prev, granted: new Set(r.screen_ids), missingRoleId: null }))
       } catch (e: unknown) {
         if (cancelled) return
-        setState((prev) => ({
-          ...prev,
-          error: e instanceof Error ? e.message : String(e),
-          status: statusOf(e),
-        }))
+        // A role removed since the list loaded is not a broken page: the page says so and offers the list again.
+        if (codeOf(e) === 'ROLE_NOT_FOUND') {
+          setState((prev) => ({ ...prev, granted: new Set(), missingRoleId: roleId }))
+          return
+        }
+        setState((prev) => ({ ...prev, error: e instanceof Error ? e.message : String(e), status: statusOf(e) }))
       }
     })()
     return () => {
@@ -126,7 +142,7 @@ export function useRoleAccess(
 
   /** Refetch the registry and the selected role's grants, showing the loading state again. */
   function reload(): void {
-    setState((prev) => ({ ...prev, loading: true, error: null, status: undefined }))
+    setState((prev) => ({ ...prev, loading: true, error: null, status: undefined, missingRoleId: null }))
     setReloadKey((k) => k + 1)
   }
 

@@ -28,6 +28,25 @@ export interface RoleSummary {
   staff_count: number
 }
 
+/** Response of `POST /admin/screens`. `changed: false` means the screen was already like this: nothing was written. */
+export interface RegisterScreenResult {
+  ok: true
+  changed: boolean
+  screen: ScreenDto
+  /** `audit_log.seq` of the row this change wrote. Absent when `changed` is false. */
+  audit_seq?: string
+}
+
+/** Response of `GET /admin/staff/:id/screens` — the menu one staff member gets. */
+export interface StaffScreensDto {
+  staff_id: string
+  /** `false` when the account is switched off: they cannot sign in, so they see nothing at all. */
+  active: boolean
+  role: { id: string; code: string; name: string; is_admin: boolean }
+  /** Active screens their role opens, sorted by feature then code. */
+  screens: ScreenDto[]
+}
+
 /** Body of `GET /admin/roles/:id/screens`. */
 export interface RoleScreensDto {
   role_id: string
@@ -69,8 +88,8 @@ export interface AuditEntryDto {
   summary: string | null
   reason: string | null
   /**
-   * Null when `is_sensitive` is true (the row exists but the writer asked us to hide it). The list endpoint never
-   * returns the unmasked value.
+   * In the list: `null` when `is_sensitive` is true. On the entry endpoint: the masked copy (sensitive values read
+   * `[masked]`). Neither endpoint ever returns an unmasked sensitive value.
    */
   before: unknown
   after: unknown

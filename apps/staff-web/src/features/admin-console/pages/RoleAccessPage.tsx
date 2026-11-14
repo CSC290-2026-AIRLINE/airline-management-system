@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CircleAlert, CircleCheck, Eye, Plus, X } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
@@ -12,6 +12,7 @@ import { TooltipProvider } from '@staff-web/components/ui/tooltip'
 import { cn } from '@staff-web/lib/utils'
 import { useListScreens } from '../api/screens'
 import { useRoleApi, type CreateRoleBody } from '../api/roles'
+import { errorText } from '../api/fetch'
 import { useStaffApi } from '../api/staff'
 import { useRoleAccess } from '../hooks/useRoleAccess'
 import { buildGroups, filterGroups } from '../screen-groups'
@@ -22,7 +23,7 @@ import { NoAccessScreen } from '../components/NoAccessScreen'
 import { RoleList } from '../components/RoleList'
 import { ScreenMatrix } from '../components/ScreenMatrix'
 import { SidebarPreview } from '../components/SidebarPreview'
-import type { RoleSummary, ScreenKind, StaffRow } from '../types'
+import type { RoleSummary, ScreenKind, StaffRow, StaffScreensResponse } from '../types'
 
 /* Helpers --------------------------------------------------------------- */
 
@@ -93,6 +94,13 @@ export function RoleAccessPage() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewStaffId, setPreviewStaffId] = useState<string | null>(null)
+  /** The chosen person's menu, from `GET /api/admin/staff/:id/screens`. `id` says whose answer it is. */
+  const [previewMenu, setPreviewMenu] = useState<{
+    id: string | null
+    loading: boolean
+    data: StaffScreensResponse | null
+    error: string | null
+  }>({ id: null, loading: false, data: null, error: null })
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -184,14 +192,42 @@ export function RoleAccessPage() {
 
   /* What a staff member with this role can actually open, mirroring the policy `GET /api/me/screens` applies on the
      server: core screens for everyone, admin screens for an `is_admin` role, assignable screens only with a grant.
-     Saved grants only — the dialog says unsaved changes are not included. */
-  const previewSees = useMemo(() => {
+     Saved grants only — the dialog says unsaved changes are not included. This is the fallback for the role itself;
+     the chosen person's real menu (below) wins when there is one. */
+  const roleScreens = useMemo(() => {
     const role = currentRole
     if (!role) return []
     return registry.screens.flatMap((g) =>
       g.screens.filter((s) => (s.kind === 'core' || role.is_admin ? true : s.kind === 'admin' ? false : registry.granted.has(s.id))),
     )
   }, [currentRole, registry.granted, registry.screens])
+
+  /* The chosen person's own menu, worked out on the server (`GET /api/admin/staff/:id/screens`) with the same rules
+     as their own `GET /api/me/screens`. A new person resets the answer while rendering; the effect fetches it. */
+  const previewWanted = previewOpen ? previewStaffId : null
+  if (previewWanted !== previewMenu.id) {
+    setPreviewMenu({ id: previewWanted, loading: !!previewWanted, data: null, error: null })
+  }
+  useEffect(() => {
+    if (!previewWanted) return
+    let cancelled = false
+    staffApi
+      .screens(previewWanted)
+      .then((data) => {
+        if (!cancelled) setPreviewMenu({ id: previewWanted, loading: false, data, error: null })
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setPreviewMenu({ id: previewWanted, loading: false, data: null, error: errorText(e) })
+      })
+    return () => {
+      cancelled = true
+    }
+    // `staffApi` closes over `fetchWithAuth`, recreated every render; see `useStaffApi`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewWanted])
+
+  /** The person's own menu when the server answered, the role's screens otherwise. */
+  const previewSees = previewMenu.data?.screens ?? roleScreens
 
   /* Save — the whole grant set goes to the server; there is no per-screen PATCH. */
   async function save() {
@@ -291,6 +327,26 @@ export function RoleAccessPage() {
           {notice.tone === 'error' ? <CircleAlert aria-hidden="true" /> : <CircleCheck aria-hidden="true" />}
           <AlertTitle>{notice.title}</AlertTitle>
           <AlertDescription className="text-current">{notice.body}</AlertDescription>
+        </Alert>
+      )}
+
+      {registry.missingRoleId && registry.missingRoleId === roleId && (
+        <Alert variant="destructive" className="mb-4 border-danger-line/40 bg-danger-soft">
+          <CircleAlert aria-hidden="true" />
+          <AlertDescription className="flex flex-wrap items-center gap-3 text-current">
+            Role not found. It may have been removed since this page loaded.
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                selectRole(null)
+                registry.reload()
+              }}
+            >
+              Reload roles
+            </Button>
+          </AlertDescription>
         </Alert>
       )}
 
@@ -494,7 +550,13 @@ export function RoleAccessPage() {
           <p className="text-xs font-semibold text-muted-foreground uppercase">
             {previewPerson ? `${previewPerson.first_name} ${previewPerson.last_name}` : (currentRole?.name ?? 'This role')} sees
           </p>
-          <SidebarPreview screens={previewSees} roleName={currentRole?.name ?? 'This role'} />
+          {previewMenu.error ? (
+            <p className="text-sm text-danger">Could not load that person’s menu — {previewMenu.error}</p>
+          ) : previewMenu.loading ? (
+            <p className="text-sm text-muted-foreground">Working out their menu…</p>
+          ) : (
+            <SidebarPreview screens={previewSees} roleName={currentRole?.name ?? 'This role'} />
+          )}
           <p className="text-xs text-muted-foreground">Unsaved changes on this page aren’t included until you save.</p>
           <div className="flex justify-end">
             <Button type="button" className="h-auto bg-primary py-3 text-sm text-white" onClick={() => setPreviewOpen(false)}>

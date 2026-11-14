@@ -4,8 +4,6 @@ import {
   Delete,
   Get,
   HttpCode,
-  HttpStatus,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -15,37 +13,26 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common'
-import type { ValidationError } from '@nestjs/common'
 import { AdminConsoleService } from './admin-console.service'
 import { AdminConsoleGuard } from './guards/admin-console.guard'
-import type { AdminPrincipal } from './guards/admin-console.guard'
 import { Admin } from './decorators/admin.decorator'
-import { RegisterScreenDto } from './dto/register-screen.dto'
+import type { AdminPrincipal } from './guards/admin-console.guard'
+import { RegisterScreenRequestDto } from './dto/register-screen.dto'
 import { ReplaceRoleScreensDto } from './dto/replace-role-screens.dto'
 import { CreateRoleDto } from './dto/create-role.dto'
 import { DeleteRoleDto } from './dto/delete-role.dto'
-import { RoleError, roleNotFound } from './dto/role-error'
 import { AuditQueryDto } from './dto/audit-query.dto'
-import type { AuditEntryDto, ReplaceRoleScreensResult, RoleSummary } from './dto/admin-console.types'
-import type { ScreenKind } from './dto/register-screen.dto'
-
-/**
- * Turns class-validator failures into the `{ error: { code, message } }` shape the Role access screen reads. A missing
- * or too-short `reason` is reported as `REASON_REQUIRED` so the UI can show it under the Reason field; everything else
- * is a plain validation failure.
- */
-function toRoleValidationError(errors: ValidationError[]): RoleError {
-  if (errors.some((e) => e.property === 'reason')) {
-    return new RoleError(HttpStatus.BAD_REQUEST, 'REASON_REQUIRED', 'A reason is required.')
-  }
-  const fields = Object.fromEntries(errors.map((e) => [e.property, Object.values(e.constraints ?? {})]))
-  return new RoleError(HttpStatus.BAD_REQUEST, 'VALIDATION_FAILED', 'Some fields are missing or invalid.', { fields })
-}
+import type { AuditEntryDto, RegisterScreenResult, ReplaceRoleScreensResult, RoleSummary } from './dto/admin-console.types'
+import { auditEntryNotFound, roleNotFound, toAdminValidationError } from './admin-error'
 
 /**
  * `/api/admin` — all admin-console endpoints. The class-level guards and pipes cover every route uniformly; there is
- * no public admin route. Validation pipe is controller-scoped (not global) until the Dev Leads globalise it; see
- * plan for the `core` follow-up.
+ * no public admin route. Validation pipe is controller-scoped (not global) until the Dev Leads globalise it.
+ *
+ * Every failure is `{ error: { code, message, details? } }`, like the Staff & roles routes: `VALIDATION_FAILED`,
+ * `REASON_REQUIRED`, `ROLE_NOT_FOUND`, `ROLE_NAME_TAKEN`, `ROLE_CODE_TAKEN`, `ROLE_IN_USE`, `ROLE_NOT_DELETABLE`,
+ * `SCREEN_NOT_ASSIGNABLE`, `SCREEN_KIND_CONFLICT`, `AUDIT_ENTRY_NOT_FOUND`, `AUDIT_WRITE_FAILED`, and `FORBIDDEN`
+ * from the guard.
  */
 @Controller('admin')
 @UseGuards(AdminConsoleGuard)
@@ -54,24 +41,20 @@ function toRoleValidationError(errors: ValidationError[]): RoleError {
     whitelist: true,
     forbidNonWhitelisted: true,
     transform: true,
-    exceptionFactory: toRoleValidationError,
+    exceptionFactory: toAdminValidationError,
   }),
 )
 export class AdminConsoleController {
   constructor(private readonly svc: AdminConsoleService) {}
 
   /**
-   * Self-registration. Every feature calls this once on boot from its `OnModuleInit`. Idempotent on `code`. Default
-   * `feature_no` is the row the admin-console itself uses; other callers must supply their feature number.
+   * An admin adds or renames one assignable screen by hand, with a reason; the change is audited. Features do not call
+   * this — they register their screens with `registerSelfScreens` at boot.
    */
   @Post('screens')
   @HttpCode(200)
-  async registerScreen(
-    @Body() dto: RegisterScreenDto & { feature_no?: string },
-  ): Promise<{ ok: true; screen: { id: string; code: string; name: string; kind: ScreenKind; feature_no: string } }> {
-    const feature_no = dto.feature_no ?? deriveFeatureNo(dto.code)
-    const screen = await this.svc.registerScreen({ ...dto, feature_no })
-    return { ok: true, screen }
+  registerScreen(@Admin() admin: AdminPrincipal, @Body() dto: RegisterScreenRequestDto): Promise<RegisterScreenResult> {
+    return this.svc.registerScreenByAdmin(admin, dto)
   }
 
   /** Active screens grouped by `feature_no`, sorted for the Role access matrix. */
@@ -110,11 +93,10 @@ export class AdminConsoleController {
     await this.svc.deleteRole(admin, id, dto.reason)
   }
 
-  /** Granted `assignable` screen ids for one role. 404 if the role does not exist. */
+  /** Granted `assignable` screen ids for one role (active screens only). `ROLE_NOT_FOUND` (404) if the role does not exist. */
   @Get('roles/:id/screens')
   async getRoleScreens(@Param('id', new ParseUUIDPipe({ exceptionFactory: roleNotFound })) id: string): Promise<{ screen_ids: string[] }> {
     const result = await this.svc.getRoleScreens(id)
-    if (!result) throw roleNotFound()
     return { screen_ids: result.screen_ids }
   }
 
@@ -141,22 +123,14 @@ export class AdminConsoleController {
   }
 
   /**
-   * Single audit entry by id. Mirrors the list endpoint's sensitive-masking rules so a sensitive row returns
-   * `before`/`after` as `null`. 404 when the id does not exist.
+   * One audit entry by id. A sensitive entry comes back masked, and opening it writes a `view_sensitive` row (see
+   * `AdminConsoleService.getAuditEntry`). `AUDIT_ENTRY_NOT_FOUND` (404) when the id does not exist or is not a UUID.
    */
   @Get('audit-log/:id')
-  async getAuditEntry(@Param('id', new ParseUUIDPipe()) id: string): Promise<AuditEntryDto> {
-    const entry = await this.svc.getAuditEntry(id)
-    if (!entry) throw new NotFoundException(`Audit entry ${id} not found`)
-    return entry
+  getAuditEntry(
+    @Admin() admin: AdminPrincipal,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: auditEntryNotFound })) id: string,
+  ): Promise<AuditEntryDto> {
+    return this.svc.getAuditEntry(admin, id)
   }
-}
-
-/**
- * Best-effort fallback for callers that don't pass `feature_no`. The `screen.code` convention is
- * `f<feature_no>.<snake_name>`; we extract the prefix. Returns `'1'` if the prefix is missing or non-numeric.
- */
-function deriveFeatureNo(code: string): string {
-  const m = /^f(\d+[a-z]?)\./.exec(code)
-  return m && m[1] ? m[1] : '1'
 }

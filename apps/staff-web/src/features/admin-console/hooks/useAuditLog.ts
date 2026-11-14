@@ -15,7 +15,7 @@ interface UseAuditLogState {
  * management off the consumer page — no `setState` is called inside an effect body.
  */
 export function useAuditLog(
-  filters: Pick<AuditQuery, 'source_feature' | 'actor_type' | 'action' | 'from' | 'to'>,
+  filters: Pick<AuditQuery, 'source_feature' | 'actor_type' | 'actor_id' | 'action' | 'from' | 'to'>,
   limit: number,
   fetchAudit: (q: AuditQuery) => Promise<AuditPage>,
 ) {

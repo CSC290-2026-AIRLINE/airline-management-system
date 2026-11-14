@@ -10,11 +10,13 @@ import { Label } from '@staff-web/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { cn } from '@staff-web/lib/utils'
 import { useGetAuditEntry, useListAudit } from '../api/audit'
+import { errorText } from '../api/fetch'
+import { useStaffApi } from '../api/staff'
 import { useAuditLog } from '../hooks/useAuditLog'
 import { FEATURE_NUMBERS, featureLabel } from '../feature-labels'
 import { AdminErrorCard } from '../components/AdminErrorCard'
 import { NoAccessScreen } from '../components/NoAccessScreen'
-import type { AuditEntry, AuditFilters, AuditPage } from '../types'
+import type { AuditEntry, AuditFilters, AuditPage, StaffRow } from '../types'
 
 /* Filter dropdowns mirror the AUDIT_ACTIONS check in the DB. Keep these in lockstep with
  * apps/backend/src/modules/admin-console/dto/audit-query.dto.ts — the backend rejects anything not in the list, so
@@ -35,6 +37,14 @@ const ACTION_TYPES = [
 type ActionType = (typeof ACTION_TYPES)[number]
 
 const ACTOR_TYPES = ['staff', 'customer', 'system'] as const
+
+/** The Actor filter holds either a kind of actor or one person, so its values carry a prefix. */
+const ACTOR_TYPE_LABEL: Record<(typeof ACTOR_TYPES)[number], string> = { staff: 'All staff', customer: 'All customers', system: 'System' }
+function actorFilterValue(f: AuditFilters): string | undefined {
+  if (f.actor_id) return `person:${f.actor_id}`
+  if (f.actor_type) return `type:${f.actor_type}`
+  return undefined
+}
 
 /* Display helpers ---------------------------------------------------------- */
 
@@ -189,9 +199,15 @@ function EntryDetail({ e }: { e: AuditEntry }): ReactNode {
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-3 max-tablet:grid-cols-1">
-        {box('Before', before)}
-        {box('After', after)}
+        {box(e.is_sensitive ? 'Before (masked)' : 'Before', before)}
+        {box(e.is_sensitive ? 'After (masked)' : 'After', after)}
       </div>
+      {e.is_sensitive && (
+        <p className="rounded-md bg-warning-soft px-3 py-2 text-sm text-foreground">
+          <span className="mr-2 text-xs font-semibold text-warning uppercase">Sensitive</span>
+          Masked entry. Opening it here is saved as its own view_sensitive entry.
+        </p>
+      )}
       {e.reason && (
         <p className="text-sm text-foreground">
           <span className="font-semibold">Reason:</span> {e.reason}
@@ -203,6 +219,45 @@ function EntryDetail({ e }: { e: AuditEntry }): ReactNode {
       </p>
     </div>
   )
+}
+
+/**
+ * An open sensitive row. The list never carries a sensitive entry's data, so opening one asks for it by id: the server
+ * returns the masked copy and records the opening as a `view_sensitive` entry before answering.
+ */
+function SensitiveEntryDetail({ entry }: { entry: AuditEntry }): ReactNode {
+  const getAuditEntry = useGetAuditEntry()
+  const [state, setState] = useState<{ entry: AuditEntry | null; error: string | null }>({ entry: null, error: null })
+  useEffect(() => {
+    let cancelled = false
+    getAuditEntry(entry.id)
+      .then((full) => {
+        if (!cancelled) setState({ entry: full, error: null })
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setState({ entry: null, error: errorText(e) })
+      })
+    return () => {
+      cancelled = true
+    }
+    // `getAuditEntry` closes over `fetchWithAuth`, recreated every render; see `useFetchJson`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.id])
+  if (state.error) {
+    return (
+      <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger" role="alert">
+        Could not open this sensitive entry — {state.error}
+      </p>
+    )
+  }
+  if (!state.entry) {
+    return (
+      <p className="py-2 text-sm text-muted-foreground" role="status">
+        Opening masked entry…
+      </p>
+    )
+  }
+  return <EntryDetail e={state.entry} />
 }
 
 interface LinkedEntryState {
@@ -224,16 +279,34 @@ interface LinkedEntryState {
 export function AuditLogPage() {
   const listAudit = useListAudit()
   const getAuditEntry = useGetAuditEntry()
+  const staffApi = useStaffApi()
   const navigate = useNavigate()
   const { auditId } = useParams({ strict: false })
 
   const [filters, setFilters] = useState<AuditFilters>({
     source_feature: undefined,
     actor_type: undefined,
+    actor_id: undefined,
     action: undefined,
     from: undefined,
     to: undefined,
   })
+  /* People for the Actor filter. Loaded once; if it fails the filter still offers the kinds of actor. */
+  const [people, setPeople] = useState<StaffRow[]>([])
+  useEffect(() => {
+    let cancelled = false
+    staffApi
+      .list()
+      .then((list) => {
+        if (!cancelled) setPeople(list.staff)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+    // `staffApi` closes over `fetchWithAuth`, recreated every render; see `useStaffApi`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [limit, setLimit] = useState(25)
   /* The open entry's id. Local state: starts from a deep link's `auditId`, and follows the URL only when a different
      link is arrived at, never when a row is clicked. */
@@ -307,6 +380,7 @@ export function AuditLogPage() {
     setFilters({
       source_feature: undefined,
       actor_type: undefined,
+      actor_id: undefined,
       action: undefined,
       from: undefined,
       to: undefined,
@@ -320,11 +394,14 @@ export function AuditLogPage() {
   const filterSummary = useMemo(() => {
     const parts: string[] = []
     if (filters.source_feature) parts.push(`F${filters.source_feature}`)
-    if (filters.actor_type) parts.push(filters.actor_type)
+    if (filters.actor_id) {
+      const p = people.find((s) => s.user_id === filters.actor_id)
+      parts.push(p ? `${p.first_name} ${p.last_name}` : 'one person')
+    } else if (filters.actor_type) parts.push(filters.actor_type)
     if (filters.action) parts.push(filters.action.replace(/_/g, ' '))
     if (filters.from || filters.to) parts.push(`${shortDate(filters.from)}–${shortDate(filters.to)}`)
     return parts.length ? parts.join(' · ') : 'All features'
-  }, [filters])
+  }, [filters, people])
 
   /** The columns: time 134, actor 204, feature 169, action 130, target 103, details rest — from the 950px table. */
   const GRID = 'grid grid-cols-6 items-center'
@@ -376,7 +453,7 @@ export function AuditLogPage() {
         </button>
         {isOpen && (
           <div className="px-3.5 pt-1 pb-4 max-tablet:px-3">
-            <EntryDetail e={e} />
+            {e.is_sensitive ? <SensitiveEntryDetail entry={e} /> : <EntryDetail e={e} />}
           </div>
         )}
       </li>
@@ -451,10 +528,19 @@ export function AuditLogPage() {
               />
               <FilterSelect
                 label="Actor"
-                value={filters.actor_type}
+                value={actorFilterValue(filters)}
                 allLabel="All actors"
-                options={ACTOR_TYPES.map((a) => ({ value: a, label: a[0].toUpperCase() + a.slice(1) }))}
-                onChange={(v) => setFilters((f) => ({ ...f, actor_type: v as AuditFilters['actor_type'] }))}
+                options={[
+                  ...ACTOR_TYPES.map((a) => ({ value: `type:${a}`, label: ACTOR_TYPE_LABEL[a] })),
+                  ...people.map((p) => ({ value: `person:${p.user_id}`, label: `${p.first_name} ${p.last_name} · ${p.role.name}` })),
+                ]}
+                onChange={(v) =>
+                  setFilters((f) => ({
+                    ...f,
+                    actor_type: v?.startsWith('type:') ? (v.slice(5) as AuditFilters['actor_type']) : undefined,
+                    actor_id: v?.startsWith('person:') ? v.slice(7) : undefined,
+                  }))
+                }
               />
               <FilterSelect
                 label="Action type"

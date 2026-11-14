@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsString, MaxLength, MinLength } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsString, IsUUID, MaxLength, MinLength } from 'class-validator'
 
 /** 400 screens is far above any real role; the cap keeps one request from carrying the whole registry. */
 const MAX_SCREENS_PER_ROLE = 400
@@ -13,7 +13,7 @@ const MAX_SCREENS_PER_ROLE = 400
 export class ReplaceRoleScreensDto {
   @IsArray()
   @ArrayMaxSize(MAX_SCREENS_PER_ROLE, { message: `a role cannot hold more than ${MAX_SCREENS_PER_ROLE} screens` })
-  @IsString({ each: true })
+  @IsUUID('all', { each: true, message: 'each screen id must be a UUID' })
   screen_ids: string[]
 
   @IsString()
