@@ -85,6 +85,16 @@ function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'P2002'
 }
 
+/** Prisma's code for a foreign key that another row still points at. */
+function isForeignKeyViolation(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'P2003'
+}
+
+/** Prisma's code for a row that was deleted before the statement ran. */
+function isMissingRow(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'P2025'
+}
+
 /**
  * The machine-readable `role.code` for a role the admin named. Lowercase, non-alphanumeric runs collapsed to `_`,
  * capped at 64 characters. `role.code` is UNIQUE in the database and is what the audit log records as the actor's role,
@@ -621,26 +631,55 @@ export class AdminConsoleService {
     }
 
     const occurredAt = this.clock.now()
-    await this.db.$transaction(async (tx) => {
-      const grants = await tx.role_screen.findMany({ where: { role_id: roleId }, select: { screen_id: true } })
-      await tx.role_screen.deleteMany({ where: { role_id: roleId } })
-      await tx.role.delete({ where: { id: roleId } })
-      await this.audit.write(
-        {
-          actor: AuditService.staffActor(admin),
-          sourceFeature: SOURCE_FEATURE,
-          action: 'delete',
-          entityType: 'role',
-          entityId: roleId,
-          summary: `Deleted role ${role.name} (${role.code})`,
-          reason: trimmedReason,
-          before: { name: role.name, code: role.code, screen_ids: grants.map((g) => g.screen_id) },
-          occurredAt,
-          sensitive: false,
-        },
-        tx,
-      )
-    })
+    try {
+      await this.db.$transaction(async (tx) => {
+        // Counted again on the transaction's own client, so the number is the one the delete sees. A staff row created
+        // for this role in another tab between the check above and the delete would otherwise fail on the foreign key
+        // and answer 500 instead of a clean 409.
+        const stillHeld = await tx.staff.count({ where: { role_id: roleId, deleted_at: null } })
+        if (stillHeld > 0) {
+          throw new AdminError(
+            HttpStatus.CONFLICT,
+            'ROLE_IN_USE',
+            `${stillHeld} staff member${stillHeld === 1 ? '' : 's'} still hold this role. Move them to another role first.`,
+          )
+        }
+
+        const grants = await tx.role_screen.findMany({ where: { role_id: roleId }, select: { screen_id: true } })
+        await tx.role_screen.deleteMany({ where: { role_id: roleId } })
+        await tx.role.delete({ where: { id: roleId } })
+        await this.audit.write(
+          {
+            actor: AuditService.staffActor(admin),
+            sourceFeature: SOURCE_FEATURE,
+            action: 'delete',
+            entityType: 'role',
+            entityId: roleId,
+            summary: `Deleted role ${role.name} (${role.code})`,
+            reason: trimmedReason,
+            before: { name: role.name, code: role.code, screen_ids: grants.map((g) => g.screen_id) },
+            occurredAt,
+            sensitive: false,
+          },
+          tx,
+        )
+      })
+    } catch (e) {
+      // The count and the delete are not one atomic step, so the world can still move under us: a staff row can be
+      // created for this role, or the role can be deleted, between the two. The database refuses the write in both
+      // cases, and each refusal has its own answer — the role is in use, or it is already gone.
+      if (isForeignKeyViolation(e)) {
+        throw new AdminError(
+          HttpStatus.CONFLICT,
+          'ROLE_IN_USE',
+          'A staff member took this role while it was being deleted. Move them to another role first.',
+        )
+      }
+      if (isMissingRow(e)) {
+        throw roleNotFound()
+      }
+      throw e
+    }
   }
 
   /**

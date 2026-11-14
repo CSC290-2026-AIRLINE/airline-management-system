@@ -22,6 +22,7 @@ interface TxMock {
   role_screen: { deleteMany: jest.Mock; createMany: jest.Mock; findMany: jest.Mock }
   audit_log: { create: jest.Mock }
   screen: ScreenMock
+  staff: { count: jest.Mock }
 }
 
 interface DbMock {
@@ -44,6 +45,7 @@ function makeDb(): { db: DbMock; svc: AdminConsoleService; tx: TxMock; clock: Si
     role_screen: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
     audit_log: { create: jest.fn().mockResolvedValue({ id: 'a1', seq: 42n }) },
     screen: screenMock(),
+    staff: { count: jest.fn() },
   }
   const db: DbMock = {
     screen: screenMock(),
@@ -1101,6 +1103,7 @@ describe('AdminConsoleService.deleteRole (DELETE /admin/roles/:id)', () => {
   function prime(db: DbMock, tx: TxMock, role = { id: 'r-1', code: 'finance_staff', name: 'Finance Staff', is_admin: false }) {
     db.role.findUnique.mockResolvedValue(role)
     db.staff.count.mockResolvedValue(0)
+    tx.staff.count.mockResolvedValue(0)
     tx.role_screen.findMany.mockResolvedValue([{ screen_id: 's-1' }])
   }
 
@@ -1139,6 +1142,34 @@ describe('AdminConsoleService.deleteRole (DELETE /admin/roles/:id)', () => {
     await expect(svc.deleteRole(ADMIN, 'r-1', REASON)).rejects.toMatchObject({ code: 'ROLE_IN_USE' })
     expect(db.$transaction).not.toHaveBeenCalled()
     expect(tx.role.delete).not.toHaveBeenCalled()
+  })
+
+  it('counts the staff again inside the transaction, so a role taken mid-delete answers 409', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    // Nobody held the role when the check outside the transaction ran; somebody took it before the delete did.
+    tx.staff.count.mockResolvedValue(1)
+
+    await expect(svc.deleteRole(ADMIN, 'r-1', REASON)).rejects.toMatchObject({ code: 'ROLE_IN_USE' })
+    expect(tx.role.delete).not.toHaveBeenCalled()
+    expect(tx.audit_log.create).not.toHaveBeenCalled()
+  })
+
+  it('answers 409 when the database refuses the delete because a staff row took the role', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    // The staff row landed between the count and the delete, so the foreign key refused the write.
+    tx.role.delete.mockRejectedValue({ code: 'P2003' })
+
+    await expect(svc.deleteRole(ADMIN, 'r-1', REASON)).rejects.toMatchObject({ code: 'ROLE_IN_USE' })
+  })
+
+  it('answers 404 when the role was deleted by somebody else in the meantime', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    tx.role.delete.mockRejectedValue({ code: 'P2025' })
+
+    await expect(svc.deleteRole(ADMIN, 'r-1', REASON)).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND' })
   })
 
   it('404s when the role does not exist', async () => {
