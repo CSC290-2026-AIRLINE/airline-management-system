@@ -215,4 +215,17 @@ export class ScreeningCheckService {
       return { outcome: checks.length ? clearance(checks, passenger) : 'not_screened', now: now.toISOString(), checkIn: 'not_connected' }
     })
   }
+
+  // Internal provider API only, like checkSystem: F6 asks whether a held check-in has been released or denied since.
+  async statusSystem(source: string, passengerId: string, flightId: string) {
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(source)) throw new BadRequestException('A caller source is required')
+    return this.context.runSystem(async (tx, now) => {
+      const passenger = await tx.passenger.findFirst({ where: { id: passengerId, deleted_at: null } })
+      if (!passenger) throw new NotFoundException('Passenger was not found')
+      const checks = await identityChecks(tx, flightId, passenger)
+      await this.audit.record(tx, { source }, now, 'view_sensitive', 'screening_status')
+      // No evidence of a run is not permission to check in.
+      return { outcome: checks.length ? clearance(checks, passenger) : ('not_screened' as const) }
+    })
+  }
 }
