@@ -233,7 +233,10 @@ function BookingRow({ booking: b }: { booking: DeskBooking }) {
   const navigate = useNavigate()
 
   return (
-    <TableRow className="cursor-pointer" onClick={() => navigate({ to: `/cargo/bookings/${b.id}` as string })}>
+    <TableRow
+      className="cursor-pointer"
+      onClick={() => navigate({ to: '/cargo/bookings/$id', params: { id: b.id }, search: { status: 'all' } })}
+    >
       <TableCell className="font-mono text-xs font-medium">{b.bookingRef}</TableCell>
       <TableCell className="font-mono text-xs">{b.awbNumber ?? '—'}</TableCell>
       <TableCell className="max-w-[140px] truncate">{b.shipperName}</TableCell>

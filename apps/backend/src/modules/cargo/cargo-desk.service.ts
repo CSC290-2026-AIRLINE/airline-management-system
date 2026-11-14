@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { availableKg } from './cargo-calc'
+import { getAircraftCapacity, seatsTakenOnFlight } from './cargo-deps'
 
 const CLOSED_STATUSES = ['expired', 'cancelled', 'rejected']
 
@@ -109,6 +111,166 @@ export class CargoDeskService {
       pageSize,
       total,
       totalPages: Math.ceil(total / pageSize),
+    }
+  }
+
+  async getBookingDetail(id: string) {
+    const booking = await this.db.cargo_booking.findUnique({
+      where: { id },
+      include: {
+        cargo_commodity_type: { select: { name: true, handling_class: true } },
+        route: { select: { origin: true, destination: true, distance_km: true } },
+        flight: {
+          select: {
+            id: true,
+            flight_number: true,
+            service_date: true,
+            scheduled_dep_at: true,
+            scheduled_arr_at: true,
+            dep_at: true,
+            arr_at: true,
+            status: true,
+            aircraft_id: true,
+          },
+        },
+      },
+    })
+    if (!booking) {
+      throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Booking not found' } })
+    }
+
+    const events = await this.db.cargo_shipment_event.findMany({
+      where: { cargo_booking_id: id },
+      orderBy: { seq: 'asc' },
+    })
+
+    const notices = await this.db.cargo_notice.findMany({
+      where: { cargo_booking_id: id },
+      orderBy: { notified_at: 'asc' },
+    })
+
+    const currentStatus = events.length > 0 ? events[events.length - 1].status_after : null
+
+    const acceptedEvent = events.find((e) => e.event_type === 'accepted')
+    const measured = acceptedEvent
+      ? {
+          weightKg: acceptedEvent.measured_weight_kg ? Number(acceptedEvent.measured_weight_kg) : null,
+          volumeM3: acceptedEvent.measured_volume_m3 ? Number(acceptedEvent.measured_volume_m3) : null,
+          chargeableKg: acceptedEvent.measured_chargeable_kg ? Number(acceptedEvent.measured_chargeable_kg) : null,
+        }
+      : null
+
+    const capacity = await getAircraftCapacity(this.db, booking.flight.aircraft_id)
+    const seats = seatsTakenOnFlight(this.db, booking.flight.id)
+    const committedKg = await this.committedKgForFlight(booking.flight.id)
+    const settings = await this.loadSettings()
+    const freeKg = availableKg({
+      holdLimitKg: capacity.holdLimitKg,
+      sellableSeats: capacity.sellableSeats,
+      seatsTaken: seats,
+      reserveKgPerPax: settings.reserveKgPerPax,
+      floorPercent: settings.floorPercent,
+      committedKg,
+    })
+
+    return {
+      header: {
+        id: booking.id,
+        bookingRef: booking.booking_ref,
+        awbNumber: booking.awb_number,
+        currentStatus: currentStatus ?? 'unknown',
+        quotedCharge: Number(booking.quoted_charge),
+        currency: booking.currency,
+        paymentId: booking.payment_id,
+      },
+      goods: {
+        pieces: booking.pieces,
+        declaredWeightKg: Number(booking.declared_weight_kg),
+        declaredVolumeM3: Number(booking.declared_volume_m3),
+        goodsDescription: booking.goods_description,
+        commodityTypeName: booking.cargo_commodity_type.name,
+        handlingClass: booking.handling_class,
+        unNumber: booking.un_number,
+        measured,
+      },
+      quote: {
+        distanceKm: booking.distance_km,
+        chargeableKg: Number(booking.quoted_chargeable_kg),
+        ratePerKg: Number(booking.rate_per_kg),
+        minCharge: Number(booking.min_charge),
+        charge: Number(booking.quoted_charge),
+        currency: booking.currency,
+      },
+      flight: {
+        id: booking.flight.id,
+        flightNumber: booking.flight.flight_number,
+        serviceDate: booking.flight.service_date,
+        scheduledDepAt: booking.flight.scheduled_dep_at,
+        scheduledArrAt: booking.flight.scheduled_arr_at,
+        depAt: booking.flight.dep_at,
+        arrAt: booking.flight.arr_at,
+        status: booking.flight.status,
+        origin: booking.route.origin,
+        destination: booking.route.destination,
+        freeKg,
+      },
+      shipper: {
+        name: booking.shipper_name,
+        phone: booking.shipper_phone,
+      },
+      consignee: {
+        name: booking.consignee_name,
+        address: booking.consignee_address,
+        phone: booking.consignee_phone,
+      },
+      timeline: events.map((e) => ({
+        id: e.id,
+        occurredAt: e.occurred_at,
+        eventType: e.event_type,
+        statusBefore: e.status_before,
+        statusAfter: e.status_after,
+        actorType: e.actor_type,
+        flightId: e.flight_id,
+        airportCode: e.airport_code,
+        note: e.note,
+        measuredWeightKg: e.measured_weight_kg ? Number(e.measured_weight_kg) : null,
+        measuredVolumeM3: e.measured_volume_m3 ? Number(e.measured_volume_m3) : null,
+        measuredChargeableKg: e.measured_chargeable_kg ? Number(e.measured_chargeable_kg) : null,
+        refundId: e.refund_id,
+      })),
+      notices: notices.map((n) => ({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        notifiedAt: n.notified_at,
+        readAt: n.read_at,
+      })),
+    }
+  }
+
+  private async committedKgForFlight(flightId: string): Promise<number> {
+    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
+    const bookings = await this.db.cargo_booking.findMany({
+      where: { flight_id: flightId },
+      select: {
+        declared_weight_kg: true,
+        cargo_shipment_event: { orderBy: { seq: 'desc' }, take: 1, select: { status_after: true } },
+      },
+    })
+    return bookings
+      .filter((b) => {
+        const s = b.cargo_shipment_event[0]?.status_after
+        return s != null && COMMITTED.has(s)
+      })
+      .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
+  }
+
+  private async loadSettings() {
+    const rows = await this.db.cargo_setting.findMany()
+    const map = new Map(rows.map((r) => [r.key, r.value]))
+    return {
+      reserveKgPerPax: Number(map.get('baggage_reserve_kg_per_passenger') ?? 15),
+      floorPercent: Number(map.get('baggage_reserve_floor_percent') ?? 50),
     }
   }
 

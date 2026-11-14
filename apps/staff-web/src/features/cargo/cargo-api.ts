@@ -61,6 +61,77 @@ export interface TestToolResult {
   error?: string
 }
 
+export interface BookingDetail {
+  header: {
+    id: string
+    bookingRef: string
+    awbNumber: string | null
+    currentStatus: string
+    quotedCharge: number
+    currency: string
+    paymentId: string | null
+  }
+  goods: {
+    pieces: number
+    declaredWeightKg: number
+    declaredVolumeM3: number
+    goodsDescription: string
+    commodityTypeName: string
+    handlingClass: string
+    unNumber: string | null
+    measured: { weightKg: number | null; volumeM3: number | null; chargeableKg: number | null } | null
+  }
+  quote: {
+    distanceKm: number
+    chargeableKg: number
+    ratePerKg: number
+    minCharge: number
+    charge: number
+    currency: string
+  }
+  flight: {
+    id: string
+    flightNumber: string
+    serviceDate: string
+    scheduledDepAt: string
+    scheduledArrAt: string
+    depAt: string
+    arrAt: string
+    status: string
+    origin: string
+    destination: string
+    freeKg: number
+  }
+  shipper: { name: string; phone: string | null }
+  consignee: { name: string; address: string; phone: string | null }
+  timeline: TimelineEvent[]
+  notices: BookingNotice[]
+}
+
+export interface TimelineEvent {
+  id: string
+  occurredAt: string
+  eventType: string
+  statusBefore: string | null
+  statusAfter: string
+  actorType: string
+  flightId: string
+  airportCode: string | null
+  note: string | null
+  measuredWeightKg: number | null
+  measuredVolumeM3: number | null
+  measuredChargeableKg: number | null
+  refundId: string | null
+}
+
+export interface BookingNotice {
+  id: string
+  title: string
+  message: string
+  notifiedAt: string
+  readAt: string | null
+}
+
 /* ── Types ─────────────────────────────────────────────────────────── */
 
 export interface CommodityType {
@@ -185,8 +256,12 @@ export function useCargoApi() {
       return send<DeskListResult>(`/api/staff/cargo/bookings${query ? `?${query}` : ''}`)
     },
 
+    getBookingDetail: (id: string) => send<BookingDetail>(`/api/staff/cargo/bookings/${id}`),
+
     createTestFlights: () => send<{ created?: string[]; error?: string }>('/api/staff/cargo/test/flights', { method: 'POST' }),
     createTestBookings: (count = 1) =>
       send<TestToolResult>('/api/staff/cargo/test/bookings', { method: 'POST', body: JSON.stringify({ count }) }),
+    simulateDeparture: (id: string) => send<{ status: string }>(`/api/staff/cargo/test/bookings/${id}/departed`, { method: 'POST' }),
+    simulateArrival: (id: string) => send<{ status: string }>(`/api/staff/cargo/test/bookings/${id}/arrived`, { method: 'POST' }),
   }
 }
