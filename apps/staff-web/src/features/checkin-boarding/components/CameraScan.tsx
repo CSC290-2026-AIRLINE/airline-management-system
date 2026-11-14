@@ -68,6 +68,8 @@ export function CameraScan({ active, onDecode }: { active: boolean; onDecode: (r
         timer = setInterval(readFrame, FRAME_MS)
       })
       .catch((err: unknown) => {
+        // The stream may already be open when play() refuses: the camera is not left running behind an error.
+        stream?.getTracks().forEach((track) => track.stop())
         if (!cancelled) setError(`Camera unavailable: ${err instanceof Error ? err.message : String(err)}. Type the reference instead.`)
       })
 

@@ -12,7 +12,6 @@ import { IssuePills, StatusPill } from './pills.tsx'
 import { messageOf } from './errors.ts'
 import { applyFilter, fallbackQuery, parseSearch, type CounterFilter } from './counter-search.ts'
 import { formatTime } from '../domain/format.ts'
-import { computeWindow, DEFAULT_WINDOW_SETTINGS } from '../domain/window.ts'
 import {
   CHIP_ACTIVE,
   CHIP_IDLE,
@@ -157,7 +156,6 @@ export function CounterPage({ api }: { api: StaffApi }) {
   const heading = oneFlight
     ? `${oneFlight.flightNumber} · ${oneFlight.origin.city} to ${oneFlight.destination.city} · departs ${formatTime(oneFlight.depAt)}`
     : 'Passengers'
-  const closesAt = oneFlight ? formatTime(computeWindow(new Date(oneFlight.depAt), DEFAULT_WINDOW_SETTINGS).closesAt.toISOString()) : null
   const subtitle = view
     ? `BKK · Counter 4 · ${view.checkIn.flight.flightNumber} · ${view.checkIn.flight.origin.city} to ${view.checkIn.flight.destination.city} · departs ${formatTime(
         view.checkIn.flight.depAt,
@@ -241,11 +239,7 @@ export function CounterPage({ api }: { api: StaffApi }) {
 
           <Card className={PANEL}>
             <h2 className={PANEL_TITLE}>{heading}</h2>
-            <p className={MUTED}>
-              {closesAt
-                ? `Check-in closes ${closesAt} (1 hour before departure, simulation clock). ${rows.length} booked ${rows.length === 1 ? 'passenger' : 'passengers'}.`
-                : `${rows.length} booked ${rows.length === 1 ? 'passenger' : 'passengers'}.`}
-            </p>
+            <p className={MUTED}>{`${rows.length} booked ${rows.length === 1 ? 'passenger' : 'passengers'}.`}</p>
             {visible.length === 0 ? (
               <p className={MUTED}>{searched ? 'No passenger matches the search.' : 'Search by flight, name or booking ref.'}</p>
             ) : (

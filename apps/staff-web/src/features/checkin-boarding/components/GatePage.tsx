@@ -179,11 +179,12 @@ export function GatePage({ api }: { api: StaffApi }) {
       setConfirmClose(false)
       setCalled(2)
       setHeadcount(null)
-      await load()
       setGateMessage(message)
     } catch (err) {
       setError(messageOf(err))
     } finally {
+      // The server may have moved one flight before a later move failed: the screen shows what is there now.
+      await load()
       setBusy(false)
     }
   }

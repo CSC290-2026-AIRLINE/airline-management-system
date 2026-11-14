@@ -1,5 +1,5 @@
-// Copy of apps/backend/src/modules/checkin-boarding/providers/fixtures.ts, minus the seat map the staff screens
-// never read. Keep in sync with the backend.
+// Browser-mock demo data. Based on the backend's providers/fixtures.ts and demo-data.ts, but not kept identical:
+// the mock only needs what the staff screens show.
 import type { Cabin, SeatType } from '../api/types.ts'
 
 export interface AirportRecord {
