@@ -1,6 +1,6 @@
 # F4 — Pricing, fare rules, and finance
 
-> **Status: COMMITTED SCHEMA — verified 24 Oct 2026 against `dev` commit `a97740c646b2a6e82448243db4817a7a5822e14b`.** The current SQL and Prisma schema contain **84 tables / 758 columns**, including F2 Iteration-03 and F8 crew/rostering. Committed migrations do not prove deployment or completed application behavior.
+> **Status: COMMITTED SCHEMA.** See the [current schema snapshot](../docs.md#current-schema-snapshot) for the verified source commit and schema totals. Committed definitions do not prove deployment or completed application behavior.
 
 **Tables (15):** [`fare_class`](#table-fare_class) · [`base_fare`](#table-base_fare) · [`pricing_rule`](#table-pricing_rule) · [`seat_fee`](#table-seat_fee) · [`overweight_baggage_rate`](#table-overweight_baggage_rate) · [`tax_fee`](#table-tax_fee) · [`currency_rate`](#table-currency_rate) · [`promo_code`](#table-promo_code) · [`pricing_setting`](#table-pricing_setting) · [`fare_quote`](#table-fare_quote) · [`fare_quote_line`](#table-fare_quote_line) · [`promo_redemption`](#table-promo_redemption) · [`payment_schedule`](#table-payment_schedule) · [`expense`](#table-expense) · [`finance_monthly_summary`](#table-finance_monthly_summary)
 
