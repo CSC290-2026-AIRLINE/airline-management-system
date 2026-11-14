@@ -60,7 +60,11 @@ export function CargoSidebar({ roleName, onSignOut }: { roleName: string; onSign
               <SidebarMenu className="pl-4 group-data-[collapsible=icon]:pl-0">
                 {CARGO_ITEMS.map((item) => {
                   const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
-                  const hasRoute = item.to === '/cargo/settings' || item.to === '/cargo/bookings' || item.to === '/cargo/flights'
+                  const hasRoute =
+                    item.to === '/cargo/settings' ||
+                    item.to === '/cargo/bookings' ||
+                    item.to === '/cargo/flights' ||
+                    item.to === '/cargo/claims'
                   return (
                     <SidebarMenuItem key={item.to}>
                       {hasRoute ? (

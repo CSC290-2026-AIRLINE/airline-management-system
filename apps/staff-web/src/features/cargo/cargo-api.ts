@@ -238,6 +238,76 @@ export interface FlightManifest {
   rows: ManifestRow[]
 }
 
+/* ── Claim types ──────────────────────────────────────────────────── */
+
+export interface ClaimDecisionSummary {
+  decision: string
+  approvedAmount: number | null
+  decidedAt: string
+}
+
+export interface ClaimListItem {
+  id: string
+  claimRef: string
+  bookingRef: string
+  awbNumber: string | null
+  claimType: string
+  piecesAffected: number
+  claimedAmount: number
+  currency: string
+  filedAt: string
+  decision: ClaimDecisionSummary | null
+}
+
+export interface ClaimListResult {
+  data: ClaimListItem[]
+  counts: { open: number; decided: number; all: number }
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+}
+
+export interface ClaimDetail {
+  id: string
+  claimRef: string
+  claimType: string
+  piecesAffected: number
+  totalPieces: number
+  description: string
+  claimedAmount: number
+  currency: string
+  filedAt: string
+  status: string
+  decision: {
+    decision: string
+    approvedAmount: number | null
+    note: string
+    decidedAt: string
+    decidedBy: string
+  } | null
+  booking: {
+    id: string
+    bookingRef: string
+    awbNumber: string | null
+    shipperName: string
+    consigneeName: string
+    flightNumber: string
+    flightServiceDate: string
+    commodityTypeName: string
+    pieces: number
+    charge: number
+    currency: string
+  }
+  timeline: TimelineEvent[]
+}
+
+export interface TestClaimResult {
+  claimRef?: string
+  claimId?: string
+  error?: { code: string; message: string }
+}
+
 /* ── Hook ──────────────────────────────────────────────────────────── */
 
 export function useCargoApi() {
@@ -322,5 +392,19 @@ export function useCargoApi() {
     listFlightsWithCargo: (from: string, to: string) =>
       send<FlightWithCargo[]>(`/api/staff/cargo/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
     getFlightManifest: (flightId: string) => send<FlightManifest>(`/api/staff/cargo/flights/${flightId}/manifest`),
+
+    listClaims: (params: { status?: string; q?: string; page?: number; pageSize?: number }) => {
+      const qs = new URLSearchParams()
+      if (params.status && params.status !== 'all') qs.set('status', params.status)
+      if (params.q) qs.set('q', params.q)
+      if (params.page) qs.set('page', String(params.page))
+      if (params.pageSize) qs.set('page_size', String(params.pageSize))
+      const query = qs.toString()
+      return send<ClaimListResult>(`/api/staff/cargo/claims${query ? `?${query}` : ''}`)
+    },
+    getClaimDetail: (id: string) => send<ClaimDetail>(`/api/staff/cargo/claims/${id}`),
+    decideClaim: (id: string, body: { decision: string; approved_amount?: number; note: string }) =>
+      send<{ decision: string }>(`/api/staff/cargo/claims/${id}/decision`, { method: 'POST', body: JSON.stringify(body) }),
+    fileTestClaim: (bookingId: string) => send<TestClaimResult>(`/api/staff/cargo/test/bookings/${bookingId}/claim`, { method: 'POST' }),
   }
 }
