@@ -4,6 +4,7 @@ import { DbService } from '@backend/db/db.service'
 import { StaffProfilesGuard } from '@backend/modules/passenger-profiles/staff-profiles.guard'
 import { simNow } from '@backend/modules/pricing/fare-quote/sim-clock'
 import { CargoBookingService } from './cargo-booking.service'
+import { CargoClaimsService } from './cargo-claims.service'
 import { CargoEventsService } from './cargo-events.service'
 
 // MOCK: replace with Feature 2 / Feature 9 data
@@ -40,6 +41,7 @@ export class CargoTestToolsController {
   constructor(
     private readonly db: DbService,
     private readonly bookings: CargoBookingService,
+    private readonly claims: CargoClaimsService,
     private readonly events: CargoEventsService,
   ) {}
 
@@ -216,6 +218,32 @@ export class CargoTestToolsController {
       })
       return { status: event.status_after }
     })
+  }
+
+  @Post('bookings/:id/claim')
+  async fileTestClaim(@Param('id', new ParseUUIDPipe()) id: string) {
+    const booking = await this.db.cargo_booking.findUnique({
+      where: { id },
+      select: { customer_id: true, quoted_charge: true },
+    })
+    if (!booking) return { error: 'Booking not found' }
+
+    const halfCharge = Math.round((Number(booking.quoted_charge) / 2) * 100) / 100
+
+    try {
+      const result = await this.claims.fileClaim(id, booking.customer_id, {
+        claim_type: 'damage',
+        pieces_affected: 1,
+        description: 'Test claim — damage reported during inspection',
+        claimed_amount: halfCharge,
+      })
+      return { claimRef: result.claimRef, claimId: result.id }
+    } catch (e) {
+      if (e && typeof e === 'object' && 'response' in e) {
+        return (e as { response: unknown }).response
+      }
+      return { error: e instanceof Error ? e.message : String(e) }
+    }
   }
 
   // ── Helpers ──────────────────────────────────────────────────────
