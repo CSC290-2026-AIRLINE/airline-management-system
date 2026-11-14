@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
-import { AircraftService } from './aircraft.service';
-import { CreateAircraftDto } from '../dto/create-aircraft.dto';
-import { Public } from '../../auth/decorators/public.decorator'; 
+import { Controller, Get, Post, Body } from '@nestjs/common'
+import { AircraftService } from './aircraft.service'
+import { CreateAircraftDto } from '../dto/create-aircraft.dto'
+import { Public } from '../../auth/decorators/public.decorator'
 
 @Controller('aircraft')
 export class AircraftController {
@@ -10,12 +10,12 @@ export class AircraftController {
   @Public()
   @Get()
   findAll() {
-    return this.aircraftService.findAll();
+    return this.aircraftService.findAll()
   }
 
-  @Public() 
+  @Public()
   @Post()
   create(@Body() createAircraftDto: CreateAircraftDto) {
-    return this.aircraftService.create(createAircraftDto);
+    return this.aircraftService.create(createAircraftDto)
   }
 }
