@@ -593,10 +593,10 @@ export class PaymentsCheckoutService {
       capture_attempts: payment.capture_attempts,
       authorised_at: payment.authorised_at?.toISOString() ?? null,
       voided_at: payment.voided_at?.toISOString() ?? null,
-      /* TODO(F5a): the provider's payment id, the flight and the refund come with the real provider and Feature 5b. */
+      /* TODO(F5a): the provider's payment id and the flight come with the real provider and Feature 3b. */
       provider_reference: null,
       trip: null,
-      refund_reference: null,
+      refund_reference: payment.context?.refund_reference ?? null,
       lines: payment.lines.map((line) => this.toLineDto(line)),
       state_history: stateHistoryFor(payment).map((step) => ({
         key: step.key,

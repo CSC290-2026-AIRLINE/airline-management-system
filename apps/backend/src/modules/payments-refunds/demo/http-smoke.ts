@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt'
 import { Test } from '@nestjs/testing'
 import { AppModule } from '@backend/app.module'
 import { DbService } from '@backend/db/db.service'
-import { ScreenAccessGuard } from '../guards/screen-access.guard'
+import { ScreenAccessGuard } from '@backend/modules/payments-checkout/guards/screen-access.guard'
 
 /**
  * A smoke test of Feature 5b's HTTP layer against the real database: the real `AppModule`, the real controllers, pipes

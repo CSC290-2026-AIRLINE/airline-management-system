@@ -5,8 +5,8 @@ import { PaymentsRefundsService } from './payments-refunds.service'
 import { IssueCompensationDto, RefundDecisionDto, VoidVoucherDto } from './dto/refund-action.dto'
 import { CompensationQueryDto, RefundQueueQueryDto } from './dto/refund-query.dto'
 import type { CompensationEntryDto, CompensationListDto, RefundDetailDto, RefundQueueListDto } from './dto/payments-refunds.types'
-import { RequireScreen } from './guards/require-screen.decorator'
-import { ScreenAccessGuard } from './guards/screen-access.guard'
+import { RequireScreen } from '@backend/modules/payments-checkout/guards/require-screen.decorator'
+import { ScreenAccessGuard } from '@backend/modules/payments-checkout/guards/screen-access.guard'
 
 /**
  * `/api/staff/refunds` and `/api/staff/compensation` — the staff refund queue and the compensation page.

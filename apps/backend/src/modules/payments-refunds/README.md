@@ -73,12 +73,8 @@ node -r tsconfig-paths/register dist/src/modules/payments-refunds/demo/smoke.js
 node -r tsconfig-paths/register dist/src/modules/payments-refunds/demo/seed-demo.js you@example.com
 ```
 
-## Not done on this branch
+## Not done yet
 
-- The "Request a refund" button on a receipt belongs to Feature 5a's receipt screens. 5b ships the dialog's API
-  (`POST /api/refunds`); the button is wired after both branches are merged.
 - The fare rule check (Feature 4's `quote-fee`) is not connected, so every request reads "Inside rules" and staff decide. A
   card approval stays `processing`: Feature 5a's provider finishes it.
-- `ScreenAccessGuard` and `@RequireScreen` are copies of 5a's. Merge them into one place after the branches meet.
-- `AppModule` registers `PaymentsRefundsModule`. 5a registers its own module in the same list, so the merge is a one-line
-  conflict.
+- `ScreenAccessGuard` and `@RequireScreen` are 5a's, from `payments-checkout/guards`; both modules share them.

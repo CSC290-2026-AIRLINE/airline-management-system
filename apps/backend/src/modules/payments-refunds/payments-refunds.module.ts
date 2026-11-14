@@ -4,7 +4,7 @@ import { AdminConsoleService } from '@backend/modules/admin-console/admin-consol
 import { PaymentsRefundsService } from './payments-refunds.service'
 import { RefundsController, VouchersController } from './refunds.controller'
 import { StaffRefundsController } from './staff-refunds.controller'
-import { ScreenAccessGuard } from './guards/screen-access.guard'
+import { ScreenAccessGuard } from '@backend/modules/payments-checkout/guards/screen-access.guard'
 import { PrismaRefundRepository } from './prisma-refund.repository'
 import { REFUND_REPOSITORY } from './refund-repository.interface'
 

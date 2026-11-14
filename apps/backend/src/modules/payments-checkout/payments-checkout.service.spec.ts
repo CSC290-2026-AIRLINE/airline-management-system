@@ -430,6 +430,7 @@ describe('PaymentsCheckoutService on real rows (a payment that carries its conte
       flight_number: null,
       flight_date: null,
       flown: false,
+      refund_reference: null,
       ...overrides,
     }
     return { svc, stored }

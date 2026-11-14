@@ -31,6 +31,7 @@ const PAYMENT_INCLUDE = {
   customer: { select: { user: { select: { email: true } }, passenger: { select: { first_name: true, last_name: true } } } },
   booking: { select: { booking_reference: true } },
   cargo_booking_payment_cargo_booking_idTocargo_booking: { select: { booking_ref: true } },
+  refund: { orderBy: { requested_at: 'desc' }, take: 1, select: { id: true } },
 } satisfies Prisma.paymentInclude
 type PaymentRow = Prisma.paymentGetPayload<{ include: typeof PAYMENT_INCLUDE }>
 
@@ -315,6 +316,8 @@ export class PrismaPaymentRepository implements PaymentRepository {
       flight_number: null,
       flight_date: null,
       flown: false,
+      /* Feature 5b has no number column, so its reference is the start of the refund's id. */
+      refund_reference: row.refund[0] ? `REF-${row.refund[0].id.slice(0, 8).toUpperCase()}` : null,
     }
   }
 

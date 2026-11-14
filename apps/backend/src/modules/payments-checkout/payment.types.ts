@@ -102,6 +102,8 @@ export interface PaymentContext {
   flight_date: string | null
   /** The flight has already gone, so a refund needs a person to decide. */
   flown: boolean
+  /** The latest refund asked for on this payment, as Feature 5b writes its reference (`REF-3FA9C21B`). */
+  refund_reference: string | null
 }
 
 /** One `payment` row, with its lines and attempts attached. */
