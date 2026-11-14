@@ -134,8 +134,9 @@ export interface SeatDefinition {
   cabin: Cabin
   type: SeatType
   state: SeatState
-  // Seat fee when chosen after booking; 0 while booking (priced in the fare quote).
+  // Fee before discounts and taxes; booking-time pricing includes it in the passenger's fare quote.
   fee: number
+  aisleBefore?: boolean
 }
 
 export interface SeatRow {

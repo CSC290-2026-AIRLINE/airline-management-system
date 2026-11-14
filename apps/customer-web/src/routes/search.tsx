@@ -1,7 +1,7 @@
 import { BookingLayout } from '../features/booking-search/components/BookingLayout'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { FlightSearchPage } from '../features/booking-search/pages/FlightSearchPage'
-import { saveItinerary } from '../features/booking-pnr/flow/draft'
+import { clearFlowDraft, saveItinerary } from '../features/booking-pnr/flow/draft'
 import {
   flightSearchParamsFromState,
   flightSearchStateFromParams,
@@ -32,6 +32,8 @@ function SearchRoute() {
           })
         }}
         onContinue={(itinerary) => {
+          // A new search starts a new booking, even when the same flight and fare were booked earlier.
+          clearFlowDraft()
           saveItinerary(itinerary)
           void navigate({ to: '/booking' })
         }}

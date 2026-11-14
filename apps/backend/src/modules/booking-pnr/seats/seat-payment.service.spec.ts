@@ -30,6 +30,10 @@ describe('SeatPaymentService', () => {
     })
     expect(seats.confirm).toHaveBeenCalledWith('lock', { rejectCheckedIn: true, payWithCheckout: true })
   })
+  it('exposes a trusted checkout callback without generating a fake payment', async () => {
+    await expect(service.confirmCapturedPayment('lock', 'captured')).resolves.toMatchObject({ status: 'assigned' })
+    expect(seats.confirm).toHaveBeenCalledWith('lock', { rejectCheckedIn: true, capturedPaymentId: 'captured' })
+  })
   it('does not pay for another customer’s booking', async () => {
     bookings.getBookingDetail.mockResolvedValue(null)
     await expect(service.confirmForUser('ABC123', 'coupon', 'lock', 'user')).rejects.toMatchObject({ status: 404 })

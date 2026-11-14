@@ -43,6 +43,9 @@ export class FlightEventDispatcher {
     this.unsubscribe = undefined
     for (const item of this.queue.splice(0)) item.reject(reason)
   }
+  get isStopped(): boolean {
+    return this.stopped
+  }
 
   private enqueue(event: FlightEvent): Promise<void> {
     if (this.stopped) return Promise.reject(new Error('Flight event dispatcher stopped'))

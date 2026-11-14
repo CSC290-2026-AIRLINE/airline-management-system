@@ -11,6 +11,7 @@ import {
   type PricingPort,
 } from '../booking-pnr/contracts'
 import type { SearchFlightsDto } from './dto/search-flights.dto'
+import { aircraftSeatMap } from '../booking-pnr/providers/aircraft-seat-map.adapter'
 
 export interface SearchFare {
   cabin: Cabin
@@ -55,6 +56,7 @@ export class SearchService {
     const flights = await this.db.flight.findMany({
       where: {
         status: { in: ['scheduled', 'delayed'] },
+        aircraft: { deleted_at: null, aircraft_type: { deleted_at: null } },
         dep_at: { gte: cutoff },
         seat_inventory: { some: request.cabin ? { cabin: request.cabin } : {} },
         OR: request.legs.map((leg) => ({
@@ -62,7 +64,7 @@ export class SearchService {
           route: { origin: leg.origin, destination: leg.destination },
         })),
       },
-      include: { route: true, seat_inventory: true },
+      include: { route: true, seat_inventory: true, aircraft: { select: { aircraft_type: { select: { id: true, layout: true } } } } },
     })
     const keys = flights.flatMap((flight) =>
       flight.seat_inventory
@@ -94,9 +96,20 @@ export class SearchService {
     }
     const options = new Map<string, SearchOption>()
     for (const flight of flights) {
+      let aircraftCabins: Set<string>
+      try {
+        const type = flight.aircraft.aircraft_type
+        const layout = aircraftSeatMap(type.layout, type.id)
+        aircraftCabins = new Set(
+          layout.cabins.filter((cabin) => cabin.capacity >= request.adults + request.children).map((cabin) => cabin.cabin),
+        )
+      } catch {
+        this.logger.warn(`Seat layout unavailable for flight ${flight.id}`)
+        continue
+      }
       const cabins: SearchFare[] = []
       for (const fare of fares) {
-        if (!isCabin(fare.cabin)) continue
+        if (!isCabin(fare.cabin) || !aircraftCabins.has(fare.cabin)) continue
         const seatsLeft = available.get(`${flight.id}/${fare.cabin}`) ?? 0
         if (seatsLeft < request.adults + request.children) continue
         try {

@@ -34,7 +34,7 @@ export class AircraftChangeProcessor {
     if (before.aircraft_type_id === after.aircraft_type_id) return { releasedCouponIds: [] }
 
     const [map, current, assignments] = await Promise.all([
-      this.seatMaps.getSeatMap(event.flightId),
+      this.seatMaps.getSeatMap(event.flightId, after.aircraft_type_id),
       tx.seat_inventory.findMany({ where: { flight_id: event.flightId }, select: { cabin: true } }),
       tx.seat_assignment.findMany({
         where: { flight_id: event.flightId, status: { in: ['held', 'assigned'] } },

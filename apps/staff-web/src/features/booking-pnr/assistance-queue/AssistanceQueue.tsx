@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { Input } from '@staff-web/components/ui/input'
+import { Search } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 import type { ServiceRequestQueueItem, ServiceRequestStatus } from '../api/types'
@@ -40,6 +42,8 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
   const [reason, setReason] = useState('')
   const [rejecting, setRejecting] = useState(false)
   const [working, setWorking] = useState(false)
+  const [workingId, setWorkingId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const selected = requests.find((request) => request.serviceRequestId === selectedId)
   const visible = useMemo(
@@ -57,9 +61,12 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
   async function update(item: ServiceRequestQueueItem, next: 'accepted' | 'rejected' | 'completed') {
     if (working || (next === 'rejected' && !reason.trim())) return
     setWorking(true)
+    setWorkingId(item.serviceRequestId)
+    setNotice(null)
     setError(null)
     try {
       await onUpdate(item.serviceRequestId, next, next === 'rejected' ? reason.trim() : undefined)
+      setNotice(`${item.serviceCode} for ${item.passengerName}: ${labels[next].toLowerCase()}.`)
       setSelectedId(null)
       setRejecting(false)
       setReason('')
@@ -67,6 +74,7 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
       setError('Could not update the request. Please try again.')
     } finally {
       setWorking(false)
+      setWorkingId(null)
     }
   }
 
@@ -82,23 +90,38 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
       <div className="assistance-queue__filters">
         <div className="assistance-queue__tabs" aria-label="Filter by status">
           {tabs.map((tab) => (
-            <button key={tab.value} type="button" aria-pressed={status === tab.value} onClick={() => setStatus(tab.value)}>
+            <Button
+              variant="ghost"
+              key={tab.value}
+              type="button"
+              disabled={working}
+              aria-pressed={status === tab.value}
+              onClick={() => setStatus(tab.value)}
+            >
               {tab.label}{' '}
               <span>({tab.value === 'all' ? requests.length : requests.filter((item) => item.status === tab.value).length})</span>
-            </button>
+            </Button>
           ))}
         </div>
         <label className="assistance-queue__search">
           Flight number
-          <input value={flight} onChange={(event) => setFlight(event.target.value)} placeholder="Search flights" />
+          <span className="assistance-queue__search-field">
+            <Search size={16} aria-hidden="true" />
+            <Input disabled={working} value={flight} onChange={(event) => setFlight(event.target.value)} placeholder="Search flights" />
+          </span>
         </label>
       </div>
+      {notice && (
+        <p className="assistance-queue__success" role="status">
+          {notice}
+        </p>
+      )}
       {error && !rejecting && (
         <p className="assistance-queue__error" role="alert">
           {error}
         </p>
       )}
-      <div className="assistance-queue__table-wrap">
+      <div className="assistance-queue__table-wrap" aria-busy={working}>
         <table className="assistance-queue__table">
           <thead>
             <tr>
@@ -114,60 +137,89 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
             {visible.length === 0 ? (
               <tr>
                 <td colSpan={6} className="assistance-queue__empty">
-                  No assistance requests found.
+                  <strong>No assistance requests found.</strong>
+                  <p>Try a different status or flight number.</p>
+                  {(flight || status !== 'all') && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setFlight('')
+                        setStatus('all')
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
                 </td>
               </tr>
             ) : (
               visible.map((item) => (
                 <tr key={item.serviceRequestId}>
-                  <td>
-                    <button className="assistance-queue__reference" type="button" onClick={() => setSelectedId(item.serviceRequestId)}>
+                  <td data-label="Booking">
+                    <Button
+                      variant="link"
+                      className="assistance-queue__reference"
+                      type="button"
+                      disabled={working}
+                      onClick={() => setSelectedId(item.serviceRequestId)}
+                    >
                       {item.bookingReference}
-                    </button>
+                    </Button>
                   </td>
-                  <td>
+                  <td data-label="Passenger">
                     <strong>{item.passengerName}</strong>
                     <small>{item.passengerType}</small>
                   </td>
-                  <td>
+                  <td data-label="Code">
                     <strong>{item.serviceCode}</strong>
                   </td>
-                  <td>
+                  <td data-label="Flight · note">
                     {item.flightNumber ?? 'All flights'} · {departureDate(item.depAt)}
                     {item.note && <small>{item.note}</small>}
                     {item.status === 'rejected' && item.decisionNote && (
                       <small className="assistance-queue__rejection">Reason: {item.decisionNote}</small>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span className={`assistance-queue__status assistance-queue__status--${item.status}`}>{labels[item.status]}</span>
                   </td>
-                  <td>
+                  <td data-label="Action">
                     <div className="assistance-queue__actions">
                       {item.status === 'requested' && (
                         <>
-                          <button
+                          <Button
+                            size="sm"
                             className="assistance-queue__primary"
                             type="button"
                             disabled={working}
                             onClick={() => void update(item, 'accepted')}
                           >
-                            Accept
-                          </button>
-                          <button className="assistance-queue__danger" type="button" disabled={working} onClick={() => openReject(item)}>
+                            {workingId === item.serviceRequestId ? 'Saving…' : 'Accept'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="assistance-queue__danger"
+                            type="button"
+                            disabled={working}
+                            onClick={() => openReject(item)}
+                          >
                             Reject
-                          </button>
+                          </Button>
                         </>
                       )}
                       {item.status === 'accepted' && (
-                        <button
+                        <Button
+                          size="sm"
+                          variant="outline"
                           className="assistance-queue__secondary"
                           type="button"
                           disabled={working}
                           onClick={() => void update(item, 'completed')}
                         >
-                          Mark done
-                        </button>
+                          {workingId === item.serviceRequestId ? 'Saving…' : 'Mark done'}
+                        </Button>
                       )}
                       {(item.status === 'rejected' || item.status === 'completed') && <span>—</span>}
                     </div>
@@ -191,9 +243,15 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
             {selected.flightNumber ?? 'All flights'} · {selected.serviceCode} · {labels[selected.status]}
           </p>
           {selected.note && <p>{selected.note}</p>}
-          <button className="assistance-queue__secondary" type="button" onClick={() => setSelectedId(null)}>
+          <Button
+            variant="outline"
+            className="assistance-queue__secondary"
+            type="button"
+            disabled={working}
+            onClick={() => setSelectedId(null)}
+          >
             Close
-          </button>
+          </Button>
         </section>
       )}
       <Dialog
@@ -217,7 +275,7 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
           <label className="block">
             Reason (shown to the customer, required)
             <textarea
-              className="mt-2 block w-full rounded border p-2"
+              className="assistance-queue__reason"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               disabled={working}

@@ -18,7 +18,7 @@ import { CancelService } from './cancel/cancel.service'
 import { BookingStatusService } from './common/booking-status.service'
 import { BookingErrorFilter } from './common/booking-error.filter'
 import { LocalBookingEventBus } from './common/booking-event-bus'
-import { SystemBookingClock } from './common/booking-clock'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { ConfirmService } from './confirm/confirm.service'
 import { DevConfirmController } from './confirm/dev-confirm.controller'
 import { HoldExpiryJob } from './confirm/hold-expiry.job'
@@ -48,7 +48,7 @@ import { InventoryService } from './inventory/inventory.service'
 import { LoyaltyStub } from './stubs/loyalty.stub'
 import { RefundStub } from './stubs/refund.stub'
 import { ScreeningStub } from './stubs/screening.stub'
-import { SeatMapStub } from './stubs/seat-map.stub'
+import { AircraftSeatMapAdapter } from './providers/aircraft-seat-map.adapter'
 import { SeatService } from './seats/seat.service'
 import { AssistanceService } from './assistance/assistance.service'
 import { SeatMapController } from './seats/seat-map.controller'
@@ -123,7 +123,7 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
     BookingReadService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },
-    { provide: BOOKING_CLOCK, useClass: SystemBookingClock },
+    { provide: BOOKING_CLOCK, useExisting: SimulationClock },
     { provide: BOOKING_EVENT_BUS, useClass: LocalBookingEventBus },
     { provide: INVENTORY_PORT, useClass: InventoryService },
     { provide: SEAT_PORT, useClass: SeatService },
@@ -133,13 +133,15 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
     { provide: CHECKOUT_PORT, useClass: CheckoutStub },
     { provide: REFUND_PORT, useClass: RefundStub },
     { provide: SCREENING_PORT, useClass: ScreeningStub },
-    { provide: SEAT_MAP_PORT, useClass: SeatMapStub },
+    { provide: SEAT_MAP_PORT, useClass: AircraftSeatMapAdapter },
     { provide: BOOKING_READ_PORT, useExisting: BookingReadService },
     { provide: CANCEL_FOR_FLIGHT_PORT, useExisting: CancelForFlightService },
     { provide: FLIGHT_EVENT_BUS, useClass: LocalFlightEventBus },
     { provide: BOOKING_PROVIDER, useClass: BookingProviderAdapter },
   ],
   exports: [
+    SeatPaymentService,
+    CheckinSeatProvider,
     BookingStatusService,
     ConfirmService,
     ReleaseService,

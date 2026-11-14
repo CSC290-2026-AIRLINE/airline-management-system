@@ -8,6 +8,8 @@ export interface SeatPickerProps {
   selectedSeatCode: string | null
   disabledSeatCodes?: string[]
   passengerLabel?: string
+  seatLabels?: Record<string, string>
+  currentSeatCode?: string | null
   onSelect: (seatCode: string) => void
 }
 
@@ -20,6 +22,7 @@ export interface AssistanceFieldsProps {
   value: AssistanceValue
   onChange: (value: AssistanceValue) => void
   disabled?: boolean
+  popupContainer?: HTMLElement | null
 }
 
 export interface SeatTakenDialogProps {

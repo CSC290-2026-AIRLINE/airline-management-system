@@ -1,32 +1,101 @@
 .booking-assistance {
-  max-width: 72rem;
-  margin: 1.5rem auto;
-  padding: 1.5rem;
-  border: 1px solid #dce3eb;
-  border-radius: 0.75rem;
-  background: white;
-  color: #14213d;
+  min-width: 0;
+  color: var(--f3-ink);
 }
-.booking-assistance label {
-  display: grid;
-  gap: 0.4rem;
-  max-width: 24rem;
+.booking-assistance__heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding-bottom: 20px;
 }
-.booking-assistance select,
-.booking-assistance button {
-  padding: 0.6rem 0.8rem;
-  border: 1px solid #9aacc0;
-  border-radius: 0.4rem;
-  background: white;
-  color: #14213d;
+.booking-assistance__heading > p {
+  flex: 1;
+  min-width: 180px;
 }
-.booking-assistance button {
-  cursor: pointer;
+.booking-assistance__flight-filter {
+  width: 260px;
+  max-width: 100%;
+}
+.booking-assistance__flight-filter label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--f3-muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 .booking-assistance__passenger {
-  padding: 0.75rem 0;
-  border-top: 1px solid #dce3eb;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 0;
+  border-top: 1px solid var(--f3-line);
 }
-.booking-assistance__passenger h3 {
-  margin: 0.25rem 0 0.5rem;
+.booking-assistance__passenger:last-child {
+  padding-bottom: 0;
+}
+.booking-assistance__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--f3-selected);
+  color: var(--f3-primary);
+}
+.booking-assistance__person {
+  flex: 1;
+  min-width: 140px;
+}
+.booking-assistance__person h3 {
+  margin: 0;
+  color: var(--f3-ink);
+  font-family: inherit;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.booking-assistance__type,
+.booking-assistance__empty {
+  margin: 4px 0 0;
+  color: var(--f3-muted);
+  font-size: 12px;
+}
+.booking-assistance__type {
+  text-transform: capitalize;
+}
+.booking-assistance__request {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.booking-assistance__code {
+  font-weight: 700;
+}
+.booking-assistance__scope {
+  color: var(--f3-muted);
+}
+.booking-assistance__decision {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--f3-danger);
+  overflow-wrap: anywhere;
+}
+.booking-assistance__passenger > button {
+  gap: 6px;
+}
+@media (max-width: 600px) {
+  .booking-assistance__heading {
+    gap: 14px;
+  }
+  .booking-assistance__flight-filter {
+    width: 100%;
+  }
+  .booking-assistance__passenger > button {
+    width: 100%;
+  }
 }

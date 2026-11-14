@@ -62,10 +62,11 @@ function SelectContent({
   children,
   position = 'popper',
   align = 'start',
+  container,
   ...props
-}: ComponentProps<typeof SelectPrimitive.Content>) {
+}: ComponentProps<typeof SelectPrimitive.Content> & { container?: HTMLElement | null }) {
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={container}>
       <SelectPrimitive.Content
         data-slot="select-content"
         className={classNames('cw-select-content', className)}

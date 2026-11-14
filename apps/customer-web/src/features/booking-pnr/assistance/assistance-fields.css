@@ -1,30 +1,59 @@
 .assistance-fields {
-  border: 1px solid #dce3ea;
-  border-radius: 0.5rem;
-  color: #14213d;
-  padding: 1rem;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid #d9dfe9;
+  border-radius: 10px;
+  color: #0a1424;
+  font-family: Inter, system-ui, sans-serif;
 }
 .assistance-fields legend {
+  padding: 0 6px;
+  font-size: 14px;
   font-weight: 600;
 }
 .assistance-fields label {
   display: grid;
-  gap: 0.4rem;
-  margin-block: 0.75rem;
-}
-.assistance-fields select,
-.assistance-fields textarea {
-  border: 1px solid #9aacc0;
-  border-radius: 0.35rem;
-  font: inherit;
-  padding: 0.6rem;
+  gap: 6px;
+  margin: 12px 0 6px;
+  color: #677287;
+  font-size: 13px;
+  font-weight: 500;
 }
 .assistance-fields textarea {
-  min-height: 5rem;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid #dbe0eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #0a1424;
+  font:
+    14px/1.5 Inter,
+    system-ui,
+    sans-serif;
   resize: vertical;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms;
+}
+.assistance-fields textarea::placeholder {
+  color: #8993a4;
+}
+.assistance-fields textarea:focus-visible,
+.assistance-fields .cw-select-trigger:focus-visible {
+  outline: none;
+  border-color: #102544;
+  box-shadow: 0 0 0 3px #10254425;
+}
+.assistance-fields textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .assistance-fields p {
-  color: #52657a;
-  font-size: 0.9rem;
-  line-height: 1.5;
+  margin: 12px 0 0;
+  color: #677287;
+  font-size: 12px;
+  line-height: 1.6;
 }

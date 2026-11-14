@@ -9,6 +9,7 @@ import {
   INVENTORY_PORT,
   PRICING_PORT,
   SEAT_PORT,
+  SEAT_MAP_PORT,
   SERVICE_REQUEST_PORT,
   type BookingClock,
   type BookingTransaction,
@@ -16,6 +17,8 @@ import {
   type PricingPort,
   type SeatPort,
   type ServiceRequestPort,
+  type SeatMapPort,
+  type FareQuote,
 } from '../contracts'
 import type { HoldBookingDto, HoldBookingResponse } from './dto/hold-booking.dto'
 import { invalidHold, validateHoldFlights, validateHoldPassengers } from './hold.validation'
@@ -29,6 +32,7 @@ export class HoldService {
     @Inject(SEAT_PORT) private readonly seats: SeatPort,
     @Inject(SERVICE_REQUEST_PORT) private readonly requests: ServiceRequestPort,
     @Inject(BOOKING_CLOCK) private readonly clock: BookingClock,
+    @Inject(SEAT_MAP_PORT) private readonly layouts: SeatMapPort,
   ) {}
 
   private requireKey(key: string | undefined): string {
@@ -92,6 +96,9 @@ export class HoldService {
     }
     if (request.paymentType !== 'cash') invalidHold('Miles bookings are not enabled yet')
     if (request.segments.some((segment) => !segment.fareClassId)) invalidHold('Cash bookings require a fare class on every segment')
+    // Keep the assigned aircraft stable while pricing its seats and writing their holds. Scheduling can change it
+    // after commit; the aircraft-change receipt then releases any seats invalid on the replacement aircraft.
+    await tx.$executeRaw`SELECT id FROM flight WHERE id = ANY(${request.segments.map((segment) => segment.flightId)}::uuid[]) ORDER BY id FOR SHARE`
     const flightRows = await tx.flight.findMany({
       where: { id: { in: request.segments.map((segment) => segment.flightId) } },
       include: { route: true },
@@ -108,32 +115,61 @@ export class HoldService {
       if (!fareClasses.some((fare) => fare.id === segment.fareClassId && fare.cabin === segment.cabin))
         invalidHold('Fare class does not match the selected cabin')
     }
-    // Search quotes are informational; always ask the pricing owner again at hold.
-    const quotes = await Promise.all(
-      request.segments.map((segment) =>
-        this.pricing.quote({
-          flightId: segment.flightId,
-          cabin: segment.cabin,
-          fareClassId: segment.fareClassId!,
-          promoCode: request.promoCode,
-        }),
+    const passengerCount = [...types.values()].filter((type) => type !== 'infant').length
+    const layoutByFlight = new Map(
+      await Promise.all(
+        [...new Set(request.segments.map((segment) => segment.flightId))].map(
+          async (id) => [id, await this.layouts.getSeatMap(id)] as const,
+        ),
       ),
     )
-    const currency = quotes[0]?.currency
-    if (!currency || !/^[A-Z]{3}$/.test(currency) || quotes.some((quote) => quote.currency !== currency))
-      invalidHold('Pricing returned an invalid quote')
     if (
-      quotes.some(
-        (quote, index) =>
-          quote.fareClassId !== request.segments[index].fareClassId ||
-          !Number.isFinite(quote.pricePerPassenger) ||
-          quote.pricePerPassenger < 0,
+      request.segments.some(
+        (segment) => !layoutByFlight.get(segment.flightId)?.cabins.some((cabin) => cabin.cabin === segment.cabin && cabin.capacity > 0),
       )
     )
+      throw new BookingError('FARE_UNAVAILABLE', 'The selected cabin is not available on this aircraft', 409)
+    // Price each passenger's actual seat. Reuse identical quotes within this hold, but keep different seat types on
+    // distinct coupon quotes so discounts, taxes and cancellation rules come from the pricing owner.
+    const quoteCache = new Map<string, Promise<FareQuote>>()
+    const priced = await Promise.all(
+      request.passengers
+        .filter((person) => types.get(person.passengerId) !== 'infant')
+        .flatMap((person) =>
+          request.segments.map(async (segment) => {
+            const choice = request.seats?.find((seat) => seat.passengerId === person.passengerId && seat.flightId === segment.flightId)
+            const seat = choice
+              ? layoutByFlight
+                  .get(segment.flightId)
+                  ?.rows.flatMap((row) => row.seats)
+                  .find((item) => item.seatCode === choice.seatCode)
+              : undefined
+            if (choice && (!seat || seat.blocked || seat.cabin !== segment.cabin))
+              throw new BookingError('SEAT_NOT_ALLOWED', 'Seat does not match the selected cabin', 422)
+            const cacheKey = `${segment.flightId}:${segment.fareClassId}:${seat?.type ?? ''}`
+            let pending = quoteCache.get(cacheKey)
+            if (!pending) {
+              pending = this.pricing.quote({
+                flightId: segment.flightId,
+                cabin: segment.cabin,
+                fareClassId: segment.fareClassId!,
+                promoCode: request.promoCode,
+                ...(seat ? { seatType: seat.type } : {}),
+              })
+              quoteCache.set(cacheKey, pending)
+            }
+            const quote = await pending
+            if (quote.fareClassId !== segment.fareClassId || !Number.isFinite(quote.pricePerPassenger) || quote.pricePerPassenger < 0)
+              invalidHold('Pricing returned an invalid quote')
+            return { key: `${person.passengerId}:${segment.flightId}`, quote }
+          }),
+        ),
+    )
+    const currency = priced[0]?.quote.currency
+    if (!currency || !/^[A-Z]{3}$/.test(currency) || priced.some(({ quote }) => quote.currency !== currency))
       invalidHold('Pricing returned an invalid quote')
-    const passengerCount = [...types.values()].filter((type) => type !== 'infant').length
-    const cents = quotes.map((quote) => Math.round(quote.pricePerPassenger * 100))
-    const total = cents.reduce((sum, price) => sum + price * passengerCount, 0) / 100
+    const quotes = new Map(priced.map(({ key, quote }) => [key, quote]))
+    const total = priced.reduce((sum, { quote }) => sum + Math.round(quote.pricePerPassenger * 100), 0) / 100
     if (Math.round(request.expectedTotal * 100) !== Math.round(total * 100)) {
       throw new BookingError('PRICE_CHANGED', 'The itinerary price has changed', 409, {
         previousTotal: request.expectedTotal,
@@ -184,15 +220,17 @@ export class HoldService {
     }))
     await tx.booking_segment.createMany({ data: segments })
     const coupons = request.passengers.flatMap((person) =>
-      segments.map((segment, index) => ({
+      segments.map((segment) => ({
         id: randomUUID(),
         booking_id: booking.id,
         booking_segment_id: segment.id,
         booking_passenger_id: passengerIds.get(person.passengerId)!,
         flight_id: segment.flight_id,
         passenger_id: person.passengerId,
-        fare_quote_id: types.get(person.passengerId) === 'infant' ? null : quotes[index].fareQuoteId,
-        price_total: types.get(person.passengerId) === 'infant' ? '0.00' : (cents[index] / 100).toFixed(2),
+        fare_quote_id: quotes.get(`${person.passengerId}:${segment.flight_id}`)?.fareQuoteId ?? null,
+        price_total: (Math.round((quotes.get(`${person.passengerId}:${segment.flight_id}`)?.pricePerPassenger ?? 0) * 100) / 100).toFixed(
+          2,
+        ),
         status: 'held',
         updated_at: bookedAt,
       })),

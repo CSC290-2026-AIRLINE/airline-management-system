@@ -1,6 +1,7 @@
 // Mirror of Feature 6's provider types (PR #28: modules/checkin-boarding/providers/providers.ts and api-types.ts).
-// PR #28 is not merged into dev, so Feature 3 cannot import from Feature 6's folder yet. Copy, don't change: when PR #28
-// merges, delete this file and import the same names from Feature 6's module instead.
+// Feature 6's module is absent from this branch. These compatible contracts add optional flight selectors so a
+// multi-flight passenger is never resolved to an arbitrary flight. Replace them with the agreed exported contracts
+// when Feature 6 is included; existing single-flight callers remain compatible.
 
 export type Cabin = 'economy' | 'premium_economy' | 'business' | 'first'
 export type SeatType = 'standard' | 'front' | 'exit' | 'business'
@@ -47,7 +48,7 @@ export interface BookingPassenger {
 /** Implemented by Feature 3 in C12 (providers/booking-provider.adapter.ts). */
 export interface BookingProvider {
   findByPnrAndLastName(pnr: string, lastName: string): Promise<BookingPassenger[]>
-  byBookingPassengerId(id: string): Promise<BookingPassenger | null>
+  byBookingPassengerId(id: string, flightId?: string): Promise<BookingPassenger | null>
   listByFlight(flightId: string): Promise<BookingPassenger[]>
 }
 
@@ -57,11 +58,11 @@ export interface SeatProvider {
   hold(flightId: string, seatCode: string, bookingPassengerId: string, ttlMs: number): Promise<SeatLock>
   release(lockId: string): Promise<void>
   confirm(lockId: string): Promise<{ seatCode: string; type: SeatType }>
-  assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType } | null>
+  assigned(bookingPassengerId: string, flightId?: string): Promise<{ seatCode: string; type: SeatType } | null>
   assignAnyStandard(
     flightId: string,
     bookingPassengerId: string,
     opts: { avoidExitRow: boolean },
   ): Promise<{ seatCode: string; type: SeatType }>
-  releaseAssigned(bookingPassengerId: string): Promise<void>
+  releaseAssigned(bookingPassengerId: string, flightId?: string): Promise<void>
 }
