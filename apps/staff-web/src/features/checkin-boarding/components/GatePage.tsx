@@ -4,7 +4,7 @@ import { Card } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { ApiRequestError, F6_MOCK, type StaffApi } from '../api/index.ts'
+import { ApiRequestError, type StaffApi } from '../api/index.ts'
 import type { FlightSummary, GateInfo, GateList, GateListEntry, Headcount, ScanResult } from '../api/types.ts'
 import { CameraScan } from './CameraScan.tsx'
 import { ErrorBanner } from './ErrorBanner.tsx'
@@ -12,18 +12,7 @@ import { Message, Pill, StatusPill } from './pills.tsx'
 import { messageOf, numberOrNull } from './errors.ts'
 import { swapPlan } from './gate-swap.ts'
 import { formatTime } from '../domain/format.ts'
-import {
-  GATE_ACTIVE,
-  GATE_IDLE,
-  INPUT_LABEL,
-  MUTED,
-  PANEL,
-  PANEL_TITLE,
-  PRIMARY_BUTTON,
-  SAMPLE_CHIP,
-  SECONDARY_BUTTON,
-  TEXT_INPUT,
-} from './styles.ts'
+import { GATE_ACTIVE, GATE_IDLE, INPUT_LABEL, MUTED, PANEL, PANEL_TITLE, PRIMARY_BUTTON, SECONDARY_BUTTON, TEXT_INPUT } from './styles.ts'
 
 const GROUP_LABELS: Record<'1' | '2' | '3' | '4', string> = {
   '1': 'Group 1 · Special assistance',
@@ -33,7 +22,6 @@ const GROUP_LABELS: Record<'1' | '2' | '3' | '4', string> = {
 }
 
 /** The references the demo can scan: a normal pass, the security hold, another flight and a typo. */
-const SAMPLE_REFERENCES = ['R8KD2WQN', 'Q7M4K2XR', 'H3VN8PLA', 'P6KA2CXF', 'Q7M4K2XX']
 
 export function GatePage({ api }: { api: StaffApi }) {
   const [gates, setGates] = useState<GateInfo[]>([])
@@ -417,16 +405,6 @@ export function GatePage({ api }: { api: StaffApi }) {
             </Button>
           </div>
         </form>
-        {F6_MOCK ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-[#677287]">Try:</span>
-            {SAMPLE_REFERENCES.map((sample) => (
-              <Button key={sample} type="button" variant="outline" size="xs" className={SAMPLE_CHIP} onClick={() => setReference(sample)}>
-                {sample}
-              </Button>
-            ))}
-          </div>
-        ) : null}
         {scan ? (
           <Message tone={scan.event === 'boarded' ? 'success' : 'error'} role="status">
             <div className="flex flex-col gap-3">

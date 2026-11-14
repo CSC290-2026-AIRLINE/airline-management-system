@@ -1,30 +1,8 @@
 import { useState } from 'react'
-import { F6_MOCK } from '../api/index.ts'
 import type { FlowError } from './flow-error.ts'
-import { buildLine2, buildSpecimenLine2, SPECIMEN_LINE1 } from '../domain/mrz.ts'
-import { MRZ_CHECKS, MRZ_LENGTH, inlineMrzChecks, mrzLineReady } from './mrz-input.ts'
+import { MRZ_CHECKS, inlineMrzChecks, mrzLineReady } from './mrz-input.ts'
 import { Message } from './Message.tsx'
 import styles from './flow.module.css'
-
-/** A valid MRZ whose passport number ends in 0000: the screening fixture holds that document. */
-const HOLD_LINE2 = buildLine2({
-  number: 'L89890000',
-  nationality3: 'UTO',
-  dob: '740812',
-  sex: 'F',
-  expiry: '300415',
-  personal: 'ZE184226B<<<<<',
-})
-
-/** The fixtures ask a visa from China for Japan, which is where the demo flight goes. */
-const VISA_LINE2 = buildLine2({
-  number: 'L898902C3',
-  nationality3: 'CHN',
-  dob: '740812',
-  sex: 'F',
-  expiry: '300415',
-  personal: 'ZE184226B<<<<<',
-})
 
 export function PassportStep({
   busy,
@@ -37,9 +15,8 @@ export function PassportStep({
   onSubmit: (line1: string, line2: string, visaNumber?: string) => void
   onBack: () => void
 }) {
-  // The demo starts from the specimen passport of the prototype.
-  const [line1, setLine1] = useState(F6_MOCK ? SPECIMEN_LINE1 : '')
-  const [line2, setLine2] = useState(F6_MOCK ? buildSpecimenLine2() : '')
+  const [line1, setLine1] = useState('')
+  const [line2, setLine2] = useState('')
   const [visaNumber, setVisaNumber] = useState('')
 
   const needsVisa = error?.code === 'VISA_REQUIRED'
@@ -116,29 +93,6 @@ export function PassportStep({
 
       {ready && allDigitsPass ? (
         <Message tone="success">All four check digits pass. Press Check passport to verify the document.</Message>
-      ) : null}
-
-      {F6_MOCK ? (
-        <div className={styles.helpers}>
-          <span className={styles.helpersLabel}>Demo</span>
-          <button
-            type="button"
-            className={styles.ghostButton}
-            onClick={() =>
-              setLine2((current) =>
-                current.length === MRZ_LENGTH ? current.slice(0, 27) + (current[27] === '0' ? '1' : '0') + current.slice(28) : current,
-              )
-            }
-          >
-            Try a typo
-          </button>
-          <button type="button" className={styles.ghostButton} onClick={() => setLine2(VISA_LINE2)}>
-            Try visa needed
-          </button>
-          <button type="button" className={styles.ghostButton} onClick={() => setLine2(HOLD_LINE2)}>
-            Try security hold
-          </button>
-        </div>
       ) : null}
 
       <div className={styles.actions}>

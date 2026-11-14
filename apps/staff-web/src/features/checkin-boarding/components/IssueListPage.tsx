@@ -3,7 +3,7 @@ import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
-import { F6_MOCK, type StaffApi } from '../api/index.ts'
+import { type StaffApi } from '../api/index.ts'
 import type { StaffCheckInRow, StaffCheckInView } from '../api/types.ts'
 import { ErrorBanner } from './ErrorBanner.tsx'
 import { Message } from './pills.tsx'
@@ -238,8 +238,6 @@ export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPage
           </TabsContent>
         ) : null}
       </Tabs>
-
-      {F6_MOCK ? <p className="m-0 text-xs text-[#677287]">Example passengers, bags and payments for the demo; not real data.</p> : null}
     </div>
   )
 }

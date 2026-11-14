@@ -141,14 +141,10 @@ inject the token and nothing else.
 
 `CheckinBoardingModule.register('memory' | 'db')` picks the repository and the providers.
 
-| Where                                  | Mode         | What it runs                                                                    |
-| -------------------------------------- | ------------ | ------------------------------------------------------------------------------- |
-| `apps/backend/src/app.module.ts`       | `db`         | the Prisma repository, the database providers, feature 15's clock and audit log |
-| `checkin-boarding.http.spec.ts`        | `memory`     | the in-memory store and the fixtures — no database, no Clerk                    |
-| the frontends with `VITE_F6_MOCK=true` | browser mock | no backend at all: the frontends' own mock, which mirrors the memory fixtures   |
-
-The browser mock lives in the frontends (`features/checkin-boarding/mock/`), so the two demos differ in the booking
-references they know — see "Demo fixtures" below.
+| Where                            | Mode     | What it runs                                                                    |
+| -------------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `apps/backend/src/app.module.ts` | `db`     | the Prisma repository, the database providers, feature 15's clock and audit log |
+| `checkin-boarding.http.spec.ts`  | `memory` | the in-memory store and the fixtures — no database, no Clerk                    |
 
 ### The seed
 
@@ -241,9 +237,7 @@ the document and clears what staff had cleared before.
 
 The booking references are the ones of `providers/demo-data.ts`: Anna is `ER224F`, Narong is `PL224A`, and so on. The
 `booking_reference` CHECK of the database allows only `A-H`, `J-N`, `P-Z` and `2-9`, so every `0` of the prototype
-became a `2` and every `1` a `3` — the customer-web and staff-web browser mocks still carry the prototype's
-references (`ER204F`, `PL204A`), so the mock demo and the database demo use different references for the same
-passengers.
+became a `2` and every `1` a `3`.
 
 ## Tests
 

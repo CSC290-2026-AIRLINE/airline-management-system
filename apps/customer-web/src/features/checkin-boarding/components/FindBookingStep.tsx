@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { F6_MOCK } from '../api/index.ts'
 import { Message } from './Message.tsx'
 import styles from './flow.module.css'
 
@@ -13,8 +12,8 @@ export function FindBookingStep({
   firstNames: string[] | null
   onSubmit: (pnr: string, lastName: string, firstName?: string) => void
 }) {
-  const [pnr, setPnr] = useState(F6_MOCK ? 'ER204F' : '')
-  const [lastName, setLastName] = useState(F6_MOCK ? 'Eriksson' : '')
+  const [pnr, setPnr] = useState('')
+  const [lastName, setLastName] = useState('')
   const [firstName, setFirstName] = useState('')
 
   return (

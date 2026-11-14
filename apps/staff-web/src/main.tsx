@@ -7,7 +7,6 @@ import './App.css'
 // Last, so shadcn's --border and --accent win over the same names in index.css.
 import './globals.css'
 import { router } from './router'
-import { DemoApp } from './features/checkin-boarding/DemoApp.tsx'
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined
 const root = createRoot(document.getElementById('root')!)
@@ -22,13 +21,7 @@ function InnerApp() {
   return <RouterProvider router={router} context={{ auth: { isLoaded, isSignedIn: !!isSignedIn } }} />
 }
 
-if (import.meta.env.VITE_F6_MOCK === 'true') {
-  root.render(
-    <StrictMode>
-      <DemoApp />
-    </StrictMode>,
-  )
-} else if (!clerkPublishableKey) {
+if (!clerkPublishableKey) {
   root.render(
     <StrictMode>
       <p style={{ padding: 24, fontFamily: 'sans-serif' }}>
