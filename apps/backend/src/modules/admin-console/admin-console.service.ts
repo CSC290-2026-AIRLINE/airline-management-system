@@ -434,7 +434,8 @@ export class AdminConsoleService {
    *
    *   - Every active `core` screen — these are always-on for everyone (e.g. Home, My profile).
    *   - Every active `admin` screen — only if the user's role is `is_admin`.
-   *   - Every active `assignable` screen the role has a `role_screen` grant for.
+   *   - Every active `assignable` screen — for an `is_admin` role, all of them; otherwise only those the role has a
+   *     `role_screen` grant for.
    *
    * `provisioned` is the signal that separates "signed in, but nobody created a staff account yet" from "has a staff
    * account whose role happens to hold no screens" — both produce an empty `screen_codes`, and only the former should
@@ -450,18 +451,25 @@ export class AdminConsoleService {
     })
     if (!staff) return { screen_codes: [], provisioned: false, role: null }
 
+    const role = { code: staff.role.code, name: staff.role.name }
+
+    // An admin role sees every active screen, so there is no grant to look up.
+    if (staff.role.is_admin) {
+      const all = await this.db.screen.findMany({ where: { is_active: true }, select: { code: true } })
+      return { screen_codes: all.map((s) => s.code), provisioned: true, role }
+    }
+
     const grants = await this.db.role_screen.findMany({
       where: { role_id: staff.role_id },
       select: { screen_id: true },
     })
 
-    const wantedKinds: ScreenKind[] = staff.role.is_admin ? ['core', 'admin'] : ['core']
+    const wantedKinds: ScreenKind[] = ['core']
     const allowedAuto = await this.db.screen.findMany({
       where: { is_active: true, kind: { in: wantedKinds } },
       select: { code: true },
     })
 
-    const role = { code: staff.role.code, name: staff.role.name }
     if (grants.length === 0) {
       return { screen_codes: allowedAuto.map((s) => s.code), provisioned: true, role }
     }

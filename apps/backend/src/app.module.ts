@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { PaymentsCheckoutModule } from './modules/payments-checkout/payments-checkout.module'
 import { validateEnv } from './config/env.validation'
+import { PricingModule } from './modules/pricing/pricing.module'
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { validateEnv } from './config/env.validation'
     AuthModule,
     AdminConsoleModule,
     PaymentsCheckoutModule,
+    PricingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,0 +1,664 @@
+/* Pricing & Finance (G12) staff pages. Values read from the Fare Setup design; every colour, radius and size is a
+   --pr-* token, so change the token, not a rule. Class names are prefixed pr- to stay out of other features' way. */
+/* Dialogs render in a portal outside .pr-shell, so they carry the tokens through .pr-dialog. */
+:is(.pr-shell, .pr-dialog) {
+  /* shadcn components read these, so they take the pricing colours on these pages only */
+  --primary: #14213d;
+  --ring: #14213d;
+  --pr-sidebar-text: #b7c1d1;
+  --pr-page: #f7f9fc;
+  --pr-surface: #ffffff;
+  --pr-ink: #0a1424;
+  --pr-text: #1e293b;
+  --pr-muted: #677287;
+  --pr-border: #cbd5e1;
+  --pr-divider: #e2e8f0;
+  --pr-head: #e8edf5;
+  --pr-primary: #14213d; /* main brand colour: buttons, active tab, focus, phone top bar */
+  --pr-primary-hover: #22365a;
+  --pr-selected: #eef3ff;
+  --pr-tint: #f0f2f7;
+  --pr-danger: #b42318;
+  --pr-danger-bg: #fdecec;
+  --pr-danger-strong: #db1f29; /* Remove fare class / Remove rule buttons */
+  --pr-inactive: #9b3b34; /* muted red for the Inactive badge */
+  --pr-inactive-bg: #f9e6e4;
+  --pr-warn: #b86e08; /* amber warning box in confirmations */
+  --pr-warn-bg: #fff0c7;
+  --pr-good: #1f7a4d;
+  --pr-good-bg: #dcf5e6;
+  --pr-highlight: #eef3ff; /* row just added or saved */
+  --pr-focus: 0 0 0 3px rgb(20 33 61 / 20%);
+  --pr-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+  --pr-accent: #f2a800; /* yellow brand bar */
+
+  --pr-radius-xs: 2px;
+  --pr-radius-sm: 4px;
+  --pr-radius: 6px;
+  --pr-radius-lg: 8px;
+  --pr-radius-field: 10px;
+  --pr-radius-card: 12px;
+  --pr-radius-dialog: 14px;
+
+  --pr-font: 'Inter', system-ui, 'Segoe UI', sans-serif;
+  --pr-font-mono: var(--pr-font); /* codes like Y or BKK also use Inter */
+  --pr-text-caption: 11px;
+  --pr-text-small: 12px;
+  --pr-text-body: 13px;
+  --pr-text-label: 14px;
+  --pr-text-title: 36px;
+  --pr-text-subtitle: 16px;
+  --pr-text-card-title: 20px;
+  --pr-text-page-title: 27px;
+}
+.pr-dialog {
+  color: var(--pr-text);
+}
+/* The global h2 rule uses --text-h, which is near-white here, so a dialog title would vanish on the white panel. */
+.pr-dialog h2 {
+  color: var(--pr-ink);
+}
+.pr-shell {
+  /* Sits inside the global staff shell's main area, which scrolls. */
+  color-scheme: light;
+  background: var(--pr-page);
+  color: var(--pr-text);
+  font: 400 var(--pr-text-body) / 1.45 var(--pr-font);
+  letter-spacing: normal;
+  text-align: left;
+}
+.pr-shell *,
+.pr-shell *::before,
+.pr-shell *::after {
+  box-sizing: border-box;
+}
+
+/* Main area -------------------------------------------------------------------------------------- */
+.pr-main > * {
+  max-width: 997px;
+}
+.pr-main {
+  padding: 24px 63px 40px;
+}
+.pr-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.pr-title {
+  margin: 0 0 4px;
+  color: var(--pr-ink);
+  font-family: var(--pr-font);
+  font-size: var(--pr-text-title);
+  font-weight: 800;
+  letter-spacing: normal;
+  line-height: 1.2;
+}
+.pr-subtitle,
+.pr-muted {
+  color: var(--pr-muted);
+}
+.pr-subtitle {
+  max-width: 700px;
+  margin: 0;
+  font-size: var(--pr-text-subtitle);
+}
+.pr-muted {
+  margin: 0;
+}
+.pr-split {
+  display: grid;
+  align-items: start;
+  gap: 20px;
+}
+.pr-split.has-editor {
+  grid-template-columns: minmax(0, 1fr) 380px;
+}
+
+/* Cards and tables ------------------------------------------------------------------------------- */
+.pr-card-footer {
+  margin: 0;
+}
+
+/* Success banner above a list: fades in, then out just before FareClassesTab removes it (NOTICE_MS = 2s). */
+.pr-banner-slot:empty {
+  display: none;
+}
+@keyframes pr-banner-life {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  10%,
+  80% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The row just added or saved, while its banner shows */
+
+/* Buttons ---------------------------------------------------------------------------------------- */
+
+/* Forms ------------------------------------------------------------------------------------------ */
+.pr-editor {
+  padding: 20px;
+}
+.pr-editor-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.pr-eyebrow {
+  margin: 0 0 2px;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.pr-editor-title {
+  margin: 0;
+  color: var(--pr-primary);
+  font: 700 var(--pr-text-card-title) / 1.25 var(--pr-font);
+  letter-spacing: normal;
+}
+.pr-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.pr-field.is-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.pr-field-error {
+  color: var(--pr-danger);
+  font-size: var(--pr-text-small);
+}
+.pr-checks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 14px;
+}
+
+/* Add pop-up: a short code box beside the name */
+.pr-code-name-row {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 12px;
+}
+.pr-fee-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 10px;
+}
+.pr-help {
+  margin: 0 0 14px;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+}
+
+/* Side panel: Save takes the spare width, Remove keeps its text width */
+.pr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Card heading and base fares grid ---------------------------------------------------------------- */
+.pr-matrix th,
+.pr-matrix td {
+  white-space: nowrap;
+}
+.pr-matrix tbody th {
+  height: 60px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--pr-divider);
+  background: var(--pr-surface);
+  font-weight: 400;
+  text-align: left;
+  text-transform: none;
+}
+
+/* The route column stays put while the fare class columns scroll */
+.pr-matrix thead th:first-child,
+.pr-matrix tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.pr-matrix td {
+  height: 60px;
+}
+.pr-matrix-route strong,
+.pr-matrix-route span {
+  display: block;
+}
+.pr-matrix-route strong {
+  color: var(--pr-primary);
+  font-size: var(--pr-text-body);
+  font-weight: 600;
+}
+.pr-matrix-route span {
+  color: var(--pr-muted);
+  font-size: var(--pr-text-caption);
+}
+.pr-matrix-error {
+  display: block;
+  margin-top: 4px;
+}
+.pr-matrix-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pr-matrix-footer .pr-muted {
+  font-size: var(--pr-text-small);
+}
+
+/* Labelled amount field with the currency inside (phone base fares, seat fees) */
+.pr-fare-label {
+  display: block;
+  margin-bottom: 6px;
+  overflow: hidden;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-caption);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pr-amount-field {
+  position: relative;
+  display: block;
+}
+.pr-amount-suffix {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+/* Pricing rules page ----------------------------------------------------------------------------- */
+.pr-stack {
+  display: grid;
+  gap: 20px;
+}
+.pr-rules-table td {
+  height: 52px;
+}
+.pr-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pr-priority strong {
+  min-width: 14px;
+  color: var(--pr-ink);
+}
+.pr-adjust {
+  color: var(--pr-primary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* On/off switch (a button with role="switch") */
+.pr-rules-footer {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+}
+.pr-rules-footer .pr-muted {
+  font-size: var(--pr-text-small);
+}
+
+/* Promo codes */
+.pr-promo-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.pr-promo-cards {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pr-promo-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 12px;
+  border: 1px solid var(--pr-divider);
+  border-radius: var(--pr-radius-field);
+}
+.pr-promo-code {
+  padding: 6px 8px;
+  border-radius: var(--pr-radius-lg);
+  background: #eef2f7;
+  color: var(--pr-primary);
+  font-size: var(--pr-text-small);
+  font-weight: 700;
+}
+.pr-promo-name {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.pr-promo-name strong {
+  color: var(--pr-primary);
+  font-size: var(--pr-text-label);
+  font-weight: 600;
+}
+.pr-promo-name span {
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+}
+.pr-promo-discount {
+  color: var(--pr-primary);
+  font-size: 15px;
+  font-weight: 700;
+}
+.pr-promo-bottom {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Price simulator: beside the rules on desktop, its own page on a phone */
+.pr-rules-layout.has-simulator {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 377px;
+  align-items: start;
+  gap: 20px;
+}
+.pr-sim-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.pr-sim-note {
+  margin: 0;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+}
+.pr-sim-lead {
+  margin: 0 0 14px;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-label);
+}
+.pr-sim-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pr-sim-lines li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--pr-divider);
+  color: var(--pr-primary);
+}
+.pr-sim-lines small {
+  margin-left: 6px;
+  color: var(--pr-muted);
+  font-size: var(--pr-text-caption);
+}
+.pr-sim-lines strong {
+  flex: none;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.pr-sim-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: var(--pr-radius-lg);
+  background: var(--pr-head);
+  color: var(--pr-primary);
+  font-weight: 600;
+}
+.pr-sim-total strong {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.pr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Phone-only pieces (hidden on desktop) ---------------------------------------------------------- */
+.pr-editor-page-title {
+  margin: 0 0 14px;
+  color: var(--pr-ink);
+  font-family: var(--pr-font);
+  font-size: var(--pr-text-page-title);
+  font-weight: 700;
+  letter-spacing: normal;
+}
+
+/* Fare class cards (phone list) */
+.pr-class-cards {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Add dialog: a centred modal, and a bottom sheet on phones */
+
+/* Small centred confirmation, e.g. "Remove rule H-7?" */
+
+/* Form in a confirmation-sized dialog, e.g. "New period rule" */
+.pr-form-hint {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: var(--pr-radius);
+  background: var(--pr-page);
+  color: var(--pr-muted);
+  font-size: var(--pr-text-small);
+}
+
+/* Responsive ------------------------------------------------------------------------------------- */
+@media (max-width: 1280px) {
+  .pr-main {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+}
+@media (max-width: 1100px) {
+  .pr-split.has-editor,
+  .pr-rules-layout.has-simulator {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Phone: from the mobile frames of the Fare Setup design (393px wide) */
+@media (max-width: 800px) {
+  .pr-main {
+    padding: 16px 20px 32px;
+  }
+  .pr-header {
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .pr-title {
+    margin-bottom: 14px;
+    color: var(--pr-primary);
+    font-size: var(--pr-text-page-title);
+  }
+
+  /* The edit page shows only its own back link and title */
+  .pr-main:has(.pr-editor-page) > .pr-header {
+    display: none;
+  }
+
+  /* Forms: small uppercase labels, taller fields, full-width stacked actions */
+  .pr-editor {
+    padding: 14px;
+  }
+  .pr-actions {
+    flex-direction: column;
+  }
+  .pr-field.is-inline {
+    flex-wrap: wrap;
+  }
+
+  /* Bottom sheet */
+
+  /* Kind and type share a row; the discount takes its own */
+  .pr-promo-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 0; /* each field already has its own bottom margin */
+  }
+  .pr-promo-row > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  /* Cards are tighter on a phone */
+
+  /* Base fares: one block per route with a 2-column grid of amounts, paged (Previous / Next page) */
+  .pr-fare-route {
+    padding: 4px 0 14px;
+  }
+  .pr-fare-route + .pr-fare-route {
+    padding-top: 14px;
+    border-top: 1px solid var(--pr-divider);
+  }
+  .pr-fare-route .pr-matrix-route {
+    margin: 0 0 10px;
+    font-weight: 400;
+  }
+  .pr-fare-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+  }
+
+  /* Phone: the confirmation is a full-width bottom sheet like the other dialogs */
+
+  /* Phone form dialogs: Save on top, Cancel under it, both full width */
+
+  /* Header buttons (e.g. Open price simulator) go full width under the title */
+
+  /* Pricing rules: one card per rule, paged like Base fares */
+  .pr-rule-cards {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pr-rule-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 4px 12px;
+    padding: 12px;
+    border: 1px solid var(--pr-divider);
+    border-radius: var(--pr-radius-lg);
+    background: var(--pr-surface);
+  }
+  .pr-rule-number {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--pr-head);
+    color: var(--pr-ink);
+    font-size: var(--pr-text-small);
+    font-weight: 700;
+  }
+  .pr-rule-card-name {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .pr-rule-card-name strong {
+    color: var(--pr-ink);
+    font-size: var(--pr-text-label);
+    font-weight: 600;
+  }
+  .pr-rule-card-name > span {
+    color: var(--pr-muted);
+    font-size: var(--pr-text-small);
+  }
+  .pr-rule-card-adjust {
+    font-size: 17px;
+  }
+  .pr-rule-card.is-inactive .pr-rule-card-name strong,
+  .pr-rule-card.is-inactive .pr-rule-card-adjust {
+    color: var(--pr-muted);
+  }
+  .pr-rule-card-actions {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .pr-switch-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--pr-muted);
+    font-size: var(--pr-text-small);
+  }
+  .pr-rule-card-buttons {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Bigger tap targets than the desktop table */
+  .pr-pager {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+    text-align: center;
+  }
+  .pr-pager p {
+    margin: 0;
+    color: var(--pr-muted);
+    font-size: var(--pr-text-small);
+  }
+  .pr-pager-buttons {
+    display: flex;
+    gap: 10px;
+  }
+  .pr-matrix-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
