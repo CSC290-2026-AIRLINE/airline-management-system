@@ -9,12 +9,20 @@ import { CargoDeskController } from './cargo-desk.controller'
 import { CargoDeskService } from './cargo-desk.service'
 import { CargoClaimsController } from './cargo-claims.controller'
 import { CargoClaimsService } from './cargo-claims.service'
+import { CargoCustomerController } from './cargo-customer.controller'
 import { CargoTestToolsController } from './cargo-test-tools.controller'
 
 const devControllers = process.env.NODE_ENV !== 'production' ? [CargoTestToolsController] : []
 
 @Module({
-  controllers: [CargoController, CargoSettingsController, CargoDeskController, CargoClaimsController, ...devControllers],
+  controllers: [
+    CargoController,
+    CargoSettingsController,
+    CargoDeskController,
+    CargoClaimsController,
+    CargoCustomerController,
+    ...devControllers,
+  ],
   providers: [CargoService, CargoSettingsService, CargoEventsService, CargoBookingService, CargoDeskService, CargoClaimsService],
   exports: [CargoService, CargoSettingsService, CargoEventsService, CargoBookingService, CargoDeskService, CargoClaimsService],
 })
