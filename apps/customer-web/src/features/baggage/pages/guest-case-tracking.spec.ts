@@ -169,7 +169,8 @@ test('guest tracking is a public route; signed-in users go to the protected My b
   assert.match(route, /createFileRoute\('\/track-lost-bag'\)/)
   assert.match(route, /throw redirect\(\{ to: '\/lost-bag-case' \}\)/)
   assert.match(route, /if \(isSignedIn\) return <Navigate to="\/lost-bag-case" \/>/)
-  assert.match(route, /<GuestReportHeader \/>\s*<GuestLostBagCasePage initialCaseNumber=\{caseNumber \?\? ''\} \/>/)
+  assert.match(route, /<GuestLostBagCasePage initialCaseNumber=\{caseNumber \?\? ''\} \/>/)
+  assert.doesNotMatch(route, /GuestReportHeader|FlythonHeader/)
   // Only the case number is accepted from the URL.
   assert.match(route, /const caseNumber = prefilledCaseNumber\(search\.case\)/)
   assert.doesNotMatch(route, /search\.(bookingReference|surname)/)

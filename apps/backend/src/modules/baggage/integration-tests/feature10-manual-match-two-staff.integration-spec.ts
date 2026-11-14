@@ -157,7 +157,7 @@ async function assertDatabaseIdentity(client: PrismaClient, connectionString: st
   assert.ok(identity[0].version.startsWith('16'), 'Expected PostgreSQL 16')
   assert.equal(identity[0].reportTable, 'lost_bag_report')
   assert.equal(identity[0].migrationTable, '_prisma_migrations')
-  assert.equal(Number(identity[0].migrations), 14, 'Expected all 14 repository migrations to be deployed')
+  assert.equal(Number(identity[0].migrations), 16, 'Expected all 16 repository migrations to be deployed')
 }
 
 async function snapshotExistingFeature10Records(

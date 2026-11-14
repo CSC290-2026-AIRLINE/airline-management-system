@@ -894,7 +894,7 @@ export function StaffRolesPage() {
     if (staff.error.status === 403) return <NoAccessScreen screenName="Staff & roles" homeTo="/" />
     return (
       <Card className="border-border px-7 py-6 font-sans" role="alert">
-        <h2 className="m-0 mb-2 font-sans text-lg font-bold text-foreground">
+        <h2 className="m-0 mb-2 font-sans text-base font-semibold text-foreground">
           Staff &amp; roles failed to load{staff.error.status ? ` — HTTP ${staff.error.status}` : ''}
         </h2>
         <p className="mb-4 text-sm break-words text-muted-foreground">{staff.error.message}</p>

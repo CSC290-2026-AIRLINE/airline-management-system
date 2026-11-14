@@ -1,6 +1,5 @@
 import { createFileRoute, Navigate, redirect } from '@tanstack/react-router'
 import { useAuth } from '@clerk/clerk-react'
-import { GuestReportHeader } from '../features/baggage/components/GuestReportHeader'
 import { GuestLostBagCasePage } from '../features/baggage/pages/GuestLostBagCasePage'
 import { prefilledCaseNumber } from '../features/baggage/pages/guest-case-tracking'
 
@@ -31,10 +30,5 @@ function TrackLostBagRoute() {
   if (!isLoaded) return null
   if (isSignedIn) return <Navigate to="/lost-bag-case" />
 
-  return (
-    <>
-      <GuestReportHeader />
-      <GuestLostBagCasePage initialCaseNumber={caseNumber ?? ''} />
-    </>
-  )
+  return <GuestLostBagCasePage initialCaseNumber={caseNumber ?? ''} />
 }

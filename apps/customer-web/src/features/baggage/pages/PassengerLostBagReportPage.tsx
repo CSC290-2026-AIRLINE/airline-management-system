@@ -797,14 +797,20 @@ function LostBagReportForm(props: ReportFormProps) {
           </form>
           <aside className="passenger-report-sidebar">
             <WhatHappensNext isGuest={isGuest} />
-            {/* My bag case is a signed-in page, so this link is not offered to guests. */}
-            {caseAccess.checkMyCase && (
-              <section className="passenger-report-card passenger-report-existing">
-                <h2>Already reported?</h2>
-                <p>Open My bag case with your case number, booking reference and surname.</p>
+            {/* Guests reopen a case through public tracking; signed-in customers keep My bag case. */}
+            <section className="passenger-report-card passenger-report-existing">
+              <h2>Already reported?</h2>
+              <p>
+                {isGuest
+                  ? 'Open your case with the case number you were given.'
+                  : 'Open My bag case with your case number, booking reference and surname.'}
+              </p>
+              {caseAccess.checkMyCase ? (
                 <Link to="/lost-bag-case">Check my case</Link>
-              </section>
-            )}
+              ) : (
+                <Link to="/track-lost-bag">Check my case</Link>
+              )}
+            </section>
           </aside>
         </div>
       )}

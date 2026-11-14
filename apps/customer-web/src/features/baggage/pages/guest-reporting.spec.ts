@@ -67,10 +67,10 @@ test('a Clerk-signed-in user stays in customer mode whatever the app session doe
   assert.match(route, /import \{ useAuth \} from '@clerk\/clerk-react'/)
   assert.match(route, /reportingModeFor\(\{ isLoaded, isSignedIn \}\)/)
   assert.doesNotMatch(route, /useAppAuth|\.user\b|accessToken/, 'the route must not infer the mode from the app session')
-  // Signed in keeps the authenticated composition: AppAuthProvider, FlythonHeader, then the customer page.
-  assert.match(route, /<AppAuthProvider>\s*<FlythonHeader \/>\s*<PassengerLostBagReportPage \/>\s*<\/AppAuthProvider>/)
-  // Signed out renders the guest-safe header and the guest page: never the session-dependent FlythonHeader.
-  assert.match(route, /if \(mode === 'guest'\) \{\s*return \(\s*<>\s*<GuestReportHeader \/>\s*<GuestLostBagReportPage \/>\s*<\/>\s*\)\s*\}/)
+  // The root header is shared; signed-in reporting still requires its app session provider.
+  assert.match(route, /<AppAuthProvider>\s*<PassengerLostBagReportPage \/>\s*<\/AppAuthProvider>/)
+  assert.match(route, /if \(mode === 'guest'\) \{\s*return <GuestLostBagReportPage \/>/)
+  assert.doesNotMatch(route, /FlythonHeader|GuestReportHeader/)
   assert.match(route, /createFileRoute\('\/report-lost-bag'\)/)
 })
 
@@ -394,20 +394,27 @@ test('the guest confirmation reads only the minimal result and promises no email
   assert.doesNotMatch(GUEST_CONFIRMATION_NOTE, /email|emailed|sent you/i)
 })
 
-test('guests get no way into the signed-in case page, only public tracking; customers keep both', () => {
+test('the "Already reported?" area sends guests to public tracking and customers to My bag case', () => {
   assert.deepEqual(caseAccessActionsFor('guest'), { openCreatedCase: false, checkMyCase: false, guestCaseTracking: true })
   assert.deepEqual(caseAccessActionsFor('customer'), { openCreatedCase: true, checkMyCase: true, guestCaseTracking: false })
 
   const page = source('PassengerLostBagReportPage.tsx')
+  const sidebar = page.slice(page.indexOf('<aside className="passenger-report-sidebar">'), page.indexOf('</aside>'))
   assert.match(page, /\{caseAccess\.openCreatedCase && \(/)
-  assert.match(page, /\{caseAccess\.checkMyCase && \(/)
-  // The guest confirmation's "Check my case" goes to public tracking with the case number only.
+  // The shared area is visible in both modes; only the destination changes.
+  assert.match(sidebar, /<h2>Already reported\?<\/h2>/)
+  assert.match(
+    sidebar,
+    /\{caseAccess\.checkMyCase \? \(\s*<Link to="\/lost-bag-case">Check my case<\/Link>\s*\) : \(\s*<Link to="\/track-lost-bag">Check my case<\/Link>\s*\)\}/,
+  )
+  // The guest confirmation's "Check my case" also goes to public tracking with the case number only.
   assert.match(
     page,
     /\{caseAccess\.guestCaseTracking && \([\s\S]*?navigate\(\{ to: '\/track-lost-bag', search: \{ case: pageState\.caseNumber \} \}\)[\s\S]*?Check my case/,
   )
-  // My bag case stays behind the authenticated layout.
+  // My bag case stays behind the authenticated layout; tracking stays public.
   assert.match(source('../../../routes/_authenticated/lost-bag-case.tsx'), /createFileRoute\('\/_authenticated\/lost-bag-case'\)/)
+  assert.match(source('../../../routes/track-lost-bag.tsx'), /createFileRoute\('\/track-lost-bag'\)/)
 })
 
 test('guest follow-up copy promises no online tracking, delivery choice or email; customer copy is unchanged', () => {
@@ -430,19 +437,16 @@ test('guest follow-up copy promises no online tracking, delivery choice or email
   assert.doesNotMatch(page, /<WhatHappensNext \/>/)
 })
 
-test('the guest header is session-free and links only to public pages', () => {
-  const header = source('../components/GuestReportHeader.tsx')
-  assert.doesNotMatch(header, /useAppAuth|AppAuthProvider|useAuth|useUser|Profile|Signed in/, 'no session, profile or signed-in status')
-  // Links go only to public routes: home, reporting, guest tracking and sign-in. Never to the dashboard or the signed-in
-  // My bag case; that page is only where sign-in continues to (it still requires the session).
-  const links = [...header.matchAll(/to="([^"]+)"/g)].map((m) => m[1]).sort()
-  assert.deepEqual(links, ['/', '/login', '/report-lost-bag', '/track-lost-bag'])
-  assert.doesNotMatch(header, /to="\/(dashboard|lost-bag-case)"|\/dashboard/)
-  assert.match(header, /const signInRedirect = isTracking \? '\/lost-bag-case' : '\/report-lost-bag'/)
-  assert.match(header, /search=\{\{ redirect: signInRedirect \}\}/)
-  // The shared header is reused for its look only, never modified or rendered here.
-  assert.match(header, /import '\.\.\/\.\.\/\.\.\/components\/FlythonHeader\.css'/)
-  assert.doesNotMatch(header, /<FlythonHeader/)
+test('baggage routes use the root header and case tracking keeps authentication without profile gating', () => {
+  const root = source('../../../routes/__root.tsx')
+  const layout = source('../../../routes/_authenticated.tsx')
+  assert.match(root, /<SiteHeader \/>\s*<Outlet \/>/)
+  assert.doesNotMatch(layout, /FlythonHeader|GuestReportHeader/)
+  assert.match(layout, /!context\.auth\.isSignedIn/)
+  assert.match(layout, /location\.pathname\.replace\(/)
+  assert.match(layout, /=== '\/lost-bag-case'/)
+  assert.match(layout, /<AppAuthProvider>\s*\{isBaggageCase \? \(\s*<Outlet \/>/)
+  assert.match(layout, /<AccountProvider>\s*<Outlet \/>\s*<\/AccountProvider>/)
 })
 
 test('guests see the green "sent" banner without an email claim; customers keep the original label', () => {
