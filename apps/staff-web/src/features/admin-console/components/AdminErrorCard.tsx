@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Button } from '@staff-web/components/ui/button'
-import { Card } from '@staff-web/components/ui/card'
+import { Card, CardContent } from '@staff-web/components/ui/card'
 import { PAGE_CARD } from '../page-card'
 
 interface AdminErrorCardProps {
@@ -15,13 +15,13 @@ interface AdminErrorCardProps {
 }
 
 function Code({ children }: { children: ReactNode }) {
-  return <code className="rounded-sm bg-[#f3f4f6] px-1.5 py-px font-mono text-xs">{children}</code>
+  return <code className="rounded-sm bg-accent px-1.5 py-px font-mono text-xs">{children}</code>
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mb-[18px]">
-      <h3 className="mb-1.5 text-[13px] font-semibold tracking-[0.06em] text-[#6b7280] uppercase">{title}</h3>
+    <div className="mb-4">
+      <h3 className="mb-1.5 text-sm font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>
       {children}
     </div>
   )
@@ -42,68 +42,66 @@ export function AdminErrorCard({ page, error, status, onRetry }: AdminErrorCardP
 
   return (
     <Card className={PAGE_CARD}>
-      <div
-        className="max-w-[720px] rounded-lg border border-[#fcd34d] border-l-4 border-l-[#f59e0b] px-7 py-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] max-phone:px-4"
-        role="alert"
-      >
-        <header className="mb-3 flex items-center gap-3">
-          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-[#fef3c7] text-base font-bold text-[#92400e]">
-            !
-          </span>
-          <h2 className="m-0 text-lg font-semibold text-[#111827]">{headline}</h2>
-        </header>
-        <p className="mb-4 text-xs break-words text-[#6b7280]">{error ?? 'Unknown error'}</p>
+      <Card className="max-w-180 border-warning/40" role="alert">
+        <CardContent className="px-7 max-phone:px-4">
+          <header className="mb-3 flex items-center gap-3">
+            <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-warning-soft text-base font-bold text-warning">
+              !
+            </span>
+            <h2 className="m-0 text-lg font-semibold text-foreground">{headline}</h2>
+          </header>
+          <p className="mb-4 text-xs break-words text-muted-foreground">{error ?? 'Unknown error'}</p>
 
-        {isAuth && (
-          <Section title="This usually means one of two things">
-            <ol className="list-decimal pl-5 text-sm leading-relaxed text-[#374151]">
-              <li>You are not signed in to the staff app.</li>
-              <li>
-                Your signed-in account does not have <Code>is_admin=true</Code> on its <Code>role</Code>.
-              </li>
-            </ol>
-          </Section>
-        )}
+          {isAuth && (
+            <Section title="What this usually means">
+              <ul className="list-disc pl-5 text-sm leading-relaxed text-muted-foreground">
+                <li>Your session may have ended. Sign in again.</li>
+                <li>Your role may not include administration. Ask an administrator to check your access.</li>
+              </ul>
+            </Section>
+          )}
 
-        {!isAuth && status !== undefined && (
-          <Section title="What to try">
-            <ul className="list-disc pl-5 text-sm leading-relaxed text-[#374151]">
-              <li>Retry — a failure on the API side is often transient.</li>
-              <li>
-                If it keeps failing, check the backend log on port 8080 for the request to <Code>/api/admin</Code>.
-              </li>
-            </ul>
-          </Section>
-        )}
+          {!isAuth && status !== undefined && (
+            <Section title="What to try">
+              <ul className="list-disc pl-5 text-sm leading-relaxed text-muted-foreground">
+                <li>Retry. A failure on the server side is often temporary.</li>
+                <li>If it keeps failing, tell the platform team and include the message above.</li>
+              </ul>
+            </Section>
+          )}
 
-        {showSetup && (
-          <Section title="Quick checklist">
-            <ol className="list-decimal pl-5 text-sm leading-relaxed text-[#374151]">
-              <li>
-                Run <Code>npm run db:up</Code> in the repo root (PostgreSQL + SeaweedFS).
-              </li>
-              <li>
-                Run <Code>npm run db:migrate</Code> and <Code>npm run db:seed</Code>.
-              </li>
-              <li>
-                Run <Code>npm run -w apps/backend dev</Code> so port 8080 is serving the API.
-              </li>
-              <li>
-                Sign in via Clerk with an account whose role row has <Code>is_admin=true</Code>.
-              </li>
-            </ol>
-            <p className="mt-1 text-xs text-[#6b7280]">
-              The admin console reads live data — with the API up and a staff account in place, both tabs fill in.
-            </p>
-          </Section>
-        )}
+          {showSetup && (
+            <Section title="The server did not answer">
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Check your connection and retry. If it keeps happening, the service may be down.
+              </p>
+              <details className="mt-2 text-sm text-muted-foreground">
+                <summary className="cursor-pointer font-medium text-foreground">Technical details (for developers)</summary>
+                <ol className="mt-2 list-decimal pl-5 leading-relaxed">
+                  <li>
+                    Run <Code>npm run db:up</Code> in the repo root (PostgreSQL + SeaweedFS).
+                  </li>
+                  <li>
+                    Run <Code>npm run db:migrate</Code> and <Code>npm run db:seed</Code>.
+                  </li>
+                  <li>
+                    Run <Code>npm run -w apps/backend dev</Code> so port 8080 is serving the API.
+                  </li>
+                  <li>
+                    Sign in with an account whose role has <Code>is_admin=true</Code>.
+                  </li>
+                </ol>
+              </details>
+            </Section>
+          )}
 
-        <footer className="mt-4">
-          <Button size="sm" onClick={onRetry}>
-            Retry
-          </Button>
-        </footer>
-      </div>
+          <footer className="mt-4">
+            <Button size="sm" onClick={onRetry}>
+              Retry
+            </Button>
+          </footer>
+        </CardContent>
+      </Card>
     </Card>
   )
 }

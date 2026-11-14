@@ -3,6 +3,10 @@
 /* Crew rostering (F8) palette and fonts; Tailwind itself is imported once, above. */
 @import './features/crew-rostering/build-pairings/types/tokens.css';
 
+/* The app is light-only. Tie `dark:` to a `.dark` class (nothing sets it) rather than the OS setting, otherwise the shadcn
+   components' `dark:` styles override the admin console's light styles for anyone on a dark OS. */
+@custom-variant dark (&:is(.dark *));
+
 /*
  * Tailwind + shadcn/ui theme.
  *
@@ -35,12 +39,12 @@
   --text-3xl: 30px;
   --text-3xl--line-height: 36px;
 
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-2xl: 16px;
+  /* shadcn/ui default radius scale (new-york): 6 / 8 / 10 / 14 px from a 10px base. */
+  --radius: 10px;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-heading: 'Merriweather', Georgia, 'Times New Roman', serif;
@@ -58,13 +62,23 @@
   --color-secondary: #eef1f7;
   --color-secondary-foreground: #0a1424;
   --color-muted: #f2f4f8;
-  --color-muted-foreground: #6f7c91;
+  --color-muted-foreground: #5a6679;
   --color-accent: #f4f6fa;
   --color-accent-foreground: #0a1424;
   --color-destructive: #b8171f;
   --color-border: #d9dfe9;
   --color-input: #dbe0eb;
   --color-ring: #102544;
+
+  /* shadcn Sidebar tokens, pointed at the admin palette below (no new colours). */
+  --color-sidebar: var(--color-navy);
+  --color-sidebar-foreground: var(--color-primary-foreground);
+  --color-sidebar-primary: var(--color-gold);
+  --color-sidebar-primary-foreground: var(--color-navy);
+  --color-sidebar-accent: var(--color-navy-active);
+  --color-sidebar-accent-foreground: var(--color-primary-foreground);
+  --color-sidebar-border: color-mix(in oklab, var(--color-primary-foreground) 15%, transparent);
+  --color-sidebar-ring: var(--color-gold);
 
   /* Admin console palette (Figma) */
   --color-navy: #14213d;
@@ -86,6 +100,29 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+
+  /* Tailwind v4 resets buttons to `cursor: default`; restore the pointer on everything clickable. */
+  button:not(:disabled),
+  a[href],
+  summary,
+  label[for],
+  [role='button']:not([aria-disabled='true']),
+  [role='tab'],
+  [role='checkbox'],
+  [role='switch'],
+  [role='combobox'],
+  [role='menuitem'],
+  [role='menuitemradio'],
+  [role='option'] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  button[aria-disabled='true'],
+  [aria-disabled='true'],
+  [data-disabled] {
+    cursor: not-allowed;
   }
 }
 

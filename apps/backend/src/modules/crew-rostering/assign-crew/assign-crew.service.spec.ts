@@ -36,6 +36,7 @@ function leg(id: string, dep: string, arr: string, overrides: Partial<Leg> = {})
     aircraftType: 'A320',
     international: true,
     localLanguages: ['ja'],
+    localCrewRequired: 1,
     ...overrides,
   }
 }
@@ -126,6 +127,20 @@ describe('AssignCrewService auto-assign picks', () => {
     expect(plan.captain.map((member) => member.id)).toEqual(['captain-tired'])
     expect(plan.police).toHaveLength(1)
     expect(plan.cabin_crew.map((member) => member.id)).not.toContain('cabin-5')
+  })
+
+  it('asks for as many local speakers as the destination requires', () => {
+    const speakers = [crew('s-1', 'cabin_crew', ['ja']), crew('s-2', 'cabin_crew', ['ja']), crew('s-3', 'cabin_crew', ['ja'])]
+    const everyone = [...pool, ...speakers]
+    const speakersOn = (required: number) => {
+      const legs = pairing([leg('1', '2026-09-15T01:00:00Z', '2026-09-15T07:00:00Z', { localCrewRequired: required })])
+      const plan = internals(service()).planPairing(legs, everyone, busy(), { random: always })
+      return plan.cabin_crew.filter((member) => member.languages.includes('ja')).length
+    }
+
+    expect(speakersOn(1)).toBe(1)
+    expect(speakersOn(2)).toBe(2)
+    expect(speakersOn(3)).toBe(3)
   })
 
   it('leaves a seat empty when nobody is legal', () => {

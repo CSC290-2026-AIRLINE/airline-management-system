@@ -1,12 +1,15 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { ArrowLeft, Check, ChevronDown, SquarePen, X } from 'lucide-react'
+import { ArrowLeft, CircleAlert, CircleCheck, Plus, SquarePen, Users, X } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
+import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
-import { Card } from '@staff-web/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@staff-web/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@staff-web/components/ui/dropdown-menu'
 import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Switch } from '@staff-web/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { cn } from '@staff-web/lib/utils'
@@ -101,14 +104,8 @@ function useIsPhone(): boolean {
 /* Shared class lists ------------------------------------------------------ */
 
 /** Inputs and dropdown triggers: 48px on desktop, 40px on a phone. */
-const FIELD =
-  'h-12 rounded-[9px] border-[#d9dfe9] bg-white px-3.5 text-[15px] text-ink shadow-none placeholder:text-[#8792a6] focus-visible:ring-2 focus-visible:ring-primary/20 aria-invalid:border-danger-line aria-invalid:ring-0 max-phone:h-10 max-phone:rounded-md max-phone:text-[13px] md:text-[15px]'
-const BTN = 'h-[46px] rounded-[9px] px-4 text-sm font-semibold shadow-none'
-const BTN_GHOST = cn(BTN, 'min-w-[100px] border-input bg-white text-[#131a2b] hover:bg-[#f6f7fa]')
-const BTN_PRIMARY = cn(BTN, 'min-w-[130px] bg-[#0e182e] text-white hover:bg-[#1c2a48]')
 /** Phone: dialog buttons sit side by side, full width, text on the left. */
-const BTN_PHONE =
-  'max-phone:h-[38px] max-phone:min-w-0 max-phone:flex-1 max-phone:justify-start max-phone:rounded-md max-phone:px-3 max-phone:text-[13px]'
+const BTN_PHONE = 'max-phone:min-w-0 max-phone:flex-1 max-phone:justify-start max-phone:px-3'
 
 /* Small pieces used only on this page ------------------------------------ */
 
@@ -117,10 +114,12 @@ interface DropdownOption {
   label: string
 }
 
+/** Radix Select forbids an empty item value, so the "clear this filter" row uses this stand-in. */
+const CLEAR = '__clear__'
+
 /**
  * The page's one dropdown — the role and status filters, the Role field in the dialogs, and the role picker on the
- * phone cards. A shadcn dropdown menu rather than a `<select>`, so the open list matches the design (check mark,
- * highlighted row).
+ * phone cards. A shadcn `Select`. A `deselectable` one (the filters) gets a leading row that clears the choice.
  */
 function Dropdown({
   id,
@@ -138,74 +137,44 @@ function Dropdown({
   options: DropdownOption[]
   placeholder: string
   onChange: (value: string | null) => void
-  /** Clicking the selected row again clears the choice (filters only). */
+  /** Adds a first row, labelled with the placeholder, that clears the choice (filters only). */
   deselectable?: boolean
   invalid?: boolean
   variant: 'filter' | 'field' | 'card'
   ariaLabel?: string
 }) {
+  const items = deselectable ? [{ value: CLEAR, label: placeholder }, ...options.filter((o) => o.value !== '')] : options
   const selected = options.find((o) => o.value === value)
 
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          id={id}
-          // The visible value is part of the name (WCAG 2.5.3 "label in name"), e.g. "Filter by role: All roles".
-          aria-label={ariaLabel ? `${ariaLabel}: ${selected?.label ?? placeholder}` : undefined}
-          aria-invalid={invalid || undefined}
-          className={cn(
-            'flex h-12 w-full items-center gap-1.5 rounded-[9px] border border-input bg-white px-3.5 text-left text-sm font-medium text-[#131a2b] outline-none focus-visible:ring-2 focus-visible:ring-primary/30 max-phone:justify-start',
-            variant === 'field' && 'justify-between border-[#d9dfe9] text-[15px] font-semibold text-ink',
-            variant === 'field' && !selected && 'font-normal text-muted-foreground',
-            variant === 'filter' && 'max-phone:h-10 max-phone:rounded-md max-phone:text-[13px]',
-            variant === 'field' && 'max-phone:h-10 max-phone:rounded-md max-phone:text-[13px]',
-            variant === 'card' && 'h-[41px] rounded-lg border-[#d3dae6] bg-[#f6f8fc] px-3 text-sm font-semibold text-ink',
-            invalid && 'border-danger-line',
-          )}
-        >
-          <span className="truncate">{selected?.label ?? placeholder}</span>
-          <ChevronDown className="size-3 shrink-0 text-muted-foreground max-phone:hidden" strokeWidth={2.5} aria-hidden="true" />
-          {/* The phone frames draw a small solid caret instead of the desktop chevron. */}
-          <span className="hidden text-[13px] leading-none text-ink max-phone:inline" aria-hidden="true">
-            ▾
-          </span>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        sideOffset={6}
+    <Select value={value ?? (deselectable ? CLEAR : '')} onValueChange={(v) => onChange(v === CLEAR ? null : v)}>
+      <SelectTrigger
+        id={id}
+        // The visible value is part of the name (WCAG 2.5.3 "label in name"), e.g. "Filter by role: All roles".
+        aria-label={ariaLabel ? `${ariaLabel}: ${selected?.label ?? placeholder}` : undefined}
+        aria-invalid={invalid || undefined}
         className={cn(
-          'flex max-h-[394px] max-w-[540px] min-w-(--radix-dropdown-menu-trigger-width) flex-col gap-0.5 rounded-xl border-[#d9dfe9] p-2 font-sans leading-[normal] shadow-[0_8px_18px_rgba(15,26,46,0.16)]',
-          variant === 'filter' && 'phone:min-w-[240px]',
-          variant === 'field' && 'max-h-[260px] w-(--radix-dropdown-menu-trigger-width) max-w-none',
-          variant === 'card' && 'max-w-[calc(100vw-72px)] min-w-[200px]',
+          'w-full gap-1.5 border-input bg-background px-3.5 text-left text-sm font-medium text-foreground focus-visible:ring-2 focus-visible:ring-primary/30',
+          variant === 'field' && 'border-border text-foreground',
+          variant === 'card' && 'border-input bg-accent px-3 text-sm text-foreground max-phone:text-sm',
+          invalid && 'border-danger-line',
         )}
       >
-        {options.map((o) => {
-          const isSelected = o.value === value
-          return (
-            <DropdownMenuItem
-              key={o.value}
-              role="menuitemradio"
-              aria-checked={isSelected}
-              className={cn(
-                'h-10 gap-2 rounded-lg px-2.5 text-[15px] whitespace-nowrap text-ink focus:bg-[#f4f6fa]',
-                isSelected && 'bg-[#eaeff7] focus:bg-[#eaeff7]',
-                variant === 'card' && 'h-9 text-[13px]',
-              )}
-              onSelect={() => onChange(isSelected && deselectable ? null : o.value)}
-            >
-              <span className="flex w-3.5 shrink-0 justify-center text-primary" aria-hidden="true">
-                {isSelected && <Check className="size-3.5 text-primary" strokeWidth={3} />}
-              </span>
-              {o.label}
-            </DropdownMenuItem>
-          )
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent
+        position="popper"
+        align="start"
+        sideOffset={6}
+        className={cn('max-h-98.5 max-w-135 border-border font-sans', variant === 'field' && 'max-h-65')}
+      >
+        {items.map((o) => (
+          <SelectItem key={o.value} value={o.value} className={cn('px-2.5 whitespace-nowrap text-foreground', variant === 'card' && '')}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -214,10 +183,7 @@ function Field({ label, htmlFor, error, children }: { label: ReactNode; htmlFor:
     <div className="mb-4 flex flex-col gap-1 max-phone:mb-3 max-phone:gap-1.5">
       <Label
         htmlFor={htmlFor}
-        className={cn(
-          'mb-0.5 text-[13px] leading-none font-semibold text-muted-foreground max-phone:mb-0 max-phone:text-[10px] max-phone:tracking-[0.3px] max-phone:uppercase',
-          error && 'max-phone:text-[#c81e28]',
-        )}
+        className={cn('mb-0.5 text-muted-foreground max-phone:mb-0 max-phone:uppercase', error && 'max-phone:text-danger')}
       >
         {label}
       </Label>
@@ -228,7 +194,7 @@ function Field({ label, htmlFor, error, children }: { label: ReactNode; htmlFor:
 
 function Hint({ error, children }: { error?: boolean; children: ReactNode }) {
   return (
-    <p className={cn('mt-0.5 text-xs leading-[1.3] text-muted-foreground max-phone:mt-0 max-phone:text-[11px]', error && 'text-[#c81e28]')}>
+    <p className={cn('mt-0.5 text-xs leading-tight text-muted-foreground max-phone:mt-0 max-phone:text-xs', error && 'text-danger')}>
       {children}
     </p>
   )
@@ -236,11 +202,9 @@ function Hint({ error, children }: { error?: boolean; children: ReactNode }) {
 
 function ErrorBox({ error }: { error: BoxError }) {
   return (
-    <div className="mb-2 flex flex-col gap-1 rounded-lg border border-[#f5c4c4] bg-danger-soft px-3.5 py-3 text-danger" role="alert">
-      <strong className="text-[13px] font-bold">{error.title}</strong>
-      <span className="text-xs leading-[1.35]">
-        {error.message} ({error.code})
-      </span>
+    <div className="mb-2 flex flex-col gap-1 rounded-lg border border-danger-line bg-danger-soft px-3.5 py-3 text-danger" role="alert">
+      <strong className="text-sm font-bold">{error.title}</strong>
+      <span className="text-xs leading-snug">{error.message}</span>
     </div>
   )
 }
@@ -283,10 +247,7 @@ function Modal({
           contentRef.current?.focus()
         }}
         aria-describedby={undefined}
-        className={cn(
-          'max-h-[calc(100vh-32px)] gap-0 overflow-y-auto rounded-2xl border-0 bg-white p-0 font-sans leading-[normal] text-ink shadow-[0_16px_40px_rgba(10,20,36,0.2)] sm:max-w-[calc(100%-32px)]',
-          className,
-        )}
+        className={cn(' overflow-y-auto border-0 bg-background p-0 font-sans text-foreground sm:', className)}
         onInteractOutside={(e) => {
           if (busy) e.preventDefault()
         }}
@@ -338,7 +299,7 @@ function StaffFormDialog({
   const [saving, setSaving] = useState(false)
 
   const emailLocked = isEdit && row.claimed
-  const reasonMessage = isEdit ? 'A reason is required before saving.' : 'A reason is required before creating this account.'
+  const reasonMessage = `Enter a reason of at least ${MIN_REASON_LENGTH} characters.`
   const title = isEdit ? 'Edit staff account' : 'Create staff account'
 
   function clearErrors() {
@@ -392,7 +353,7 @@ function StaffFormDialog({
       ok = false
     }
     if (reason.trim().length < MIN_REASON_LENGTH) {
-      setReasonError(`${reasonMessage} (REASON_REQUIRED)`)
+      setReasonError(reasonMessage)
       ok = false
     }
     if (!ok || !roleId) return
@@ -408,9 +369,9 @@ function StaffFormDialog({
       })
     } catch (err: unknown) {
       if (err instanceof StaffApiError && err.code === 'EMAIL_TAKEN') {
-        setEmailError(`${err.message} (EMAIL_TAKEN)`)
+        setEmailError(err.message)
       } else if (err instanceof StaffApiError && err.code === 'REASON_REQUIRED') {
-        setReasonError(`${err.message} (REASON_REQUIRED)`)
+        setReasonError(err.message)
       } else {
         setBoxError(boxFromError(err))
       }
@@ -440,25 +401,29 @@ function StaffFormDialog({
         <Field label="First name" htmlFor={`${uid}-first`} error={nameMissing(firstName)}>
           <Input
             id={`${uid}-first`}
-            className={FIELD}
             aria-invalid={nameMissing(firstName) || undefined}
             value={firstName}
             placeholder="e.g. Kamon"
             maxLength={100}
             autoComplete="off"
-            onChange={(e) => setFirstName(e.target.value)}
+            onChange={(e) => {
+              setFirstName(e.target.value)
+              setNameError(null)
+            }}
           />
         </Field>
         <Field label="Last name" htmlFor={`${uid}-last`} error={nameMissing(lastName)}>
           <Input
             id={`${uid}-last`}
-            className={FIELD}
             aria-invalid={nameMissing(lastName) || undefined}
             value={lastName}
             placeholder="e.g. Wattana"
             maxLength={100}
             autoComplete="off"
-            onChange={(e) => setLastName(e.target.value)}
+            onChange={(e) => {
+              setLastName(e.target.value)
+              setNameError(null)
+            }}
           />
         </Field>
       </div>
@@ -472,14 +437,17 @@ function StaffFormDialog({
         <Input
           id={`${uid}-email`}
           type="email"
-          className={cn(FIELD, 'disabled:opacity-100 disabled:[-webkit-text-fill-color:#6f7c91]')}
+          className="disabled:opacity-100 disabled:[-webkit-text-fill-color:var(--color-muted-foreground)]"
           aria-invalid={!!emailError || undefined}
           value={email}
           placeholder="name@flython.example"
           maxLength={254}
           autoComplete="off"
           disabled={emailLocked}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value)
+            setEmailError(null)
+          }}
         />
         <Hint error={!!emailError}>
           {emailError ??
@@ -493,12 +461,7 @@ function StaffFormDialog({
 
       {isEdit && (
         <Field label="Staff ID" htmlFor={`${uid}-code`}>
-          <Input
-            id={`${uid}-code`}
-            className={cn(FIELD, 'bg-[#f2f4f8] text-muted-foreground disabled:opacity-100')}
-            value={row.staff_code}
-            disabled
-          />
+          <Input id={`${uid}-code`} className="bg-accent text-muted-foreground disabled:opacity-100" value={row.staff_code} disabled />
           <Hint>Made by the system. Can&apos;t be edited.</Hint>
         </Field>
       )}
@@ -511,7 +474,10 @@ function StaffFormDialog({
           options={roles.map((r) => ({ value: r.id, label: r.name }))}
           placeholder="Choose a role"
           invalid={roleError !== null}
-          onChange={(v) => setRoleId(v)}
+          onChange={(v) => {
+            setRoleId(v)
+            setRoleError(null)
+          }}
         />
         <Hint error={!!roleError}>
           {roleError ??
@@ -522,7 +488,7 @@ function StaffFormDialog({
       </Field>
 
       {!isEdit && (
-        <p className="mb-4 flex min-h-[46px] items-center gap-1 rounded-[9px] bg-[#fff4de] px-4 text-sm text-warning max-phone:mb-3 max-phone:min-h-9 max-phone:rounded-md max-phone:px-3 max-phone:text-xs">
+        <p className="mb-4 flex min-h-11.5 items-center gap-1 rounded-lg bg-warning-soft px-4 text-sm text-warning max-phone:mb-3 max-phone:min-h-9 max-phone:rounded-md max-phone:px-3 max-phone:text-xs">
           Staff ID will be <strong className="font-extrabold">{nextStaffCode || 'assigned on create'}.</strong>
         </p>
       )}
@@ -530,13 +496,15 @@ function StaffFormDialog({
       <Field label="Reason (saved in the audit log)" htmlFor={`${uid}-reason`} error={!!reasonError}>
         <Input
           id={`${uid}-reason`}
-          className={FIELD}
           aria-invalid={!!reasonError || undefined}
           value={reason}
           placeholder={isEdit ? 'Why is this changing?' : 'Why is this account being created?'}
           maxLength={500}
           autoComplete="off"
-          onChange={(e) => setReason(e.target.value)}
+          onChange={(e) => {
+            setReason(e.target.value)
+            setReasonError(null)
+          }}
         />
         {reasonError && <Hint error>{reasonError}</Hint>}
       </Field>
@@ -546,11 +514,11 @@ function StaffFormDialog({
   )
 
   const actions = (
-    <footer className="flex justify-end gap-2.5 px-[30px] pt-4 pb-[30px] max-phone:gap-2 max-phone:px-0 max-phone:pt-1 max-phone:pb-0">
-      <Button type="button" variant="outline" className={cn(BTN_GHOST, BTN_PHONE)} onClick={onCancel} disabled={saving}>
+    <footer className="flex justify-end gap-2.5 px-7 pt-4 pb-7 max-phone:gap-2 max-phone:px-0 max-phone:pt-1 max-phone:pb-0">
+      <Button type="button" variant="outline" className={BTN_PHONE} onClick={onCancel} disabled={saving}>
         Cancel
       </Button>
-      <Button type="submit" className={cn(BTN_PRIMARY, BTN_PHONE)} disabled={saving}>
+      <Button type="submit" className={BTN_PHONE} disabled={saving}>
         {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save changes' : 'Create account'}
       </Button>
     </footer>
@@ -560,39 +528,28 @@ function StaffFormDialog({
      than a pop-up, so it renders in the page flow and the list behind it is hidden (see `data-staff-sheet`). */
   if (isPhone) {
     return (
-      <form
-        onSubmit={submit}
-        noValidate
-        data-staff-sheet=""
-        aria-labelledby={`${uid}-title`}
-        className="font-sans leading-[normal] text-ink"
-      >
-        <button
-          type="button"
-          className="mb-3 inline-flex items-center gap-1 text-xs font-semibold text-[#2563eb] disabled:opacity-60"
-          onClick={onCancel}
-          disabled={saving}
-        >
+      <form onSubmit={submit} noValidate data-staff-sheet="" aria-labelledby={`${uid}-title`} className="font-sans text-foreground">
+        <Button type="button" variant="link" className="mb-3 h-auto gap-1 p-0 text-xs text-primary" onClick={onCancel} disabled={saving}>
           <ArrowLeft className="size-3" strokeWidth={2.5} aria-hidden="true" />
           Back
-        </button>
+        </Button>
         <header className="flex flex-wrap items-center gap-x-4 pb-1">
-          <h2 id={`${uid}-title`} className="m-0 flex-auto font-sans text-lg leading-none font-bold tracking-[-0.01em] text-ink">
+          <h2 id={`${uid}-title`} className="m-0 flex-auto font-sans text-lg leading-none font-bold tracking-tight text-foreground">
             {title}
           </h2>
           <Button
             type="button"
             variant="outline"
-            className="h-7 w-9 rounded-md border-[#d9dfe9] p-0 shadow-none"
+            className="h-7 w-9 border-border p-0"
             onClick={onCancel}
             disabled={saving}
             aria-label="Close"
           >
             <X className="size-3.5" />
           </Button>
-          <p className="mt-1.5 basis-full text-xs leading-[1.35] text-muted-foreground">{subtitleParts.join(' · ')}</p>
+          <p className="mt-1.5 basis-full text-xs leading-snug text-muted-foreground">{subtitleParts.join(' · ')}</p>
         </header>
-        <Card className="mt-2.5 gap-0 rounded-[10px] border-[#d9dfe9] p-3 shadow-none">
+        <Card className="mt-2.5 border-border p-3">
           {fields}
           {actions}
         </Card>
@@ -601,21 +558,15 @@ function StaffFormDialog({
   }
 
   return (
-    <Modal
-      title={title}
-      onClose={onCancel}
-      busy={saving}
-      focusContent
-      className="w-[600px] border border-[#d6dbe6] shadow-[0_12px_32px_rgba(10,20,36,0.18)]"
-    >
+    <Modal title={title} onClose={onCancel} busy={saving} focusContent className="w-150 border border-border">
       <form onSubmit={submit} noValidate>
-        <header className="flex items-start justify-between gap-4 border-b border-[#e6e9f0] px-[30px] pt-[30px] pb-[22px]">
+        <header className="flex items-start justify-between gap-4 border-b border-border px-7 pt-7 pb-5">
           <div>
-            <h2 aria-hidden="true" className="m-0 font-sans text-[28px] leading-none font-bold tracking-[-0.05em] text-ink">
+            <h2 aria-hidden="true" className="m-0 font-sans text-3xl leading-none font-bold tracking-tight text-foreground">
               {title}
             </h2>
             <DialogDescription asChild>
-              <div className="mt-2 text-sm leading-[1.35] text-muted-foreground">
+              <div className="mt-2 text-sm leading-snug text-muted-foreground">
                 {subtitleParts.map((p) => (
                   <span key={p} className="block">
                     {p}
@@ -627,7 +578,7 @@ function StaffFormDialog({
           <Button
             type="button"
             variant="outline"
-            className="size-9 shrink-0 rounded-lg border-[#d9dfe9] p-0 text-ink shadow-none"
+            className="size-9 shrink-0 border-border p-0 text-foreground"
             onClick={onCancel}
             disabled={saving}
             aria-label="Close"
@@ -635,7 +586,7 @@ function StaffFormDialog({
             <X className="size-4" />
           </Button>
         </header>
-        <div className="px-[30px] pt-6">{fields}</div>
+        <div className="px-7 pt-6">{fields}</div>
         {actions}
       </form>
     </Modal>
@@ -668,14 +619,16 @@ function StatusDialog({
     setReasonError(null)
     setBoxError(null)
     if (reason.trim().length < MIN_REASON_LENGTH) {
-      setReasonError(`A reason is required before ${deactivating ? 'deactivating' : 'activating'} this account. (REASON_REQUIRED)`)
+      setReasonError(
+        `Enter a reason of at least ${MIN_REASON_LENGTH} characters before ${deactivating ? 'deactivating' : 'activating'} this account.`,
+      )
       return
     }
     setSaving(true)
     try {
       await onSubmit(reason.trim())
     } catch (err: unknown) {
-      if (err instanceof StaffApiError && err.code === 'REASON_REQUIRED') setReasonError(`${err.message} (REASON_REQUIRED)`)
+      if (err instanceof StaffApiError && err.code === 'REASON_REQUIRED') setReasonError(err.message)
       else setBoxError(boxFromError(err))
       setSaving(false)
     }
@@ -686,28 +639,28 @@ function StatusDialog({
       title={`${verb} ${fullName(row)}?`}
       onClose={onCancel}
       busy={saving}
-      className="w-[480px] p-8 max-phone:max-w-[360px] max-phone:rounded-[10px] max-phone:p-4"
+      className="w-120 p-8 max-phone:max-w-90 max-phone:rounded-lg max-phone:p-4"
     >
       <form onSubmit={submit} noValidate>
         <h2
           aria-hidden="true"
-          className="m-0 font-sans text-2xl leading-[1.2] font-semibold text-[#131a2b] max-phone:text-[17px] max-phone:font-bold"
+          className="m-0 font-sans text-2xl leading-tight font-semibold text-foreground max-phone:text-base max-phone:font-bold"
         >
           {verb} {fullName(row)}?
         </h2>
-        <p className="mt-2.5 mb-4 text-sm leading-[1.35] text-[#6e7a94] max-phone:mt-2 max-phone:mb-2.5 max-phone:text-xs">
+        <p className="mt-2.5 mb-4 text-sm leading-snug text-muted-foreground max-phone:mt-2 max-phone:mb-2.5 max-phone:text-xs">
           {deactivating
             ? `${row.first_name} won’t be able to sign in and will be signed out within 15 minutes. An Admin can turn the account back on.`
             : `${row.first_name} will be able to sign in again.`}
         </p>
-        <p className="mb-[22px] flex min-h-12 items-center rounded-[10px] bg-warning-soft px-4 text-sm font-medium text-[#b27314] max-phone:mb-3 max-phone:min-h-[34px] max-phone:rounded-md max-phone:px-2.5 max-phone:text-[11px]">
+        <p className="mb-5 flex min-h-12 items-center rounded-lg bg-warning-soft px-4 text-sm font-medium text-foreground max-phone:mb-3 max-phone:min-h-8.5 max-phone:rounded-md max-phone:px-2.5 max-phone:text-xs">
           This action is saved in the audit log.
         </p>
         <Field
           htmlFor={`${uid}-reason`}
           error={!!reasonError}
           label={
-            <span className="text-[#6e7a94]">
+            <span className="text-muted-foreground">
               Reason<span className="text-danger-line">*</span>
               <span className="max-phone:hidden"> (saved in the audit log)</span>
             </span>
@@ -715,33 +668,26 @@ function StatusDialog({
         >
           <Input
             id={`${uid}-reason`}
-            className={cn(FIELD, 'h-11 border-input')}
+            className="border-input"
             aria-invalid={!!reasonError || undefined}
             value={reason}
             placeholder={`Why is this account being ${deactivating ? 'deactivated' : 'activated'}?`}
             maxLength={500}
             autoComplete="off"
             autoFocus
-            onChange={(e) => setReason(e.target.value)}
+            onChange={(e) => {
+              setReason(e.target.value)
+              setReasonError(null)
+            }}
           />
           {reasonError && <Hint error>{reasonError}</Hint>}
         </Field>
         {boxError && <ErrorBox error={boxError} />}
         <footer className="flex justify-end gap-2.5 pt-1 max-phone:gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className={cn(BTN_GHOST, 'min-w-[104px]', BTN_PHONE)}
-            onClick={onCancel}
-            disabled={saving}
-          >
+          <Button type="button" variant="outline" className={BTN_PHONE} onClick={onCancel} disabled={saving}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            className={cn(BTN_PRIMARY, 'min-w-[120px]', BTN_PHONE, deactivating && 'max-phone:bg-[#c8202d] max-phone:hover:bg-[#a81a25]')}
-            disabled={saving}
-          >
+          <Button type="submit" className={cn(BTN_PHONE, deactivating && 'max-phone:bg-muted max-phone:hover:bg-muted')} disabled={saving}>
             {saving ? `${verb === 'Deactivate' ? 'Deactivating' : 'Activating'}…` : verb}
           </Button>
         </footer>
@@ -763,23 +709,17 @@ function BlockedDialog({ info, onClose }: { info: BlockedInfo; onClose: () => vo
     <Modal
       title={info.title}
       onClose={onClose}
-      className="flex w-[480px] flex-col gap-3.5 p-7 max-phone:max-w-[360px] max-phone:gap-2.5 max-phone:rounded-[10px] max-phone:p-4"
+      className="flex w-120 flex-col gap-3.5 p-7 max-phone:max-w-90 max-phone:gap-2.5 max-phone:rounded-lg max-phone:p-4"
     >
-      <h2 aria-hidden="true" className="m-0 font-sans text-2xl leading-[1.2] font-bold text-ink max-phone:text-[17px]">
+      <h2 aria-hidden="true" className="m-0 font-sans text-2xl leading-tight font-bold text-foreground max-phone:text-base">
         {info.title}
       </h2>
-      <p className="text-sm leading-[1.35] text-[#677287] max-phone:text-xs">{info.message}</p>
-      <p className="rounded-lg bg-danger-soft px-3.5 py-2.5 text-xs leading-none font-semibold text-danger max-phone:bg-warning-soft max-phone:text-[11px] max-phone:text-warning">
-        <span className="max-phone:hidden">Error </span>
-        {info.code} · nothing was changed
+      <p className="text-sm leading-snug text-muted-foreground max-phone:text-xs">{info.message}</p>
+      <p className="rounded-lg bg-danger-soft px-3.5 py-2.5 text-xs leading-none font-semibold text-danger max-phone:bg-warning-soft max-phone:text-xs max-phone:text-warning">
+        Nothing was changed
       </p>
       <div className="flex justify-end">
-        <Button
-          type="button"
-          className={cn(BTN_PRIMARY, 'h-10 min-w-0 px-[18px] max-phone:h-[38px] max-phone:flex-1 max-phone:justify-start')}
-          onClick={onClose}
-          autoFocus
-        >
+        <Button type="button" className="min-w-0 max-phone:flex-1 max-phone:justify-start" onClick={onClose} autoFocus>
           <span className="max-phone:hidden">Okay</span>
           <span className="hidden max-phone:inline">Got it</span>
         </Button>
@@ -804,7 +744,31 @@ interface Notice {
   desktop?: string
 }
 
-const FILTER_LABEL = 'hidden text-[10px] leading-none font-semibold tracking-[0.3px] text-muted-foreground uppercase max-phone:block'
+function EmptyState({ filtering, onClear, onCreate }: { filtering: boolean; onClear: () => void; onCreate: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-10 text-center">
+      <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Users className="size-6" aria-hidden="true" />
+      </span>
+      <div className="flex flex-col gap-1">
+        <p className="font-medium text-foreground">{filtering ? 'No staff match these filters' : 'No staff accounts yet'}</p>
+        <p className="text-sm text-muted-foreground">
+          {filtering ? 'Try a different search, or clear the filters.' : 'Create the first account to get started.'}
+        </p>
+      </div>
+      {filtering ? (
+        <Button type="button" variant="outline" onClick={onClear}>
+          Clear filters
+        </Button>
+      ) : (
+        <Button type="button" onClick={onCreate}>
+          <Plus aria-hidden="true" />
+          Create staff account
+        </Button>
+      )}
+    </div>
+  )
+}
 
 /**
  * Staff & roles tab: summary cards, search + role/status filters, the staff table, and the Create / Edit / Activate /
@@ -914,17 +878,28 @@ export function StaffRolesPage() {
 
   /* Render ------------------------------------------------------------ */
 
-  if (staff.loading) return <p className="text-sm text-muted-foreground">Loading staff accounts…</p>
+  if (staff.loading)
+    return (
+      <div className="flex flex-col gap-4" role="status">
+        <span className="sr-only">Loading staff accounts…</span>
+        <div className="grid grid-cols-4 gap-4 max-wide:grid-cols-2 max-phone:hidden">
+          {[0, 1, 2, 3].map((n) => (
+            <Skeleton key={n} className="h-24" />
+          ))}
+        </div>
+        <Skeleton className="h-96" />
+      </div>
+    )
   if (staff.error) {
     if (staff.error.status === 403) return <NoAccessScreen screenName="Staff & roles" homeTo="/" />
     return (
-      <Card className="gap-0 rounded-[14px] border-[#d9dfe9] px-7 py-6 font-sans leading-[normal] shadow-none" role="alert">
-        <h2 className="m-0 mb-2 font-sans text-lg font-bold text-ink">
+      <Card className="border-border px-7 py-6 font-sans" role="alert">
+        <h2 className="m-0 mb-2 font-sans text-lg font-bold text-foreground">
           Staff &amp; roles failed to load{staff.error.status ? ` — HTTP ${staff.error.status}` : ''}
         </h2>
         <p className="mb-4 text-sm break-words text-muted-foreground">{staff.error.message}</p>
         <div>
-          <Button type="button" className={BTN_PRIMARY} onClick={() => window.location.reload()}>
+          <Button type="button" onClick={() => window.location.reload()}>
             Retry
           </Button>
         </div>
@@ -938,283 +913,255 @@ export function StaffRolesPage() {
   /* On a phone Create / Edit replaces the list instead of floating over it. */
   const sheetOpen = isPhone && (dialog?.kind === 'create' || editRow !== null)
 
-  const emptyText = filtering ? 'No staff accounts match these filters.' : 'No staff accounts yet.'
-
   return (
     <>
       {!sheetOpen && (
-        <div className="flex flex-col gap-4 font-sans leading-[normal] text-ink max-phone:gap-3">
-          <div className="grid grid-cols-4 gap-[18px] max-wide:grid-cols-2 max-phone:hidden">
+        <div className="flex flex-col gap-4 font-sans text-foreground">
+          <div className="grid grid-cols-4 gap-4 max-wide:grid-cols-2 max-phone:hidden">
             {[
               { label: 'Total staff', value: stats.total },
               { label: 'Active accounts', value: stats.active },
               { label: 'Inactive accounts', value: stats.inactive },
               { label: 'Assigned roles', value: stats.assignedRoles },
             ].map((c) => (
-              <Card key={c.label} className="h-20 justify-between gap-1 rounded-xl border-[#cbd5e1] p-4 shadow-none">
-                <span className="text-[11px] leading-none font-semibold tracking-[0.6px] text-[#677287] uppercase">{c.label}</span>
-                <span className="text-2xl leading-none font-extrabold text-primary">{c.value}</span>
+              <Card key={c.label} className="py-4">
+                <CardHeader className="gap-1 px-4">
+                  <CardDescription className="text-xs font-medium tracking-wide uppercase">{c.label}</CardDescription>
+                  <CardTitle className="text-2xl font-bold text-primary tabular-nums">{c.value}</CardTitle>
+                </CardHeader>
               </Card>
             ))}
           </div>
 
           {notice && (
-            <div
+            <Alert
               ref={noticeRef}
-              className={cn(
-                'flex min-h-11 scroll-mt-20 items-center rounded-[9px] bg-success-soft px-[22px] py-3 text-sm leading-[1.3] text-success max-phone:min-h-0 max-phone:rounded-lg max-phone:px-3 max-phone:py-2.5',
-                notice.tone === 'error' && 'bg-danger-soft text-danger',
-              )}
               role={notice.tone === 'error' ? 'alert' : 'status'}
+              variant={notice.tone === 'error' ? 'destructive' : 'default'}
+              className={cn(
+                'scroll-mt-20',
+                notice.tone === 'error' ? 'border-danger-line/40 bg-danger-soft' : 'border-success/30 bg-success-soft text-success-strong',
+              )}
             >
-              {notice.desktop && <span className="max-phone:hidden">{notice.desktop}</span>}
-              <span
-                className={cn(
-                  'inline-flex flex-wrap gap-x-1.5 max-phone:flex-col max-phone:gap-y-1',
-                  notice.desktop && 'hidden max-phone:inline-flex',
-                )}
-              >
-                {notice.title && (
-                  <strong
-                    className={cn(
-                      'font-semibold max-phone:text-[13px]',
-                      notice.tone === 'error' ? 'text-danger' : 'max-phone:text-success-strong',
-                    )}
-                  >
-                    {notice.title}
-                  </strong>
-                )}
-                <span className="max-phone:text-xs max-phone:leading-[1.35]">{notice.body}</span>
-              </span>
-            </div>
+              {notice.tone === 'error' ? <CircleAlert aria-hidden="true" /> : <CircleCheck aria-hidden="true" />}
+              {notice.title && <AlertTitle className={cn(notice.desktop && 'hidden max-phone:block')}>{notice.title}</AlertTitle>}
+              <AlertDescription className="text-current">
+                {notice.desktop && <span className="max-phone:hidden">{notice.desktop}</span>}
+                <span className={cn(notice.desktop && 'hidden max-phone:inline')}>{notice.body}</span>
+              </AlertDescription>
+            </Alert>
           )}
 
-          {/* One row on desktop; on a phone the same controls stack into a card with small labels, as in the design. */}
-          <div className="flex flex-wrap items-center gap-3 max-phone:grid max-phone:grid-cols-2 max-phone:gap-x-2 max-phone:gap-y-2.5 max-phone:rounded-[10px] max-phone:border max-phone:border-[#d9dfe9] max-phone:bg-white max-phone:p-3">
-            <label className="min-w-[200px] flex-[0_1_313px] max-phone:col-span-2 max-phone:flex max-phone:min-w-0 max-phone:flex-col max-phone:gap-1.5">
-              <span className={FILTER_LABEL}>Search staff</span>
-              <Input
-                className="h-12 rounded-[9px] border-input bg-white px-3.5 text-sm font-medium text-[#131a2b] shadow-none placeholder:text-[#131a2b]/80 max-phone:h-10 max-phone:rounded-md max-phone:text-[13px] md:text-sm"
-                type="search"
-                value={query}
-                placeholder="Search staff…"
-                aria-label="Search staff by name, email or staff ID"
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </label>
-            <div className="min-w-0 flex-[0_0_190px] max-phone:flex max-phone:flex-col max-phone:gap-1.5">
-              <span className={FILTER_LABEL} aria-hidden="true">
-                Role
-              </span>
-              <Dropdown
-                variant="filter"
-                value={roleFilter}
-                options={roleOptions}
-                placeholder="All roles"
-                ariaLabel="Filter by role"
-                deselectable
-                onChange={setRoleFilter}
-              />
-            </div>
-            <div className="min-w-0 flex-[0_0_190px] max-phone:flex max-phone:flex-col max-phone:gap-1.5">
-              <span className={FILTER_LABEL} aria-hidden="true">
-                Status
-              </span>
-              <Dropdown
-                variant="filter"
-                value={statusFilter}
-                options={STATUS_OPTIONS}
-                placeholder="Any status"
-                ariaLabel="Filter by status"
-                deselectable
-                onChange={(v) => setStatusFilter(v as StatusFilter | null)}
-              />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className={cn(
-                BTN_GHOST,
-                'w-[92px] min-w-[92px] max-phone:col-span-2 max-phone:h-[38px] max-phone:w-auto max-phone:rounded-md max-phone:text-[13px]',
-              )}
-              onClick={clearFilters}
-            >
-              <span>
-                Clear<span className="hidden max-phone:inline"> filters</span>
-              </span>
-            </Button>
-            <Button
-              type="button"
-              className={cn(
-                BTN_PRIMARY,
-                'ml-auto h-[42px] w-[172px] bg-primary max-wide:ml-0 max-phone:col-span-2 max-phone:h-[38px] max-phone:w-auto max-phone:rounded-md max-phone:text-[13px]',
-              )}
-              onClick={() => openDialog({ kind: 'create' })}
-            >
-              Create staff account
-            </Button>
-          </div>
-
-          <Card
-            className="gap-0 rounded-[14px] border-[#d9dfe9] px-3 pt-[22px] pb-1.5 shadow-none max-phone:rounded-xl max-phone:p-3.5"
-            aria-labelledby="sr-table-title"
-            role="region"
-          >
-            <header className="flex items-baseline justify-between gap-4 px-2 pb-[22px] max-phone:items-center max-phone:px-0 max-phone:pb-3">
-              <h2 id="sr-table-title" className="m-0 font-sans text-lg leading-none font-bold text-ink">
+          <Card aria-labelledby="sr-table-title" role="region">
+            <CardHeader>
+              <CardTitle id="sr-table-title" className="text-lg">
                 Staff accounts
-              </h2>
-              <span className="text-right text-[13px] leading-none text-muted-foreground max-phone:text-xs max-phone:font-semibold">
-                {filtering ? (
-                  <>
-                    <span className="max-phone:hidden">{`${rows.length} matching staff account${rows.length === 1 ? '' : 's'}`}</span>
-                    <span className="hidden max-phone:inline">{`${rows.length} result${rows.length === 1 ? '' : 's'}`}</span>
-                  </>
-                ) : (
-                  `${stats.active} active of ${stats.total}`
-                )}
-              </span>
-            </header>
+              </CardTitle>
+              <CardDescription aria-live="polite">
+                {filtering
+                  ? `${rows.length} matching staff account${rows.length === 1 ? '' : 's'}`
+                  : `${stats.active} active of ${stats.total}`}
+              </CardDescription>
+              <CardAction>
+                <Button type="button" onClick={() => openDialog({ kind: 'create' })}>
+                  <Plus aria-hidden="true" />
+                  <span className="max-phone:hidden">Create staff account</span>
+                  <span className="hidden max-phone:inline">Create</span>
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-6">
+              <div role="search" aria-label="Staff filters" className="flex flex-wrap items-end gap-3 max-phone:grid max-phone:grid-cols-2">
+                <div className="flex min-w-50 flex-1 flex-col gap-1.5 max-phone:col-span-2 max-phone:min-w-0">
+                  <Label htmlFor="staff-search" className="text-xs text-muted-foreground">
+                    Search staff
+                  </Label>
+                  <Input
+                    id="staff-search"
+                    type="search"
+                    value={query}
+                    placeholder="Name, email or staff ID"
+                    aria-label="Search staff by name, email or staff ID"
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                </div>
+                <div className="flex w-48 flex-col gap-1.5 max-phone:w-auto">
+                  <Label htmlFor="staff-role-filter" className="text-xs text-muted-foreground">
+                    Role
+                  </Label>
+                  <Dropdown
+                    id="staff-role-filter"
+                    variant="filter"
+                    value={roleFilter}
+                    options={[{ value: '', label: 'All roles' }, ...roleOptions]}
+                    placeholder="All roles"
+                    ariaLabel="Filter by role"
+                    deselectable
+                    onChange={(v) => setRoleFilter(v || null)}
+                  />
+                </div>
+                <div className="flex w-48 flex-col gap-1.5 max-phone:w-auto">
+                  <Label htmlFor="staff-status-filter" className="text-xs text-muted-foreground">
+                    Status
+                  </Label>
+                  <Dropdown
+                    id="staff-status-filter"
+                    variant="filter"
+                    value={statusFilter}
+                    options={STATUS_OPTIONS}
+                    placeholder="Any status"
+                    ariaLabel="Filter by status"
+                    deselectable
+                    onChange={(v) => setStatusFilter(v as StatusFilter | null)}
+                  />
+                </div>
+                <Button type="button" variant="ghost" className="max-phone:col-span-2" disabled={!filtering} onClick={clearFilters}>
+                  <X aria-hidden="true" />
+                  Clear filters
+                </Button>
+              </div>
 
-            {isPhone ? (
-              /* Phone layout: one card per account instead of the table. Tapping the status pill opens the same
+              {isPhone ? (
+                /* Phone layout: one card per account instead of the table. Tapping the status pill opens the same
                  Activate / Deactivate dialog as the desktop switch; picking a role opens Edit with that role chosen,
                  because a role change always needs a reason. */
-              <ul className="flex flex-col gap-[11px]">
-                {rows.map((s) => (
-                  <li key={s.id} className="flex flex-col rounded-xl border border-[#d9dfe9] bg-white p-3.5">
-                    <div className="flex min-h-[31px] items-start justify-between gap-2">
-                      <p className="mt-0.5 text-[15px] leading-tight font-bold text-ink">
-                        {fullName(s)}
-                        {s.id === staff.viewerStaffId && ' · You'}
-                      </p>
-                      <button
-                        type="button"
-                        className={cn(
-                          'h-[31px] min-w-[84px] shrink-0 rounded-[9px] bg-[#e3e8f1] px-3 text-[11px] leading-none font-semibold text-[#8792a6]',
-                          s.active && 'bg-[#dcf7e3] text-success-strong',
-                        )}
-                        aria-label={`${s.active ? 'Active' : 'Inactive'} — ${s.active ? 'deactivate' : 'activate'} ${fullName(s)}`}
-                        onClick={() => onToggle(s)}
-                      >
-                        {s.active ? 'Active' : 'Inactive'}
-                      </button>
-                    </div>
-                    <p className="mt-2.5 text-xs leading-[1.3] [overflow-wrap:anywhere] text-muted-foreground">
-                      {s.email} · {s.staff_code}
-                    </p>
-                    <div className="mt-[17px] grid grid-cols-[minmax(0,1fr)_108px] gap-2.5">
-                      <Dropdown
-                        variant="card"
-                        value={s.role.id}
-                        options={roleOptions}
-                        placeholder={s.role.name}
-                        ariaLabel={`Role for ${fullName(s)}`}
-                        onChange={(v) => {
-                          if (v && v !== s.role.id) openEdit(s.id, v)
-                        }}
-                      />
-                      <div className="flex h-[41px] flex-col justify-between py-0.5 text-[13px] whitespace-nowrap text-muted-foreground">
-                        <span className="text-[10px] font-semibold tracking-[0.3px] uppercase">Last sign-in</span>
-                        <span>{formatSignIn(s.last_sign_in_at)}</span>
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="mt-[13px] h-[39px] gap-2 rounded-lg border-[#d3dae6] text-[15px] font-semibold text-ink shadow-none"
-                      onClick={() => openEdit(s.id)}
-                    >
-                      <SquarePen className="size-4" aria-hidden="true" />
-                      Edit
-                    </Button>
-                  </li>
-                ))}
-                {rows.length === 0 && (
-                  <li className="rounded-xl border border-[#d9dfe9] bg-white p-3.5 text-center text-[13px] text-muted-foreground">
-                    {emptyText}
-                  </li>
-                )}
-              </ul>
-            ) : (
-              <Table className="table-fixed">
-                <colgroup>
-                  <col />
-                  <col />
-                  <col className="w-[92px]" />
-                  <col />
-                  <col className="w-[124px]" />
-                  <col className="w-[132px]" />
-                  <col className="w-12" />
-                </colgroup>
-                <TableHeader>
-                  <TableRow className="border-[#d9dfe9] hover:bg-transparent">
-                    {['Name', 'Email', 'Staff ID', 'Role', 'Status', 'Last sign-in'].map((h) => (
-                      <TableHead
-                        key={h}
-                        className="h-auto px-2 pt-0 pb-2 text-[11px] leading-none font-semibold text-muted-foreground uppercase"
-                      >
-                        {h}
-                      </TableHead>
-                    ))}
-                    <TableHead className="h-auto px-2 pt-0 pb-2">
-                      <span className="sr-only">Edit</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="[&_td]:h-[50px] [&_td]:truncate [&_td]:px-2 [&_td]:py-0 [&_td]:text-[13px] [&_td]:leading-none [&_tr]:border-[#d9dfe9] [&_tr]:hover:bg-transparent">
+                <ul className="flex flex-col gap-2.5">
                   {rows.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell className="text-sm! font-semibold text-ink">
-                        {fullName(s)}
-                        {s.id === staff.viewerStaffId && (
-                          <span className="ml-2 inline-block rounded-full bg-primary px-2 py-[3px] align-[1px] text-[11px] leading-none font-semibold text-white">
-                            You
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{s.email}</TableCell>
-                      <TableCell className="text-ink">{s.staff_code}</TableCell>
-                      <TableCell className="font-semibold text-ink">{s.role.name}</TableCell>
-                      <TableCell>
-                        <span className="inline-flex items-center gap-2">
-                          <Switch
-                            checked={s.active}
-                            aria-label={`${s.active ? 'Deactivate' : 'Activate'} ${fullName(s)}`}
-                            onCheckedChange={() => onToggle(s)}
-                            className="border-0 px-0.5 data-[size=default]:h-[22px] data-[size=default]:w-[42px] shadow-none data-[state=checked]:bg-success data-[state=unchecked]:bg-[#c5cdd9] [&>span]:size-[18px]! [&>span]:shadow-[0_1px_2px_rgba(10,20,36,0.25)] [&>span[data-state=checked]]:translate-x-5"
-                          />
-                          <span className={cn('text-[13px] font-medium text-muted-foreground', s.active && 'text-success')}>
-                            {s.active ? 'Active' : 'Inactive'}
-                          </span>
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{formatSignIn(s.last_sign_in_at)}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="size-8 rounded-lg border-[#cbd5e1] text-primary shadow-none hover:bg-[#f4f6fa]"
-                          aria-label={`Edit ${fullName(s)}`}
-                          title="Edit"
-                          onClick={() => openEdit(s.id)}
-                        >
-                          <SquarePen className="size-3.5" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                    <li key={s.id}>
+                      <Card className="py-3.5">
+                        <CardContent className="flex flex-col px-3.5">
+                          <div className="flex min-h-7.75 items-start justify-between gap-2">
+                            <p className="mt-0.5 text-sm leading-tight font-bold text-foreground">
+                              {fullName(s)}
+                              {s.id === staff.viewerStaffId && ' · You'}
+                            </p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className={cn(
+                                'shrink-0 bg-secondary px-3 text-muted-foreground hover:bg-secondary',
+                                s.active && 'bg-success-soft text-success-strong hover:bg-success-soft',
+                              )}
+                              aria-label={`${s.active ? 'Active' : 'Inactive'} — ${s.active ? 'deactivate' : 'activate'} ${fullName(s)}`}
+                              onClick={() => onToggle(s)}
+                            >
+                              {s.active ? 'Active' : 'Inactive'}
+                            </Button>
+                          </div>
+                          <p className="mt-2.5 text-xs leading-tight [overflow-wrap:anywhere] text-muted-foreground">
+                            {s.email} · {s.staff_code}
+                          </p>
+                          <div className="mt-4 grid grid-cols-2 gap-2.5">
+                            <Dropdown
+                              variant="card"
+                              value={s.role.id}
+                              options={roleOptions}
+                              placeholder={s.role.name}
+                              ariaLabel={`Role for ${fullName(s)}`}
+                              onChange={(v) => {
+                                if (v && v !== s.role.id) openEdit(s.id, v)
+                              }}
+                            />
+                            <div className="flex h-10.25 flex-col justify-between py-0.5 text-sm whitespace-nowrap text-muted-foreground">
+                              <span className="text-xs font-semibold tracking-wide uppercase">Last sign-in</span>
+                              <span>{formatSignIn(s.last_sign_in_at)}</span>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="mt-3 gap-2 border-input text-foreground"
+                            onClick={() => openEdit(s.id)}
+                          >
+                            <SquarePen className="size-4" aria-hidden="true" />
+                            Edit
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </li>
                   ))}
                   {rows.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-24! text-center text-muted-foreground">
-                        {emptyText}
-                      </TableCell>
-                    </TableRow>
+                    <li>
+                      <EmptyState filtering={filtering} onClear={clearFilters} onCreate={() => openDialog({ kind: 'create' })} />
+                    </li>
                   )}
-                </TableBody>
-              </Table>
-            )}
+                </ul>
+              ) : (
+                <Table className="table-fixed">
+                  <colgroup>
+                    <col />
+                    <col />
+                    <col className="w-24" />
+                    <col className="w-36" />
+                    <col className="w-36" />
+                    <col className="w-36" />
+                    <col className="w-14" />
+                  </colgroup>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      {['Name', 'Email', 'Staff ID', 'Role', 'Status', 'Last sign-in'].map((h) => (
+                        <TableHead key={h} className="text-xs tracking-wide text-muted-foreground uppercase">
+                          {h}
+                        </TableHead>
+                      ))}
+                      <TableHead>
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((s) => (
+                      <TableRow key={s.id}>
+                        <TableCell className="truncate font-medium text-foreground" title={fullName(s)}>
+                          {fullName(s)}
+                          {s.id === staff.viewerStaffId && <Badge className="ml-2">You</Badge>}
+                        </TableCell>
+                        <TableCell className="truncate text-muted-foreground" title={s.email}>
+                          {s.email}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{s.staff_code}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{s.role.name}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="inline-flex items-center gap-2">
+                            <Switch
+                              checked={s.active}
+                              aria-label={`${s.active ? 'Deactivate' : 'Activate'} ${fullName(s)}`}
+                              onCheckedChange={() => onToggle(s)}
+                              className="data-[state=checked]:bg-success"
+                            />
+                            <span className={cn('text-sm text-muted-foreground', s.active && 'text-success-strong')}>
+                              {s.active ? 'Active' : 'Inactive'}
+                            </span>
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{formatSignIn(s.last_sign_in_at)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Edit ${fullName(s)}`}
+                            title="Edit"
+                            onClick={() => openEdit(s.id)}
+                          >
+                            <SquarePen aria-hidden="true" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {rows.length === 0 && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={7} className="whitespace-normal">
+                          <EmptyState filtering={filtering} onClear={clearFilters} onCreate={() => openDialog({ kind: 'create' })} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
           </Card>
         </div>
       )}

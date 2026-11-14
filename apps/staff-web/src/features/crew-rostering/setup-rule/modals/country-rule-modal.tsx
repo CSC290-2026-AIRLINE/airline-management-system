@@ -87,7 +87,12 @@ function CountryRuleForm({
   const [form, setForm] = useState<CountryLimitInput>(() =>
     limit
       ? toCountryLimitForm(limit)
-      : { ...EMPTY_COUNTRY_LIMIT_FORM, minRestHours: String(defaults.minRestHours), maxDutyHours: String(defaults.maxDutyHours) },
+      : {
+          ...EMPTY_COUNTRY_LIMIT_FORM,
+          minRestHours: String(defaults.minRestHours),
+          maxDutyHours: String(defaults.maxDutyHours),
+          minLocalCrew: String(defaults.minLocalCrew),
+        },
   )
   const [errors, setErrors] = useState<CountryLimitErrors>({})
 
@@ -160,6 +165,14 @@ function CountryRuleForm({
           value={form.maxDutyHours}
           error={errors.maxDutyHours}
           onChange={(value) => set('maxDutyHours', value)}
+        />
+        <InputField
+          label="Local cabin crew per leg"
+          inputMode="numeric"
+          value={form.minLocalCrew}
+          error={errors.minLocalCrew}
+          className="sm:col-span-2"
+          onChange={(event) => set('minLocalCrew', event.target.value)}
         />
       </form>
     </BaseModalOverlay>

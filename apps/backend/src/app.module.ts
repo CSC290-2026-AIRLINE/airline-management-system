@@ -11,6 +11,7 @@ import { BuildPairingModule } from './modules/crew-rostering/build-pairing/build
 import { FixPublishModule } from './modules/crew-rostering/fix-publish/fix-publish.module'
 import { SetupCrewModule } from './modules/crew-rostering/setup-crew/setup-crew.module'
 import { SetupRuleModule } from './modules/crew-rostering/setup-rule/setup-rule.module'
+import { PricingModule } from './modules/pricing/pricing.module'
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { SetupRuleModule } from './modules/crew-rostering/setup-rule/setup-rule.
     FixPublishModule,
     SetupCrewModule,
     SetupRuleModule,
+    PricingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

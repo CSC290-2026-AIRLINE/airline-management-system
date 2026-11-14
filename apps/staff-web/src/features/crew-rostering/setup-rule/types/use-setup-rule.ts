@@ -7,6 +7,8 @@ import type {
   CountryLanguage,
   CountryLanguageInput,
   CountryOption,
+  DefaultLimits,
+  DefaultLimitsInput,
   LanguageOption,
   LoadState,
   RuleSet,
@@ -33,8 +35,21 @@ function countChanges<T extends { id: string }>(current: readonly T[], saved: re
   return changed
 }
 
+function sameDefaults(a: DefaultLimits, b: DefaultLimits): boolean {
+  return (
+    a.minRestHours === b.minRestHours &&
+    a.maxDutyHours === b.maxDutyHours &&
+    a.maxFlightsPerDuty === b.maxFlightsPerDuty &&
+    a.maxPairingDays === b.maxPairingDays &&
+    a.hoursCap28d === b.hoursCap28d &&
+    a.minLocalCrew === b.minLocalCrew
+  )
+}
+
 function sameLimit(a: CountryLimit, b: CountryLimit): boolean {
-  return a.country === b.country && a.minRestHours === b.minRestHours && a.maxDutyHours === b.maxDutyHours
+  return (
+    a.country === b.country && a.minRestHours === b.minRestHours && a.maxDutyHours === b.maxDutyHours && a.minLocalCrew === b.minLocalCrew
+  )
 }
 
 function sameMapping(a: CountryLanguage, b: CountryLanguage): boolean {
@@ -47,8 +62,13 @@ function codeOf(row: { country: string; countryCode: string }, countries: readon
 }
 
 interface SavePlan {
+  writeDefaults: DefaultLimits | null
   deleteLimits: string[]
-  writeLimits: { create: boolean; code: string; body: { country: string; minRestHours: number; maxDutyHours: number } }[]
+  writeLimits: {
+    create: boolean
+    code: string
+    body: { country: string; minRestHours: number; maxDutyHours: number; minLocalCrew: number }
+  }[]
   deleteMappings: string[]
   writeMappings: { code: string; body: { country: string; languages: string[] } }[]
 }
@@ -66,12 +86,22 @@ function planSave(working: RuleSet, saved: RuleSet, countries: readonly CountryO
   const workingMappings = new Map(working.countryLanguages.map((mapping) => [codeOf(mapping, countries), mapping]))
 
   return {
+    writeDefaults: sameDefaults(working.defaults, saved.defaults) ? null : working.defaults,
     deleteLimits: [...savedLimits.keys()].filter((code) => !workingLimits.has(code)),
     writeLimits: [...workingLimits].flatMap(([code, limit]) => {
       const before = savedLimits.get(code)
       if (before && sameLimit(limit, before)) return []
       return [
-        { create: !before, code, body: { country: limit.country, minRestHours: limit.minRestHours, maxDutyHours: limit.maxDutyHours } },
+        {
+          create: !before,
+          code,
+          body: {
+            country: limit.country,
+            minRestHours: limit.minRestHours,
+            maxDutyHours: limit.maxDutyHours,
+            minLocalCrew: limit.minLocalCrew,
+          },
+        },
       ]
     }),
     deleteMappings: [...savedMappings.keys()].filter((code) => !workingMappings.has(code)),
@@ -137,7 +167,10 @@ export function useSetupRule() {
   }, [getApi, signedIn])
 
   const limitsChangeCount = useMemo(
-    () => (rules && saved ? countChanges(rules.countryLimits, saved.countryLimits, sameLimit) : 0),
+    () =>
+      rules && saved
+        ? countChanges(rules.countryLimits, saved.countryLimits, sameLimit) + (sameDefaults(rules.defaults, saved.defaults) ? 0 : 1)
+        : 0,
     [rules, saved],
   )
   const languagesChangeCount = useMemo(
@@ -145,17 +178,35 @@ export function useSetupRule() {
     [rules, saved],
   )
 
+  function updateDefaults(input: DefaultLimitsInput) {
+    setRules((current) =>
+      current
+        ? {
+            ...current,
+            defaults: {
+              ...current.defaults,
+              minRestHours: Number(input.minRestHours),
+              maxDutyHours: Number(input.maxDutyHours),
+              maxFlightsPerDuty: Number(input.maxFlightsPerDuty),
+              maxPairingDays: Number(input.maxPairingDays),
+              hoursCap28d: Number(input.hoursCap28d),
+              minLocalCrew: Number(input.minLocalCrew),
+            },
+          }
+        : current,
+    )
+  }
+
   function addCountryLimit(input: CountryLimitInput) {
     const country = countries.find((entry) => entry.name === input.country)
     if (!country) return
-    // The pairing count is the backend's to work out; it replaces this once the rule is saved.
     const limit: CountryLimit = {
       id: `RL-${country.code}-LOCAL`,
       country: country.name,
       countryCode: country.code,
       minRestHours: Number(input.minRestHours),
       maxDutyHours: Number(input.maxDutyHours),
-      affectedPairings: 0,
+      minLocalCrew: Number(input.minLocalCrew),
     }
     setRules((current) => (current ? { ...current, countryLimits: [...current.countryLimits, limit] } : current))
   }
@@ -167,7 +218,13 @@ export function useSetupRule() {
             ...current,
             countryLimits: current.countryLimits.map((limit) =>
               limit.id === id
-                ? { ...limit, country: input.country, minRestHours: Number(input.minRestHours), maxDutyHours: Number(input.maxDutyHours) }
+                ? {
+                    ...limit,
+                    country: input.country,
+                    minRestHours: Number(input.minRestHours),
+                    maxDutyHours: Number(input.maxDutyHours),
+                    minLocalCrew: Number(input.minLocalCrew),
+                  }
                 : limit,
             ),
           }
@@ -182,13 +239,11 @@ export function useSetupRule() {
   function addCountryLanguage(input: CountryLanguageInput) {
     const country = countries.find((entry) => entry.name === input.country)
     if (!country) return
-    // The speaking-crew count is the backend's to work out; it replaces this once the mapping is saved.
     const mapping: CountryLanguage = {
       id: `CL-${country.code}-LOCAL`,
       country: country.name,
       countryCode: country.code,
       languages: [...input.languages],
-      speakingCrew: 0,
     }
     setRules((current) => (current ? { ...current, countryLanguages: [...current.countryLanguages, mapping] } : current))
   }
@@ -228,6 +283,7 @@ export function useSetupRule() {
     const plan = planSave(rules, saved, countries)
 
     try {
+      if (plan.writeDefaults) await api.updateDefaults(plan.writeDefaults)
       for (const code of plan.deleteLimits) await api.deleteCountryLimit(code)
       for (const code of plan.deleteMappings) await api.deleteCountryLanguages(code)
       for (const write of plan.writeLimits) {
@@ -282,6 +338,7 @@ export function useSetupRule() {
     dismissSaveError: () => setSaveError(null),
     limitsChangeCount,
     languagesChangeCount,
+    updateDefaults,
     addCountryLimit,
     updateCountryLimit,
     removeCountryLimit,

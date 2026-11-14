@@ -10,7 +10,10 @@ function setup() {
   const tx = { country_language: { deleteMany: jest.fn(), createMany: jest.fn() } }
   const db = {
     $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
-    crew: { count: jest.fn().mockResolvedValue(2) },
+    // The country checks: an airport is there, or the country already carries a rule or a mapping.
+    airport: { findFirst: jest.fn().mockResolvedValue({ iata_code: 'BKK' }) },
+    country_legality_rule: { findUnique: jest.fn().mockResolvedValue(null) },
+    country_language: { findFirst: jest.fn().mockResolvedValue(null) },
   }
   return { tx, db, service: new SetupRuleService(db as unknown as DbService) }
 }
@@ -28,20 +31,28 @@ describe('SetupRuleService.upsertCountryLanguages', () => {
         { country_code: 'th', language_code: 'en' },
       ],
     })
-    expect(row).toMatchObject({ countryCode: 'th', country: 'Thailand', languages: ['th', 'en'], speakingCrew: 2 })
+    expect(row).toMatchObject({ countryCode: 'th', country: 'TH', languages: ['th', 'en'] })
   })
 
-  it('accepts a body that names the same country, by name or by code', async () => {
+  it('accepts a body that names the same country, in either case', async () => {
     const { service } = setup()
 
-    await expect(service.upsertCountryLanguages('th', { country: 'Thailand', languages: ['th'] })).resolves.toBeDefined()
+    await expect(service.upsertCountryLanguages('th', { country: 'th', languages: ['th'] })).resolves.toBeDefined()
     await expect(service.upsertCountryLanguages('th', { country: 'TH', languages: ['th'] })).resolves.toBeDefined()
+  })
+
+  it('refuses a country the database does not know, and writes nothing', async () => {
+    const { service, db } = setup()
+    db.airport.findFirst.mockResolvedValue(null)
+
+    await expect(service.upsertCountryLanguages('zz', { languages: ['th'] })).rejects.toThrow('ZZ is not a supported destination')
+    expect(db.$transaction).not.toHaveBeenCalled()
   })
 
   it('refuses a body that names another country, and writes nothing', async () => {
     const { service, db } = setup()
 
-    await expect(service.upsertCountryLanguages('th', { country: 'Japan', languages: ['ja'] })).rejects.toThrow(BadRequestException)
+    await expect(service.upsertCountryLanguages('th', { country: 'JP', languages: ['ja'] })).rejects.toThrow(BadRequestException)
     expect(db.$transaction).not.toHaveBeenCalled()
   })
 })
@@ -49,7 +60,12 @@ describe('SetupRuleService.upsertCountryLanguages', () => {
 /** Just enough of `DbService` for the lists, with the number of reads recorded. */
 function listSetup() {
   const db = {
-    crew_setting: { findMany: jest.fn().mockResolvedValue([]) },
+    // Japan sets its own local-crew number (2); the baseline read finds nothing and falls back to 1.
+    crew_setting: {
+      findMany: jest.fn(({ where }: { where: { key: { in: string[] } } }) =>
+        Promise.resolve(where.key.in.includes('min_local_crew.jp') ? [{ key: 'min_local_crew.jp', value: '2' }] : []),
+      ),
+    },
     country_legality_rule: {
       findMany: jest.fn().mockResolvedValue([
         { country_code: 'jp', min_rest_hours: '12', max_duty_hours: '11' },
@@ -57,54 +73,102 @@ function listSetup() {
         { country_code: 'sg', min_rest_hours: '12', max_duty_hours: '12' },
       ]),
     },
-    pairing: {
-      findMany: jest.fn().mockResolvedValue([
-        {
-          pairing_leg: [
-            { flight: { route: { airport_route_destinationToairport: { country: 'jp' } } } },
-            { flight: { route: { airport_route_destinationToairport: { country: 'th' } } } },
-          ],
-        },
-        { pairing_leg: [{ flight: { route: { airport_route_destinationToairport: { country: 'jp' } } } }] },
-      ]),
-      count: jest.fn(),
-    },
     country_language: {
       findMany: jest.fn().mockResolvedValue([
         { country_code: 'jp', language_code: 'ja' },
         { country_code: 'th', language_code: 'th' },
       ]),
     },
-    crew: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue([{ languages: ['th', 'en'] }, { languages: ['ja'] }, { languages: ['en'] }, { languages: ['th', 'ja'] }]),
-      count: jest.fn(),
-    },
   }
   return { db, service: new SetupRuleService(db as unknown as DbService) }
 }
 
 describe('SetupRuleService lists', () => {
-  it('counts the pairings each country affects from one read, and a pairing once per country', async () => {
+  it('lists the country rules with only what the table stores, the country shown as its upper-case code', async () => {
     const { service, db } = listSetup()
 
     const rows = await service.listCountryLimits()
 
-    expect(db.pairing.findMany).toHaveBeenCalledTimes(1)
-    expect(db.pairing.count).not.toHaveBeenCalled()
-    expect(db.crew_setting.findMany).toHaveBeenCalledTimes(1)
-    expect(Object.fromEntries(rows.map((row) => [row.countryCode, row.affectedPairings]))).toEqual({ jp: 2, th: 1, sg: 0 })
+    expect(db.crew_setting.findMany).toHaveBeenCalledTimes(2)
+    expect(rows.map((row) => row.country)).toEqual(['JP', 'TH', 'SG'])
+    expect(rows[0]).toEqual({ id: 'RL-jp', country: 'JP', countryCode: 'jp', minRestHours: 12, maxDutyHours: 11, minLocalCrew: 2 })
   })
 
-  it('counts the crew who speak each mapping from one read', async () => {
-    const { service, db } = listSetup()
+  it("gives a country with no number of its own the default's", async () => {
+    const { service } = listSetup()
+
+    const rows = await service.listCountryLimits()
+
+    expect(Object.fromEntries(rows.map((row) => [row.countryCode, row.minLocalCrew]))).toEqual({ jp: 2, th: 1, sg: 1 })
+  })
+
+  it('lists the language mappings with only what the table stores', async () => {
+    const { service } = listSetup()
 
     const rows = await service.listCountryLanguages()
 
-    expect(db.crew.findMany).toHaveBeenCalledTimes(1)
-    expect(db.crew.count).not.toHaveBeenCalled()
-    expect(Object.fromEntries(rows.map((row) => [row.countryCode, row.speakingCrew]))).toEqual({ jp: 2, th: 2 })
+    expect(rows).toEqual([
+      { id: 'CL-jp', country: 'JP', countryCode: 'jp', languages: ['ja'] },
+      { id: 'CL-th', country: 'TH', countryCode: 'th', languages: ['th'] },
+    ])
+  })
+})
+
+/** Just enough of `DbService` to add a country rule, with every write recorded. */
+function createSetup() {
+  const tx = {
+    country_legality_rule: { create: jest.fn() },
+    crew_setting: { upsert: jest.fn(), deleteMany: jest.fn() },
+  }
+  const db = {
+    airport: { findFirst: jest.fn().mockResolvedValue({ iata_code: 'SIN' }) },
+    country_legality_rule: { findUnique: jest.fn().mockResolvedValue(null) },
+    country_language: { findFirst: jest.fn().mockResolvedValue(null) },
+    // The baseline is 1 local crew per leg when nothing is stored.
+    crew_setting: { findMany: jest.fn().mockResolvedValue([]) },
+    $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
+  }
+  return { tx, db, service: new SetupRuleService(db as unknown as DbService) }
+}
+
+describe('SetupRuleService country local crew', () => {
+  it("stores a number that differs from the default as the country's own crew_setting row", async () => {
+    const { service, tx } = createSetup()
+
+    await service.createCountryLimit({ country: 'SG', minRestHours: 11, maxDutyHours: 12, minLocalCrew: 2 })
+
+    expect(tx.crew_setting.upsert).toHaveBeenCalledWith({
+      where: { key: 'min_local_crew.sg' },
+      update: expect.objectContaining({ value: '2' }),
+      create: { key: 'min_local_crew.sg', value: '2' },
+    })
+  })
+
+  it('stores nothing, and clears an old row, when the number equals the default', async () => {
+    const { service, tx } = createSetup()
+
+    await service.createCountryLimit({ country: 'SG', minRestHours: 11, maxDutyHours: 12, minLocalCrew: 1 })
+
+    expect(tx.crew_setting.upsert).not.toHaveBeenCalled()
+    expect(tx.crew_setting.deleteMany).toHaveBeenCalledWith({ where: { key: 'min_local_crew.sg' } })
+  })
+
+  it('leaves the stored number alone when the request does not carry one', async () => {
+    const { service, tx } = createSetup()
+
+    await service.createCountryLimit({ country: 'SG', minRestHours: 11, maxDutyHours: 12 })
+
+    expect(tx.crew_setting.upsert).not.toHaveBeenCalled()
+    expect(tx.crew_setting.deleteMany).not.toHaveBeenCalled()
+  })
+
+  it('refuses a number that is not a whole number, and writes nothing', async () => {
+    const { service, db } = createSetup()
+
+    await expect(service.createCountryLimit({ country: 'SG', minRestHours: 11, maxDutyHours: 12, minLocalCrew: -1 })).rejects.toThrow(
+      'minLocalCrew must be a whole number',
+    )
+    expect(db.$transaction).not.toHaveBeenCalled()
   })
 })
 
@@ -147,7 +211,7 @@ describe('SetupRuleService.updateDefaults', () => {
   it('refuses a baseline that would leave a country rule looser, and writes nothing', async () => {
     const { service, tx } = defaultsSetup([{ country_code: 'jp', min_rest_hours: '10', max_duty_hours: '12' }])
 
-    await expect(service.updateDefaults({ ...baseline, minRestHours: 12 }, 'user-1')).rejects.toThrow('Japan')
+    await expect(service.updateDefaults({ ...baseline, minRestHours: 12 }, 'user-1')).rejects.toThrow('JP')
     await expect(service.updateDefaults({ ...baseline, maxDutyHours: 11 }, 'user-1')).rejects.toThrow(BadRequestException)
     expect(tx.crew_setting.upsert).not.toHaveBeenCalled()
   })

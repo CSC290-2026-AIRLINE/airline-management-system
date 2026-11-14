@@ -25,14 +25,9 @@ export function formatLanguageList(codes: readonly string[], languages: readonly
   return codes.map((code) => languages.find((language) => language.code === code)?.name ?? code).join(', ')
 }
 
-/** `4 crew` / `1 crew` — the count of crew who speak a destination's languages. */
-export function formatCrewCount(count: number): string {
-  return `${count} crew`
-}
-
-/** `All pairings` for the baseline row, `4 pairings` for a destination rule. */
-export function formatPairings(count: number | null): string {
-  return count === null ? 'All pairings' : `${count} pairings`
+/** `1 per leg` — local-language cabin crew each leg needs. */
+export function formatLocalCrew(count: number): string {
+  return `${count} per leg`
 }
 
 /** `max 3 days · return to base`, the note under the default-limit cards. */
@@ -40,7 +35,7 @@ export function formatPairingLimit(defaults: DefaultLimits): string {
   return `Pairing limits: max ${defaults.maxPairingDays} days · return to base`
 }
 
-/** `JP · Japanese · Active`, the destination line on a mobile card. */
+/** `Japanese · Active`, the destination line on a mobile card. */
 export function formatMobileMappingSubline(mapping: CountryLanguage, languages: readonly LanguageOption[]): string {
-  return `${mapping.countryCode} · ${formatLanguageList(mapping.languages, languages)} · Active`
+  return `${formatLanguageList(mapping.languages, languages)} · Active`
 }

@@ -21,6 +21,7 @@ import { StricterLimitsTable } from './components/stricter-limits-table'
 import { ChangesSavedModal } from './modals/changes-saved-modal'
 import { AddCountryLanguageModal, EditCountryLanguageModal } from './modals/country-language-modal'
 import { AddCountryRuleModal, EditCountryRuleModal } from './modals/country-rule-modal'
+import { EditDefaultLimitsModal } from './modals/default-limits-modal'
 import { RemoveCountryLanguageModal } from './modals/remove-country-language-modal'
 import { RemoveCountryRuleModal } from './modals/remove-country-rule-modal'
 import { useSetupRule } from './types/use-setup-rule'
@@ -36,6 +37,7 @@ export function SetupRulePage() {
   const account = useAccount()
 
   const [tab, setTab] = useState<RuleTab>('legality')
+  const [editingDefaults, setEditingDefaults] = useState(false)
   const [addingRule, setAddingRule] = useState(false)
   const [editingRule, setEditingRule] = useState<CountryLimit | null>(null)
   const [removingRule, setRemovingRule] = useState<CountryLimit | null>(null)
@@ -92,6 +94,7 @@ export function SetupRulePage() {
             <StricterLimitsTable
               defaults={state.defaults}
               limits={state.countryLimits}
+              onEditDefaults={() => setEditingDefaults(true)}
               onAdd={() => setAddingRule(true)}
               onEdit={setEditingRule}
               onRemove={setRemovingRule}
@@ -129,6 +132,18 @@ export function SetupRulePage() {
           />
         )}
       </main>
+
+      {editingDefaults && state.defaults && (
+        <EditDefaultLimitsModal
+          defaults={state.defaults}
+          countryLimits={state.countryLimits}
+          onCancel={() => setEditingDefaults(false)}
+          onSubmit={(input) => {
+            state.updateDefaults(input)
+            setEditingDefaults(false)
+          }}
+        />
+      )}
 
       {addingRule && state.defaults && (
         <AddCountryRuleModal

@@ -1,4 +1,4 @@
-import { formatHours, formatPairings } from '../types/format'
+import { formatHours, formatLocalCrew } from '../types/format'
 import type { CountryLimit, DefaultLimits } from '../types/types'
 import { Button, IconButton, PencilIcon } from '../../shared/ui'
 import { RuleCard } from './rule-card'
@@ -7,19 +7,19 @@ import { RuleCard } from './rule-card'
  * Destinations that limit rest or duty more tightly than the baseline, under a
  * fixed baseline row so the comparison is visible without opening anything.
  *
- * The baseline row carries no actions: it is the reference, not an editable
- * record. `AFFECTS` is dropped below `md`, where the numbers would otherwise
- * push the country name onto two lines.
+ * The baseline row can be edited but not removed: every country rule is measured against it.
  */
 export function StricterLimitsTable({
   defaults,
   limits,
+  onEditDefaults,
   onAdd,
   onEdit,
   onRemove,
 }: {
   defaults: DefaultLimits
   limits: readonly CountryLimit[]
+  onEditDefaults: () => void
   onAdd: () => void
   onEdit: (limit: CountryLimit) => void
   onRemove: (limit: CountryLimit) => void
@@ -46,8 +46,8 @@ export function StricterLimitsTable({
             <th scope="col" className="pb-2.5 font-semibold">
               Max duty
             </th>
-            <th scope="col" className="hidden pb-2.5 font-semibold md:table-cell">
-              Affects
+            <th scope="col" className="pb-2.5 font-semibold">
+              Local cabin crew
             </th>
             <th scope="col" className="pb-2.5 text-right font-semibold">
               Actions
@@ -62,19 +62,24 @@ export function StricterLimitsTable({
             </th>
             <td className="py-3 text-sm text-primary-text">{formatHours(defaults.minRestHours)}</td>
             <td className="py-3 text-sm text-primary-text">{formatHours(defaults.maxDutyHours)}</td>
-            <td className="hidden py-3 text-sm text-primary-text/70 md:table-cell">{formatPairings(null)}</td>
-            <td className="py-3 text-right text-sm text-primary-text/40">—</td>
+            <td className="py-3 text-sm text-primary-text">{formatLocalCrew(defaults.minLocalCrew)}</td>
+            <td className="py-3">
+              <div className="flex items-center justify-end gap-3">
+                <IconButton label="Edit default limits" onClick={onEditDefaults}>
+                  <PencilIcon className="h-4 w-4" />
+                </IconButton>
+              </div>
+            </td>
           </tr>
 
           {limits.map((limit) => (
             <tr key={limit.id} className="border-b border-border-desc/25 last:border-b-0">
               <th scope="row" className="py-3 text-sm font-medium text-primary-text">
-                <span className="md:hidden">{limit.countryCode} · </span>
                 {limit.country}
               </th>
               <td className="py-3 text-sm text-primary-text">{formatHours(limit.minRestHours)}</td>
               <td className="py-3 text-sm text-primary-text">{formatHours(limit.maxDutyHours)}</td>
-              <td className="hidden py-3 text-sm text-primary-text/70 md:table-cell">{formatPairings(limit.affectedPairings)}</td>
+              <td className="py-3 text-sm text-primary-text">{formatLocalCrew(limit.minLocalCrew)}</td>
               <td className="py-3">
                 <div className="flex items-center justify-end gap-3">
                   <IconButton label={`Edit ${limit.country} limits`} onClick={() => onEdit(limit)}>
