@@ -1,4 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseFilters, UseGuards, UsePipes } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
+import { CurrentStaffService } from './current-staff.service'
 import { AircraftTypeService } from './aircraft-type.service'
 import { ApiExceptionFilter } from './api-exception.filter'
 import { ApiValidationPipe } from './api-validation.pipe'
@@ -10,7 +13,10 @@ import { StaffGuard } from './staff.guard'
 @UseFilters(ApiExceptionFilter)
 @UsePipes(ApiValidationPipe)
 export class AircraftTypeController {
-  constructor(private readonly aircraftTypeService: AircraftTypeService) {}
+  constructor(
+    private readonly aircraftTypeService: AircraftTypeService,
+    private readonly currentStaff: CurrentStaffService,
+  ) {}
 
   @Get()
   findAll() {
@@ -18,8 +24,9 @@ export class AircraftTypeController {
   }
 
   @Post()
-  create(@Body() dto: CreateAircraftTypeDto) {
-    return this.aircraftTypeService.create(dto)
+  async create(@Body() dto: CreateAircraftTypeDto, @CurrentUser() user: AuthenticatedUser) {
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.aircraftTypeService.create(dto, staffId)
   }
 
   @Get(':id')
@@ -28,12 +35,14 @@ export class AircraftTypeController {
   }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAircraftTypeDto) {
-    return this.aircraftTypeService.update(id, dto)
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAircraftTypeDto, @CurrentUser() user: AuthenticatedUser) {
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.aircraftTypeService.update(id, dto, staffId)
   }
 
   @Post(':id/clone')
-  clone(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CloneAircraftTypeDto) {
-    return this.aircraftTypeService.clone(id, dto)
+  async clone(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CloneAircraftTypeDto, @CurrentUser() user: AuthenticatedUser) {
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.aircraftTypeService.clone(id, dto, staffId)
   }
 }

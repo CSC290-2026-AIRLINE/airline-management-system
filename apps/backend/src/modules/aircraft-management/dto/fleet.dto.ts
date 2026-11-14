@@ -1,12 +1,12 @@
 import { Type } from 'class-transformer'
-import { IsDateString, IsNumber, Max, Min } from 'class-validator'
+import { IsDateString, IsInt, IsNumber, Max, Min } from 'class-validator'
 
 export class FleetReserveQueryDto {
   @IsDateString()
   date!: string
 
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(0)
   aircraft_needed!: number
 }

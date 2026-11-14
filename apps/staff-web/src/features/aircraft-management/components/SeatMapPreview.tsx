@@ -8,9 +8,11 @@ interface SeatMapPreviewProps {
   onToggleSeat?: (cabinIndex: number, seat: string) => void
   /** Cycles a whole row: exit row, then extra legroom, then normal. */
   onCycleRow?: (cabinIndex: number, row: number) => void
+  /** Shows the layout without the editing hint, and the seats cannot be clicked. */
+  readOnly?: boolean
 }
 
-export function SeatMapPreview({ cabins, onToggleSeat, onCycleRow }: SeatMapPreviewProps) {
+export function SeatMapPreview({ cabins, onToggleSeat, onCycleRow, readOnly = false }: SeatMapPreviewProps) {
   return (
     <div className="f9-seatmap">
       <h3 className="f9-card__title">Seat map preview</h3>
@@ -49,10 +51,12 @@ export function SeatMapPreview({ cabins, onToggleSeat, onCycleRow }: SeatMapPrev
         </div>
       </div>
 
-      <p className="f9-note">
-        Click a seat to toggle blocked (blocked seats are not sellable). Click a row number to mark the whole row: exit row, then extra
-        legroom, then normal.
-      </p>
+      {!readOnly && (
+        <p className="f9-note">
+          Click a seat to toggle blocked (blocked seats are not sellable). Click a row number to mark the whole row: exit row, then extra
+          legroom, then normal.
+        </p>
+      )}
 
       <div className="f9-seatmap__body">
         <p className="f9-seatmap__end">FRONT</p>
@@ -111,6 +115,7 @@ export function SeatMapPreview({ cabins, onToggleSeat, onCycleRow }: SeatMapPrev
                               type="button"
                               className={seatClasses.join(' ')}
                               aria-pressed={blocked.has(seat)}
+                              disabled={readOnly}
                               onClick={() => onToggleSeat?.(cabinIndex, seat)}
                             >
                               {column}
@@ -120,7 +125,8 @@ export function SeatMapPreview({ cabins, onToggleSeat, onCycleRow }: SeatMapPrev
                                 <button
                                   type="button"
                                   className={rowClasses.join(' ')}
-                                  title="Cycle this row: exit row, extra legroom, normal row"
+                                  title={readOnly ? undefined : 'Cycle this row: exit row, extra legroom, normal row'}
+                                  disabled={readOnly}
                                   onClick={() => onCycleRow?.(cabinIndex, row)}
                                 >
                                   {row}

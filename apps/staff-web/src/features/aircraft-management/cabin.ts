@@ -12,6 +12,7 @@ export const CABIN_CLASS_NAMES: Record<CabinClass, string> = {
 export const CABIN_CLASS_OPTIONS: { value: CabinClass; label: string }[] = [
   { value: 'first', label: 'First Class' },
   { value: 'business', label: 'Business Class' },
+  { value: 'premium_economy', label: 'Premium Economy Class' },
   { value: 'economy', label: 'Economy Class' },
 ]
 
@@ -98,15 +99,22 @@ export function rowCount(cabin: Pick<CabinLayout, 'first_row' | 'last_row' | 'sk
   return Math.max(cabin.last_row - cabin.first_row + 1 - skipped, 0)
 }
 
-/** Seats, blocked seats and sellable seats of a layout. */
-export function capacityOf(cabins: CabinLayout[]): { total: number; blocked: number; sellable: number } {
-  let total = 0
-  let blocked = 0
+export interface CabinCapacity {
+  cabin_class: CabinClass
+  seats: number
+  blocked: number
+  sellable: number
+}
 
-  for (const cabin of cabins) {
-    total += rowCount(cabin) * cabin.columns.length
-    blocked += (cabin.blocked_seats ?? []).length
-  }
+/** Seats, blocked seats and sellable seats of a layout, in total and for each cabin. */
+export function capacityOf(cabins: CabinLayout[]): { total: number; blocked: number; sellable: number; perCabin: CabinCapacity[] } {
+  const perCabin: CabinCapacity[] = cabins.map((cabin) => {
+    const seats = rowCount(cabin) * cabin.columns.length
+    const blocked = (cabin.blocked_seats ?? []).length
+    return { cabin_class: cabin.cabin_class, seats, blocked, sellable: seats - blocked }
+  })
 
-  return { total, blocked, sellable: total - blocked }
+  const total = perCabin.reduce((sum, cabin) => sum + cabin.seats, 0)
+  const blocked = perCabin.reduce((sum, cabin) => sum + cabin.blocked, 0)
+  return { total, blocked, sellable: total - blocked, perCabin }
 }

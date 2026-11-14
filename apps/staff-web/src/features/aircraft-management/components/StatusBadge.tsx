@@ -1,3 +1,5 @@
+import { Badge } from '@staff-web/components/ui/badge'
+import { BADGE_TONES } from './badgeTones'
 import type { AircraftStatus } from '../types'
 
 interface StatusDescriptor {
@@ -26,5 +28,5 @@ function statusDescriptor(status: AircraftStatus): StatusDescriptor {
 
 export function StatusBadge({ status }: { status: AircraftStatus }) {
   const descriptor = statusDescriptor(status)
-  return <span className={`f9-badge f9-badge--${descriptor.variant}`}>{descriptor.label}</span>
+  return <Badge className={BADGE_TONES[descriptor.variant]}>{descriptor.label}</Badge>
 }

@@ -96,10 +96,13 @@ export class CreateAircraftMaintenanceDto {
   planned_end_date!: string
 }
 
+/** `in_progress` is derived from the simulation clock and `planned` is the starting state, so staff can only complete or cancel. */
+export const MAINTENANCE_ACTION_STATUSES = ['completed', 'cancelled'] as const
+
 export class UpdateAircraftMaintenanceDto {
   @IsOptional()
-  @IsIn(MAINTENANCE_STATUS_VALUES)
-  status?: MaintenanceStatusValue
+  @IsIn(MAINTENANCE_ACTION_STATUSES)
+  status?: (typeof MAINTENANCE_ACTION_STATUSES)[number]
 
   @IsOptional()
   @IsDateString()

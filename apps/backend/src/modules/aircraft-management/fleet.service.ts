@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import { AuditService } from './audit.service'
+import { FleetAuditService } from './fleet-audit.service'
 
 export const RESERVE_RATIO_KEY = 'reserve_ratio'
 export const DEFAULT_RESERVE_RATIO = 1.1
@@ -14,10 +14,10 @@ export type FleetReserveSummary = {
   shortfall: number
 }
 
+/** The fleet settings as one object, as the requirement document gives them. */
 export type FleetSettingSummary = {
-  key: string
-  value: string
-  updated_at: string
+  reserve_ratio: number
+  updated_at: string | null
   updated_by: string | null
 }
 
@@ -31,30 +31,38 @@ export class FleetService {
 
   constructor(
     private readonly db: DbService,
-    private readonly audit: AuditService,
+    private readonly audit: FleetAuditService,
   ) {}
 
-  async getSettings(): Promise<FleetSettingSummary[]> {
-    const settings = await this.db.fleet_setting.findMany({ orderBy: { key: 'asc' } })
-    return settings.map((setting) => ({
-      key: setting.key,
-      value: setting.value,
-      updated_at: setting.updated_at.toISOString(),
-      updated_by: setting.updated_by,
-    }))
+  async getSettings(): Promise<FleetSettingSummary> {
+    const setting = await this.db.fleet_setting.findUnique({ where: { key: RESERVE_RATIO_KEY } })
+    return {
+      reserve_ratio: await this.reserveRatio(),
+      updated_at: setting ? setting.updated_at.toISOString() : null,
+      updated_by: setting ? setting.updated_by : null,
+    }
   }
 
   async updateReserveRatio(value: number, staffId: string): Promise<FleetSettingSummary> {
-    const updated = await this.db.fleet_setting.upsert({
-      where: { key: RESERVE_RATIO_KEY },
-      update: { value: String(value), updated_at: new Date(), updated_by: staffId },
-      create: { key: RESERVE_RATIO_KEY, value: String(value), updated_by: staffId },
+    const updated = await this.db.$transaction(async (tx) => {
+      const previous = await tx.fleet_setting.findUnique({ where: { key: RESERVE_RATIO_KEY } })
+      const saved = await tx.fleet_setting.upsert({
+        where: { key: RESERVE_RATIO_KEY },
+        update: { value: value.toFixed(2), updated_at: new Date(), updated_by: staffId },
+        create: { key: RESERVE_RATIO_KEY, value: value.toFixed(2), updated_by: staffId },
+      })
+      await this.audit.record(tx, staffId, {
+        action: 'update',
+        entityType: 'fleet_setting',
+        entityId: RESERVE_RATIO_KEY,
+        summary: `Reserve ratio set to ${saved.value}`,
+        before: { reserve_ratio: previous?.value ?? null },
+        after: { reserve_ratio: saved.value },
+      })
+      return saved
     })
-
-    this.audit.record({ action: 'fleet_setting.updated', entity: 'fleet_setting', entity_id: updated.key, actor_staff_id: staffId })
     return {
-      key: updated.key,
-      value: updated.value,
+      reserve_ratio: Number.parseFloat(updated.value),
       updated_at: updated.updated_at.toISOString(),
       updated_by: updated.updated_by,
     }

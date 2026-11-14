@@ -1,6 +1,7 @@
 import {
   Calendar,
   ChartColumn,
+  ClipboardCheck,
   CreditCard,
   FileText,
   KeyRound,
@@ -11,6 +12,7 @@ import {
   Percent,
   Plane,
   PlaneLanding,
+  PlaneTakeoff,
   Receipt,
   ScrollText,
   Search,
@@ -32,7 +34,7 @@ export interface NavItem {
   label: string
   icon: LucideIcon
   /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
-  to?: '/customer-search' | '/security-screening/screening-queue'
+  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness'
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }
@@ -54,7 +56,9 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
     label: 'Operations',
     items: [
       { label: 'Flight Operations', icon: Plane },
-      { label: 'Fleet & Aircraft', icon: PlaneLanding },
+      { label: 'Fleet & Aircraft', icon: PlaneLanding, to: '/aircraft', activePrefix: '/aircraft' },
+      { label: 'Aircraft Types', icon: PlaneTakeoff, to: '/aircraft-types', activePrefix: '/aircraft-types' },
+      { label: 'Aircraft Readiness', icon: ClipboardCheck, to: '/readiness' },
       { label: 'Crew Scheduling', icon: Calendar },
       { label: 'My Roster', icon: User },
     ],

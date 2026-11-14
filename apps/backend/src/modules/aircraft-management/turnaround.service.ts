@@ -1,9 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { CreateTurnaroundDto, TURNAROUND_TASK_TYPES, UpdateTaskStatusDto } from './dto/turnaround.dto'
-import { FlightLandingSource } from './flight-landing.source'
+import { FleetAuditService } from './fleet-audit.service'
 import { hasPrismaErrorCode, PRISMA_UNIQUE_VIOLATION } from './prisma-error'
-import { SimulationClockService } from './simulation-clock.service'
 
 export type TurnaroundTaskSummary = {
   id: string
@@ -28,29 +27,11 @@ export type TurnaroundSummary = {
 export class TurnaroundService {
   constructor(
     private readonly db: DbService,
-    private readonly landings: FlightLandingSource,
-    private readonly clock: SimulationClockService,
+    private readonly audit: FleetAuditService,
   ) {}
 
-  /**
-   * The job of the simulation clock: starts a turnaround for each flight whose arrival time has passed. Starting one is
-   * idempotent, so a flight that already has its turnaround is answered with it and the job can run on every clock step.
-   * Returns how many landed flights it went through.
-   */
-  async startForLandedFlights(): Promise<number> {
-    const landed = await this.landings.listLanded(this.clock.now())
-    for (const flight of landed) {
-      await this.create(flight.aircraft_id, {
-        flight_id: flight.flight_id,
-        airport_code: flight.airport_code,
-        arrived_at: flight.arrived_at.toISOString(),
-      })
-    }
-    return landed.length
-  }
-
-  /** Starts the ground-service session of a landed flight with the standard task set. */
-  async create(aircraftId: string, dto: CreateTurnaroundDto): Promise<TurnaroundSummary> {
+  /** Starts the ground-service session of a landed flight with the standard task set; staff start it by hand. */
+  async create(aircraftId: string, dto: CreateTurnaroundDto, staffId: string): Promise<TurnaroundSummary> {
     const [aircraft, airport, flight] = await Promise.all([
       this.db.aircraft.findFirst({ where: { id: aircraftId, deleted_at: null }, select: { id: true } }),
       this.db.airport.findUnique({ where: { iata_code: dto.airport_code.trim().toUpperCase() }, select: { iata_code: true } }),
@@ -83,17 +64,27 @@ export class TurnaroundService {
     }
 
     try {
-      const turnaround = await this.db.aircraft_turnaround.create({
-        data: {
-          aircraft_id: aircraftId,
-          flight_id: dto.flight_id,
-          airport_code: airport.iata_code,
-          arrived_at: new Date(dto.arrived_at),
-          aircraft_turnaround_task: {
-            create: taskTypes.map((taskType) => ({ task_type: taskType, status: 'pending' })),
+      const turnaround = await this.db.$transaction(async (tx) => {
+        const created = await tx.aircraft_turnaround.create({
+          data: {
+            aircraft_id: aircraftId,
+            flight_id: dto.flight_id,
+            airport_code: airport.iata_code,
+            arrived_at: new Date(dto.arrived_at),
+            aircraft_turnaround_task: {
+              create: taskTypes.map((taskType) => ({ task_type: taskType, status: 'pending' })),
+            },
           },
-        },
-        include: { aircraft_turnaround_task: true },
+          include: { aircraft_turnaround_task: true },
+        })
+        await this.audit.record(tx, staffId, {
+          action: 'create',
+          entityType: 'aircraft_turnaround',
+          entityId: created.id,
+          summary: `Started the turnaround of flight ${dto.flight_id} at ${airport.iata_code}`,
+          after: this.toSummary(created),
+        })
+        return created
       })
       return this.toSummary(turnaround)
     } catch (error) {
@@ -133,7 +124,7 @@ export class TurnaroundService {
     return this.toSummary(turnaround)
   }
 
-  async updateTask(turnaroundId: string, taskId: string, dto: UpdateTaskStatusDto): Promise<TurnaroundTaskSummary> {
+  async updateTask(turnaroundId: string, taskId: string, dto: UpdateTaskStatusDto, staffId: string): Promise<TurnaroundTaskSummary> {
     const task = await this.db.aircraft_turnaround_task.findFirst({ where: { id: taskId, turnaround_id: turnaroundId } })
     if (!task) {
       throw new NotFoundException('Turnaround task not found')
@@ -166,7 +157,18 @@ export class TurnaroundService {
       updateData.completed_at = new Date()
     }
 
-    const updated = await this.db.aircraft_turnaround_task.update({ where: { id: taskId }, data: updateData })
+    const updated = await this.db.$transaction(async (tx) => {
+      const row = await tx.aircraft_turnaround_task.update({ where: { id: taskId }, data: updateData })
+      await this.audit.record(tx, staffId, {
+        action: 'update',
+        entityType: 'aircraft_turnaround_task',
+        entityId: taskId,
+        summary: `Task ${task.task_type} set to ${dto.status.replace('_', ' ')}`,
+        before: { status: task.status },
+        after: { status: row.status },
+      })
+      return row
+    })
 
     return {
       id: updated.id,

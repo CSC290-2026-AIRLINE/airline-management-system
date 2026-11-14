@@ -1,4 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseFilters, UseGuards, UsePipes } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
+import { CurrentStaffService } from './current-staff.service'
 import { ApiExceptionFilter } from './api-exception.filter'
 import { ApiValidationPipe } from './api-validation.pipe'
 import { CreateTurnaroundDto, UpdateTaskStatusDto } from './dto/turnaround.dto'
@@ -10,11 +13,15 @@ import { StaffGuard } from './staff.guard'
 @UseFilters(ApiExceptionFilter)
 @UsePipes(ApiValidationPipe)
 export class TurnaroundController {
-  constructor(private readonly turnaroundService: TurnaroundService) {}
+  constructor(
+    private readonly turnaroundService: TurnaroundService,
+    private readonly currentStaff: CurrentStaffService,
+  ) {}
 
   @Post('aircraft/:id/turnarounds')
-  create(@Param('id', ParseUUIDPipe) aircraftId: string, @Body() dto: CreateTurnaroundDto) {
-    return this.turnaroundService.create(aircraftId, dto)
+  async create(@Param('id', ParseUUIDPipe) aircraftId: string, @Body() dto: CreateTurnaroundDto, @CurrentUser() user: AuthenticatedUser) {
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.turnaroundService.create(aircraftId, dto, staffId)
   }
 
   @Get('aircraft/:id/turnarounds/latest')
@@ -23,11 +30,13 @@ export class TurnaroundController {
   }
 
   @Put('turnarounds/:id/tasks/:taskId')
-  updateTask(
+  async updateTask(
     @Param('id', ParseUUIDPipe) turnaroundId: string,
     @Param('taskId', ParseUUIDPipe) taskId: string,
     @Body() dto: UpdateTaskStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.turnaroundService.updateTask(turnaroundId, taskId, dto)
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.turnaroundService.updateTask(turnaroundId, taskId, dto, staffId)
   }
 }

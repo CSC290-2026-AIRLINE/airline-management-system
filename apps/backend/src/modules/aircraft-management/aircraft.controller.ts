@@ -78,8 +78,9 @@ export class AircraftController {
 
   @UseGuards(StaffGuard)
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAircraftDto) {
-    return this.aircraftService.update(id, dto)
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAircraftDto, @CurrentUser() user: AuthenticatedUser) {
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.aircraftService.update(id, dto, staffId)
   }
 
   @UseGuards(StaffGuard)
@@ -98,8 +99,13 @@ export class AircraftController {
   @UseGuards(StaffGuard)
   @HttpCode(204)
   @Delete(':id/status/:periodId')
-  removeStatus(@Param('id', ParseUUIDPipe) id: string, @Param('periodId', ParseUUIDPipe) periodId: string) {
-    return this.aircraftService.removeStatus(id, periodId)
+  async removeStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('periodId', ParseUUIDPipe) periodId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.aircraftService.removeStatus(id, periodId, staffId)
   }
 
   @UseGuards(StaffGuard)
@@ -143,12 +149,14 @@ export class AircraftController {
 
   @UseGuards(StaffGuard)
   @Put(':id/maintenance/:maintenanceId')
-  updateMaintenance(
+  async updateMaintenance(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('maintenanceId', ParseUUIDPipe) maintenanceId: string,
     @Body() dto: UpdateAircraftMaintenanceDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.aircraftService.updateMaintenance(id, maintenanceId, dto)
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.aircraftService.updateMaintenance(id, maintenanceId, dto, staffId)
   }
 
   @UseGuards(StaffGuard)
@@ -159,7 +167,8 @@ export class AircraftController {
 
   @UseGuards(StaffGuard)
   @Put(':id/operating-days')
-  setOperatingDays(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetOperatingDaysDto) {
-    return this.aircraftService.setOperatingDays(id, dto)
+  async setOperatingDays(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetOperatingDaysDto, @CurrentUser() user: AuthenticatedUser) {
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.aircraftService.setOperatingDays(id, dto, staffId)
   }
 }

@@ -1,9 +1,17 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { createAircraftType } from '../api/aircraftType'
+import { cloneAircraftType, createAircraftType } from '../api/aircraftType'
 import { errorMessage } from '../api/http'
 import { CABIN_CLASS_NAMES, CABIN_CLASS_OPTIONS, SEAT_LAYOUT_OPTIONS, capacityOf, layoutSummary } from '../cabin'
+import { CapacitySummary } from './CapacitySummary'
 import { useApiFetcher } from '../hooks/useApiFetcher'
-import { type CabinClass, type CabinLayout } from '../types'
+import { type AircraftType, type CabinClass, type CabinLayout } from '../types'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardContent, CardTitle } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { NativeSelect } from '@staff-web/components/ui/native-select'
+import { Separator } from '@staff-web/components/ui/separator'
+import { Field } from './Field'
+import { ErrorMessage } from './StateMessage'
 import { SeatMapPreview } from './SeatMapPreview'
 
 interface DraftCabin {
@@ -13,13 +21,43 @@ interface DraftCabin {
   last_row: number
   columns: string[]
   aisle_after: string[]
+  skip_rows: number[]
   blocked_seats: string[]
   row_types: Record<string, number[]>
 }
 
 interface NewAircraftTypeViewProps {
   onCancel: () => void
-  onSaved: () => void
+  onSaved: (created: AircraftType) => void
+  /** Clones this type: the figures are copied, and the code and the cabins are entered here. */
+  cloneOf?: AircraftType
+}
+
+function draftFromLayout(cabin: CabinLayout, index: number): DraftCabin {
+  return {
+    id: `${cabin.cabin_class}-${cabin.first_row}-${index}`,
+    cabin_class: cabin.cabin_class,
+    first_row: cabin.first_row,
+    last_row: cabin.last_row,
+    columns: cabin.columns,
+    aisle_after: cabin.aisle_after ?? [],
+    skip_rows: cabin.skip_rows ?? [],
+    blocked_seats: cabin.blocked_seats ?? [],
+    row_types: cabin.row_types ?? {},
+  }
+}
+
+/** Reads `13, 14` into rows; a value that is not a row number gives `null`. */
+function parseRows(value: string): number[] | null {
+  const parts = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  const rows = parts.map(Number)
+  if (rows.some((row) => !Number.isInteger(row) || row < 1)) {
+    return null
+  }
+  return [...new Set(rows)].sort((a, b) => a - b)
 }
 
 function toNumber(value: string): number {
@@ -27,10 +65,10 @@ function toNumber(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewProps) {
+export function NewAircraftTypeView({ onCancel, onSaved, cloneOf }: NewAircraftTypeViewProps) {
   const fetcher = useApiFetcher()
 
-  const [code, setCode] = useState('')
+  const [code, setCode] = useState(cloneOf ? `${cloneOf.code}-V2` : '')
   const [manufacturer, setManufacturer] = useState('')
   const [model, setModel] = useState('')
   const [holdWeightLimit, setHoldWeightLimit] = useState('')
@@ -40,11 +78,12 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
   const [operatingCost, setOperatingCost] = useState('')
   const [costCurrency, setCostCurrency] = useState('USD')
 
-  const [cabins, setCabins] = useState<DraftCabin[]>([])
+  const [cabins, setCabins] = useState<DraftCabin[]>(() => (cloneOf ? cloneOf.layout.cabins.map(draftFromLayout) : []))
   const [draftClass, setDraftClass] = useState<CabinClass>('economy')
   const [draftFirstRow, setDraftFirstRow] = useState('')
   const [draftLastRow, setDraftLastRow] = useState('')
   const [draftLayoutId, setDraftLayoutId] = useState(SEAT_LAYOUT_OPTIONS[0].id)
+  const [draftSkipRows, setDraftSkipRows] = useState('')
 
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -57,6 +96,7 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
         last_row: cabin.last_row,
         columns: cabin.columns,
         aisle_after: cabin.aisle_after,
+        ...(cabin.skip_rows.length > 0 ? { skip_rows: cabin.skip_rows } : {}),
         blocked_seats: cabin.blocked_seats,
         row_types: cabin.row_types,
       })),
@@ -75,6 +115,16 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
       return
     }
 
+    const skipRows = parseRows(draftSkipRows)
+    if (skipRows === null || skipRows.some((row) => row < firstRow || row > lastRow)) {
+      setError(`Skipped rows are row numbers between ${firstRow} and ${lastRow}, separated by commas.`)
+      return
+    }
+    if (cabins.some((cabin) => firstRow <= cabin.last_row && lastRow >= cabin.first_row)) {
+      setError('This cabin shares rows with another cabin.')
+      return
+    }
+
     setError(null)
     setCabins((current) => [
       ...current,
@@ -85,12 +135,14 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
         last_row: lastRow,
         columns: layout.columns,
         aisle_after: layout.aisleAfter,
+        skip_rows: skipRows,
         blocked_seats: [],
         row_types: {},
       },
     ])
     setDraftFirstRow('')
     setDraftLastRow('')
+    setDraftSkipRows('')
   }
 
   const handleRemoveCabin = (id: string) => {
@@ -143,12 +195,45 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
 
-    if (!code.trim() || !manufacturer.trim() || !model.trim()) {
-      setError('Code, manufacturer and model are required.')
+    if (!code.trim()) {
+      setError('The code is required.')
       return
     }
     if (cabins.length === 0) {
       setError('Add at least one cabin before saving.')
+      return
+    }
+
+    if (cloneOf) {
+      setError(null)
+      setIsSaving(true)
+      try {
+        onSaved(await cloneAircraftType(fetcher.current, cloneOf.id, code.trim().toUpperCase(), { cabins: previewCabins }))
+      } catch (err) {
+        setError(errorMessage(err, 'Failed to clone the aircraft type'))
+      } finally {
+        setIsSaving(false)
+      }
+      return
+    }
+
+    if (!manufacturer.trim() || !model.trim()) {
+      setError('Code, manufacturer and model are required.')
+      return
+    }
+    const wholeFigures: [string, string][] = [
+      ['Hold weight limit', holdWeightLimit],
+      ['Max takeoff weight', maxTakeoffWeight],
+      ['Max range', maxRange],
+      ['Min turnaround', minTurnaround],
+    ]
+    const badFigure = wholeFigures.find(([, value]) => !Number.isInteger(Number(value)) || Number(value) < 1)
+    if (badFigure) {
+      setError(`${badFigure[0]} has to be a whole number above zero.`)
+      return
+    }
+    if (operatingCost.trim() === '' || !(Number(operatingCost) >= 0)) {
+      setError('Operating cost per hour has to be zero or more.')
       return
     }
     if (costCurrency.trim().length !== 3) {
@@ -159,20 +244,21 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
     setError(null)
     setIsSaving(true)
     try {
-      await createAircraftType(fetcher.current, {
-        code: code.trim().toUpperCase(),
-        manufacturer: manufacturer.trim(),
-        model: model.trim(),
-        layout: { cabins: previewCabins },
-        hold_weight_limit_kg: Math.round(toNumber(holdWeightLimit)),
-        max_takeoff_weight_kg: Math.round(toNumber(maxTakeoffWeight)),
-        max_range_km: Math.round(toNumber(maxRange)),
-        min_turnaround_minutes: Math.round(toNumber(minTurnaround)),
-        operating_cost_per_hour: toNumber(operatingCost),
-        cost_currency: costCurrency.trim().toUpperCase(),
-        is_active: true,
-      })
-      onSaved()
+      onSaved(
+        await createAircraftType(fetcher.current, {
+          code: code.trim().toUpperCase(),
+          manufacturer: manufacturer.trim(),
+          model: model.trim(),
+          layout: { cabins: previewCabins },
+          hold_weight_limit_kg: Number(holdWeightLimit),
+          max_takeoff_weight_kg: Number(maxTakeoffWeight),
+          max_range_km: Number(maxRange),
+          min_turnaround_minutes: Number(minTurnaround),
+          operating_cost_per_hour: Number(operatingCost),
+          cost_currency: costCurrency.trim().toUpperCase(),
+          is_active: true,
+        }),
+      )
     } catch (err) {
       setError(errorMessage(err, 'Failed to save the aircraft type'))
     } finally {
@@ -181,239 +267,230 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
   }
 
   return (
-    <>
-      <div className="f9-typegrid">
-        <div className="f9-stack">
-          <div className="f9-typehead">
-            <button type="button" className="f9-backlink" onClick={onCancel}>
-              ← Aircraft Types
-            </button>
-            <h2 className="f9-heading">New Aircraft Type</h2>
-          </div>
+    <div className="f9-typegrid">
+      <div className="f9-stack">
+        <div className="f9-typehead">
+          <Button type="button" variant="link" className="h-auto p-0" onClick={onCancel}>
+            {cloneOf ? `← ${cloneOf.code}` : '← Aircraft Types'}
+          </Button>
+        </div>
 
-          {error && (
-            <div className="f9-error" role="alert">
-              <span>{error}</span>
-            </div>
-          )}
+        {error && <ErrorMessage message={error} />}
 
-          <form id="new-aircraft-type" className="f9-card f9-card--pad f9-card--form" onSubmit={(event) => void handleSubmit(event)}>
-            <div className="f9-formgrid">
-              <label className="f9-field">
-                <span className="f9-field__label">Code</span>
-                <input
-                  className="f9-input"
-                  type="text"
-                  placeholder="A320"
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                  required
-                />
-              </label>
-              <label className="f9-field">
-                <span className="f9-field__label">Hold weight limit (kg)</span>
-                <input
-                  className="f9-input"
-                  type="number"
-                  min={0}
-                  value={holdWeightLimit}
-                  onChange={(event) => setHoldWeightLimit(event.target.value)}
-                />
-              </label>
-              <label className="f9-field">
-                <span className="f9-field__label">Max takeoff weight (kg)</span>
-                <input
-                  className="f9-input"
-                  type="number"
-                  min={0}
-                  value={maxTakeoffWeight}
-                  onChange={(event) => setMaxTakeoffWeight(event.target.value)}
-                />
-              </label>
-              <div aria-hidden="true" />
-              <label className="f9-field">
-                <span className="f9-field__label">Manufacturer</span>
-                <input
-                  className="f9-input"
-                  type="text"
-                  placeholder="Airbus"
-                  value={manufacturer}
-                  onChange={(event) => setManufacturer(event.target.value)}
-                  required
-                />
-              </label>
-              <label className="f9-field">
-                <span className="f9-field__label">Model</span>
-                <input
-                  className="f9-input"
-                  type="text"
-                  placeholder="A320"
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  required
-                />
-              </label>
-              <label className="f9-field">
-                <span className="f9-field__label">Max range (km)</span>
-                <input className="f9-input" type="number" min={0} value={maxRange} onChange={(event) => setMaxRange(event.target.value)} />
-              </label>
-              <label className="f9-field">
-                <span className="f9-field__label">Min turnaround (min)</span>
-                <input
-                  className="f9-input"
-                  type="number"
-                  min={0}
-                  value={minTurnaround}
-                  onChange={(event) => setMinTurnaround(event.target.value)}
-                />
-              </label>
-              <label className="f9-field">
-                <span className="f9-field__label">Operating cost per hour</span>
-                <input
-                  className="f9-input"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={operatingCost}
-                  onChange={(event) => setOperatingCost(event.target.value)}
-                />
-              </label>
-              <label className="f9-field">
-                <span className="f9-field__label">Cost currency</span>
-                <input
-                  className="f9-input"
-                  type="text"
-                  maxLength={3}
-                  placeholder="USD"
-                  value={costCurrency}
-                  onChange={(event) => setCostCurrency(event.target.value)}
-                  required
-                />
-              </label>
-            </div>
-          </form>
+        <Card>
+          <CardContent>
+            <form id="new-aircraft-type" className="f9-formgrid" onSubmit={(event) => void handleSubmit(event)}>
+              <Field label={cloneOf ? `Code of the clone of ${cloneOf.code}` : 'Code'} htmlFor="type-code">
+                <Input id="type-code" placeholder="A320" value={code} onChange={(event) => setCode(event.target.value)} required />
+              </Field>
+              {!cloneOf && (
+                <>
+                  <Field label="Hold weight limit (kg)" htmlFor="type-hold">
+                    <Input
+                      id="type-hold"
+                      type="number"
+                      min={1}
+                      required
+                      value={holdWeightLimit}
+                      onChange={(event) => setHoldWeightLimit(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Max takeoff weight (kg)" htmlFor="type-mtow">
+                    <Input
+                      id="type-mtow"
+                      type="number"
+                      min={1}
+                      required
+                      value={maxTakeoffWeight}
+                      onChange={(event) => setMaxTakeoffWeight(event.target.value)}
+                    />
+                  </Field>
+                  <div aria-hidden="true" />
+                  <Field label="Manufacturer" htmlFor="type-manufacturer">
+                    <Input
+                      id="type-manufacturer"
+                      placeholder="Airbus"
+                      value={manufacturer}
+                      onChange={(event) => setManufacturer(event.target.value)}
+                      required
+                    />
+                  </Field>
+                  <Field label="Model" htmlFor="type-model">
+                    <Input id="type-model" placeholder="A320" value={model} onChange={(event) => setModel(event.target.value)} required />
+                  </Field>
+                  <Field label="Max range (km)" htmlFor="type-range">
+                    <Input
+                      id="type-range"
+                      type="number"
+                      min={1}
+                      required
+                      value={maxRange}
+                      onChange={(event) => setMaxRange(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Min turnaround (min)" htmlFor="type-turnaround">
+                    <Input
+                      id="type-turnaround"
+                      type="number"
+                      min={1}
+                      required
+                      value={minTurnaround}
+                      onChange={(event) => setMinTurnaround(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Operating cost per hour" htmlFor="type-cost">
+                    <Input
+                      id="type-cost"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      required
+                      value={operatingCost}
+                      onChange={(event) => setOperatingCost(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Cost currency" htmlFor="type-currency">
+                    <Input
+                      id="type-currency"
+                      maxLength={3}
+                      placeholder="USD"
+                      value={costCurrency}
+                      onChange={(event) => setCostCurrency(event.target.value)}
+                      required
+                    />
+                  </Field>
+                </>
+              )}
+            </form>
+          </CardContent>
+        </Card>
 
-          <div className="f9-card f9-card--pad f9-card--cabins">
-            <h3 className="f9-card__title">Cabins</h3>
+        <Card>
+          <CardContent className="flex flex-col gap-3">
+            <CardTitle>Cabins</CardTitle>
 
             {cabins.length === 0 ? (
-              <p className="f9-note" style={{ marginTop: 10 }}>
-                No cabin yet. Add one below.
-              </p>
+              <p className="text-sm text-muted-foreground">No cabin yet. Add one below.</p>
             ) : (
               cabins.map((cabin) => (
-                <div className="f9-cabinrow" key={cabin.id}>
+                <div className="flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-sm" key={cabin.id}>
                   <span>
                     <strong>{CABIN_CLASS_NAMES[cabin.cabin_class]}</strong>{' '}
-                    <span className="f9-cabinrow__rows">
+                    <span className="text-muted-foreground">
                       rows {cabin.first_row}-{cabin.last_row} · {layoutSummary(cabin.columns, cabin.aisle_after)}
+                      {cabin.skip_rows.length > 0 ? ` · skips ${cabin.skip_rows.join(', ')}` : ''}
                     </span>
                   </span>
-                  <button type="button" className="f9-cabinrow__remove" onClick={() => handleRemoveCabin(cabin.id)}>
+                  <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => handleRemoveCabin(cabin.id)}>
                     Remove
-                  </button>
+                  </Button>
                 </div>
               ))
             )}
 
-            <div className="f9-addcabin">
-              <p className="f9-addcabin__title">ADD CABIN</p>
+            <Separator />
 
-              <label className="f9-field">
-                <span className="f9-field__label">Class name</span>
-                <select className="f9-select" value={draftClass} onChange={(event) => setDraftClass(event.target.value as CabinClass)}>
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-semibold tracking-wide text-muted-foreground">ADD CABIN</p>
+
+              <Field label="Class name" htmlFor="cabin-class">
+                <NativeSelect
+                  id="cabin-class"
+                  className="w-full"
+                  value={draftClass}
+                  onChange={(event) => setDraftClass(event.target.value as CabinClass)}
+                >
                   {CABIN_CLASS_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
-                </select>
-              </label>
+                </NativeSelect>
+              </Field>
 
-              <div className="f9-formgrid" style={{ marginTop: 8 }}>
-                <label className="f9-field">
-                  <span className="f9-field__label">First row</span>
-                  <input
-                    className="f9-input"
+              <div className="f9-formgrid">
+                <Field label="First row" htmlFor="cabin-first-row">
+                  <Input
+                    id="cabin-first-row"
                     type="number"
                     min={1}
                     value={draftFirstRow}
                     onChange={(event) => setDraftFirstRow(event.target.value)}
                   />
-                </label>
-                <label className="f9-field">
-                  <span className="f9-field__label">Last row</span>
-                  <input
-                    className="f9-input"
+                </Field>
+                <Field label="Last row" htmlFor="cabin-last-row">
+                  <Input
+                    id="cabin-last-row"
                     type="number"
                     min={1}
                     value={draftLastRow}
                     onChange={(event) => setDraftLastRow(event.target.value)}
                   />
-                </label>
+                </Field>
               </div>
 
-              <label className="f9-field" style={{ marginTop: 8 }}>
-                <span className="f9-field__label">Seat layout (letters, "|" marks the aisle)</span>
-                <select className="f9-select" value={draftLayoutId} onChange={(event) => setDraftLayoutId(event.target.value)}>
+              <Field label="Skipped rows (optional, for example 13)" htmlFor="cabin-skip-rows">
+                <Input
+                  id="cabin-skip-rows"
+                  placeholder="13"
+                  value={draftSkipRows}
+                  onChange={(event) => setDraftSkipRows(event.target.value)}
+                />
+              </Field>
+
+              <Field label={'Seat layout (letters, "|" marks the aisle)'} htmlFor="cabin-layout">
+                <NativeSelect
+                  id="cabin-layout"
+                  className="w-full"
+                  value={draftLayoutId}
+                  onChange={(event) => setDraftLayoutId(event.target.value)}
+                >
                   {SEAT_LAYOUT_OPTIONS.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.label}
                     </option>
                   ))}
-                </select>
-              </label>
+                </NativeSelect>
+              </Field>
 
-              <button type="button" className="f9-btn f9-btn--outline f9-addcabin__add" onClick={handleAddCabin}>
-                + Add cabin
-              </button>
-
-              <p className="f9-note f9-note--small" style={{ marginTop: 12 }}>
-                Choose a class name and enter both row numbers to add this cabin.
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <p className="f9-note f9-note--warn">
-              Once saved, this layout is permanent. To change it later, clone the type. Double-check row ranges, row types and blocked seats
-              first.
-            </p>
-            <div className="f9-modal__actions" style={{ marginTop: 16 }}>
-              <button type="button" className="f9-btn f9-btn--outline" onClick={onCancel}>
-                Cancel
-              </button>
-              <button type="submit" form="new-aircraft-type" className="f9-btn" disabled={isSaving}>
-                {isSaving ? 'Saving...' : 'Save aircraft type'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="f9-stack f9-stack--tight">
-          <div className="f9-card f9-card--pad f9-card--capacity">
-            <h3 className="f9-card__title">Capacity summary</h3>
-            <div className="f9-metrics">
-              <div className="f9-metric">
-                <div className="f9-metric__label">TOTAL SEATS</div>
-                <div className="f9-metric__value">{capacity.total}</div>
+              <div>
+                <Button type="button" variant="outline" onClick={handleAddCabin}>
+                  + Add cabin
+                </Button>
               </div>
-              <div className="f9-metric">
-                <div className="f9-metric__label">BLOCKED</div>
-                <div className="f9-metric__value f9-metric__value--red">{capacity.blocked}</div>
-              </div>
-              <div className="f9-metric">
-                <div className="f9-metric__label">SELLABLE</div>
-                <div className="f9-metric__value f9-metric__value--green">{capacity.sellable}</div>
-              </div>
-            </div>
-          </div>
 
-          <div className="f9-card">
-            <SeatMapPreview cabins={previewCabins} onToggleSeat={handleToggleSeat} onCycleRow={handleCycleRow} />
+              <p className="text-xs text-muted-foreground">Choose a class name and enter both row numbers to add this cabin.</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-amber-700">
+            Once saved, this layout is permanent. To change it later, clone the type. Double-check row ranges, row types and blocked seats
+            first.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button type="submit" form="new-aircraft-type" disabled={isSaving}>
+              {isSaving ? 'Saving...' : cloneOf ? 'Save clone' : 'Save aircraft type'}
+            </Button>
           </div>
         </div>
       </div>
-    </>
+
+      <div className="f9-stack f9-stack--tight">
+        <Card>
+          <CardContent className="flex flex-col gap-3">
+            <CapacitySummary total={capacity.total} blocked={capacity.blocked} sellable={capacity.sellable} perCabin={capacity.perCabin} />
+          </CardContent>
+        </Card>
+
+        <Card className="py-0">
+          <SeatMapPreview cabins={previewCabins} onToggleSeat={handleToggleSeat} onCycleRow={handleCycleRow} />
+        </Card>
+      </div>
+    </div>
   )
 }

@@ -23,19 +23,19 @@ export class CreateAircraftTypeDto {
   layout!: SeatLayoutDto
 
   @IsInt()
-  @Min(0)
+  @Min(1)
   hold_weight_limit_kg!: number
 
   @IsInt()
-  @Min(0)
+  @Min(1)
   max_takeoff_weight_kg!: number
 
   @IsInt()
-  @Min(0)
+  @Min(1)
   max_range_km!: number
 
   @IsInt()
-  @Min(0)
+  @Min(1)
   min_turnaround_minutes!: number
 
   @IsNumber()
@@ -77,22 +77,22 @@ export class UpdateAircraftTypeDto {
 
   @IsOptional()
   @IsInt()
-  @Min(0)
+  @Min(1)
   hold_weight_limit_kg?: number
 
   @IsOptional()
   @IsInt()
-  @Min(0)
+  @Min(1)
   max_takeoff_weight_kg?: number
 
   @IsOptional()
   @IsInt()
-  @Min(0)
+  @Min(1)
   max_range_km?: number
 
   @IsOptional()
   @IsInt()
-  @Min(0)
+  @Min(1)
   min_turnaround_minutes?: number
 
   @IsOptional()

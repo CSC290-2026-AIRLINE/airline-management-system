@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { FleetAuditService } from './fleet-audit.service'
 import { CloneAircraftTypeDto, CreateAircraftTypeDto, UpdateAircraftTypeDto } from './dto/aircraft-type.dto'
 import { CABIN_CLASSES, MAX_LAYOUT_SEATS, MAX_ROW, ROW_TYPE_KEYS, type CabinLayout, type SeatLayout } from './dto/layout.dto'
 import { countLayoutSeats } from './seat-map'
@@ -39,7 +40,10 @@ type AircraftTypeUpdate = {
 
 @Injectable()
 export class AircraftTypeService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: FleetAuditService,
+  ) {}
 
   async findAll(): Promise<AircraftTypeSummary[]> {
     const types = await this.db.aircraft_type.findMany({
@@ -57,25 +61,35 @@ export class AircraftTypeService {
     return this.toSummary(type)
   }
 
-  async create(dto: CreateAircraftTypeDto): Promise<AircraftTypeSummary> {
+  async create(dto: CreateAircraftTypeDto, staffId: string): Promise<AircraftTypeSummary> {
     const layout = this.validateLayout(dto.layout.cabins)
     const code = dto.code.trim().toUpperCase()
 
     try {
-      const created = await this.db.aircraft_type.create({
-        data: {
-          code,
-          manufacturer: dto.manufacturer.trim(),
-          model: dto.model.trim(),
-          layout,
-          hold_weight_limit_kg: dto.hold_weight_limit_kg,
-          max_takeoff_weight_kg: dto.max_takeoff_weight_kg,
-          max_range_km: dto.max_range_km,
-          min_turnaround_minutes: dto.min_turnaround_minutes,
-          operating_cost_per_hour: dto.operating_cost_per_hour,
-          cost_currency: dto.cost_currency.trim().toUpperCase(),
-          is_active: dto.is_active ?? true,
-        },
+      const created = await this.db.$transaction(async (tx) => {
+        const row = await tx.aircraft_type.create({
+          data: {
+            code,
+            manufacturer: dto.manufacturer.trim(),
+            model: dto.model.trim(),
+            layout,
+            hold_weight_limit_kg: dto.hold_weight_limit_kg,
+            max_takeoff_weight_kg: dto.max_takeoff_weight_kg,
+            max_range_km: dto.max_range_km,
+            min_turnaround_minutes: dto.min_turnaround_minutes,
+            operating_cost_per_hour: dto.operating_cost_per_hour,
+            cost_currency: dto.cost_currency.trim().toUpperCase(),
+            is_active: dto.is_active ?? true,
+          },
+        })
+        await this.audit.record(tx, staffId, {
+          action: 'create',
+          entityType: 'aircraft_type',
+          entityId: row.id,
+          summary: `Created aircraft type ${code}`,
+          after: this.toSummary(row),
+        })
+        return row
       })
       return this.toSummary(created)
     } catch (error) {
@@ -86,8 +100,8 @@ export class AircraftTypeService {
     }
   }
 
-  async update(id: string, dto: UpdateAircraftTypeDto): Promise<AircraftTypeSummary> {
-    await this.findOne(id)
+  async update(id: string, dto: UpdateAircraftTypeDto, staffId: string): Promise<AircraftTypeSummary> {
+    const before = await this.findOne(id)
 
     const data: AircraftTypeUpdate = { updated_at: new Date() }
     if (dto.code !== undefined) data.code = dto.code.trim().toUpperCase()
@@ -102,7 +116,21 @@ export class AircraftTypeService {
     if (dto.is_active !== undefined) data.is_active = dto.is_active
 
     try {
-      const updated = await this.db.aircraft_type.update({ where: { id }, data })
+      const updated = await this.db.$transaction(async (tx) => {
+        const row = await tx.aircraft_type.update({ where: { id }, data })
+        await this.audit.record(tx, staffId, {
+          action: 'update',
+          entityType: 'aircraft_type',
+          entityId: id,
+          summary:
+            dto.is_active === undefined
+              ? `Edited aircraft type ${before.code}`
+              : `${dto.is_active ? 'Reactivated' : 'Retired'} aircraft type ${before.code}`,
+          before,
+          after: this.toSummary(row),
+        })
+        return row
+      })
       return this.toSummary(updated)
     } catch (error) {
       if (hasPrismaErrorCode(error, PRISMA_UNIQUE_VIOLATION)) {
@@ -113,7 +141,7 @@ export class AircraftTypeService {
   }
 
   /** Cloning is how a new layout is introduced: the layout of an existing type is never edited. */
-  async clone(id: string, dto: CloneAircraftTypeDto): Promise<AircraftTypeSummary> {
+  async clone(id: string, dto: CloneAircraftTypeDto, staffId: string): Promise<AircraftTypeSummary> {
     const existing = await this.findOne(id)
     const code = dto.code.trim().toUpperCase()
 
@@ -125,20 +153,30 @@ export class AircraftTypeService {
     const layout = dto.layout ? this.validateLayout(dto.layout.cabins) : existing.layout
 
     try {
-      const created = await this.db.aircraft_type.create({
-        data: {
-          code,
-          manufacturer: existing.manufacturer,
-          model: existing.model,
-          layout,
-          hold_weight_limit_kg: existing.hold_weight_limit_kg,
-          max_takeoff_weight_kg: existing.max_takeoff_weight_kg,
-          max_range_km: existing.max_range_km,
-          min_turnaround_minutes: existing.min_turnaround_minutes,
-          operating_cost_per_hour: existing.operating_cost_per_hour,
-          cost_currency: existing.cost_currency,
-          is_active: existing.is_active,
-        },
+      const created = await this.db.$transaction(async (tx) => {
+        const row = await tx.aircraft_type.create({
+          data: {
+            code,
+            manufacturer: existing.manufacturer,
+            model: existing.model,
+            layout,
+            hold_weight_limit_kg: existing.hold_weight_limit_kg,
+            max_takeoff_weight_kg: existing.max_takeoff_weight_kg,
+            max_range_km: existing.max_range_km,
+            min_turnaround_minutes: existing.min_turnaround_minutes,
+            operating_cost_per_hour: existing.operating_cost_per_hour,
+            cost_currency: existing.cost_currency,
+            is_active: existing.is_active,
+          },
+        })
+        await this.audit.record(tx, staffId, {
+          action: 'create',
+          entityType: 'aircraft_type',
+          entityId: row.id,
+          summary: `Cloned aircraft type ${existing.code} as ${code}`,
+          after: this.toSummary(row),
+        })
+        return row
       })
       return this.toSummary(created)
     } catch (error) {
@@ -213,6 +251,9 @@ export class AircraftTypeService {
         throw new BadRequestException(`row_types "${type}" must list rows within ${cabin.first_row}-${cabin.last_row}`)
       }
       for (const row of rows) {
+        if (skipped.has(row)) {
+          throw new BadRequestException(`Row ${row} is skipped, so it cannot have a row type`)
+        }
         if (typedRows.has(row)) {
           throw new BadRequestException(`Row ${row} has more than one row type`)
         }
@@ -220,7 +261,12 @@ export class AircraftTypeService {
       }
     }
 
+    const blockedSeen = new Set<string>()
     for (const seat of cabin.blocked_seats ?? []) {
+      if (blockedSeen.has(seat)) {
+        throw new BadRequestException(`blocked_seats lists "${seat}" more than once`)
+      }
+      blockedSeen.add(seat)
       const match = /^(\d+)([A-Z])$/.exec(seat)
       if (!match || !inRange(Number(match[1])) || skipped.has(Number(match[1])) || !cabin.columns.includes(match[2])) {
         throw new BadRequestException(`blocked_seats has "${seat}", which is not a seat of this cabin`)

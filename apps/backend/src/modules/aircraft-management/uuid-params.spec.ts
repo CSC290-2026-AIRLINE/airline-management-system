@@ -36,7 +36,10 @@ describe('path parameters of the aircraft management routes', () => {
         { provide: AircraftService, useValue: aircraftService },
         { provide: AircraftTypeService, useValue: aircraftTypeService },
         { provide: TurnaroundService, useValue: turnaroundService },
-        { provide: CurrentStaffService, useValue: { isStaff: jest.fn().mockResolvedValue(true) } },
+        {
+          provide: CurrentStaffService,
+          useValue: { isStaff: jest.fn().mockResolvedValue(true), resolveStaffId: jest.fn().mockResolvedValue('staff-1') },
+        },
       ],
     })
       .overrideGuard(StaffGuard)
@@ -44,6 +47,11 @@ describe('path parameters of the aircraft management routes', () => {
       .compile()
 
     app = moduleRef.createNestApplication()
+    // The global JwtAuthGuard puts the caller on the request; there is none in this module-only test.
+    app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => {
+      request.user = { id: 'user-1' }
+      next()
+    })
     await app.init()
   })
 
@@ -72,7 +80,7 @@ describe('path parameters of the aircraft management routes', () => {
     const response = await request(app.getHttpServer()).delete(`/aircraft/${VALID_ID}/status/${VALID_ID}`)
 
     expect(response.status).toBe(204)
-    expect(aircraftService.removeStatus).toHaveBeenCalledWith(VALID_ID, VALID_ID)
+    expect(aircraftService.removeStatus).toHaveBeenCalledWith(VALID_ID, VALID_ID, 'staff-1')
   })
 
   it('lets a valid id through to the service', async () => {

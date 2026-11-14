@@ -136,3 +136,9 @@ export interface FleetReserve {
 /** Monday is 1, matching the `day_of_week` column of `aircraft_operating_day`. */
 export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
 export type Weekday = (typeof WEEKDAYS)[number]
+
+export interface FleetSettings {
+  reserve_ratio: number
+  updated_at: string | null
+  updated_by: string | null
+}

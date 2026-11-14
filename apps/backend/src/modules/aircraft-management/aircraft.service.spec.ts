@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { AircraftService } from './aircraft.service'
-import { AuditService } from './audit.service'
-import { SimulationClockService } from './simulation-clock.service'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import type { FleetAuditService } from './fleet-audit.service'
 
 // ESM-only dependencies that Jest cannot load here; the service under test never calls into them.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -23,10 +23,9 @@ describe('AircraftService', () => {
     flight: { count: jest.Mock }
     $transaction: jest.Mock
   }
-  let audit: AuditService
-  let auditRecord: jest.SpyInstance
+  let auditRecord: jest.Mock
   let tx: {
-    aircraft: { create: jest.Mock }
+    aircraft: { create: jest.Mock; update: jest.Mock }
     aircraft_status_period: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock }
     aircraft_maintenance: { create: jest.Mock; update: jest.Mock }
     aircraft_operating_day: { deleteMany: jest.Mock; createMany: jest.Mock; findMany: jest.Mock }
@@ -46,10 +45,10 @@ describe('AircraftService', () => {
 
   beforeEach(() => {
     tx = {
-      aircraft: { create: jest.fn() },
+      aircraft: { create: jest.fn(), update: jest.fn() },
       aircraft_status_period: { create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
       aircraft_maintenance: { create: jest.fn(), update: jest.fn() },
-      aircraft_operating_day: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
+      aircraft_operating_day: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     }
     db = {
       aircraft: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
@@ -61,9 +60,10 @@ describe('AircraftService', () => {
       flight: { count: jest.fn() },
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) => Promise.resolve(callback(tx))),
     }
-    audit = new AuditService()
-    auditRecord = jest.spyOn(audit, 'record')
-    service = new AircraftService(db as unknown as DbService, new SimulationClockService(), audit)
+    auditRecord = jest.fn().mockResolvedValue(undefined)
+    service = new AircraftService(db as unknown as DbService, new SimulationClock(), {
+      record: auditRecord,
+    } as unknown as FleetAuditService)
   })
 
   describe('findAll', () => {
@@ -123,15 +123,14 @@ describe('AircraftService', () => {
       db.aircraft.findFirst.mockResolvedValue(aircraftRow([]))
     })
 
-    it('registers the aircraft and opens an in_service period', async () => {
+    it('registers the aircraft without writing a status period', async () => {
       await service.create(dto, 'staff-1')
 
       expect(tx.aircraft.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ tail_number: 'HS-ABF', base_airport_code: 'BKK' }) }),
       )
-      expect(tx.aircraft_status_period.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'in_service', created_by: 'staff-1' }) }),
-      )
+      expect(tx.aircraft_status_period.create).not.toHaveBeenCalled()
+      expect(auditRecord).toHaveBeenCalledWith(tx, 'staff-1', expect.objectContaining({ action: 'create', entityType: 'aircraft' }))
     })
 
     it('reports a duplicate tail number as a conflict', async () => {
@@ -158,14 +157,14 @@ describe('AircraftService', () => {
     it('refuses a period that belongs to another aircraft', async () => {
       db.aircraft_status_period.findFirst.mockResolvedValue(null)
 
-      await expect(service.removeStatus('a1', 'p9')).rejects.toBeInstanceOf(NotFoundException)
+      await expect(service.removeStatus('a1', 'p9', 'staff-1')).rejects.toBeInstanceOf(NotFoundException)
       expect(db.aircraft_status_period.update).not.toHaveBeenCalled()
     })
 
     it('refuses to delete a period that belongs to a maintenance window', async () => {
       db.aircraft_status_period.findFirst.mockResolvedValue({ id: 'p1', origin: 'maintenance' })
 
-      await expect(service.removeStatus('a1', 'p1')).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.removeStatus('a1', 'p1', 'staff-1')).rejects.toBeInstanceOf(ConflictException)
     })
   })
 
@@ -201,7 +200,7 @@ describe('AircraftService', () => {
     it('stores the days without duplicates', async () => {
       db.aircraft.findFirst.mockResolvedValue({ id: 'a1' })
 
-      const result = await service.setOperatingDays('a1', { days: [3, 1, 3] })
+      const result = await service.setOperatingDays('a1', { days: [3, 1, 3] }, 'staff-1')
 
       expect(tx.aircraft_operating_day.createMany).toHaveBeenCalledWith({
         data: [
@@ -232,7 +231,7 @@ describe('AircraftService', () => {
     it('marks the period as changed so that the status feed reports the deletion', async () => {
       tx.aircraft_status_period.findMany.mockResolvedValue([])
 
-      await service.removeStatus('a1', 'p1')
+      await service.removeStatus('a1', 'p1', 'staff-1')
 
       expect(tx.aircraft_status_period.update).toHaveBeenCalledWith({
         where: { id: 'p1' },
@@ -243,7 +242,7 @@ describe('AircraftService', () => {
     it('keeps an aircraft grounded when the period that ended its grounding is deleted', async () => {
       tx.aircraft_status_period.findMany.mockResolvedValue([live({})])
 
-      await service.removeStatus('a1', 'p1')
+      await service.removeStatus('a1', 'p1', 'staff-1')
 
       expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'p0' }, data: expect.objectContaining({ end_date: null }) }),
@@ -262,7 +261,7 @@ describe('AircraftService', () => {
         }),
       ])
 
-      await service.removeStatus('a1', 'p1')
+      await service.removeStatus('a1', 'p1', 'staff-1')
 
       expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'p0' }, data: expect.objectContaining({ end_date: new Date('2026-03-31') }) }),
@@ -276,7 +275,7 @@ describe('AircraftService', () => {
     ])('leaves %s alone', async (_name, overrides) => {
       tx.aircraft_status_period.findMany.mockResolvedValue([live(overrides)])
 
-      await service.removeStatus('a1', 'p1')
+      await service.removeStatus('a1', 'p1', 'staff-1')
 
       expect(tx.aircraft_status_period.update).toHaveBeenCalledTimes(1)
     })
@@ -348,7 +347,11 @@ describe('AircraftService', () => {
       const created = await service.createStatus('a1', { status: 'grounded', start_date: '2026-03-10' }, 'staff-1')
 
       expect(created).toEqual(expect.objectContaining({ id: 'p9', start_date: '2026-03-10', end_date: null, created_by: 'staff-1' }))
-      expect(auditRecord).toHaveBeenCalledWith(expect.objectContaining({ action: 'status_period.created', entity_id: 'p9' }))
+      expect(auditRecord).toHaveBeenCalledWith(
+        tx,
+        'staff-1',
+        expect.objectContaining({ action: 'create', entityType: 'aircraft_status_period', entityId: 'p9' }),
+      )
     })
 
     it('names the conflicting period in the details of the conflict', async () => {
@@ -459,37 +462,52 @@ describe('AircraftService', () => {
       ...overrides,
     })
 
+    it('refuses to change a completed window', async () => {
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow({ status: 'completed', actual_end_date: new Date('2026-03-18') }))
+
+      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' }, 'staff-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      )
+      await expect(service.updateMaintenance('a1', 'm1', { status: 'cancelled' }, 'staff-1')).rejects.toBeInstanceOf(ConflictException)
+    })
+
     it('requires an actual end date when a window is completed', async () => {
       db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
 
-      await expect(service.updateMaintenance('a1', 'm1', { status: 'completed' })).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.updateMaintenance('a1', 'm1', { status: 'completed' }, 'staff-1')).rejects.toBeInstanceOf(BadRequestException)
     })
 
     it('refuses an end date before the stored start date', async () => {
       db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
 
-      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-05' })).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-05' }, 'staff-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      )
       expect(tx.aircraft_maintenance.update).not.toHaveBeenCalled()
     })
 
     it('refuses a start date after the stored end date', async () => {
       db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
 
-      await expect(service.updateMaintenance('a1', 'm1', { planned_start_date: '2026-03-25' })).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.updateMaintenance('a1', 'm1', { planned_start_date: '2026-03-25' }, 'staff-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      )
     })
 
     it('refuses an actual end date before the start date', async () => {
       db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
 
-      await expect(service.updateMaintenance('a1', 'm1', { status: 'completed', actual_end_date: '2026-03-01' })).rejects.toBeInstanceOf(
-        BadRequestException,
-      )
+      await expect(
+        service.updateMaintenance('a1', 'm1', { status: 'completed', actual_end_date: '2026-03-01' }, 'staff-1'),
+      ).rejects.toBeInstanceOf(BadRequestException)
     })
 
     it('refuses to change a cancelled window', async () => {
       db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow({ status: 'cancelled' }))
 
-      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' })).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' }, 'staff-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      )
     })
 
     it('reports new dates that run into another period as a conflict, without conflicting with its own period', async () => {
@@ -519,7 +537,9 @@ describe('AircraftService', () => {
         },
       ])
 
-      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' })).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' }, 'staff-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      )
     })
 
     it('moves the window when the new dates are free', async () => {
@@ -529,7 +549,7 @@ describe('AircraftService', () => {
       ])
       tx.aircraft_maintenance.update.mockResolvedValue(maintenanceRow({ planned_end_date: new Date('2026-03-25') }))
 
-      await service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' })
+      await service.updateMaintenance('a1', 'm1', { planned_end_date: '2026-03-25' }, 'staff-1')
 
       expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'p1' }, data: expect.objectContaining({ end_date: new Date('2026-03-25') }) }),
@@ -540,7 +560,7 @@ describe('AircraftService', () => {
       db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
       tx.aircraft_maintenance.update.mockResolvedValue(maintenanceRow({ status: 'cancelled' }))
 
-      await service.updateMaintenance('a1', 'm1', { status: 'cancelled' })
+      await service.updateMaintenance('a1', 'm1', { status: 'cancelled' }, 'staff-1')
 
       expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'p1' }, data: expect.objectContaining({ deleted_at: expect.any(Date) }) }),
@@ -628,9 +648,9 @@ describe('AircraftService', () => {
       db.aircraft_type.findFirst.mockResolvedValue({ id: 't2', code: 'A321', is_active: true })
       db.flight.count.mockResolvedValue(0)
 
-      await service.update('a1', { aircraft_type_id: 't2' })
+      await service.update('a1', { aircraft_type_id: 't2' }, 'staff-1')
 
-      expect(db.aircraft.update).toHaveBeenCalledWith(
+      expect(tx.aircraft.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ aircraft_type_id: 't2' }) }),
       )
     })
@@ -639,20 +659,20 @@ describe('AircraftService', () => {
       db.aircraft_type.findFirst.mockResolvedValue({ id: 't2', code: 'A321', is_active: true })
       db.flight.count.mockResolvedValue(3)
 
-      await expect(service.update('a1', { aircraft_type_id: 't2' })).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.update('a1', { aircraft_type_id: 't2' }, 'staff-1')).rejects.toBeInstanceOf(ConflictException)
       expect(db.aircraft.update).not.toHaveBeenCalled()
     })
 
     it('refuses a retired type and an unknown type', async () => {
       db.aircraft_type.findFirst.mockResolvedValueOnce({ id: 't2', code: 'A321', is_active: false })
-      await expect(service.update('a1', { aircraft_type_id: 't2' })).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.update('a1', { aircraft_type_id: 't2' }, 'staff-1')).rejects.toBeInstanceOf(ConflictException)
 
       db.aircraft_type.findFirst.mockResolvedValueOnce(null)
-      await expect(service.update('a1', { aircraft_type_id: 't9' })).rejects.toBeInstanceOf(NotFoundException)
+      await expect(service.update('a1', { aircraft_type_id: 't9' }, 'staff-1')).rejects.toBeInstanceOf(NotFoundException)
     })
 
     it('does not look at the flights when the type stays the same', async () => {
-      await service.update('a1', { aircraft_type_id: 't1' })
+      await service.update('a1', { aircraft_type_id: 't1' }, 'staff-1')
 
       expect(db.flight.count).not.toHaveBeenCalled()
     })

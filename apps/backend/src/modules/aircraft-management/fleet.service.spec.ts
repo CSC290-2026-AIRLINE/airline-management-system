@@ -1,5 +1,5 @@
 import type { DbService } from '@backend/db/db.service'
-import { AuditService } from './audit.service'
+import type { FleetAuditService } from './fleet-audit.service'
 import { FleetService } from './fleet.service'
 
 // ESM-only dependencies that Jest cannot load here; the service under test never calls into them.
@@ -14,7 +14,9 @@ describe('FleetService', () => {
   let db: {
     fleet_setting: { findMany: jest.Mock; findUnique: jest.Mock; upsert: jest.Mock }
     aircraft: { findMany: jest.Mock }
+    $transaction: jest.Mock
   }
+  let auditRecord: jest.Mock
   let service: FleetService
 
   const aircraft = (overrides: Record<string, unknown> = {}) => ({
@@ -30,8 +32,11 @@ describe('FleetService', () => {
     db = {
       fleet_setting: { findMany: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
       aircraft: { findMany: jest.fn() },
+      $transaction: jest.fn(),
     }
-    service = new FleetService(db as unknown as DbService, new AuditService())
+    db.$transaction.mockImplementation((callback: (client: typeof db) => unknown) => Promise.resolve(callback(db)))
+    auditRecord = jest.fn().mockResolvedValue(undefined)
+    service = new FleetService(db as unknown as DbService, { record: auditRecord } as unknown as FleetAuditService)
   })
 
   it('uses the stored reserve ratio', async () => {
@@ -102,6 +107,11 @@ describe('FleetService', () => {
     expect(db.fleet_setting.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ update: expect.objectContaining({ value: '1.25', updated_by: 'staff-1' }) }),
     )
-    expect(setting.value).toBe('1.25')
+    expect(setting.reserve_ratio).toBe(1.25)
+    expect(auditRecord).toHaveBeenCalledWith(
+      db,
+      'staff-1',
+      expect.objectContaining({ action: 'update', entityType: 'fleet_setting', entityId: 'reserve_ratio' }),
+    )
   })
 })

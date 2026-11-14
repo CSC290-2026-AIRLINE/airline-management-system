@@ -14,6 +14,14 @@ import {
 } from './api/aircraft'
 import { listAircraftTypes } from './api/aircraftType'
 import { errorMessage } from './api/http'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardContent } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { NativeSelect } from '@staff-web/components/ui/native-select'
+import { Separator } from '@staff-web/components/ui/separator'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Field } from './components/Field'
+import { FormDialog } from './components/FormDialog'
 import { FeatureErrorBoundary } from './components/FeatureErrorBoundary'
 import { StaffShell } from './components/StaffShell'
 import { StatusBadge } from './components/StatusBadge'
@@ -453,70 +461,59 @@ export function AircraftManagementPage() {
 
   const activeOperatingDays = detail && detail.operatingDays.length > 0 ? detail.operatingDays : [1, 2, 3, 4, 5, 6, 7]
 
+  const closeDialog = (close: () => void) => () => {
+    close()
+    setActionError(null)
+  }
+
   return (
     <FeatureErrorBoundary>
-      <StaffShell activeTab="fleet">
+      <StaffShell title="Fleet & Aircraft" description="Register aircraft, set their status and operating days, and schedule maintenance.">
         {actionError && !isModalOpen && <ErrorMessage message={actionError} />}
 
         <div className="f9-fleet">
-          <div>
-            <div className="f9-toolbar">
-              <input
-                type="text"
-                className="f9-search"
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <Input
+                type="search"
                 placeholder="Search tail number, type or base"
                 aria-label="Search the fleet"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
               />
-              <button type="button" className="f9-btn" disabled={fleetState !== 'ready'} onClick={openRegister}>
+              <Button type="button" disabled={fleetState !== 'ready'} onClick={openRegister}>
                 + Register Aircraft
-              </button>
+              </Button>
             </div>
 
-            <div className="f9-filters">
-              <select
-                className="f9-select"
-                aria-label="Filter by type"
-                value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value)}
-              >
+            <div className="flex flex-wrap gap-2">
+              <NativeSelect aria-label="Filter by type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
                 <option value="">All types</option>
                 {aircraftTypes.map((type) => (
                   <option key={type.id} value={type.id}>
                     {type.code}
                   </option>
                 ))}
-              </select>
-              <select
-                className="f9-select"
-                aria-label="Filter by base"
-                value={baseFilter}
-                onChange={(event) => setBaseFilter(event.target.value)}
-              >
+              </NativeSelect>
+              <NativeSelect aria-label="Filter by base" value={baseFilter} onChange={(event) => setBaseFilter(event.target.value)}>
                 <option value="">All bases</option>
                 {baseOptions.map((base) => (
                   <option key={base} value={base}>
                     {base}
                   </option>
                 ))}
-              </select>
-              <select
-                className="f9-select"
-                aria-label="Filter by status"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
+              </NativeSelect>
+              <NativeSelect aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="">All statuses</option>
                 {AIRCRAFT_STATUSES.map((status) => (
                   <option key={status} value={status}>
                     {STATUS_FILTER_LABELS[status]}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
 
-            <div className="f9-card f9-fleet__table">
+            <Card className="py-0">
               {fleetState === 'loading' ? (
                 <LoadingMessage>Loading fleet data...</LoadingMessage>
               ) : fleetState === 'error' ? (
@@ -528,550 +525,463 @@ export function AircraftManagementPage() {
                     : 'No aircraft match the search and the filters.'}
                 </EmptyMessage>
               ) : (
-                <table className="f9-table f9-table--fleet">
-                  <thead>
-                    <tr>
-                      <th>TAIL #</th>
-                      <th>TYPE</th>
-                      <th>BASE</th>
-                      <th>RETIRED ON</th>
-                      <th>STATUS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>TAIL #</TableHead>
+                      <TableHead>TYPE</TableHead>
+                      <TableHead>BASE</TableHead>
+                      <TableHead>RETIRED ON</TableHead>
+                      <TableHead>STATUS</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {visibleAircraft.map((item) => (
-                      <tr
+                      <TableRow
                         key={item.id}
-                        className={selectedId === item.id ? 'f9-table__row--selected' : undefined}
+                        className="cursor-pointer"
+                        data-state={selectedId === item.id ? 'selected' : undefined}
                         onClick={() => selectAircraft(item.id)}
                       >
-                        <td>
-                          <button type="button" className="f9-table__pick" onClick={() => selectAircraft(item.id)}>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="link"
+                            className="h-auto p-0 font-semibold text-[var(--f9-primary)] hover:text-[var(--f9-primary-dark)]"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              selectAircraft(item.id)
+                            }}
+                          >
                             {item.tail_number}
-                          </button>
-                        </td>
-                        <td>{typeOf(item, aircraftTypes)}</td>
-                        <td>{item.base_airport_code}</td>
-                        <td>{formatDate(item.retired_on)}</td>
-                        <td>
+                          </Button>
+                        </TableCell>
+                        <TableCell>{typeOf(item, aircraftTypes)}</TableCell>
+                        <TableCell>{item.base_airport_code}</TableCell>
+                        <TableCell>{formatDate(item.retired_on)}</TableCell>
+                        <TableCell>
                           <StatusBadge status={item.current_status} />
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               )}
-            </div>
+            </Card>
           </div>
 
-          <aside className="f9-card f9-detail">
-            {!selectedAircraft ? (
-              <EmptyMessage>Select an aircraft to view its details</EmptyMessage>
-            ) : detailState === 'loading' ? (
-              <LoadingMessage>Loading aircraft details...</LoadingMessage>
-            ) : detailState === 'error' ? (
-              <ErrorMessage message={detailError ?? 'Failed to load the aircraft details'} onRetry={reloadDetail} />
-            ) : (
-              <>
-                <div className="f9-detail__head">
+          <Card aria-label="Aircraft details">
+            <CardContent className="flex flex-col gap-4">
+              {!selectedAircraft ? (
+                <EmptyMessage>Select an aircraft to view its details</EmptyMessage>
+              ) : detailState === 'loading' ? (
+                <LoadingMessage>Loading aircraft details...</LoadingMessage>
+              ) : detailState === 'error' ? (
+                <ErrorMessage message={detailError ?? 'Failed to load the aircraft details'} onRetry={reloadDetail} />
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-semibold text-[var(--f9-primary)]">{selectedAircraft.tail_number}</h2>
+                      <p className="text-sm text-muted-foreground">
+                        {typeOf(selectedAircraft, aircraftTypes)} · base {selectedAircraft.base_airport_code}
+                      </p>
+                    </div>
+                    <Button type="button" variant="outline" onClick={openStatus}>
+                      Set Status
+                    </Button>
+                  </div>
+
                   <div>
-                    <h2 className="f9-detail__tail">{selectedAircraft.tail_number}</h2>
-                    <p className="f9-detail__sub">
-                      {typeOf(selectedAircraft, aircraftTypes)} · base {selectedAircraft.base_airport_code}
+                    <StatusBadge status={selectedAircraft.current_status} />
+                  </div>
+
+                  <dl className="flex flex-col gap-2 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">Retired on</dt>
+                      <dd>{formatDate(selectedAircraft.retired_on)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">Entry into service</dt>
+                      <dd>{formatDate(selectedAircraft.entry_into_service_date)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">Base airport</dt>
+                      <dd>{selectedAircraft.base_airport_code}</dd>
+                    </div>
+                  </dl>
+
+                  <div>
+                    <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void handleToggleRetired()}>
+                      {selectedAircraft.retired_on ? 'Reinstate aircraft' : 'Retire aircraft'}
+                    </Button>
+                  </div>
+
+                  <Separator />
+
+                  <section className="flex flex-col gap-2">
+                    <h3 className="text-xs font-semibold tracking-wide text-muted-foreground">OPERATING DAYS</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {WEEKDAYS.map((day, index) => {
+                        const dayNumber = index + 1
+                        const isActive = activeOperatingDays.includes(dayNumber)
+                        return (
+                          <Button
+                            key={day}
+                            type="button"
+                            size="sm"
+                            variant={isActive ? 'default' : 'outline'}
+                            aria-pressed={isActive}
+                            disabled={isSubmitting}
+                            onClick={() => void handleToggleOperatingDay(dayNumber)}
+                          >
+                            {day}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {everyDayNotice
+                        ? 'No weekday is selected, so the aircraft flies every day.'
+                        : activeOperatingDays.length === 7
+                          ? 'Flies every day.'
+                          : `Flies ${activeOperatingDays.length} days a week.`}
                     </p>
-                  </div>
-                  <button type="button" className="f9-btn f9-btn--outline" onClick={openStatus}>
-                    Set Status
-                  </button>
-                </div>
+                  </section>
 
-                <div className="f9-detail__badge">
-                  <StatusBadge status={selectedAircraft.current_status} />
-                </div>
+                  <Separator />
 
-                <div className="f9-detail__row">
-                  <span>Retired on</span>
-                  <span>{formatDate(selectedAircraft.retired_on)}</span>
-                </div>
-
-                <div className="f9-detail__actions">
-                  <button
-                    type="button"
-                    className="f9-btn f9-btn--outline"
-                    disabled={isSubmitting}
-                    onClick={() => void handleToggleRetired()}
-                  >
-                    {selectedAircraft.retired_on ? 'Reinstate aircraft' : 'Retire aircraft'}
-                  </button>
-                </div>
-
-                <div className="f9-detail__row">
-                  <span>Entry into service</span>
-                  <span>{formatDate(selectedAircraft.entry_into_service_date)}</span>
-                </div>
-                <div className="f9-detail__row">
-                  <span>Base airport</span>
-                  <span>{selectedAircraft.base_airport_code}</span>
-                </div>
-
-                <section className="f9-detail__section">
-                  <h3 className="f9-label">OPERATING DAYS</h3>
-                  <div className="f9-chips">
-                    {WEEKDAYS.map((day, index) => {
-                      const dayNumber = index + 1
-                      const isActive = activeOperatingDays.includes(dayNumber)
-                      return (
-                        <button
-                          key={day}
-                          type="button"
-                          className={isActive ? 'f9-chip f9-chip--on' : 'f9-chip'}
-                          aria-pressed={isActive}
-                          disabled={isSubmitting}
-                          onClick={() => void handleToggleOperatingDay(dayNumber)}
-                        >
-                          {day}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <p className="f9-detail__hint">
-                    {everyDayNotice
-                      ? 'No weekday is selected, so the aircraft flies every day.'
-                      : activeOperatingDays.length === 7
-                        ? 'Flies every day.'
-                        : `Flies ${activeOperatingDays.length} days a week.`}
-                  </p>
-                </section>
-
-                <section className="f9-detail__section">
-                  <div className="f9-detail__sectionhead">
-                    <h3 className="f9-label">MAINTENANCE</h3>
-                    <button
-                      type="button"
-                      className="f9-btn f9-btn--outline f9-btn--sm"
-                      onClick={() => {
-                        setActionError(null)
-                        setMaintenanceType('a_check')
-                        setMaintenanceStart(toDateInputValue(new Date()))
-                        setMaintenanceEnd(toDateInputValue(addDays(new Date(), 7)))
-                        setIsMaintenanceOpen(true)
-                      }}
-                    >
-                      + Schedule
-                    </button>
-                  </div>
-                  {detail && detail.maintenance.length > 0 ? (
-                    <ul className="f9-detail__list">
-                      {detail.maintenance.map((window) => (
-                        <li key={window.id}>
-                          <strong>
-                            {MAINTENANCE_TYPE_LABELS[window.maintenance_type] ?? window.maintenance_type} ·{' '}
-                            {window.status.replace('_', ' ')}
-                          </strong>
-                          <span>
-                            {formatDate(window.planned_start_date)} to {formatDate(window.planned_end_date)}
-                          </span>
-                          {(window.status === 'planned' || window.status === 'in_progress') && (
-                            <span className="f9-detail__rowactions">
-                              <button type="button" className="f9-detail__link" onClick={() => openWindowAction('reschedule', window)}>
-                                Reschedule
-                              </button>
-                              <button type="button" className="f9-detail__link" onClick={() => openWindowAction('complete', window)}>
-                                Complete
-                              </button>
-                              {cancelWindowId === window.id ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="f9-detail__cancel"
-                                    disabled={isSubmitting}
-                                    onClick={() => void handleCancelWindow(window.id)}
-                                  >
-                                    Yes, cancel
-                                  </button>
-                                  <button type="button" className="f9-detail__keep" onClick={() => setCancelWindowId(null)}>
-                                    Keep
-                                  </button>
-                                </>
-                              ) : (
-                                <button type="button" className="f9-detail__cancel" onClick={() => setCancelWindowId(window.id)}>
-                                  Cancel window
-                                </button>
-                              )}
+                  <section className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground">MAINTENANCE</h3>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setActionError(null)
+                          setMaintenanceType('a_check')
+                          setMaintenanceStart(toDateInputValue(new Date()))
+                          setMaintenanceEnd(toDateInputValue(addDays(new Date(), 7)))
+                          setIsMaintenanceOpen(true)
+                        }}
+                      >
+                        + Schedule
+                      </Button>
+                    </div>
+                    {detail && detail.maintenance.length > 0 ? (
+                      <ul className="flex flex-col gap-3 text-sm">
+                        {detail.maintenance.map((window) => (
+                          <li key={window.id} className="flex flex-col gap-1">
+                            <strong>
+                              {MAINTENANCE_TYPE_LABELS[window.maintenance_type] ?? window.maintenance_type} ·{' '}
+                              {window.status.replace('_', ' ')}
+                            </strong>
+                            <span className="text-muted-foreground">
+                              {formatDate(window.planned_start_date)} to {formatDate(window.planned_end_date)}
+                              {window.actual_end_date ? ` · finished ${formatDate(window.actual_end_date)}` : ''}
                             </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="f9-detail__hint">No maintenance windows planned.</p>
-                  )}
-                </section>
-
-                <section className="f9-detail__section">
-                  <h3 className="f9-label">STATUS HISTORY</h3>
-                  {detail && detail.statusHistory.length > 0 ? (
-                    <ul className="f9-detail__list">
-                      {detail.statusHistory.map((period) => (
-                        <li key={period.id}>
-                          <strong>{period.status}</strong>
-                          <span>
-                            {formatDate(period.start_date)}
-                            {period.end_date ? ` to ${formatDate(period.end_date)}` : ' onwards'}
-                            {period.origin !== 'maintenance' &&
-                              (cancelPeriodId === period.id ? (
-                                <>
-                                  <button
+                            {(window.status === 'planned' || window.status === 'in_progress') && (
+                              <span className="flex flex-wrap gap-1">
+                                <Button type="button" variant="link" size="xs" onClick={() => openWindowAction('reschedule', window)}>
+                                  Reschedule
+                                </Button>
+                                <Button type="button" variant="link" size="xs" onClick={() => openWindowAction('complete', window)}>
+                                  Complete
+                                </Button>
+                                {cancelWindowId === window.id ? (
+                                  <>
+                                    <Button
+                                      type="button"
+                                      variant="destructive"
+                                      size="xs"
+                                      disabled={isSubmitting}
+                                      onClick={() => void handleCancelWindow(window.id)}
+                                    >
+                                      Yes, cancel
+                                    </Button>
+                                    <Button type="button" variant="ghost" size="xs" onClick={() => setCancelWindowId(null)}>
+                                      Keep
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
                                     type="button"
-                                    className="f9-detail__cancel"
-                                    disabled={isSubmitting}
-                                    onClick={() => void handleCancelPeriod(period.id)}
+                                    variant="link"
+                                    size="xs"
+                                    className="text-destructive"
+                                    onClick={() => setCancelWindowId(window.id)}
                                   >
-                                    Yes, cancel
-                                  </button>
-                                  <button type="button" className="f9-detail__keep" onClick={() => setCancelPeriodId(null)}>
-                                    Keep
-                                  </button>
-                                </>
-                              ) : (
-                                <button type="button" className="f9-detail__cancel" onClick={() => setCancelPeriodId(period.id)}>
-                                  Cancel record
-                                </button>
-                              ))}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="f9-detail__hint">No status periods recorded.</p>
-                  )}
-                </section>
-              </>
-            )}
-          </aside>
+                                    Cancel window
+                                  </Button>
+                                )}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No maintenance windows planned.</p>
+                    )}
+                  </section>
+
+                  <Separator />
+
+                  <section className="flex flex-col gap-2">
+                    <h3 className="text-xs font-semibold tracking-wide text-muted-foreground">STATUS HISTORY</h3>
+                    {detail && detail.statusHistory.length > 0 ? (
+                      <ul className="flex flex-col gap-3 text-sm">
+                        {detail.statusHistory.map((period) => (
+                          <li key={period.id} className="flex flex-col gap-1">
+                            <strong>{period.status.replace('_', ' ')}</strong>
+                            <span className="text-muted-foreground">
+                              {formatDate(period.start_date)}
+                              {period.end_date ? ` to ${formatDate(period.end_date)}` : ' onwards'}
+                            </span>
+                            {period.reason && <span className="text-muted-foreground">{period.reason}</span>}
+                            {period.origin !== 'maintenance' && (
+                              <span className="flex flex-wrap gap-1">
+                                {cancelPeriodId === period.id ? (
+                                  <>
+                                    <Button
+                                      type="button"
+                                      variant="destructive"
+                                      size="xs"
+                                      disabled={isSubmitting}
+                                      onClick={() => void handleCancelPeriod(period.id)}
+                                    >
+                                      Yes, cancel
+                                    </Button>
+                                    <Button type="button" variant="ghost" size="xs" onClick={() => setCancelPeriodId(null)}>
+                                      Keep
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    variant="link"
+                                    size="xs"
+                                    className="text-destructive"
+                                    onClick={() => setCancelPeriodId(period.id)}
+                                  >
+                                    Cancel record
+                                  </Button>
+                                )}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No status periods recorded.</p>
+                    )}
+                  </section>
+                </>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {isRegisterOpen && (
-          <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Register Aircraft">
-            <div className="f9-modal__card">
-              <h3 className="f9-modal__title">Register Aircraft</h3>
-              {actionError && <ErrorMessage message={actionError} />}
-              <form onSubmit={(event) => void handleRegister(event)}>
-                <div className="f9-modal__field">
-                  <label className="f9-field" htmlFor="register-tail">
-                    <span className="f9-field__label">Tail number (the registration)</span>
-                    <input
-                      id="register-tail"
-                      type="text"
-                      className="f9-input"
-                      placeholder="HS-ABF"
-                      value={newTailNumber}
-                      onChange={(event) => setNewTailNumber(event.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-
-                <div className="f9-modal__row">
-                  <label className="f9-field" htmlFor="register-type">
-                    <span className="f9-field__label">Aircraft type</span>
-                    <select
-                      id="register-type"
-                      className="f9-select"
-                      value={newTypeId}
-                      onChange={(event) => setNewTypeId(event.target.value)}
-                      required
-                    >
-                      <option value="" disabled>
-                        Select a type
-                      </option>
-                      {activeTypes.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.code} · {type.model}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="f9-field" htmlFor="register-base">
-                    <span className="f9-field__label">Base airport</span>
-                    <input
-                      id="register-base"
-                      type="text"
-                      className="f9-input"
-                      placeholder="BKK"
-                      maxLength={3}
-                      value={newBase}
-                      onChange={(event) => setNewBase(event.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-
-                <div className="f9-modal__field">
-                  <label className="f9-field" htmlFor="register-entry">
-                    <span className="f9-field__label">Entry into service</span>
-                    <input
-                      id="register-entry"
-                      type="date"
-                      className="f9-input"
-                      value={newEntryDate}
-                      onChange={(event) => setNewEntryDate(event.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-
-                <div className="f9-modal__actions">
-                  <button
-                    type="button"
-                    className="f9-btn f9-btn--outline"
-                    onClick={() => {
-                      setIsRegisterOpen(false)
-                      setActionError(null)
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="f9-btn" disabled={isSubmitting}>
-                    {isSubmitting ? 'Registering...' : 'Register'}
-                  </button>
-                </div>
-              </form>
+          <FormDialog
+            title="Register Aircraft"
+            error={actionError}
+            isSubmitting={isSubmitting}
+            submitLabel="Register"
+            submittingLabel="Registering..."
+            onClose={closeDialog(() => setIsRegisterOpen(false))}
+            onSubmit={(event) => void handleRegister(event)}
+          >
+            <Field label="Tail number (the registration)" htmlFor="register-tail">
+              <Input
+                id="register-tail"
+                placeholder="HS-ABF"
+                value={newTailNumber}
+                onChange={(event) => setNewTailNumber(event.target.value)}
+                required
+              />
+            </Field>
+            <div className="flex gap-3">
+              <Field label="Aircraft type" htmlFor="register-type">
+                <NativeSelect
+                  id="register-type"
+                  className="w-full"
+                  value={newTypeId}
+                  onChange={(event) => setNewTypeId(event.target.value)}
+                  required
+                >
+                  <option value="" disabled>
+                    Select a type
+                  </option>
+                  {activeTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.code} · {type.model}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field label="Base airport" htmlFor="register-base">
+                <Input
+                  id="register-base"
+                  placeholder="BKK"
+                  maxLength={3}
+                  value={newBase}
+                  onChange={(event) => setNewBase(event.target.value)}
+                  required
+                />
+              </Field>
             </div>
-          </div>
+            <Field label="Entry into service" htmlFor="register-entry">
+              <Input
+                id="register-entry"
+                type="date"
+                value={newEntryDate}
+                onChange={(event) => setNewEntryDate(event.target.value)}
+                required
+              />
+            </Field>
+          </FormDialog>
         )}
 
         {isStatusOpen && selectedAircraft && (
-          <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Set Status">
-            <div className="f9-modal__card">
-              <h3 className="f9-modal__title">Set Status · {selectedAircraft.tail_number}</h3>
-              {actionError && <ErrorMessage message={actionError} />}
-              <form onSubmit={(event) => void handleSaveStatus(event)}>
-                <div className="f9-modal__field">
-                  <label className="f9-field" htmlFor="status-value">
-                    <span className="f9-field__label">Status</span>
-                    <select
-                      id="status-value"
-                      className="f9-select"
-                      value={statusValue}
-                      onChange={(event) => setStatusValue(event.target.value as ManualAircraftStatus)}
-                    >
-                      {MANUAL_AIRCRAFT_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {MANUAL_STATUS_LABELS[status]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="f9-modal__field">
-                  <label className="f9-field" htmlFor="status-reason">
-                    <span className="f9-field__label">Reason</span>
-                    <input
-                      id="status-reason"
-                      type="text"
-                      className="f9-input"
-                      placeholder="Scheduled inspection"
-                      value={statusReason}
-                      onChange={(event) => setStatusReason(event.target.value)}
-                    />
-                  </label>
-                </div>
-
-                <div className="f9-modal__row">
-                  <label className="f9-field" htmlFor="status-start">
-                    <span className="f9-field__label">Start date</span>
-                    <input
-                      id="status-start"
-                      type="date"
-                      className="f9-input"
-                      value={statusStart}
-                      onChange={(event) => setStatusStart(event.target.value)}
-                      required
-                    />
-                  </label>
-                  <label className="f9-field" htmlFor="status-end">
-                    <span className="f9-field__label">End date (optional)</span>
-                    <input
-                      id="status-end"
-                      type="date"
-                      className="f9-input"
-                      value={statusEnd}
-                      onChange={(event) => setStatusEnd(event.target.value)}
-                    />
-                  </label>
-                </div>
-
-                <div className="f9-modal__actions">
-                  <button
-                    type="button"
-                    className="f9-btn f9-btn--outline"
-                    onClick={() => {
-                      setIsStatusOpen(false)
-                      setActionError(null)
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="f9-btn" disabled={isSubmitting}>
-                    {isSubmitting ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              </form>
+          <FormDialog
+            title={`Set Status · ${selectedAircraft.tail_number}`}
+            error={actionError}
+            isSubmitting={isSubmitting}
+            submitLabel="Save"
+            submittingLabel="Saving..."
+            onClose={closeDialog(() => setIsStatusOpen(false))}
+            onSubmit={(event) => void handleSaveStatus(event)}
+          >
+            <Field label="Status" htmlFor="status-value">
+              <NativeSelect
+                id="status-value"
+                className="w-full"
+                value={statusValue}
+                onChange={(event) => setStatusValue(event.target.value as ManualAircraftStatus)}
+              >
+                {MANUAL_AIRCRAFT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {MANUAL_STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field label="Reason" htmlFor="status-reason">
+              <Input
+                id="status-reason"
+                placeholder="Scheduled inspection"
+                value={statusReason}
+                onChange={(event) => setStatusReason(event.target.value)}
+              />
+            </Field>
+            <div className="flex gap-3">
+              <Field label="Start date" htmlFor="status-start">
+                <Input
+                  id="status-start"
+                  type="date"
+                  value={statusStart}
+                  onChange={(event) => setStatusStart(event.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="End date (optional)" htmlFor="status-end">
+                <Input id="status-end" type="date" value={statusEnd} onChange={(event) => setStatusEnd(event.target.value)} />
+              </Field>
             </div>
-          </div>
+          </FormDialog>
         )}
 
         {isMaintenanceOpen && selectedAircraft && (
-          <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Schedule Maintenance">
-            <div className="f9-modal__card">
-              <h3 className="f9-modal__title">Schedule Maintenance · {selectedAircraft.tail_number}</h3>
-              {actionError && <ErrorMessage message={actionError} />}
-              <form onSubmit={(event) => void handleScheduleMaintenance(event)}>
-                <div className="f9-modal__field">
-                  <label className="f9-field" htmlFor="maintenance-type">
-                    <span className="f9-field__label">Check type</span>
-                    <select
-                      id="maintenance-type"
-                      className="f9-select"
-                      value={maintenanceType}
-                      onChange={(event) => setMaintenanceType(event.target.value)}
-                    >
-                      {MAINTENANCE_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {MAINTENANCE_TYPE_LABELS[type]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="f9-modal__row">
-                  <label className="f9-field" htmlFor="maintenance-start">
-                    <span className="f9-field__label">Planned start</span>
-                    <input
-                      id="maintenance-start"
-                      type="date"
-                      className="f9-input"
-                      value={maintenanceStart}
-                      onChange={(event) => setMaintenanceStart(event.target.value)}
-                      required
-                    />
-                  </label>
-                  <label className="f9-field" htmlFor="maintenance-end">
-                    <span className="f9-field__label">Planned end (available again)</span>
-                    <input
-                      id="maintenance-end"
-                      type="date"
-                      className="f9-input"
-                      value={maintenanceEnd}
-                      onChange={(event) => setMaintenanceEnd(event.target.value)}
-                      required
-                    />
-                  </label>
-                </div>
-
-                <p className="f9-modal__hint">Saving also sets the aircraft to In maintenance for these dates.</p>
-
-                <div className="f9-modal__actions">
-                  <button
-                    type="button"
-                    className="f9-btn f9-btn--outline"
-                    onClick={() => {
-                      setIsMaintenanceOpen(false)
-                      setActionError(null)
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="f9-btn" disabled={isSubmitting}>
-                    {isSubmitting ? 'Scheduling...' : 'Schedule'}
-                  </button>
-                </div>
-              </form>
+          <FormDialog
+            title={`Schedule Maintenance · ${selectedAircraft.tail_number}`}
+            error={actionError}
+            isSubmitting={isSubmitting}
+            submitLabel="Schedule"
+            submittingLabel="Scheduling..."
+            onClose={closeDialog(() => setIsMaintenanceOpen(false))}
+            onSubmit={(event) => void handleScheduleMaintenance(event)}
+          >
+            <Field label="Check type" htmlFor="maintenance-type">
+              <NativeSelect
+                id="maintenance-type"
+                className="w-full"
+                value={maintenanceType}
+                onChange={(event) => setMaintenanceType(event.target.value)}
+              >
+                {MAINTENANCE_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {MAINTENANCE_TYPE_LABELS[type]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            <div className="flex gap-3">
+              <Field label="Planned start" htmlFor="maintenance-start">
+                <Input
+                  id="maintenance-start"
+                  type="date"
+                  value={maintenanceStart}
+                  onChange={(event) => setMaintenanceStart(event.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Planned end (available again)" htmlFor="maintenance-end">
+                <Input
+                  id="maintenance-end"
+                  type="date"
+                  value={maintenanceEnd}
+                  onChange={(event) => setMaintenanceEnd(event.target.value)}
+                  required
+                />
+              </Field>
             </div>
-          </div>
+            <p className="text-sm text-muted-foreground">Saving also sets the aircraft to In maintenance for these dates.</p>
+          </FormDialog>
         )}
 
         {windowAction && selectedAircraft && (
-          <div
-            className="f9-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={windowAction.kind === 'complete' ? 'Complete Maintenance' : 'Reschedule Maintenance'}
+          <FormDialog
+            title={`${windowAction.kind === 'complete' ? 'Complete Maintenance' : 'Reschedule Maintenance'} · ${selectedAircraft.tail_number}`}
+            error={actionError}
+            isSubmitting={isSubmitting}
+            submitLabel={windowAction.kind === 'complete' ? 'Complete' : 'Reschedule'}
+            submittingLabel="Saving..."
+            onClose={closeDialog(() => setWindowAction(null))}
+            onSubmit={(event) => void handleSaveWindow(event)}
           >
-            <div className="f9-modal__card">
-              <h3 className="f9-modal__title">
-                {windowAction.kind === 'complete' ? 'Complete Maintenance' : 'Reschedule Maintenance'} · {selectedAircraft.tail_number}
-              </h3>
-              {actionError && <ErrorMessage message={actionError} />}
-              <form onSubmit={(event) => void handleSaveWindow(event)}>
-                {windowAction.kind === 'reschedule' ? (
-                  <div className="f9-modal__row">
-                    <label className="f9-field" htmlFor="window-start">
-                      <span className="f9-field__label">Planned start</span>
-                      <input
-                        id="window-start"
-                        type="date"
-                        className="f9-input"
-                        value={windowStart}
-                        onChange={(event) => setWindowStart(event.target.value)}
-                        required
-                      />
-                    </label>
-                    <label className="f9-field" htmlFor="window-end">
-                      <span className="f9-field__label">Planned end (available again)</span>
-                      <input
-                        id="window-end"
-                        type="date"
-                        className="f9-input"
-                        value={windowEnd}
-                        onChange={(event) => setWindowEnd(event.target.value)}
-                        required
-                      />
-                    </label>
-                  </div>
-                ) : (
-                  <div className="f9-modal__field">
-                    <label className="f9-field" htmlFor="window-actual-end">
-                      <span className="f9-field__label">Actual end (available again)</span>
-                      <input
-                        id="window-actual-end"
-                        type="date"
-                        className="f9-input"
-                        value={windowEnd}
-                        onChange={(event) => setWindowEnd(event.target.value)}
-                        required
-                      />
-                    </label>
-                  </div>
-                )}
-
-                <p className="f9-modal__hint">
-                  {windowAction.kind === 'complete'
-                    ? 'Saving shortens or extends the In maintenance dates of the aircraft to this date.'
-                    : 'Saving also moves the In maintenance dates of the aircraft.'}
-                </p>
-
-                <div className="f9-modal__actions">
-                  <button
-                    type="button"
-                    className="f9-btn f9-btn--outline"
-                    onClick={() => {
-                      setWindowAction(null)
-                      setActionError(null)
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="f9-btn" disabled={isSubmitting}>
-                    {isSubmitting ? 'Saving...' : windowAction.kind === 'complete' ? 'Complete' : 'Reschedule'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+            {windowAction.kind === 'reschedule' ? (
+              <div className="flex gap-3">
+                <Field label="Planned start" htmlFor="window-start">
+                  <Input
+                    id="window-start"
+                    type="date"
+                    value={windowStart}
+                    onChange={(event) => setWindowStart(event.target.value)}
+                    required
+                  />
+                </Field>
+                <Field label="Planned end (available again)" htmlFor="window-end">
+                  <Input id="window-end" type="date" value={windowEnd} onChange={(event) => setWindowEnd(event.target.value)} required />
+                </Field>
+              </div>
+            ) : (
+              <Field label="Actual end (available again)" htmlFor="window-actual-end">
+                <Input
+                  id="window-actual-end"
+                  type="date"
+                  value={windowEnd}
+                  onChange={(event) => setWindowEnd(event.target.value)}
+                  required
+                />
+              </Field>
+            )}
+            <p className="text-sm text-muted-foreground">
+              {windowAction.kind === 'complete'
+                ? 'Saving shortens or extends the In maintenance dates of the aircraft to this date.'
+                : 'Saving also moves the In maintenance dates of the aircraft.'}
+            </p>
+          </FormDialog>
         )}
       </StaffShell>
     </FeatureErrorBoundary>

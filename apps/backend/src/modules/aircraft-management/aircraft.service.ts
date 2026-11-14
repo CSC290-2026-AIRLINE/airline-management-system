@@ -13,8 +13,8 @@ import {
   UpdateAircraftMaintenanceDto,
 } from './dto/aircraft.dto'
 import type { SeatLayout } from './dto/layout.dto'
-import { AuditService } from './audit.service'
-import { SimulationClockService } from './simulation-clock.service'
+import { FleetAuditService } from './fleet-audit.service'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { computeCapacity, expandSeatMap, type SeatMap } from './seat-map'
 import { hasPrismaErrorCode, PRISMA_FOREIGN_KEY_VIOLATION, PRISMA_UNIQUE_VIOLATION } from './prisma-error'
 
@@ -89,6 +89,8 @@ function dayOfWeek(date: Date | string): number {
   return day === 0 ? 7 : day
 }
 
+const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
 function toPeriodSummary(period: aircraft_status_period): StatusPeriodSummary {
   return {
     id: period.id,
@@ -125,9 +127,14 @@ export class AircraftService {
 
   constructor(
     private readonly db: DbService,
-    private readonly clock: SimulationClockService,
-    private readonly audit: AuditService,
+    private readonly clock: SimulationClock,
+    private readonly audit: FleetAuditService,
   ) {}
+
+  /** The simulated calendar date as `yyyy-mm-dd`. */
+  private today(): string {
+    return this.clock.now().toISOString().slice(0, 10)
+  }
 
   async findAll(filters: AircraftListQueryDto): Promise<AircraftListItem[]> {
     const aircraft = await this.db.aircraft.findMany({
@@ -203,6 +210,7 @@ export class AircraftService {
     }
 
     try {
+      // No status row is written: an aircraft without a status period is in service.
       const created = await this.db.$transaction(async (tx) => {
         const newAircraft = await tx.aircraft.create({
           data: {
@@ -212,18 +220,18 @@ export class AircraftService {
             entry_into_service_date: new Date(entryDate),
           },
         })
-
-        await tx.aircraft_status_period.create({
-          data: {
-            aircraft_id: newAircraft.id,
-            status: 'in_service',
-            origin: 'manual',
-            reason: 'Initial status on registration',
-            start_date: new Date(entryDate),
-            created_by: staffId,
+        await this.audit.record(tx, staffId, {
+          action: 'create',
+          entityType: 'aircraft',
+          entityId: newAircraft.id,
+          summary: `Registered aircraft ${tailNumber}`,
+          after: {
+            tail_number: tailNumber,
+            aircraft_type_id: aircraftType.id,
+            base_airport_code: baseAirportCode,
+            entry_into_service_date: entryDate,
           },
         })
-
         return newAircraft
       })
 
@@ -239,7 +247,7 @@ export class AircraftService {
     }
   }
 
-  async update(id: string, dto: UpdateAircraftDto): Promise<AircraftSummary> {
+  async update(id: string, dto: UpdateAircraftDto, staffId: string): Promise<AircraftSummary> {
     const current = await this.findOne(id)
 
     const updateData: {
@@ -284,7 +292,25 @@ export class AircraftService {
     }
 
     try {
-      await this.db.aircraft.update({ where: { id }, data: updateData })
+      await this.db.$transaction(async (tx) => {
+        await tx.aircraft.update({ where: { id }, data: updateData })
+        await this.audit.record(tx, staffId, {
+          action: 'update',
+          entityType: 'aircraft',
+          entityId: id,
+          summary:
+            dto.retired_on !== undefined
+              ? `${dto.retired_on === null ? 'Reinstated' : 'Retired'} aircraft ${current.tail_number}`
+              : `Edited aircraft ${current.tail_number}`,
+          before: {
+            tail_number: current.tail_number,
+            aircraft_type_id: current.aircraft_type_id,
+            base_airport_code: current.base_airport_code,
+            retired_on: current.retired_on,
+          },
+          after: { ...dto },
+        })
+      })
     } catch (error) {
       if (hasPrismaErrorCode(error, PRISMA_UNIQUE_VIOLATION)) {
         throw new ConflictException(`Aircraft with tail number "${updateData.tail_number ?? ''}" already exists`)
@@ -336,7 +362,7 @@ export class AircraftService {
     const created = await this.db.$transaction(async (tx) => {
       await this.resolveOverlaps(tx, aircraftId, startDate, endDate)
 
-      return tx.aircraft_status_period.create({
+      const period = await tx.aircraft_status_period.create({
         data: {
           aircraft_id: aircraftId,
           status: dto.status,
@@ -347,13 +373,20 @@ export class AircraftService {
           created_by: staffId,
         },
       })
+      await this.audit.record(tx, staffId, {
+        action: 'create',
+        entityType: 'aircraft_status_period',
+        entityId: period.id,
+        summary: `Set ${dto.status} from ${startDate}${endDate ? ` to ${endDate}` : ''}`,
+        after: toPeriodSummary(period),
+      })
+      return period
     })
 
-    this.audit.record({ action: 'status_period.created', entity: 'aircraft_status_period', entity_id: created.id, actor_staff_id: staffId })
     return toPeriodSummary(created)
   }
 
-  async removeStatus(aircraftId: string, periodId: string): Promise<void> {
+  async removeStatus(aircraftId: string, periodId: string, staffId: string): Promise<void> {
     const period = await this.db.aircraft_status_period.findFirst({
       where: { id: periodId, aircraft_id: aircraftId, deleted_at: null },
     })
@@ -368,9 +401,19 @@ export class AircraftService {
       const now = new Date()
       await tx.aircraft_status_period.update({ where: { id: periodId }, data: { deleted_at: now, updated_at: now } })
       await this.restorePredecessor(tx, aircraftId, period)
+      await this.audit.record(tx, staffId, {
+        action: 'delete',
+        entityType: 'aircraft_status_period',
+        entityId: periodId,
+        summary: `Cancelled the ${period.status} record from ${toIsoDate(period.start_date)}`,
+        before: {
+          status: period.status,
+          origin: period.origin,
+          start_date: toIsoDate(period.start_date),
+          end_date: period.end_date ? toIsoDate(period.end_date) : null,
+        },
+      })
     })
-
-    this.audit.record({ action: 'status_period.cancelled', entity: 'aircraft_status_period', entity_id: periodId })
   }
 
   /**
@@ -525,7 +568,7 @@ export class AircraftService {
       where: { aircraft_id: aircraftId, deleted_at: null },
       orderBy: { planned_start_date: 'desc' },
     })
-    const today = this.clock.today()
+    const today = this.today()
     return windows.map((window) => toMaintenanceSummary(window, today))
   }
 
@@ -556,7 +599,7 @@ export class AircraftService {
         },
       })
 
-      return tx.aircraft_maintenance.create({
+      const window = await tx.aircraft_maintenance.create({
         data: {
           aircraft_id: aircraftId,
           maintenance_type: dto.maintenance_type,
@@ -567,13 +610,24 @@ export class AircraftService {
           created_by: staffId,
         },
       })
+      await this.audit.record(tx, staffId, {
+        action: 'create',
+        entityType: 'aircraft_maintenance',
+        entityId: window.id,
+        summary: `Scheduled ${dto.maintenance_type} from ${plannedStart} to ${plannedEnd}`,
+        after: toMaintenanceSummary(window, this.today()),
+      })
+      return window
     })
-
-    this.audit.record({ action: 'maintenance.created', entity: 'aircraft_maintenance', entity_id: created.id, actor_staff_id: staffId })
-    return toMaintenanceSummary(created, this.clock.today())
+    return toMaintenanceSummary(created, this.today())
   }
 
-  async updateMaintenance(aircraftId: string, maintenanceId: string, dto: UpdateAircraftMaintenanceDto): Promise<MaintenanceSummary> {
+  async updateMaintenance(
+    aircraftId: string,
+    maintenanceId: string,
+    dto: UpdateAircraftMaintenanceDto,
+    staffId: string,
+  ): Promise<MaintenanceSummary> {
     const maintenance = await this.db.aircraft_maintenance.findFirst({
       where: { id: maintenanceId, aircraft_id: aircraftId, deleted_at: null },
     })
@@ -582,6 +636,9 @@ export class AircraftService {
     }
     if (maintenance.status === 'cancelled') {
       throw new ConflictException('A cancelled maintenance window cannot be changed')
+    }
+    if (maintenance.status === 'completed') {
+      throw new ConflictException('A completed maintenance window cannot be changed')
     }
 
     const actualEnd = dto.actual_end_date === undefined ? undefined : dto.actual_end_date === null ? null : toIsoDate(dto.actual_end_date)
@@ -638,13 +695,19 @@ export class AircraftService {
 
       await tx.aircraft_status_period.update({ where: { id: maintenance.status_period_id }, data: periodUpdate })
 
+      const verb = dto.status === 'cancelled' ? 'Cancelled' : dto.status === 'completed' ? 'Completed' : 'Rescheduled'
+      await this.audit.record(tx, staffId, {
+        action: dto.status === undefined ? 'update' : 'status_change',
+        entityType: 'aircraft_maintenance',
+        entityId: updated.id,
+        summary: `${verb} the ${updated.maintenance_type} window of ${toIsoDate(updated.planned_start_date)}`,
+        before: toMaintenanceSummary(maintenance, this.today()),
+        after: toMaintenanceSummary(updated, this.today()),
+      })
+
       return updated
     })
-
-    const action =
-      dto.status === 'cancelled' ? 'maintenance.cancelled' : dto.status === 'completed' ? 'maintenance.completed' : 'maintenance.updated'
-    this.audit.record({ action, entity: 'aircraft_maintenance', entity_id: updated.id })
-    return toMaintenanceSummary(updated, this.clock.today())
+    return toMaintenanceSummary(updated, this.today())
   }
 
   async getOperatingDays(aircraftId: string): Promise<{ days: number[] }> {
@@ -660,7 +723,7 @@ export class AircraftService {
     return { days: rows.map((row) => row.day_of_week) }
   }
 
-  async setOperatingDays(aircraftId: string, dto: SetOperatingDaysDto): Promise<{ days: number[] }> {
+  async setOperatingDays(aircraftId: string, dto: SetOperatingDaysDto, staffId: string): Promise<{ days: number[] }> {
     const aircraft = await this.db.aircraft.findFirst({ where: { id: aircraftId, deleted_at: null }, select: { id: true } })
     if (!aircraft) {
       throw new NotFoundException(`Aircraft with ID ${aircraftId} not found`)
@@ -669,6 +732,7 @@ export class AircraftService {
     const days = [...new Set(dto.days)].sort((left, right) => left - right)
 
     return this.db.$transaction(async (tx) => {
+      const before = await tx.aircraft_operating_day.findMany({ where: { aircraft_id: aircraftId }, orderBy: { day_of_week: 'asc' } })
       await tx.aircraft_operating_day.deleteMany({ where: { aircraft_id: aircraftId } })
 
       if (days.length > 0) {
@@ -676,6 +740,15 @@ export class AircraftService {
           data: days.map((day) => ({ aircraft_id: aircraftId, day_of_week: day })),
         })
       }
+
+      await this.audit.record(tx, staffId, {
+        action: 'update',
+        entityType: 'aircraft_operating_day',
+        entityId: aircraftId,
+        summary: days.length === 0 ? 'Operating days cleared: the aircraft flies every day' : `Operating days set to ${days.join(', ')}`,
+        before: { days: before.map((row) => row.day_of_week) },
+        after: { days },
+      })
 
       return { days }
     })
@@ -729,7 +802,7 @@ export class AircraftService {
   }
 
   private currentStatus(periods: aircraft_status_period[]): AircraftStatusSummary {
-    const today = this.clock.today()
+    const today = this.today()
     const current = periods.find(
       (period) => toIsoDate(period.start_date) <= today && (period.end_date === null || toIsoDate(period.end_date) >= today),
     )
@@ -759,7 +832,7 @@ export class AircraftService {
     query: AvailabilityQueryDto,
   ): AvailabilityResult {
     const failing: AvailabilityFailure[] = []
-    const from = query.from ? toIsoDate(query.from) : this.clock.today()
+    const from = query.from ? toIsoDate(query.from) : this.today()
     const to = query.to ? toIsoDate(query.to) : from
 
     if (toIsoDate(aircraft.entry_into_service_date) > from || (aircraft.retired_on && toIsoDate(aircraft.retired_on) < to)) {
@@ -782,7 +855,7 @@ export class AircraftService {
       const weekday = dayOfWeek(query.dep_date)
       const operatingDays = aircraft.aircraft_operating_day
       if (operatingDays.length > 0 && !operatingDays.some((day) => day.day_of_week === weekday)) {
-        failing.push({ check: 'operating_day', reason: `Does not fly on day ${weekday} of the week` })
+        failing.push({ check: 'operating_day', reason: `Does not fly on ${WEEKDAY_NAMES[weekday - 1]} (${weekday})` })
       }
     }
 

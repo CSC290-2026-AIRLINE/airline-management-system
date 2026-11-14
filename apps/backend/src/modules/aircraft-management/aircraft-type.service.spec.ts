@@ -1,13 +1,14 @@
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { AircraftTypeService } from './aircraft-type.service'
+import type { FleetAuditService } from './fleet-audit.service'
 import type { CabinLayoutDto, SeatLayoutDto } from './dto/layout.dto'
 
 // ESM-only dependencies that Jest cannot load here; the service under test never calls into them.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
 describe('AircraftTypeService', () => {
-  let db: { aircraft_type: { findMany: jest.Mock; findFirst: jest.Mock; create: jest.Mock; update: jest.Mock } }
+  let db: { aircraft_type: { findMany: jest.Mock; findFirst: jest.Mock; create: jest.Mock; update: jest.Mock }; $transaction: jest.Mock }
   let service: AircraftTypeService
 
   const typeRow = {
@@ -40,8 +41,13 @@ describe('AircraftTypeService', () => {
   beforeEach(() => {
     db = {
       aircraft_type: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+      $transaction: jest.fn(),
     }
-    service = new AircraftTypeService(db as unknown as DbService)
+    db.$transaction.mockImplementation((callback: (client: typeof db) => unknown) => Promise.resolve(callback(db)))
+    service = new AircraftTypeService(
+      db as unknown as DbService,
+      { record: jest.fn().mockResolvedValue(undefined) } as unknown as FleetAuditService,
+    )
   })
 
   it('reports the seat count of a layout', async () => {
@@ -66,7 +72,7 @@ describe('AircraftTypeService', () => {
       cost_currency: 'USD',
     }
 
-    await expect(service.create(dto)).rejects.toBeInstanceOf(BadRequestException)
+    await expect(service.create(dto, 'staff-1')).rejects.toBeInstanceOf(BadRequestException)
     expect(db.aircraft_type.create).not.toHaveBeenCalled()
   })
 
@@ -84,7 +90,7 @@ describe('AircraftTypeService', () => {
       cost_currency: 'USD',
     }
 
-    await expect(service.create(dto)).rejects.toBeInstanceOf(BadRequestException)
+    await expect(service.create(dto, 'staff-1')).rejects.toBeInstanceOf(BadRequestException)
   })
 
   describe('layout limits', () => {
@@ -111,8 +117,10 @@ describe('AircraftTypeService', () => {
       ['a blocked seat in a column the cabin does not have', [cabin({ blocked_seats: ['2Z'] })]],
       ['a blocked seat in a skipped row', [cabin({ skip_rows: [2], blocked_seats: ['2A'] })]],
       ['a blocked seat that is not a seat name', [cabin({ blocked_seats: ['seat'] })]],
+      ['a row type on a skipped row', [cabin({ skip_rows: [3], row_types: { exit_row: [3] } })]],
+      ['the same blocked seat twice', [cabin({ blocked_seats: ['2B', '2B'] })]],
     ])('rejects %s', async (_name, cabins) => {
-      await expect(service.create(dtoWith(cabins))).rejects.toBeInstanceOf(BadRequestException)
+      await expect(service.create(dtoWith(cabins), 'staff-1')).rejects.toBeInstanceOf(BadRequestException)
       expect(db.aircraft_type.create).not.toHaveBeenCalled()
     })
 
@@ -120,7 +128,10 @@ describe('AircraftTypeService', () => {
       db.aircraft_type.findFirst.mockResolvedValue(null)
       db.aircraft_type.create.mockResolvedValue(typeRow)
 
-      await service.create(dtoWith([cabin({ row_types: { exit_row: [4], extra_legroom: [1] }, skip_rows: [3], blocked_seats: ['2B'] })]))
+      await service.create(
+        dtoWith([cabin({ row_types: { exit_row: [4], extra_legroom: [1] }, skip_rows: [3], blocked_seats: ['2B'] })]),
+        'staff-1',
+      )
 
       expect(db.aircraft_type.create).toHaveBeenCalled()
     })
@@ -141,7 +152,7 @@ describe('AircraftTypeService', () => {
       cost_currency: 'usd',
     }
 
-    const created = await service.create(dto)
+    const created = await service.create(dto, 'staff-1')
 
     expect(db.aircraft_type.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ code: 'A320', cost_currency: 'USD' }) }),
@@ -164,14 +175,14 @@ describe('AircraftTypeService', () => {
       cost_currency: 'USD',
     }
 
-    await expect(service.create(dto)).rejects.toBeInstanceOf(ConflictException)
+    await expect(service.create(dto, 'staff-1')).rejects.toBeInstanceOf(ConflictException)
   })
 
   it('clones a type with the layout of the original', async () => {
     db.aircraft_type.findFirst.mockResolvedValueOnce({ ...typeRow, layout: { cabins: [cabin()] } }).mockResolvedValueOnce(null)
     db.aircraft_type.create.mockResolvedValue({ ...typeRow, id: 't2', code: 'A320-V2' })
 
-    await service.clone('t1', { code: 'a320-v2' })
+    await service.clone('t1', { code: 'a320-v2' }, 'staff-1')
 
     expect(db.aircraft_type.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -183,6 +194,6 @@ describe('AircraftTypeService', () => {
   it('refuses to clone a type onto an existing code', async () => {
     db.aircraft_type.findFirst.mockResolvedValueOnce(typeRow).mockResolvedValueOnce({ ...typeRow, id: 't2' })
 
-    await expect(service.clone('t1', { code: 'A320' })).rejects.toBeInstanceOf(ConflictException)
+    await expect(service.clone('t1', { code: 'A320' }, 'staff-1')).rejects.toBeInstanceOf(ConflictException)
   })
 })
