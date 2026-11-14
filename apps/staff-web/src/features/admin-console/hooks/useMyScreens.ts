@@ -21,6 +21,12 @@ export interface UseMyScreensState {
 }
 
 /**
+ * The last successful response, kept for the life of the page. A workspace that mounts after another one starts from it
+ * and revalidates in the background, so moving between workspaces does not flash "Checking your access…" or an empty role.
+ */
+let lastLive: UseMyScreensState | null = null
+
+/**
  * Loads the codes of every screen the signed-in user can open. Mirrors the established `useRoleAccess` /
  * `useAuditLog` pattern: the right `source` and initial value come from a lazy `useState` initializer rather than
  * being set inside the effect body — the `react-hooks/set-state-in-effect` rule rejects that.
@@ -28,28 +34,32 @@ export interface UseMyScreensState {
 export function useMyScreens(): UseMyScreensState {
   const fetchJson = useFetchJson()
 
-  const [state, setState] = useState<UseMyScreensState>(() => ({
-    loading: true,
-    error: null,
-    codes: [],
-    provisioned: null,
-    source: 'pending',
-    role: null,
-  }))
+  const [state, setState] = useState<UseMyScreensState>(
+    () =>
+      lastLive ?? {
+        loading: true,
+        error: null,
+        codes: [],
+        provisioned: null,
+        source: 'pending',
+        role: null,
+      },
+  )
 
   useEffect(() => {
     let cancelled = false
     fetchJson<MyScreensResponse>('/api/me/screens')
       .then((d) => {
         if (cancelled) return
-        setState({
+        lastLive = {
           loading: false,
           error: null,
           codes: d.screen_codes,
           provisioned: d.provisioned,
           source: 'live',
           role: d.role ?? null,
-        })
+        }
+        setState(lastLive)
       })
       .catch((e: unknown) => {
         if (cancelled) return

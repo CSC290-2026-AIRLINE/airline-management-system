@@ -1,26 +1,27 @@
--- Level 1 schema (features 2, 4, 7, 8, 9, 12 and 15), Level 2 (features 3, 6, 10, 11, 13 and 17), Level 3 (features 5
--- and 14), and the Feature 1 baseline they depend on.
+-- Level 1 schema (features 2, 4, 7, 8, 9, 12 and 15), Level 2 (features 3, 6, 10, 11, 13 and 17), Level 3 (features 5,
+-- 14 and 16), and the Feature 1 baseline they depend on.
 -- One file, in apply order. Run it once against an empty PostgreSQL 15 or later database (the project runs 16).
 -- Prisma cannot express most of this (exclusion constraints, expression and trigram indexes, check constraints, triggers),
 -- so the migration in prisma/migrations/*_level1_schema is this file with the old scaffold tables dropped first and the
 -- 'admin' role inserted last. Later migrations: prisma/migrations/*_feature2_schedule_approval adds to Part 2 and Part
--- 17; prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 17;
+-- 18; prisma/migrations/*_feature8_crew_rostering is Part 8 plus its foreign keys in Part 18;
 -- prisma/migrations/*_feature7_screening_iteration_03 changes watchlist_entry and the screening tables in Part 5;
--- prisma/migrations/*_feature6_check_in_boarding is Part 9 plus its foreign keys in Part 17;
--- prisma/migrations/*_feature10_lost_and_found is Part 10 plus its foreign keys in Part 17;
--- prisma/migrations/*_feature13_customer_service is Part 11 plus its foreign keys in Part 17;
--- prisma/migrations/*_feature3_search_booking_seats is Part 12 plus its foreign keys in Part 17;
--- prisma/migrations/*_feature11_loyalty is Part 13 plus its foreign keys in Part 17;
--- prisma/migrations/*_feature17_cargo is Part 14 plus its foreign keys in Part 17;
--- prisma/migrations/*_feature5_payments_finance is Part 15 plus its foreign keys in Part 17;
--- prisma/migrations/*_feature14_bi_dashboards is Part 16.
+-- prisma/migrations/*_feature6_check_in_boarding is Part 9 plus its foreign keys in Part 18;
+-- prisma/migrations/*_feature10_lost_and_found is Part 10 plus its foreign keys in Part 18;
+-- prisma/migrations/*_feature13_customer_service is Part 11 plus its foreign keys in Part 18;
+-- prisma/migrations/*_feature3_search_booking_seats is Part 12 plus its foreign keys in Part 18;
+-- prisma/migrations/*_feature11_loyalty is Part 13 plus its foreign keys in Part 18;
+-- prisma/migrations/*_feature17_cargo is Part 14 plus its foreign keys in Part 18;
+-- prisma/migrations/*_feature5_payments_finance is Part 15 plus its foreign keys in Part 18;
+-- prisma/migrations/*_feature14_bi_dashboards is Part 16;
+-- prisma/migrations/*_feature16_interaction_sessions is Part 17.
 -- Keep the files in step. schema.prisma is generated from the migrated database with `prisma db pull`.
 -- Reference rows the migrations insert (settings, message types and templates, tier rules and so on) are here too.
 -- Placeholder and demo rows (gates, visa examples, fare-class earn rules and so on) are in seed.ts, which runs only in
 -- development and CI.
 
 -- ======================================================================================================================
--- PART 1 of 17: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
+-- PART 1 of 18: FEATURE 1 BASELINE (roles, users, staff, shared append-only function)
 -- ======================================================================================================================
 
 -- Feature 1 baseline assumed by features 2, 4, 7, 9 and 15.
@@ -96,13 +97,13 @@ CREATE INDEX refresh_token_user_idx ON refresh_token (user_id);
 
 
 -- ======================================================================================================================
--- PART 2 of 17: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
+-- PART 2 of 18: FEATURE 2 - FLIGHT SCHEDULING AND NETWORK OPS
 -- ======================================================================================================================
 
 -- Feature 2 (Flight Scheduling and Network Ops) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format checks, overlap rules other than the aircraft
 -- timetable, event shape checks and helper triggers are the backend's job.
--- Cross-module foreign keys are in Part 17 of this file.
+-- Cross-module foreign keys are in Part 18 of this file.
 
 -- Reference data -----------------------------------------------------------------------------------
 
@@ -451,13 +452,13 @@ INSERT INTO flight_setting (key, value) VALUES
 
 
 -- ======================================================================================================================
--- PART 3 of 17: FEATURE 9 - AIRCRAFT MANAGEMENT
+-- PART 3 of 18: FEATURE 9 - AIRCRAFT MANAGEMENT
 -- ======================================================================================================================
 
 -- Feature 9 (Aircraft Management) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Layout validation, format checks, task and
 -- maintenance state consistency and the turnaround readiness calculation are the backend's job.
--- Cross-module foreign keys (airport, flight) are in Part 17 of this file.
+-- Cross-module foreign keys (airport, flight) are in Part 18 of this file.
 -- Dates are calendar dates on the simulated calendar. end_date is the LAST unavailable day (inclusive).
 
 CREATE TABLE aircraft_type (
@@ -599,13 +600,13 @@ INSERT INTO fleet_setting (key, value) VALUES ('reserve_ratio', '1.10');
 
 
 -- ======================================================================================================================
--- PART 4 of 17: FEATURE 4 - PRICING, FARE RULES AND FINANCE
+-- PART 4 of 18: FEATURE 4 - PRICING, FARE RULES AND FINANCE
 -- ======================================================================================================================
 
 -- Feature 4 (Pricing and Fare Rules) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Format and range checks, rule-shape checks,
 -- immutability of quotes and the base_currency lock are the backend's job.
--- Cross-module foreign keys (route, flight) are in Part 17 of this file.
+-- Cross-module foreign keys (route, flight) are in Part 18 of this file.
 -- All money is NUMERIC in the base currency (pricing_setting 'base_currency'). Percent columns are plain percents (15.00 = 15%).
 -- Columns that mean "when, in the simulation" (quoted_at, expires_at, paid_on, computed_at) have no default.
 
@@ -798,18 +799,25 @@ CREATE TABLE fare_quote_line (
   UNIQUE (fare_quote_id, seq)
 );
 
--- A promo use is counted when a booking is confirmed, once per quote. Retrying "redeem" is a no-op:
---   INSERT INTO promo_redemption ... ON CONFLICT (fare_quote_id) DO NOTHING; then, only if a row was inserted,
---   UPDATE promo_code SET used_count = used_count + 1 WHERE id = $1;   (the CHECK on promo_code refuses to overshoot max_uses)
+-- A promo use is counted once per booking, not once per quote: quotes are shared, so two bookings can redeem the same one,
+-- and a booking with several legs has several quotes but spends one use. Retrying "redeem" is a no-op:
+--   INSERT INTO promo_redemption ... ON CONFLICT (promo_code_id, booking_ref) DO NOTHING; then, only if a row was inserted,
+--   UPDATE promo_code SET used_count = used_count + 1 WHERE id = $1 AND (max_uses IS NULL OR used_count < max_uses);
+-- Release sets status = 'released' and gives the use back.
 CREATE TABLE promo_redemption (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   promo_code_id UUID NOT NULL REFERENCES promo_code (id),
-  fare_quote_id UUID NOT NULL UNIQUE,
+  booking_ref   TEXT NOT NULL,                             -- feature 3b's booking reference, no FK across modules
+  fare_quote_id UUID NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'redeemed' CONSTRAINT promo_redemption_status_ck CHECK (status IN ('redeemed', 'released')),
   redeemed_at   TIMESTAMPTZ NOT NULL,                      -- simulation clock
+  released_at   TIMESTAMPTZ,                               -- simulation clock
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT promo_redemption_released_ck CHECK ((status = 'released') = (released_at IS NOT NULL)),
   FOREIGN KEY (fare_quote_id, promo_code_id) REFERENCES fare_quote (id, promo_code_id)
 );
 
+CREATE UNIQUE INDEX promo_redemption_booking_uq ON promo_redemption (promo_code_id, booking_ref);
 CREATE INDEX promo_redemption_promo_idx ON promo_redemption (promo_code_id);
 
 -- Finance --------------------------------------------------------------------------------------------
@@ -869,7 +877,7 @@ CREATE TABLE finance_monthly_summary (
 
 
 -- ======================================================================================================================
--- PART 5 of 17: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
+-- PART 5 of 18: FEATURE 7 - CUSTOMER AND PASSENGER PROFILES, SCREENING
 -- ======================================================================================================================
 
 -- Feature 7 (Customer and Passenger Profiles) - proposed schema.
@@ -877,7 +885,7 @@ CREATE TABLE finance_monthly_summary (
 -- and immutability of screening rows are the backend's job.
 -- "user" and staff are in Part 1 of this file. This REPLACES the old scaffold customer table:
 -- names, DOB, gender, nationality moved to passenger; seat and meal preferences were cut from scope.
--- The flight cross-module FK is in Part 17 of this file.
+-- The flight cross-module FK is in Part 18 of this file.
 
 -- Normalised name used for matching: uppercase letters and digits only. Passport spelling is ASCII.
 -- A function (not a stored column) so there is nothing for the backend to keep in sync; indexes use the same expression.
@@ -1041,7 +1049,7 @@ CREATE TABLE screening_review (
 
 
 -- ======================================================================================================================
--- PART 6 of 17: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
+-- PART 6 of 18: FEATURE 15 - ADMIN CONSOLE (SCREENS, AUDIT LOG)
 -- ======================================================================================================================
 
 -- Feature 15 (Admin Console) - proposed schema.
@@ -1122,7 +1130,7 @@ CREATE TRIGGER audit_log_no_truncate
 
 
 -- ======================================================================================================================
--- PART 7 of 17: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
+-- PART 7 of 18: FEATURE 12 - ONBOARD PRODUCTS (CATALOG, ORDERS, CATERING, STOCK)
 -- ======================================================================================================================
 
 -- Feature 12 (Onboard Products) - proposed schema.
@@ -1130,7 +1138,7 @@ CREATE TRIGGER audit_log_no_truncate
 -- completion rules, FEFO transfers, the order and payment state machine and on-hand reconciliation are the backend's job
 -- Uses customer (feature 7), staff (feature 1) and forbid_mutation() (baseline).
 -- The route, flight, aircraft and airport foreign keys, and the booking (feature 3b) and payment (feature 5) ones,
--- are in Part 17 of this file.
+-- are in Part 18 of this file.
 -- Business timestamps (generated_at, transferred_at, submitted_at, sold_at, occurred_at, expires_at) have no default and
 -- come from the simulation clock. created_at and updated_at are real time.
 -- Money is NUMERIC in the base currency (feature 4, pricing_setting 'base_currency'). Orders and sales keep a currency snapshot.
@@ -1520,13 +1528,13 @@ CREATE TRIGGER stock_movement_no_truncate
 
 
 -- ======================================================================================================================
--- PART 8 of 17: FEATURE 8 - CREW MANAGEMENT AND ROSTERING
+-- PART 8 of 18: FEATURE 8 - CREW MANAGEMENT AND ROSTERING
 -- ======================================================================================================================
 
 -- Feature 8 (Crew Management and Rostering) - proposed schema.
 -- Contents: the doc's own checks and the columns the doc is missing. Pairing validation (closed at base, legs chained,
 -- duty and day limits), the legality rules, cross-flight overlap and the publish gate are the backend's job.
--- Uses staff (feature 1). The airport and flight foreign keys (feature 2) are in Part 17 of this file.
+-- Uses staff (feature 1). The airport and flight foreign keys (feature 2) are in Part 18 of this file.
 -- Business timestamps (assigned_at, unassigned_at, published_at, resolved_at) have no default and come from the
 -- simulation clock. created_at and updated_at are real time.
 -- Country codes use the team's nationality format (2 letters, lower case: th, jp, kr) and must match airport.country.
@@ -1757,14 +1765,14 @@ CREATE INDEX rule_break_run_open_idx ON rule_break (roster_run_id) WHERE resolve
 
 
 -- ======================================================================================================================
--- PART 9 of 17: FEATURE 6 - CHECK-IN, SEAT AND BOARDING
+-- PART 9 of 18: FEATURE 6 - CHECK-IN, SEAT AND BOARDING
 -- ======================================================================================================================
 
 -- Feature 6 (Check-in, Seat and Boarding), from G7's Iteration-03 doc. New tables only.
 -- MRZ check digits, the check-in window, passport expiry and visa checks, seat rules, excess fee maths, the boarding
 -- order and the head-count comparison are the backend's job.
 -- Uses staff (feature 1) and passenger (feature 7). The foreign keys to airport and flight (feature 2), the booking
--- coupon (feature 3b) and payment (feature 5) are in Part 17 of this file.
+-- coupon (feature 3b) and payment (feature 5) are in Part 18 of this file.
 -- Feature 3 owns seats and seat holds, so there is no seat table.
 -- Business timestamps (checked_in_at, weighed_at, checked_at, printed_at, closed_at, occurred_at) have no default and
 -- come from the simulation clock. created_at and updated_at are real time. Nothing updates updated_at by itself (no
@@ -2045,14 +2053,14 @@ CREATE TRIGGER boarding_event_no_truncate
 
 
 -- ======================================================================================================================
--- PART 10 of 17: FEATURE 10 - LOST AND FOUND BAGGAGE
+-- PART 10 of 18: FEATURE 10 - LOST AND FOUND BAGGAGE
 -- ======================================================================================================================
 
 -- Feature 10 (Lost and Found Baggage), from the F10 Iteration-03 doc. New tables only.
 -- Matching, the lost and unclaimed jobs, tag ownership, delivery choice rules and the status changes that follow a
 -- match or a delivery are the backend's job.
 -- Uses staff (feature 1), passenger and customer (feature 7) and expense (feature 4). The foreign keys to airport and
--- flight (feature 2), checked_bag (feature 6) and the booking coupon (feature 3b) are in Part 17 of this file.
+-- flight (feature 2), checked_bag (feature 6) and the booking coupon (feature 3b) are in Part 18 of this file.
 -- Business timestamps (reported_at, lost_at, closed_at, found_at, suggested_at, reviewed_at, occurred_at,
 -- delivered_at) have no default and come from the simulation clock. created_at and updated_at are real time, and the
 -- backend sets updated_at on every update (no trigger, no @updatedAt).
@@ -2283,14 +2291,14 @@ CREATE INDEX bag_cost_report_idx ON bag_cost (report_id);
 
 
 -- ======================================================================================================================
--- PART 11 of 17: FEATURE 13 - CUSTOMER SERVICE, COMPLAINTS AND NOTIFICATIONS
+-- PART 11 of 18: FEATURE 13 - CUSTOMER SERVICE, COMPLAINTS AND NOTIFICATIONS
 -- ======================================================================================================================
 
 -- Feature 13 (Customer Service, Complaints and Notifications), from Group 16's Iteration-03 doc. New tables only.
 -- The complaint status steps, the 7-day reopen, recipients, preferences, template rendering and retries are the
 -- backend's job.
 -- Uses staff (feature 1), passenger and customer (feature 7) and product (feature 12). The foreign keys to flight
--- (feature 2), lost_bag_report (feature 10) and booking_passenger (feature 3b) are in Part 17 of this file.
+-- (feature 2), lost_bag_report (feature 10) and booking_passenger (feature 3b) are in Part 18 of this file.
 -- Business timestamps (opened_at, resolved_at, closed_at, occurred_at, decided_at, result_at, received_at, processed_at,
 -- queued_at, sent_at) have no default and come from the simulation clock. created_at and updated_at are real time, and
 -- the backend sets updated_at on every update (no trigger, no @updatedAt).
@@ -2635,7 +2643,7 @@ CREATE TRIGGER notification_no_truncate
 
 
 -- ======================================================================================================================
--- PART 12 of 17: FEATURE 3 - SEARCH, BOOKING AND SEAT INVENTORY
+-- PART 12 of 18: FEATURE 3 - SEARCH, BOOKING AND SEAT INVENTORY
 -- ======================================================================================================================
 
 -- Feature 3 (Search, Booking and Seat Inventory), from the F3 Iteration-01 doc and the DB team's review. New tables,
@@ -2645,7 +2653,7 @@ CREATE TRIGGER notification_no_truncate
 -- DB team review).
 -- Uses staff (feature 1), customer and passenger (feature 7). The flight, fare class, fare quote, partner airline and
 -- flight event foreign keys, and the foreign keys that features 6, 7, 10, 12 and 13 left open for feature 3b, are in
--- Part 17 of this file, with the payment one (feature 5).
+-- Part 18 of this file, with the payment one (feature 5).
 -- Business timestamps (booked_at, hold_expires_at, confirmed_at, cancelled_at, assigned_at, released_at, requested_at,
 -- handled_at, processed_at, completed_at) have no default and come from the simulation clock. created_at and updated_at
 -- are real time, and the backend sets updated_at on every update (no trigger, no @updatedAt).
@@ -2924,7 +2932,7 @@ CREATE INDEX booking_change_old_segment_idx ON booking_change (old_segment_id);
 
 
 -- ======================================================================================================================
--- PART 13 of 17: FEATURE 11 - LOYALTY PROGRAMME
+-- PART 13 of 18: FEATURE 11 - LOYALTY PROGRAMME
 -- ======================================================================================================================
 
 -- Feature 11 (Loyalty Programme), from the F11 Iteration-02 doc (with tier benefits and insurance) and the DB team's
@@ -2934,7 +2942,7 @@ CREATE INDEX booking_change_old_segment_idx ON booking_change (old_segment_id);
 -- review). Earn, redeem and benefit rows point at feature 3's booking_coupon, insurance policies at its booking, and
 -- award seats are counted in feature 3's seat_inventory.
 -- Uses staff (feature 1), customer (feature 7), fare_class (feature 4) and audit_log (feature 15). The foreign keys to
--- other features are in Part 17 of this file.
+-- other features are in Part 18 of this file.
 -- Business timestamps (joined_at, tier_qualified_at, tier_expires_at, occurred_at, expires_at, used_at, issued_at,
 -- cancelled_at) have no default and come from the simulation clock. created_at and updated_at are real time, and the
 -- backend sets updated_at on every update.
@@ -3243,7 +3251,7 @@ INSERT INTO notification_template (type_code, channel, subject_template, body_te
 
 
 -- ======================================================================================================================
--- PART 14 of 17: FEATURE 17 - CARGO AND AIR FREIGHT
+-- PART 14 of 18: FEATURE 17 - CARGO AND AIR FREIGHT
 -- ======================================================================================================================
 
 -- Feature 17 (Cargo and Air Freight), from the F17 Iteration-02 doc and the DB team's review. New tables, plus a key
@@ -3251,7 +3259,7 @@ INSERT INTO notification_template (type_code, channel, subject_template, body_te
 -- Contents: the doc's own checks and the columns the doc is missing. Flight assignment, capacity, regulation keywords, the
 -- hold timer, the weight tolerance, the claim window and the refund calls are the backend's job (see the DB team review).
 -- Uses staff (feature 1), customer (feature 7), and route, flight, flight_event and airport (feature 2); those foreign
--- keys are in Part 17 of this file.
+-- keys are in Part 18 of this file.
 -- The payment_id (feature 5a) and refund_id (feature 5b) foreign keys are there too.
 -- Business timestamps (booked_at, hold_expires_at, awb_issued_at, occurred_at, filed_at, decided_at, notified_at, read_at)
 -- have no default and come from the simulation clock. created_at and updated_at are real time.
@@ -3607,7 +3615,7 @@ INSERT INTO cargo_handling_conflict (handling_class_a, handling_class_b, reason)
 
 
 -- ======================================================================================================================
--- PART 15 of 17: FEATURE 5 - CHECKOUT, PAYMENT AND REFUNDS, FINANCE JOURNAL AND CREW PAY
+-- PART 15 of 18: FEATURE 5 - CHECKOUT, PAYMENT AND REFUNDS, FINANCE JOURNAL AND CREW PAY
 -- ======================================================================================================================
 
 -- Feature 5 (Checkout, Payment and Refunds; Finance Journal and Crew Pay), from the F5 Iteration-03 doc (revision 2)
@@ -3617,7 +3625,7 @@ INSERT INTO cargo_handling_conflict (handling_class_a, handling_class_b, reason)
 -- Payments point at feature 3's booking and coupons and at feature 17's cargo booking, and compensation is feature 13's
 -- case_compensation. Uses staff (feature 1), customer (feature 7), crew and pairing (feature 8), audit_log (feature 15)
 -- and flight_event (feature 2). The foreign keys to other features, and the ones features 3, 6, 12 and 17 left open
--- for feature 5, are in Part 17 of this file.
+-- for feature 5, are in Part 18 of this file.
 -- Business timestamps (started_at, expires_at, authorised_at, captured_at, voided_at, capture_stalled_at,
 -- requested_at, completed_at, issued_at, redeemed_at, occurred_at, paid_at, processed_at) have no default and come from
 -- the simulation clock.
@@ -4062,7 +4070,7 @@ INSERT INTO notification_template (type_code, channel, subject_template, body_te
 
 
 -- ======================================================================================================================
--- PART 16 of 17: FEATURE 14 - BUSINESS INTELLIGENCE DASHBOARDS
+-- PART 16 of 18: FEATURE 14 - BUSINESS INTELLIGENCE DASHBOARDS
 -- ======================================================================================================================
 
 -- Feature 14 (Business Intelligence Dashboards), from the F14 Iteration-02 doc and the DB team's review. New tables
@@ -4230,7 +4238,39 @@ CREATE INDEX bi_etl_run_success_idx ON bi_etl_run (started_at DESC) WHERE status
 
 
 -- ======================================================================================================================
--- PART 17 of 17: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
+-- PART 17 of 18: FEATURE 16 - IOT INTERACTION SESSIONS
+-- ======================================================================================================================
+
+-- Feature 16 (IoT, G14's WALL-E robot), from G14's diagram of interaction_session and session_detail and their IoT
+-- documentation. A session is one conversation with the robot, and each session_detail row is one question and its
+-- answer. New tables only. No foreign keys to other features' tables.
+-- Changed from the diagram to match the rest of the schema:
+--   id is a UUID, like every other table's id, not an int.
+--   start_Time and end_Time are started_at and ended_at, TIMESTAMPTZ. Postgres folds an unquoted start_Time to
+--   start_time anyway.
+--   order is seq, because ORDER is a reserved word. fare_quote_line numbers its lines with seq too.
+-- There is one robot, so a session does not record which device ran it.
+
+-- ended_at stays NULL while the session is open.
+CREATE TABLE interaction_session (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  started_at TIMESTAMPTZ NOT NULL,
+  ended_at   TIMESTAMPTZ,
+  CHECK (ended_at IS NULL OR ended_at >= started_at)
+);
+
+-- seq numbers the questions 1, 2, 3 ... within the session. answer is NULL until there is one.
+CREATE TABLE session_detail (
+  session_id UUID NOT NULL REFERENCES interaction_session (id),
+  seq        INTEGER NOT NULL CHECK (seq > 0),
+  question   TEXT NOT NULL,
+  answer     TEXT,
+  PRIMARY KEY (session_id, seq)
+);
+
+
+-- ======================================================================================================================
+-- PART 18 of 18: CROSS-MODULE FOREIGN KEYS (OPTIONAL: delete this whole part to run without them)
 -- ======================================================================================================================
 
 -- Cross-module foreign keys for features 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 and 17, grouped by the feature that holds the id.

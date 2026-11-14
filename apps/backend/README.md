@@ -39,3 +39,5 @@ npm run start:dev -w apps/backend
 ```
 
 See [`../../docs/infra-guide.md`](../../docs/infra-guide.md) for environment and authentication setup.
+
+For a fresh checkout, run `npm run db:prepare` after starting the local database. Backend development startup, tests and builds generate Prisma Client automatically. See [G10 local testing](../../docs/g10-local-testing.md) for Security role setup.

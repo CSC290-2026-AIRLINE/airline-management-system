@@ -967,12 +967,16 @@ model promo_code {
 model promo_redemption {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   promo_code_id String     @db.Uuid
-  fare_quote_id String     @unique @db.Uuid
+  booking_ref   String
+  fare_quote_id String     @db.Uuid
+  status        String     @default("redeemed")
   redeemed_at   DateTime   @db.Timestamptz(6)
+  released_at   DateTime?  @db.Timestamptz(6)
   created_at    DateTime   @default(now()) @db.Timestamptz(6)
   fare_quote    fare_quote @relation(fields: [fare_quote_id, promo_code_id], references: [id, promo_code_id], onDelete: NoAction, onUpdate: NoAction)
   promo_code    promo_code @relation(fields: [promo_code_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@unique([promo_code_id, booking_ref], map: "promo_redemption_booking_uq")
   @@index([promo_code_id], map: "promo_redemption_promo_idx")
 }
 
@@ -3289,4 +3293,23 @@ model visa_requirement {
   staff               staff?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([nationality, destination_country])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model interaction_session {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  started_at     DateTime         @db.Timestamptz(6)
+  ended_at       DateTime?        @db.Timestamptz(6)
+  session_detail session_detail[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model session_detail {
+  session_id          String              @db.Uuid
+  seq                 Int
+  question            String
+  answer              String?
+  interaction_session interaction_session @relation(fields: [session_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([session_id, seq])
 }
