@@ -33,27 +33,34 @@ export async function getAircraftCapacity(db: PrismaLike, aircraftId: string): P
 }
 
 // MOCK: replace when Feature 3 seat inventory service is merged
-export async function seatsTakenOnFlight(_db: PrismaLike, _flightId: string): Promise<number> {
+export function seatsTakenOnFlight(db: PrismaLike, flightId: string): number {
+  void db
+  void flightId
   return 0
 }
 
 // MOCK: replace when Feature 5a payment/refund service is merged
-export async function refundFull(
-  _db: PrismaLike,
+export function refundFull(
+  db: PrismaLike,
   bookingRef: string,
-  _paymentId: string,
-  _amount: number,
+  paymentId: string,
+  amount: number,
   reason: 'cancel' | 'rejected' | 'flight',
-): Promise<{ refundId: string }> {
+): { refundId: string } {
+  void db
+  void paymentId
+  void amount
   return { refundId: `mock-refund-${bookingRef}-${reason}` }
 }
 
 // Requirements say to fall back to the reserve when baggage weight is unknown
-export function loadedBaggageKg(_flightId: string): null {
+export function loadedBaggageKg(flightId: string): null {
+  void flightId
   return null
 }
 
 // MOCK: replace when the airline's 3-digit AWB prefix is stored (flight_setting.airline_code)
-export async function awbPrefix(_db: PrismaLike): Promise<string> {
+export function awbPrefix(db: PrismaLike): string {
+  void db
   return '999'
 }
