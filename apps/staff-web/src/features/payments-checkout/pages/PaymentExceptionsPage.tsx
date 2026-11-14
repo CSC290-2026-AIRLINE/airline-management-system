@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NoAccessScreen } from '@staff-web/features/admin-console/components/NoAccessScreen'
 import { useScreenAccess } from '@staff-web/features/admin-console/hooks/useScreenAccess'
-import { retryCapture, sendFinancePosting } from '../api/payments'
+import { usePaymentsApi } from '../api/payments'
 import { FilterChips } from '../components/FilterChips'
 import { PaymentProblemTable } from '../components/PaymentProblemTable'
 import { PageMessage, StaffPageShell } from '../components/StaffPageShell'
@@ -20,6 +20,7 @@ export function PaymentExceptionsPage() {
   const { loading, canOpen, role } = useScreenAccess()
   const [tab, setTab] = useState<PaymentExceptionTab>('needs_action')
   const list = usePaymentProblems(tab)
+  const api = usePaymentsApi()
   const [workingId, setWorkingId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -30,9 +31,9 @@ export function PaymentExceptionsPage() {
     setActionError(null)
     try {
       if (problem.action === 'retry_capture') {
-        await retryCapture(problem.payment_id)
+        await api.retryCapture(problem.payment_id)
       } else if (problem.action === 'send_posting') {
-        await sendFinancePosting(problem.payment_id)
+        await api.sendFinancePosting(problem.payment_id)
       }
       list.reload()
     } catch (e: unknown) {

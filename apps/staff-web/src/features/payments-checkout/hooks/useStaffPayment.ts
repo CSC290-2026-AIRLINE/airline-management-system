@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getStaffPayment } from '../api/payments'
+import { usePaymentsApi } from '../api/payments'
 import type { StaffPaymentDetailDto } from '../types'
 
 export interface UseStaffPaymentState {
@@ -15,7 +15,7 @@ export interface UseStaffPaymentState {
 /**
  * Loads one payment for the staff screens.
  *
- * TODO(F5a): swap the mock API for TanStack Query once the shared setup lands (see the staff-web CLAUDE.md).
+ * TODO(F5a): swap this for TanStack Query once the shared setup lands (see the staff-web CLAUDE.md).
  */
 export function useStaffPayment(paymentId: string): UseStaffPaymentState {
   const [state, setState] = useState<Omit<UseStaffPaymentState, 'reload'>>(() => ({
@@ -24,11 +24,13 @@ export function useStaffPayment(paymentId: string): UseStaffPaymentState {
     payment: null,
     notFound: false,
   }))
+  const api = usePaymentsApi()
   const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     let cancelled = false
-    getStaffPayment(paymentId)
+    api
+      .getStaffPayment(paymentId)
       .then((payment) => {
         if (cancelled) return
         setState({ loading: false, error: null, payment, notFound: false })
@@ -41,6 +43,8 @@ export function useStaffPayment(paymentId: string): UseStaffPaymentState {
     return () => {
       cancelled = true
     }
+    // `api` is rebuilt every render, so it stays out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentId, reloadToken])
 
   return { ...state, reload: () => setReloadToken((n) => n + 1) }

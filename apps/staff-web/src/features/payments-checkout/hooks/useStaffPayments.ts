@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listStaffPayments } from '../api/payments'
+import { usePaymentsApi } from '../api/payments'
 import type { PaymentSourceFeature, StaffPaymentFilter, StaffPaymentListDto, StaffPaymentSummaryDto } from '../types'
 
 export interface UseStaffPaymentsState {
@@ -30,7 +30,7 @@ const EMPTY_COUNTS: StaffPaymentListDto['counts'] = {
  * would be a new reference on every render and the request would never settle. The search box is debounced, so typing
  * does not fire a request per keystroke.
  *
- * TODO(F5a): swap the mock API for TanStack Query once the shared setup lands (see the staff-web CLAUDE.md).
+ * TODO(F5a): swap this for TanStack Query once the shared setup lands (see the staff-web CLAUDE.md).
  */
 export function useStaffPayments(
   status?: StaffPaymentFilter,
@@ -45,6 +45,7 @@ export function useStaffPayments(
     total: 0,
     counts: EMPTY_COUNTS,
   }))
+  const api = usePaymentsApi()
   const [reloadToken, setReloadToken] = useState(0)
   const [appliedSearch, setAppliedSearch] = useState(search ?? '')
 
@@ -56,7 +57,8 @@ export function useStaffPayments(
 
   useEffect(() => {
     let cancelled = false
-    listStaffPayments({ status, source_feature: sourceFeature, search: appliedSearch, page })
+    api
+      .listStaffPayments({ status, source_feature: sourceFeature, search: appliedSearch, page })
       .then((data) => {
         if (cancelled) return
         setState({ loading: false, error: null, payments: data.items, total: data.total, counts: data.counts })
@@ -74,6 +76,8 @@ export function useStaffPayments(
     return () => {
       cancelled = true
     }
+    // `api` is rebuilt every render, so it stays out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, sourceFeature, appliedSearch, page, reloadToken])
 
   return { ...state, reload: () => setReloadToken((n) => n + 1) }

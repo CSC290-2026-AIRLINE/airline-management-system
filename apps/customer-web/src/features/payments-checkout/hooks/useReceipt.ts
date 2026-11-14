@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getReceipt } from '../api/receipts'
+import { useReceiptsApi } from '../api/receipts'
 import type { ReceiptDetailDto } from '../types'
 
 export interface UseReceiptState {
@@ -21,14 +21,16 @@ const INITIAL: UseReceiptState = { loading: true, error: null, receipt: null, no
  * arrives. Deriving it keeps the reset out of the effect body, which the `react-hooks/set-state-in-effect` rule
  * rejects, and out of the render body, which the `react-hooks/set-state-in-render` rule rejects.
  *
- * TODO(F5a): swap the mock API for TanStack Query once the shared setup lands (see the customer-web CLAUDE.md).
+ * TODO(F5a): swap this for TanStack Query once the shared setup lands (see the customer-web CLAUDE.md).
  */
 export function useReceipt(receiptId: string): UseReceiptState {
+  const api = useReceiptsApi()
   const [loaded, setLoaded] = useState<{ id: string; state: UseReceiptState }>(() => ({ id: receiptId, state: INITIAL }))
 
   useEffect(() => {
     let cancelled = false
-    getReceipt(receiptId)
+    api
+      .getReceipt(receiptId)
       .then((receipt) => {
         if (cancelled) return
         setLoaded({ id: receiptId, state: { loading: false, error: null, receipt, notFound: false } })
@@ -44,6 +46,8 @@ export function useReceipt(receiptId: string): UseReceiptState {
     return () => {
       cancelled = true
     }
+    // `api` is rebuilt every render, so it stays out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receiptId])
 
   /* An answer loaded for another receipt is stale, so it is not shown while the new one is on its way. */

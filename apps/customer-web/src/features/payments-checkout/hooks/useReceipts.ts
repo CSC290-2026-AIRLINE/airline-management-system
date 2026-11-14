@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listReceipts } from '../api/receipts'
+import { useReceiptsApi } from '../api/receipts'
 import type { ReceiptFilter, ReceiptListDto, ReceiptSummaryDto } from '../types'
 
 export interface UseReceiptsState {
@@ -21,7 +21,7 @@ const EMPTY_COUNTS: ReceiptListDto['counts'] = { all: 0, flights: 0, miles_and_c
  * `react-hooks/set-state-in-effect` rule rejects that, and it is the pattern the rest of the monorepo uses. The search
  * box is debounced, so typing does not fire a request per keystroke.
  *
- * TODO(F5a): swap the mock API for TanStack Query once the shared setup lands (see the customer-web CLAUDE.md).
+ * TODO(F5a): swap this for TanStack Query once the shared setup lands (see the customer-web CLAUDE.md).
  */
 export function useReceipts(filter?: ReceiptFilter, search?: string): UseReceiptsState {
   const [state, setState] = useState<Omit<UseReceiptsState, 'reload'>>(() => ({
@@ -30,6 +30,7 @@ export function useReceipts(filter?: ReceiptFilter, search?: string): UseReceipt
     receipts: [],
     counts: EMPTY_COUNTS,
   }))
+  const api = useReceiptsApi()
   const [reloadToken, setReloadToken] = useState(0)
   const [appliedSearch, setAppliedSearch] = useState(search ?? '')
 
@@ -41,7 +42,8 @@ export function useReceipts(filter?: ReceiptFilter, search?: string): UseReceipt
 
   useEffect(() => {
     let cancelled = false
-    listReceipts({ filter, search: appliedSearch })
+    api
+      .listReceipts({ filter, search: appliedSearch })
       .then((data) => {
         if (cancelled) return
         setState({ loading: false, error: null, receipts: data.items, counts: data.counts })
@@ -58,6 +60,8 @@ export function useReceipts(filter?: ReceiptFilter, search?: string): UseReceipt
     return () => {
       cancelled = true
     }
+    // `api` is rebuilt every render, so it stays out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, appliedSearch, reloadToken])
 
   return { ...state, reload: () => setReloadToken((n) => n + 1) }
