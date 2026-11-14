@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { ChevronRight, LogOut } from 'lucide-react'
+import { Banknote, ChevronRight, CreditCard, Gift, LogOut, Search, TriangleAlert, Undo2 } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@staff-web/components/ui/collapsible'
 import { ScrollArea } from '@staff-web/components/ui/scroll-area'
 import {
@@ -23,19 +23,83 @@ import sidebarPattern from '../assets/sidebar-pattern.png'
 import { ADMIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM, type NavItem } from '../nav-items'
 
 /**
- * These screens belong to other feature teams and have no routes in this app yet, so they are listed as disabled
- * buttons (dimmed, not focusable) instead of links that go nowhere. When a team registers its route, swap its entry for
- * a `<SidebarMenuButton asChild><Link/></SidebarMenuButton>`.
+ * The Payments & Refunds screens (Feature 5), in the F5 frames' order. An item gets a `to` once its route exists; the rest
+ * stay dimmed until then.
+ *
+ * TODO(F5): Pay Runs arrives with Feature 5c. Add its `to` when its route lands.
+ */
+const PAYMENTS_ITEMS: NavItem[] = [
+  { label: 'Payment Lookup', icon: Search, to: '/payments/lookup' },
+  { label: 'Refund Queue', icon: Undo2, to: '/payments/refunds' },
+  { label: 'Compensation & Vouchers', icon: Gift, to: '/payments/compensation' },
+  { label: 'Payment Exceptions', icon: TriangleAlert, to: '/payments/exceptions' },
+  { label: 'Pay Runs', icon: Banknote },
+]
+
+/**
+ * An item with a `to` is a link. One without belongs to a team whose route is not in this app yet, so it is a disabled
+ * button (dimmed, not focusable) instead of a link that goes nowhere. When a team registers its route, give its entry a
+ * `to`.
  */
 // `indent` is for items inside a group: the padding sits on the button, so its hover block spans the full width.
-function PendingItem({ item, indent = false }: { item: NavItem; indent?: boolean }) {
+// `nested` is for items inside a sub-heading, one step further in.
+function PendingItem({ item, indent = false, nested = false }: { item: NavItem; indent?: boolean; nested?: boolean }) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const padding = nested ? 'pl-8' : indent ? 'pl-4' : undefined
+  if (item.to) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          asChild
+          isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+          tooltip={item.label}
+          className={padding}
+        >
+          <Link to={item.to}>
+            <item.icon />
+            <span>{item.label}</span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    )
+  }
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton disabled className={indent ? 'pl-4' : undefined}>
+      <SidebarMenuButton disabled className={padding}>
         <item.icon />
         <span>{item.label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
+  )
+}
+
+/**
+ * "Payments & Refunds" inside Commercial: a heading that opens and closes its five screens. It opens by itself when one
+ * of them is the current page, so the active item is never hidden.
+ */
+function PaymentsSubGroup() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const hasActive = PAYMENTS_ITEMS.some((item) => item.to && (pathname === item.to || pathname.startsWith(item.to + '/')))
+
+  return (
+    <Collapsible defaultOpen={hasActive} className="group/payments">
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton className="pl-4" tooltip="Payments & Refunds">
+            <CreditCard />
+            <span>Payments & Refunds</span>
+            <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/payments:rotate-90 motion-reduce:transition-none" />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+      </SidebarMenuItem>
+      <CollapsibleContent className="group-data-[collapsible=icon]:block!">
+        <SidebarMenu>
+          {PAYMENTS_ITEMS.map((item) => (
+            <PendingItem key={item.label} item={item} nested />
+          ))}
+        </SidebarMenu>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -143,9 +207,13 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
 
           {GROUPS.map((group) => (
             <NavGroup key={group.label} label={group.label}>
-              {group.items.map((item) => (
-                <PendingItem key={item.label} item={item} indent />
-              ))}
+              {group.items.map((item) =>
+                item.label === 'Payments & Refunds' ? (
+                  <PaymentsSubGroup key={item.label} />
+                ) : (
+                  <PendingItem key={item.label} item={item} indent />
+                ),
+              )}
             </NavGroup>
           ))}
           <SidebarGroup className="py-1">

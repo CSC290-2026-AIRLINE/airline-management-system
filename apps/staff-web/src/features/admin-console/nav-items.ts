@@ -31,6 +31,8 @@ import {
 export interface NavItem {
   label: string
   icon: LucideIcon
+  /** Set once the team's screen has a route: the item then renders as a link instead of a disabled button. */
+  to?: string
 }
 
 export const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
