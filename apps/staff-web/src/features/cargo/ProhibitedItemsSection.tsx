@@ -232,11 +232,12 @@ export function ProhibitedItemsSection() {
     <div>
       {notice && <NoticeBanner notice={notice} />}
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">Bookings whose goods description contains an active keyword are refused.</p>
         <Button
           type="button"
           variant="outline"
+          className="w-fit shrink-0"
           onClick={() => {
             setNotice(null)
             setShowAdd(true)
@@ -246,38 +247,68 @@ export function ProhibitedItemsSection() {
         </Button>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-xs tracking-wide text-muted-foreground uppercase">Keyword</TableHead>
-            <TableHead className="text-xs tracking-wide text-muted-foreground uppercase">Reason</TableHead>
-            <TableHead className="text-xs tracking-wide text-muted-foreground uppercase">Status</TableHead>
-            <TableHead>
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => {
-            const isEditing = editingId === row.id && editState
+      <div className="-mx-4 overflow-x-auto sm:mx-0 sm:rounded-md sm:border">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="whitespace-nowrap text-xs tracking-wide text-muted-foreground uppercase">Keyword</TableHead>
+              <TableHead className="whitespace-nowrap text-xs tracking-wide text-muted-foreground uppercase">Reason</TableHead>
+              <TableHead className="whitespace-nowrap text-xs tracking-wide text-muted-foreground uppercase">Status</TableHead>
+              <TableHead>
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => {
+              const isEditing = editingId === row.id && editState
 
-            if (isEditing) {
+              if (isEditing) {
+                return (
+                  <TableRow key={row.id} className="bg-muted/30">
+                    <TableCell>
+                      <Input
+                        value={editState.keyword}
+                        className="h-8"
+                        onChange={(e) => setEditState({ ...editState, keyword: e.target.value })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={editState.reason}
+                        className="h-8"
+                        onChange={(e) => setEditState({ ...editState, reason: e.target.value })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'font-medium',
+                          row.is_active ? 'border-green-300 bg-green-50 text-green-700' : 'border-border bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {row.is_active ? 'Active' : 'Retired'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
+                          Cancel
+                        </Button>
+                        <Button type="button" size="sm" onClick={() => saveEdit(row)} disabled={saving}>
+                          {saving ? 'Saving…' : 'Save'}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              }
+
               return (
-                <TableRow key={row.id} className="bg-muted/30">
-                  <TableCell>
-                    <Input
-                      value={editState.keyword}
-                      className="h-8"
-                      onChange={(e) => setEditState({ ...editState, keyword: e.target.value })}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={editState.reason}
-                      className="h-8"
-                      onChange={(e) => setEditState({ ...editState, reason: e.target.value })}
-                    />
-                  </TableCell>
+                <TableRow key={row.id}>
+                  <TableCell className="font-bold text-foreground">{row.keyword}</TableCell>
+                  <TableCell className="text-muted-foreground">{row.reason}</TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
@@ -290,68 +321,40 @@ export function ProhibitedItemsSection() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
-                        Cancel
+                    <div className="flex gap-3">
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="h-auto p-0 text-primary"
+                        onClick={() => startEdit(row)}
+                        disabled={editingId !== null || saving}
+                      >
+                        Edit
                       </Button>
-                      <Button type="button" size="sm" onClick={() => saveEdit(row)} disabled={saving}>
-                        {saving ? 'Saving…' : 'Save'}
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="h-auto p-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => toggleRetire(row)}
+                        disabled={editingId !== null || saving}
+                      >
+                        {row.is_active ? 'Retire' : 'Activate'}
                       </Button>
                     </div>
                   </TableCell>
                 </TableRow>
               )
-            }
-
-            return (
-              <TableRow key={row.id}>
-                <TableCell className="font-bold text-foreground">{row.keyword}</TableCell>
-                <TableCell className="text-muted-foreground">{row.reason}</TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'font-medium',
-                      row.is_active ? 'border-green-300 bg-green-50 text-green-700' : 'border-border bg-muted text-muted-foreground',
-                    )}
-                  >
-                    {row.is_active ? 'Active' : 'Retired'}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-3">
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="h-auto p-0 text-primary"
-                      onClick={() => startEdit(row)}
-                      disabled={editingId !== null || saving}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="h-auto p-0 text-muted-foreground hover:text-foreground"
-                      onClick={() => toggleRetire(row)}
-                      disabled={editingId !== null || saving}
-                    >
-                      {row.is_active ? 'Retire' : 'Activate'}
-                    </Button>
-                  </div>
+            })}
+            {rows.length === 0 && (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                  No prohibited items yet. Add a keyword to get started.
                 </TableCell>
               </TableRow>
-            )
-          })}
-          {rows.length === 0 && (
-            <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
-                No prohibited items yet. Add a keyword to get started.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       {showAdd && <AddKeywordDialog onClose={() => setShowAdd(false)} onSubmit={handleAdd} />}
     </div>

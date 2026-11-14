@@ -401,7 +401,7 @@ export function RatesSection() {
         </Alert>
       )}
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           Price per kg for each distance band. Every booking pays at least the minimum charge.
         </p>
@@ -432,107 +432,109 @@ export function RatesSection() {
         )}
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-xs tracking-wide text-muted-foreground uppercase">Commodity type</TableHead>
-            {DISTANCE_BANDS.map((b) => (
-              <TableHead key={b.label} className="text-xs tracking-wide text-muted-foreground uppercase">
-                {b.label}
+      <div className="-mx-4 overflow-x-auto sm:mx-0 sm:rounded-md sm:border">
+        <Table className="min-w-[600px]">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="whitespace-nowrap text-xs tracking-wide text-muted-foreground uppercase">Commodity type</TableHead>
+              {DISTANCE_BANDS.map((b) => (
+                <TableHead key={b.label} className="whitespace-nowrap text-xs tracking-wide text-muted-foreground uppercase">
+                  {b.label}
+                </TableHead>
+              ))}
+              <TableHead className="whitespace-nowrap text-xs tracking-wide text-muted-foreground uppercase">Min charge</TableHead>
+              <TableHead>
+                <span className="sr-only">Actions</span>
               </TableHead>
-            ))}
-            <TableHead className="text-xs tracking-wide text-muted-foreground uppercase">Min charge</TableHead>
-            <TableHead>
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {grouped.map((row) => {
-            const isEditing = editingTypeId === row.commodity_type_id && editState
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {grouped.map((row) => {
+              const isEditing = editingTypeId === row.commodity_type_id && editState
 
-            if (isEditing) {
-              return (
-                <TableRow key={row.commodity_type_id} className="bg-muted/30">
-                  <TableCell className="font-bold text-foreground">{row.commodity_type_name}</TableCell>
-                  {editState.bands.map((band, i) => (
-                    <TableCell key={i}>
+              if (isEditing) {
+                return (
+                  <TableRow key={row.commodity_type_id} className="bg-muted/30">
+                    <TableCell className="font-bold text-foreground">{row.commodity_type_name}</TableCell>
+                    {editState.bands.map((band, i) => (
+                      <TableCell key={i}>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={band.rate_per_kg}
+                          className="h-8 w-20"
+                          onChange={(e) => {
+                            const next = { ...editState }
+                            next.bands = next.bands.map((b, j) => (j === i ? { ...b, rate_per_kg: e.target.value } : b))
+                            setEditState(next)
+                          }}
+                        />
+                      </TableCell>
+                    ))}
+                    <TableCell>
                       <Input
                         type="number"
                         min={0}
                         step="0.01"
-                        value={band.rate_per_kg}
+                        value={editState.bands[0].min_charge}
                         className="h-8 w-20"
                         onChange={(e) => {
                           const next = { ...editState }
-                          next.bands = next.bands.map((b, j) => (j === i ? { ...b, rate_per_kg: e.target.value } : b))
+                          next.bands = next.bands.map((b) => ({ ...b, min_charge: e.target.value }))
                           setEditState(next)
                         }}
                       />
                     </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
+                          Cancel
+                        </Button>
+                        <Button type="button" size="sm" onClick={() => saveEdit(row)} disabled={saving}>
+                          {saving ? 'Saving…' : 'Save'}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              }
+
+              return (
+                <TableRow key={row.commodity_type_id}>
+                  <TableCell className="font-bold text-foreground">{row.commodity_type_name}</TableCell>
+                  {row.bands.map((band, i) => (
+                    <TableCell key={i} className={cn('tabular-nums', band.rate ? 'text-muted-foreground' : 'text-orange-600')}>
+                      {band.rate ? band.rate_per_kg.toFixed(2) : 'Not set'}
+                    </TableCell>
                   ))}
-                  <TableCell>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={editState.bands[0].min_charge}
-                      className="h-8 w-20"
-                      onChange={(e) => {
-                        const next = { ...editState }
-                        next.bands = next.bands.map((b) => ({ ...b, min_charge: e.target.value }))
-                        setEditState(next)
-                      }}
-                    />
+                  <TableCell className={cn('tabular-nums', row.bands[0].rate ? 'text-muted-foreground' : 'text-orange-600')}>
+                    {row.bands[0].rate ? row.bands[0].min_charge.toFixed(2) : 'Not set'}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
-                        Cancel
-                      </Button>
-                      <Button type="button" size="sm" onClick={() => saveEdit(row)} disabled={saving}>
-                        {saving ? 'Saving…' : 'Save'}
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-primary"
+                      onClick={() => startEdit(row)}
+                      disabled={editingTypeId !== null}
+                    >
+                      Edit
+                    </Button>
                   </TableCell>
                 </TableRow>
               )
-            }
-
-            return (
-              <TableRow key={row.commodity_type_id}>
-                <TableCell className="font-bold text-foreground">{row.commodity_type_name}</TableCell>
-                {row.bands.map((band, i) => (
-                  <TableCell key={i} className={cn('tabular-nums', band.rate ? 'text-muted-foreground' : 'text-orange-600')}>
-                    {band.rate ? band.rate_per_kg.toFixed(2) : 'Not set'}
-                  </TableCell>
-                ))}
-                <TableCell className={cn('tabular-nums', row.bands[0].rate ? 'text-muted-foreground' : 'text-orange-600')}>
-                  {row.bands[0].rate ? row.bands[0].min_charge.toFixed(2) : 'Not set'}
-                </TableCell>
-                <TableCell>
-                  <Button
-                    type="button"
-                    variant="link"
-                    className="h-auto p-0 text-primary"
-                    onClick={() => startEdit(row)}
-                    disabled={editingTypeId !== null}
-                  >
-                    Edit
-                  </Button>
+            })}
+            {grouped.length === 0 && (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={DISTANCE_BANDS.length + 3} className="py-8 text-center text-muted-foreground">
+                  No rates yet. Add a rate row to get started.
                 </TableCell>
               </TableRow>
-            )
-          })}
-          {grouped.length === 0 && (
-            <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={DISTANCE_BANDS.length + 3} className="py-8 text-center text-muted-foreground">
-                No rates yet. Add a rate row to get started.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       {showAdd && <AddRateDialog incompleteTypes={incompleteTypes} onClose={() => setShowAdd(false)} onSubmit={handleAdd} />}
     </div>

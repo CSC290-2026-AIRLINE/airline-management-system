@@ -127,7 +127,7 @@ function SettingRow({
   const isEditing = editingKey === def.key
 
   return (
-    <div className="flex items-start justify-between gap-4 py-4 not-first:border-t not-first:border-border">
+    <div className="flex flex-col gap-3 py-4 not-first:border-t not-first:border-border sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="text-sm font-semibold text-foreground">{def.label}</span>
         <span className="text-xs text-muted-foreground">{def.description}</span>

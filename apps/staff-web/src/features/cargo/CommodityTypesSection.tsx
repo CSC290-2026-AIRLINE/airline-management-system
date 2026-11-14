@@ -293,11 +293,12 @@ export function CommodityTypesSection() {
     <div>
       {notice && <NoticeBanner notice={notice} />}
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">Each commodity type has its own handling class and weight limits.</p>
         <Button
           type="button"
           variant="outline"
+          className="w-fit shrink-0"
           onClick={() => {
             setNotice(null)
             setShowAdd(true)
@@ -307,149 +308,155 @@ export function CommodityTypesSection() {
         </Button>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            {['Code', 'Name', 'Class', 'Min', 'Max', 'Max per piece', 'Status', ''].map((h) => (
-              <TableHead key={h} className="text-xs tracking-wide text-muted-foreground uppercase">
-                {h}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => {
-            const isEditing = editingId === row.id && editState
+      <div className="-mx-4 overflow-x-auto sm:mx-0 sm:rounded-md sm:border">
+        <Table className="min-w-[700px]">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              {['Code', 'Name', 'Class', 'Min', 'Max', 'Max per piece', 'Status', ''].map((h) => (
+                <TableHead key={h} className="whitespace-nowrap text-xs tracking-wide text-muted-foreground uppercase">
+                  {h}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => {
+              const isEditing = editingId === row.id && editState
 
-            if (isEditing) {
+              if (isEditing) {
+                return (
+                  <TableRow key={row.id} className="bg-muted/30">
+                    <TableCell className="font-bold text-foreground">{row.code}</TableCell>
+                    <TableCell>
+                      <Input
+                        value={editState.name}
+                        className="h-8"
+                        onChange={(e) => setEditState({ ...editState, name: e.target.value })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Select value={editState.handling_class} onValueChange={(v) => setEditState({ ...editState, handling_class: v })}>
+                        <SelectTrigger className="h-8 w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CLASS_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editState.min_weight_kg}
+                          className="h-8 w-20"
+                          onChange={(e) => setEditState({ ...editState, min_weight_kg: e.target.value })}
+                        />
+                        <span className="text-xs text-muted-foreground">kg</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editState.max_weight_kg}
+                          className="h-8 w-24"
+                          onChange={(e) => setEditState({ ...editState, max_weight_kg: e.target.value })}
+                        />
+                        <span className="text-xs text-muted-foreground">kg</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          min={0}
+                          value={editState.max_piece_weight_kg}
+                          className="h-8 w-20"
+                          onChange={(e) => setEditState({ ...editState, max_piece_weight_kg: e.target.value })}
+                        />
+                        <span className="text-xs text-muted-foreground">kg</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={editState.is_active ? 'active' : 'inactive'}
+                        onValueChange={(v) => setEditState({ ...editState, is_active: v === 'active' })}
+                      >
+                        <SelectTrigger className="h-8 w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
+                          Cancel
+                        </Button>
+                        <Button type="button" size="sm" onClick={() => saveEdit(row)} disabled={saving}>
+                          {saving ? 'Saving…' : 'Save'}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              }
+
               return (
-                <TableRow key={row.id} className="bg-muted/30">
+                <TableRow key={row.id}>
                   <TableCell className="font-bold text-foreground">{row.code}</TableCell>
+                  <TableCell className="text-foreground">{row.name}</TableCell>
                   <TableCell>
-                    <Input value={editState.name} className="h-8" onChange={(e) => setEditState({ ...editState, name: e.target.value })} />
+                    <ClassBadge value={row.handling_class} />
                   </TableCell>
+                  <TableCell className="text-muted-foreground">{Number(row.min_weight_kg)} kg</TableCell>
+                  <TableCell className="text-muted-foreground">{Intl.NumberFormat().format(Number(row.max_weight_kg))} kg</TableCell>
+                  <TableCell className="text-muted-foreground">{Number(row.max_piece_weight_kg)} kg</TableCell>
                   <TableCell>
-                    <Select value={editState.handling_class} onValueChange={(v) => setEditState({ ...editState, handling_class: v })}>
-                      <SelectTrigger className="h-8 w-28">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CLASS_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>
-                            {o.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min={0}
-                        value={editState.min_weight_kg}
-                        className="h-8 w-20"
-                        onChange={(e) => setEditState({ ...editState, min_weight_kg: e.target.value })}
-                      />
-                      <span className="text-xs text-muted-foreground">kg</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min={0}
-                        value={editState.max_weight_kg}
-                        className="h-8 w-24"
-                        onChange={(e) => setEditState({ ...editState, max_weight_kg: e.target.value })}
-                      />
-                      <span className="text-xs text-muted-foreground">kg</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min={0}
-                        value={editState.max_piece_weight_kg}
-                        className="h-8 w-20"
-                        onChange={(e) => setEditState({ ...editState, max_piece_weight_kg: e.target.value })}
-                      />
-                      <span className="text-xs text-muted-foreground">kg</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={editState.is_active ? 'active' : 'inactive'}
-                      onValueChange={(v) => setEditState({ ...editState, is_active: v === 'active' })}
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'font-medium',
+                        row.is_active ? 'border-green-300 bg-green-50 text-green-700' : 'border-border bg-muted text-muted-foreground',
+                      )}
                     >
-                      <SelectTrigger className="h-8 w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      {row.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
-                        Cancel
-                      </Button>
-                      <Button type="button" size="sm" onClick={() => saveEdit(row)} disabled={saving}>
-                        {saving ? 'Saving…' : 'Save'}
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-primary"
+                      onClick={() => startEdit(row)}
+                      disabled={editingId !== null}
+                    >
+                      Edit
+                    </Button>
                   </TableCell>
                 </TableRow>
               )
-            }
-
-            return (
-              <TableRow key={row.id}>
-                <TableCell className="font-bold text-foreground">{row.code}</TableCell>
-                <TableCell className="text-foreground">{row.name}</TableCell>
-                <TableCell>
-                  <ClassBadge value={row.handling_class} />
-                </TableCell>
-                <TableCell className="text-muted-foreground">{Number(row.min_weight_kg)} kg</TableCell>
-                <TableCell className="text-muted-foreground">{Intl.NumberFormat().format(Number(row.max_weight_kg))} kg</TableCell>
-                <TableCell className="text-muted-foreground">{Number(row.max_piece_weight_kg)} kg</TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'font-medium',
-                      row.is_active ? 'border-green-300 bg-green-50 text-green-700' : 'border-border bg-muted text-muted-foreground',
-                    )}
-                  >
-                    {row.is_active ? 'Active' : 'Inactive'}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    type="button"
-                    variant="link"
-                    className="h-auto p-0 text-primary"
-                    onClick={() => startEdit(row)}
-                    disabled={editingId !== null}
-                  >
-                    Edit
-                  </Button>
+            })}
+            {rows.length === 0 && (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  No commodity types yet. Add one to get started.
                 </TableCell>
               </TableRow>
-            )
-          })}
-          {rows.length === 0 && (
-            <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                No commodity types yet. Add one to get started.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       {isEditing(editingId, rows) && (
         <p className="mt-2 text-xs text-muted-foreground">

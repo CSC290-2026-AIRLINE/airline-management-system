@@ -33,10 +33,10 @@ export function CargoSettingsPage() {
         onValueChange={(v) => navigate({ search: { tab: v as CargoSettingsTab }, replace: true })}
         className="flex flex-col gap-4"
       >
-        <div className="flex items-center justify-between gap-4">
-          <TabsList variant="line" className="gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <TabsList className="h-auto flex-wrap gap-1">
             {TABS.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value} className="px-4 py-2 text-sm font-medium">
+              <TabsTrigger key={tab.value} value={tab.value} className="text-sm">
                 {tab.label}
               </TabsTrigger>
             ))}
