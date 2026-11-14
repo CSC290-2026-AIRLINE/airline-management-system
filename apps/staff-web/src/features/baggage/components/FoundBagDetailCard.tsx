@@ -26,7 +26,7 @@ import { useDepartures, useFlight } from '../hooks/useBaggageFlights'
 import { errorMessage, type Airport } from '../hooks/useFoundBags'
 import { F10Card, FIELD_BOX, Field, FormError, Pill, SelectBox } from './primitives'
 
-const H4 = 'm-0 font-sans text-[22px] font-semibold text-[#14213d]'
+const H4 = 'm-0 font-[family-name:Inter,system-ui,sans-serif] text-[22px] font-semibold text-[#14213d]'
 
 function Fact({ label, children }: { label: string; children: string }) {
   return (
@@ -378,7 +378,7 @@ export function FoundBagDetailCard({
       <div className="flex flex-wrap items-center gap-3">
         <h2
           id="bag-detail-title"
-          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+          className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
         >
           {bagRef(bag.id)}
         </h2>

@@ -87,10 +87,10 @@ function ContactDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-xl font-sans leading-normal tracking-normal text-[#14213d] sm:max-w-md">
+      <DialogContent className="rounded-xl font-[family-name:Inter,system-ui,sans-serif] leading-normal tracking-normal text-[#14213d] sm:max-w-md">
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate>
           <DialogHeader className="text-left">
-            <DialogTitle className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">
+            <DialogTitle className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[22px] font-semibold text-[#14213d]">
               {contact ? `${contact.airportCode} baggage desk` : 'Add an airport desk'}
             </DialogTitle>
             <DialogDescription className="text-sm text-[#677287]">
@@ -182,7 +182,7 @@ export function AirportContactsCard({
         <div className="flex flex-1 flex-col gap-1">
           <h2
             id="airport-contacts"
-            className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+            className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
           >
             Airport contacts
           </h2>

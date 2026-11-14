@@ -61,7 +61,7 @@ export function CaseMatches({
 
   return (
     <>
-      <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Matches</h3>
+      <h3 className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[22px] font-semibold text-[#14213d]">Matches</h3>
       {shown.length === 0 ? (
         <p className="text-sm text-[#677287]">No matches yet.</p>
       ) : (

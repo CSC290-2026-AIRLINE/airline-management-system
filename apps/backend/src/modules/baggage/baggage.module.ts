@@ -24,8 +24,6 @@ import { StationContactController } from './station-contact.controller'
 import { StationContactService } from './station-contact.service'
 import { StaffLostReportController } from './staff-lost-report.controller'
 import { StaffLostReportService } from './staff-lost-report.service'
-import { StaffNotificationController } from './staff-notification.controller'
-import { StaffNotificationService } from './staff-notification.service'
 
 /**
  * Feature 10 (Lost and Found Baggage).
@@ -40,7 +38,6 @@ import { StaffNotificationService } from './staff-notification.service'
     StaffLostReportController,
     BagMatchController,
     BagDeliveryController,
-    StaffNotificationController,
     BaggageFlightController,
     BaggageSettingsController,
     BaggageDeskController,
@@ -57,7 +54,6 @@ import { StaffNotificationService } from './staff-notification.service'
     BagMatchingService,
     BagMatchReviewService,
     BagDeliveryService,
-    StaffNotificationService,
     BaggageFlightService,
     BaggageStaffGuard,
     BaggageAdminGuard,
@@ -81,7 +77,6 @@ import { StaffNotificationService } from './staff-notification.service'
     BagMatchingService,
     BagMatchReviewService,
     BagDeliveryService,
-    StaffNotificationService,
   ],
 })
 export class BaggageModule {}

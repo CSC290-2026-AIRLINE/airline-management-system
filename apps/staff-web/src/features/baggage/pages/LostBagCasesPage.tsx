@@ -60,7 +60,7 @@ export function LostBagCasesPage({
     <>
       <header className={`flex items-end justify-between gap-4 max-md:flex-col max-md:items-stretch ${listOnly}`}>
         <div className="flex flex-col gap-2">
-          <h1 className="m-0 font-sans text-[48px] leading-none font-extrabold tracking-[-2.4px] text-[#14213d] max-md:text-[36px]">
+          <h1 className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[48px] leading-none font-extrabold tracking-[-2.4px] text-[#14213d] max-md:text-[36px]">
             Lost bag cases
           </h1>
           <p className="text-lg tracking-[-0.9px] text-[#677287]">

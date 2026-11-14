@@ -33,7 +33,7 @@ export function CasesListCard({
   return (
     <F10Card aria-labelledby="cases-list" className={LIST_CARD}>
       <div className={cn('flex items-center gap-3', LIST_PAD)}>
-        <h2 id="cases-list" className="m-0 flex-1 font-sans text-[22px] font-semibold text-[#14213d]">
+        <h2 id="cases-list" className="m-0 flex-1 font-[family-name:Inter,system-ui,sans-serif] text-[22px] font-semibold text-[#14213d]">
           Cases
         </h2>
         {!loading && <p className="text-xs whitespace-nowrap text-[#677287]">{meta}</p>}

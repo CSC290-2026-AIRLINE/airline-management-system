@@ -218,7 +218,7 @@ export function MatchDetailCard({
       <div className="flex flex-wrap items-center gap-2">
         <h2
           id="match-detail-title"
-          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+          className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
         >
           {matchRef(match.id)}
         </h2>

@@ -47,7 +47,7 @@ export function CaseDetailCard({
       <div className="flex flex-wrap items-center gap-3">
         <h2
           id="case-detail-title"
-          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+          className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
         >
           {report.caseNumber}
         </h2>

@@ -317,15 +317,3 @@ export const OWNERSHIP_MISMATCH_LABELS: Record<OwnershipMismatch, string> = {
   document_type: 'Document type (passport on file needed)',
   document_number: 'Passport number',
 }
-
-/** What the baggage desk is told about (the backend's StaffNotificationKind). */
-export type StaffNotificationKind = 'strong_match' | 'new_report' | 'delivery_to_send' | 'unclaimed_soon' | 'bag_unclaimed' | 'case_lost'
-
-export const NOTIFICATION_TITLES: Record<StaffNotificationKind, string> = {
-  strong_match: 'Strong match to review',
-  new_report: 'New lost bag report',
-  delivery_to_send: 'Bag ready to send',
-  unclaimed_soon: 'Bag turns unclaimed soon',
-  bag_unclaimed: 'Bag marked unclaimed',
-  case_lost: 'Case declared lost',
-}

@@ -5,9 +5,7 @@ import { Menu, X } from 'lucide-react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { cn } from '@staff-web/lib/utils'
 import sidebarPattern from './assets/sidebar-pattern.jpg'
-import { NotificationsButton } from './components/NotificationsButton'
 import { BaggageDeskContext, useBaggageDesk } from './hooks/useBaggageDesk'
-import { useStaffNotifications } from './hooks/useStaffNotifications'
 
 /** Pages in the "Lost and found" nav, in Figma order. An item without a route shows as not ready. */
 const NAV: { label: string; to?: '/baggage/lost-bag-cases' | '/baggage/found-bags' | '/baggage/match-review' | '/baggage/deliveries' }[] = [
@@ -28,6 +26,11 @@ const CLOCK = new Intl.DateTimeFormat('en-GB', {
 })
 
 const FIGMA_FONTS = 'https://fonts.googleapis.com/css2?family=Inter:wght@800&family=Merriweather:wght@900&display=swap'
+
+/**
+ * The Figma wordmark font. Spelled out here because the shared `font-heading` token now points at the app's sans font.
+ */
+const WORDMARK_FONT = "font-[family-name:'Merriweather',Georgia,serif]"
 
 const NAV_ITEM = 'flex h-10 w-full items-center gap-2.5 rounded-lg pl-3.5 text-sm leading-normal font-medium text-white'
 
@@ -68,7 +71,6 @@ export function BaggageShell() {
   const { user: clerkUser } = useUser()
   const { user, logout } = useAppAuth()
   const name = clerkUser?.fullName || user?.email || 'Staff member'
-  const notifications = useStaffNotifications()
   const desk = useBaggageDesk()
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -96,15 +98,14 @@ export function BaggageShell() {
 
   return (
     // `fixed inset-0` takes the page out of the starter `#root` box (1126px, centred) without touching the shared CSS.
-    <div className="fixed inset-0 flex overflow-y-auto bg-[#f7f9fc] text-left font-sans leading-normal tracking-normal text-[#14213d] [color-scheme:light] max-md:flex-col">
+    <div className="fixed inset-0 flex overflow-y-auto bg-[#f7f9fc] text-left font-[family-name:Inter,system-ui,sans-serif] leading-normal tracking-normal text-[#14213d] [color-scheme:light] max-md:flex-col">
       {/* The F10 Figma uses Inter 800 and Merriweather 900, which index.html does not load. React hoists this into <head>. */}
       <link rel="stylesheet" href={FIGMA_FONTS} precedence="default" />
       <aside className="sticky top-0 isolate flex h-svh w-[260px] shrink-0 flex-col gap-3 overflow-y-auto px-[22px] py-8 max-md:hidden">
         <SidebarBackground />
-        <p className="font-heading text-[40px] leading-none font-black text-white uppercase">Flython</p>
+        <p className={cn(WORDMARK_FONT, 'text-[40px] leading-none font-black text-white uppercase')}>Flython</p>
         <p className="text-xs text-[#b7c1d1]">STAFF · BAGGAGE SERVICE</p>
-        <NotificationsButton notifications={notifications} className="mt-4 h-10 w-full pr-3 pl-3.5" />
-        <nav aria-label="Lost and found" className="flex flex-col gap-1 pt-4">
+        <nav aria-label="Lost and found" className="mt-4 flex flex-col gap-1 pt-4">
           <p className="text-xs text-[#b7c1d1]">LOST AND FOUND</p>
           {links}
         </nav>
@@ -131,10 +132,9 @@ export function BaggageShell() {
       <header className="sticky top-0 z-20 md:hidden">
         <div className="flex items-center gap-3 bg-[#14213d] px-4 py-3">
           <div className="flex min-w-0 flex-1 flex-col">
-            <span className="font-heading text-xl leading-tight font-black text-white">Flython</span>
+            <span className={cn(WORDMARK_FONT, 'text-xl leading-tight font-black text-white')}>Flython</span>
             <span className="text-[10.5px] tracking-[0.63px] text-[#b7c1d1]">STAFF · BAGGAGE SERVICE</span>
           </div>
-          <NotificationsButton notifications={notifications} className="p-1" />
           <span
             aria-hidden
             className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#fca311] text-xs font-bold text-[#14213d]"
@@ -179,7 +179,7 @@ export function BaggageShell() {
           <SidebarBackground />
           <div className="flex items-start justify-between">
             <div>
-              <p className="font-heading text-[32px] leading-none font-black text-white uppercase">Flython</p>
+              <p className={cn(WORDMARK_FONT, 'text-[32px] leading-none font-black text-white uppercase')}>Flython</p>
               <p className="mt-2 text-xs text-[#b7c1d1]">STAFF · BAGGAGE SERVICE</p>
             </div>
             <button

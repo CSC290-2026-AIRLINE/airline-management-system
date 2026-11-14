@@ -41,7 +41,7 @@ export function DivertedFlightCard({ onRecord }: { onRecord: (flightId: string) 
     <F10Card aria-labelledby="diverted-flight-title">
       <h2
         id="diverted-flight-title"
-        className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+        className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
       >
         Bags from a diverted flight
       </h2>

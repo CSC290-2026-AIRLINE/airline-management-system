@@ -104,7 +104,7 @@ function ChoiceForm({ delivery, onSave }: { delivery: BagDelivery; onSave: (body
 
   return (
     <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate>
-      <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Delivery choice</h3>
+      <h3 className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[22px] font-semibold text-[#14213d]">Delivery choice</h3>
       <Field label="Send to" htmlFor={id('type')}>
         <SelectBox id={id('type')} value={type} onValueChange={(v) => setType(v as DeliveryType)} options={TYPE_OPTIONS} />
       </Field>
@@ -165,7 +165,7 @@ function StatusForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Set delivery status</h3>
+      <h3 className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[22px] font-semibold text-[#14213d]">Set delivery status</h3>
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <SelectBox id={`status-${delivery.id}`} value={step} onValueChange={(v) => setStep(v as NextStep)} options={options} />
@@ -252,7 +252,7 @@ export function DeliveryDetailCard({
       <div className="flex flex-wrap items-center gap-3">
         <h2
           id="delivery-detail-title"
-          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+          className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
         >
           {delivery.caseNumber}
         </h2>
@@ -295,7 +295,7 @@ export function DeliveryDetailCard({
         <>
           <Separator className="bg-[#d8dce6]" />
           <div className="flex flex-col gap-3">
-            <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Ownership checks</h3>
+            <h3 className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[22px] font-semibold text-[#14213d]">Ownership checks</h3>
             <ul className="flex flex-col gap-2">
               {delivery.ownershipChecks.map((c) => (
                 <CheckItem key={c.id} check={c} />

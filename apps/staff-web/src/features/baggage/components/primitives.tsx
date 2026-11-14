@@ -88,7 +88,7 @@ export function SelectBox({
       <SelectTrigger id={id} className={cn(FIELD_BOX, 'data-[size=default]:h-auto [&_svg:not([class*=text-])]:text-[#14213d]')}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="font-[family-name:Inter,system-ui,sans-serif]">
         {options.map((o) => (
           <SelectItem key={o.value} value={o.value}>
             {o.label}
