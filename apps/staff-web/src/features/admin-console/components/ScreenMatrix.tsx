@@ -58,13 +58,14 @@ export function ScreenMatrix({
       {/* Search ---------------------------------------------------------- */}
       <div className="relative">
         <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        {/* Chrome draws a clear button of its own on a search field — ours is the only one we want. */}
         <Input
           type="search"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search feature or screen — e.g. F4, Pricing, Refunds"
           aria-label="Search screens"
-          className="pr-9 pl-9"
+          className="pr-9 pl-9 [&::-webkit-search-cancel-button]:appearance-none"
         />
         {search !== '' && (
           <Button
