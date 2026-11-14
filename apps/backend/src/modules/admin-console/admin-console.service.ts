@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { HttpStatus, Injectable } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import type {
@@ -15,8 +15,11 @@ import type { AuditQueryDto } from './dto/audit-query.dto'
 import type { RegisterScreenDto } from './dto/register-screen.dto'
 import type { ScreenKind } from './dto/register-screen.dto'
 import type { SelfRegisterScreen } from './dto/admin-console.types'
+import type { CreateRoleDto } from './dto/create-role.dto'
+import { RoleError } from './dto/role-error'
 import type { AdminPrincipal } from './guards/admin-console.guard'
 import { SimulationClock } from './simulation-clock'
+import { AuditService } from './audit/audit.service'
 
 const DEFAULT_AUDIT_LIMIT = 50
 const MAX_AUDIT_LIMIT = 200
@@ -32,6 +35,29 @@ function sameIds(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false
   const set = new Set(a)
   return b.every((id) => set.has(id))
+}
+
+/**
+ * Prisma's unique-constraint error. Checked by code so this file never needs the generated client at runtime — the same
+ * check `staff.service.ts` does for its own inserts.
+ */
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'P2002'
+}
+
+/**
+ * The machine-readable `role.code` for a role the admin named. Lowercase, non-alphanumeric runs collapsed to `_`,
+ * capped at 64 characters. `role.code` is UNIQUE in the database and is what the audit log records as the actor's role,
+ * so it has to exist — but the admin only ever types a name.
+ */
+function slugifyRoleName(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 64)
+    .replace(/_+$/, '')
+  return slug || 'role'
 }
 
 /**
@@ -53,6 +79,7 @@ export class AdminConsoleService {
   constructor(
     private readonly db: DbService,
     private readonly clock: SimulationClock,
+    private readonly audit: AuditService,
   ) {}
 
   /* ──────────────────────────────────────────────────────────────────────────── */
@@ -215,12 +242,12 @@ export class AdminConsoleService {
     // Defence for non-HTTP callers (tests, future internal callers): the DTO guards the HTTP path only.
     const trimmedReason = reason.trim()
     if (trimmedReason.length < MIN_REASON_LENGTH) {
-      throw new BadRequestException(`reason must be at least ${MIN_REASON_LENGTH} characters`)
+      throw new RoleError(HttpStatus.BAD_REQUEST, 'REASON_REQUIRED', `reason must be at least ${MIN_REASON_LENGTH} characters`)
     }
 
     const role = await this.db.role.findUnique({ where: { id: roleId }, select: { id: true, code: true } })
     if (!role) {
-      throw new NotFoundException(`Role ${roleId} not found`)
+      throw new RoleError(HttpStatus.NOT_FOUND, 'ROLE_NOT_FOUND', `Role ${roleId} not found`)
     }
 
     // De-duplicate before comparing, so a client that sends the same id twice gets the same result as one that does
@@ -248,7 +275,9 @@ export class AdminConsoleService {
       const foundIds = new Set(found.map((s) => s.id))
       const rejected = wanted.filter((id) => !foundIds.has(id))
       if (rejected.length > 0) {
-        throw new BadRequestException(
+        throw new RoleError(
+          HttpStatus.BAD_REQUEST,
+          'SCREEN_NOT_ASSIGNABLE',
           `Only active assignable screens can be granted; rejected ${rejected.length} id(s): ${rejected.slice(0, 5).join(', ')}`,
         )
       }
@@ -266,28 +295,209 @@ export class AdminConsoleService {
         })
       }
 
-      const audit = await tx.audit_log.create({
-        data: {
-          occurred_at: occurredAt,
-          actor_type: 'staff',
-          actor_id: admin.id,
-          actor_role: admin.roleCode,
-          source_feature: SOURCE_FEATURE,
+      const audit = await this.audit.write(
+        {
+          actor: AuditService.staffActor(admin),
+          sourceFeature: SOURCE_FEATURE,
           action: 'screen_access_change',
-          entity_type: 'role',
-          entity_id: roleId,
+          entityType: 'role',
+          entityId: roleId,
           summary: `Replaced screen access for role ${role.code}: ${beforeIds.length} → ${wanted.length} screen(s)`,
           reason: trimmedReason,
           before: { screen_ids: beforeIds },
           after: { screen_ids: wanted },
-          is_sensitive: false,
+          occurredAt,
+          sensitive: false,
         },
-        select: { seq: true },
-      })
+        tx,
+      )
       return audit
     })
 
-    return { role_id: roleId, screen_ids: [...wanted].sort(), changed: true, audit_seq: inserted.seq.toString() }
+    return { role_id: roleId, screen_ids: [...wanted].sort(), changed: true, audit_seq: inserted.seq }
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  Role creation and deletion (POST /admin/roles, DELETE /admin/roles/:id) */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * Creates a role, optionally with the screens it can open from the start, and records it in the audit log — all in
+   * one transaction, so the log never claims a role that did not get created.
+   *
+   * Rules enforced here:
+   *   - The admin types a **name**; the machine-readable `role.code` is derived from it. `role.code` is NOT NULL and
+   *     UNIQUE in the database, and it is what the audit log records as the actor's role, so it has to exist — but it
+   *     is not something an admin should have to invent.
+   *   - The name must be unique. The database has no unique index on `role.name` (only on `code`), so the check is
+   *     made here, case-insensitively. The DB team has been asked to add the constraint; see the PR description.
+   *   - A new role is never an admin role: the create form has no admin toggle, and the seeded `admin` role is what
+   *     gives people access to the console.
+   *   - Only **active assignable** screens can be granted. Core and admin screens are implicit (see `getMyScreens`),
+   *     so granting them would be meaningless anyway.
+   */
+  async createRole(admin: AdminPrincipal, dto: CreateRoleDto): Promise<RoleSummary> {
+    const name = dto.name.trim()
+    if (!name) {
+      throw new RoleError(HttpStatus.BAD_REQUEST, 'VALIDATION_FAILED', 'A role name is required.')
+    }
+    const trimmedReason = dto.reason.trim()
+    if (trimmedReason.length < MIN_REASON_LENGTH) {
+      throw new RoleError(HttpStatus.BAD_REQUEST, 'REASON_REQUIRED', `reason must be at least ${MIN_REASON_LENGTH} characters`)
+    }
+
+    // De-duplicate before comparing, so a client that sends the same id twice gets the same result as one that does not.
+    const wanted = [...new Set(dto.screen_ids ?? [])]
+    if (wanted.length > 0) {
+      const found = await this.db.screen.findMany({
+        where: { id: { in: wanted }, kind: 'assignable', is_active: true },
+        select: { id: true },
+      })
+      const foundIds = new Set(found.map((s) => s.id))
+      const rejected = wanted.filter((id) => !foundIds.has(id))
+      if (rejected.length > 0) {
+        throw new RoleError(
+          HttpStatus.BAD_REQUEST,
+          'SCREEN_NOT_ASSIGNABLE',
+          `Only active assignable screens can be granted; rejected ${rejected.length} id(s): ${rejected.slice(0, 5).join(', ')}`,
+        )
+      }
+    }
+
+    const occurredAt = this.clock.now()
+    try {
+      return await this.db.$transaction(async (tx) => {
+        // Checked inside the transaction so two admins creating the same name at the same moment cannot both win.
+        const clash = await tx.role.findFirst({
+          where: { name: { equals: name, mode: 'insensitive' } },
+          select: { id: true },
+        })
+        if (clash) {
+          throw new RoleError(HttpStatus.CONFLICT, 'ROLE_NAME_TAKEN', `A role named "${name}" already exists. Choose another name.`)
+        }
+
+        const code = await this.deriveRoleCode(tx, name)
+        const created = await tx.role.create({
+          data: { code, name, is_admin: false },
+          select: { id: true, code: true, name: true, is_admin: true },
+        })
+        if (wanted.length > 0) {
+          await tx.role_screen.createMany({
+            data: wanted.map((screenId) => ({ role_id: created.id, screen_id: screenId, screen_kind: 'assignable' })),
+            skipDuplicates: true,
+          })
+        }
+        await this.audit.write(
+          {
+            actor: AuditService.staffActor(admin),
+            sourceFeature: SOURCE_FEATURE,
+            action: 'create',
+            entityType: 'role',
+            entityId: created.id,
+            summary: `Created role ${created.name} (${created.code})`,
+            reason: trimmedReason,
+            after: { name: created.name, code: created.code, screen_ids: wanted },
+            occurredAt,
+            sensitive: false,
+          },
+          tx,
+        )
+        return { id: created.id, code: created.code, name: created.name, is_admin: created.is_admin, staff_count: 0 }
+      })
+    } catch (e) {
+      if (!isUniqueViolation(e)) throw e
+      // The name was free a moment ago, so the collision is either the same name created concurrently (the unique code
+      // index catches it) or a different name that slugs to the same code.
+      const nowTaken = await this.db.role.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' } },
+        select: { id: true },
+      })
+      if (nowTaken) {
+        throw new RoleError(HttpStatus.CONFLICT, 'ROLE_NAME_TAKEN', `A role named "${name}" already exists. Choose another name.`)
+      }
+      throw new RoleError(
+        HttpStatus.CONFLICT,
+        'ROLE_CODE_TAKEN',
+        `A role with the code "${slugifyRoleName(name)}" already exists. Choose a different name.`,
+      )
+    }
+  }
+
+  /**
+   * Deletes a role that nobody holds, and records the deletion in the audit log — one transaction, so the log and the
+   * role table agree.
+   *
+   * A role can only go when it is unused: the `staff.role_id` foreign key already refuses to delete a role that people
+   * hold, but checking first turns that into a clear 409 instead of a database error. Admin roles can never be
+   * deleted — they are what gives people access to the console in the first place.
+   *
+   * The `role` table has no `deleted_at`, so this is a real delete. History survives it: `audit_log.actor_role` stores
+   * the role **code** as a snapshot, and `audit_log.entity_id` is free text.
+   */
+  async deleteRole(admin: AdminPrincipal, roleId: string, reason: string): Promise<void> {
+    const trimmedReason = reason.trim()
+    if (trimmedReason.length < MIN_REASON_LENGTH) {
+      throw new RoleError(HttpStatus.BAD_REQUEST, 'REASON_REQUIRED', `reason must be at least ${MIN_REASON_LENGTH} characters`)
+    }
+
+    const role = await this.db.role.findUnique({
+      where: { id: roleId },
+      select: { id: true, code: true, name: true, is_admin: true },
+    })
+    if (!role) {
+      throw new RoleError(HttpStatus.NOT_FOUND, 'ROLE_NOT_FOUND', `Role ${roleId} not found`)
+    }
+    if (role.is_admin) {
+      throw new RoleError(
+        HttpStatus.CONFLICT,
+        'ROLE_NOT_DELETABLE',
+        'An Admin role cannot be deleted. It is what gives people access to the admin console.',
+      )
+    }
+    const staffCount = await this.db.staff.count({ where: { role_id: roleId, deleted_at: null } })
+    if (staffCount > 0) {
+      throw new RoleError(
+        HttpStatus.CONFLICT,
+        'ROLE_IN_USE',
+        `${staffCount} staff member${staffCount === 1 ? '' : 's'} still hold this role. Move them to another role first.`,
+      )
+    }
+
+    const occurredAt = this.clock.now()
+    await this.db.$transaction(async (tx) => {
+      const grants = await tx.role_screen.findMany({ where: { role_id: roleId }, select: { screen_id: true } })
+      await tx.role_screen.deleteMany({ where: { role_id: roleId } })
+      await tx.role.delete({ where: { id: roleId } })
+      await this.audit.write(
+        {
+          actor: AuditService.staffActor(admin),
+          sourceFeature: SOURCE_FEATURE,
+          action: 'delete',
+          entityType: 'role',
+          entityId: roleId,
+          summary: `Deleted role ${role.name} (${role.code})`,
+          reason: trimmedReason,
+          before: { name: role.name, code: role.code, screen_ids: grants.map((g) => g.screen_id) },
+          occurredAt,
+          sensitive: false,
+        },
+        tx,
+      )
+    })
+  }
+
+  /**
+   * A free `role.code` for a role the admin named. The name's slug is the first choice; when two different names
+   * slug to the same thing, the second one gets `_2`, `_3` and so on.
+   */
+  private async deriveRoleCode(tx: Prisma.TransactionClient, name: string): Promise<string> {
+    const base = slugifyRoleName(name)
+    for (let n = 1; n <= 50; n++) {
+      const code = n === 1 ? base : `${base}_${n}`
+      const taken = await tx.role.findUnique({ where: { code }, select: { id: true } })
+      if (!taken) return code
+    }
+    throw new RoleError(HttpStatus.CONFLICT, 'ROLE_CODE_TAKEN', `Could not find a free role code for "${name}". Choose a different name.`)
   }
 
   /* ──────────────────────────────────────────────────────────────────────────── */

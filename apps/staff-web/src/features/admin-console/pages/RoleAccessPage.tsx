@@ -1,25 +1,28 @@
 import { useMemo, useState } from 'react'
-import { Eye, X } from 'lucide-react'
-import { Badge } from '@staff-web/components/ui/badge'
+import { CircleAlert, CircleCheck, Eye, Plus, X } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
-import { Checkbox } from '@staff-web/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@staff-web/components/ui/dialog'
 import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@staff-web/components/ui/tooltip'
+import { TooltipProvider } from '@staff-web/components/ui/tooltip'
 import { cn } from '@staff-web/lib/utils'
 import { useListScreens } from '../api/screens'
-import { useListRoles, useGetRoleScreens, useReplaceRoleScreens } from '../api/roles'
+import { useRoleApi, type CreateRoleBody } from '../api/roles'
 import { useStaffApi } from '../api/staff'
 import { useRoleAccess } from '../hooks/useRoleAccess'
-import { featureLabel } from '../feature-labels'
+import { buildGroups, filterGroups } from '../screen-groups'
 import { AdminErrorCard } from '../components/AdminErrorCard'
+import { CreateRoleDialog } from '../components/CreateRoleDialog'
+import { DeleteRoleDialog } from '../components/DeleteRoleDialog'
 import { NoAccessScreen } from '../components/NoAccessScreen'
+import { RoleList } from '../components/RoleList'
+import { ScreenMatrix } from '../components/ScreenMatrix'
 import { SidebarPreview } from '../components/SidebarPreview'
-import type { ScreenDto, StaffRow } from '../types'
+import type { RoleSummary, ScreenKind, StaffRow } from '../types'
 
 /* Helpers --------------------------------------------------------------- */
 
@@ -35,101 +38,37 @@ function setsEqual(a: Set<string>, b: Set<string>): boolean {
 function setsDiff(a: Set<string>, b: Set<string>): { added: string[]; removed: string[] } {
   const added: string[] = []
   const removed: string[] = []
-  for (const v of a) if (!b.has(v)) added.push(v)
-  for (const v of b) if (!a.has(v)) removed.push(v)
+  for (const v of b) if (!a.has(v)) added.push(v)
+  for (const v of a) if (!b.has(v)) removed.push(v)
   return { added, removed }
-}
-
-/** Read the HTTP status the API wrapper puts first in a thrown message — `401 Unauthorized: {…}`. Anchored, so a number later in the text is never mistaken for a status. */
-function statusFromError(msg: string): number | undefined {
-  const m = /^\s*(\d{3})\b/.exec(msg)
-  if (!m) return undefined
-  const n = Number(m[1])
-  return n >= 100 && n < 600 ? n : undefined
-}
-
-/** `5` or `05` → `F5 PAYMENTS`, as the group headers in the design read. A feature with no label shows its number only. */
-function featureTitle(featureNo: string): string {
-  const no = featureNo.replace(/^0+(?=\d)/, '')
-  const label = featureLabel(featureNo)
-  return label.startsWith('FEATURE ') ? `F${no}` : `F${no} ${label}`
-}
-
-/** One card in the matrix: a header bar plus its screen rows. */
-interface DisplayGroup {
-  key: string
-  title: string
-  /** Set when every screen in the group is `admin` — the header then carries the lock note. */
-  locked: boolean
-  screens: ScreenDto[]
-}
-
-/**
- * Core screens are lifted into their own "CORE (EVERYONE)" group ahead of the per-feature groups, matching the design.
- * Feature groups follow in the order the API returned them.
- */
-function buildGroups(groups: { feature_no: string; screens: ScreenDto[] }[]): DisplayGroup[] {
-  const coreScreens: ScreenDto[] = []
-  const byFeature = new Map<string, ScreenDto[]>()
-  for (const g of groups) {
-    for (const s of g.screens) {
-      if (s.kind === 'core') {
-        coreScreens.push(s)
-        continue
-      }
-      const list = byFeature.get(g.feature_no) ?? []
-      list.push(s)
-      byFeature.set(g.feature_no, list)
-    }
-  }
-
-  const out: DisplayGroup[] = []
-  if (coreScreens.length > 0) {
-    out.push({ key: 'core', title: 'CORE (EVERYONE)', locked: true, screens: coreScreens })
-  }
-  for (const [featureNo, screens] of byFeature) {
-    out.push({
-      key: featureNo,
-      title: featureTitle(featureNo),
-      locked: screens.every((s) => s.kind === 'admin'),
-      screens,
-    })
-  }
-  return out
-}
-
-/**
- * Split the groups across two explicit columns rather than using CSS multi-column, so each column can carry its own
- * "Can see / Screen / Note" header. The split is by group count — left gets the extra group when the total is odd.
- */
-function splitColumns(groups: DisplayGroup[]): DisplayGroup[][] {
-  const half = Math.ceil(groups.length / 2)
-  return [groups.slice(0, half), groups.slice(half)]
 }
 
 /* Shared class lists ------------------------------------------------------ */
 
-const LOCKED_TIP = 'Core and Admin screens can’t be given or taken away, and an admin role always sees every screen'
-
 /** What the save panel under the card is showing. */
 type Panel = { kind: 'idle' } | { kind: 'saved'; reason: string; previous: string[]; staffCount: number }
+
+/** The banner above the card: a green line after a create or delete, a red one when something went wrong. */
+interface Notice {
+  tone: 'success' | 'error'
+  title: string
+  body: string
+}
 
 /* Component ------------------------------------------------------------- */
 
 /**
- * Role access page. Checking a box marks the row "Unsaved" and opens the Save changes panel under the card; saving
- * PUTs the whole grant set for the selected role and the backend writes the audit row in the same transaction. After a
- * save the panel turns green and offers Undo, which puts the previous set back as unsaved changes (it still needs a
- * reason to save).
+ * Role access page. The left column lists the roles; the right column shows the screens of the selected role.
+ * Ticking a box marks the row "Unsaved" and opens the Save changes panel under the card; saving PUTs the whole grant
+ * set for the selected role and the backend writes the audit row in the same transaction. After a save the panel turns
+ * green and offers a revert, which puts the previous set back as unsaved changes (it still needs a reason to save).
  *
  * Both access gates live in `routes/_authenticated/admin/route.tsx`, one level up: it owns `RequireStaff` (one
  * `GET /api/me/screens` for all three tabs). Do not add another gate in here.
  */
 export function RoleAccessPage() {
   const listScreens = useListScreens()
-  const listRoles = useListRoles()
-  const getRoleScreens = useGetRoleScreens()
-  const replaceRoleScreens = useReplaceRoleScreens()
+  const roleApi = useRoleApi()
   const staffApi = useStaffApi()
 
   /* Role selection. The first role is picked once the roles load — see the render-time adjustment below. */
@@ -140,6 +79,13 @@ export function RoleAccessPage() {
   const [reason, setReason] = useState('')
   /** Set when Save was pressed without a long-enough reason: the panel turns red until the reason is fixed. */
   const [reasonMissing, setReasonMissing] = useState(false)
+  /** The screen search box. */
+  const [search, setSearch] = useState('')
+
+  /* Create and delete */
+  const [createOpen, setCreateOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<RoleSummary | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
 
   /* "Preview as user" dialog — the staff list is fetched when it opens, not with the page. */
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -152,9 +98,11 @@ export function RoleAccessPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [panel, setPanel] = useState<Panel>({ kind: 'idle' })
 
-  const registry = useRoleAccess(roleId, listScreens, listRoles, getRoleScreens)
+  const registry = useRoleAccess(roleId, listScreens, roleApi.list, roleApi.screens)
   const groups = useMemo(() => buildGroups(registry.screens), [registry.screens])
-  const columns = useMemo(() => splitColumns(groups), [groups])
+  const visibleGroups = useMemo(() => filterGroups(groups, search), [groups, search])
+  /** The role list is A–Z by name; the API answers with the admin roles first. */
+  const roles = useMemo(() => [...registry.roles].sort((a, b) => a.name.localeCompare(b.name)), [registry.roles])
 
   const dirty = pending !== null && !setsEqual(pending, registry.granted)
   const diff = useMemo(() => {
@@ -174,22 +122,14 @@ export function RoleAccessPage() {
      say so before a request that can only fail. */
   const reasonOk = reason.trim().length >= MIN_REASON_LENGTH
 
-  /* Pick first role once roles load — render-time adjustment. */
-  if (roleId === null && !registry.loading && registry.roles.length > 0) {
-    setRoleId(registry.roles[0].id)
+  /* Pick the first role once the roles load — render-time adjustment. */
+  if (roleId === null && !registry.loading && roles.length > 0) {
+    setRoleId(roles[0].id)
   }
 
-  const currentRole = registry.roles.find((r) => r.id === roleId) ?? null
+  const currentRole = roles.find((r) => r.id === roleId) ?? null
 
-  /** Whether a screen shows as ticked: core for everyone, admin screens for an admin role, the rest by grant. */
-  function shownChecked(s: ScreenDto, granted: Set<string>): boolean {
-    if (s.kind === 'core') return true
-    if (currentRole?.is_admin) return true
-    if (s.kind === 'admin') return false
-    return granted.has(s.id)
-  }
-
-  /* Reset the edit state. Shared by undo, role switch, and a successful save. */
+  /** Reset the edit state. Shared by undo, role switch, and a successful save. */
   function resetEdits() {
     setPending(null)
     setReason('')
@@ -201,9 +141,10 @@ export function RoleAccessPage() {
     setRoleId(newRoleId)
     resetEdits()
     setPanel({ kind: 'idle' })
+    setNotice(null)
   }
 
-  function toggle(screenId: string, kind: ScreenDto['kind']) {
+  function toggle(screenId: string, kind: ScreenKind) {
     if (kind !== 'assignable' || !roleId || currentRole?.is_admin) return
     const base = pending ?? new Set(registry.granted)
     const next = new Set(base)
@@ -215,7 +156,7 @@ export function RoleAccessPage() {
     setPanel({ kind: 'idle' })
   }
 
-  /** After a save, Undo brings the previous set back as unsaved changes — reverting is a change too, with its own reason. */
+  /** After a save, Revert brings the previous set back as unsaved changes — reverting is a change too, with its own reason. */
   function undoSaved(previous: string[]) {
     setPanel({ kind: 'idle' })
     setPending(new Set(previous))
@@ -264,16 +205,42 @@ export function RoleAccessPage() {
     const previous = [...registry.granted]
     const savedReason = reason.trim()
     try {
-      const res = await replaceRoleScreens(roleId, { screen_ids: [...pending], reason: savedReason })
+      const res = await roleApi.replaceScreens(roleId, { screen_ids: [...pending], reason: savedReason })
       // Take the server's set rather than our own: it is de-duplicated and sorted.
       registry.setGranted(res.role_id, res.screen_ids)
       resetEdits()
-      setPanel({ kind: 'saved', reason: savedReason, previous, staffCount: currentRole?.staff_count ?? 0 })
+      if (!res.changed) {
+        setNotice({ tone: 'success', title: 'Nothing to save', body: 'That role already had exactly these screens.' })
+      } else {
+        setPanel({ kind: 'saved', reason: savedReason, previous, staffCount: currentRole?.staff_count ?? 0 })
+      }
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : String(e))
     } finally {
       setSaving(false)
     }
+  }
+
+  /* Create a role — the dialog owns the form; this does the request and puts the new role in the list. */
+  async function createRole(body: CreateRoleBody) {
+    const created = await roleApi.create(body)
+    await registry.reloadRoles()
+    setCreateOpen(false)
+    selectRole(created.id)
+    setNotice({ tone: 'success', title: 'Role created', body: `${created.name} is ready to be given to staff.` })
+  }
+
+  /* Delete a role — only offered for a role nobody holds. */
+  async function deleteRole(deleteReason: string) {
+    const target = deleteTarget
+    if (!target) return
+    await roleApi.remove(target.id, { reason: deleteReason })
+    await registry.reloadRoles()
+    setDeleteTarget(null)
+    // Move the selection to the next role in the list.
+    const next = roles.find((r) => r.id !== target.id)
+    selectRole(next?.id ?? null)
+    setNotice({ tone: 'success', title: 'Role deleted', body: `${target.name} was removed.` })
   }
 
   /* Render ------------------------------------------------------------ */
@@ -300,23 +267,38 @@ export function RoleAccessPage() {
   if (registry.error) {
     /* A signed-in non-admin gets 403 from AdminConsoleGuard. That is an authorization answer, not a broken setup,
        so it renders the shared access-denied card rather than the setup checklist. */
-    if (statusFromError(registry.error) === 403) {
+    if (registry.status === 403) {
       return <NoAccessScreen screenName="Role access" homeTo="/" />
     }
-    return <AdminErrorCard page="Role access" error={registry.error} status={statusFromError(registry.error)} onRetry={registry.reload} />
+    return <AdminErrorCard page="Role access" error={registry.error} status={registry.status} onRetry={registry.reload} />
   }
 
-  const granted = pending ?? registry.granted
   const previewCandidates = previewStaff.filter((s) => s.role.id === currentRole?.id)
   const previewPerson = previewCandidates.find((s) => s.id === previewStaffId) ?? null
 
   return (
     <TooltipProvider delayDuration={200}>
+      {/* Banner ------------------------------------------------------- */}
+      {notice && (
+        <Alert
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          variant={notice.tone === 'error' ? 'destructive' : 'default'}
+          className={cn(
+            'mb-4',
+            notice.tone === 'error' ? 'border-danger-line/40 bg-danger-soft' : 'border-success/30 bg-success-soft text-success-strong',
+          )}
+        >
+          {notice.tone === 'error' ? <CircleAlert aria-hidden="true" /> : <CircleCheck aria-hidden="true" />}
+          <AlertTitle>{notice.title}</AlertTitle>
+          <AlertDescription className="text-current">{notice.body}</AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Screens for {currentRole?.name ?? '—'}</CardTitle>
+          <CardTitle className="text-lg">Roles &amp; screen access</CardTitle>
           <CardDescription>
-            Pick which screens each role can see. Screen access only: what a screen allows is set by its own feature.
+            Create roles and choose which screens each role can open. Screen access only: what a screen allows is set by its own feature.
           </CardDescription>
           <CardAction>
             <Button type="button" variant="outline" onClick={() => void openPreview()}>
@@ -327,134 +309,47 @@ export function RoleAccessPage() {
           </CardAction>
         </CardHeader>
         <CardContent>
-          {/* Role picker + status ----------------------------------------- */}
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-            <div className="flex w-56 flex-col gap-1.5 max-tablet:w-full">
-              <Label className="text-xs text-muted-foreground" htmlFor="role-select">
-                Role
-              </Label>
-              <Select value={roleId ?? undefined} onValueChange={(v) => selectRole(v || null)} disabled={dirty || saving}>
-                <SelectTrigger id="role-select" className="w-full" aria-describedby={dirty ? 'role-select-hint' : undefined}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper" className="border-border font-sans">
-                  {registry.roles.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {dirty && (
-                <p id="role-select-hint" className="text-xs text-muted-foreground">
-                  Save or discard your changes to switch roles.
-                </p>
-              )}
+          <div className="flex gap-8 max-tablet:flex-col max-tablet:gap-5">
+            {/* Role list ------------------------------------------------ */}
+            <div className="flex w-70 shrink-0 flex-col gap-4 max-tablet:w-full">
+              <Button type="button" variant="outline" className="w-fit" onClick={() => setCreateOpen(true)} disabled={dirty || saving}>
+                <Plus aria-hidden="true" />
+                Create role
+              </Button>
+              <RoleList
+                roles={roles}
+                selectedId={roleId}
+                onSelect={(id) => selectRole(id)}
+                onDelete={(role) => setDeleteTarget(role)}
+                disabled={dirty}
+              />
             </div>
-            <p className="text-sm font-medium text-warning tabular-nums" aria-live="polite">
-              {currentRole?.staff_count ?? 0} staff with this role · {changeCount} unsaved change{changeCount === 1 ? '' : 's'}
-            </p>
+
+            {/* Screens -------------------------------------------------- */}
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              <div>
+                <h3 className="m-0 text-xl font-bold text-foreground">Screens for {currentRole?.name ?? '—'}</h3>
+                <p className="mt-1 mb-0 text-sm font-medium text-warning tabular-nums" aria-live="polite">
+                  {currentRole?.staff_count ?? 0} staff with this role · {changeCount} unsaved change{changeCount === 1 ? '' : 's'}
+                </p>
+              </div>
+              <ScreenMatrix
+                groups={visibleGroups}
+                granted={registry.granted}
+                pending={pending}
+                isAdminRole={!!currentRole?.is_admin}
+                onToggle={toggle}
+                search={search}
+                onSearchChange={setSearch}
+              />
+            </div>
           </div>
-
-          {/* Screen matrix ----------------------------------------------- */}
-          {registry.screens.length === 0 ? (
-            <Card className="mt-6 border-dashed text-center">
-              <CardContent className="px-8">
-                <h3 className="mb-2 text-base font-semibold text-foreground">No screens registered yet</h3>
-                <p className="text-sm text-muted-foreground">
-                  Each feature team registers its own screens. As soon as they do, they will appear here grouped by feature.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="mt-5 grid grid-cols-2 items-start gap-16 max-wide:grid-cols-1 max-wide:gap-2.5 max-tablet:mt-4">
-              {columns.map((column, ci) => (
-                <div className="flex min-w-0 flex-col gap-2.5" key={ci}>
-                  {/* Column headers sit once at the top of each column. In one column (≤1100px) the second copy would
-                    repeat mid-list, so it is hidden there; the phone design has none. */}
-                  <div
-                    className={cn('flex gap-5 text-xs font-semibold text-muted-foreground max-tablet:hidden', ci > 0 && 'max-wide:hidden')}
-                    aria-hidden="true"
-                  >
-                    <span>CAN SEE</span>
-                    <span className="flex-1">SCREEN</span>
-                    <span className="pr-1.5">NOTE</span>
-                  </div>
-
-                  {column.map((group) => (
-                    <section key={group.key} aria-label={group.title}>
-                      <header className="bg-muted py-2.5 pl-3 text-xs font-semibold text-foreground uppercase">
-                        {group.title}
-                        {group.locked && group.key !== 'core' && ' · Admin only — locked'}
-                      </header>
-                      <ul>
-                        {group.screens.map((s) => {
-                          const locked = s.kind !== 'assignable' || !!currentRole?.is_admin
-                          const checked = shownChecked(s, granted)
-                          const unsaved = !locked && pending !== null && checked !== registry.granted.has(s.id)
-                          const row = (
-                            <li
-                              key={s.id}
-                              className={cn(
-                                'flex h-12 items-center gap-5 border-b border-border pr-1.5 pl-4 text-sm text-foreground max-tablet:h-10 max-tablet:gap-3 max-tablet:border-0 max-tablet:pl-0 max-tablet:text-sm',
-                                locked ? 'cursor-default hover:bg-accent' : 'cursor-pointer hover:bg-accent',
-                              )}
-                              onClick={() => toggle(s.id, s.kind)}
-                            >
-                              <Checkbox
-                                checked={checked}
-                                aria-disabled={locked || !roleId}
-                                aria-label={s.name}
-                                className={cn(
-                                  locked &&
-                                    'data-[state=checked]:border-input data-[state=checked]:bg-muted data-[state=checked]:text-muted-foreground',
-                                )}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  toggle(s.id, s.kind)
-                                }}
-                              />
-                              <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                              {s.kind === 'core' && (
-                                <Badge variant="secondary" className="w-20 text-muted-foreground">
-                                  Core
-                                </Badge>
-                              )}
-                              {unsaved && <Badge className="w-20 bg-warning-soft text-warning">Unsaved</Badge>}
-                              {locked && <span className="sr-only">{LOCKED_TIP}</span>}
-                            </li>
-                          )
-                          if (!locked) return row
-                          return (
-                            <Tooltip key={s.id}>
-                              <TooltipTrigger asChild>{row}</TooltipTrigger>
-                              <TooltipContent
-                                side="top"
-                                align="start"
-                                className="bg-foreground px-2 py-1.5 font-sans text-white [&>svg]:hidden"
-                              >
-                                {LOCKED_TIP}
-                              </TooltipContent>
-                            </Tooltip>
-                          )
-                        })}
-                      </ul>
-                    </section>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
         </CardContent>
       </Card>
 
       {/* Save changes panel ------------------------------------------ */}
       {roleId && dirty && (
-        <Card
-          className={cn('mt-5 border-border bg-warning-soft pt-6 pb-6', reasonMissing && 'border-border')}
-          role="region"
-          aria-label="Save changes"
-        >
+        <Card className={cn('mt-5 border-border bg-warning-soft pt-6 pb-6')} role="region" aria-label="Save changes">
           <CardContent className="px-6 max-tablet:px-4">
             <h3 className={cn('m-0 text-xl font-bold text-warning', reasonMissing && 'text-foreground')}>
               {reasonMissing ? 'Add a reason before saving access.' : 'Save changes'}
@@ -506,10 +401,10 @@ export function RoleAccessPage() {
             )}
             <div className="mt-6 flex justify-end gap-2.5 max-phone:mt-4">
               <Button type="button" variant="outline" className="w-40 max-phone:flex-1" onClick={resetEdits} disabled={saving}>
-                Discard changes
+                Cancel
               </Button>
               <Button type="button" className="w-35 max-phone:flex-1" onClick={() => void save()} disabled={saving}>
-                {saving ? 'Saving…' : 'Save access'}
+                {saving ? 'Saving…' : 'Save changes'}
               </Button>
             </div>
           </CardContent>
@@ -541,12 +436,15 @@ export function RoleAccessPage() {
 
       <p className="mt-4 text-xs text-muted-foreground">Core and Admin screens are locked; only assignable screens can change.</p>
 
+      {/* Create role ------------------------------------------------- */}
+      {createOpen && <CreateRoleDialog groups={groups} onCancel={() => setCreateOpen(false)} onSubmit={createRole} />}
+
+      {/* Delete role ------------------------------------------------- */}
+      {deleteTarget && <DeleteRoleDialog role={deleteTarget} onCancel={() => setDeleteTarget(null)} onSubmit={deleteRole} />}
+
       {/* Preview as user --------------------------------------------- */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className="flex w-130  flex-col gap-3.5 border-0 bg-background p-6 font-sans text-foreground"
-        >
+        <DialogContent showCloseButton={false} className="flex w-130 flex-col gap-3.5 border-0 bg-background p-6 font-sans text-foreground">
           <header className="flex items-center gap-2">
             <DialogTitle className="flex-1 text-xl font-bold text-foreground">Preview as user</DialogTitle>
             <Button

@@ -1,5 +1,6 @@
 import { AdminConsoleService } from './admin-console.service'
 import { SimulationClock } from './simulation-clock'
+import { AuditService } from './audit/audit.service'
 import type { AuditQueryDto } from './dto/audit-query.dto'
 import type { AdminPrincipal } from './guards/admin-console.guard'
 
@@ -8,13 +9,14 @@ import type { AdminPrincipal } from './guards/admin-console.guard'
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
 interface TxMock {
-  role_screen: { deleteMany: jest.Mock; createMany: jest.Mock }
+  role: { create: jest.Mock; delete: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }
+  role_screen: { deleteMany: jest.Mock; createMany: jest.Mock; findMany: jest.Mock }
   audit_log: { create: jest.Mock }
 }
 
 interface DbMock {
   screen: { findMany: jest.Mock; upsert: jest.Mock; findUnique: jest.Mock }
-  role: { findMany: jest.Mock; findUnique: jest.Mock }
+  role: { findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock; create: jest.Mock; delete: jest.Mock }
   role_screen: { findMany: jest.Mock }
   staff: { groupBy: jest.Mock; count: jest.Mock; findFirst: jest.Mock }
   audit_log: { findMany: jest.Mock; findUnique: jest.Mock }
@@ -24,12 +26,13 @@ interface DbMock {
 
 function makeDb(): { db: DbMock; svc: AdminConsoleService; tx: TxMock; clock: SimulationClock } {
   const tx: TxMock = {
-    role_screen: { deleteMany: jest.fn(), createMany: jest.fn() },
-    audit_log: { create: jest.fn().mockResolvedValue({ seq: 42n }) },
+    role: { create: jest.fn(), delete: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn() },
+    role_screen: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
+    audit_log: { create: jest.fn().mockResolvedValue({ id: 'a1', seq: 42n }) },
   }
   const db: DbMock = {
     screen: { findMany: jest.fn(), upsert: jest.fn(), findUnique: jest.fn() },
-    role: { findMany: jest.fn(), findUnique: jest.fn() },
+    role: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), delete: jest.fn() },
     role_screen: { findMany: jest.fn() },
     staff: { groupBy: jest.fn(), count: jest.fn(), findFirst: jest.fn() },
     audit_log: { findMany: jest.fn(), findUnique: jest.fn() },
@@ -39,7 +42,11 @@ function makeDb(): { db: DbMock; svc: AdminConsoleService; tx: TxMock; clock: Si
     $transaction: jest.fn((cb: (t: TxMock) => unknown) => cb(tx)),
   }
   const clock = new SimulationClock()
-  const svc = new AdminConsoleService(db as never, clock)
+  // The real AuditService, over the same mock. It only needs DbService and the clock, and it writes through the
+  // transaction client it is handed — so the audit row still lands on `tx.audit_log.create` and the assertions below
+  // read it from there, exactly as they did when this service built the row itself.
+  const audit = new AuditService(db as never, clock)
+  const svc = new AdminConsoleService(db as never, clock, audit)
   return { db, svc, tx, clock }
 }
 
@@ -575,14 +582,20 @@ describe('AdminConsoleService.replaceRoleScreens (PUT /admin/roles/:id/screens)'
   it('rejects a reason shorter than 10 characters before touching the database', async () => {
     const { db, svc } = makeDb()
 
-    await expect(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-1'], 'too short')).rejects.toThrow(/at least 10 characters/)
+    await expect(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-1'], 'too short')).rejects.toMatchObject({
+      code: 'REASON_REQUIRED',
+      response: { error: { message: expect.stringMatching(/at least 10 characters/) } },
+    })
     expect(db.role.findUnique).not.toHaveBeenCalled()
     expect(db.$transaction).not.toHaveBeenCalled()
   })
 
   it('measures the trimmed reason, so padding with spaces does not get past the minimum', async () => {
     const { db, svc } = makeDb()
-    await expect(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-1'], '   abc    ')).rejects.toThrow(/at least 10 characters/)
+    await expect(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-1'], '   abc    ')).rejects.toMatchObject({
+      code: 'REASON_REQUIRED',
+      response: { error: { message: expect.stringMatching(/at least 10 characters/) } },
+    })
     expect(db.$transaction).not.toHaveBeenCalled()
   })
 
@@ -590,7 +603,7 @@ describe('AdminConsoleService.replaceRoleScreens (PUT /admin/roles/:id/screens)'
     const { db, svc } = makeDb()
     db.role.findUnique.mockResolvedValue(null)
 
-    await expect(svc.replaceRoleScreens(ADMIN, 'r-missing', ['s-1'], REASON)).rejects.toThrow(/not found/)
+    await expect(svc.replaceRoleScreens(ADMIN, 'r-missing', ['s-1'], REASON)).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND' })
     expect(db.$transaction).not.toHaveBeenCalled()
   })
 
@@ -600,7 +613,9 @@ describe('AdminConsoleService.replaceRoleScreens (PUT /admin/roles/:id/screens)'
     // The lookup comes back short: `s-core` is a core screen, so the query filtered it out.
     db.screen.findMany.mockResolvedValue([{ id: 's-assignable' }])
 
-    await expect(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-assignable', 's-core'], REASON)).rejects.toThrow(/assignable/)
+    await expect(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-assignable', 's-core'], REASON)).rejects.toMatchObject({
+      code: 'SCREEN_NOT_ASSIGNABLE',
+    })
     expect(db.$transaction).not.toHaveBeenCalled()
     expect(tx.role_screen.deleteMany).not.toHaveBeenCalled()
   })
@@ -610,7 +625,10 @@ describe('AdminConsoleService.replaceRoleScreens (PUT /admin/roles/:id/screens)'
     prime(db)
     db.screen.findMany.mockResolvedValue([{ id: 's-ok' }])
 
-    await expect(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-ok', 's-bad-1', 's-bad-2'], REASON)).rejects.toThrow(/s-bad-1, s-bad-2/)
+    await expect(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-ok', 's-bad-1', 's-bad-2'], REASON)).rejects.toMatchObject({
+      code: 'SCREEN_NOT_ASSIGNABLE',
+      response: { error: { message: expect.stringContaining('s-bad-1, s-bad-2') } },
+    })
   })
 
   it('revokes everything when screen_ids is empty, and still audits it', async () => {
@@ -724,5 +742,186 @@ describe('AdminConsoleService audit actor names', () => {
     db.audit_log.findMany.mockResolvedValue([row(null, 'system')])
     await svc.listAudit({ limit: 50 })
     expect(db.user.findMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('AdminConsoleService.createRole (POST /admin/roles)', () => {
+  const REASON = 'The Q4 finance team needs its own access profile'
+
+  /**
+   * Stubs the lookups every case needs before the insert: no role holds this name, the derived code is free, and every
+   * requested screen exists, is active and is `assignable`.
+   */
+  function prime(db: DbMock, tx: TxMock, name = 'Finance Staff'): void {
+    tx.role.findFirst.mockResolvedValue(null)
+    tx.role.findUnique.mockResolvedValue(null)
+    tx.role.create.mockResolvedValue({ id: 'r-new', code: 'finance_staff', name, is_admin: false })
+    db.screen.findMany.mockImplementation((args: { where: { id: { in: string[] } } }) =>
+      Promise.resolve(args.where.id.in.map((id) => ({ id }))),
+    )
+  }
+
+  it('writes the role, its grants and one audit row inside a single transaction', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+
+    const created = await svc.createRole(ADMIN, { name: 'Finance Staff', reason: REASON, screen_ids: ['s-1', 's-2'] })
+
+    expect(db.$transaction).toHaveBeenCalledTimes(1)
+    expect(tx.role.create).toHaveBeenCalledWith({
+      data: { code: 'finance_staff', name: 'Finance Staff', is_admin: false },
+      select: expect.any(Object),
+    })
+    expect(tx.role_screen.createMany).toHaveBeenCalledWith({
+      data: [
+        { role_id: 'r-new', screen_id: 's-1', screen_kind: 'assignable' },
+        { role_id: 'r-new', screen_id: 's-2', screen_kind: 'assignable' },
+      ],
+      skipDuplicates: true,
+    })
+    expect(tx.audit_log.create).toHaveBeenCalledTimes(1)
+    expect(created).toEqual({ id: 'r-new', code: 'finance_staff', name: 'Finance Staff', is_admin: false, staff_count: 0 })
+  })
+
+  it('derives the machine-readable code from the name the admin typed', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx, 'Revenue Analyst')
+    tx.role.create.mockResolvedValue({ id: 'r-new', code: 'revenue_analyst', name: 'Revenue Analyst', is_admin: false })
+
+    await svc.createRole(ADMIN, { name: 'Revenue Analyst', reason: REASON })
+
+    expect(tx.role.create.mock.calls[0][0].data.code).toBe('revenue_analyst')
+  })
+
+  it('never makes the new role an admin role', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+
+    await svc.createRole(ADMIN, { name: 'Finance Staff', reason: REASON })
+
+    expect(tx.role.create.mock.calls[0][0].data.is_admin).toBe(false)
+  })
+
+  it('records the actor from the token, not from anything the caller sent', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+
+    await svc.createRole(ADMIN, { name: 'Finance Staff', reason: REASON })
+
+    const row = tx.audit_log.create.mock.calls[0][0].data
+    expect(row.actor_id).toBe('user-1')
+    expect(row.actor_type).toBe('staff')
+    expect(row.actor_role).toBe('admin')
+    expect(row.action).toBe('create')
+    expect(row.source_feature).toBe('15')
+    expect(row.entity_type).toBe('role')
+    expect(row.entity_id).toBe('r-new')
+    expect(row.reason).toBe(REASON)
+    expect(row).not.toHaveProperty('recorded_at')
+  })
+
+  it('refuses a name that is already taken, case-insensitively, and writes nothing', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    tx.role.findFirst.mockResolvedValue({ id: 'r-other' })
+
+    await expect(svc.createRole(ADMIN, { name: 'finance staff', reason: REASON })).rejects.toMatchObject({
+      code: 'ROLE_NAME_TAKEN',
+    })
+    expect(tx.role.create).not.toHaveBeenCalled()
+    expect(tx.audit_log.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects ids that are not active assignable screens and names them', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    db.screen.findMany.mockResolvedValue([{ id: 's-ok' }])
+
+    await expect(svc.createRole(ADMIN, { name: 'Finance Staff', reason: REASON, screen_ids: ['s-ok', 's-core'] })).rejects.toMatchObject({
+      code: 'SCREEN_NOT_ASSIGNABLE',
+      response: { error: { message: expect.stringContaining('s-core') } },
+    })
+    expect(tx.role.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects a reason shorter than 10 characters before touching the database', async () => {
+    const { db, svc } = makeDb()
+
+    await expect(svc.createRole(ADMIN, { name: 'Finance Staff', reason: 'too short' })).rejects.toMatchObject({
+      code: 'REASON_REQUIRED',
+    })
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('creates a role with no screens when none are asked for', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+
+    await svc.createRole(ADMIN, { name: 'Finance Staff', reason: REASON })
+
+    expect(tx.role_screen.createMany).not.toHaveBeenCalled()
+    expect(db.screen.findMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('AdminConsoleService.deleteRole (DELETE /admin/roles/:id)', () => {
+  const REASON = 'The finance team was merged into the revenue team'
+
+  function prime(db: DbMock, tx: TxMock, role = { id: 'r-1', code: 'finance_staff', name: 'Finance Staff', is_admin: false }) {
+    db.role.findUnique.mockResolvedValue(role)
+    db.staff.count.mockResolvedValue(0)
+    tx.role_screen.findMany.mockResolvedValue([{ screen_id: 's-1' }])
+  }
+
+  it('removes the grants and the role, and writes one audit row, in a single transaction', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+
+    await svc.deleteRole(ADMIN, 'r-1', REASON)
+
+    expect(db.$transaction).toHaveBeenCalledTimes(1)
+    expect(tx.role_screen.deleteMany).toHaveBeenCalledWith({ where: { role_id: 'r-1' } })
+    expect(tx.role.delete).toHaveBeenCalledWith({ where: { id: 'r-1' } })
+    expect(tx.audit_log.create).toHaveBeenCalledTimes(1)
+    const row = tx.audit_log.create.mock.calls[0][0].data
+    expect(row.action).toBe('delete')
+    expect(row.entity_type).toBe('role')
+    expect(row.entity_id).toBe('r-1')
+    expect(row.reason).toBe(REASON)
+    expect(row.before).toEqual({ name: 'Finance Staff', code: 'finance_staff', screen_ids: ['s-1'] })
+  })
+
+  it('refuses to delete an admin role', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx, { id: 'r-admin', code: 'admin', name: 'Admin', is_admin: true })
+
+    await expect(svc.deleteRole(ADMIN, 'r-admin', REASON)).rejects.toMatchObject({ code: 'ROLE_NOT_DELETABLE' })
+    expect(db.$transaction).not.toHaveBeenCalled()
+    expect(tx.role.delete).not.toHaveBeenCalled()
+  })
+
+  it('refuses to delete a role that staff still hold', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    db.staff.count.mockResolvedValue(2)
+
+    await expect(svc.deleteRole(ADMIN, 'r-1', REASON)).rejects.toMatchObject({ code: 'ROLE_IN_USE' })
+    expect(db.$transaction).not.toHaveBeenCalled()
+    expect(tx.role.delete).not.toHaveBeenCalled()
+  })
+
+  it('404s when the role does not exist', async () => {
+    const { db, svc } = makeDb()
+    db.role.findUnique.mockResolvedValue(null)
+
+    await expect(svc.deleteRole(ADMIN, 'r-missing', REASON)).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND' })
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects a reason shorter than 10 characters before touching the database', async () => {
+    const { db, svc } = makeDb()
+
+    await expect(svc.deleteRole(ADMIN, 'r-1', 'too short')).rejects.toMatchObject({ code: 'REASON_REQUIRED' })
+    expect(db.$transaction).not.toHaveBeenCalled()
   })
 })

@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
+  HttpStatus,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -13,15 +15,32 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common'
+import type { ValidationError } from '@nestjs/common'
 import { AdminConsoleService } from './admin-console.service'
 import { AdminConsoleGuard } from './guards/admin-console.guard'
-import { Admin } from './decorators/admin.decorator'
 import type { AdminPrincipal } from './guards/admin-console.guard'
+import { Admin } from './decorators/admin.decorator'
 import { RegisterScreenDto } from './dto/register-screen.dto'
 import { ReplaceRoleScreensDto } from './dto/replace-role-screens.dto'
+import { CreateRoleDto } from './dto/create-role.dto'
+import { DeleteRoleDto } from './dto/delete-role.dto'
+import { RoleError, roleNotFound } from './dto/role-error'
 import { AuditQueryDto } from './dto/audit-query.dto'
-import type { AuditEntryDto, ReplaceRoleScreensResult } from './dto/admin-console.types'
+import type { AuditEntryDto, ReplaceRoleScreensResult, RoleSummary } from './dto/admin-console.types'
 import type { ScreenKind } from './dto/register-screen.dto'
+
+/**
+ * Turns class-validator failures into the `{ error: { code, message } }` shape the Role access screen reads. A missing
+ * or too-short `reason` is reported as `REASON_REQUIRED` so the UI can show it under the Reason field; everything else
+ * is a plain validation failure.
+ */
+function toRoleValidationError(errors: ValidationError[]): RoleError {
+  if (errors.some((e) => e.property === 'reason')) {
+    return new RoleError(HttpStatus.BAD_REQUEST, 'REASON_REQUIRED', 'A reason is required.')
+  }
+  const fields = Object.fromEntries(errors.map((e) => [e.property, Object.values(e.constraints ?? {})]))
+  return new RoleError(HttpStatus.BAD_REQUEST, 'VALIDATION_FAILED', 'Some fields are missing or invalid.', { fields })
+}
 
 /**
  * `/api/admin` — all admin-console endpoints. The class-level guards and pipes cover every route uniformly; there is
@@ -35,6 +54,7 @@ import type { ScreenKind } from './dto/register-screen.dto'
     whitelist: true,
     forbidNonWhitelisted: true,
     transform: true,
+    exceptionFactory: toRoleValidationError,
   }),
 )
 export class AdminConsoleController {
@@ -66,11 +86,35 @@ export class AdminConsoleController {
     return this.svc.listRoles().then((roles) => ({ roles }))
   }
 
+  /**
+   * Create a role. The admin gives it a name; the service derives the machine-readable code and writes the audit row in
+   * the same transaction as the role and its first grants.
+   */
+  @Post('roles')
+  @HttpCode(201)
+  createRole(@Admin() admin: AdminPrincipal, @Body() dto: CreateRoleDto): Promise<RoleSummary> {
+    return this.svc.createRole(admin, dto)
+  }
+
+  /**
+   * Delete a role that nobody holds. Admin roles and roles with staff are refused with a 409 and an error code the
+   * page can show.
+   */
+  @Delete('roles/:id')
+  @HttpCode(204)
+  async deleteRole(
+    @Admin() admin: AdminPrincipal,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: roleNotFound })) id: string,
+    @Body() dto: DeleteRoleDto,
+  ): Promise<void> {
+    await this.svc.deleteRole(admin, id, dto.reason)
+  }
+
   /** Granted `assignable` screen ids for one role. 404 if the role does not exist. */
   @Get('roles/:id/screens')
-  async getRoleScreens(@Param('id', new ParseUUIDPipe()) id: string): Promise<{ screen_ids: string[] } | null> {
+  async getRoleScreens(@Param('id', new ParseUUIDPipe({ exceptionFactory: roleNotFound })) id: string): Promise<{ screen_ids: string[] }> {
     const result = await this.svc.getRoleScreens(id)
-    if (!result) return null
+    if (!result) throw roleNotFound()
     return { screen_ids: result.screen_ids }
   }
 
@@ -84,7 +128,7 @@ export class AdminConsoleController {
   @HttpCode(200)
   replaceRoleScreens(
     @Admin() admin: AdminPrincipal,
-    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: roleNotFound })) id: string,
     @Body() dto: ReplaceRoleScreensDto,
   ): Promise<ReplaceRoleScreensResult> {
     return this.svc.replaceRoleScreens(admin, id, dto.screen_ids, dto.reason)

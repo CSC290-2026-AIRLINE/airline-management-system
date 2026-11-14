@@ -1,13 +1,26 @@
 import { useEffect, useState } from 'react'
+import { RoleApiError } from '../api/roles'
 import type { RoleSummary, RoleScreensResponse, ScreenGroup } from '../types'
 
 interface UseRoleAccessState {
   loading: boolean
   error: string | null
+  /** The HTTP status of the failure, when there was one — the page tells 403 (no permission) from a broken setup. */
+  status: number | undefined
   screens: ScreenGroup[]
   roles: RoleSummary[]
   /** screen_ids saved for the currently-selected role */
   granted: Set<string>
+}
+
+/**
+ * The HTTP status of a failed request, whichever shape the error has: the Role access client throws a `RoleApiError`
+ * that carries the status, while the shared screen client flattens the body into the message.
+ */
+function statusOf(e: unknown): number | undefined {
+  if (e instanceof RoleApiError) return e.status
+  const m = /^\s*(\d{3})\b/.exec(e instanceof Error ? e.message : '')
+  return m ? Number(m[1]) : undefined
 }
 
 /**
@@ -27,6 +40,7 @@ export function useRoleAccess(
   const [state, setState] = useState<UseRoleAccessState>({
     loading: true,
     error: null,
+    status: undefined,
     screens: [],
     roles: [],
     granted: new Set(),
@@ -45,7 +59,12 @@ export function useRoleAccess(
         setState((prev) => ({ ...prev, loading: false, error: null, screens: s.groups, roles: r.roles }))
       } catch (e: unknown) {
         if (cancelled) return
-        setState((prev) => ({ ...prev, loading: false, error: e instanceof Error ? e.message : String(e) }))
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: e instanceof Error ? e.message : String(e),
+          status: statusOf(e),
+        }))
       }
     })()
     return () => {
@@ -79,7 +98,11 @@ export function useRoleAccess(
         setState((prev) => ({ ...prev, granted: new Set(r.screen_ids) }))
       } catch (e: unknown) {
         if (cancelled) return
-        setState((prev) => ({ ...prev, error: e instanceof Error ? e.message : String(e) }))
+        setState((prev) => ({
+          ...prev,
+          error: e instanceof Error ? e.message : String(e),
+          status: statusOf(e),
+        }))
       }
     })()
     return () => {
@@ -103,9 +126,19 @@ export function useRoleAccess(
 
   /** Refetch the registry and the selected role's grants, showing the loading state again. */
   function reload(): void {
-    setState((prev) => ({ ...prev, loading: true, error: null }))
+    setState((prev) => ({ ...prev, loading: true, error: null, status: undefined }))
     setReloadKey((k) => k + 1)
   }
 
-  return { ...state, setGranted, reload }
+  /**
+   * Refetch **only** the roles. A newly created role should appear in the list without the whole page flashing its
+   * skeleton, so this deliberately does not touch `loading`. It throws on failure — the caller decides whether that is
+   * worth showing the page-level error card for.
+   */
+  async function reloadRoles(): Promise<void> {
+    const r = await listRoles()
+    setState((prev) => ({ ...prev, roles: r.roles }))
+  }
+
+  return { ...state, setGranted, reload, reloadRoles }
 }

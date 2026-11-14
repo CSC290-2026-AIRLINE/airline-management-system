@@ -1,5 +1,13 @@
-import { Outlet, useRouterState } from '@tanstack/react-router'
+import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Tabs, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 import { AppShell } from './AppShell'
+
+/** Three tabs in display order. `current` is read from the URL so a deep link lands on the right tab. */
+const TABS = [
+  { to: '/admin/staff', label: 'Staff & roles' },
+  { to: '/admin/roles', label: 'Role access' },
+  { to: '/admin/audit-log', label: 'Audit log' },
+] as const
 
 /** The line under "ADMINISTRATION". The audit log has its own; the phone frames use a shorter one for the other tabs. */
 function pageDescription(pathname: string): { desktop: string; phone: string } {
@@ -14,21 +22,25 @@ function pageDescription(pathname: string): { desktop: string; phone: string } {
 }
 
 /**
- * Sidebar + main area, following the F15 Figma frames. The three admin screens (Staff & roles, Role access, Audit log) are
- * separate routes reached from the sidebar's Administration group, so the body comes from `<Outlet/>`.
+ * Sidebar + main area + tab bar, following the F15 Figma frames. The three tabs are separate routes, so the body comes
+ * from `<Outlet/>`.
  *
  * The sidebar is the shadcn `Sidebar`: on desktop it collapses to an icon rail; below 768px it becomes a sheet opened
  * from the top bar's trigger.
  *
- * A page that shows the access-denied card marks it with `data-access-denied`; the header is then hidden,
+ * A page that shows the access-denied card marks it with `data-access-denied`; the header and the tabs are then hidden,
  * so the card stands on its own as in the "Access denied (FORBIDDEN)" frame.
  */
 export function AdminShell() {
   const { location } = useRouterState()
+  const navigate = useNavigate()
   const description = pageDescription(location.pathname)
+  const activeTab = TABS.find((t) => location.pathname === t.to || location.pathname.startsWith(t.to + '/'))?.to ?? ''
 
   return (
     <AppShell>
+      {/* The page sits against the sidebar's edge, as it always has. The block is `max-w-6xl`, so on a wide screen the
+          right-hand side stays empty rather than the content drifting into the middle of the window. */}
       <div className="flex w-full max-w-6xl flex-1 flex-col gap-4 px-6 pt-6 pb-10 min-[1100px]:px-[63px]">
         <div className="flex flex-col gap-4 [.admin-shell:has([data-access-denied])_&]:hidden">
           <div className="flex flex-col gap-2">
@@ -38,6 +50,22 @@ export function AdminShell() {
               <span className="hidden max-md:inline">{description.phone}</span>
             </p>
           </div>
+
+          {/* The three admin screens as tabs. The sidebar carries the same three links, so a tab is a shortcut, not the
+              only way in — and on a phone, where the sidebar collapses into a sheet, the tabs are the way in. */}
+          <Tabs
+            value={activeTab}
+            onValueChange={(to) => void navigate({ to })}
+            className="[.admin-shell:has([data-staff-sheet])_&]:max-phone:hidden"
+          >
+            <TabsList aria-label="Admin tabs" className="w-full">
+              {TABS.map((t) => (
+                <TabsTrigger key={t.to} value={t.to} asChild className="min-w-0 truncate">
+                  <Link to={t.to}>{t.label}</Link>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
         </div>
 
         <div className="flex flex-1 flex-col">

@@ -31,6 +31,21 @@ export interface RoleScreensResponse {
   screen_ids: string[]
 }
 
+/**
+ * The codes the Role access routes answer with. The page switches on the code to decide where the message goes — under
+ * the name field, under the reason field, or in the dialog-level error box — so the code is the contract, not the text.
+ * Mirrors `apps/backend/src/modules/admin-console/dto/role-error.ts`.
+ */
+export type RoleErrorCode =
+  | 'VALIDATION_FAILED'
+  | 'REASON_REQUIRED'
+  | 'ROLE_NOT_FOUND'
+  | 'ROLE_NAME_TAKEN'
+  | 'ROLE_CODE_TAKEN'
+  | 'ROLE_IN_USE'
+  | 'ROLE_NOT_DELETABLE'
+  | 'SCREEN_NOT_ASSIGNABLE'
+
 export interface AuditEntry {
   seq: string
   id: string
