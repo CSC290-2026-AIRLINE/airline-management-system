@@ -153,6 +153,11 @@ export class CargoDeskService {
       orderBy: { notified_at: 'asc' },
     })
 
+    const claim = await this.db.cargo_claim.findUnique({
+      where: { cargo_booking_id: id },
+      select: { id: true, claim_ref: true },
+    })
+
     const currentStatus = events.length > 0 ? events[events.length - 1].status_after : null
 
     const acceptedEvent = events.find((e) => e.event_type === 'accepted')
@@ -249,6 +254,7 @@ export class CargoDeskService {
         notifiedAt: n.notified_at,
         readAt: n.read_at,
       })),
+      claim: claim ? { id: claim.id, claimRef: claim.claim_ref } : null,
     }
   }
 

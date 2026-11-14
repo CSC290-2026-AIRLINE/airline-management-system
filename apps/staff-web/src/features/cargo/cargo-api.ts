@@ -107,6 +107,7 @@ export interface BookingDetail {
   consignee: { name: string; address: string; phone: string | null }
   timeline: TimelineEvent[]
   notices: BookingNotice[]
+  claim: { id: string; claimRef: string } | null
 }
 
 export interface TimelineEvent {

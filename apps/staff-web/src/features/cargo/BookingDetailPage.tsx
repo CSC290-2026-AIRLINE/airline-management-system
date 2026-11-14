@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Ban, Bell, CheckCircle, Clock, Loader2, PackageCheck, Plane, Scale } from 'lucide-react'
+import { ArrowLeft, Ban, Bell, CheckCircle, Clock, Loader2, PackageCheck, Plane, Scale, ShieldAlert } from 'lucide-react'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
@@ -136,7 +136,30 @@ export function BookingDetailPage() {
         onDone={reload}
       />
 
-      {import.meta.env.DEV && <TestToolsCard bookingId={header.id} status={header.currentStatus} onDone={reload} />}
+      {import.meta.env.DEV && (
+        <TestToolsCard bookingId={header.id} status={header.currentStatus} hasClaim={!!detail.claim} onDone={reload} />
+      )}
+
+      {detail.claim && (
+        <Card className="border-emerald-200 dark:border-emerald-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">
+              <ShieldAlert className="mr-1 inline size-3.5" />
+              Claim
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Link
+              to="/cargo/claims/$id"
+              params={{ id: detail.claim.id }}
+              search={{ status: 'all' }}
+              className="text-sm font-medium underline underline-offset-2"
+            >
+              {detail.claim.claimRef}
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cards grid */}
       <div className="grid gap-4 md:grid-cols-2">
@@ -319,10 +342,21 @@ function BackLink() {
   )
 }
 
-function TestToolsCard({ bookingId, status, onDone }: { bookingId: string; status: string; onDone: () => void }) {
+function TestToolsCard({
+  bookingId,
+  status,
+  hasClaim,
+  onDone,
+}: {
+  bookingId: string
+  status: string
+  hasClaim: boolean
+  onDone: () => void
+}) {
   const api = useCargoApi()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [claimLink, setClaimLink] = useState<{ id: string; ref: string } | null>(null)
 
   const run = async (action: () => Promise<string>) => {
     setBusy(true)
@@ -339,8 +373,9 @@ function TestToolsCard({ bookingId, status, onDone }: { bookingId: string; statu
 
   const canDepart = ['accepted', 'loaded'].includes(status)
   const canArrive = status === 'in_transit'
+  const canClaim = status === 'delivered' && !hasClaim && !claimLink
 
-  if (!canDepart && !canArrive) return null
+  if (!canDepart && !canArrive && !canClaim) return null
 
   return (
     <Card className="border-dashed border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-950/20">
@@ -380,6 +415,36 @@ function TestToolsCard({ bookingId, status, onDone }: { bookingId: string; statu
             {busy ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Plane className="mr-1 size-3" />}
             Simulate arrival
           </Button>
+        )}
+        {canClaim && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                const r = await api.fileTestClaim(bookingId)
+                if (r.claimRef && r.claimId) {
+                  setClaimLink({ id: r.claimId, ref: r.claimRef })
+                  return `Claim filed: ${r.claimRef}`
+                }
+                return r.error?.message ?? 'Claim not allowed'
+              })
+            }
+          >
+            {busy ? <Loader2 className="mr-1 size-3 animate-spin" /> : <ShieldAlert className="mr-1 size-3" />}
+            File test claim
+          </Button>
+        )}
+        {claimLink && (
+          <Link
+            to="/cargo/claims/$id"
+            params={{ id: claimLink.id }}
+            search={{ status: 'all' }}
+            className="text-xs font-medium underline underline-offset-2"
+          >
+            View {claimLink.ref}
+          </Link>
         )}
         {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
       </CardContent>
