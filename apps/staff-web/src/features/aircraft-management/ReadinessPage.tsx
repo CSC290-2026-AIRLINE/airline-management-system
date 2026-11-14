@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { listAircraft } from './api/aircraft'
 import { errorMessage } from './api/http'
-import { getFleetReserve, getLatestTurnaround, updateTurnaroundTask } from './api/readiness'
+import { getFleetReserve, getLatestTurnaround, updateReserveRatio, updateTurnaroundTask } from './api/readiness'
 import { FeatureErrorBoundary } from './components/FeatureErrorBoundary'
 import { StaffShell } from './components/StaffShell'
 import { EmptyMessage, ErrorMessage, LoadingMessage } from './components/StateMessage'
@@ -77,6 +77,12 @@ export function ReadinessPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
+  const [isRatioModalOpen, setIsRatioModalOpen] = useState(false)
+  const [ratioInput, setRatioInput] = useState('')
+  const [ratioError, setRatioError] = useState<string | null>(null)
+  const [isSavingRatio, setIsSavingRatio] = useState(false)
+  const [reserveReloadToken, setReserveReloadToken] = useState(0)
+
   useEffect(() => {
     if (!ready) {
       return
@@ -106,7 +112,7 @@ export function ReadinessPage() {
     return () => {
       cancelled = true
     }
-  }, [ready, fetcher, selectedDate, aircraftNeeded])
+  }, [ready, fetcher, selectedDate, aircraftNeeded, reserveReloadToken])
 
   useEffect(() => {
     if (!ready) {
@@ -171,6 +177,26 @@ export function ReadinessPage() {
     }
   }
 
+  const handleSaveReserveRatio = async (event: FormEvent) => {
+    event.preventDefault()
+    const num = parseFloat(ratioInput)
+    if (Number.isNaN(num) || num < 1) {
+      setRatioError('Reserve ratio must be a number greater than or equal to 1.0')
+      return
+    }
+    setIsSavingRatio(true)
+    setRatioError(null)
+    try {
+      await updateReserveRatio(fetcher.current, num)
+      setIsRatioModalOpen(false)
+      setReserveReloadToken((t) => t + 1)
+    } catch (err) {
+      setRatioError(errorMessage(err, 'Failed to update reserve ratio'))
+    } finally {
+      setIsSavingRatio(false)
+    }
+  }
+
   const reserveMessage = useMemo(() => {
     if (!reserve) {
       return ''
@@ -215,7 +241,21 @@ export function ReadinessPage() {
               <>
                 <div className="f9-readiness__metrics">
                   <div className="f9-readiness__tile">
-                    <div className="f9-metric__label">RESERVE RATIO</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span className="f9-metric__label">RESERVE RATIO</span>
+                      <button
+                        type="button"
+                        className="f9-btn f9-btn--outline"
+                        style={{ padding: '2px 8px', fontSize: '11px', height: '22px' }}
+                        onClick={() => {
+                          setRatioInput(String(reserve.reserve_ratio))
+                          setRatioError(null)
+                          setIsRatioModalOpen(true)
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </div>
                     <div className="f9-metric__value">{formatRatio(reserve.reserve_ratio)}</div>
                   </div>
                   <div className="f9-readiness__tile">
@@ -306,6 +346,49 @@ export function ReadinessPage() {
             )}
           </div>
         </div>
+
+        {isRatioModalOpen && (
+          <div className="f9-modal" role="dialog" aria-modal="true" aria-label="Edit reserve ratio">
+            <div className="f9-modal__card">
+              <h3 className="f9-modal__title">Edit reserve ratio</h3>
+              {ratioError && <ErrorMessage message={ratioError} />}
+              <form onSubmit={(event) => void handleSaveReserveRatio(event)}>
+                <div className="f9-modal__field">
+                  <label className="f9-field" htmlFor="reserve-ratio-input">
+                    <span className="f9-field__label">Reserve ratio</span>
+                    <input
+                      id="reserve-ratio-input"
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      className="f9-input"
+                      value={ratioInput}
+                      onChange={(event) => setRatioInput(event.target.value)}
+                      required
+                      autoFocus
+                    />
+                  </label>
+                </div>
+                <p className="f9-modal__hint">Multiplier applied to required aircraft (must be ≥ 1.0, e.g. 1.25 for 25% buffer).</p>
+                <div className="f9-modal__actions">
+                  <button
+                    type="button"
+                    className="f9-btn f9-btn--outline"
+                    onClick={() => {
+                      setIsRatioModalOpen(false)
+                      setRatioError(null)
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="f9-btn" disabled={isSavingRatio}>
+                    {isSavingRatio ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </StaffShell>
     </FeatureErrorBoundary>
   )
