@@ -13,9 +13,6 @@ import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/pas
 import { WatchlistModule } from './modules/watchlist/watchlist.module'
 
 @Module({
-<<<<<<< HEAD
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), DbModule, AuthModule, AdminConsoleModule, CargoModule],
-=======
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     DbModule,
@@ -25,8 +22,8 @@ import { WatchlistModule } from './modules/watchlist/watchlist.module'
     PassengerProfilesModule,
     ScreeningModule,
     WatchlistModule,
+    CargoModule,
   ],
->>>>>>> 1bcd268f43ac48da87a7aa74b9d774ba2b769605
   controllers: [AppController],
   providers: [AppService],
 })
