@@ -36,16 +36,25 @@ function canFollow(candidate: ScheduledFlight, from: FlightLeg): boolean {
   return candidate.origin === from.destination && minutesBetween(from.arrivalAt, candidate.departureAt) >= MIN_CONNECTION_MINUTES
 }
 
-/** Groups legs into duty days. A new day starts when the local date changes. */
-function splitIntoDutyDays(legs: readonly FlightLeg[]): FlightLeg[][] {
+/**
+ * Groups legs into duties, the way the backend does when it decides what may be committed: consecutive legs
+ * form one duty unless the rest between them reaches the minimum rest (from release after the last landing
+ * to report before the next departure). The local calendar date plays no part, so two flights on the same day
+ * with a long rest between them are two duties, and a late landing followed by an early departure is one.
+ */
+function splitIntoDutyDays(legs: readonly FlightLeg[], limits: PairingLimits): FlightLeg[][] {
   const days: FlightLeg[][] = []
   for (const leg of legs) {
     const current = days.at(-1)
-    if (current && localDateKey(current[0].departureAt) === localDateKey(leg.departureAt)) {
-      current.push(leg)
-    } else {
-      days.push([leg])
-    }
+    const previous = current?.at(-1)
+    const rested =
+      previous !== undefined &&
+      new Date(leg.departureAt).getTime() -
+        limits.reportMinutes * 60_000 -
+        (new Date(previous.arrivalAt).getTime() + limits.releaseMinutes * 60_000) >=
+        limits.minRestHours * 3_600_000
+    if (current && !rested) current.push(leg)
+    else days.push([leg])
   }
   return days
 }
@@ -126,7 +135,7 @@ export function validatePairing(pairing: Pairing): PairingEvaluation {
   const { legs, base } = pairing
   const limits = pairing.limits ?? DEFAULT_LIMITS
   const route = routeOf(legs)
-  const days = splitIntoDutyDays(legs)
+  const days = splitIntoDutyDays(legs, limits)
   const dayCount = spanDays(legs)
   const layovers = findLayovers(legs)
   const dayDuties = days.map((day) => dutyMinutesForDay(day, limits))
@@ -251,15 +260,16 @@ export function findAddLegCandidates(flights: readonly ScheduledFlight[], pairin
     })
 }
 
-/** One-step repair for an Invalid pairing: the legs it would have afterwards, which pass every check. */
+/** One way to make an Invalid pairing Valid: the legs it would have afterwards, which pass every check. */
 export interface PairingFix {
   id: string
+  kind: 'reorder' | 'add' | 'prepend' | 'remove'
   title: string
   detail: string
   legs: FlightLeg[]
 }
 
-const MAX_FIXES = 3
+const MAX_FIXES = 5
 
 function toLeg(flight: ScheduledFlight): FlightLeg {
   return {
@@ -273,40 +283,155 @@ function toLeg(flight: ScheduledFlight): FlightLeg {
   }
 }
 
+function describe(flight: { flightNumber: string; origin: string; destination: string }): string {
+  return `${flight.flightNumber} ${flight.origin} → ${flight.destination}`
+}
+
+function when(flight: { departureAt: string; arrivalAt: string }): string {
+  return `${formatDay(flight.departureAt)} · ${formatTime(flight.departureAt)}–${formatTime(flight.arrivalAt)}`
+}
+
+/** Flights that could go in front of the pairing: they land where it starts, with time for the crew to connect. */
+function findPrependCandidates(flights: readonly ScheduledFlight[], pairing: Pairing): ScheduledFlight[] {
+  const firstLeg = pairing.legs[0]
+  if (!firstLeg) return []
+  const inThisPairing = new Set(pairing.legs.map((leg) => leg.flightId))
+  return flights
+    .filter((flight) => !inThisPairing.has(flight.id) && (flight.pairingId == null || flight.pairingId === pairing.id))
+    .filter(
+      (flight) =>
+        flight.destination === firstLeg.origin && minutesBetween(flight.arrivalAt, firstLeg.departureAt) >= MIN_CONNECTION_MINUTES,
+    )
+    .sort(byDeparture)
+}
+
 /**
- * Ways to make an Invalid pairing Valid in one step: add a flight that brings it back to base,
- * or drop one leg. Every option is run through `validatePairing`, so each one offered really
- * passes. An empty list means there is no one-step fix and the operator has to edit by hand.
+ * Ways to make an Invalid pairing Valid, worked out from the flights the schedule really has (the list the API
+ * sent for this window), never from made-up ones. Every option is run through `validatePairing`, so each one
+ * offered really passes. It tries, in this order of preference:
+ *  · putting the flights in departure order;
+ *  · adding one flight at the end, or two when the first only gets part of the way back to base;
+ *  · adding one flight at the start, for a pairing that begins away from base;
+ *  · taking out a block of flights, which go back to the unpaired list. This is the way out of a duty that
+ *    runs too long, too many flights in a duty, or a pairing over its length limit.
+ * An empty list means no change to this pairing alone fixes it; `explainNoFix` says why.
  */
 export function suggestFixes(pairing: Pairing, flights: readonly ScheduledFlight[]): PairingFix[] {
   if (pairing.legs.length === 0 || validatePairing(pairing).status === 'passed') return []
-  const fixes: PairingFix[] = []
+  const base = pairing.legs
+  const passes = (legs: FlightLeg[]) => legs.length > 0 && validatePairing({ ...pairing, legs }).status === 'passed'
+  const found = new Map<string, PairingFix>()
+  const offer = (fix: PairingFix) => {
+    const key = fix.legs.map((leg) => leg.flightId).join()
+    if (!found.has(key)) found.set(key, fix)
+  }
 
-  for (const candidate of findAddLegCandidates(flights, pairing, pairing.base)) {
-    if (!candidate.returnsToBase) continue
-    const legs = [...pairing.legs, toLeg(candidate.flight)]
-    if (validatePairing({ ...pairing, legs }).status !== 'passed') continue
-    const { flight } = candidate
-    fixes.push({
-      id: `add-${flight.id}`,
-      title: `Add ${flight.flightNumber} ${flight.origin} → ${flight.destination}`,
-      detail: `${formatDay(flight.departureAt)} · ${formatTime(flight.departureAt)}–${formatTime(flight.arrivalAt)} · brings it back to ${pairing.base}`,
+  const ordered = [...base].sort((a, b) => a.departureAt.localeCompare(b.departureAt))
+  if (ordered.some((leg, index) => leg !== base[index]) && passes(ordered)) {
+    offer({
+      id: 'reorder',
+      kind: 'reorder',
+      title: 'Put the flights in departure order',
+      detail: 'Same flights, in the order they fly. The pairing is Valid afterwards.',
+      legs: ordered,
+    })
+  }
+
+  for (const first of findAddLegCandidates(flights, pairing, pairing.base)) {
+    const one = [...base, toLeg(first.flight)]
+    if (passes(one)) {
+      offer({
+        id: `add-${first.flight.id}`,
+        kind: 'add',
+        title: `Add ${describe(first.flight)}`,
+        detail: `${when(first.flight)} · ${first.returnsToBase ? `brings it back to ${pairing.base}` : 'makes it Valid'}`,
+        legs: one,
+      })
+      continue
+    }
+    if (first.returnsToBase) continue
+    for (const second of findAddLegCandidates(flights, { ...pairing, legs: one }, pairing.base)) {
+      if (!second.returnsToBase) continue
+      const two = [...one, toLeg(second.flight)]
+      if (!passes(two)) continue
+      offer({
+        id: `add-${first.flight.id}-${second.flight.id}`,
+        kind: 'add',
+        title: `Add ${first.flight.flightNumber}, then ${second.flight.flightNumber}`,
+        detail: `${describe(first.flight)} (${when(first.flight)}), then ${describe(second.flight)} (${when(second.flight)}) · back at ${pairing.base}`,
+        legs: two,
+      })
+    }
+  }
+
+  for (const flight of findPrependCandidates(flights, pairing)) {
+    const legs = [toLeg(flight), ...base]
+    if (!passes(legs)) continue
+    offer({
+      id: `prepend-${flight.id}`,
+      kind: 'prepend',
+      title: `Start with ${describe(flight)}`,
+      detail: `${when(flight)} · so the pairing begins at ${pairing.base}`,
       legs,
     })
   }
 
-  if (pairing.legs.length > 1) {
-    pairing.legs.forEach((leg, index) => {
-      const legs = pairing.legs.filter((_, position) => position !== index)
-      if (validatePairing({ ...pairing, legs }).status !== 'passed') return
-      fixes.push({
-        id: `remove-${leg.flightId}`,
-        title: `Remove ${leg.flightNumber} ${leg.origin} → ${leg.destination}`,
-        detail: `The other ${legs.length === 1 ? 'flight is' : 'flights are'} left as a valid pairing; ${leg.flightNumber} goes back to the unpaired list`,
-        legs,
+  // Removing a block of flights: every run of consecutive legs, as long as at least one is left.
+  for (let from = 0; from < base.length; from += 1) {
+    for (let to = from; to < base.length; to += 1) {
+      const kept = [...base.slice(0, from), ...base.slice(to + 1)]
+      if (!passes(kept)) continue
+      const dropped = base.slice(from, to + 1)
+      offer({
+        id: `remove-${dropped.map((leg) => leg.flightId).join('-')}`,
+        kind: 'remove',
+        title: dropped.length === 1 ? `Remove ${describe(dropped[0])}` : `Remove ${dropped.map((leg) => leg.flightNumber).join(', ')}`,
+        detail: `${kept.map((leg) => leg.flightNumber).join(', ')} stay${kept.length === 1 ? 's' : ''} as a Valid pairing; ${dropped
+          .map((leg) => leg.flightNumber)
+          .join(', ')} go${dropped.length === 1 ? 'es' : ''} back to the unpaired list`,
+        legs: kept,
       })
-    })
+    }
   }
 
-  return fixes.slice(0, MAX_FIXES)
+  const kindOrder = { reorder: 0, add: 1, prepend: 2, remove: 3 } as const
+  return [...found.values()]
+    .sort((a, b) => kindOrder[a.kind] - kindOrder[b.kind] || Math.abs(a.legs.length - base.length) - Math.abs(b.legs.length - base.length))
+    .slice(0, MAX_FIXES)
+}
+
+/**
+ * Why nothing in `suggestFixes` helps, in terms of this pairing and what the schedule has, so a dead end says what
+ * would unblock it instead of leaving the operator to guess. Empty when the pairing is Valid.
+ */
+export function explainNoFix(pairing: Pairing, flights: readonly ScheduledFlight[]): string {
+  const outcome = validatePairing(pairing)
+  const error = outcome.primaryError
+  if (!error) return ''
+  const first = pairing.legs[0]
+  const last = pairing.legs.at(-1)
+  const limits = pairing.limits ?? DEFAULT_LIMITS
+
+  switch (error.code) {
+    case 'PAIRING_EMPTY':
+      return 'This pairing has no flights. Add one, or delete it.'
+    case 'PAIRING_NOT_CLOSED': {
+      if (!first || !last) return error.detail ?? ''
+      if (first.origin !== pairing.base) {
+        return `It starts in ${first.origin}, and no flight in this date range lands there in time to start from ${pairing.base}. Widen the dates, delete the pairing, or ask Flight Scheduling (Feature 2) for a flight into ${first.origin} before ${formatTime(first.departureAt)} on ${formatDay(first.departureAt)}.`
+      }
+      const onward = findAddLegCandidates(flights, pairing, pairing.base)
+      return onward.length === 0
+        ? `No scheduled flight in this date range leaves ${last.destination} after ${last.flightNumber} lands at ${formatTime(last.arrivalAt)} on ${formatDay(last.arrivalAt)}, so it cannot get back to ${pairing.base}. Widen the dates (a flight the next day may be outside them), delete the pairing, or ask Flight Scheduling (Feature 2) for a flight out of ${last.destination}.`
+        : `${onward.length} flight${onward.length === 1 ? ' leaves' : 's leave'} ${last.destination} later, but none of them gets back to ${pairing.base} within the duty, flight and length limits. Add one and then another in Edit legs, or delete this pairing.`
+    }
+    case 'SEQUENCE_BROKEN':
+      return 'A flight leaves from an airport the one before it did not land at. Reorder or remove flights in Edit legs until each one leaves where the last landed.'
+    case 'DUTY_DAY_EXCEEDED':
+    case 'FLIGHTS_PER_DAY_EXCEEDED':
+    case 'PAIRING_TOO_LONG':
+      return `${(error.detail ?? '').replace(' Remove a leg or split the pairing.', '')} Removing any flight leaves the pairing starting or ending away from ${pairing.base}, and no flight in the schedule changes that. The limits are law rules (max ${limits.maxDutyHours} h, ${limits.maxFlightsPerDuty} flights, ${limits.maxPairingDays} days): Ops can change them on the Rules page, or delete this pairing and let its flights go back to the unpaired list.`
+    default:
+      return error.detail ?? ''
+  }
 }

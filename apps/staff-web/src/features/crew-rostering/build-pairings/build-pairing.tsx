@@ -7,7 +7,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { suggestFixes, validatePairing } from './types/pairing-engine'
+import { explainNoFix, suggestFixes, validatePairing } from './types/pairing-engine'
 import { useBuildPairings } from './types/use-build-pairings'
 import { useMediaQuery } from './types/use-media-query'
 import type { FlightLeg, Pairing } from './types/types'
@@ -43,6 +43,10 @@ export function BuildPairingsPage() {
   const windowKey = `${dateFrom}|${dateTo}|${base}|${state.hasGenerated}`
   const [panelFor, setPanelFor] = useState<string | null>(null)
   const fixes = useMemo(() => (selected ? suggestFixes(selected, state.flights) : []), [selected, state.flights])
+  const noFixReason = useMemo(
+    () => (selected && fixes.length === 0 ? explainNoFix(selected, state.flights) : ''),
+    [selected, fixes, state.flights],
+  )
   const showInspector = isWide && panelFor === windowKey
 
   function select(id: string) {
@@ -155,6 +159,7 @@ export function BuildPairingsPage() {
                       pairing={selected}
                       evaluation={selectedEvaluation}
                       fixes={fixes}
+                      noFixReason={noFixReason}
                       isSaving={state.isSaving}
                       onApplyFix={(fix) => state.saveLegs(selected.id, fix.legs)}
                       onEditLegs={() => setEditing(selected)}
@@ -179,6 +184,7 @@ export function BuildPairingsPage() {
             pairing={selected}
             evaluation={selectedEvaluation}
             fixes={fixes}
+            noFixReason={noFixReason}
             isSaving={state.isSaving}
             onApplyFix={(fix) => state.saveLegs(selected.id, fix.legs)}
             onEditLegs={() => setEditing(selected)}

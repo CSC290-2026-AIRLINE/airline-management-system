@@ -16,6 +16,7 @@ export function PairingDetailInspector({
   pairing,
   evaluation,
   fixes,
+  noFixReason,
   isSaving,
   onApplyFix,
   onEditLegs,
@@ -26,6 +27,8 @@ export function PairingDetailInspector({
   evaluation: PairingEvaluation
   /** One-step repairs for an Invalid pairing; empty when it is Valid or has none. */
   fixes: readonly PairingFix[]
+  /** Why no suggested fix applies, from the schedule the API sent. */
+  noFixReason?: string
   isSaving: boolean
   onApplyFix: (fix: PairingFix) => void
   onEditLegs: () => void
@@ -153,7 +156,7 @@ export function PairingDetailInspector({
             </ul>
           ) : (
             <p className="text-sm text-primary-text/60">
-              No single change makes this pairing valid. Use Edit legs to add, remove or reorder flights, or delete it.
+              {noFixReason || 'No single change makes this pairing valid. Open Edit legs to add, remove or reorder flights, or delete it.'}
             </p>
           )}
         </section>
