@@ -534,9 +534,10 @@ export class BuildPairingService {
     const runs = await this.db.roster_run.findMany({
       where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
       select: { id: true, status: true },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
     })
-    if (runs.some((run) => run.status === 'published')) {
+    // A published batch with a draft run beside it (the pairings left over) still takes new pairings, into the draft.
+    if (!runs.some((run) => run.status === 'draft') && runs.some((run) => run.status === 'published')) {
       throw new ConflictException(`The roster run for ${params.base} · ${params.dateFrom} to ${params.dateTo} is already published`)
     }
 
@@ -750,10 +751,11 @@ export class BuildPairingService {
   /** The run for exactly this base and window; the newest one if there are several. */
   private async findRun(params: BuildParams): Promise<RosterRunRow | null> {
     const window = this.serviceDates(params)
+    // A draft first, so the pairings left after a published batch are the ones Ops continues with.
     const run = await this.db.roster_run.findFirst({
       where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
       select: { id: true, status: true },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
     })
     return run
       ? {

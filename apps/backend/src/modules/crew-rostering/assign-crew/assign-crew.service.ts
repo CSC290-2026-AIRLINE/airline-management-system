@@ -326,10 +326,11 @@ export class AssignCrewService {
     const window = { gte: new Date(`${params.dateFrom}T00:00:00.000Z`), lte: new Date(`${params.dateTo}T00:00:00.000Z`) }
 
     const [run, uncommitted] = await Promise.all([
+      // A draft first: once a batch is published, the pairings left over wait in a new draft run for the same window.
       this.db.roster_run.findFirst({
         where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
         select: RUN_SELECT,
-        orderBy: { created_at: 'desc' },
+        orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
       }),
       this.db.pairing.findMany({
         where: { base_airport: params.base, roster_run_pairing: { is: null }, pairing_leg: { some: { flight: { service_date: window } } } },
@@ -346,6 +347,24 @@ export class AssignCrewService {
       totalLegs: pairings.reduce((total, pairing) => total + pairing.legs.length, 0),
       limits: context.defaults,
     }
+  }
+
+  /**
+   * The pairings of a run that are in play: those somebody is crewed on, plus `include` (the ones just sent to auto-assign,
+   * which may have come out with nobody on them). A run nobody has crewed yet has no batch, so every pairing counts and the
+   * page cannot look ready to publish. The pairings left out are not wrong, they are for the next round.
+   */
+  scopeOf(pairings: readonly RunPairing[], assignments: readonly { pairing_id: string }[], include: readonly string[] = []): Set<string> {
+    const crewed = new Set([...assignments.map((row) => row.pairing_id), ...include])
+    return crewed.size > 0
+      ? new Set(pairings.filter((pairing) => crewed.has(pairing.id)).map((pairing) => pairing.id))
+      : new Set(pairings.map((pairing) => pairing.id))
+  }
+
+  /** The scope of a run as it stands in the database. */
+  async scopeIds(rosterRunId: string): Promise<Set<string>> {
+    const { pairings } = await this.loadRun(rosterRunId)
+    return this.scopeOf(pairings, await this.activeAssignments(pairings))
   }
 
   /** What is stored for the run now, without re-checking. */
@@ -431,13 +450,15 @@ export class AssignCrewService {
       if (rows.length > 0) await tx.pairing_leg_assignment.createMany({ data: rows })
     })
 
-    return this.check(rosterRunId)
+    return this.check(rosterRunId, [...targetIds])
   }
 
   /** Re-checks every rule on the run against what is stored, and records the result. */
-  async check(rosterRunId: string): Promise<RunResult> {
+  async check(rosterRunId: string, include: readonly string[] = []): Promise<RunResult> {
     const { run, pairings, context } = await this.loadRun(rosterRunId)
     const assignments = await this.activeAssignments(pairings)
+    // Only the pairings in play are judged: the ones Ops crewed. The rest wait for the next round and raise nothing.
+    const inScope = this.scopeOf(pairings, assignments, include)
     const crewIds = [...new Set(assignments.map((row) => row.crew_id))]
     const legs = pairings.flatMap((pairing) => pairing.legs)
     const history =
@@ -448,7 +469,12 @@ export class AssignCrewService {
             select: ASSIGNMENT_SELECT,
           })
 
-    const found = this.evaluate(pairings, assignments, this.busyByCrew(history), context)
+    const found = this.evaluate(
+      pairings.filter((pairing) => inScope.has(pairing.id)),
+      assignments,
+      this.busyByCrew(history),
+      context,
+    )
     await this.storeBreaks(rosterRunId, found)
     return this.toResult(run, pairings, assignments, await this.openBreaks(rosterRunId))
   }

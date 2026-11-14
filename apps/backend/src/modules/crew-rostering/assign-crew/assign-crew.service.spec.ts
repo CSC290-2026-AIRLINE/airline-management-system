@@ -217,3 +217,22 @@ describe('AssignCrewService.autoAssign re-run', () => {
     })
   })
 })
+
+describe('AssignCrewService.scopeOf', () => {
+  const service = new AssignCrewService({} as unknown as DbService)
+  const pairings = ['p-1', 'p-2', 'p-3', 'p-4'].map((id) => ({ id })) as unknown as RunPairing[]
+
+  it('is the pairings somebody is crewed on, so the rest raise nothing', () => {
+    const scope = service.scopeOf(pairings, [{ pairing_id: 'p-1' }, { pairing_id: 'p-1' }, { pairing_id: 'p-3' }])
+    expect([...scope].sort()).toEqual(['p-1', 'p-3'])
+  })
+
+  it('also counts the pairings just sent to auto-assign, even if nobody could be put on them', () => {
+    const scope = service.scopeOf(pairings, [{ pairing_id: 'p-1' }], ['p-2'])
+    expect([...scope].sort()).toEqual(['p-1', 'p-2'])
+  })
+
+  it('is the whole run while nobody is crewed, so an untouched run never looks ready to publish', () => {
+    expect([...service.scopeOf(pairings, [])].sort()).toEqual(['p-1', 'p-2', 'p-3', 'p-4'])
+  })
+})
