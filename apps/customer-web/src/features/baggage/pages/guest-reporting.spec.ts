@@ -404,8 +404,8 @@ test('the "Already reported?" area sends guests to public tracking and customers
   // The shared area is visible in both modes; only the destination changes.
   assert.match(sidebar, /<h2>Already reported\?<\/h2>/)
   assert.match(
-    sidebar,
-    /\{caseAccess\.checkMyCase \? \(\s*<Link to="\/lost-bag-case">Check my case<\/Link>\s*\) : \(\s*<Link to="\/track-lost-bag">Check my case<\/Link>\s*\)\}/,
+    sidebar.replace(/[\s()]/g, ''),
+    /\{caseAccess\.checkMyCase\?<Linkto="\/lost-bag-case">Checkmycase<\/Link>:<Linkto="\/track-lost-bag">Checkmycase<\/Link>\}/,
   )
   // The guest confirmation's "Check my case" also goes to public tracking with the case number only.
   assert.match(

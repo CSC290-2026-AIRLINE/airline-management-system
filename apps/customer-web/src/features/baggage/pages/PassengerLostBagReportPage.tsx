@@ -805,11 +805,7 @@ function LostBagReportForm(props: ReportFormProps) {
                   ? 'Open your case with the case number you were given.'
                   : 'Open My bag case with your case number, booking reference and surname.'}
               </p>
-              {caseAccess.checkMyCase ? (
-                <Link to="/lost-bag-case">Check my case</Link>
-              ) : (
-                <Link to="/track-lost-bag">Check my case</Link>
-              )}
+              {caseAccess.checkMyCase ? <Link to="/lost-bag-case">Check my case</Link> : <Link to="/track-lost-bag">Check my case</Link>}
             </section>
           </aside>
         </div>
