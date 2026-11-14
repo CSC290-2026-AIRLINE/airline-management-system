@@ -20,6 +20,34 @@ The frontend wraps this for you via `useAppAuth().fetchWithAuth`.
 - `/api/admin/*` endpoints are admin-only. Non-admin staff get `403 Admin role required`.
 - `/api/me/*` endpoints accept **any signed-in user** — no admin role required.
 
+### Errors
+
+Every admin-console route answers a failure in one shape:
+
+```json
+{ "error": { "code": "ROLE_NOT_FOUND", "message": "This role does not exist." } }
+```
+
+`code` is the contract — branch on it, never on the sentence. `message` is for people.
+
+| Code                    | When                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| `VALIDATION_FAILED`     | A field is missing or the wrong shape. `details.fields` says which.                |
+| `REASON_REQUIRED`       | The `reason` was missing or shorter than 10 characters.                            |
+| `ROLE_NOT_FOUND`        | The role id does not exist.                                                        |
+| `ROLE_NAME_TAKEN`       | A role with that name already exists (compared without case).                      |
+| `ROLE_CODE_TAKEN`       | No free code could be derived from that name.                                      |
+| `ROLE_IN_USE`           | The role still has staff, so it cannot be deleted.                                 |
+| `ROLE_NOT_DELETABLE`    | It is an admin role.                                                               |
+| `SCREEN_NOT_ASSIGNABLE` | A screen id is not an active `assignable` screen. `details.screen_ids` names them. |
+| `SCREEN_KIND_CONFLICT`  | A `core` or `admin` screen cannot be added by hand — it belongs in code.           |
+| `AUDIT_ENTRY_NOT_FOUND` | The audit entry id does not exist.                                                 |
+| `AUDIT_WRITE_FAILED`    | The audit row could not be written, so the sensitive data is **not** returned.     |
+| `FORBIDDEN`             | Signed in, but not an admin. The attempt is recorded in the audit log.             |
+
+The Staff & roles routes answer with the same envelope and their own codes: `EMAIL_TAKEN`,
+`EMAIL_LOCKED`, `STAFF_NOT_FOUND`, `SELF_DISABLE`, `SELF_ROLE_CHANGE`, `LAST_ADMIN`, `NO_CHANGE`.
+
 ---
 
 ## 2. Register your screens — `registerSelfScreens` in your module's `onModuleInit`
@@ -50,6 +78,22 @@ the wiring there is. The call is idempotent on `code` — you can run it on ever
 boot; repeated calls are a no-op except that an existing row's `kind` is never
 mutated.
 
+### List every screen of your feature in one call
+
+The call is also a **sync**: once your list is written, any active screen that starts
+with the same code prefix (`f03.`) but is **not** in your list is turned off
+(`is_active = false`) and leaves every menu.
+
+So:
+
+- **Pass all of your feature's screens in one call.** Registering `f03.seat_hold` in one
+  call and `f03.seat_map` in another turns the first one off.
+- **Keep your codes under one prefix per feature.** The prefix is the part before the
+  dot, so `f03.*` belongs to feature 3 and nobody else.
+- A screen that was turned off comes back on the next boot if you list it again. The
+  registry writes a System audit row for every change, so the log always says why a
+  screen appeared or disappeared.
+
 ### Why not `POST /api/admin/screens`?
 
 That route exists, but it is **admin-only** and it is not how a feature registers
@@ -58,6 +102,10 @@ its screens:
 - At boot nobody is signed in, so the call answers `401`.
 - From the frontend, a signed-in staff member who is not an admin gets `403` — and
   every attempt writes an `access_denied` row into the audit log.
+
+It is also stricter than `registerSelfScreens`: it needs a `reason`, it accepts
+**only** `assignable` screens (a `core` or `admin` screen answers `400`
+`SCREEN_KIND_CONFLICT` — those belong in code), and the change is audited.
 
 `registerSelfScreens` writes to the same `screen` table, needs no user and no
 token, and runs once per boot.
@@ -100,6 +148,10 @@ No admin role required — any signed-in staff or customer can call it.
 | `core`       | Everyone (always-on, e.g. Home, My profile).                  |
 | `admin`      | Only when the caller's role is `is_admin`.                    |
 | `assignable` | Only when the caller's role has a `role_screen` grant for it. |
+
+An **admin role sees every active screen**, `assignable` ones included — the grants
+do not limit it. Only a non-admin role needs a `role_screen` grant for an
+`assignable` screen.
 
 ### `provisioned`
 
@@ -268,7 +320,32 @@ admin Role-access tab.
 
 `GET /api/admin/roles/:id/screens` returns `{ screen_ids: string[] }` — only `assignable` screens
 that role has been granted. `core` and `admin` screens are **not** included (they are always-on
-or admin-only respectively).
+or admin-only respectively). A role id that does not exist answers `404` `ROLE_NOT_FOUND` —
+it does not return an empty list.
+
+### `POST /api/admin/roles` and `DELETE /api/admin/roles/:id` — creating and removing a role
+
+Admin-only, like the rest of this section, and used by the Role access tab:
+
+```
+POST /api/admin/roles
+{ "name": "Gate agent", "reason": "New role for the gate team", "screen_ids": ["4a2e…"] }
+```
+
+The admin types a **name**; the machine-readable `role.code` is derived from it
+(`Gate agent` → `gate_agent`, then `gate_agent_2`, …). The name must be unique
+(compared without case — `409` `ROLE_NAME_TAKEN`), a new role is never an admin role, and
+`screen_ids` may only name active `assignable` screens. The role, its first grants and the
+audit row commit in **one transaction**.
+
+```
+DELETE /api/admin/roles/:id
+{ "reason": "Role was created by mistake" }
+```
+
+`204` on success. `409` `ROLE_IN_USE` while staff still hold the role, `409`
+`ROLE_NOT_DELETABLE` for an admin role, `404` `ROLE_NOT_FOUND` for an unknown id. The
+grants and the audit row go in one transaction as well.
 
 ### `PUT /api/admin/roles/:id/screens` — grant or revoke screens
 
@@ -320,9 +397,17 @@ Cursor-paginated newest-first (cursor is the last row's `seq`, a decimal string)
 Filters: `source_feature`, `actor_type` ∈ {`staff`,`customer`,`system`}, `actor_id`, `action`,
 `from`, `to` (ISO-8601). `before` / `after` are returned as `null` for sensitive rows.
 
+A plain date (`from=2026-11-01`, `to=2026-11-01`) means **a whole day in Thailand time**
+(UTC+7), not UTC — `to=2026-11-01` includes everything up to 23:59:59 Bangkok time on the
+1st. The staff-web sends the viewer's own day bounds, so what you see in the UI is your day.
+`from` after `to` is a `400`.
+
 ### `GET /api/admin/audit-log/:id` — single entry
 
-Returns the same row by id, 404 if not found. Same sensitive-masking rules.
+Returns the same row by id, `404` `AUDIT_ENTRY_NOT_FOUND` if it does not exist. Same
+sensitive-masking rules. Opening a sensitive entry writes a `view_sensitive` row **first**;
+if that row cannot be written the data is not returned (`503` `AUDIT_WRITE_FAILED`). Opening
+the same entry again within a minute counts as one view.
 
 ### How to write — `AuditService`
 
@@ -371,6 +456,16 @@ await this.db.$transaction(async (tx) => {
 `"[masked]"` in `before` / `after`; the real value never reaches the table. A row with
 `maskFields` is also flagged `is_sensitive`, so the audit endpoints return its `before` /
 `after` as `null`. Pass `sensitive: true` to hide a row's payload without masking fields.
+
+**Some fields are always masked.** A default list — passport and national id numbers, card
+numbers, CVV, IBAN, date of birth, phone, passwords and tokens — is masked on **every** row
+whether or not you list it, and the match ignores spelling and case: `passport`,
+`passport_no`, `passportNo` and `Passport-No` are the same key. You only need `maskFields`
+for values that are not on that list.
+
+**Retries.** `write` can take an `id` (any uuid) for the row it creates. A repeat with the
+same id is skipped instead of adding a second row, so a redelivered queue message or a
+retried request does not double the log. Without an id, a retry is a second row.
 
 ### What to write
 
@@ -444,6 +539,8 @@ entry with a clear `summary` such as "correcting booking#1234 status (was X)".
 | Caller                           | Endpoint                           | Auth      | Purpose                                              |
 | -------------------------------- | ---------------------------------- | --------- | ---------------------------------------------------- |
 | Your feature (backend module)    | `registerSelfScreens([...])`       | n/a       | Register the screens your feature exposes, on boot.  |
+| Admin console (frontend)         | `POST /api/admin/roles`            | admin     | Create a role, with its first grants.                |
+| Admin console (frontend)         | `DELETE /api/admin/roles/:id`      | admin     | Remove a role nobody holds.                          |
 | Admin console (frontend)         | `GET /api/admin/screens`           | admin     | Render the matrix.                                   |
 | Admin console (frontend)         | `GET /api/admin/roles`             | admin     | Render the role selector and staff count.            |
 | Admin console (frontend)         | `GET /api/admin/roles/:id/screens` | admin     | Show which `assignable` screens a role has.          |
@@ -458,10 +555,11 @@ entry with a clear `summary` such as "correcting booking#1234 status (was X)".
 ## 7. Things that break if you skip this
 
 - Your screens won't appear in the Role access tab → admins can't grant your feature to any role.
+- If you register only some of your screens in one call, the ones you left out are turned off and leave every menu — list them all together.
 - Your audit writes will still work (the `audit_log` table is open to features) but no one will be able to find them by feature number if you use a number that hasn't been documented here.
 
 If you're starting a new feature, file an issue/PR to update this contract with your `source_feature` number and your intended `action` values.
 
 ---
 
-_Maintained by G11 (Feature 15). Last updated: the `AuditService` writer and `access_denied` recording._
+_Maintained by G11 (Feature 15). Last updated: the error envelope, the screen-registry sync, role create/delete, the default masking list and the Thai-day date filter._
