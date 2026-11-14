@@ -177,6 +177,15 @@ describe('PrismaCheckInRepository', () => {
     )
   })
 
+  it('a double submit of the same check-in gets the open one back', async () => {
+    const { db, repo } = build()
+    db.check_in.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: 'P2002' }))
+    db.check_in.findFirst.mockResolvedValueOnce(checkInRow)
+    const input = { booking_passenger_id: 'bp-1', passenger_id: 'pax-1', flight_id: 'flt-fy204', status: 'started' as const }
+    await expect(repo.createCheckIn(input)).resolves.toMatchObject({ id: checkInRow.id })
+    expect(db.check_in.findFirst).toHaveBeenCalledWith({ where: { booking_passenger_id: 'bp-1', status: { not: 'cancelled' } } })
+  })
+
   it('turns a duplicate final event into ALREADY_BOARDED', async () => {
     const { db, repo } = build()
     db.boarding_event.create

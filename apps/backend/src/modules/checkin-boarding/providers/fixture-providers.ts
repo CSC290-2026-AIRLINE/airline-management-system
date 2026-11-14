@@ -185,6 +185,11 @@ export class FixtureSeats implements SeatProvider {
     return lock
   }
 
+  async lock(lockId: string): Promise<(SeatLock & { bookingPassengerId: string }) | null> {
+    const entry = this.locks.get(lockId)
+    return entry ? { ...entry.lock, bookingPassengerId: entry.bookingPassengerId } : null
+  }
+
   async release(lockId: string): Promise<void> {
     this.locks.delete(lockId)
   }
@@ -202,9 +207,8 @@ export class FixtureSeats implements SeatProvider {
     return { seatCode: entry.lock.seatCode, type }
   }
 
-  async assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType } | null> {
-    const assignment = this.assignments.get(bookingPassengerId)
-    return assignment ? { seatCode: assignment.seatCode, type: assignment.type } : null
+  async assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType; paymentId: string | null } | null> {
+    return this.assignments.get(bookingPassengerId) ?? null
   }
 
   async assignAnyStandard(

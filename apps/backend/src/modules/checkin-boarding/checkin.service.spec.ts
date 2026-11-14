@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common'
 import type { Actor } from './actor'
-import { canCustomerAccess } from './actor'
 import { CheckInService } from './checkin.service'
 import { SPECIMEN_LINE1, buildLine2, buildSpecimenLine2 } from './domain/mrz'
 import { CheckInError } from './errors'
@@ -21,7 +20,6 @@ import {
   LoggerNotify,
 } from './providers/fixture-providers'
 import type { BookingPassenger, FlightRecord, PassengerProfile, PoliceProvider } from './providers/providers'
-import type { CheckInRecord } from './store/checkin-store'
 import { CheckInStore } from './store/checkin-store'
 
 const cust: Actor = { userId: 'user-anna', staffId: null }
@@ -50,11 +48,11 @@ class PassengersWithExtra extends FixturePassengers {
 const NARONG_LINE1 = 'P<THA' + 'SUKJAI<<NARONG'.padEnd(39, '<')
 const NARONG_LINE2 = buildLine2({ number: 'TH1234567', nationality3: 'THA', dob: '850312', sex: 'M', expiry: '300415' })
 
-function build(over: { police?: PoliceProvider } = {}) {
+function build(over: { police?: PoliceProvider; seats?: FixtureSeats; store?: CheckInStore } = {}) {
   const clock = new FixtureClock()
-  const store = new CheckInStore(clock)
+  const store = over.store ?? new CheckInStore(clock)
   const passengers = new PassengersWithExtra()
-  const seats = new FixtureSeats(clock)
+  const seats = over.seats ?? new FixtureSeats(clock)
   const payments = new FixturePayments()
   const audit = new LoggerAudit()
   const notify = new LoggerNotify()
@@ -103,6 +101,19 @@ afterEach(() => {
 })
 
 describe('CheckInService.start', () => {
+  it('a family on one PNR is told apart by the first name', async () => {
+    const { svc } = build()
+    const anna = BOOKINGS.find((b) => b.pnr === 'ER224F')!
+    addBooking({ ...anna, bookingPassengerId: 'bp-er224f-2', passengerId: 'pax-er224f-2', firstName: 'Lars' })
+    await expect(svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })).rejects.toMatchObject({
+      code: 'VALIDATION',
+      details: { reason: 'several_passengers', firstNames: [anna.firstName, 'Lars'] },
+    })
+    const lars = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson', firstName: 'lars' })
+    expect(lars.passenger.firstName).toBe('Lars')
+    await expect(svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson', firstName: 'Nobody' })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
   it('start creates a started check-in for a paid booking in the window', async () => {
     const { svc } = build()
     const view = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
@@ -453,25 +464,6 @@ describe('the check-in id', () => {
   })
 })
 
-describe('the ownership rule', () => {
-  const record = { passenger_id: 'pax-1' } as CheckInRecord
-  const booking = { customerUserId: 'user-anna' } as BookingPassenger
-
-  it('lets the customer of the booking in', () => {
-    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: 'user-anna' }, null)).toBe(true)
-  })
-
-  it('lets the customer of the passenger in', () => {
-    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: null }, { passengerId: 'pax-1' })).toBe(true)
-  })
-
-  it('lets a customer in with the check-in id alone; the UUID is the only wall', () => {
-    expect(canCustomerAccess(record, cust, { ...booking, customerUserId: null }, null)).toBe(true)
-    expect(canCustomerAccess(record, cust, null, { passengerId: 'pax-2' })).toBe(true)
-    expect(canCustomerAccess(record, staff, null, null)).toBe(true)
-  })
-})
-
 describe('the seat map', () => {
   it('shows the seat of the check-in the caller passes and hides the other cabin', async () => {
     const { svc } = build()
@@ -554,12 +546,23 @@ describe('CheckInService seats', () => {
     expect(await seats.assigned('bp-test-second')).toBeNull()
   })
 
+  it('a seat hold survives a restart of the service', async () => {
+    const first = build()
+    const c = await first.svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await first.svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await first.svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '4A' })
+    // A new service over the same seats and store: nothing may live in the old one.
+    const second = build({ seats: first.seats, store: first.store })
+    const view = await second.svc.confirmSeat(cust, c.id, { lockId: lock.id })
+    expect(view.seat).toMatchObject({ code: '4A', fee: 250, paymentId: 'pay-1' })
+  })
+
   it('confirmSeat answers ON_HOLD for a passenger security is holding', async () => {
-    const { svc, seats } = build()
+    const { svc, seats, store } = build()
     const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
     await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
     const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '7E' })
-    await svc.applyScreeningResult(c.id, 'held')
+    await store.updateCheckIn(c.id, { status: 'on_hold' })
     await expect(svc.confirmSeat(cust, c.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'ON_HOLD' })
     expect(await seats.assigned('bp-er224f')).toBeNull()
   })
@@ -698,42 +701,5 @@ describe('CheckInService.declareBags', () => {
     await expect(svc.declareBags(cust, c.id, { declaredBags: 11 })).rejects.toMatchObject({ code: 'VALIDATION' })
     await expect(svc.declareBags(cust, c.id, { declaredBags: 1.5 })).rejects.toMatchObject({ code: 'VALIDATION' })
     await expect(svc.declareBags(cust, c.id, { declaredBags: 2 })).resolves.toMatchObject({ declaredBags: 2 })
-  })
-})
-
-describe('CheckInService.applyScreeningResult', () => {
-  it('held after the pass puts the check-in on hold and clear restores checked_in', async () => {
-    const { svc, store } = build()
-    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
-    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
-    await svc.complete(cust, c.id)
-    await svc.applyScreeningResult(c.id, 'held')
-    expect((await store.getCheckIn(c.id))!.status).toBe('on_hold')
-    await svc.applyScreeningResult(c.id, 'clear')
-    expect((await store.getCheckIn(c.id))!.status).toBe('checked_in')
-  })
-
-  it('a hold before any screening run records a UUID run id (the column is uuid)', async () => {
-    const { svc, store } = build()
-    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
-    await svc.applyScreeningResult(c.id, 'held')
-    expect((await store.getCheckIn(c.id))!.screening_run_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
-  })
-})
-
-describe('CheckInService.releaseExpiredHolds', () => {
-  it('releases the seat and marks no-show after the window closes', async () => {
-    const { svc, clock, store, seats } = build()
-    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
-    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
-    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '7E' })
-    await svc.confirmSeat(cust, c.id, { lockId: lock.id })
-    await svc.applyScreeningResult(c.id, 'held')
-    expect((await store.getCheckIn(c.id))!.status).toBe('on_hold')
-
-    clock.set(new Date(DEMO_NOW.getTime() + 3 * 3600_000))
-    expect(await svc.releaseExpiredHolds()).toBeGreaterThanOrEqual(1)
-    expect((await store.getCheckIn(c.id))!.status).toBe('no_show')
-    expect(await seats.assigned('bp-er224f')).toBeNull()
   })
 })

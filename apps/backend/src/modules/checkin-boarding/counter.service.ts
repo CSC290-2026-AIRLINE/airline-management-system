@@ -29,9 +29,13 @@ import type {
   SettingsProvider,
   TierProvider,
 } from './providers/providers'
-import type { CheckedBagRecord, CheckInRecord, UpdateDocumentPatch } from './store/checkin-store'
+import type { CheckedBagRecord, CheckInRecord, TravelDocumentRecord, UpdateDocumentPatch } from './store/checkin-store'
 import { CHECKIN_REPOSITORY } from './store/checkin-repository'
 import type { CheckInRepository } from './store/checkin-repository'
+
+/** The bags in the order they were weighed: the excess of each one depends on the ones before it. */
+const sortByWeighed = (bags: CheckedBagRecord[]): CheckedBagRecord[] =>
+  [...bags].sort((a, b) => (a.weighed_at?.getTime() ?? 0) - (b.weighed_at?.getTime() ?? 0))
 
 export interface BagInput {
   weightKg: number
@@ -65,7 +69,14 @@ export class CounterService {
     const pnr = query.pnr?.trim().toUpperCase()
     const name = query.name?.trim().toUpperCase()
     const records = await this.store.searchCheckIns(query)
-    const bookings = await Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id)))
+    const ids = records.map((record) => record.id)
+    // One query per table for the whole list, not one per passenger: a full flight is a few hundred rows.
+    const [bookings, documents, bags] = await Promise.all([
+      Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id))),
+      this.store.documentsForCheckIns(ids),
+      this.store.bagsForCheckIns(ids),
+    ])
+    const flights = new Map<string, FlightRecord | null>()
     const rows: StaffCheckInRow[] = []
     for (const [index, record] of records.entries()) {
       const booking = bookings[index]
@@ -73,15 +84,19 @@ export class CounterService {
       const passengerName = `${booking.firstName} ${booking.lastName}`
       if (pnr && !booking.pnr.toUpperCase().includes(pnr)) continue
       if (name && !passengerName.toUpperCase().includes(name)) continue
-      const flight = await this.flights.byId(record.flight_id)
+      if (!flights.has(record.flight_id)) flights.set(record.flight_id, await this.flights.byId(record.flight_id))
       rows.push(
         toStaffRow({
           id: record.id,
           pnr: booking.pnr,
           passengerName,
-          flightNumber: flight?.flightNumber ?? '',
+          flightNumber: flights.get(record.flight_id)?.flightNumber ?? '',
           status: record.status,
-          issues: await this.issuesOf(record, await this.bagsOf(record)),
+          issues: this.issuesOf(
+            record,
+            documents.find((d) => d.check_in_id === record.id) ?? null,
+            sortByWeighed(bags.filter((b) => b.check_in_id === record.id)),
+          ),
         }),
       )
     }
@@ -103,7 +118,7 @@ export class CounterService {
       allowance: checkIn.allowance,
       carryOn: checkIn.carryOn,
       carryOnCheck: await this.store.getCarryOnCheck(record.id),
-      issues: await this.issuesOf(record, bags),
+      issues: this.issuesOf(record, await this.store.getDocumentByCheckIn(record.id), bags),
       totals: this.totalsOf(bags),
       boardingPass,
       isPolice: booking.isPolice,
@@ -247,8 +262,10 @@ export class CounterService {
   async bagsByFlight(actor: Actor, flightId: string): Promise<BagLookup[]> {
     this.staffIdOf(actor)
     const lookups: BagLookup[] = []
-    for (const record of await this.store.listCheckInsByFlight(flightId)) {
-      for (const bag of await this.bagsOf(record)) {
+    const records = await this.store.listCheckInsByFlight(flightId)
+    const bags = sortByWeighed(await this.store.bagsForCheckIns(records.map((record) => record.id)))
+    for (const record of records) {
+      for (const bag of bags.filter((b) => b.check_in_id === record.id)) {
         lookups.push(await this.lookupOf(bag, record))
       }
     }
@@ -336,8 +353,7 @@ export class CounterService {
   }
 
   private async bagsOf(record: CheckInRecord): Promise<CheckedBagRecord[]> {
-    const bags = await this.store.listBags(record.id)
-    return [...bags].sort((a, b) => (a.weighed_at?.getTime() ?? 0) - (b.weighed_at?.getTime() ?? 0))
+    return sortByWeighed(await this.store.listBags(record.id))
   }
 
   private async allowanceOf(record: CheckInRecord, booking: BookingPassenger): Promise<BagAllowance> {
@@ -360,9 +376,8 @@ export class CounterService {
     }
   }
 
-  private async issuesOf(record: CheckInRecord, bags: CheckedBagRecord[]): Promise<IssueCode[]> {
+  private issuesOf(record: CheckInRecord, document: TravelDocumentRecord | null, bags: CheckedBagRecord[]): IssueCode[] {
     const issues: IssueCode[] = []
-    const document = await this.store.getDocumentByCheckIn(record.id)
     if (record.status === 'on_hold' || record.status === 'denied') issues.push('ON_HOLD')
     if (bags.some((b) => b.excess_fee > 0 && !b.excess_payment_id)) issues.push('EXCESS_UNPAID')
     if (document?.name_mismatch && !document.name_mismatch_cleared_at) issues.push('NAME_MISMATCH')

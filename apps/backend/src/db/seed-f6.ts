@@ -286,7 +286,7 @@ async function seedSeatFees(prisma: PrismaClient): Promise<void> {
 
 /**
  * The flight of the demo. Its departure is the one of demoDepartures, so the check-in window is open; a flight that is
- * already there keeps its times, unless F6_DEMO_DEP_AT pins a new departure.
+ * already there keeps its times while it has not departed, unless F6_DEMO_DEP_AT pins a new departure.
  */
 async function seedFlight(
   prisma: PrismaClient,
@@ -300,7 +300,8 @@ async function seedFlight(
   const serviceDate = new Date(`${departure.toISOString().slice(0, 10)}T00:00:00.000Z`)
   const existing = await prisma.flight.findFirst({ where: { flight_number: flight.flightNumber } })
   if (existing) {
-    if (!override) return existing
+    // A flight that already left is yesterday's demo: it is moved to today, so the check-in window is open again.
+    if (!override && existing.dep_at > new Date()) return existing
     return prisma.flight.update({
       where: { id: existing.id },
       data: {

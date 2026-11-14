@@ -207,7 +207,16 @@ describe('DbSeats', () => {
   it('the assigned seat of a passenger is read back', async () => {
     const { seats, db } = build()
     db.seat_assignment.findFirst.mockResolvedValue(seatRow({ status: 'assigned', seat_code: '18B' }))
-    await expect(seats.assigned('bp-1')).resolves.toEqual({ seatCode: '18B', type: 'standard' })
+    await expect(seats.assigned('bp-1')).resolves.toEqual({ seatCode: '18B', type: 'standard', paymentId: null })
+  })
+
+  it('a live hold is read back from its row, a released one is not', async () => {
+    const { seats, db } = build()
+    const coupon = { booking_coupon: { booking_passenger_id: 'bp-1' } }
+    db.seat_assignment.findUnique.mockResolvedValueOnce({ ...seatRow({ fee_amount: 250 }), ...coupon })
+    await expect(seats.lock('sa-1')).resolves.toMatchObject({ id: 'sa-1', seatCode: '5B', fee: 250, bookingPassengerId: 'bp-1' })
+    db.seat_assignment.findUnique.mockResolvedValueOnce({ ...seatRow({ status: 'released' }), ...coupon })
+    await expect(seats.lock('sa-1')).resolves.toBeNull()
   })
 
   it('assignAnyStandard takes a free standard seat of the cabin', async () => {

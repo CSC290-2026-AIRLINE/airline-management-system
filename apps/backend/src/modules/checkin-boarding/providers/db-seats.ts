@@ -112,6 +112,22 @@ export class DbSeats implements SeatProvider {
     }
   }
 
+  async lock(lockId: string): Promise<(SeatLock & { bookingPassengerId: string }) | null> {
+    const row = await this.db.seat_assignment.findUnique({
+      where: { id: lockId },
+      include: { booking_coupon: { select: { booking_passenger_id: true } } },
+    })
+    if (!row || row.status !== 'held' || !row.hold_expires_at) return null
+    return {
+      id: row.id,
+      flightId: row.flight_id,
+      seatCode: row.seat_code,
+      expiresAt: row.hold_expires_at.toISOString(),
+      fee: Number(row.fee_amount),
+      bookingPassengerId: row.booking_coupon.booking_passenger_id,
+    }
+  }
+
   async release(lockId: string): Promise<void> {
     const now = this.clock.now()
     await this.db.seat_assignment.updateMany({
@@ -142,11 +158,11 @@ export class DbSeats implements SeatProvider {
     return { seatCode: row.seat_code, type: seatOf(row.seat_code)?.type ?? 'standard' }
   }
 
-  async assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType } | null> {
+  async assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType; paymentId: string | null } | null> {
     const row = await this.db.seat_assignment.findFirst({
       where: { booking_coupon: { booking_passenger_id: bookingPassengerId }, status: 'assigned' },
     })
-    return row ? { seatCode: row.seat_code, type: seatOf(row.seat_code)?.type ?? 'standard' } : null
+    return row ? { seatCode: row.seat_code, type: seatOf(row.seat_code)?.type ?? 'standard', paymentId: row.payment_id } : null
   }
 
   async assignAnyStandard(

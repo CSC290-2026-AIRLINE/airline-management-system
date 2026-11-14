@@ -19,6 +19,7 @@ import type {
   SensorProvider,
   SettingsProvider,
 } from './providers/providers'
+import type { BoardingEventRecord } from './store/checkin-store'
 import { CHECKIN_REPOSITORY } from './store/checkin-repository'
 import type { CheckInRepository } from './store/checkin-repository'
 
@@ -26,6 +27,12 @@ import type { CheckInRepository } from './store/checkin-repository'
 function surnameOf(passengerName: string): string {
   return passengerName.trim().split(/\s+/).pop() ?? passengerName
 }
+
+const passIdsWith = (events: BoardingEventRecord[], kinds: string[]): Set<string> =>
+  new Set(events.filter((e) => kinds.includes(e.event) && e.boarding_pass_id).map((e) => e.boarding_pass_id as string))
+const boardedPassIds = (events: BoardingEventRecord[]) => passIdsWith(events, ['boarded'])
+/** A pass that boarded or no-showed is final: the unique index allows no second final event. */
+const finalPassIds = (events: BoardingEventRecord[]) => passIdsWith(events, ['boarded', 'no_show'])
 
 /**
  * The gate of feature 6: the agent calls the groups, scans the boarding passes, watches the head-count and
@@ -100,13 +107,17 @@ export class GateService {
     }
     const flight = await this.flightOf(flightId)
     const policeIds = await this.police.policePassengerIds(flightId)
-    const boarded = await this.boardedPassIds(flightId)
+    const events = await this.store.listEvents(flightId)
+    const boarded = boardedPassIds(events)
 
     const entries: GateListEntry[] = []
     const records = await this.store.listCheckInsByFlight(flightId)
-    const bookings = await Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id)))
+    const [bookings, passes] = await Promise.all([
+      Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id))),
+      this.store.passesForCheckIns(records.map((record) => record.id)),
+    ])
     for (const [index, record] of records.entries()) {
-      const pass = (await this.store.passesForCheckIn(record.id))[0]
+      const pass = passes.find((p) => p.check_in_id === record.id)
       if (!pass) continue
       const booking = bookings[index]
       entries.push({
@@ -128,7 +139,7 @@ export class GateService {
       gate: { id: gate.id, code: gate.code },
       flight: await this.flightSummaryOf(flight),
       closedAt: boarding.closed_at?.toISOString() ?? null,
-      boardedCount: await this.boardedCountOf(flightId),
+      boardedCount: boarded.size,
       entries,
     })
   }
@@ -321,13 +332,14 @@ export class GateService {
     }
 
     const closedAt = this.clock.now()
-    await this.store.updateFlightBoarding(flightId, { boarded_count: boarded, closed_at: closedAt, closed_by: staffId })
-
     let noShow = 0
-    for (const record of await this.store.listCheckInsByFlight(flightId)) {
-      const pass = (await this.store.passesForCheckIn(record.id))[0]
+    const records = await this.store.listCheckInsByFlight(flightId)
+    const passes = await this.store.passesForCheckIns(records.map((record) => record.id))
+    const final = finalPassIds(await this.store.listEvents(flightId))
+    for (const record of records) {
+      const pass = passes.find((p) => p.check_in_id === record.id)
       if (pass) {
-        if (await this.store.hasFinalEvent(pass.id)) continue
+        if (final.has(pass.id)) continue
         const written = await this.store.appendEvent({
           flight_id: flightId,
           gate_id: boarding.gate_id,
@@ -350,6 +362,12 @@ export class GateService {
       await this.offloadBags(record.id)
       noShow += 1
     }
+    // Closed last, so a close that died halfway can simply be run again; the count is the one frozen at that moment.
+    await this.store.updateFlightBoarding(flightId, {
+      boarded_count: await this.boardedCountOf(flightId),
+      closed_at: closedAt,
+      closed_by: staffId,
+    })
 
     await this.notify.send('boarding_call', {
       flightId,
@@ -398,14 +416,6 @@ export class GateService {
     if (!gateId) return null
     const gate = await this.store.getGate(gateId)
     return gate?.code ?? null
-  }
-
-  private async boardedPassIds(flightId: string): Promise<Set<string>> {
-    const ids = new Set<string>()
-    for (const event of await this.store.listEvents(flightId)) {
-      if (event.event === 'boarded' && event.boarding_pass_id) ids.add(event.boarding_pass_id)
-    }
-    return ids
   }
 
   private async boardedCountOf(flightId: string): Promise<number> {

@@ -89,27 +89,22 @@ export interface PassengerProfile {
   passportNumber: string | null
 }
 
-/** The customer row of a signed-in user: the passenger behind it and nothing else. */
-export interface CustomerRef {
-  passengerId: string | null
-}
-
 export interface PassengerProfileProvider {
   byId(id: string): Promise<PassengerProfile | null>
   findByPassportNumber(n: string): Promise<PassengerProfile[]>
   fill(id: string, fields: Partial<Omit<PassengerProfile, 'id' | 'firstName' | 'lastName'>>): Promise<void>
-  /** The customer row of a user, when the provider knows one. */
-  customerByUserId?(userId: string): Promise<CustomerRef | null>
 }
 
 /** Feature 3 owns the seat map and the five minute hold. */
 export interface SeatProvider {
   seatMap(flightId: string, viewer: { bookingPassengerId: string | null; cabin: Cabin | null }): Promise<SeatMap>
   hold(flightId: string, seatCode: string, bookingPassengerId: string, ttlMs: number): Promise<SeatLock>
+  /** A live hold and who holds it; null once it was released, confirmed or never existed. */
+  lock(lockId: string): Promise<(SeatLock & { bookingPassengerId: string }) | null>
   release(lockId: string): Promise<void>
   /** A paid seat is confirmed with the payment id, so the row carries both. */
   confirm(lockId: string, paymentId: string | null): Promise<{ seatCode: string; type: SeatType }>
-  assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType } | null>
+  assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType; paymentId: string | null } | null>
   assignAnyStandard(
     flightId: string,
     bookingPassengerId: string,

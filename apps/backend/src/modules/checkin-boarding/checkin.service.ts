@@ -1,19 +1,6 @@
-import { randomUUID } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
-import type {
-  BagAllowance,
-  BoardingPassView,
-  Cabin,
-  CheckInStatus,
-  CheckInView,
-  SeatChoice,
-  SeatLock,
-  SeatMap,
-  SeatMapSeat,
-  SeatType,
-} from './api-types'
+import type { BagAllowance, BoardingPassView, Cabin, CheckInView, SeatChoice, SeatLock, SeatMap, SeatMapSeat } from './api-types'
 import type { Actor } from './actor'
-import { canCustomerAccess } from './actor'
 import { bagAllowance } from './domain/allowance'
 import { boardingGroup } from './domain/boarding'
 import { toAlpha2 } from './domain/countries'
@@ -43,7 +30,6 @@ import type {
   BookingPassenger,
   BookingProvider,
   ClockProvider,
-  CustomerRef,
   FlightProvider,
   FlightRecord,
   NotifyProvider,
@@ -57,17 +43,12 @@ import type {
   TierProvider,
 } from './providers/providers'
 import { newReference } from './reference'
-import type { BoardingPassRecord, CheckInPatch, CheckInRecord, TravelDocumentRecord } from './store/checkin-store'
+import type { BoardingPassRecord, CheckInRecord, TravelDocumentRecord } from './store/checkin-store'
 import { CHECKIN_REPOSITORY } from './store/checkin-repository'
 import type { CheckInRepository } from './store/checkin-repository'
 
 /** Feature 3 holds a seat for five minutes. */
 const SEAT_HOLD_TTL_MS = 300_000
-
-interface HeldSeat {
-  lock: SeatLock
-  checkInId: string
-}
 
 /**
  * The passenger side of feature 6: find the booking, submit the passport, pick a seat, declare the bags and
@@ -75,11 +56,6 @@ interface HeldSeat {
  */
 @Injectable()
 export class CheckInService {
-  /** The holds this service handed out, so the fee is known when the seat is confirmed. */
-  private readonly holds = new Map<string, HeldSeat>()
-  /** Feature 5's payment id per booking passenger; the seat itself lives in feature 3. */
-  private readonly seatPayments = new Map<string, string | null>()
-
   constructor(
     @Inject(CLOCK) private readonly clock: ClockProvider,
     @Inject(FLIGHTS) private readonly flights: FlightProvider,
@@ -97,8 +73,17 @@ export class CheckInService {
     @Inject(CHECKIN_REPOSITORY) private readonly store: CheckInRepository,
   ) {}
 
-  async start(actor: Actor, input: { pnr: string; lastName: string }): Promise<CheckInView> {
-    const booking = (await this.bookings.findByPnrAndLastName(input.pnr, input.lastName))[0]
+  async start(actor: Actor, input: { pnr: string; lastName: string; firstName?: string }): Promise<CheckInView> {
+    const matches = await this.bookings.findByPnrAndLastName(input.pnr, input.lastName)
+    // A family shares the PNR and the surname: the first name tells the passengers apart.
+    if (matches.length > 1 && !input.firstName) {
+      throw validation('Several passengers on this booking share the surname; add the first name', {
+        reason: 'several_passengers',
+        firstNames: matches.map((b) => b.firstName),
+      })
+    }
+    const wanted = input.firstName ? stripNonLetters(input.firstName) : null
+    const booking = wanted ? matches.find((b) => stripNonLetters(b.firstName) === wanted) : matches[0]
     if (!booking) throw notFound('Booking')
     if (!booking.paid) throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is not paid', { reason: 'unpaid' })
 
@@ -226,16 +211,11 @@ export class CheckInService {
         reason: 'exit_row_special_assistance',
       })
     }
-    const fee = await this.pricing.seatFee(booking.cabin, seat.type)
-    const lock = await this.seats.hold(flightId, input.seatCode, record.booking_passenger_id, SEAT_HOLD_TTL_MS)
-    const held: SeatLock = { ...lock, fee }
-    this.holds.set(held.id, { lock: held, checkInId: record.id })
-    return held
+    return this.seats.hold(flightId, input.seatCode, record.booking_passenger_id, SEAT_HOLD_TTL_MS)
   }
 
   /** Gives the seat hold back. The lock id is the secret: whoever holds it may release it. */
   async releaseSeat(lockId: string): Promise<void> {
-    this.holds.delete(lockId)
     await this.seats.release(lockId)
   }
 
@@ -244,17 +224,18 @@ export class CheckInService {
     this.assertOpen(record, 'The seat can only be confirmed while the check-in is open')
     const flight = await this.flightOf(record.flight_id)
     this.assertWindowOpen(flight, await this.windowOf(flight))
-    const held = this.holds.get(input.lockId)
-    if (!held || held.checkInId !== record.id) throw notFound('Seat hold')
+    // The hold is read from the seat provider, so it survives a restart of this service.
+    const held = await this.seats.lock(input.lockId)
+    if (!held || held.bookingPassengerId !== record.booking_passenger_id) throw notFound('Seat hold')
     // The hold runs out before the money goes in: an expired hold is never charged.
-    if (new Date(held.lock.expiresAt).getTime() <= this.clock.now().getTime()) {
-      throw new CheckInError(409, 'LOCK_EXPIRED', 'The seat hold has expired', { seatCode: held.lock.seatCode })
+    if (new Date(held.expiresAt).getTime() <= this.clock.now().getTime()) {
+      throw new CheckInError(409, 'LOCK_EXPIRED', 'The seat hold has expired', { seatCode: held.seatCode })
     }
     const booking = await this.bookingOf(record)
     let paymentId: string | null = null
-    if (held.lock.fee > 0) {
+    if (held.fee > 0) {
       const charge = await this.payments.charge({
-        amount: held.lock.fee,
+        amount: held.fee,
         currency: 'THB',
         purpose: 'seat',
         reference: `seat_assignment:${input.lockId}`,
@@ -262,7 +243,7 @@ export class CheckInService {
       })
       paymentId = charge.paymentId
     }
-    let confirmed: { seatCode: string; type: SeatType }
+    let confirmed: { seatCode: string }
     try {
       confirmed = await this.seats.confirm(input.lockId, paymentId)
     } catch (error) {
@@ -272,8 +253,6 @@ export class CheckInService {
       }
       throw error
     }
-    this.holds.delete(input.lockId)
-    this.seatPayments.set(record.booking_passenger_id, paymentId)
     const pass = (await this.store.passesForCheckIn(record.id))[0]
     if (pass) await this.store.updatePass(pass.id, { seat_code: confirmed.seatCode })
     await this.record(actor, 'check_in.seat_confirm', 'check_in', record.id, `seat ${confirmed.seatCode} confirmed`)
@@ -339,61 +318,11 @@ export class CheckInService {
     return this.passView(record, pass)
   }
 
-  /** Feature 7's callback: a hold may arrive after the pass was issued. */
-  async applyScreeningResult(id: string, outcome: 'held' | 'clear' | 'denied'): Promise<void> {
+  // shortcut: any signed-in customer holding the check-in UUID may act on it (the schema has no owner column; UUIDs are the only wall), upgrade when the DB team adds an owner or F3 links bookings to Clerk customers
+  private async require(_actor: Actor, id: string): Promise<CheckInRecord> {
     const record = await this.store.getCheckIn(id)
     if (!record) throw notFound('Check-in')
-    if (record.status === 'boarded' || record.status === 'no_show' || record.status === 'cancelled') return
-    const status: CheckInStatus =
-      outcome === 'held'
-        ? 'on_hold'
-        : outcome === 'denied'
-          ? 'denied'
-          : (await this.store.passesForCheckIn(id)).length > 0
-            ? 'checked_in'
-            : 'started'
-    const patch: CheckInPatch = { status }
-    // The column is uuid and the CHECK needs a run id for on_hold/denied, so a hold without an F7 run gets a fresh one.
-    if ((status === 'on_hold' || status === 'denied') && !record.screening_run_id) patch.screening_run_id = randomUUID()
-    await this.store.updateCheckIn(id, patch)
-  }
-
-  /** A hold that is still open when the window closes becomes a no-show and gives the seat back. */
-  async releaseExpiredHolds(): Promise<number> {
-    let released = 0
-    for (const record of await this.store.listCheckIns()) {
-      if (record.status !== 'on_hold') continue
-      const flight = await this.flightOf(record.flight_id)
-      if (isWindowOpen(this.clock.now(), await this.windowOf(flight))) continue
-      await this.seats.releaseAssigned(record.booking_passenger_id)
-      await this.store.updateCheckIn(record.id, { status: 'no_show' })
-      released += 1
-    }
-    return released
-  }
-
-  private async require(actor: Actor, id: string): Promise<CheckInRecord> {
-    const record = await this.store.getCheckIn(id)
-    if (!record) throw notFound('Check-in')
-    if (!(await this.mayAccess(actor, record))) {
-      throw new CheckInError(403, 'FORBIDDEN', 'This check-in belongs to another passenger')
-    }
     return record
-  }
-
-  /**
-   * The customer owns the check-in through the booking or through the passenger of their customer row. Until the
-   * database carries the owner, the check-in id is the third way in.
-   */
-  private async mayAccess(actor: Actor, record: CheckInRecord): Promise<boolean> {
-    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
-    const customer = await this.customerOf(actor)
-    return canCustomerAccess(record, actor, booking, customer)
-  }
-
-  private async customerOf(actor: Actor): Promise<CustomerRef | null> {
-    if (!this.passengers.customerByUserId) return null
-    return this.passengers.customerByUserId(actor.userId)
   }
 
   private assertStarted(record: CheckInRecord, message: string): void {
@@ -537,7 +466,7 @@ export class CheckInService {
       code: assigned.seatCode,
       type: assigned.type,
       fee: await this.pricing.seatFee(booking.cabin, assigned.type),
-      paymentId: this.seatPayments.get(record.booking_passenger_id) ?? null,
+      paymentId: assigned.paymentId,
     }
   }
 

@@ -217,11 +217,6 @@ export class DbPassengers implements PassengerProfileProvider {
     data.updated_at = this.clock.now()
     await this.db.passenger.update({ where: { id }, data })
   }
-
-  async customerByUserId(userId: string): Promise<{ passengerId: string | null } | null> {
-    const row = await this.db.customer.findUnique({ where: { user_id: userId }, select: { passenger_id: true } })
-    return row ? { passengerId: row.passenger_id } : null
-  }
 }
 
 interface BaggageRateRow {

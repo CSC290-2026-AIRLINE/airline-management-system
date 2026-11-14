@@ -41,12 +41,15 @@ export interface CheckInRepository {
   createDocument(input: CreateDocumentInput): Promise<TravelDocumentRecord>
   getDocument(id: string): Promise<TravelDocumentRecord | null>
   getDocumentByCheckIn(checkInId: string): Promise<TravelDocumentRecord | null>
+  documentsForCheckIns(checkInIds: string[]): Promise<TravelDocumentRecord[]>
   listDocuments(): Promise<TravelDocumentRecord[]>
   updateDocument(id: string, patch: UpdateDocumentPatch): Promise<TravelDocumentRecord>
 
   createBag(input: CreateBagInput): Promise<CheckedBagRecord>
   getBag(id: string): Promise<CheckedBagRecord | null>
   listBags(checkInId: string): Promise<CheckedBagRecord[]>
+  /** The live bags of many check-ins, weighed order, so a flight screen is one query and not one per passenger. */
+  bagsForCheckIns(checkInIds: string[]): Promise<CheckedBagRecord[]>
   /** Feature 10 looks a bag up by the number on its tag. */
   findBagByTag(tagNumber: string): Promise<CheckedBagRecord | null>
   updateBag(id: string, patch: UpdateBagPatch): Promise<CheckedBagRecord>
@@ -67,6 +70,7 @@ export interface CheckInRepository {
   getPass(id: string): Promise<BoardingPassRecord | null>
   passByReference(reference: string): Promise<BoardingPassRecord | null>
   passesForCheckIn(checkInId: string): Promise<BoardingPassRecord[]>
+  passesForCheckIns(checkInIds: string[]): Promise<BoardingPassRecord[]>
   listPasses(): Promise<BoardingPassRecord[]>
   updatePass(id: string, patch: UpdatePassPatch): Promise<BoardingPassRecord>
 

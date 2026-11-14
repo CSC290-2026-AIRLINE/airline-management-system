@@ -60,18 +60,26 @@ export class PrismaCheckInRepository implements CheckInRepository {
   ) {}
 
   async createCheckIn(input: CreateCheckInInput): Promise<CheckInRecord> {
-    const row = await this.db.check_in.create({
-      data: {
-        booking_passenger_id: input.booking_passenger_id,
-        passenger_id: input.passenger_id,
-        flight_id: input.flight_id,
-        status: input.status ?? 'started',
-        declared_bags: input.declared_bags ?? null,
-        screening_run_id: input.screening_run_id ?? null,
-        checked_in_at: input.checked_in_at ?? null,
-      },
-    })
-    return toCheckInRecord(row)
+    try {
+      const row = await this.db.check_in.create({
+        data: {
+          booking_passenger_id: input.booking_passenger_id,
+          passenger_id: input.passenger_id,
+          flight_id: input.flight_id,
+          status: input.status ?? 'started',
+          declared_bags: input.declared_bags ?? null,
+          screening_run_id: input.screening_run_id ?? null,
+          checked_in_at: input.checked_in_at ?? null,
+        },
+      })
+      return toCheckInRecord(row)
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error
+      // One open check-in per passenger and flight: a double submit gets the one that is already there.
+      const existing = await this.findActiveCheckInByBookingPassenger(input.booking_passenger_id)
+      if (!existing) throw error
+      return existing
+    }
   }
 
   async getCheckIn(id: string): Promise<CheckInRecord | null> {
@@ -149,6 +157,10 @@ export class PrismaCheckInRepository implements CheckInRepository {
     return row ? toDocumentRecord(row) : null
   }
 
+  async documentsForCheckIns(checkInIds: string[]): Promise<TravelDocumentRecord[]> {
+    return (await this.db.travel_document.findMany({ where: { check_in_id: { in: checkInIds } } })).map(toDocumentRecord)
+  }
+
   async listDocuments(): Promise<TravelDocumentRecord[]> {
     return (await this.db.travel_document.findMany({ orderBy: { created_at: 'asc' } })).map(toDocumentRecord)
   }
@@ -191,6 +203,12 @@ export class PrismaCheckInRepository implements CheckInRepository {
         // The counter weighs the bags one by one and recomputes the excess over them in that order.
         orderBy: { created_at: 'asc' },
       })
+    ).map(toBagRecord)
+  }
+
+  async bagsForCheckIns(checkInIds: string[]): Promise<CheckedBagRecord[]> {
+    return (
+      await this.db.checked_bag.findMany({ where: { check_in_id: { in: checkInIds }, deleted_at: null }, orderBy: { created_at: 'asc' } })
     ).map(toBagRecord)
   }
 
@@ -307,6 +325,12 @@ export class PrismaCheckInRepository implements CheckInRepository {
 
   async passesForCheckIn(checkInId: string): Promise<BoardingPassRecord[]> {
     return (await this.db.boarding_pass.findMany({ where: { check_in_id: checkInId }, orderBy: { created_at: 'asc' } })).map(toPassRecord)
+  }
+
+  async passesForCheckIns(checkInIds: string[]): Promise<BoardingPassRecord[]> {
+    return (await this.db.boarding_pass.findMany({ where: { check_in_id: { in: checkInIds } }, orderBy: { created_at: 'asc' } })).map(
+      toPassRecord,
+    )
   }
 
   async listPasses(): Promise<BoardingPassRecord[]> {

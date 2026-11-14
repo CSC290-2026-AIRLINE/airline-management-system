@@ -16,6 +16,7 @@ export class CheckInController {
     return this.checkins.start(requireActor(actor), {
       pnr: requireString(body, 'pnr', { max: 32 }),
       lastName: requireString(body, 'lastName', { max: 64 }),
+      firstName: optionalString(body, 'firstName', { max: 64 }),
     })
   }
 

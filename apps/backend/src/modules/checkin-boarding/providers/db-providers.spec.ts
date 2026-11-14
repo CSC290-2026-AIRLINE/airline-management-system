@@ -272,9 +272,4 @@ describe('DbPassengers', () => {
     })
     await expect(passengers.findByPassportNumber('TH1234567')).resolves.toHaveLength(1)
   })
-
-  it('the customer row of a user carries the passenger', async () => {
-    const db = { customer: { findUnique: jest.fn().mockResolvedValue({ passenger_id: 'pax-1' }) } }
-    await expect(new DbPassengers(db as unknown as DbService, clock).customerByUserId?.('u-1')).resolves.toEqual({ passengerId: 'pax-1' })
-  })
 })

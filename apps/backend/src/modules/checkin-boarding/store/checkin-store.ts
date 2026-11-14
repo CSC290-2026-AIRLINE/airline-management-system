@@ -317,6 +317,10 @@ export class CheckInStore implements CheckInRepository {
     return null
   }
 
+  async documentsForCheckIns(checkInIds: string[]): Promise<TravelDocumentRecord[]> {
+    return [...this.documents.values()].filter((d) => checkInIds.includes(d.check_in_id))
+  }
+
   async listDocuments(): Promise<TravelDocumentRecord[]> {
     return [...this.documents.values()]
   }
@@ -357,6 +361,10 @@ export class CheckInStore implements CheckInRepository {
 
   async listBags(checkInId: string): Promise<CheckedBagRecord[]> {
     return [...this.bags.values()].filter((b) => b.check_in_id === checkInId && b.deleted_at === null)
+  }
+
+  async bagsForCheckIns(checkInIds: string[]): Promise<CheckedBagRecord[]> {
+    return [...this.bags.values()].filter((b) => checkInIds.includes(b.check_in_id) && b.deleted_at === null)
   }
 
   /** Feature 10 looks a bag up by the number on its tag. */
@@ -454,6 +462,10 @@ export class CheckInStore implements CheckInRepository {
 
   async passesForCheckIn(checkInId: string): Promise<BoardingPassRecord[]> {
     return this.passesOf(checkInId)
+  }
+
+  async passesForCheckIns(checkInIds: string[]): Promise<BoardingPassRecord[]> {
+    return [...this.passes.values()].filter((p) => checkInIds.includes(p.check_in_id))
   }
 
   async listPasses(): Promise<BoardingPassRecord[]> {

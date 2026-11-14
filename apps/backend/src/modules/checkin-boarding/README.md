@@ -15,7 +15,7 @@ passenger their own seat and hides the other cabins.
 
 | Method | Path                            | Body / query                          | Service                         |
 | ------ | ------------------------------- | ------------------------------------- | ------------------------------- |
-| POST   | `/check-ins`                    | `{ pnr, lastName }`                   | `CheckInService.start`          |
+| POST   | `/check-ins`                    | `{ pnr, lastName, firstName? }`       | `CheckInService.start`          |
 | GET    | `/check-ins/:id`                |                                       | `CheckInService.get`            |
 | PUT    | `/check-ins/:id/document`       | `{ mrzLine1, mrzLine2, visaNumber? }` | `CheckInService.submitDocument` |
 | GET    | `/flights/:flightId/seat-map`   | `?checkInId`                          | `CheckInService.seatMap`        |
