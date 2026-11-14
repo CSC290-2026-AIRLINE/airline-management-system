@@ -11,9 +11,10 @@ import { CargoClaimsController } from './cargo-claims.controller'
 import { CargoClaimsService } from './cargo-claims.service'
 import { CargoCustomerController } from './cargo-customer.controller'
 import { CargoCustomerService } from './cargo-customer.service'
+import { CargoCustomerMockController } from './cargo-customer-mock.controller'
 import { CargoTestToolsController } from './cargo-test-tools.controller'
 
-const devControllers = process.env.NODE_ENV !== 'production' ? [CargoTestToolsController] : []
+const devControllers = process.env.NODE_ENV !== 'production' ? [CargoTestToolsController, CargoCustomerMockController] : []
 
 @Module({
   controllers: [
