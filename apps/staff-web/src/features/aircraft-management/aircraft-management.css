@@ -9,15 +9,25 @@
  * The starter stylesheet limits #root to 1126px and centres its text. The feature pages use the
  * whole window, so those limits are lifted only while this feature is on screen.
  */
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 #root:has(.f9-root) {
-  width: auto;
-  max-width: none;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   margin: 0;
   text-align: left;
   border-inline: none;
 }
 
 .f9-root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   --f9-page: #f7f9fc;
   --f9-sidebar: #14213d;
   --f9-sidebar-deep: #071426;
@@ -81,26 +91,42 @@
 }
 
 /* The logo and the user name are set in a serif face in the design; everything else is Inter. */
-.f9-sidebar__logo {
-  padding-left: 6px;
-  font-family: 'Source Serif 4', 'Source Serif Pro', 'Noto Serif', Georgia, serif;
-  font-size: 40px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -1.2px;
-  text-transform: uppercase;
+.f9-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 4px;
 }
 
-.f9-sidebar__accent {
-  width: 52px;
-  height: 4px;
-  margin: 13px 0 0 6px;
-  border-radius: 2px;
-  background: var(--f9-accent);
+.f9-sidebar__logo-icon {
+  flex-shrink: 0;
+}
+
+.f9-sidebar__brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.f9-sidebar__brand-title {
+  font-family: 'Source Serif 4', 'Source Serif Pro', 'Noto Serif', Georgia, serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+
+.f9-sidebar__brand-sub {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.2;
+  margin-top: 3px;
 }
 
 .f9-sidebar__eyebrow {
-  margin-top: 13px;
+  margin-top: 18px;
   padding-left: 6px;
   font-size: 12px;
   letter-spacing: 1.4px;
@@ -1006,8 +1032,30 @@
   margin-top: 22px;
   display: grid;
   grid-template-columns: minmax(0, 400px) minmax(0, 577px);
+  grid-template-areas:
+    "main preview"
+    "actions preview";
   gap: 20px;
   align-items: start;
+}
+
+.f9-typegrid__main {
+  grid-area: main;
+}
+
+.f9-typegrid__preview {
+  grid-area: preview;
+}
+
+.f9-typegrid__actions {
+  grid-area: actions;
+}
+
+.f9-type-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .f9-formgrid {
@@ -1732,6 +1780,38 @@
 
 /* ------------------------------------------------------------- breakpoints */
 
+.f9-detail__card {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.f9-mobile-bar,
+.f9-mobile-subbar,
+.f9-sidebar-backdrop,
+.f9-fleet__mobile-cards,
+.f9-types__mobile-cards,
+.f9-backlink--mobile,
+.f9-detail__badge--mobile,
+.f9-detail__mobile-actions,
+.f9-detail__mobile-label {
+  display: none;
+}
+
+.f9-detail__desktop-status-btn {
+  display: inline-flex;
+}
+
+.f9-detail__badge--desktop {
+  display: block;
+}
+
+.f9-detail__desktop-retire {
+  display: block;
+}
+
 @media (max-width: 1180px) {
   .f9-fleet,
   .f9-readiness,
@@ -1745,16 +1825,493 @@
 }
 
 @media (max-width: 860px) {
-  .f9-sidebar {
-    width: 200px;
-    flex-basis: 200px;
+  .f9-root {
+    flex-direction: column;
   }
 
-  .f9-sidebar__logo {
-    font-size: 30px;
+  /* Mobile Top Navbar (M-01) */
+  .f9-mobile-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    background: #fff;
+    border-bottom: 1px solid var(--f9-table-head);
+  }
+
+  .f9-mobile-bar__brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .f9-mobile-bar__toggle {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    width: 36px;
+    height: 36px;
+    background: var(--f9-navy);
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 7px;
+    cursor: pointer;
+  }
+
+  .f9-mobile-bar__toggle span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: #fff;
+    border-radius: 1px;
+  }
+
+  .f9-mobile-subbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 12px;
+    background: #f1f5f9;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--f9-muted);
+    letter-spacing: 0.4px;
+    border-bottom: 1px solid var(--f9-table-head);
+    text-align: center;
+  }
+
+  .f9-mobile-subbar__dot {
+    color: #eab308;
+    font-size: 8px;
+  }
+
+  /* Mobile Drawer Sidebar */
+  .f9-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    width: 260px;
+    transform: translateX(-100%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.25s ease-in-out, visibility 0.25s;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .f9-sidebar--mobile-open {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .f9-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 20, 35, 0.5);
+    z-index: 99;
+  }
+
+  .f9-main {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 16px 16px 40px;
+  }
+
+  .f9-content {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .f9-chips {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .f9-chip {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 4px;
+    font-size: 11px;
+  }
+
+  .f9-filters {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .f9-filters .f9-select {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 120px;
+  }
+
+  .f9-topbar {
+    display: flex;
+    justify-content: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .f9-topbar__user {
+    display: none;
   }
 
   .f9-title {
-    font-size: 28px;
+    font-size: 24px;
+  }
+
+  .f9-subtitle {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  /* Mobile Fleet Stacked Cards (M-01 & M-02) */
+  .f9-fleet--mobile-list .f9-fleet__table {
+    display: none;
+  }
+
+  .f9-fleet--mobile-list .f9-detail {
+    display: none;
+  }
+
+  .f9-fleet--mobile-list .f9-fleet__mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .f9-fleet--mobile-detail .f9-fleet__left {
+    display: none;
+  }
+
+  .f9-fleet--mobile-detail .f9-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .f9-fleet--mobile-detail .f9-detail__card {
+    background: #fff;
+    border: 1px solid var(--f9-border);
+    border-radius: 10px;
+    padding: 16px;
+    margin: 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  }
+
+  .f9-fleet--mobile-detail .f9-detail__card--head .f9-detail__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .f9-fleet--mobile-detail .f9-detail__badge--desktop {
+    display: none;
+  }
+
+  .f9-fleet--mobile-detail .f9-detail__badge--mobile {
+    display: block;
+    margin-top: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  .f9-fleet--mobile-detail .f9-detail__desktop-status-btn,
+  .f9-fleet--mobile-detail .f9-detail__desktop-retire {
+    display: none;
+  }
+
+  .f9-fleet--mobile-detail .f9-detail__mobile-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .f9-fleet--mobile-detail .f9-detail__mobile-actions .f9-btn {
+    flex: 1;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .f9-fleet--mobile-detail .f9-detail__mobile-label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--f9-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+
+  .f9-fleet--mobile-detail .f9-detail__section {
+    margin-top: 0;
+    padding-top: 16px;
+    border-top: none;
+  }
+
+  .f9-backlink--mobile {
+    display: inline-flex;
+    margin-bottom: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--f9-primary);
+    cursor: pointer;
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  .f9-mobile-hint {
+    margin: 4px 0 10px;
+    font-size: 12px;
+    color: var(--f9-muted);
+  }
+
+  .f9-fleet-card {
+    background: #fff;
+    border: 1px solid var(--f9-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .f9-fleet-card:hover {
+    border-color: var(--f9-border-strong);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .f9-fleet-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .f9-fleet-card__tail {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--f9-ink);
+  }
+
+  .f9-fleet-card__sub {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--f9-muted);
+  }
+
+  .f9-fleet-card__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .f9-fleet-card__retired {
+    font-size: 12px;
+    color: var(--f9-muted);
+  }
+
+  .f9-fleet-card__link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--f9-primary);
+  }
+
+  /* Mobile Aircraft Types Stacked Cards (M-04) */
+  .f9-types {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .f9-table--types {
+    display: none;
+  }
+
+  .f9-types__mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .f9-typegrid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "main"
+      "preview"
+      "actions";
+    gap: 16px;
+  }
+
+  .f9-type-card {
+    background: #fff;
+    border: 1px solid var(--f9-border);
+    border-radius: 10px;
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .f9-type-card:hover {
+    border-color: var(--f9-border-strong);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .f9-type-card__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .f9-type-card__code {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--f9-ink);
+    display: block;
+  }
+
+  .f9-type-card__model {
+    font-size: 13px;
+    color: var(--f9-muted);
+    margin-top: 2px;
+    display: block;
+  }
+
+  .f9-type-card__metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--f9-page);
+    border-radius: 6px;
+  }
+
+  .f9-type-card__metric-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--f9-muted);
+    letter-spacing: 0.5px;
+  }
+
+  .f9-type-card__metric-value {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--f9-ink);
+    margin-top: 2px;
+  }
+
+  .f9-type-card__foot {
+    margin-top: 10px;
+    text-align: right;
+  }
+
+  .f9-type-card__link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--f9-primary);
+  }
+}
+
+@media (max-width: 640px) {
+  /* Bottom Sheet Modals (M-03a, M-03b, M-04a) */
+  .f9-modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .f9-modal__card,
+  .f9-modal__card--wide {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    max-height: 85vh;
+    padding: 20px 20px 28px;
+  }
+
+  .f9-modal__card::before {
+    content: '';
+    display: block;
+    width: 38px;
+    height: 4px;
+    margin: 0 auto 16px;
+    background: #cbd5e1;
+    border-radius: 2px;
+  }
+
+  .f9-modal__actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .f9-modal__actions--start {
+    flex-direction: column;
+  }
+
+  .f9-modal__actions button {
+    width: 100%;
+  }
+
+  .f9-type-actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .f9-type-actions .f9-btn {
+    width: 100%;
+  }
+
+  .f9-turnaround__tasks {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .f9-turnaround__tasks .f9-pillbtn {
+    width: 100%;
+    text-align: center;
+    padding: 0 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .f9-toolbar {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .f9-toolbar .f9-search,
+  .f9-toolbar .f9-btn {
+    width: 100%;
+  }
+
+  .f9-sectionhead {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .f9-sectionhead .f9-btn {
+    width: 100%;
   }
 }

@@ -89,6 +89,7 @@ export function AircraftManagementPage() {
   const [baseFilter, setBaseFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [cancelPeriodId, setCancelPeriodId] = useState<string | null>(null)
+  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
 
   // A maintenance window being rescheduled or completed, and the window whose cancel is waiting for a confirm.
   const [windowAction, setWindowAction] = useState<{ kind: 'reschedule' | 'complete'; window: MaintenanceWindow } | null>(null)
@@ -131,9 +132,14 @@ export function AircraftManagementPage() {
   }
   const selectAircraft = (id: string) => {
     setEveryDayNotice(false)
-    setDetailState('loading')
-    setDetailError(null)
-    setSelectedId(id)
+    if (id !== selectedId || detailState === 'error' || !detail) {
+      setDetailState('loading')
+      setDetailError(null)
+      setSelectedId(id)
+      if (id === selectedId) {
+        setDetailToken((token) => token + 1)
+      }
+    }
   }
 
   useEffect(() => {
@@ -271,7 +277,7 @@ export function AircraftManagementPage() {
     setActionError(null)
     setStatusValue(selectedAircraft.current_status === 'grounded' ? 'grounded' : 'in_service')
     setStatusReason('')
-    setStatusStart('')
+    setStatusStart(toDateInputValue(new Date()))
     setStatusEnd('')
     setIsStatusOpen(true)
   }
@@ -458,8 +464,8 @@ export function AircraftManagementPage() {
       <StaffShell activeTab="fleet">
         {actionError && !isModalOpen && <ErrorMessage message={actionError} />}
 
-        <div className="f9-fleet">
-          <div>
+        <div className={`f9-fleet ${mobileView === 'detail' ? 'f9-fleet--mobile-detail' : 'f9-fleet--mobile-list'}`}>
+          <div className="f9-fleet__left">
             <div className="f9-toolbar">
               <input
                 type="text"
@@ -516,6 +522,38 @@ export function AircraftManagementPage() {
               </select>
             </div>
 
+            {/* Mobile Stacked Cards (M-01 FLEET LIST) */}
+            <div className="f9-fleet__mobile-cards">
+              <p className="f9-mobile-hint">
+                {visibleAircraft.length} aircraft · tap a card to open its details
+              </p>
+              {visibleAircraft.map((item) => (
+                <div
+                  key={item.id}
+                  className="f9-fleet-card"
+                  onClick={() => {
+                    selectAircraft(item.id)
+                    setMobileView('detail')
+                    window.scrollTo({ top: 0, behavior: 'instant' })
+                  }}
+                >
+                  <div className="f9-fleet-card__head">
+                    <span className="f9-fleet-card__tail">{item.tail_number}</span>
+                    <StatusBadge status={item.current_status} />
+                  </div>
+                  <div className="f9-fleet-card__sub">
+                    {typeOf(item, aircraftTypes)} · base {item.base_airport_code}
+                  </div>
+                  <div className="f9-fleet-card__foot">
+                    <span className="f9-fleet-card__retired">
+                      Retired on {item.retired_on ? formatDate(item.retired_on) : '—'}
+                    </span>
+                    <span className="f9-fleet-card__link">View details ›</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <div className="f9-card f9-fleet__table">
               {fleetState === 'loading' ? (
                 <LoadingMessage>Loading fleet data...</LoadingMessage>
@@ -565,6 +603,16 @@ export function AircraftManagementPage() {
           </div>
 
           <aside className="f9-card f9-detail">
+            <button
+              type="button"
+              className="f9-backlink f9-backlink--mobile"
+              onClick={() => {
+                setMobileView('list')
+                window.scrollTo({ top: 0, behavior: 'instant' })
+              }}
+            >
+              ← Fleet
+            </button>
             {!selectedAircraft ? (
               <EmptyMessage>Select an aircraft to view its details</EmptyMessage>
             ) : detailState === 'loading' ? (
@@ -573,48 +621,70 @@ export function AircraftManagementPage() {
               <ErrorMessage message={detailError ?? 'Failed to load the aircraft details'} onRetry={reloadDetail} />
             ) : (
               <>
-                <div className="f9-detail__head">
-                  <div>
-                    <h2 className="f9-detail__tail">{selectedAircraft.tail_number}</h2>
-                    <p className="f9-detail__sub">
-                      {typeOf(selectedAircraft, aircraftTypes)} · base {selectedAircraft.base_airport_code}
-                    </p>
+                <div className="f9-detail__card f9-detail__card--head">
+                  <div className="f9-detail__head">
+                    <div>
+                      <h2 className="f9-detail__tail">{selectedAircraft.tail_number}</h2>
+                      <p className="f9-detail__sub">
+                        {typeOf(selectedAircraft, aircraftTypes)} · base {selectedAircraft.base_airport_code}
+                      </p>
+                    </div>
+                    <button type="button" className="f9-btn f9-btn--outline f9-detail__desktop-status-btn" onClick={openStatus}>
+                      Set Status
+                    </button>
+                    <div className="f9-detail__badge f9-detail__badge--mobile">
+                      <StatusBadge status={selectedAircraft.current_status} />
+                    </div>
                   </div>
-                  <button type="button" className="f9-btn f9-btn--outline" onClick={openStatus}>
-                    Set Status
-                  </button>
+
+                  <div className="f9-detail__badge f9-detail__badge--desktop">
+                    <StatusBadge status={selectedAircraft.current_status} />
+                  </div>
+
+                  <div className="f9-detail__mobile-actions">
+                    <button type="button" className="f9-btn f9-btn--outline" onClick={openStatus}>
+                      Set Status
+                    </button>
+                    <button
+                      type="button"
+                      className="f9-btn f9-btn--outline"
+                      disabled={isSubmitting}
+                      onClick={() => void handleToggleRetired()}
+                    >
+                      {selectedAircraft.retired_on ? 'Reinstate aircraft' : 'Retire aircraft'}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="f9-detail__badge">
-                  <StatusBadge status={selectedAircraft.current_status} />
+                <div className="f9-detail__card f9-detail__card--registry">
+                  <h3 className="f9-label f9-detail__mobile-label">REGISTRY</h3>
+                  <div className="f9-detail__row">
+                    <span>Retired on</span>
+                    <span>{formatDate(selectedAircraft.retired_on)}</span>
+                  </div>
+
+                  <div className="f9-detail__actions f9-detail__desktop-retire">
+                    <button
+                      type="button"
+                      className="f9-btn f9-btn--outline"
+                      disabled={isSubmitting}
+                      onClick={() => void handleToggleRetired()}
+                    >
+                      {selectedAircraft.retired_on ? 'Reinstate aircraft' : 'Retire aircraft'}
+                    </button>
+                  </div>
+
+                  <div className="f9-detail__row">
+                    <span>Entry into service</span>
+                    <span>{formatDate(selectedAircraft.entry_into_service_date)}</span>
+                  </div>
+                  <div className="f9-detail__row">
+                    <span>Base airport</span>
+                    <span>{selectedAircraft.base_airport_code}</span>
+                  </div>
                 </div>
 
-                <div className="f9-detail__row">
-                  <span>Retired on</span>
-                  <span>{formatDate(selectedAircraft.retired_on)}</span>
-                </div>
-
-                <div className="f9-detail__actions">
-                  <button
-                    type="button"
-                    className="f9-btn f9-btn--outline"
-                    disabled={isSubmitting}
-                    onClick={() => void handleToggleRetired()}
-                  >
-                    {selectedAircraft.retired_on ? 'Reinstate aircraft' : 'Retire aircraft'}
-                  </button>
-                </div>
-
-                <div className="f9-detail__row">
-                  <span>Entry into service</span>
-                  <span>{formatDate(selectedAircraft.entry_into_service_date)}</span>
-                </div>
-                <div className="f9-detail__row">
-                  <span>Base airport</span>
-                  <span>{selectedAircraft.base_airport_code}</span>
-                </div>
-
-                <section className="f9-detail__section">
+                <section className="f9-detail__card f9-detail__section">
                   <h3 className="f9-label">OPERATING DAYS</h3>
                   <div className="f9-chips">
                     {WEEKDAYS.map((day, index) => {
@@ -643,7 +713,7 @@ export function AircraftManagementPage() {
                   </p>
                 </section>
 
-                <section className="f9-detail__section">
+                <section className="f9-detail__card f9-detail__section">
                   <div className="f9-detail__sectionhead">
                     <h3 className="f9-label">MAINTENANCE</h3>
                     <button
@@ -708,7 +778,7 @@ export function AircraftManagementPage() {
                   )}
                 </section>
 
-                <section className="f9-detail__section">
+                <section className="f9-detail__card f9-detail__section">
                   <h3 className="f9-label">STATUS HISTORY</h3>
                   {detail && detail.statusHistory.length > 0 ? (
                     <ul className="f9-detail__list">

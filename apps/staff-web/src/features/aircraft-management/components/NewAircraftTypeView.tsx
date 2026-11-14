@@ -183,7 +183,7 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
   return (
     <>
       <div className="f9-typegrid">
-        <div className="f9-stack">
+        <div className="f9-stack f9-typegrid__main">
           <div className="f9-typehead">
             <button type="button" className="f9-backlink" onClick={onCancel}>
               ← Aircraft Types
@@ -373,24 +373,9 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
               </p>
             </div>
           </div>
-
-          <div>
-            <p className="f9-note f9-note--warn">
-              Once saved, this layout is permanent. To change it later, clone the type. Double-check row ranges, row types and blocked seats
-              first.
-            </p>
-            <div className="f9-modal__actions" style={{ marginTop: 16 }}>
-              <button type="button" className="f9-btn f9-btn--outline" onClick={onCancel}>
-                Cancel
-              </button>
-              <button type="submit" form="new-aircraft-type" className="f9-btn" disabled={isSaving}>
-                {isSaving ? 'Saving...' : 'Save aircraft type'}
-              </button>
-            </div>
-          </div>
         </div>
 
-        <div className="f9-stack f9-stack--tight">
+        <div className="f9-stack f9-stack--tight f9-typegrid__preview">
           <div className="f9-card f9-card--pad f9-card--capacity">
             <h3 className="f9-card__title">Capacity summary</h3>
             <div className="f9-metrics">
@@ -411,6 +396,21 @@ export function NewAircraftTypeView({ onCancel, onSaved }: NewAircraftTypeViewPr
 
           <div className="f9-card">
             <SeatMapPreview cabins={previewCabins} onToggleSeat={handleToggleSeat} onCycleRow={handleCycleRow} />
+          </div>
+        </div>
+
+        <div className="f9-typegrid__actions">
+          <p className="f9-note f9-note--warn">
+            Once saved, this layout is permanent. To change it later, clone the type. Double-check row ranges, row types and blocked seats
+            first.
+          </p>
+          <div className="f9-type-actions">
+            <button type="button" className="f9-btn f9-btn--outline" onClick={onCancel}>
+              Cancel
+            </button>
+            <button type="submit" form="new-aircraft-type" className="f9-btn" disabled={isSaving}>
+              {isSaving ? 'Saving...' : 'Save aircraft type'}
+            </button>
           </div>
         </div>
       </div>

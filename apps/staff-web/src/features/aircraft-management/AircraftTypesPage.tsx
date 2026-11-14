@@ -152,45 +152,94 @@ export function AircraftTypesPage() {
           ) : types.length === 0 ? (
             <EmptyMessage>No aircraft types yet. Click &quot;+ New Aircraft Type&quot; to add one.</EmptyMessage>
           ) : (
-            <table className="f9-table f9-table--types">
-              <thead>
-                <tr>
-                  <th>CODE</th>
-                  <th>MANUFACTURER / MODEL</th>
-                  <th>HOLD LIMIT</th>
-                  <th>SEATS</th>
-                  <th>TURNAROUND</th>
-                  <th>COST / HOUR</th>
-                  <th>CABINS</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              <table className="f9-table f9-table--types">
+                <thead>
+                  <tr>
+                    <th>CODE</th>
+                    <th>MANUFACTURER / MODEL</th>
+                    <th>HOLD LIMIT</th>
+                    <th>SEATS</th>
+                    <th>TURNAROUND</th>
+                    <th>COST / HOUR</th>
+                    <th>CABINS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {types.map((type) => {
+                    const cabins = type.layout?.cabins ?? []
+                    const cabinLabel = cabins.length === 1 ? CABIN_CLASS_NAMES[cabins[0].cabin_class] : `${cabins.length} cabins`
+
+                    return (
+                      <tr key={type.id} onClick={() => setSelectedId(type.id)}>
+                        <td>
+                          <button type="button" className="f9-table__pick" onClick={() => setSelectedId(type.id)}>
+                            {type.code}
+                          </button>
+                        </td>
+                        <td>
+                          {type.manufacturer} {type.model}
+                        </td>
+                        <td>{formatNumber(type.hold_weight_limit_kg)} kg</td>
+                        <td>{formatNumber(type.total_seats)}</td>
+                        <td>{type.min_turnaround_minutes} min</td>
+                        <td>{formatCurrency(type.operating_cost_per_hour, type.cost_currency, 0)}</td>
+                        <td>
+                          <span className="f9-types__cabins">{cabinLabel}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+
+              {/* Mobile Stacked Cards View (M-04) */}
+              <div className="f9-types__mobile-cards">
                 {types.map((type) => {
                   const cabins = type.layout?.cabins ?? []
                   const cabinLabel = cabins.length === 1 ? CABIN_CLASS_NAMES[cabins[0].cabin_class] : `${cabins.length} cabins`
 
                   return (
-                    <tr key={type.id} onClick={() => setSelectedId(type.id)}>
-                      <td>
-                        <button type="button" className="f9-table__pick" onClick={() => setSelectedId(type.id)}>
-                          {type.code}
-                        </button>
-                      </td>
-                      <td>
-                        {type.manufacturer} {type.model}
-                      </td>
-                      <td>{formatNumber(type.hold_weight_limit_kg)} kg</td>
-                      <td>{formatNumber(type.total_seats)}</td>
-                      <td>{type.min_turnaround_minutes} min</td>
-                      <td>{formatCurrency(type.operating_cost_per_hour, type.cost_currency, 0)}</td>
-                      <td>
+                    <div
+                      key={type.id}
+                      className="f9-type-card"
+                      onClick={() => setSelectedId(type.id)}
+                    >
+                      <div className="f9-type-card__head">
+                        <div>
+                          <span className="f9-type-card__code">{type.code}</span>
+                          <span className="f9-type-card__model">
+                            {type.manufacturer} {type.model}
+                          </span>
+                        </div>
                         <span className="f9-types__cabins">{cabinLabel}</span>
-                      </td>
-                    </tr>
+                      </div>
+                      <div className="f9-type-card__metrics">
+                        <div className="f9-type-card__metric">
+                          <span className="f9-type-card__metric-label">HOLD LIMIT</span>
+                          <span className="f9-type-card__metric-value">{formatNumber(type.hold_weight_limit_kg)} kg</span>
+                        </div>
+                        <div className="f9-type-card__metric">
+                          <span className="f9-type-card__metric-label">SEATS</span>
+                          <span className="f9-type-card__metric-value">{formatNumber(type.total_seats)}</span>
+                        </div>
+                        <div className="f9-type-card__metric">
+                          <span className="f9-type-card__metric-label">TURNAROUND</span>
+                          <span className="f9-type-card__metric-value">{type.min_turnaround_minutes} min</span>
+                        </div>
+                        <div className="f9-type-card__metric">
+                          <span className="f9-type-card__metric-label">COST / HOUR</span>
+                          <span className="f9-type-card__metric-value">{formatCurrency(type.operating_cost_per_hour, type.cost_currency, 0)}</span>
+                        </div>
+                      </div>
+                      <div className="f9-type-card__foot">
+                        <span className="f9-type-card__link">View details ›</span>
+                      </div>
+                    </div>
                   )
                 })}
-              </tbody>
-            </table>
+              </div>
+            </>
           )}
         </div>
 

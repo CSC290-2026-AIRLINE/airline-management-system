@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import '../aircraft-management.css'
@@ -34,12 +34,57 @@ interface StaffShellProps {
 
 export function StaffShell({ activeTab, children }: StaffShellProps) {
   const { user, logout } = useAppAuth()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   return (
     <div className="f9-root">
-      <aside className="f9-sidebar">
-        <div className="f9-sidebar__logo">Airlines</div>
-        <div className="f9-sidebar__accent" />
+      {/* Mobile Top Navbar from Figma M-01 */}
+      <div className="f9-mobile-bar">
+        <div className="f9-mobile-bar__brand">
+          <svg width="32" height="20" viewBox="0 0 54 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 8C18 8 38 2 52 2C40 6 24 12 14 14C9 15 5 12 4 8Z" fill="#F59E0B" />
+            <path d="M2 17C16 17 35 10 47 10C33 14 18 20 9 22C5 23 3 21 2 17Z" fill="#FFFFFF" />
+            <path d="M0 26C12 26 28 20 38 20C26 23 14 28 6 30C2 31 0 29 0 26Z" fill="#94A3B8" />
+          </svg>
+          <div className="f9-sidebar__brand-text">
+            <span className="f9-sidebar__brand-title" style={{ fontSize: '20px' }}>Flython</span>
+            <span className="f9-sidebar__brand-sub" style={{ fontSize: '7px' }}>AIRLINES</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="f9-mobile-bar__toggle"
+          aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+      </div>
+
+      <div className="f9-mobile-subbar">
+        <span>ADMINISTRATOR / FULL ACCESS</span>
+        <span className="f9-mobile-subbar__dot">●</span>
+        <span>SIMULATION TIME</span>
+      </div>
+
+      {isMobileMenuOpen && (
+        <div className="f9-sidebar-backdrop" onClick={() => setIsMobileMenuOpen(false)} />
+      )}
+
+      <aside className={`f9-sidebar ${isMobileMenuOpen ? 'f9-sidebar--mobile-open' : ''}`}>
+        <div className="f9-sidebar__brand">
+          <svg className="f9-sidebar__logo-icon" width="40" height="26" viewBox="0 0 54 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 8C18 8 38 2 52 2C40 6 24 12 14 14C9 15 5 12 4 8Z" fill="#F59E0B" />
+            <path d="M2 17C16 17 35 10 47 10C33 14 18 20 9 22C5 23 3 21 2 17Z" fill="#FFFFFF" />
+            <path d="M0 26C12 26 28 20 38 20C26 23 14 28 6 30C2 31 0 29 0 26Z" fill="#94A3B8" />
+          </svg>
+          <div className="f9-sidebar__brand-text">
+            <span className="f9-sidebar__brand-title">Flython</span>
+            <span className="f9-sidebar__brand-sub">AIRLINES</span>
+          </div>
+        </div>
         <div className="f9-sidebar__eyebrow">ADMIN WORKSPACE</div>
 
         <nav className="f9-sidebar__nav" aria-label="Workspace sections">

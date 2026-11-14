@@ -322,7 +322,7 @@ export function ReadinessPage() {
                           </span>
                         </div>
                         <span className={isAllReady ? 'f9-badge f9-badge--green' : 'f9-badge f9-badge--amber'}>
-                          {isAllReady ? 'Ready' : 'Not ready'}
+                          {isAllReady ? 'READY' : 'NOT READY'}
                         </span>
                       </div>
 
