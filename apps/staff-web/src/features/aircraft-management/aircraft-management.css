@@ -507,6 +507,7 @@
 
 .f9-readiness__title {
   margin: 0;
+  font-family: var(--font-sans);
   font-size: 18px;
   letter-spacing: -0.025em;
   font-weight: 700;

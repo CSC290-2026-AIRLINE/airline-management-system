@@ -249,7 +249,7 @@ export function AircraftManagementPage() {
   const handleRegister = async (event: FormEvent) => {
     event.preventDefault()
     if (!newTailNumber.trim() || !newTypeId || !newBase.trim()) {
-      setActionError('Tail number, aircraft type and base airport are required')
+      setActionError('Aircraft number, aircraft type and base airport are required')
       return
     }
 
@@ -476,7 +476,7 @@ export function AircraftManagementPage() {
             <div className="flex items-center gap-3">
               <Input
                 type="search"
-                placeholder="Search tail number, type or base"
+                placeholder="Search aircraft number, type or base"
                 aria-label="Search the fleet"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
@@ -528,7 +528,7 @@ export function AircraftManagementPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>TAIL #</TableHead>
+                      <TableHead>AIRCRAFT NO.</TableHead>
                       <TableHead>TYPE</TableHead>
                       <TableHead>BASE</TableHead>
                       <TableHead>RETIRED ON</TableHead>
@@ -547,7 +547,7 @@ export function AircraftManagementPage() {
                           <Button
                             type="button"
                             variant="link"
-                            className="h-auto p-0 font-semibold text-[var(--f9-primary)] hover:text-[var(--f9-primary-dark)]"
+                            className="h-auto p-0 font-semibold text-[var(--f9-ink)] no-underline hover:underline"
                             onClick={(event) => {
                               event.stopPropagation()
                               selectAircraft(item.id)
@@ -582,7 +582,7 @@ export function AircraftManagementPage() {
                 <>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h2 className="text-xl font-semibold text-[var(--f9-primary)]">{selectedAircraft.tail_number}</h2>
+                      <h2 className="font-sans text-xl font-semibold text-[var(--f9-ink)]">{selectedAircraft.tail_number}</h2>
                       <p className="text-sm text-muted-foreground">
                         {typeOf(selectedAircraft, aircraftTypes)} · base {selectedAircraft.base_airport_code}
                       </p>
@@ -792,7 +792,7 @@ export function AircraftManagementPage() {
             onClose={closeDialog(() => setIsRegisterOpen(false))}
             onSubmit={(event) => void handleRegister(event)}
           >
-            <Field label="Tail number (the registration)" htmlFor="register-tail">
+            <Field label="Aircraft number (registration)" htmlFor="register-tail">
               <Input
                 id="register-tail"
                 placeholder="HS-ABF"

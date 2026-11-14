@@ -21,7 +21,7 @@ export function FormDialog({ title, error, isSubmitting, submitLabel, submitting
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent aria-label={title} aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="font-sans text-lg leading-none font-semibold text-foreground">{title}</DialogTitle>
         </DialogHeader>
         {error && <ErrorMessage message={error} />}
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
