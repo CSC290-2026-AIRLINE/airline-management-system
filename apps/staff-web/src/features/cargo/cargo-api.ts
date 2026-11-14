@@ -58,6 +58,7 @@ export interface DeskListResult {
 
 export interface TestToolResult {
   created?: { ref: string; awb: string | null }[]
+  failed?: { index: number; reason: string }[]
   error?: string
 }
 

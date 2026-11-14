@@ -69,11 +69,11 @@ describe('exceedsTolerance', () => {
 })
 
 describe('awbNumber', () => {
-  it('formats prefix-serial-check with mod-7 check digit', () => {
-    expect(awbNumber('999', 1234567)).toBe('999-1234567-5')
+  it('formats 11-digit AWB with mod-7 check digit', () => {
+    expect(awbNumber('999', 1234567)).toBe('99912345675')
   })
 
   it('pads short serials to 7 digits', () => {
-    expect(awbNumber('999', 1)).toBe('999-0000001-1')
+    expect(awbNumber('999', 1)).toBe('99900000011')
   })
 })

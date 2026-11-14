@@ -105,54 +105,86 @@ export class CargoTestToolsController {
     if (!customer) return { error: 'No customer found. Sign in once on the customer app.' }
 
     const commodityType = await this.db.cargo_commodity_type.findFirst({
-      where: { is_active: true, handling_class: 'general' },
+      where: { is_active: true, handling_class: { not: 'dangerous' } },
     })
-    if (!commodityType) return { error: 'No active general commodity type found.' }
+    if (!commodityType) return { error: 'No active non-dangerous commodity type found.' }
 
-    const results: { ref: string; awb: string | null }[] = []
+    const maxPieceKg = Number(commodityType.max_piece_weight_kg)
+    const minKg = Number(commodityType.min_weight_kg)
+    const maxKg = Math.min(Number(commodityType.max_weight_kg), 300)
+
+    const created: { ref: string; awb: string | null }[] = []
+    const failed: { index: number; reason: string }[] = []
 
     for (let i = 0; i < count; i++) {
-      const now = simNow()
-      const flight = await this.db.flight.findFirst({
-        where: {
-          status: { in: ['scheduled', 'delayed', 'holding'] },
-          dep_at: { gt: new Date(now.getTime() + 4 * 3_600_000) },
-        },
-        orderBy: { dep_at: 'asc' },
-        include: { route: true },
-      })
-      if (!flight) return { error: 'No eligible flight found. Run POST /api/staff/cargo/test/flights first.', created: results }
+      try {
+        const now = simNow()
+        const flight = await this.db.flight.findFirst({
+          where: {
+            status: { in: ['scheduled', 'delayed', 'holding'] },
+            dep_at: { gt: new Date(now.getTime() + 4 * 3_600_000) },
+          },
+          orderBy: { dep_at: 'asc' },
+          include: { route: true },
+        })
+        if (!flight) {
+          failed.push({ index: i, reason: 'No eligible flight found. Run POST /api/staff/cargo/test/flights first.' })
+          break
+        }
 
-      const weight = randomBetween(Number(commodityType.min_weight_kg) + 1, Math.min(Number(commodityType.max_weight_kg), 500))
-      const pieces = Math.max(1, Math.floor(weight / Number(commodityType.max_piece_weight_kg)))
-      const volume = +(weight / 200).toFixed(3)
+        const weight = randomBetween(minKg + 1, maxKg)
+        const pieces = Math.max(1, Math.ceil(weight / maxPieceKg))
+        const volume = +(weight / 200).toFixed(3)
 
-      const booking = await this.bookings.createHeldBooking(customer.id, {
-        routeId: flight.route_id,
-        shipDate: flight.service_date.toISOString().slice(0, 10),
-        commodityTypeId: commodityType.id,
-        goodsDescription: `Test shipment ${i + 1} — ${commodityType.name}`,
-        pieces,
-        declaredWeightKg: weight,
-        declaredVolumeM3: volume,
-        shipperName: 'Test Shipper Co.',
-        shipperPhone: '+66-2-000-0000',
-        consigneeName: 'Test Consignee',
-        consigneeAddress: '123 Test Street, Bangkok 10110',
-        consigneePhone: '+66-2-000-0001',
-      })
+        const booking = await this.bookings.createHeldBooking(customer.id, {
+          routeId: flight.route_id,
+          shipDate: flight.service_date.toISOString().slice(0, 10),
+          commodityTypeId: commodityType.id,
+          goodsDescription: `Test shipment ${i + 1} — ${commodityType.name}`,
+          pieces,
+          declaredWeightKg: weight,
+          declaredVolumeM3: volume,
+          shipperName: 'Test Shipper Co.',
+          shipperPhone: '+66-2-000-0000',
+          consigneeName: 'Test Consignee',
+          consigneeAddress: '123 Test Street, Bangkok 10110',
+          consigneePhone: '+66-2-000-0001',
+        })
 
-      const confirmed = await this.bookings.confirmCargoBooking(
-        booking.booking_ref,
-        `test-pay-${booking.booking_ref}`,
-        Number(booking.quoted_charge),
-      )
+        const charge = Number(booking.quoted_charge)
+        const now2 = simNow()
+        const payment = await this.db.payment.create({
+          data: {
+            source_feature: 17,
+            purchase_ref: booking.booking_ref,
+            payer_customer_id: customer.id,
+            cargo_booking_id: booking.id,
+            idempotency_key: `test-cargo-${booking.booking_ref}`,
+            status: 'captured',
+            provider: 'fake',
+            currency: 'USD',
+            amount_total: charge,
+            voucher_amount: 0,
+            card_amount: charge,
+            started_at: now2,
+            expires_at: new Date(now2.getTime() + 3_600_000),
+            authorised_at: now2,
+            captured_at: now2,
+          },
+        })
 
-      results.push({ ref: booking.booking_ref, awb: confirmed.awbNumber })
-      this.logger.log(`TEST: created booking ${booking.booking_ref} → AWB ${confirmed.awbNumber ?? 'none'}`)
+        const confirmed = await this.bookings.confirmCargoBooking(booking.booking_ref, payment.id, charge)
+
+        created.push({ ref: booking.booking_ref, awb: confirmed.awbNumber })
+        this.logger.log(`TEST: created booking ${booking.booking_ref} → AWB ${confirmed.awbNumber ?? 'none'}`)
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e)
+        this.logger.warn(`TEST: booking ${i + 1} failed — ${reason}`)
+        failed.push({ index: i, reason })
+      }
     }
 
-    return { created: results }
+    return { created, failed: failed.length > 0 ? failed : undefined }
   }
 
   @Post('bookings/:id/departed')

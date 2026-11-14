@@ -33,5 +33,5 @@ export function exceedsTolerance(measuredChargeable: number, quotedChargeable: n
 
 export function awbNumber(prefix: string, serial: number): string {
   const check = serial % 7
-  return `${prefix}-${String(serial).padStart(7, '0')}-${check}`
+  return `${prefix}${String(serial).padStart(7, '0')}${check}`
 }
