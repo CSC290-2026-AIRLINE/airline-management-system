@@ -214,8 +214,12 @@ export class CheckInService {
     return this.seats.hold(flightId, input.seatCode, record.booking_passenger_id, SEAT_HOLD_TTL_MS)
   }
 
-  /** Gives the seat hold back. The lock id is the secret: whoever holds it may release it. */
-  async releaseSeat(lockId: string): Promise<void> {
+  /** Gives the seat hold back. The hold belongs to a passenger, so the same owner rule as the check-in applies. */
+  async releaseSeat(actor: Actor, lockId: string): Promise<void> {
+    const held = await this.seats.lock(lockId)
+    if (!held) return
+    const record = await this.store.findActiveCheckInByBookingPassenger(held.bookingPassengerId)
+    if (record) await this.assertOwner(actor, record)
     await this.seats.release(lockId)
   }
 
@@ -318,11 +322,23 @@ export class CheckInService {
     return this.passView(record, pass)
   }
 
-  // shortcut: any signed-in customer holding the check-in UUID may act on it (the schema has no owner column; UUIDs are the only wall), upgrade when the DB team adds an owner or F3 links bookings to Clerk customers
-  private async require(_actor: Actor, id: string): Promise<CheckInRecord> {
+  private async require(actor: Actor, id: string): Promise<CheckInRecord> {
     const record = await this.store.getCheckIn(id)
     if (!record) throw notFound('Check-in')
+    await this.assertOwner(actor, record)
     return record
+  }
+
+  /**
+   * Staff may act on any check-in. A customer may act on one whose booking is theirs. The check-in table has no owner
+   * column, so a booking with no matching owner (see `BookingPassenger.customerUserId`) is open to whoever holds the id.
+   */
+  private async assertOwner(actor: Actor, record: CheckInRecord): Promise<void> {
+    if (actor.staffId) return
+    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
+    const owner = booking?.customerUserId ?? null
+    // 404, not 403: a stranger learns nothing about whether the id exists.
+    if (owner && owner !== actor.userId) throw notFound('Check-in')
   }
 
   private assertStarted(record: CheckInRecord, message: string): void {

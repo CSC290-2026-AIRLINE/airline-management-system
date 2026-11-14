@@ -68,7 +68,10 @@ export interface BookingPassenger {
   fareClass: string
   specialAssistance: string[]
   isPolice: boolean
-  /** The user the booking's customer belongs to; null when the booking has no customer yet. */
+  /**
+   * The user who may act on this booking as its customer. Null when the booking has no customer, or its customer has no
+   * Clerk account (the seed's demo customer): nobody could ever sign in as that owner, so the check-in id is the only wall.
+   */
   customerUserId: string | null
 }
 

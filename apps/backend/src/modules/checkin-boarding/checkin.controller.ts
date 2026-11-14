@@ -54,8 +54,7 @@ export class CheckInController {
 
   @Delete('seat-locks/:id')
   async releaseSeat(@CurrentActor() actor: Actor | null, @Param('id') id: string): Promise<void> {
-    requireActor(actor)
-    await this.checkins.releaseSeat(id)
+    await this.checkins.releaseSeat(requireActor(actor), id)
   }
 
   @Put('check-ins/:id/seat')

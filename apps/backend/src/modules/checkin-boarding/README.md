@@ -197,12 +197,10 @@ id. When the confirmation fails, the payment is left behind on purpose and the a
 
 ### What the schema does not carry yet
 
-- **The owner of a check-in.** `check_in` has no owner column. A customer may act on a check-in when the booking's
-  `customer.user_id` is theirs, or when the passenger of their own customer row is the check-in's passenger. When
-  neither is the case — which is the demo's case, because a Clerk sign-in always creates a fresh customer row — the
-  check-in id itself is the key: whoever holds the UUID may read the check-in and continue it. The UUID is the only
-  wall between two customers until the database team adds an owner column, or feature 3 links a booking to a Clerk
-  customer.
+- **The owner of a check-in.** `check_in` has no owner column, so the booking's customer stands in. A customer may act
+  on a check-in (and give its seat hold back) only when the booking's `customer.user_id` is theirs; anyone else gets a 404. A booking whose customer has no Clerk account — the seed's demo customer, which nobody can sign in as — has no
+  owner anyone could match, so for it the check-in id itself is the key: whoever holds the UUID may continue it. That is
+  the demo's case until the database team adds an owner column, or feature 3 links a booking to a signed-in customer.
 - **The name on the passport.** The schema stores the last four characters of the passport number only, so the staff
   view answers `nameOnPassport: null` and the frontends show "—". The name itself lives on the passenger row of
   feature 7; no column is requested for it here.
@@ -272,12 +270,9 @@ shown by the demo script.
   checkout, that provider is the one file to replace.
 - **`nameOnPassport` is not stored**: the schema keeps only the last four characters of the passport number, so the
   staff view answers `null` and the frontends show "—".
-- **The customer access shortcut**: without an owner column on `check_in`, a customer who holds the check-in UUID may
-  act on it. The UUID is the only wall between two customers until the database team adds an owner column or feature 3
-  links a booking to a Clerk customer.
-- **The seat hold and the seat payment id live in the process**: the hold row is written to `seat_assignment`, but the
-  service keeps the lock and the payment id in a map, so a hold made before a restart cannot be confirmed after it (it
-  runs out by itself within five minutes) and a restarted process shows no payment id on the seat.
+- **The customer access shortcut**: a booking whose customer has no Clerk account (the seed's demo customer) has no
+  owner to check, so whoever holds the check-in UUID may act on it. Bookings made by signed-in customers are closed to
+  everyone but their owner (see "The owner of a check-in" above).
 - **The counter's seat and bag columns show "—"**: the search rows carry neither a seat nor a bag count; the passenger
   panel shows both. The backend row needs the two values before the columns can be filled.
 - **OCR** (`POST /check-ins/:id/document/ocr`) is not implemented (stretch goal).

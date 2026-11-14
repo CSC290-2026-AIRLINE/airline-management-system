@@ -17,7 +17,12 @@ const couponRow = (over: Record<string, unknown> = {}) => ({
   status: 'confirmed',
   booking_passenger: {
     id: 'bp-1',
-    booking: { id: 'bk-1', booking_reference: 'PL224A', status: 'confirmed', customer: { user_id: 'u-1' } },
+    booking: {
+      id: 'bk-1',
+      booking_reference: 'PL224A',
+      status: 'confirmed',
+      customer: { user_id: 'u-1', user: { clerk_user_id: 'clerk-1' } },
+    },
     passenger: { first_name: 'Narong', last_name: 'Sukjai', passport_number: 'TH1234567' },
     booking_service_request: [] as { service_code: string }[],
   },
@@ -52,6 +57,14 @@ describe('DbBookings', () => {
       fareClass: 'Y',
       customerUserId: 'u-1',
     })
+  })
+
+  it('a booking whose customer has no Clerk account has no owner', async () => {
+    const seeded = couponRow()
+    seeded.booking_passenger.booking.customer = { user_id: 'u-1', user: { clerk_user_id: null } }
+    const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([seeded]), findFirst: jest.fn() } }
+    const [booking] = await new DbBookings(db as unknown as DbService).findByPnrAndLastName('PL224A', 'sukjai')
+    expect(booking.customerUserId).toBeNull()
   })
 
   it('the PNR is matched exactly and the surname case-insensitively', async () => {

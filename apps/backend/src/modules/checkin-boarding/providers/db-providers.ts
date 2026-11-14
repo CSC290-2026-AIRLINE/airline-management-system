@@ -86,7 +86,12 @@ interface CouponRow {
   passenger_id: string
   status: string
   booking_passenger: {
-    booking: { id: string; booking_reference: string; status: string; customer: { user_id: string } }
+    booking: {
+      id: string
+      booking_reference: string
+      status: string
+      customer: { user_id: string; user: { clerk_user_id: string | null } }
+    }
     passenger: { first_name: string; last_name: string; passport_number: string | null }
     booking_service_request: { service_code: string }[]
   }
@@ -97,7 +102,7 @@ interface CouponRow {
 const COUPON_INCLUDE = {
   booking_passenger: {
     include: {
-      booking: { include: { customer: { select: { user_id: true } } } },
+      booking: { include: { customer: { select: { user_id: true, user: { select: { clerk_user_id: true } } } } } },
       passenger: { select: { first_name: true, last_name: true, passport_number: true } },
       booking_service_request: { where: { status: { in: ['requested', 'accepted'] } }, select: { service_code: true } },
     },
@@ -162,7 +167,8 @@ const toBookingPassenger = (row: CouponRow): BookingPassenger => {
     specialAssistance: row.booking_passenger.booking_service_request.map((request) => request.service_code),
     // shortcut: feature 8 has no air marshal service, the demo passports stand in for it.
     isPolice: passenger.passport_number !== null && POLICE_PASSPORTS.includes(passenger.passport_number),
-    customerUserId: booking.customer.user_id,
+    // shortcut: a customer with no Clerk account (the seed's demo customer) has no owner anyone could match, drop when F3 links bookings to signed-in customers
+    customerUserId: booking.customer.user.clerk_user_id ? booking.customer.user_id : null,
   }
 }
 

@@ -231,6 +231,37 @@ describe('CheckInService.start', () => {
   })
 })
 
+describe('CheckInService owner rule', () => {
+  const owned = () => {
+    const anna = BOOKINGS.find((b) => b.pnr === 'ER224F')!
+    addBooking({ ...anna, pnr: 'OW224F', bookingPassengerId: 'bp-owned', passengerId: 'pax-owned', customerUserId: cust.userId })
+  }
+
+  it('a check-in on a booking with an owner is only open to that owner and to staff', async () => {
+    owned()
+    const { svc } = build()
+    const other: Actor = { userId: 'user-other', staffId: null }
+    const c = await svc.start(cust, { pnr: 'OW224F', lastName: 'Eriksson' })
+    await expect(svc.get(other, c.id)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(svc.get(cust, c.id)).resolves.toMatchObject({ id: c.id })
+    await expect(svc.get(staff, c.id)).resolves.toMatchObject({ id: c.id })
+  })
+
+  it('only the owner may give a seat hold back', async () => {
+    owned()
+    const { svc, seats } = build()
+    const other: Actor = { userId: 'user-other', staffId: null }
+    const c = await svc.start(cust, { pnr: 'OW224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '4A' })
+    await expect(svc.releaseSeat(other, lock.id)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    expect(await seats.lock(lock.id)).not.toBeNull()
+    await svc.releaseSeat(cust, lock.id)
+    expect(await seats.lock(lock.id)).toBeNull()
+    await expect(svc.releaseSeat(other, 'lock-unknown')).resolves.toBeUndefined()
+  })
+})
+
 describe('CheckInService.get', () => {
   it('answers NOT_FOUND for an unknown check-in and a staff member may read it', async () => {
     const { svc } = build()
