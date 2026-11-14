@@ -367,6 +367,66 @@ export class CargoCustomerService {
     })
   }
 
+  async listMyNotices(customerId: string, opts: { unread?: boolean; page: number; pageSize: number }) {
+    const { unread, page, pageSize } = opts
+    const offset = (page - 1) * pageSize
+
+    const where = {
+      cargo_booking: { customer_id: customerId },
+      ...(unread === true ? { read_at: null } : unread === false ? { read_at: { not: null } } : {}),
+    }
+
+    const [notices, total, unreadCount] = await Promise.all([
+      this.db.cargo_notice.findMany({
+        where,
+        include: { cargo_booking: { select: { id: true, booking_ref: true } } },
+        orderBy: { notified_at: 'desc' },
+        skip: offset,
+        take: pageSize,
+      }),
+      this.db.cargo_notice.count({ where }),
+      this.db.cargo_notice.count({
+        where: { cargo_booking: { customer_id: customerId }, read_at: null },
+      }),
+    ])
+
+    return {
+      data: notices.map((n) => ({
+        id: n.id,
+        bookingId: n.cargo_booking.id,
+        bookingRef: n.cargo_booking.booking_ref,
+        title: n.title,
+        message: n.message,
+        notifiedAt: n.notified_at,
+        readAt: n.read_at,
+      })),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      unreadCount,
+    }
+  }
+
+  async markNoticeRead(customerId: string, noticeId: string) {
+    const notice = await this.db.cargo_notice.findUnique({
+      where: { id: noticeId },
+      include: { cargo_booking: { select: { customer_id: true } } },
+    })
+    if (!notice || notice.cargo_booking.customer_id !== customerId) {
+      throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Notice not found' } })
+    }
+    if (notice.read_at) {
+      return { id: notice.id, readAt: notice.read_at }
+    }
+    const now = simNow()
+    const updated = await this.db.cargo_notice.update({
+      where: { id: noticeId },
+      data: { read_at: now },
+    })
+    return { id: updated.id, readAt: updated.read_at }
+  }
+
   private async loadSettings() {
     const rows = await this.db.cargo_setting.findMany()
     const map = new Map(rows.map((r) => [r.key, r.value]))

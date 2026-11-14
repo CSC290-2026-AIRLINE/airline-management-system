@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Package, Plus, FileText } from 'lucide-react'
+import { Package, Plus, FileText, Bell } from 'lucide-react'
 import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent } from '@customer-web/components/ui/card'
 import { Badge } from '@customer-web/components/ui/badge'
-import { useCustomerCargoApi, type MyBooking, type ClaimListItem } from './cargo-api'
+import { useCustomerCargoApi, type MyBooking, type ClaimListItem, type NoticeItem } from './cargo-api'
 
 const STATUSES = [
   { value: 'all', label: 'All' },
@@ -43,7 +43,8 @@ function statusLabel(s: string): string {
 export default function MyCargoPage() {
   const api = useCustomerCargoApi()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'bookings' | 'claims'>('bookings')
+  const [tab, setTab] = useState<'bookings' | 'claims' | 'notices'>('bookings')
+  const [unreadCount, setUnreadCount] = useState(0)
   const [status, setStatus] = useState('all')
   const [bookings, setBookings] = useState<MyBooking[]>([])
   const [total, setTotal] = useState(0)
@@ -71,6 +72,14 @@ export default function MyCargoPage() {
     void load()
   }, [load])
 
+  useEffect(() => {
+    api
+      .listMyNotices({ page: 1, pageSize: 1 })
+      .then((r) => setUnreadCount(r.unreadCount))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -96,9 +105,21 @@ export default function MyCargoPage() {
         >
           Claims
         </button>
+        <button
+          onClick={() => setTab('notices')}
+          className={`pb-2 text-sm font-medium transition-colors ${tab === 'notices' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Notices
+          {unreadCount > 0 && (
+            <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-bold text-destructive-foreground">
+              {unreadCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {tab === 'claims' && <ClaimsTab />}
+      {tab === 'notices' && <NoticesTab onRead={() => setUnreadCount((c) => Math.max(0, c - 1))} />}
 
       {tab === 'bookings' && (
         <>
@@ -223,6 +244,88 @@ export default function MyCargoPage() {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/* ── Notices tab ─────────────────────────────────────────────────── */
+
+function NoticesTab({ onRead }: { onRead: () => void }) {
+  const api = useCustomerCargoApi()
+  const navigate = useNavigate()
+  const [notices, setNotices] = useState<NoticeItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const result = await api.listMyNotices({})
+        if (!cancelled) setNotices(result.data)
+      } catch {
+        // Ignore
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleClick = async (notice: NoticeItem) => {
+    if (!notice.readAt) {
+      try {
+        await api.markNoticeRead(notice.id)
+        setNotices((prev) => prev.map((n) => (n.id === notice.id ? { ...n, readAt: new Date().toISOString() } : n)))
+        onRead()
+      } catch {
+        // Ignore
+      }
+    }
+    void navigate({ to: '/cargo/bookings/$id', params: { id: notice.bookingId } })
+  }
+
+  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>
+
+  if (notices.length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-3 py-12">
+          <Bell className="h-12 w-12 text-muted-foreground" />
+          <p className="text-muted-foreground">No notices yet.</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="grid gap-3">
+      {notices.map((n) => (
+        <Card
+          key={n.id}
+          className={`cursor-pointer transition-colors hover:bg-muted/50 ${!n.readAt ? 'border-primary/30 bg-primary/5' : ''}`}
+          onClick={() => void handleClick(n)}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  {!n.readAt && <span className="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full bg-primary" />}
+                  <span className="font-medium">{n.title}</span>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">{n.message}</p>
+              </div>
+              <div className="flex-shrink-0 text-right">
+                <span className="text-xs text-muted-foreground">{n.bookingRef}</span>
+                <p className="text-xs text-muted-foreground">{new Date(n.notifiedAt).toLocaleDateString()}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }

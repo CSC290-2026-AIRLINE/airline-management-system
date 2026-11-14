@@ -195,6 +195,25 @@ export interface MockPayResult {
   error?: { code: string; message: string }
 }
 
+export interface NoticeItem {
+  id: string
+  bookingId: string
+  bookingRef: string
+  title: string
+  message: string
+  notifiedAt: string
+  readAt: string | null
+}
+
+export interface NoticeListResult {
+  data: NoticeItem[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+  unreadCount: number
+}
+
 /* ── Hook ───────────────────────────────────────────────────────────── */
 
 export function useCustomerCargoApi() {
@@ -263,5 +282,15 @@ export function useCustomerCargoApi() {
       const query = qs.toString()
       return send<ClaimListResult>(`/api/cargo/claims${query ? `?${query}` : ''}`)
     },
+
+    listMyNotices: (params: { unread?: boolean; page?: number; pageSize?: number }) => {
+      const qs = new URLSearchParams()
+      if (params.unread !== undefined) qs.set('unread', String(params.unread))
+      if (params.page) qs.set('page', String(params.page))
+      if (params.pageSize) qs.set('page_size', String(params.pageSize))
+      const query = qs.toString()
+      return send<NoticeListResult>(`/api/cargo/notices${query ? `?${query}` : ''}`)
+    },
+    markNoticeRead: (id: string) => send<{ id: string; readAt: string }>(`/api/cargo/notices/${id}`, { method: 'PUT' }),
   }
 }

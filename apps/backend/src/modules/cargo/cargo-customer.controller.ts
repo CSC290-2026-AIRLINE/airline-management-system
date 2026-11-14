@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, UsePipes, ValidationPipe } from '@nestjs/common'
 import { IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { CargoClaimsService } from './cargo-claims.service'
@@ -188,5 +188,27 @@ export class CargoCustomerController {
       total: claims.total,
       totalPages: Math.ceil(claims.total / pageSize),
     }
+  }
+
+  // ── Notices ───────────────────────────────────────────────────────
+
+  @Get('notices')
+  async listMyNotices(
+    @CurrentUser() user: { id: string },
+    @Query('unread') unreadStr?: string,
+    @Query('page') pageStr?: string,
+    @Query('page_size') pageSizeStr?: string,
+  ) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    const page = Math.max(1, Number(pageStr) || 1)
+    const pageSize = Math.min(100, Math.max(1, Number(pageSizeStr) || 20))
+    const unread = unreadStr === 'true' ? true : unreadStr === 'false' ? false : undefined
+    return this.svc.listMyNotices(customerId, { unread, page, pageSize })
+  }
+
+  @Put('notices/:id')
+  async markNoticeRead(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: { id: string }) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    return this.svc.markNoticeRead(customerId, id)
   }
 }
