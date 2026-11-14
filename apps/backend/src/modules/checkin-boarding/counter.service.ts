@@ -106,7 +106,7 @@ export class CounterService {
   /** Everything the counter screen shows for one passenger. */
   async detail(actor: Actor, checkInId: string): Promise<StaffCheckInView> {
     this.staffIdOf(actor)
-    const record = await this.requireCheckIn(checkInId)
+    const record = await this.checkins.refreshHold(actor, await this.requireCheckIn(checkInId))
     const booking = await this.bookingOf(record)
     const bags = await this.bagsOf(record)
     const checkIn = await this.checkins.get(actor, record.id)

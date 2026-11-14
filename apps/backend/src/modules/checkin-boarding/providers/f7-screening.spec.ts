@@ -35,6 +35,13 @@ describe('F7Screening', () => {
     expect(result.runId).toMatch(/^[0-9a-f-]{36}$/)
   })
 
+  it('reads where a held passenger stands now from feature 7', async () => {
+    const statusSystem = jest.fn().mockResolvedValue({ outcome: 'clear' })
+    const provider = new F7Screening({ statusSystem } as unknown as ScreeningCheckService)
+    await expect(provider.status({ passengerId: 'pax-1', flightId: 'flt-1' })).resolves.toBe('clear')
+    expect(statusSystem).toHaveBeenCalledWith('checkin_boarding', 'pax-1', 'flt-1')
+  })
+
   it('lets a caller mistake from feature 7 surface as an error', async () => {
     const checkSystem = jest.fn().mockRejectedValue(new Error('passengerId must be a UUID'))
     const provider = new F7Screening({ checkSystem } as unknown as ScreeningCheckService)

@@ -142,6 +142,8 @@ export interface ScreeningProvider {
     numberLast4: string
     lastName: string
   }): Promise<{ runId: string; outcome: 'clear' | 'held' }>
+  /** Where a held passenger stands now: released (`clear`), still `held`, `denied`, or never screened at all. */
+  status(input: { passengerId: string; flightId: string }): Promise<'clear' | 'held' | 'denied' | 'not_screened'>
 }
 
 /** Feature 8 owns air marshals on a flight. */

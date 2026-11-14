@@ -321,6 +321,11 @@ export class FixtureScreening implements ScreeningProvider {
     // A UUID, not `scr-N`, like the run ids of feature 7.
     return { runId: randomUUID(), outcome: held ? 'held' : 'clear' }
   }
+
+  /** The fixtures have no security review, so a passenger they held stays held. */
+  async status(): Promise<'clear' | 'held' | 'denied' | 'not_screened'> {
+    return 'held'
+  }
 }
 
 @Injectable()

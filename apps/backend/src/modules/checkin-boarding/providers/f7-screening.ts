@@ -26,4 +26,8 @@ export class F7Screening implements ScreeningProvider {
     const runId = 'runId' in result ? result.runId : randomUUID()
     return { runId, outcome: result.outcome === 'clear' ? 'clear' : 'held' }
   }
+
+  async status(input: { passengerId: string; flightId: string }): Promise<'clear' | 'held' | 'denied' | 'not_screened'> {
+    return (await this.screening.statusSystem(SOURCE, input.passengerId, input.flightId)).outcome
+  }
 }

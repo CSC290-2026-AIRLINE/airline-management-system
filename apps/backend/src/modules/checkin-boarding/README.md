@@ -91,6 +91,11 @@ decided by `register('memory' | 'db')` in `checkin-boarding.module.ts` — one l
   answers `held` with no run id; `F7Screening` gives it a fresh one, since an on-hold check-in needs one. A passenger is
   never cleared without a check. The `memory` mode keeps
   `FixtureScreening`, which holds a passport ending in `0000` **or** the surname Kowalski; Dana Kowalski matches both.
+- **Releasing a hold** — feature 7 does not call feature 6 back, so `CheckInService.refreshHold` asks it
+  (`statusSystem`) whenever a held check-in is read: by the customer, or by the counter when the agent opens the
+  passenger. Released by security → `started` again; confirmed → `denied`. A passenger held because screening could
+  not run has no screening on record (`not_screened`) and is screened again there. The `memory` fixture keeps every
+  hold.
 - **Police** (`FixturePolice`) — feature 8's air-marshal service per flight. The marshal is recognised by his
   passport number (`TH1234567`, Narong Sukjai) in both modes: `DbBookings` reads `passenger.passport_number`, and the
   fixture resolves the passport behind the passenger. The boarding group reads `booking.isPolice` as well, so the

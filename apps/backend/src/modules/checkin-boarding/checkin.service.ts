@@ -100,7 +100,7 @@ export class CheckInService {
       if (await this.store.getDocumentByCheckIn(existing.id)) {
         await this.record(actor, 'view_sensitive', 'check_in', existing.id, 'check-in read', true)
       }
-      return this.viewOf(existing)
+      return this.viewOf(await this.refreshHold(actor, existing))
     }
 
     const record = await this.store.createCheckIn({
@@ -114,11 +114,42 @@ export class CheckInService {
   }
 
   async get(actor: Actor, id: string): Promise<CheckInView> {
-    const record = await this.require(actor, id)
+    const record = await this.refreshHold(actor, await this.require(actor, id))
     if (await this.store.getDocumentByCheckIn(record.id)) {
       await this.record(actor, 'view_sensitive', 'check_in', record.id, 'check-in read', true)
     }
     return this.viewOf(record)
+  }
+
+  /**
+   * A held check-in follows feature 7's decision: once security releases the passenger it opens again, once security
+   * confirms the match it is denied. Feature 7 does not call back, so this runs whenever a held check-in is read. A
+   * passenger held because screening could not run at all has no screening on record; they are screened again here.
+   */
+  async refreshHold(actor: Actor, record: CheckInRecord): Promise<CheckInRecord> {
+    if (record.status !== 'on_hold') return record
+    let outcome = await this.screening.status({ passengerId: record.passenger_id, flightId: record.flight_id })
+    let runId = record.screening_run_id
+    if (outcome === 'not_screened') {
+      const document = await this.store.getDocumentByCheckIn(record.id)
+      const booking = await this.bookingOf(record)
+      const again = await this.screening.check({
+        passengerId: record.passenger_id,
+        flightId: record.flight_id,
+        numberLast4: document?.number_last4 ?? '',
+        lastName: booking.lastName,
+      })
+      outcome = again.outcome
+      runId = again.runId
+    }
+    if (outcome === 'held') return record
+    const updated = await this.store.updateCheckIn(record.id, {
+      status: outcome === 'denied' ? 'denied' : 'started',
+      screening_run_id: runId,
+    })
+    const summary = outcome === 'denied' ? 'security confirmed the watchlist match' : 'security released the hold'
+    await this.record(actor, 'check_in.screening_update', 'check_in', record.id, summary)
+    return updated
   }
 
   async submitDocument(actor: Actor, id: string, input: { mrzLine1: string; mrzLine2: string; visaNumber?: string }): Promise<CheckInView> {

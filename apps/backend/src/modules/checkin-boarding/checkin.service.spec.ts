@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import type { Actor } from './actor'
+import type { ScreeningProvider } from './providers/providers'
 import { CheckInService } from './checkin.service'
 import { SPECIMEN_LINE1, buildLine2, buildSpecimenLine2 } from './domain/mrz'
 import { CheckInError } from './errors'
@@ -48,7 +49,7 @@ class PassengersWithExtra extends FixturePassengers {
 const NARONG_LINE1 = 'P<THA' + 'SUKJAI<<NARONG'.padEnd(39, '<')
 const NARONG_LINE2 = buildLine2({ number: 'TH1234567', nationality3: 'THA', dob: '850312', sex: 'M', expiry: '300415' })
 
-function build(over: { police?: PoliceProvider; seats?: FixtureSeats; store?: CheckInStore } = {}) {
+function build(over: { police?: PoliceProvider; seats?: FixtureSeats; store?: CheckInStore; screening?: ScreeningProvider } = {}) {
   const clock = new FixtureClock()
   const store = over.store ?? new CheckInStore(clock)
   const passengers = new PassengersWithExtra()
@@ -64,7 +65,7 @@ function build(over: { police?: PoliceProvider; seats?: FixtureSeats; store?: Ch
     seats,
     new FixturePricing(),
     payments,
-    new FixtureScreening(),
+    over.screening ?? new FixtureScreening(),
     over.police ?? new FixturePolice(),
     new FixtureTiers(),
     notify,
@@ -449,6 +450,71 @@ describe('CheckInService.submitDocument', () => {
     expect(v.status).toBe('on_hold')
     await expect(svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '7E' })).rejects.toMatchObject({ code: 'ON_HOLD' })
     await expect(svc.complete(cust, c.id)).rejects.toMatchObject({ code: 'ON_HOLD' })
+  })
+
+  describe('a held check-in follows feature 7', () => {
+    /** Holds at the passport step, then answers whatever the test sets as the current status. */
+    class ScriptedScreening implements ScreeningProvider {
+      checks = 0
+      current: 'clear' | 'held' | 'denied' | 'not_screened' = 'held'
+      recheck: 'clear' | 'held' = 'held'
+      check(): Promise<{ runId: string; outcome: 'clear' | 'held' }> {
+        this.checks += 1
+        return Promise.resolve({
+          runId: `00000000-0000-4000-8000-00000000000${this.checks}`,
+          outcome: this.checks === 1 ? 'held' : this.recheck,
+        })
+      }
+      status(): Promise<'clear' | 'held' | 'denied' | 'not_screened'> {
+        return Promise.resolve(this.current)
+      }
+    }
+
+    async function heldCheckIn(screening: ScriptedScreening) {
+      const built = build({ screening })
+      const c = await built.svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+      await built.svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+      return { ...built, id: c.id }
+    }
+
+    it('stays on hold while feature 7 still holds the passenger', async () => {
+      const screening = new ScriptedScreening()
+      const { svc, id } = await heldCheckIn(screening)
+      expect((await svc.get(cust, id)).status).toBe('on_hold')
+    })
+
+    it('opens again once security released the passenger, so the seat step works', async () => {
+      const screening = new ScriptedScreening()
+      const { svc, id } = await heldCheckIn(screening)
+      screening.current = 'clear'
+      expect((await svc.get(cust, id)).status).toBe('started')
+      await expect(svc.holdSeat(cust, 'flt-fy204', { checkInId: id, seatCode: '7E' })).resolves.toBeTruthy()
+    })
+
+    it('is denied once security confirmed the match', async () => {
+      const screening = new ScriptedScreening()
+      const { svc, id } = await heldCheckIn(screening)
+      screening.current = 'denied'
+      expect((await svc.get(cust, id)).status).toBe('denied')
+    })
+
+    it('screens again a passenger who was held because screening could not run', async () => {
+      const screening = new ScriptedScreening()
+      const { svc, store, id } = await heldCheckIn(screening)
+      screening.current = 'not_screened'
+      screening.recheck = 'clear'
+      expect((await svc.get(cust, id)).status).toBe('started')
+      expect(screening.checks).toBe(2)
+      expect((await store.getCheckIn(id))?.screening_run_id).toBe('00000000-0000-4000-8000-000000000002')
+    })
+
+    it('keeps the hold, and its run id, when screening still cannot run', async () => {
+      const screening = new ScriptedScreening()
+      const { svc, store, id } = await heldCheckIn(screening)
+      screening.current = 'not_screened'
+      expect((await svc.get(cust, id)).status).toBe('on_hold')
+      expect((await store.getCheckIn(id))?.screening_run_id).toBe('00000000-0000-4000-8000-000000000001')
+    })
   })
 
   it('never logs an MRZ line', async () => {
