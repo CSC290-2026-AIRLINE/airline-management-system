@@ -1,7 +1,7 @@
-import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { availableKg, chargeableKg, exceedsTolerance } from './cargo-calc'
-import { getAircraftCapacity, refundFull, seatsTakenOnFlight } from './cargo-deps'
+import { getAircraftCapacity, loadedBaggageKg, refundFull, seatsTakenOnFlight } from './cargo-deps'
 import { CargoEventsService } from './cargo-events.service'
 
 const CLOSED_STATUSES = ['expired', 'cancelled', 'rejected']
@@ -316,6 +316,158 @@ export class CargoDeskService {
 
       return { status: event.status_after, refundId: refundResult.refundId }
     })
+  }
+
+  async postEvent(id: string, eventType: string, note?: string) {
+    const ALLOWED = new Set(['loaded', 'delivered', 'cancelled'])
+    if (!ALLOWED.has(eventType)) {
+      throw new BadRequestException({
+        error: { code: 'INVALID_TRANSITION', message: `Event type '${eventType}' is not allowed` },
+      })
+    }
+
+    return this.db.$transaction(async (tx) => {
+      const booking = await tx.cargo_booking.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          booking_ref: true,
+          flight_id: true,
+          payment_id: true,
+          quoted_charge: true,
+          declared_weight_kg: true,
+          cargo_shipment_event: {
+            orderBy: { seq: 'desc' as const },
+            take: 1,
+            select: { measured_weight_kg: true },
+          },
+        },
+      })
+      if (!booking) {
+        throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Booking not found' } })
+      }
+
+      if (eventType === 'cancelled') {
+        if (!note) {
+          throw new BadRequestException({
+            error: { code: 'INVALID_TRANSITION', message: 'A note is required when cancelling' },
+          })
+        }
+        let refundResult: { refundId: string }
+        try {
+          refundResult = refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'cancel')
+        } catch {
+          throw new InternalServerErrorException({
+            error: { code: 'REFUND_FAILED', message: 'Refund could not be processed — cancellation was not recorded' },
+          })
+        }
+        const event = await this.events.appendEvent(tx, {
+          bookingId: id,
+          eventType: 'cancelled',
+          actorType: 'staff',
+          refundId: refundResult.refundId,
+          note,
+        })
+        return { status: event.status_after, refundId: refundResult.refundId }
+      }
+
+      if (eventType === 'loaded') {
+        const measuredWeight = booking.cargo_shipment_event[0]?.measured_weight_kg
+          ? Number(booking.cargo_shipment_event[0].measured_weight_kg)
+          : Number(booking.declared_weight_kg)
+
+        const baggage = loadedBaggageKg(booking.flight_id)
+        if (baggage !== null) {
+          const capacity = await getAircraftCapacity(tx, booking.flight_id)
+          const loadedCargoOnFlight = await this.loadedCargoKg(tx, booking.flight_id)
+          if (baggage + loadedCargoOnFlight + measuredWeight > capacity.holdLimitKg) {
+            throw new ConflictException({
+              error: {
+                code: 'CAPACITY_EXCEEDED',
+                message: 'Not enough cargo capacity on this flight',
+                details: { available_kg: capacity.holdLimitKg - baggage - loadedCargoOnFlight },
+              },
+            })
+          }
+        } else {
+          const settings = await this.loadSettingsFull(tx)
+          const flight = await tx.flight.findUnique({ where: { id: booking.flight_id }, select: { aircraft_id: true } })
+          if (!flight) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Flight not found' } })
+
+          const capacity = await getAircraftCapacity(tx, flight.aircraft_id)
+          const seats = seatsTakenOnFlight(tx, booking.flight_id)
+          const committed = await this.committedKgExcluding(tx, booking.flight_id, id)
+          const available = availableKg({
+            holdLimitKg: capacity.holdLimitKg,
+            sellableSeats: capacity.sellableSeats,
+            seatsTaken: seats,
+            reserveKgPerPax: settings.reserveKgPerPax,
+            floorPercent: settings.floorPercent,
+            committedKg: committed,
+          })
+          if (measuredWeight > available) {
+            throw new ConflictException({
+              error: {
+                code: 'CAPACITY_EXCEEDED',
+                message: 'Not enough cargo capacity on this flight',
+                details: { available_kg: available },
+              },
+            })
+          }
+        }
+      }
+
+      const event = await this.events.appendEvent(tx, {
+        bookingId: id,
+        eventType,
+        actorType: 'staff',
+        note: note || undefined,
+      })
+      return { status: event.status_after }
+    })
+  }
+
+  private async loadedCargoKg(
+    tx: Parameters<Parameters<DbService['$transaction']>[0]>[0],
+    flightId: string,
+  ): Promise<number> {
+    const bookings = await (tx as DbService).cargo_booking.findMany({
+      where: { flight_id: flightId },
+      select: {
+        declared_weight_kg: true,
+        cargo_shipment_event: { orderBy: { seq: 'desc' as const }, take: 1, select: { status_after: true, measured_weight_kg: true } },
+      },
+    })
+    return bookings
+      .filter((b) => {
+        const s = b.cargo_shipment_event[0]?.status_after
+        return s === 'loaded' || s === 'in_transit'
+      })
+      .reduce((sum, b) => {
+        const mw = b.cargo_shipment_event[0]?.measured_weight_kg
+        return sum + (mw ? Number(mw) : Number(b.declared_weight_kg))
+      }, 0)
+  }
+
+  private async committedKgExcluding(
+    tx: Parameters<Parameters<DbService['$transaction']>[0]>[0],
+    flightId: string,
+    excludeBookingId: string,
+  ): Promise<number> {
+    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
+    const bookings = await (tx as DbService).cargo_booking.findMany({
+      where: { flight_id: flightId, id: { not: excludeBookingId } },
+      select: {
+        declared_weight_kg: true,
+        cargo_shipment_event: { orderBy: { seq: 'desc' as const }, take: 1, select: { status_after: true } },
+      },
+    })
+    return bookings
+      .filter((b) => {
+        const s = b.cargo_shipment_event[0]?.status_after
+        return s != null && COMMITTED.has(s)
+      })
+      .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
   }
 
   private async committedKgForFlight(flightId: string): Promise<number> {

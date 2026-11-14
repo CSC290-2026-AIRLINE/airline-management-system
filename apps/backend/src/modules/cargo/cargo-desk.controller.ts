@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
-import { IsNotEmpty, IsNumber, IsString, Min } from 'class-validator'
+import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { StaffProfilesGuard } from '@backend/modules/passenger-profiles/staff-profiles.guard'
 import { CargoDeskService } from './cargo-desk.service'
 
@@ -25,6 +25,16 @@ class RejectionDto {
   @IsString()
   @IsNotEmpty()
   reason!: string
+}
+
+class PostEventDto {
+  @IsString()
+  @IsIn(['loaded', 'delivered', 'cancelled'])
+  event!: string
+
+  @IsOptional()
+  @IsString()
+  note?: string
 }
 
 @Controller('staff/cargo')
@@ -58,5 +68,10 @@ export class CargoDeskController {
   @Post('bookings/:id/rejection')
   rejectBooking(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: RejectionDto) {
     return this.desk.rejectBooking(id, dto.measured_weight_kg, dto.measured_volume_m3, dto.reason)
+  }
+
+  @Post('bookings/:id/events')
+  postEvent(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: PostEventDto) {
+    return this.desk.postEvent(id, dto.event, dto.note)
   }
 }

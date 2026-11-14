@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Bell, Clock, Loader2, Plane, Scale } from 'lucide-react'
+import { ArrowLeft, Ban, Bell, CheckCircle, Clock, Loader2, PackageCheck, Plane, Scale } from 'lucide-react'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
@@ -127,9 +127,14 @@ export function BookingDetailPage() {
         <span className="ml-auto text-sm font-semibold">{money(header.quotedCharge, header.currency)}</span>
       </div>
 
-      {header.currentStatus === 'booked' && (
-        <AcceptanceActions bookingId={header.id} quotedChargeableKg={quote.chargeableKg} onDone={reload} />
-      )}
+      <BookingActions
+        bookingId={header.id}
+        status={header.currentStatus}
+        quotedChargeableKg={quote.chargeableKg}
+        quotedCharge={header.quotedCharge}
+        currency={header.currency}
+        onDone={reload}
+      />
 
       {import.meta.env.DEV && <TestToolsCard bookingId={header.id} status={header.currentStatus} onDone={reload} />}
 
@@ -379,6 +384,161 @@ function TestToolsCard({ bookingId, status, onDone }: { bookingId: string; statu
         {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
       </CardContent>
     </Card>
+  )
+}
+
+function BookingActions({
+  bookingId,
+  status,
+  quotedChargeableKg,
+  quotedCharge,
+  currency,
+  onDone,
+}: {
+  bookingId: string
+  status: string
+  quotedChargeableKg: number
+  quotedCharge: number
+  currency: string
+  onDone: () => void
+}) {
+  const showWeigh = status === 'booked'
+  const showLoaded = status === 'accepted'
+  const showDelivered = status === 'arrived'
+  const showCancel = ['booked', 'accepted', 'rebook_required'].includes(status)
+
+  if (!showWeigh && !showLoaded && !showDelivered && !showCancel) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {showWeigh && <AcceptanceActions bookingId={bookingId} quotedChargeableKg={quotedChargeableKg} onDone={onDone} />}
+      {showLoaded && <ConfirmEventButton bookingId={bookingId} event="loaded" label="Mark loaded" icon={PackageCheck} onDone={onDone} />}
+      {showDelivered && (
+        <ConfirmEventButton bookingId={bookingId} event="delivered" label="Mark delivered" icon={CheckCircle} onDone={onDone} />
+      )}
+      {showCancel && <CancelButton bookingId={bookingId} amount={quotedCharge} currency={currency} onDone={onDone} />}
+    </div>
+  )
+}
+
+function ConfirmEventButton({
+  bookingId,
+  event,
+  label,
+  icon: Icon,
+  onDone,
+}: {
+  bookingId: string
+  event: string
+  label: string
+  icon: typeof PackageCheck
+  onDone: () => void
+}) {
+  const api = useCargoApi()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const doConfirm = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.postEvent(bookingId, { event })
+      setOpen(false)
+      onDone()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <Icon className="mr-1.5 size-4" />
+        {label}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogTitle>{label}</DialogTitle>
+          <p className="text-sm text-muted-foreground">Are you sure you want to mark this booking as {event}?</p>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={busy} onClick={doConfirm}>
+              {busy ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+              Confirm
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function CancelButton({
+  bookingId,
+  amount,
+  currency,
+  onDone,
+}: {
+  bookingId: string
+  amount: number
+  currency: string
+  onDone: () => void
+}) {
+  const api = useCargoApi()
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const doCancel = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.postEvent(bookingId, { event: 'cancelled', note })
+      setOpen(false)
+      onDone()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="destructive" onClick={() => setOpen(true)}>
+        <Ban className="mr-1.5 size-4" />
+        Cancel and refund
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogTitle>Cancel and refund</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            This will cancel the booking and refund <span className="font-semibold">{money(amount, currency)}</span>.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cancel-note">Reason (required)</Label>
+            <Textarea id="cancel-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => setOpen(false)}>
+              Keep booking
+            </Button>
+            <Button variant="destructive" size="sm" disabled={busy || !note.trim()} onClick={doCancel}>
+              {busy ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+              Cancel and refund
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

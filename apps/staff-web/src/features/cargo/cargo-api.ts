@@ -266,6 +266,12 @@ export function useCargoApi() {
         body: JSON.stringify(body),
       }),
 
+    postEvent: (id: string, body: { event: string; note?: string }) =>
+      send<{ status: string; refundId?: string }>(`/api/staff/cargo/bookings/${id}/events`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+
     createTestFlights: () => send<{ created?: string[]; error?: string }>('/api/staff/cargo/test/flights', { method: 'POST' }),
     createTestBookings: (count = 1) =>
       send<TestToolResult>('/api/staff/cargo/test/bookings', { method: 'POST', body: JSON.stringify({ count }) }),
