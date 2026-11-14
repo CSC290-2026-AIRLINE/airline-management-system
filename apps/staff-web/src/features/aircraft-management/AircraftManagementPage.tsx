@@ -138,6 +138,10 @@ export function AircraftManagementPage() {
     setDetailToken((token) => token + 1)
   }
   const selectAircraft = (id: string) => {
+    // Selecting the open aircraft changes nothing, so the detail effect would not run and the panel would stay on "loading".
+    if (id === selectedId) {
+      return
+    }
     setEveryDayNotice(false)
     setDetailState('loading')
     setDetailError(null)
