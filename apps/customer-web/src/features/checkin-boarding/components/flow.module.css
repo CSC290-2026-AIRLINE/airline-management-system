@@ -327,22 +327,41 @@
 }
 
 .label {
-  font-size: 16px;
-  font-weight: 400;
-  color: #6f7482;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--f6-ink);
 }
 
+/* A white box with a visible border, so an empty field does not read as disabled. 16 px text keeps iOS from zooming. */
 .input {
   font-family: var(--f6-ui);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
-  color: #3b4256;
+  color: var(--f6-ink);
   max-width: 100%;
-  padding: 12px;
+  padding: 10px 12px;
   box-sizing: border-box;
-  border: 0;
-  border-radius: 4px;
-  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: var(--f6-paper);
+  transition: border-color 0.15s;
+}
+
+.input::placeholder {
+  color: #9aa3b2;
+}
+
+.input:hover:not(:disabled) {
+  border-color: #9aa6b8;
+}
+
+.input:focus-visible {
+  border-color: var(--f6-blue);
+}
+
+.input:disabled {
+  background: var(--f6-page);
+  color: var(--f6-muted);
 }
 
 /* The form boxes are 460 px wide, as in the design. */

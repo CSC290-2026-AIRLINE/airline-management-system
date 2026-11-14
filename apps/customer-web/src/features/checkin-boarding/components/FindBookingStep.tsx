@@ -34,6 +34,7 @@ export function FindBookingStep({
           value={pnr}
           onChange={(event) => setPnr(event.target.value.toUpperCase())}
           maxLength={8}
+          placeholder="e.g. ER224F"
           autoComplete="off"
           required
         />
@@ -45,6 +46,7 @@ export function FindBookingStep({
           className={styles.input}
           value={lastName}
           onChange={(event) => setLastName(event.target.value)}
+          placeholder="As printed on your passport"
           autoComplete="family-name"
           required
         />

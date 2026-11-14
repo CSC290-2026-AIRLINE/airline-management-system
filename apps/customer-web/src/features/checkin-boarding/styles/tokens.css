@@ -1,4 +1,7 @@
 /* Feature 6 design tokens: the final F6 Figma kit (Inter, light theme only). */
+/* The route has no font link of its own, so the kit's face is loaded here. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 :root {
   --f6-page: #f7f9fc;
   --f6-paper: #ffffff;
