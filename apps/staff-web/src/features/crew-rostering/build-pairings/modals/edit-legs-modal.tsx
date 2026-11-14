@@ -131,14 +131,10 @@ export function EditLegsModal({
           ))}
         </ol>
 
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="mt-4 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-border-desc/70 bg-white text-sm font-bold text-primary-text transition-colors hover:bg-page-bg sm:h-10 sm:w-auto sm:border-0 sm:bg-btn-navy sm:px-4 sm:text-white sm:hover:bg-btn-navy-hover"
-        >
-          <PlusIcon className="hidden h-3.5 w-3.5 sm:block" />
-          <span className="sm:hidden">+ </span>Add leg
-        </button>
+        <Button variant="primary" className="mt-4 w-full sm:w-auto" onClick={() => setAdding(true)}>
+          <PlusIcon className="h-3.5 w-3.5" />
+          Add leg
+        </Button>
 
         {dirty && (
           <p

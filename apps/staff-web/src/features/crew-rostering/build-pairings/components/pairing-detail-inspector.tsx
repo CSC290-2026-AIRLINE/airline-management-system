@@ -165,21 +165,17 @@ export function PairingDetailInspector({
           This pairing is in a published roster, so it is not edited here. Change its crew in Fix &amp; publish.
         </p>
       ) : (
-        <footer className={`flex gap-3 ${invalid ? 'border-t border-border-desc/40 pt-4' : ''} ${onClose ? 'justify-center' : ''}`}>
-          <Button variant={invalid ? 'primary' : 'outline'} onClick={onEditLegs}>
+        <footer
+          className={`flex flex-wrap gap-3 ${invalid ? 'border-t border-border-desc/40 pt-4' : ''} ${onClose ? 'justify-center' : ''}`}
+        >
+          <Button variant={invalid ? 'primary' : 'outline'} className="whitespace-nowrap" onClick={onEditLegs}>
             <PencilIcon className="h-4 w-4" />
             Edit legs
           </Button>
-          <Button variant="danger" onClick={onDelete}>
+          <Button variant="danger" className="whitespace-nowrap" onClick={onDelete}>
             <MinusIcon className="h-4 w-4" />
             Delete pairing
           </Button>
-          {committed && (
-            <p className="basis-full text-xs text-primary-text/60">
-              Committed to the draft roster run. Edits and deleting are saved to the database straight away, and crew already assigned to a
-              leg you take off is cleared.
-            </p>
-          )}
         </footer>
       )}
     </aside>
