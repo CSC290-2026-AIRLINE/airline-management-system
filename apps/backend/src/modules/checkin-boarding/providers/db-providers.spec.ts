@@ -21,7 +21,7 @@ const couponRow = (over: Record<string, unknown> = {}) => ({
       id: 'bk-1',
       booking_reference: 'PL224A',
       status: 'confirmed',
-      customer: { user_id: 'u-1', user: { clerk_user_id: 'clerk-1' } },
+      customer: { user_id: 'u-1', user: { clerk_user_id: 'clerk-1' as string | null } },
     },
     passenger: { first_name: 'Narong', last_name: 'Sukjai', passport_number: 'TH1234567' },
     booking_service_request: [] as { service_code: string }[],

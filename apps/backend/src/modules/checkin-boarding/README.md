@@ -77,7 +77,7 @@ decided by `register('memory' | 'db')` in `checkin-boarding.module.ts` — one l
 | `PAYMENTS`       | `PaymentProvider`          | F5 payments                      | `DbPayments` (writes the `payment` row itself)                              | `FixturePayments` (fake payment ids)                         |
 | `SETTINGS`       | `SettingsProvider`         | F6 settings (`check_in_setting`) | `DbSettings` (`check_in_setting`, `carry_on_allowance`, `visa_requirement`) | `FixtureSettings`                                            |
 | `AUDIT`          | `AuditProvider`            | F15 audit log                    | `F15Audit` (writes feature 15's `audit_log`)                                | `LoggerAudit`                                                |
-| `SCREENING`      | `ScreeningProvider`        | F7 screening                     | `FixtureScreening`                                                          | `FixtureScreening`                                           |
+| `SCREENING`      | `ScreeningProvider`        | F7 screening                     | `F7Screening` (feature 7's `ScreeningCheckService.checkSystem`)             | `FixtureScreening`                                           |
 | `POLICE`         | `PoliceProvider`           | F8 air marshals                  | `FixturePolice`                                                             | `FixturePolice`                                              |
 | `TIERS`          | `TierProvider`             | F11 loyalty                      | `FixtureTiers` (nobody has a tier)                                          | `FixtureTiers`                                               |
 | `NOTIFY`         | `NotifyProvider`           | F13 notifications                | `LoggerNotify`                                                              | `LoggerNotify`                                               |
@@ -86,10 +86,10 @@ decided by `register('memory' | 'db')` in `checkin-boarding.module.ts` — one l
 
 ### The fixtures that stay, and what replaces them
 
-- **Screening** (`FixtureScreening`) — feature 7's screening service (`POST /screening/check`: clear or held, and
-  later hold and release). Until it lands, the fixture holds a passenger whose passport ends in `0000` **or** whose
-  surname is Kowalski (`providers/fixture-providers.ts`: `numberLast4 === HOLD_LAST4 || lastName === 'KOWALSKI'`).
-  Dana Kowalski matches both rules.
+- **Screening** — in `db` mode, `F7Screening` calls feature 7's `checkSystem('checkin_boarding', …)` with the trigger
+  `check_in` at the passport step. Feature 7's `denied` is held like `held`, and when screening cannot run feature 7
+  answers `held` with no run id, so a passenger is never cleared without a check. The `memory` mode keeps
+  `FixtureScreening`, which holds a passport ending in `0000` **or** the surname Kowalski; Dana Kowalski matches both.
 - **Police** (`FixturePolice`) — feature 8's air-marshal service per flight. The marshal is recognised by his
   passport number (`TH1234567`, Narong Sukjai) in both modes: `DbBookings` reads `passenger.passport_number`, and the
   fixture resolves the passport behind the passenger. The boarding group reads `booking.isPolice` as well, so the
@@ -228,7 +228,7 @@ the document and clears what staff had cleared before.
 | Bookings      | 14 prototype passengers; Anna Eriksson (`ER224F`) is the demo customer                                                                                                                                                             |
 | Passports     | Anna's passenger row carries **no passport number** in either mode, so she types the ICAO specimen MRZ at step 2. `SEEDED_DOC_EXPIRY` (2030-04-15) is the expiry of the seeded documents                                           |
 | Seats         | 20 rows, business 1–3, exit row 12, front rows 4–5, the prototype's taken seats                                                                                                                                                    |
-| Security hold | a passport whose last four are `0000` **or** the surname Kowalski (`FixtureScreening`); Dana Kowalski matches both rules                                                                                                           |
+| Security hold | a passport whose last four are `0000` **or** the surname Kowalski (`FixtureScreening`, `memory` mode); `db` mode asks feature 7's watchlist                                                                                        |
 | Air marshal   | Narong Sukjai, passport `TH1234567`                                                                                                                                                                                                |
 | Baggage       | economy 20 kg free (premium economy 25, business 30), 500 THB per kg, max 32 kg per bag, max 158 cm linear                                                                                                                         |
 | Carry-on      | 7 kg, 56 × 36 × 23 cm for every cabin                                                                                                                                                                                              |

@@ -143,6 +143,11 @@ export function GatePage({ api }: { api: StaffApi }) {
   const onDecode = (value: string) => {
     setCamera(false)
     setFromCamera(true)
+    // doScan would drop this read without a word, and the camera is already off: say so, so the pass is scanned again.
+    if (!flight || busy) {
+      setError(`Pass ${value} was read while the screen was busy and was not scanned. Press Start camera to scan it again.`)
+      return
+    }
     void doScan(value)
   }
 
@@ -255,7 +260,7 @@ export function GatePage({ api }: { api: StaffApi }) {
           <Pill tone="warn">Police</Pill>
         ) : (
           <span className="flex items-center gap-2">
-            <span className="text-sm font-medium text-[#0a1424]" title={GROUP_LABELS[group]}>
+            <span className="text-sm font-medium text-foreground" title={GROUP_LABELS[group]}>
               {group}
             </span>
             {entry.boardingGroup > called ? <Pill tone="neutral">waiting</Pill> : null}
@@ -264,11 +269,11 @@ export function GatePage({ api }: { api: StaffApi }) {
       </TableCell>
       <TableCell className="px-3 py-3">
         <span className="flex items-center gap-2">
-          <span className="text-sm text-[#0a1424]">{entry.passengerName}</span>
+          <span className="text-sm text-foreground">{entry.passengerName}</span>
           {entry.specialAssistance.length > 0 ? <Pill tone="warn">{entry.specialAssistance.join(', ')}</Pill> : null}
         </span>
       </TableCell>
-      <TableCell className="px-3 py-3 text-sm text-[#0a1424]">{entry.seat}</TableCell>
+      <TableCell className="px-3 py-3 text-sm text-foreground">{entry.seat}</TableCell>
       <TableCell className="px-3 py-3 font-mono text-[13px] tracking-[0.5px] text-[#3b4256]">{entry.reference}</TableCell>
       <TableCell className="px-3 py-3">
         <StatusPill status={entry.status} />
@@ -280,7 +285,7 @@ export function GatePage({ api }: { api: StaffApi }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="m-0 font-sans text-[36px] font-extrabold leading-[1.1] tracking-tight text-[#0a1424]">Gate screen</h1>
+          <h1 className="m-0 font-sans text-[36px] font-extrabold leading-[1.1] tracking-tight text-foreground">Gate screen</h1>
           <p className={`mt-1 ${MUTED}`}>{subtitle}</p>
         </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Choose gate">
@@ -303,18 +308,18 @@ export function GatePage({ api }: { api: StaffApi }) {
       <ErrorBanner message={error} onDismiss={() => setError(null)} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="gap-2 rounded-2xl border-[#dbe2ea] px-5 py-4">
-          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]">{list?.boardedCount ?? 0}</div>
+        <Card className="gap-2 rounded-2xl border-border px-5 py-4">
+          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-foreground">{list?.boardedCount ?? 0}</div>
           <div className={MUTED}>Boarded</div>
         </Card>
-        <Card className="gap-2 rounded-2xl border-[#dbe2ea] px-5 py-4">
-          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]">
+        <Card className="gap-2 rounded-2xl border-border px-5 py-4">
+          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-foreground">
             {Math.max(0, entries.length - (list?.boardedCount ?? 0))}
           </div>
           <div className={MUTED}>Not yet boarded</div>
         </Card>
-        <Card className="gap-2 rounded-2xl border-[#dbe2ea] px-5 py-4">
-          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]">{headcount?.sensorCount ?? '—'}</div>
+        <Card className="gap-2 rounded-2xl border-border px-5 py-4">
+          <div className="text-[28px] font-bold leading-none tracking-[-0.05em] text-foreground">{headcount?.sensorCount ?? '—'}</div>
           <div className={MUTED}>Gate head count</div>
         </Card>
       </div>
@@ -411,8 +416,8 @@ export function GatePage({ api }: { api: StaffApi }) {
               <div className="font-semibold">{scan.message}</div>
               {scan.passenger ? (
                 <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[15px]">
-                  <dt className="text-[#677287]">Passenger</dt>
-                  <dd className="m-0 flex flex-wrap items-center gap-2 text-[#0a1424]">
+                  <dt className="text-muted-foreground">Passenger</dt>
+                  <dd className="m-0 flex flex-wrap items-center gap-2 text-foreground">
                     {scan.passenger.name}
                     {scannedEntry?.isPolice ? <Pill tone="warn">Police</Pill> : null}
                     {scannedEntry?.specialAssistance.map((code) => (
@@ -422,10 +427,10 @@ export function GatePage({ api }: { api: StaffApi }) {
                     ))}
                     {scannedEntry ? <StatusPill status={scannedEntry.status} /> : null}
                   </dd>
-                  <dt className="text-[#677287]">Seat</dt>
-                  <dd className="m-0 text-[#0a1424]">{scan.passenger.seat}</dd>
-                  <dt className="text-[#677287]">Boarding group</dt>
-                  <dd className="m-0 text-[#0a1424]">{GROUP_LABELS[String(scan.passenger.boardingGroup) as keyof typeof GROUP_LABELS]}</dd>
+                  <dt className="text-muted-foreground">Seat</dt>
+                  <dd className="m-0 text-foreground">{scan.passenger.seat}</dd>
+                  <dt className="text-muted-foreground">Boarding group</dt>
+                  <dd className="m-0 text-foreground">{GROUP_LABELS[String(scan.passenger.boardingGroup) as keyof typeof GROUP_LABELS]}</dd>
                 </dl>
               ) : null}
               {scan.reason === 'WRONG_GATE' && scan.correctGate ? <div>Correct gate: {scan.correctGate}</div> : null}
@@ -466,12 +471,20 @@ export function GatePage({ api }: { api: StaffApi }) {
         ) : (
           <Table className="table-fixed text-sm">
             <TableHeader>
-              <TableRow className="border-[#dbe2ea] hover:bg-transparent">
-                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287] w-[12%]">Group</TableHead>
-                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">Passenger</TableHead>
-                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287] w-[11%]">Seat</TableHead>
-                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287] w-[15%]">Pass</TableHead>
-                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287] w-[12%]">
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground w-[12%]">
+                  Group
+                </TableHead>
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">
+                  Passenger
+                </TableHead>
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground w-[11%]">
+                  Seat
+                </TableHead>
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground w-[15%]">
+                  Pass
+                </TableHead>
+                <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground w-[12%]">
                   Status
                 </TableHead>
               </TableRow>

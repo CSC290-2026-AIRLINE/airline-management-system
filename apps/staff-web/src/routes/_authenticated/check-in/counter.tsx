@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useHttpStaffApi } from '../../../features/checkin-boarding/api/use-staff-api.ts'
 import { CounterPage } from '../../../features/checkin-boarding/components/CounterPage.tsx'
+import { PageError } from '../../../features/checkin-boarding/components/PageError.tsx'
 
 interface CounterSearch {
   checkIn?: string
@@ -12,6 +13,7 @@ export const Route = createFileRoute('/_authenticated/check-in/counter')({
     checkIn: typeof search.checkIn === 'string' ? search.checkIn : undefined,
   }),
   component: CounterRoute,
+  errorComponent: PageError,
 })
 
 function CounterRoute() {

@@ -19,13 +19,13 @@ interface Props {
 }
 
 /** The design's KPI card: a bold number over a muted label. */
-const KPI_NUMBER = 'text-[28px] font-bold leading-none tracking-[-0.05em] text-[#0a1424]'
+const KPI_NUMBER = 'text-[28px] font-bold leading-none tracking-[-0.05em] text-foreground'
 /** The design's disabled primary button: grey, not a faded navy. */
 const DISABLED_BUTTON = 'h-[39px] rounded-[6px] bg-[#eef1f6] px-[18px] text-sm font-semibold text-[#8b93a3]'
 
 function Kpi({ value, label }: { value: string; label: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-2xl border border-[#dbe2ea] bg-white px-5 py-4">
+    <div className="flex flex-col gap-1 rounded-2xl border border-border bg-white px-5 py-4">
       <span className={KPI_NUMBER}>{value}</span>
       <span className={MUTED}>{label}</span>
     </div>
@@ -193,14 +193,18 @@ export function BagDrop({ api, view, onUpdated }: Props) {
       ) : (
         <Table className="text-sm">
           <TableHeader>
-            <TableRow className="border-[#dbe2ea] hover:bg-transparent">
-              <TableHead className="h-auto w-[5%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">#</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">Weight</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">Size</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">Excess added</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">Fee</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">Tag number</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">Status</TableHead>
+            <TableRow className="border-border hover:bg-transparent">
+              <TableHead className="h-auto w-[5%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">#</TableHead>
+              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">Weight</TableHead>
+              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">Size</TableHead>
+              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">
+                Excess added
+              </TableHead>
+              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">Fee</TableHead>
+              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">
+                Tag number
+              </TableHead>
+              <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">Status</TableHead>
               <TableHead className="h-auto px-3 py-2" />
             </TableRow>
           </TableHeader>
@@ -210,11 +214,11 @@ export function BagDrop({ api, view, onUpdated }: Props) {
               const feeDue = bag.excessFee > 0 && !bag.excessPaymentId
               return (
                 <TableRow key={bag.id} className="border-[#eef1f6] hover:bg-[#f7f9fc]">
-                  <TableCell className="px-3 py-3 text-sm text-[#0a1424]">{index + 1}</TableCell>
-                  <TableCell className="px-3 py-3 text-sm text-[#0a1424]">{bag.weightKg} kg</TableCell>
-                  <TableCell className="px-3 py-3 text-sm text-[#677287]">{sizes[bag.id] ? `${sizes[bag.id]} cm` : '—'}</TableCell>
-                  <TableCell className="px-3 py-3 text-sm text-[#0a1424]">{bag.excessKg} kg</TableCell>
-                  <TableCell className={`px-3 py-3 text-sm ${feeDue ? 'font-semibold text-[#d61313]' : 'text-[#0a1424]'}`}>
+                  <TableCell className="px-3 py-3 text-sm text-foreground">{index + 1}</TableCell>
+                  <TableCell className="px-3 py-3 text-sm text-foreground">{bag.weightKg} kg</TableCell>
+                  <TableCell className="px-3 py-3 text-sm text-muted-foreground">{sizes[bag.id] ? `${sizes[bag.id]} cm` : '—'}</TableCell>
+                  <TableCell className="px-3 py-3 text-sm text-foreground">{bag.excessKg} kg</TableCell>
+                  <TableCell className={`px-3 py-3 text-sm ${feeDue ? 'font-semibold text-[#d61313]' : 'text-foreground'}`}>
                     {formatBaht(bag.excessFee)}
                   </TableCell>
                   <TableCell className="px-3 py-3 font-mono text-[13px] tracking-[0.5px] text-[#3b4256]">{bag.tagNumber ?? '—'}</TableCell>

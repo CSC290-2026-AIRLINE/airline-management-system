@@ -166,7 +166,7 @@ export function CounterPage({ api }: { api: StaffApi }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4 print:hidden">
         <div className="min-w-0">
-          <h1 className="m-0 font-sans text-[36px] font-extrabold leading-[1.1] tracking-tight text-[#0a1424]">Check-in counter</h1>
+          <h1 className="m-0 font-sans text-[36px] font-extrabold leading-[1.1] tracking-tight text-foreground">Check-in counter</h1>
           <p className={`mt-1 ${MUTED}`}>{subtitle}</p>
         </div>
         {view ? (
@@ -245,18 +245,20 @@ export function CounterPage({ api }: { api: StaffApi }) {
             ) : (
               <Table className="text-sm">
                 <TableHeader>
-                  <TableRow className="border-[#dbe2ea] hover:bg-transparent">
-                    <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">Passenger</TableHead>
-                    <TableHead className="h-auto w-[14%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">
+                      Passenger
+                    </TableHead>
+                    <TableHead className="h-auto w-[14%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">
                       Booking
                     </TableHead>
-                    <TableHead className="h-auto w-[9%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">
+                    <TableHead className="h-auto w-[9%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">
                       Seat
                     </TableHead>
-                    <TableHead className="h-auto w-[17%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">
+                    <TableHead className="h-auto w-[17%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">
                       Bags
                     </TableHead>
-                    <TableHead className="h-auto w-[12%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]">
+                    <TableHead className="h-auto w-[12%] px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground">
                       Status
                     </TableHead>
                     <TableHead className="h-auto px-3 py-2" />
@@ -267,14 +269,14 @@ export function CounterPage({ api }: { api: StaffApi }) {
                     <TableRow key={row.id} className="border-[#eef1f6] hover:bg-[#f7f9fc]">
                       <TableCell className="px-3 py-3">
                         <span className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-[#0a1424]">{row.passengerName}</span>
+                          <span className="text-sm font-medium text-foreground">{row.passengerName}</span>
                           <IssuePills issues={row.issues} />
                         </span>
                       </TableCell>
-                      <TableCell className="px-3 py-3 text-sm text-[#677287]">{row.pnr}</TableCell>
+                      <TableCell className="px-3 py-3 text-sm text-muted-foreground">{row.pnr}</TableCell>
                       {/* The search row carries no seat and no bag counts; the passenger panel shows both. */}
-                      <TableCell className="px-3 py-3 text-sm text-[#0a1424]">—</TableCell>
-                      <TableCell className="px-3 py-3 text-sm text-[#0a1424]">—</TableCell>
+                      <TableCell className="px-3 py-3 text-sm text-foreground">—</TableCell>
+                      <TableCell className="px-3 py-3 text-sm text-foreground">—</TableCell>
                       <TableCell className="px-3 py-3">
                         <StatusPill status={row.status} />
                       </TableCell>

@@ -2,9 +2,11 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { useHttpStaffApi } from '../../../features/checkin-boarding/api/use-staff-api.ts'
 import { IssueListPage } from '../../../features/checkin-boarding/components/IssueListPage.tsx'
+import { PageError } from '../../../features/checkin-boarding/components/PageError.tsx'
 
 export const Route = createFileRoute('/_authenticated/check-in/issues')({
   component: IssuesRoute,
+  errorComponent: PageError,
 })
 
 function IssuesRoute() {

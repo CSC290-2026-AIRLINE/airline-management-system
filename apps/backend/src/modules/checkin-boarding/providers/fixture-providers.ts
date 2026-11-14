@@ -318,7 +318,7 @@ export class FixtureScreening implements ScreeningProvider {
   }): Promise<{ runId: string; outcome: 'clear' | 'held' }> {
     this.seq += 1
     const held = input.numberLast4 === HOLD_LAST4 || input.lastName.toUpperCase() === 'KOWALSKI'
-    // A UUID, not `scr-N`: check_in.screening_run_id is a uuid column and this fixture also runs in 'db' mode until F7 lands.
+    // A UUID, not `scr-N`, like the run ids of feature 7.
     return { runId: randomUUID(), outcome: held ? 'held' : 'clear' }
   }
 }

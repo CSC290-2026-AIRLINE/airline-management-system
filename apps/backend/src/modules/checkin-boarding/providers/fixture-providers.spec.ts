@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { DEMO_NOW } from './fixtures'
+import type { PricingProvider } from './providers'
 import {
   FixtureBookings,
   FixtureClock,
@@ -111,7 +112,7 @@ describe('FixturePassengers', () => {
 
 describe('FixturePricing and FixturePayments', () => {
   it('baggage allowance comes from the fare class and the seat fee from the seat type', async () => {
-    const pricing = new FixturePricing()
+    const pricing: PricingProvider = new FixturePricing()
     expect(await pricing.baggage('Y', 'rt-bkk-nrt')).toEqual({ freeKg: 20, ratePerKg: 500, maxBagKg: 32 })
     expect(await pricing.baggage('J', 'rt-bkk-nrt')).toEqual({ freeKg: 30, ratePerKg: 500, maxBagKg: 32 })
     expect(await pricing.seatFee('economy', 'exit')).toBe(450)

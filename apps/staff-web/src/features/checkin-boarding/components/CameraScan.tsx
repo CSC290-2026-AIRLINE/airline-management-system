@@ -94,7 +94,7 @@ export function CameraScan({ active, onDecode }: { active: boolean; onDecode: (r
         muted
         playsInline
         aria-label="Camera view for scanning boarding passes"
-        className="w-full max-w-[480px] rounded-[10px] border border-[#dbe2ea] bg-black"
+        className="w-full max-w-[480px] rounded-[10px] border border-border bg-black"
       />
       {error ? <Message tone="error">{error}</Message> : null}
     </div>

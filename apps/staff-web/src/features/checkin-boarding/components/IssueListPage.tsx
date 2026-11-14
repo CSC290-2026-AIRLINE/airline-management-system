@@ -28,8 +28,8 @@ const UNPAID_NOTE = 'No bag tag is printed until the fee is paid at the counter.
 
 /** The tabs are the design's chips: the open one is the blue chip, the other one is outlined. */
 const TAB_TRIGGER =
-  'h-[34px] flex-none rounded-[6px] border border-[#cbd5e1] bg-white px-3 text-sm font-semibold text-[#0a1424] hover:border-[#9aa6b8] hover:bg-[#f3f4f6] hover:text-[#0a1424] data-[state=active]:border-[#102544]! data-[state=active]:bg-[#eaf0fb]! data-[state=active]:text-[#1f408c]!'
-const TAB_HEAD = 'h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-[#677287]'
+  'h-[34px] flex-none rounded-[6px] border border-[#cbd5e1] bg-white px-3 text-sm font-semibold text-foreground hover:border-[#9aa6b8] hover:bg-muted hover:text-foreground data-[state=active]:border-primary! data-[state=active]:bg-[#eaf0fb]! data-[state=active]:text-[#1f408c]!'
+const TAB_HEAD = 'h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground'
 
 export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPageProps) {
   const [rows, setRows] = useState<StaffCheckInRow[]>([])
@@ -106,7 +106,7 @@ export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPage
   return (
     <div className="flex flex-col gap-6">
       <div className="min-w-0">
-        <h1 className="m-0 font-sans text-[36px] font-extrabold leading-[1.1] tracking-tight text-[#0a1424]">Issue list</h1>
+        <h1 className="m-0 font-sans text-[36px] font-extrabold leading-[1.1] tracking-tight text-foreground">Issue list</h1>
         <p className={`mt-1 ${MUTED}`}>{SUBTITLE}</p>
       </div>
 
@@ -139,7 +139,7 @@ export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPage
               ) : (
                 <Table className="text-sm">
                   <TableHeader>
-                    <TableRow className="border-[#dbe2ea] hover:bg-transparent">
+                    <TableRow className="border-border hover:bg-transparent">
                       <TableHead className={`w-[23%] ${TAB_HEAD}`}>Passenger</TableHead>
                       <TableHead className={`w-[18%] ${TAB_HEAD}`}>Flight · Booking</TableHead>
                       <TableHead className={`w-[21%] ${TAB_HEAD}`}>Name on booking</TableHead>
@@ -152,14 +152,14 @@ export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPage
                       const detail = details[row.id]
                       return (
                         <TableRow key={row.id} className="border-[#eef1f6] hover:bg-[#f7f9fc]">
-                          <TableCell className="px-3 py-3 text-sm font-medium text-[#0a1424]">{row.passengerName}</TableCell>
-                          <TableCell className="px-3 py-3 text-sm text-[#677287]">
+                          <TableCell className="px-3 py-3 text-sm font-medium text-foreground">{row.passengerName}</TableCell>
+                          <TableCell className="px-3 py-3 text-sm text-muted-foreground">
                             {row.flightNumber} · {row.pnr}
                           </TableCell>
-                          <TableCell className="px-3 py-3 text-sm text-[#0a1424]">
+                          <TableCell className="px-3 py-3 text-sm text-foreground">
                             {detail ? bookingName(detail.checkIn.passenger) : '—'}
                           </TableCell>
-                          <TableCell className="px-3 py-3 text-sm text-[#0a1424]">
+                          <TableCell className="px-3 py-3 text-sm text-foreground">
                             {detail?.checkIn.document?.nameOnPassport ?? '—'}
                           </TableCell>
                           <TableCell className="px-3 py-3 text-right">
@@ -193,7 +193,7 @@ export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPage
               ) : (
                 <Table className="text-sm">
                   <TableHeader>
-                    <TableRow className="border-[#dbe2ea] hover:bg-transparent">
+                    <TableRow className="border-border hover:bg-transparent">
                       <TableHead className={`w-[23%] ${TAB_HEAD}`}>Passenger</TableHead>
                       <TableHead className={`w-[18%] ${TAB_HEAD}`}>Flight · Booking</TableHead>
                       <TableHead className={`w-[21%] ${TAB_HEAD}`}>Bag</TableHead>
@@ -207,11 +207,11 @@ export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPage
                       const bags = detail ? dueBags(detail.bags) : []
                       return (
                         <TableRow key={row.id} className="border-[#eef1f6] hover:bg-[#f7f9fc]">
-                          <TableCell className="px-3 py-3 text-sm font-medium text-[#0a1424]">{row.passengerName}</TableCell>
-                          <TableCell className="px-3 py-3 text-sm text-[#677287]">
+                          <TableCell className="px-3 py-3 text-sm font-medium text-foreground">{row.passengerName}</TableCell>
+                          <TableCell className="px-3 py-3 text-sm text-muted-foreground">
                             {row.flightNumber} · {row.pnr}
                           </TableCell>
-                          <TableCell className="px-3 py-3 text-sm text-[#0a1424]">
+                          <TableCell className="px-3 py-3 text-sm text-foreground">
                             {bags.length > 0 ? bags.map(bagLabel).join(', ') : '—'}
                           </TableCell>
                           <TableCell className="px-3 py-3 text-sm font-medium text-[#d61313]">

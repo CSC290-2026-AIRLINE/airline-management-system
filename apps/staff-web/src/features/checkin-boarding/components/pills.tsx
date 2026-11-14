@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<CheckInStatus, string> = {
 
 /** The design's pill tones: radius 999, padding 3/10, 12px. */
 const PILL_TONES = {
-  neutral: 'bg-[#eef1f6] text-[#677287]',
+  neutral: 'bg-[#eef1f6] text-muted-foreground',
   good: 'bg-[#e6f4ec] text-[#1e6e42]',
   bad: 'bg-[#fde4e2] text-[#b8171c]',
   warn: 'bg-[#fff3db] text-[#995c05]',

@@ -25,18 +25,18 @@ const TILE_TONES: Record<string, { Icon: LucideIcon; color: string }> = {
   good: { Icon: Check, color: 'text-[#1e8e4e]' },
   warn: { Icon: TriangleAlert, color: 'text-[#995c05]' },
   bad: { Icon: X, color: 'text-[#d61313]' },
-  neutral: { Icon: Dot, color: 'text-[#677287]' },
+  neutral: { Icon: Dot, color: 'text-muted-foreground' },
 }
 
 function StatusTile({ tone, label, value }: { tone: keyof typeof TILE_TONES; label: string; value: string }) {
   const { Icon, color } = TILE_TONES[tone]
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-[#dbe2ea] bg-white px-4 py-3.5">
-      <span className="flex items-center gap-1.5 text-xs font-normal text-[#677287]">
+    <div className="flex flex-col gap-1 rounded-xl border border-border bg-white px-4 py-3.5">
+      <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
         <Icon className={`size-3 shrink-0 ${color}`} />
         {label}
       </span>
-      <span className="text-sm font-medium text-[#0a1424]">{value}</span>
+      <span className="text-sm font-medium text-foreground">{value}</span>
     </div>
   )
 }
@@ -226,8 +226,8 @@ export function PassengerPanel({ api, view, onUpdated }: Props) {
               ] as const
             ).map(([label, value]) => (
               <div key={label} className="flex flex-col gap-1">
-                <dt className="text-xs font-normal uppercase tracking-wide text-[#677287]">{label}</dt>
-                <dd className="m-0 text-sm font-medium text-[#0a1424]">{value}</dd>
+                <dt className="text-xs font-normal uppercase tracking-wide text-muted-foreground">{label}</dt>
+                <dd className="m-0 text-sm font-medium text-foreground">{value}</dd>
               </div>
             ))}
           </dl>
