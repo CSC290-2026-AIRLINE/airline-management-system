@@ -33,11 +33,25 @@ import {
 export interface NavItem {
   label: string
   icon: LucideIcon
+  /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
+  to?: '/customer-search' | '/security-screening/screening-queue'
+  /** Path prefix that keeps the item highlighted on the feature's other pages. */
+  activePrefix?: string
 }
 
 export const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
 
 export const GROUPS: { label: string; items: NavItem[] }[] = [
+  // Groups with live links come first; the rest are disabled placeholders until their teams add routes.
+  {
+    label: 'Customer Management',
+    items: [
+      { label: 'Customer Search', icon: Search, to: '/customer-search', activePrefix: '/customer-search' },
+      { label: 'Security Screening', icon: ShieldCheck, to: '/security-screening/screening-queue', activePrefix: '/security-screening' },
+      { label: 'Service & Compensation', icon: MessageSquare },
+      { label: 'Loyalty Programme', icon: Star },
+    ],
+  },
   {
     label: 'Operations',
     items: [
@@ -61,15 +75,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
       { label: 'Gate Counter & Devices', icon: Monitor },
       { label: 'Baggage Tracking', icon: Luggage },
       { label: 'Onboard Products', icon: Utensils },
-    ],
-  },
-  {
-    label: 'Customer Management',
-    items: [
-      { label: 'Customer Search', icon: Search },
-      { label: 'Security Screening', icon: ShieldCheck },
-      { label: 'Service & Compensation', icon: MessageSquare },
-      { label: 'Loyalty Programme', icon: Star },
     ],
   },
 ]

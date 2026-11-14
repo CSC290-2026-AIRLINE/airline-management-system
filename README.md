@@ -58,14 +58,14 @@ npm run test:cov -w apps/backend
 
 ## Documentation
 
-| Document | Purpose |
-|---|---|
-| [`setup.md`](./setup.md) | Local development setup: prerequisites, install, env config, infra, database commands |
-| [`docs/infra-guide.md`](./docs/infra-guide.md) | Group-facing infrastructure guide: architecture, stack, setup, auth, environment, deployment, and infra rules |
-| [`docs/branch-naming-and-workflow.md`](./docs/branch-naming-and-workflow.md) | Branch names, commits, PR flow, reviews, and merge authority |
-| [`docs/backend-structure.md`](./docs/backend-structure.md) | Current NestJS structure and backend module boundaries |
-| [`docs/frontend-structure.md`](./docs/frontend-structure.md) | Current customer/staff frontend structure and planned feature organization |
-| [`docs/database-structure.md`](./docs/database-structure.md) | Current Prisma location, migration ownership, naming, and DB workflow |
+| Document                                                                     | Purpose                                                                                                       |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| [`setup.md`](./setup.md)                                                     | Local development setup: prerequisites, install, env config, infra, database commands                         |
+| [`docs/infra-guide.md`](./docs/infra-guide.md)                               | Group-facing infrastructure guide: architecture, stack, setup, auth, environment, deployment, and infra rules |
+| [`docs/branch-naming-and-workflow.md`](./docs/branch-naming-and-workflow.md) | Branch names, commits, PR flow, reviews, and merge authority                                                  |
+| [`docs/backend-structure.md`](./docs/backend-structure.md)                   | Current NestJS structure and backend module boundaries                                                        |
+| [`docs/frontend-structure.md`](./docs/frontend-structure.md)                 | Current customer/staff frontend structure and planned feature organization                                    |
+| [`docs/database-structure.md`](./docs/database-structure.md)                 | Current Prisma location, migration ownership, naming, and DB workflow                                         |
 
 ## Shared Rules
 
@@ -94,3 +94,4 @@ npm run test:cov -w apps/backend
 See [`docs/branch-naming-and-workflow.md`](./docs/branch-naming-and-workflow.md).
 
 _Last reviewed against the repository snapshot from September 28, 2026._
+For G10 staff feature testing on a fresh checkout, see [G10 local testing](docs/g10-local-testing.md).
