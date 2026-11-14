@@ -1,4 +1,5 @@
-// Copy of apps/backend/src/modules/checkin-boarding/providers/fixtures.ts — keep in sync
+// Browser-mock demo data. Based on the backend's providers/fixtures.ts and demo-data.ts, but not kept identical:
+// the mock only needs what the customer screens show.
 // The provider interfaces live in the backend; the demo data they read is copied here for the browser mock.
 import type { Cabin, SeatType } from '../api/types.ts'
 

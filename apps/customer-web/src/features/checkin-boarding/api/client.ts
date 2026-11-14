@@ -1,7 +1,7 @@
 import type { ApiError, BoardingPassView, CheckInView, SeatLock, SeatMap } from './types.ts'
 
 export interface CheckInApi {
-  start(input: { pnr: string; lastName: string }): Promise<CheckInView>
+  start(input: { pnr: string; lastName: string; firstName?: string }): Promise<CheckInView>
   get(id: string): Promise<CheckInView>
   submitDocument(id: string, input: { mrzLine1: string; mrzLine2: string; visaNumber?: string }): Promise<CheckInView>
   seatMap(flightId: string, checkInId?: string): Promise<SeatMap>

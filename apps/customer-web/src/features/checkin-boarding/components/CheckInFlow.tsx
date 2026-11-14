@@ -52,6 +52,12 @@ function BeforeYouStart() {
   )
 }
 
+/** The first names the backend lists when a family shares the surname on one booking. */
+function firstNamesOf(error: FlowError | null): string[] | null {
+  const names = error?.details?.firstNames
+  return Array.isArray(names) && names.every((n) => typeof n === 'string') ? (names as string[]) : null
+}
+
 export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; now?: () => Date }) {
   const [step, setStep] = useState<Step>(1)
   const [checkIn, setCheckIn] = useState<CheckInView | null>(null)
@@ -59,11 +65,11 @@ export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; 
   const [error, setError] = useState<FlowError | null>(null)
   const [busy, setBusy] = useState(false)
 
-  async function start(pnr: string, lastName: string) {
+  async function start(pnr: string, lastName: string, firstName?: string) {
     setBusy(true)
     setError(null)
     try {
-      const view = await api.start({ pnr, lastName })
+      const view = await api.start({ pnr, lastName, firstName })
       setCheckIn(view)
       setStep(2)
     } catch (failure) {
@@ -135,7 +141,7 @@ export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; 
 
   const steps = (
     <>
-      {step === 1 ? <FindBookingStep busy={busy} onSubmit={start} /> : null}
+      {step === 1 ? <FindBookingStep busy={busy} firstNames={firstNamesOf(error)} onSubmit={start} /> : null}
 
       {step === 2 && checkIn ? (
         <PassportStep

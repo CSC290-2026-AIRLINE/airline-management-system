@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { ApiRequestError } from '../api/client.ts'
 import { SPECIMEN_LINE1, buildSpecimenLine2 } from '../domain/mrz.ts'
-import { DEMO_NOW } from './fixtures.ts'
+import { BOOKINGS, DEMO_NOW } from './fixtures.ts'
 import { createMockApi } from './mock-api.ts'
 
 function isCode(code: string) {
@@ -136,4 +136,18 @@ test('the profile differences use the column names', async () => {
     visaNumber: 'VISA-123',
   })
   assert.deepEqual(view.document?.profileDifferences, ['date_of_birth', 'nationality', 'passport_number'])
+})
+
+test('a family on one PNR is told apart by the first name', async () => {
+  const anna = BOOKINGS.find((b) => b.pnr === 'ER204F')!
+  const lars = { ...anna, bookingPassengerId: 'bp-er204f-2', passengerId: 'pax-er204f-2', firstName: 'Lars' }
+  BOOKINGS.push(lars)
+  try {
+    const api = createMockApi({ now: DEMO_NOW })
+    await assert.rejects(api.start({ pnr: 'ER204F', lastName: 'Eriksson' }), hasDetail('reason', 'several_passengers'))
+    const c = await api.start({ pnr: 'ER204F', lastName: 'Eriksson', firstName: 'lars' })
+    assert.equal(c.passenger.firstName, 'Lars')
+  } finally {
+    BOOKINGS.splice(BOOKINGS.indexOf(lars), 1)
+  }
 })

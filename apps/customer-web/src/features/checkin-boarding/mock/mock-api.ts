@@ -300,11 +300,19 @@ export function createMockApi(opts?: { now?: Date; latencyMs?: number }): CheckI
     }
   }
 
-  async function start(input: { pnr: string; lastName: string }): Promise<CheckInView> {
+  async function start(input: { pnr: string; lastName: string; firstName?: string }): Promise<CheckInView> {
     await tick()
     const pnr = input.pnr.trim().toUpperCase()
     const lastName = input.lastName.trim().toUpperCase()
-    const booking = BOOKINGS.find((b) => b.pnr.toUpperCase() === pnr && b.lastName.toUpperCase() === lastName)
+    const firstName = input.firstName?.trim().toUpperCase()
+    const matches = BOOKINGS.filter((b) => b.pnr.toUpperCase() === pnr && b.lastName.toUpperCase() === lastName)
+    if (matches.length > 1 && !firstName) {
+      fail(400, 'VALIDATION', 'Several passengers on this booking share the surname; add the first name', {
+        reason: 'several_passengers',
+        firstNames: matches.map((b) => b.firstName),
+      })
+    }
+    const booking = firstName ? matches.find((b) => b.firstName.toUpperCase() === firstName) : matches[0]
     if (!booking) fail(404, 'NOT_FOUND', 'No booking found for that reference and surname')
     if (!booking.paid) fail(409, 'NOT_ELIGIBLE', 'This booking is not paid')
     const flight = flightOf(booking.flightId)
