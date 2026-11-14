@@ -6,7 +6,6 @@ import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { Tabs, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 import { Route } from '@staff-web/routes/_authenticated/cargo/bookings'
 import type { CargoDeskStatus } from '@staff-web/routes/_authenticated/cargo/bookings'
 import { useCargoApi, type DeskBooking, type DeskListResult } from './cargo-api'
@@ -129,37 +128,39 @@ export function CargoDeskPage() {
 
       {import.meta.env.DEV && <TestToolsCard onCreated={reload} />}
 
-      <Tabs
-        value={status}
-        onValueChange={(v) => {
-          setSearch('')
-          setDebouncedSearch('')
-          navigate({ search: { status: v as CargoDeskStatus }, replace: true })
-        }}
-        className="flex flex-col gap-4"
-      >
-        <TabsList variant="line" className="flex-wrap gap-1">
-          {STATUS_TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="px-3 py-1.5 text-sm font-medium">
-              {tab.label}
-              {counts[tab.value] != null && (
-                <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[0.65rem] font-semibold tabular-nums text-muted-foreground">
-                  {counts[tab.value]}
-                </span>
-              )}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by status">
+          {STATUS_TABS.map((tab) => {
+            const isActive = status === tab.value
+            const count = counts[tab.value]
+            return (
+              <Button
+                key={tab.value}
+                size="sm"
+                variant={isActive ? 'default' : 'outline'}
+                className="rounded-full"
+                onClick={() => {
+                  setSearch('')
+                  setDebouncedSearch('')
+                  navigate({ search: { status: tab.value }, replace: true })
+                }}
+              >
+                {tab.label}
+                {count != null && <span className="ml-1 tabular-nums opacity-70">{count}</span>}
+              </Button>
+            )
+          })}
+        </div>
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search by ref, AWB, shipper or consignee…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search ref, AWB, shipper or consignee…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -305,7 +306,9 @@ function TestToolsCard({ onCreated }: { onCreated: () => void }) {
             run(async () => {
               const r = await api.createTestBookings(3)
               if (r.error) return r.error
-              return `Created ${r.created?.length ?? 0} bookings`
+              const parts = [`Created ${r.created?.length ?? 0} bookings`]
+              if (r.failed?.length) parts.push(`${r.failed.length} failed`)
+              return parts.join(', ')
             })
           }
         >
