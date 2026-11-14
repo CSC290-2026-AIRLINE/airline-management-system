@@ -693,7 +693,11 @@ export class AircraftService {
         periodUpdate.end_date = new Date(toIsoDate(dto.planned_end_date))
       }
 
-      await tx.aircraft_status_period.update({ where: { id: maintenance.status_period_id }, data: periodUpdate })
+      const period = await tx.aircraft_status_period.update({ where: { id: maintenance.status_period_id }, data: periodUpdate })
+      if (dto.status === 'cancelled') {
+        // Scheduling the window cut short a grounding that had no end; cancelling it must give that grounding back.
+        await this.restorePredecessor(tx, aircraftId, period)
+      }
 
       const verb = dto.status === 'cancelled' ? 'Cancelled' : dto.status === 'completed' ? 'Completed' : 'Rescheduled'
       await this.audit.record(tx, staffId, {

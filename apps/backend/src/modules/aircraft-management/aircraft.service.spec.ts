@@ -559,11 +559,28 @@ describe('AircraftService', () => {
     it('closes the status period of a cancelled window', async () => {
       db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
       tx.aircraft_maintenance.update.mockResolvedValue(maintenanceRow({ status: 'cancelled' }))
+      tx.aircraft_status_period.update.mockResolvedValue({ id: 'p1', start_date: new Date('2026-03-10') })
+      tx.aircraft_status_period.findMany.mockResolvedValue([])
 
       await service.updateMaintenance('a1', 'm1', { status: 'cancelled' }, 'staff-1')
 
       expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'p1' }, data: expect.objectContaining({ deleted_at: expect.any(Date) }) }),
+      )
+    })
+
+    it('makes a grounding that the window cut short indefinite again when the window is cancelled', async () => {
+      db.aircraft_maintenance.findFirst.mockResolvedValue(maintenanceRow())
+      tx.aircraft_maintenance.update.mockResolvedValue(maintenanceRow({ status: 'cancelled' }))
+      tx.aircraft_status_period.update.mockResolvedValue({ id: 'p1', start_date: new Date('2026-03-10') })
+      tx.aircraft_status_period.findMany.mockResolvedValue([
+        { id: 'p0', status: 'grounded', origin: 'manual', start_date: new Date('2026-03-01'), end_date: new Date('2026-03-09') },
+      ])
+
+      await service.updateMaintenance('a1', 'm1', { status: 'cancelled' }, 'staff-1')
+
+      expect(tx.aircraft_status_period.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'p0' }, data: expect.objectContaining({ end_date: null }) }),
       )
     })
   })
