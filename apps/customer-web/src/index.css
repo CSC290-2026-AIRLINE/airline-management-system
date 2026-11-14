@@ -107,3 +107,11 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+#root:has(.customer-shell) {
+  width: 100%;
+  max-width: none;
+  border: 0;
+  text-align: left;
+}
+

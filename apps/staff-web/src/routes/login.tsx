@@ -1,23 +1,30 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { SignIn } from '@clerk/clerk-react'
 
-// Everyone lands here after signing in, whatever page they were trying to reach.
-const AFTER_LOGIN = '/admin/staff'
+interface LoginSearch {
+  redirect?: string
+}
+
+const AFTER_LOGIN = '/complaints'
 
 export const Route = createFileRoute('/login')({
-  beforeLoad: ({ context }) => {
+  validateSearch: (search: Record<string, unknown>): LoginSearch => ({
+    redirect: typeof search.redirect === 'string' ? search.redirect : undefined,
+  }),
+  beforeLoad: ({ context, search }) => {
     if (context.auth.isSignedIn) {
-      throw redirect({ to: AFTER_LOGIN })
+      throw redirect({ to: search.redirect ?? AFTER_LOGIN })
     }
   },
   component: LoginPage,
 })
 
 function LoginPage() {
-  // `force` redirects win over the `redirect_url` Clerk may carry, so the destination never changes.
+  const { redirect: redirectTo } = Route.useSearch()
+  const dest = redirectTo ?? AFTER_LOGIN
   return (
     <section id="center">
-      <SignIn forceRedirectUrl={AFTER_LOGIN} signUpForceRedirectUrl={AFTER_LOGIN} />
+      <SignIn forceRedirectUrl={dest} signUpForceRedirectUrl={dest} />
     </section>
   )
 }

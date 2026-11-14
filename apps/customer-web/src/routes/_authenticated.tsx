@@ -3,7 +3,11 @@ import { AppAuthProvider } from '../auth/AuthProvider'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: ({ context, location }) => {
-    if (!context.auth.isSignedIn) {
+    const isGuestComplaintFlow =
+      location.pathname.startsWith('/complaints') &&
+      (location.searchStr.includes('guest=1') || sessionStorage.getItem('f13_guest_mode') === '1')
+
+    if (!context.auth.isSignedIn && !isGuestComplaintFlow) {
       throw redirect({
         to: '/login',
         search: { redirect: location.href },

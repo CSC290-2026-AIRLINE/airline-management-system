@@ -1,0 +1,10 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Icon / Employee">
+<rect width="44" height="44" rx="10" fill="white"/>
+<circle id="Ellipse" cx="22" cy="15.5" r="3.6" stroke-width="1.8" stroke="#0A1424"/>
+<mask id="stroke0_0_11" fill="white">
+<path d="M14 32C14 27.5817 17.5817 24 22 24V24C26.4183 24 30 27.5817 30 32V32H14V32Z"/>
+</mask>
+<path id="Rectangle" d="M30 32V32C30 27.5817 26.4183 24 22 24V24C17.5817 24 14 27.5817 14 32V32H30Z" stroke-width="3.6" stroke="#0A1424" mask="url(#stroke0_0_11)"/>
+</g>
+</svg>

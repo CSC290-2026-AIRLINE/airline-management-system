@@ -13,10 +13,15 @@ import { CustomerServiceService } from './customer-service.service'
   providers: [CustomerServiceService],
 })
 export class CustomerServiceModule implements OnModuleInit {
-  constructor(private readonly adminConsole: AdminConsoleService) {}
+  constructor(
+    private readonly adminConsole: AdminConsoleService,
+    private readonly service: CustomerServiceService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     // Idempotent upsert on `code`, so the screen shows up in Role access without a manual insert.
     await this.adminConsole.registerSelfScreens(F13_SCREENS)
+    // Ensure Feature 13 demo flights, guest bookings, and initial cases exist in PostgreSQL.
+    await this.service.ensureSeedData()
   }
 }

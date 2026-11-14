@@ -150,7 +150,7 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
 
     await gate.promise
     let res = await doFetch(accessTokenRef.current)
-    if (res.status === 401) {
+    if (res.status === 401 && isSignedIn) {
       const refreshed = await refreshAccessToken()
       if (refreshed) {
         res = await doFetch(refreshed)
@@ -161,6 +161,7 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
 
   async function logout(): Promise<void> {
     try {
+      sessionStorage.removeItem('f13_guest_mode')
       await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' })
     } finally {
       storeAccessToken(null)
