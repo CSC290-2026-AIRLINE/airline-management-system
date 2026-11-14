@@ -1,21 +1,21 @@
 import { Module, type OnModuleInit } from '@nestjs/common'
 import { AdminConsoleModule } from '@backend/modules/admin-console/admin-console.module'
 import { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
-import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { PaymentsCheckoutService } from './payments-checkout.service'
 import { ReceiptsController } from './receipts.controller'
 import { PaymentsController } from './payments.controller'
 import { StaffPaymentsController } from './staff-payments.controller'
 import { ScreenAccessGuard } from './guards/screen-access.guard'
-import { buildSeedPayments, InMemoryPaymentRepository, PAYMENT_REPOSITORY, seedRepository } from './payment.repository'
+import { PAYMENT_REPOSITORY } from './payment.repository'
+import { PrismaPaymentRepository } from './prisma-payment.repository'
 import { FakePaymentGateway, PAYMENT_GATEWAY } from './payment.gateway'
 
 /**
  * Feature 5a's module: the in-process payment flow the selling features call, and the REST surface the frontends
  * read.
  *
- * The two providers under a token are the seams. `PAYMENT_REPOSITORY` is the mock's in-memory store today and a
- * Prisma-backed one tomorrow; `PAYMENT_GATEWAY` is the fake provider today and Stripe's tomorrow. Swapping either is
+ * The two providers under a token are the seams. `PAYMENT_REPOSITORY` is Prisma-backed (the real payment tables);
+ * `PAYMENT_GATEWAY` is the fake provider today and Stripe's tomorrow. Swapping either is
  * one line in the `providers` array — nothing else in the module changes.
  *
  * `AdminConsoleModule` is imported for two reasons: `AdminConsoleService.registerSelfScreens` registers 5a's staff
@@ -37,15 +37,8 @@ import { FakePaymentGateway, PAYMENT_GATEWAY } from './payment.gateway'
     // The fake provider, also exported so a demo or a test can force an outcome.
     FakePaymentGateway,
     { provide: PAYMENT_GATEWAY, useExisting: FakePaymentGateway },
-    {
-      provide: PAYMENT_REPOSITORY,
-      inject: [SimulationClock],
-      useFactory: async (clock: SimulationClock) => {
-        const repo = new InMemoryPaymentRepository()
-        await seedRepository(repo, buildSeedPayments(), clock.now())
-        return repo
-      },
-    },
+    // The real tables. `InMemoryPaymentRepository` is the drop-in the unit tests use.
+    { provide: PAYMENT_REPOSITORY, useClass: PrismaPaymentRepository },
   ],
   exports: [PaymentsCheckoutService, FakePaymentGateway],
 })

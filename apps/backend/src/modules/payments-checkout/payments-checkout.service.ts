@@ -24,7 +24,6 @@ import {
   MOCK_CARGO_REFERENCE,
   MOCK_BOOKING_REFUND_STATE,
   MOCK_MILES_REDEEMED,
-  resolveCustomerId,
 } from './mock-booking-state'
 import type {
   PaymentAttemptRecord,
@@ -223,8 +222,8 @@ export class PaymentsCheckoutService {
       capture_stalled_at: null,
       created_at: now,
       updated_at: now,
-      lines: input.lines.map((line, index) => ({
-        id: `${input.idempotency_key}-line-${index + 1}`,
+      lines: input.lines.map((line) => ({
+        id: randomUUID(),
         payment_id: '',
         booking_id: input.booking_id ?? null,
         booking_coupon_id: line.booking_coupon_id ?? null,
@@ -382,7 +381,7 @@ export class PaymentsCheckoutService {
     const payment = await this.requirePayment(paymentId)
     // A payment with no payer (an onboard sale) can be read by whoever holds the link; one with a payer can only be
     // read by that payer. TODO(F5a): the real check is "the signed-in customer owns this payment".
-    if (payment.payer_customer_id && payment.payer_customer_id !== resolveCustomerId(userId)) {
+    if (payment.payer_customer_id && payment.payer_customer_id !== (await this.repo.resolveCustomerId(userId))) {
       throw new NotFoundException(`Payment ${paymentId} not found`)
     }
     const receipt = await this.repo.findReceiptByPaymentId(payment.id)
@@ -403,7 +402,7 @@ export class PaymentsCheckoutService {
 
   /** The signed-in customer's receipts, newest first. */
   async listCustomerReceipts(userId: string, query: ReceiptQueryDto): Promise<ReceiptListDto> {
-    const customerId = resolveCustomerId(userId)
+    const customerId = await this.repo.resolveCustomerId(userId)
     const limit = query.limit ?? DEFAULT_LIMIT
     const receipts = await this.repo.listReceipts()
     const payments = await this.repo.listPayments()
@@ -427,7 +426,7 @@ export class PaymentsCheckoutService {
 
   /** One of the signed-in customer's receipts. 404 when the receipt is not theirs. */
   async getCustomerReceipt(userId: string, receiptId: string): Promise<ReceiptDetailDto> {
-    const customerId = resolveCustomerId(userId)
+    const customerId = await this.repo.resolveCustomerId(userId)
     const receipt = await this.repo.findReceiptById(receiptId)
     if (!receipt) throw new NotFoundException(`Receipt ${receiptId} not found`)
     const payment = await this.repo.findById(receipt.payment_id)
@@ -718,7 +717,7 @@ export class PaymentsCheckoutService {
       document_type: payment.source_feature === 17 ? 'invoice' : 'receipt',
       document_number: `${payment.source_feature === 17 ? 'INV' : 'RCPT'}-${payment.id.slice(-6).toUpperCase()}`,
       amount: payment.amount_total,
-      billing_name: customerName(payment.payer_customer_id),
+      billing_name: this.customerNameOf(payment),
       issued_at: now,
       created_at: now,
     }
@@ -889,7 +888,7 @@ export class PaymentsCheckoutService {
 
   private async toReceiptSummary(receipt: ReceiptRecord, payment: PaymentRecord): Promise<ReceiptSummaryDto> {
     const creditNote = await this.repo.findCreditNoteByPaymentId(payment.id)
-    const flight = bookingFlight(payment.booking_id)
+    const flight = this.flightOf(payment)
     const miles = this.milesRedeemed(payment)
     return {
       id: receipt.id,
@@ -930,8 +929,8 @@ export class PaymentsCheckoutService {
       status: payment.status,
       status_label: STATUS_LABELS[payment.status],
       payer_customer_id: payment.payer_customer_id,
-      customer_name: customerName(payment.payer_customer_id),
-      customer_email: customerEmail(payment.payer_customer_id),
+      customer_name: this.customerNameOf(payment),
+      customer_email: this.customerEmailOf(payment),
       booking_reference: this.bookingReference(payment),
       paid_with: this.paidWith(payment, miles),
       card_brand: attempt?.card_brand ?? null,
@@ -986,7 +985,7 @@ export class PaymentsCheckoutService {
    * the mock reads them from its own maps.
    */
   private receiptStatusFor(payment: PaymentRecord, miles: number | null): ReceiptStatus {
-    if (payment.booking_id && MOCK_BOOKING_FLOWN[payment.booking_id]) return 'flown'
+    if (payment.context ? payment.context.flown : payment.booking_id && MOCK_BOOKING_FLOWN[payment.booking_id]) return 'flown'
     if (miles !== null && miles > 0 && payment.card_amount > 0) return 'miles_and_cash'
     return 'paid'
   }
@@ -1034,15 +1033,33 @@ export class PaymentsCheckoutService {
       paymentReference(payment),
       payment.purchase_ref,
       this.bookingReference(payment),
-      customerName(payment.payer_customer_id),
-      customerEmail(payment.payer_customer_id),
+      this.customerNameOf(payment),
+      this.customerEmailOf(payment),
       attempt?.card_last4,
     ]
       .filter((value): value is string => typeof value === 'string')
       .some((value) => value.toLowerCase().includes(needle))
   }
 
+  /** The row's own context when the repository read one (the real tables), the mock maps otherwise. */
+  private customerNameOf(payment: PaymentRecord): string | null {
+    return payment.context ? payment.context.customer_name : customerName(payment.payer_customer_id)
+  }
+
+  private customerEmailOf(payment: PaymentRecord): string | null {
+    return payment.context ? payment.context.customer_email : customerEmail(payment.payer_customer_id)
+  }
+
+  private flightOf(payment: PaymentRecord): { route: string | null; flight_number: string | null; flight_date: string | null } | null {
+    if (payment.context) {
+      const { route, flight_number, flight_date } = payment.context
+      return route || flight_number || flight_date ? { route, flight_number, flight_date } : null
+    }
+    return bookingFlight(payment.booking_id)
+  }
+
   private bookingReference(payment: PaymentRecord): string | null {
+    if (payment.context) return payment.context.booking_reference
     if (payment.booking_id) return MOCK_BOOKING_REFERENCE[payment.booking_id] ?? null
     if (payment.cargo_booking_id) return MOCK_CARGO_REFERENCE[payment.cargo_booking_id] ?? null
     return null
@@ -1077,6 +1094,14 @@ export class PaymentsCheckoutService {
    */
   private refundStateFor(payment: PaymentRecord): RefundState {
     if (payment.status === 'reversed') return 'not_refundable'
+    if (payment.context) {
+      /* Real rows: refundable while a line of a captured payment still has money on it, as Feature 5b reads it. A cargo
+         invoice goes back through the cargo desk. A flight that has gone needs a person to decide. */
+      const sold = payment.source_feature !== 17
+      const left = payment.lines.some((line) => line.amount - line.refunded_amount > 0)
+      if (payment.status !== 'captured' || !sold || !left) return 'not_refundable'
+      return payment.context.flown ? 'ask_staff' : 'refundable'
+    }
     if (!payment.booking_id) return 'not_refundable'
     return MOCK_BOOKING_REFUND_STATE[payment.booking_id] ?? 'ask_staff'
   }

@@ -3,14 +3,37 @@
 The payment module the selling features (3 booking, 6 excess baggage, 12 onboard sale, 17 cargo) call when a customer
 buys something, and the REST surface the two frontends read.
 
-**This is the mock.** The database is not ready, so nothing here talks to Prisma: the rows live in a `Map` behind
-`PAYMENT_REPOSITORY`, and the provider is a fake one behind `PAYMENT_GATEWAY`. Both seams are one line in
-`payments-checkout.module.ts`; when the real implementations land, nothing else in the module changes.
+**The storage is real, the provider is still fake.** `PrismaPaymentRepository` reads and writes the `payment`,
+`payment_line`, `payment_attempt` and `receipt` tables behind `PAYMENT_REPOSITORY`. The provider is a fake one behind
+`PAYMENT_GATEWAY`; Stripe replaces it with one line in `payments-checkout.module.ts`. `InMemoryPaymentRepository` is the
+drop-in the unit tests use, so they need no database.
 
-The repository's methods are asynchronous, because Prisma's are: the mock resolves immediately, so the service awaits it
-exactly as it will await the database later.
+Nothing here touches `schema.prisma`, a migration or the shared seed. Every spot still waiting on another feature
+carries a `TODO(F5a)` saying what replaces it.
 
-Every mock spot carries a `TODO(F5a)` saying what replaces it.
+## What the real tables need
+
+- A payment of source feature 3 or 6 needs a `booking_id` and 17 needs a `cargo_booking_id` (a CHECK), and no bookings
+  exist yet. Until Feature 3b lands, the payments in the database are source feature 12 (onboard sales).
+- Where there is no booking row, the reference a customer reads is the payment's `purchase_ref`, as in Feature 5b. The
+  route, flight number and flown state are empty until 3b exposes them.
+- A customer is found by `customer.user_id` = the signed-in user. A name comes from the passenger row and an email from
+  the user row.
+- A capture that stalls is real (`capture_stalled_at`, `last_error`), so the needs-action list survives a restart. The
+  closed ones (who resolved it, the note) have no table, so they are kept in memory and are lost when the process stops.
+- `confirmed_at` has no column. A captured or reversed payment was confirmed, so the history shows it at `authorised_at`.
+- A receipt is refundable (for Feature 5b) while a line of a captured, non-cargo payment still has money on it.
+- `audit_log` is append-only, so the `view_sensitive` rows a staff view writes stay.
+
+## Try it against the database
+
+```bash
+cd apps/backend && npm run build
+# the flow, over the real HTTP routes, checked row by row, then cleaned up
+node -r tsconfig-paths/register dist/src/modules/payments-checkout/demo/http-smoke.js
+# demo payments and receipts for one customer (their email), made through the same service
+node -r tsconfig-paths/register dist/src/modules/payments-checkout/demo/seed-demo.js you@example.com
+```
 
 ## How another backend module calls it
 
@@ -191,19 +214,19 @@ gateway.queueOutcome('decline') // the next call only, then back to the standing
 
 ## When the real implementation lands
 
-- **The repository** — swap `InMemoryPaymentRepository` for a Prisma-backed one that reads the `payment`,
-  `payment_line`, `payment_attempt`, `receipt` and `payment_event_receipt` tables. The interface is already async and
-  the row shapes in `payment.types.ts` already mirror those columns, so the service does not change.
+- **The repository** — done: `PrismaPaymentRepository`. Still to do is `payment_event_receipt`, which the Stripe
+  webhook needs to ignore an event it has already seen.
 - **The provider** — add a `StripePaymentGateway` implementing `authorise` and `capture`. Stripe builds, hosts and
   serves the checkout page, so 5a only creates the session and reads the result back through the webhook. Only this
   adapter converts money to cents; the database keeps `NUMERIC(12, 2)`.
-- **The money** — the mock uses a JS number rounded to two decimals. The real implementation uses Prisma `Decimal`.
+- **The money** — the service works in JS numbers rounded to two decimals; the repository reads the `NUMERIC(12, 2)`
+  columns as numbers. Only a Stripe provider converts to cents.
 
 ## Open questions
 
 For the Database Team:
 
-- there is no `payment_exception` table — the mock keeps the exception state, who resolved it and the note in memory
+- there is no `payment_exception` table — the repository keeps who resolved a problem and the note in memory
 - miles live on Feature 11's redeem rows, so a payment only records the miles it redeemed, not their cash value
 - `payment_setting.capture_retry_limit` (5) and `min_hold_minutes` (3) are not read yet — the mock hard-codes them
 - is `source_feature = 6` excess baggage? The frames also show check-in.

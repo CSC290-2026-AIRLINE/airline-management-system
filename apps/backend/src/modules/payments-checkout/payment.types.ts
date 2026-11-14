@@ -85,6 +85,25 @@ export interface ReceiptRecord {
   created_at: Date
 }
 
+/**
+ * What a payment row cannot say about itself: who paid, which booking it is for and where the flight stands.
+ *
+ * The Prisma repository fills it in from `customer`, `user` and the booking tables when it reads a payment. The
+ * in-memory repository leaves it out, and the service falls back to `mock-booking-state.ts`, so the mock and the real
+ * rows go through the same code.
+ */
+export interface PaymentContext {
+  customer_name: string | null
+  customer_email: string | null
+  /** The booking reference the customer reads. Without a booking row it is the purchase reference. */
+  booking_reference: string | null
+  route: string | null
+  flight_number: string | null
+  flight_date: string | null
+  /** The flight has already gone, so a refund needs a person to decide. */
+  flown: boolean
+}
+
 /** One `payment` row, with its lines and attempts attached. */
 export interface PaymentRecord {
   id: string
@@ -124,6 +143,8 @@ export interface PaymentRecord {
   updated_at: Date
   lines: PaymentLineRecord[]
   attempts: PaymentAttemptRecord[]
+  /** Set by the Prisma repository when it reads the row; see `PaymentContext`. */
+  context?: PaymentContext
 }
 
 /**

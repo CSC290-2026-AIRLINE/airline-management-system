@@ -414,3 +414,51 @@ describe('PaymentsCheckoutService lists', () => {
     expect(status.capture_stalled).toBe(false)
   })
 })
+
+describe('PaymentsCheckoutService on real rows (a payment that carries its context)', () => {
+  /** An onboard payment, captured, whose row came with the customer and booking details the tables hold. */
+  async function capturedWithContext(overrides: Partial<NonNullable<PaymentRecord['context']>> = {}) {
+    const { svc, clock, repo } = await makeService()
+    const payment = await startPayment(svc, clock, { source_feature: 12, booking_id: null })
+    await svc.confirmAndSettle(payment.id, () => Promise.resolve(true))
+    const stored = (await repo.findById(payment.id))!
+    stored.context = {
+      customer_name: 'Ada Lovelace',
+      customer_email: 'ada@example.com',
+      booking_reference: 'K7QF2M',
+      route: null,
+      flight_number: null,
+      flight_date: null,
+      flown: false,
+      ...overrides,
+    }
+    return { svc, stored }
+  }
+
+  it('reads the customer and the reference from the row, not from the mock maps', async () => {
+    const { svc } = await capturedWithContext()
+
+    const found = await svc.listStaffPayments({ search: 'ada@example.com' })
+    expect(found.items).toHaveLength(1)
+    expect(found.items[0]).toMatchObject({ customer_name: 'Ada Lovelace', customer_email: 'ada@example.com', booking_reference: 'K7QF2M' })
+    expect((await svc.listStaffPayments({ search: 'K7QF2M' })).items).toHaveLength(1)
+  })
+
+  it('offers a refund while a line still has money on it, and not once the lines are used up', async () => {
+    const { svc, stored } = await capturedWithContext()
+    const customer = stored.payer_customer_id!
+
+    expect((await svc.listCustomerReceipts(customer, {})).items[0].refund_state).toBe('refundable')
+
+    for (const line of stored.lines) line.refunded_amount = line.amount
+    expect((await svc.listCustomerReceipts(customer, {})).items[0].refund_state).toBe('not_refundable')
+  })
+
+  it('sends a refund on a flight that has gone to a person, and shows the receipt as flown', async () => {
+    const { svc, stored } = await capturedWithContext({ flown: true })
+    const receipt = (await svc.listCustomerReceipts(stored.payer_customer_id!, {})).items[0]
+
+    expect(receipt.refund_state).toBe('ask_staff')
+    expect(receipt.receipt_status).toBe('flown')
+  })
+})

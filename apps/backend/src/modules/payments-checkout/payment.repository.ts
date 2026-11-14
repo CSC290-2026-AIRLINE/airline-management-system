@@ -1,5 +1,5 @@
 import type { PaymentExceptionRecord, PaymentLineRecord, PaymentRecord, PaymentSourceFeature, ReceiptRecord } from './payment.types'
-import { DEMO_CUSTOMER_ID } from './mock-booking-state'
+import { DEMO_CUSTOMER_ID, resolveCustomerId as resolveMockCustomerId } from './mock-booking-state'
 
 /**
  * The DI token for the repository. The module provides the mock implementation under this token; the real
@@ -39,6 +39,8 @@ export interface PaymentRepository {
   findException(paymentId: string): Promise<PaymentExceptionRecord | undefined>
   saveException(exception: PaymentExceptionRecord): Promise<PaymentExceptionRecord>
   listExceptions(): Promise<PaymentExceptionRecord[]>
+  /** The `customer.id` behind a signed-in user id, or undefined when that user is not a customer. */
+  resolveCustomerId(userId: string): Promise<string | undefined>
 }
 
 /** The statuses that hold the `payment_one_live_per_purchase_uq` slot for a purchase. */
@@ -118,6 +120,10 @@ export class InMemoryPaymentRepository implements PaymentRepository {
 
   listExceptions(): Promise<PaymentExceptionRecord[]> {
     return Promise.resolve([...this.exceptions.values()])
+  }
+
+  resolveCustomerId(userId: string): Promise<string | undefined> {
+    return Promise.resolve(resolveMockCustomerId(userId))
   }
 
   /** The rows as a plain array, so the lookups above stay one-liners. */
