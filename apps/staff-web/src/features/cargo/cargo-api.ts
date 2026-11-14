@@ -258,6 +258,14 @@ export function useCargoApi() {
 
     getBookingDetail: (id: string) => send<BookingDetail>(`/api/staff/cargo/bookings/${id}`),
 
+    acceptBooking: (id: string, body: { measured_weight_kg: number; measured_volume_m3: number }) =>
+      send<{ status: string }>(`/api/staff/cargo/bookings/${id}/acceptance`, { method: 'PUT', body: JSON.stringify(body) }),
+    rejectBooking: (id: string, body: { measured_weight_kg: number; measured_volume_m3: number; reason: string }) =>
+      send<{ status: string; refundId: string }>(`/api/staff/cargo/bookings/${id}/rejection`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+
     createTestFlights: () => send<{ created?: string[]; error?: string }>('/api/staff/cargo/test/flights', { method: 'POST' }),
     createTestBookings: (count = 1) =>
       send<TestToolResult>('/api/staff/cargo/test/bookings', { method: 'POST', body: JSON.stringify({ count }) }),

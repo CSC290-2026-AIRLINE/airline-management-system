@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import { availableKg } from './cargo-calc'
-import { getAircraftCapacity, seatsTakenOnFlight } from './cargo-deps'
+import { availableKg, chargeableKg, exceedsTolerance } from './cargo-calc'
+import { getAircraftCapacity, refundFull, seatsTakenOnFlight } from './cargo-deps'
+import { CargoEventsService } from './cargo-events.service'
 
 const CLOSED_STATUSES = ['expired', 'cancelled', 'rejected']
 
@@ -29,7 +30,10 @@ interface StatusCount {
 
 @Injectable()
 export class CargoDeskService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly events: CargoEventsService,
+  ) {}
 
   async listBookings(opts: { status?: string; q?: string; page: number; pageSize: number }) {
     const { status, q, page, pageSize } = opts
@@ -248,6 +252,72 @@ export class CargoDeskService {
     }
   }
 
+  async acceptBooking(id: string, measuredWeightKg: number, measuredVolumeM3: number) {
+    return this.db.$transaction(async (tx) => {
+      const settings = await this.loadSettingsFull(tx)
+      const measuredChargeable = chargeableKg(measuredWeightKg, measuredVolumeM3, settings.volumetricKgPerM3)
+
+      const event = await this.events.appendEvent(tx, {
+        bookingId: id,
+        eventType: 'accepted',
+        actorType: 'staff',
+        measuredWeightKg,
+        measuredVolumeM3,
+        measuredChargeableKg: measuredChargeable,
+      })
+
+      return { status: event.status_after, measuredChargeableKg: measuredChargeable }
+    })
+  }
+
+  async rejectBooking(id: string, measuredWeightKg: number, measuredVolumeM3: number, reason: string) {
+    return this.db.$transaction(async (tx) => {
+      const settings = await this.loadSettingsFull(tx)
+      const measuredChargeable = chargeableKg(measuredWeightKg, measuredVolumeM3, settings.volumetricKgPerM3)
+
+      const booking = await tx.cargo_booking.findUnique({
+        where: { id },
+        select: { booking_ref: true, payment_id: true, quoted_chargeable_kg: true, quoted_charge: true },
+      })
+      if (!booking) {
+        throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Booking not found' } })
+      }
+
+      const quotedChargeable = Number(booking.quoted_chargeable_kg)
+      if (!exceedsTolerance(measuredChargeable, quotedChargeable, settings.tolerancePercent)) {
+        throw new ConflictException({
+          error: {
+            code: 'TOLERANCE_NOT_EXCEEDED',
+            message: 'Measured chargeable weight is within the tolerance — accept the shipment instead',
+            details: { measuredChargeableKg: measuredChargeable, quotedChargeableKg: quotedChargeable },
+          },
+        })
+      }
+
+      let refundResult: { refundId: string }
+      try {
+        refundResult = refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'rejected')
+      } catch {
+        throw new InternalServerErrorException({
+          error: { code: 'REFUND_FAILED', message: 'Refund could not be processed — rejection was not recorded' },
+        })
+      }
+
+      const event = await this.events.appendEvent(tx, {
+        bookingId: id,
+        eventType: 'rejected',
+        actorType: 'staff',
+        measuredWeightKg,
+        measuredVolumeM3,
+        measuredChargeableKg: measuredChargeable,
+        refundId: refundResult.refundId,
+        note: reason,
+      })
+
+      return { status: event.status_after, refundId: refundResult.refundId }
+    })
+  }
+
   private async committedKgForFlight(flightId: string): Promise<number> {
     const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
     const bookings = await this.db.cargo_booking.findMany({
@@ -266,11 +336,17 @@ export class CargoDeskService {
   }
 
   private async loadSettings() {
-    const rows = await this.db.cargo_setting.findMany()
+    return this.loadSettingsFull(this.db)
+  }
+
+  private async loadSettingsFull(db: DbService | Parameters<Parameters<DbService['$transaction']>[0]>[0]) {
+    const rows = await (db as DbService).cargo_setting.findMany()
     const map = new Map(rows.map((r) => [r.key, r.value]))
     return {
       reserveKgPerPax: Number(map.get('baggage_reserve_kg_per_passenger') ?? 15),
       floorPercent: Number(map.get('baggage_reserve_floor_percent') ?? 50),
+      volumetricKgPerM3: Number(map.get('volumetric_kg_per_m3') ?? 167),
+      tolerancePercent: Number(map.get('weight_tolerance_percent') ?? 10),
     }
   }
 

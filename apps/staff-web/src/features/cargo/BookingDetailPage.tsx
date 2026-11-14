@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Bell, Clock, Loader2, Plane } from 'lucide-react'
+import { ArrowLeft, Bell, Clock, Loader2, Plane, Scale } from 'lucide-react'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Dialog, DialogContent, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
+import { Textarea } from '@staff-web/components/ui/textarea'
 import { Route } from '@staff-web/routes/_authenticated/cargo/bookings.$id'
 import { useCargoApi, type BookingDetail } from './cargo-api'
 
@@ -123,8 +127,9 @@ export function BookingDetailPage() {
         <span className="ml-auto text-sm font-semibold">{money(header.quotedCharge, header.currency)}</span>
       </div>
 
-      {/* Actions placeholder — filled by Sections 6 and 7 */}
-      <div id="booking-actions" />
+      {header.currentStatus === 'booked' && (
+        <AcceptanceActions bookingId={header.id} quotedChargeableKg={quote.chargeableKg} onDone={reload} />
+      )}
 
       {import.meta.env.DEV && <TestToolsCard bookingId={header.id} status={header.currentStatus} onDone={reload} />}
 
@@ -374,5 +379,135 @@ function TestToolsCard({ bookingId, status, onDone }: { bookingId: string; statu
         {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
       </CardContent>
     </Card>
+  )
+}
+
+function computeChargeable(weightKg: number, volumeM3: number, kgPerM3 = 167): number {
+  return Math.ceil(Math.max(weightKg, volumeM3 * kgPerM3) * 2) / 2
+}
+
+function AcceptanceActions({
+  bookingId,
+  quotedChargeableKg,
+  onDone,
+}: {
+  bookingId: string
+  quotedChargeableKg: number
+  onDone: () => void
+}) {
+  const api = useCargoApi()
+  const [open, setOpen] = useState(false)
+  const [weight, setWeight] = useState('')
+  const [volume, setVolume] = useState('')
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const w = parseFloat(weight) || 0
+  const v = parseFloat(volume) || 0
+  const measuredChargeable = w > 0 && v > 0 ? computeChargeable(w, v) : 0
+  const diffPercent =
+    quotedChargeableKg > 0 && measuredChargeable > 0 ? ((measuredChargeable - quotedChargeableKg) / quotedChargeableKg) * 100 : 0
+  const aboveTolerance = diffPercent > 10
+
+  const valid = w > 0 && v > 0
+
+  const doAccept = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.acceptBooking(bookingId, { measured_weight_kg: w, measured_volume_m3: v })
+      setOpen(false)
+      onDone()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doReject = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.rejectBooking(bookingId, { measured_weight_kg: w, measured_volume_m3: v, reason })
+      setOpen(false)
+      onDone()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>
+        <Scale className="mr-1.5 size-4" />
+        Weigh and accept
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>Weigh and accept / reject</DialogTitle>
+
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="mw">Measured weight (kg)</Label>
+              <Input id="mw" type="number" step="0.1" min="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="mv">Measured volume (m³)</Label>
+              <Input id="mv" type="number" step="0.001" min="0.001" value={volume} onChange={(e) => setVolume(e.target.value)} />
+            </div>
+          </div>
+
+          {valid && (
+            <div className="rounded-md border p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Measured chargeable</span>
+                <span className="font-medium">{measuredChargeable.toFixed(1)} kg</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Quoted chargeable</span>
+                <span>{quotedChargeableKg.toFixed(1)} kg</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Difference</span>
+                <span className={aboveTolerance ? 'font-medium text-destructive' : ''}>
+                  {diffPercent >= 0 ? '+' : ''}
+                  {diffPercent.toFixed(1)}%
+                </span>
+              </div>
+              <p className={`mt-2 text-xs ${aboveTolerance ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {aboveTolerance ? `${diffPercent.toFixed(0)}% above the quote: you may reject` : `Within 10%: accept`}
+              </p>
+            </div>
+          )}
+
+          {aboveTolerance && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="reject-reason">Rejection reason (required to reject)</Label>
+              <Textarea id="reject-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
+            </div>
+          )}
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <div className="flex justify-end gap-2">
+            {aboveTolerance && (
+              <Button variant="destructive" size="sm" disabled={busy || !reason.trim()} onClick={doReject}>
+                {busy ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+                Reject
+              </Button>
+            )}
+            <Button size="sm" disabled={busy || !valid} onClick={doAccept}>
+              {busy ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+              Accept
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

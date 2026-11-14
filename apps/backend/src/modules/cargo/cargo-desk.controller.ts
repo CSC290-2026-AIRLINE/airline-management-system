@@ -1,9 +1,35 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import { IsNotEmpty, IsNumber, IsString, Min } from 'class-validator'
 import { StaffProfilesGuard } from '@backend/modules/passenger-profiles/staff-profiles.guard'
 import { CargoDeskService } from './cargo-desk.service'
 
+class AcceptanceDto {
+  @IsNumber()
+  @Min(0.1)
+  measured_weight_kg!: number
+
+  @IsNumber()
+  @Min(0.001)
+  measured_volume_m3!: number
+}
+
+class RejectionDto {
+  @IsNumber()
+  @Min(0.1)
+  measured_weight_kg!: number
+
+  @IsNumber()
+  @Min(0.001)
+  measured_volume_m3!: number
+
+  @IsString()
+  @IsNotEmpty()
+  reason!: string
+}
+
 @Controller('staff/cargo')
 @UseGuards(StaffProfilesGuard)
+@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class CargoDeskController {
   constructor(private readonly desk: CargoDeskService) {}
 
@@ -22,5 +48,15 @@ export class CargoDeskController {
   @Get('bookings/:id')
   getBookingDetail(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.desk.getBookingDetail(id)
+  }
+
+  @Put('bookings/:id/acceptance')
+  acceptBooking(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: AcceptanceDto) {
+    return this.desk.acceptBooking(id, dto.measured_weight_kg, dto.measured_volume_m3)
+  }
+
+  @Post('bookings/:id/rejection')
+  rejectBooking(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: RejectionDto) {
+    return this.desk.rejectBooking(id, dto.measured_weight_kg, dto.measured_volume_m3, dto.reason)
   }
 }
