@@ -1,4 +1,17 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+  Query,
+  UseFilters,
+  UseGuards,
+} from '@nestjs/common'
 import {
   CREW_ROLES,
   SetupCrewService,
@@ -14,6 +27,7 @@ import {
   type LanguageOptionRow,
 } from './setup-crew.service'
 import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
+import { RosteringExceptionFilter } from '../rostering-error'
 import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
@@ -25,6 +39,7 @@ import { StaffOnlyGuard } from '../staff-only.guard'
  */
 @Controller('crew-rostering/setup-crew')
 @UseGuards(StaffOnlyGuard)
+@UseFilters(RosteringExceptionFilter)
 export class SetupCrewController {
   constructor(private readonly setupCrewService: SetupCrewService) {}
 

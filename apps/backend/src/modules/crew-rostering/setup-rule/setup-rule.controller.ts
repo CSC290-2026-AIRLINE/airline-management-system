@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, UseFilters, UseGuards } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import {
   SetupRuleService,
@@ -13,6 +13,7 @@ import {
   type RuleSetRow,
 } from './setup-rule.service'
 import { asObject, requireText } from '../request-parsing'
+import { RosteringExceptionFilter } from '../rostering-error'
 import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
@@ -24,6 +25,7 @@ import { StaffOnlyGuard } from '../staff-only.guard'
  */
 @Controller('crew-rostering/setup-rule')
 @UseGuards(StaffOnlyGuard)
+@UseFilters(RosteringExceptionFilter)
 export class SetupRuleController {
   constructor(private readonly setupRuleService: SetupRuleService) {}
 

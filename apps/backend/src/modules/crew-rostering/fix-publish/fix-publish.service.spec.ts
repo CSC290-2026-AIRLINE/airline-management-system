@@ -69,7 +69,9 @@ describe('FixPublishService.publish', () => {
   it('refuses while a break is open, and does not flip the run', async () => {
     const { service, tx } = setupPublish({ open: 2 })
 
-    await expect(service.publish(RUN, 'user-1')).rejects.toThrow('ROSTER_HAS_BREAKS')
+    await expect(service.publish(RUN, 'user-1')).rejects.toMatchObject({
+      response: { error: { code: 'ROSTER_HAS_BREAKS', message: 'close 2 open breaks to publish' } },
+    })
     expect(tx.roster_run.updateMany).not.toHaveBeenCalled()
   })
 

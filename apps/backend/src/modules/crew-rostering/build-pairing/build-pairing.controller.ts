@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, UseFilters, UseGuards } from '@nestjs/common'
 import {
   BuildPairingService,
   type BuildParams,
@@ -12,6 +12,7 @@ import {
   type SaveLegsResult,
 } from './build-pairing.service'
 import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
+import { RosteringExceptionFilter } from '../rostering-error'
 import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
@@ -23,6 +24,7 @@ import { StaffOnlyGuard } from '../staff-only.guard'
  */
 @Controller('crew-rostering/build-pairing')
 @UseGuards(StaffOnlyGuard)
+@UseFilters(RosteringExceptionFilter)
 export class BuildPairingController {
   constructor(private readonly buildPairingService: BuildPairingService) {}
 

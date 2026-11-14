@@ -1,7 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseFilters, UseGuards } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { FixPublishService, type FixOutcome, type FixPublishState, type WindowParams } from './fix-publish.service'
 import { asObjectOrEmpty, requireDate, requireText, requireUuid } from '../request-parsing'
+import { RosteringExceptionFilter } from '../rostering-error'
 import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
@@ -13,6 +14,7 @@ import { StaffOnlyGuard } from '../staff-only.guard'
  */
 @Controller('crew-rostering/fix-publish')
 @UseGuards(StaffOnlyGuard)
+@UseFilters(RosteringExceptionFilter)
 export class FixPublishController {
   constructor(private readonly fixPublishService: FixPublishService) {}
 

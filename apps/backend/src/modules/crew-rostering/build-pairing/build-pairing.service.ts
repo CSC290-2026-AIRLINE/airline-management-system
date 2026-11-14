@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { loadBaseContext } from '../base-context'
+import { RosteringErrorCode, rosteringError } from '../rostering-error'
 import { buildChains } from './chain-builder'
 import { isRestBetween, localDay, shortName } from '../crew-format'
 
@@ -526,7 +527,8 @@ export class BuildPairingService {
    * run's dates and drafts with a flight that someone else paired in the meantime.
    */
   async commitPairings(params: BuildParams, drafts: CommitDraft[]): Promise<CommitResult> {
-    if (drafts.length === 0) throw new BadRequestException('NO_PAIRINGS · Choose at least one valid pairing to commit')
+    if (drafts.length === 0)
+      throw new BadRequestException(rosteringError(RosteringErrorCode.NO_PAIRINGS, 'Choose at least one valid pairing to commit'))
     const context = await this.loadContext(params.base)
     const window = this.serviceDates(params)
     const runs = await this.db.roster_run.findMany({
@@ -791,7 +793,11 @@ export class BuildPairingService {
   }
 
   private inUse(code: string): ConflictException {
-    return new ConflictException(`PAIRING_IN_USE · ${code} is part of a published roster. Change it in Fix & publish instead.`)
+    return new ConflictException(
+      rosteringError(RosteringErrorCode.PAIRING_IN_USE, `${code} is part of a published roster. Change it in Fix & publish instead.`, {
+        pairing: code,
+      }),
+    )
   }
 
   /* ── mapping ────────────────────────────────────────────────────────────── */

@@ -14,6 +14,7 @@ import {
   type SeatRole,
 } from '../assign-crew/assign-crew.service'
 import { isoDate, shortName } from '../crew-format'
+import { RosteringErrorCode, rosteringError } from '../rostering-error'
 
 /**
  * Feature 8 · Step 4 — fix and publish.
@@ -413,7 +414,13 @@ export class FixPublishService {
     const brk = await this.readBreak(breakId)
     if (brk.resolved_at !== null) throw new ConflictException('This item is already closed')
     if (!COMPANY_RULES.has(brk.rule)) {
-      throw new BadRequestException(`${brk.rule} is a law rule and cannot be overridden. Fix it with a swap.`)
+      throw new BadRequestException(
+        rosteringError(
+          RosteringErrorCode.LAW_RULE_NOT_OVERRIDABLE,
+          `${brk.rule} is a law rule and cannot be overridden. Fix it with a swap.`,
+          { rule: brk.rule },
+        ),
+      )
     }
     const staff = actorUserId
       ? await this.db.staff.findFirst({ where: { user_id: actorUserId, deleted_at: null }, select: { id: true } })
@@ -520,9 +527,17 @@ export class FixPublishService {
         await this.assignCrew.check(rosterRunId)
 
         const pairings = await tx.roster_run_pairing.count({ where: { roster_run_id: rosterRunId } })
-        if (pairings === 0) throw new ConflictException('ROSTER_EMPTY · Commit at least one pairing in Build pairings before publishing')
+        if (pairings === 0)
+          throw new ConflictException(
+            rosteringError(RosteringErrorCode.ROSTER_EMPTY, 'Commit at least one pairing in Build pairings before publishing'),
+          )
         const open = await tx.rule_break.count({ where: { roster_run_id: rosterRunId, resolved_at: null } })
-        if (open > 0) throw new ConflictException(`ROSTER_HAS_BREAKS · close ${open} open ${open === 1 ? 'break' : 'breaks'} to publish`)
+        if (open > 0) {
+          const noun = open === 1 ? 'break' : 'breaks'
+          throw new ConflictException(
+            rosteringError(RosteringErrorCode.ROSTER_HAS_BREAKS, `close ${open} open ${noun} to publish`, { open }),
+          )
+        }
 
         const now = new Date()
         const flipped = await tx.roster_run.updateMany({

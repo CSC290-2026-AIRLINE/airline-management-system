@@ -71,24 +71,25 @@ export interface CommitResult {
   skippedTaken: string[]
 }
 
-/** The backend's error message, so a 409 like `PAIRING_IN_USE` reaches the operator verbatim. */
+/** The backend's error: its message for the operator, and its `code` (such as `PAIRING_IN_USE`) for the UI to switch on. */
 export class ApiError extends Error {
   readonly status: number
+  readonly code: string | undefined
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
-/** A non-2xx answer as an `ApiError` carrying the backend's message. */
+/** A non-2xx answer as an `ApiError`. The body is `{ error: { code, message, details? } }`. */
 async function toApiError(response: Response): Promise<ApiError> {
-  const body = (await response.json().catch(() => null)) as { message?: string | string[] } | null
-  const message = Array.isArray(body?.message) ? body.message.join(' ') : body?.message
-  return new ApiError(message ?? `Request failed (${response.status})`, response.status)
+  const body = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null
+  return new ApiError(body?.error?.message ?? `Request failed (${response.status})`, response.status, body?.error?.code)
 }
 
-/** JSON request to the API; a non-2xx answer becomes an `ApiError` carrying the backend's message. */
+/** JSON request to the API; a non-2xx answer becomes an `ApiError` carrying the backend's message and code. */
 export async function requestJson<T>(fetchWithAuth: FetchWithAuth, path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetchWithAuth(path, {
     ...init,
