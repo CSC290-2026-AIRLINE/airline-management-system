@@ -159,6 +159,14 @@ export class CargoCustomerController {
     return this.svc.cancelMyBooking(customerId, id)
   }
 
+  // ── Track ─────────────────────────────────────────────────────────
+
+  @Get('track')
+  async trackBooking(@CurrentUser() user: { id: string }, @Query('ref') ref?: string, @Query('awb') awb?: string) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    return this.svc.trackBooking(customerId, { ref: ref || undefined, awb: awb || undefined })
+  }
+
   // ── Claims ────────────────────────────────────────────────────────
 
   @Post('bookings/:id/claims')

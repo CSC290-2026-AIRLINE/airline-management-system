@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
-import { ArrowLeft, AlertCircle, Clock, Loader2, Plane, Package, MapPin, FileText } from 'lucide-react'
+import { ArrowLeft, AlertCircle, Clock, Loader2, Plane, Package, MapPin, FileText, Printer } from 'lucide-react'
 import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 import { Badge } from '@customer-web/components/ui/badge'
@@ -199,6 +199,9 @@ export default function ShipmentDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Air Waybill */}
+        {detail.awbNumber && <AirWaybill detail={detail} />}
 
         {/* Claim */}
         {detail.claim && <ClaimCard claim={detail.claim} />}
@@ -464,6 +467,116 @@ function ClaimForm({
         </div>
       </div>
     </div>
+  )
+}
+
+/* ── Air Waybill ─────────────────────────────────────────────────── */
+
+function AirWaybill({ detail }: { detail: BookingDetail }) {
+  function handlePrint() {
+    const win = window.open('', '_blank')
+    if (!win) return
+    win.document.write(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>AWB ${detail.awbNumber}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; color: #111; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .sub { color: #666; font-size: 0.875rem; margin-bottom: 1.5rem; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; font-size: 0.875rem; }
+  th { background: #f5f5f5; font-weight: 600; width: 40%; }
+  .section { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #666; margin: 1.25rem 0 0.5rem; letter-spacing: 0.05em; }
+  @media print { body { padding: 0; } }
+</style></head><body>
+<h1>Air Waybill ${detail.awbNumber}</h1>
+<p class="sub">Booking ${detail.bookingRef}</p>
+
+<p class="section">Shipper</p>
+<table>
+  <tr><th>Name</th><td>${detail.shipper.name}</td></tr>
+  ${detail.shipper.phone ? `<tr><th>Phone</th><td>${detail.shipper.phone}</td></tr>` : ''}
+</table>
+
+<p class="section">Consignee</p>
+<table>
+  <tr><th>Name</th><td>${detail.consignee.name}</td></tr>
+  <tr><th>Address</th><td>${detail.consignee.address}</td></tr>
+  ${detail.consignee.phone ? `<tr><th>Phone</th><td>${detail.consignee.phone}</td></tr>` : ''}
+</table>
+
+<p class="section">Flight</p>
+<table>
+  <tr><th>Flight</th><td>${detail.flight.flightNumber}</td></tr>
+  <tr><th>Route</th><td>${detail.flight.origin} (${detail.flight.originName}) → ${detail.flight.destination} (${detail.flight.destinationName})</td></tr>
+  <tr><th>Departure</th><td>${new Date(detail.flight.depAt).toLocaleString()}</td></tr>
+  <tr><th>Arrival</th><td>${new Date(detail.flight.arrAt).toLocaleString()}</td></tr>
+</table>
+
+<p class="section">Goods</p>
+<table>
+  <tr><th>Commodity</th><td>${detail.goods.commodityTypeName}</td></tr>
+  <tr><th>Pieces</th><td>${detail.goods.pieces}</td></tr>
+  <tr><th>Declared weight</th><td>${detail.goods.declaredWeightKg} kg</td></tr>
+  <tr><th>Declared volume</th><td>${detail.goods.declaredVolumeM3} m³</td></tr>
+  <tr><th>Description</th><td>${detail.goods.goodsDescription}</td></tr>
+</table>
+
+<p class="section">Charges</p>
+<table>
+  <tr><th>Chargeable weight</th><td>${detail.quote.chargeableKg} kg</td></tr>
+  <tr><th>Rate per kg</th><td>${detail.quote.currency} ${detail.quote.ratePerKg.toFixed(2)}</td></tr>
+  <tr><th>Total charge</th><td>${detail.quote.currency} ${detail.quote.charge.toFixed(2)}</td></tr>
+</table>
+</body></html>`)
+    win.document.close()
+    win.focus()
+    win.print()
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText className="h-4 w-4" /> Air Waybill
+          </CardTitle>
+          <Button variant="outline" size="sm" onClick={handlePrint}>
+            <Printer className="mr-1 h-4 w-4" /> Print
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+          <Dt>AWB Number</Dt>
+          <Dd className="font-medium">{detail.awbNumber}</Dd>
+          <Dt>Shipper</Dt>
+          <Dd>{detail.shipper.name}</Dd>
+          <Dt>Consignee</Dt>
+          <Dd>{detail.consignee.name}</Dd>
+          <Dt>Flight</Dt>
+          <Dd>
+            {detail.flight.flightNumber} · {detail.flight.origin} → {detail.flight.destination}
+          </Dd>
+          <Dt>Pieces</Dt>
+          <Dd>{detail.goods.pieces}</Dd>
+          <Dt>Weight</Dt>
+          <Dd>{detail.goods.declaredWeightKg} kg</Dd>
+          <Dt>Volume</Dt>
+          <Dd>{detail.goods.declaredVolumeM3} m³</Dd>
+          <Dt>Chargeable kg</Dt>
+          <Dd>{detail.quote.chargeableKg} kg</Dd>
+          <Dt>Rate</Dt>
+          <Dd>
+            {detail.quote.currency} {detail.quote.ratePerKg.toFixed(2)}/kg
+          </Dd>
+          <Dt>Charge</Dt>
+          <Dd className="font-semibold">
+            {detail.quote.currency} {detail.quote.charge.toFixed(2)}
+          </Dd>
+        </dl>
+      </CardContent>
+    </Card>
   )
 }
 

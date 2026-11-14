@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Package, Plus, FileText, Bell } from 'lucide-react'
+import { Package, Plus, FileText, Bell, Search } from 'lucide-react'
 import { Button } from '@customer-web/components/ui/button'
+import { Input } from '@customer-web/components/ui/input'
 import { Card, CardContent } from '@customer-web/components/ui/card'
 import { Badge } from '@customer-web/components/ui/badge'
-import { useCustomerCargoApi, type MyBooking, type ClaimListItem, type NoticeItem } from './cargo-api'
+import { useCustomerCargoApi, type MyBooking, type ClaimListItem, type NoticeItem, type TrackResult } from './cargo-api'
 
 const STATUSES = [
   { value: 'all', label: 'All' },
@@ -90,6 +91,9 @@ export default function MyCargoPage() {
           </Link>
         </Button>
       </div>
+
+      {/* Track */}
+      <TrackBox />
 
       {/* Tabs */}
       <div className="mb-4 flex gap-4 border-b">
@@ -245,6 +249,75 @@ export default function MyCargoPage() {
         </>
       )}
     </div>
+  )
+}
+
+/* ── Track box ───────────────────────────────────────────────────── */
+
+function TrackBox() {
+  const api = useCustomerCargoApi()
+  const navigate = useNavigate()
+  const [query, setQuery] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [result, setResult] = useState<TrackResult | null>(null)
+  const [error, setError] = useState('')
+
+  async function handleSearch() {
+    const q = query.trim()
+    if (!q) return
+    setSearching(true)
+    setError('')
+    setResult(null)
+    try {
+      const isAwb = /^\d{3}-\d{8}$/.test(q)
+      const r = await api.trackBooking(isAwb ? { awb: q } : { ref: q })
+      setResult(r)
+    } catch {
+      setError('Booking not found')
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <Input
+            placeholder="Track by booking ref or AWB number"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void handleSearch()}
+            className="flex-1"
+          />
+          <Button size="sm" onClick={() => void handleSearch()} disabled={searching || !query.trim()}>
+            Track
+          </Button>
+        </div>
+        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+        {result && (
+          <div
+            className="mt-3 cursor-pointer rounded-md border p-3 transition-colors hover:bg-muted/50"
+            onClick={() => void navigate({ to: '/cargo/bookings/$id', params: { id: result.bookingId } })}
+          >
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">{result.bookingRef}</span>
+              {result.awbNumber && <span className="text-muted-foreground">AWB {result.awbNumber}</span>}
+              <Badge variant={statusVariant(result.status)}>{statusLabel(result.status)}</Badge>
+            </div>
+            {result.timeline.length > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Latest: {result.timeline[result.timeline.length - 1].eventType.replace(/_/g, ' ')}
+                {result.timeline[result.timeline.length - 1].airportCode &&
+                  ` at ${result.timeline[result.timeline.length - 1].airportCode}`}{' '}
+                — {new Date(result.timeline[result.timeline.length - 1].occurredAt).toLocaleString()}
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

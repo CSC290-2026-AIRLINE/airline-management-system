@@ -427,6 +427,44 @@ export class CargoCustomerService {
     return { id: updated.id, readAt: updated.read_at }
   }
 
+  async trackBooking(customerId: string, opts: { ref?: string; awb?: string }) {
+    if (!opts.ref && !opts.awb) {
+      throw new BadRequestException({ error: { code: 'NOT_FOUND', message: 'Provide ref or awb query parameter' } })
+    }
+
+    const booking = await this.db.cargo_booking.findFirst({
+      where: {
+        customer_id: customerId,
+        ...(opts.ref ? { booking_ref: opts.ref } : { awb_number: opts.awb }),
+      },
+      select: { id: true, booking_ref: true, awb_number: true },
+    })
+    if (!booking) {
+      throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Booking not found' } })
+    }
+
+    const events = await this.db.cargo_shipment_event.findMany({
+      where: { cargo_booking_id: booking.id },
+      orderBy: { seq: 'asc' },
+    })
+
+    const currentStatus = events.length > 0 ? events[events.length - 1].status_after : 'unknown'
+
+    return {
+      bookingId: booking.id,
+      bookingRef: booking.booking_ref,
+      awbNumber: booking.awb_number,
+      status: currentStatus,
+      timeline: events.map((e) => ({
+        occurredAt: e.occurred_at,
+        eventType: e.event_type,
+        statusAfter: e.status_after,
+        airportCode: e.airport_code,
+        note: e.note,
+      })),
+    }
+  }
+
   private async loadSettings() {
     const rows = await this.db.cargo_setting.findMany()
     const map = new Map(rows.map((r) => [r.key, r.value]))

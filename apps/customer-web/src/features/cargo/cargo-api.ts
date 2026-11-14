@@ -195,6 +195,14 @@ export interface MockPayResult {
   error?: { code: string; message: string }
 }
 
+export interface TrackResult {
+  bookingId: string
+  bookingRef: string
+  awbNumber: string | null
+  status: string
+  timeline: { occurredAt: string; eventType: string; statusAfter: string; airportCode: string | null; note: string | null }[]
+}
+
 export interface NoticeItem {
   id: string
   bookingId: string
@@ -292,5 +300,12 @@ export function useCustomerCargoApi() {
       return send<NoticeListResult>(`/api/cargo/notices${query ? `?${query}` : ''}`)
     },
     markNoticeRead: (id: string) => send<{ id: string; readAt: string }>(`/api/cargo/notices/${id}`, { method: 'PUT' }),
+
+    trackBooking: (params: { ref?: string; awb?: string }) => {
+      const qs = new URLSearchParams()
+      if (params.ref) qs.set('ref', params.ref)
+      if (params.awb) qs.set('awb', params.awb)
+      return send<TrackResult>(`/api/cargo/track?${qs.toString()}`)
+    },
   }
 }
