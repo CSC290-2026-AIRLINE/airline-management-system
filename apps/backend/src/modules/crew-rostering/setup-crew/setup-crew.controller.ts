@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
 import {
   CREW_ROLES,
   SetupCrewService,
@@ -73,7 +73,7 @@ export class SetupCrewController {
     return this.setupCrewService.createCrew(parseProfile(asObject(body)))
   }
 
-  @Patch('crew/:crewId')
+  @Put('crew/:crewId')
   async updateCrew(@Param('crewId') crewId: string, @Body() body: unknown): Promise<CrewMemberRow> {
     return this.setupCrewService.updateCrew(requireUuid(crewId, 'crewId'), parseProfile(asObject(body)))
   }
@@ -83,7 +83,7 @@ export class SetupCrewController {
     return this.setupCrewService.addCertification(requireUuid(crewId, 'crewId'), parseCertification(asObject(body)))
   }
 
-  @Patch('crew/:crewId/certifications/:certificationId')
+  @Put('crew/:crewId/certifications/:certificationId')
   async updateCertification(
     @Param('crewId') crewId: string,
     @Param('certificationId') certificationId: string,
