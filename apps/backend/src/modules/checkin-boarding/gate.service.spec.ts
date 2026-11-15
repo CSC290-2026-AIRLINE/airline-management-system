@@ -35,6 +35,7 @@ function build() {
   const settings = new FixtureSettings()
   const seats = new FixtureSeats(clock)
   const sensor = new FixtureSensor()
+  const screening = new FixtureScreening()
   const checkins = new CheckInService(
     clock,
     flights,
@@ -43,7 +44,7 @@ function build() {
     seats,
     new FixturePricing(),
     payments,
-    new FixtureScreening(),
+    screening,
     new FixturePolice(),
     new FixtureTiers(),
     notify,
@@ -63,8 +64,8 @@ function build() {
     checkins,
     store,
   )
-  const gate = new GateService(clock, flights, bookings, new FixturePolice(), seats, sensor, notify, audit, settings, store)
-  return { gate, checkins, counter, store, clock, notify, audit, sensor }
+  const gate = new GateService(clock, flights, bookings, new FixturePolice(), seats, screening, sensor, notify, audit, settings, store)
+  return { gate, checkins, counter, store, clock, notify, audit, sensor, screening }
 }
 
 async function idOf(store: CheckInStore, pnr: string): Promise<string> {
@@ -128,6 +129,15 @@ describe('GateService.scan', () => {
     expect(await gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'H3VN8PLA' })).toMatchObject({
       reason: 'ON_HOLD',
     })
+  })
+
+  it('a hold that arrives after the pass makes the gate reject the scan', async () => {
+    const { gate, store, screening } = build()
+    const somchai = BOOKINGS.find((b) => b.pnr === 'SA224B')!
+    // Feature 7 re-screened the passenger after the pass was issued and holds them.
+    await screening.check({ passengerId: somchai.passengerId, flightId: 'flt-fy204', numberLast4: '0000', lastName: somchai.lastName })
+    expect(await gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'R8KD2WQN' })).toMatchObject({ reason: 'ON_HOLD' })
+    expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).toBe('on_hold')
   })
 
   it('a pass of another flight that boards at this gate is the wrong flight', async () => {
@@ -302,6 +312,17 @@ describe('GateService head-count and close', () => {
     await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
     expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).not.toBe('no_show')
     expect(notifySpy).toHaveBeenCalledWith('boarding_call', expect.objectContaining({ noShow: 7 }))
+  })
+
+  it('a cancelled check-in with a pass is not turned into a no-show', async () => {
+    const { gate, store } = build()
+    const pim = await idOf(store, 'EC224G')
+    await store.updateCheckIn(pim, { status: 'cancelled' })
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
+    expect((await store.getCheckIn(pim))?.status).toBe('cancelled')
+    const pass = (await store.passesForCheckIn(pim))[0]
+    expect((await store.listEvents('flt-fy204')).filter((e) => e.boarding_pass_id === pass.id)).toHaveLength(0)
   })
 
   it('close needs a count, shows a mismatch, confirms, freezes, marks no-shows and offloads bags', async () => {

@@ -85,6 +85,7 @@ export class CheckInService {
     const wanted = input.firstName ? stripNonLetters(input.firstName) : null
     const booking = wanted ? matches.find((b) => stripNonLetters(b.firstName) === wanted) : matches[0]
     if (!booking) throw notFound('Booking')
+    this.assertBookingOwner(actor, booking, 'Booking')
     if (!booking.paid) throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is not paid', { reason: 'unpaid' })
 
     const flight = await this.flightOf(booking.flightId)
@@ -367,9 +368,13 @@ export class CheckInService {
   private async assertOwner(actor: Actor, record: CheckInRecord): Promise<void> {
     if (actor.staffId) return
     const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
-    const owner = booking?.customerUserId ?? null
-    // 404, not 403: a stranger learns nothing about whether the id exists.
-    if (owner && owner !== actor.userId) throw notFound('Check-in')
+    if (booking) this.assertBookingOwner(actor, booking, 'Check-in')
+  }
+
+  private assertBookingOwner(actor: Actor, booking: BookingPassenger, what: string): void {
+    const owner = booking.customerUserId
+    // 404, not 403: a stranger learns nothing about whether the booking or the check-in exists.
+    if (!actor.staffId && owner && owner !== actor.userId) throw notFound(what)
   }
 
   private assertStarted(record: CheckInRecord, message: string): void {

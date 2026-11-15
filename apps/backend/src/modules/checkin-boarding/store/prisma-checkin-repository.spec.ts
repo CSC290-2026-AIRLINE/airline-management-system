@@ -186,6 +186,15 @@ describe('PrismaCheckInRepository', () => {
     expect(db.check_in.findFirst).toHaveBeenCalledWith({ where: { booking_passenger_id: 'bp-1', status: { not: 'cancelled' } } })
   })
 
+  it('a no-show that loses the race writes nothing and hands back the row that won', async () => {
+    const { db, repo } = build()
+    db.boarding_event.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: 'P2002' }))
+    db.boarding_event.findFirst.mockResolvedValueOnce(eventRow)
+    const event = await repo.appendEvent({ ...eventInput, event: 'no_show', staff_id: null, scanned_reference: null })
+    expect(event.event).toBe('boarded')
+    expect(db.boarding_event.create).toHaveBeenCalledTimes(1)
+  })
+
   it('turns a duplicate final event into ALREADY_BOARDED', async () => {
     const { db, repo } = build()
     db.boarding_event.create

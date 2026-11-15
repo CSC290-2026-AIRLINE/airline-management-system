@@ -485,6 +485,12 @@ export class CheckInStore implements CheckInRepository {
     // The row that lost the race comes back as a rejection, the way the database answers it.
     const lost =
       !!input.boarding_pass_id && (input.event === 'boarded' || input.event === 'no_show') && this.hasFinalEventNow(input.boarding_pass_id)
+    if (lost && input.event === 'no_show') {
+      // The database writes nothing for a no-show that lost: the caller gets the final row that won.
+      return [...this.events.values()].find(
+        (e) => e.boarding_pass_id === input.boarding_pass_id && (e.event === 'boarded' || e.event === 'no_show'),
+      )!
+    }
     const now = this.now()
     const record: BoardingEventRecord = {
       id: `ev-${(this.seq += 1)}`,

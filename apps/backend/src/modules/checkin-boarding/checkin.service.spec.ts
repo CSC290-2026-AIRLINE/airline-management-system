@@ -248,6 +248,17 @@ describe('CheckInService owner rule', () => {
     await expect(svc.get(staff, c.id)).resolves.toMatchObject({ id: c.id })
   })
 
+  it('a stranger can neither start nor resume a check-in on a booking with an owner', async () => {
+    owned()
+    const { svc, store } = build()
+    const other: Actor = { userId: 'user-other', staffId: null }
+    await expect(svc.start(other, { pnr: 'OW224F', lastName: 'Eriksson' })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    expect(await store.findActiveCheckInByBookingPassenger('bp-owned')).toBeNull()
+    const c = await svc.start(cust, { pnr: 'OW224F', lastName: 'Eriksson' })
+    await expect(svc.start(other, { pnr: 'OW224F', lastName: 'Eriksson' })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+    await expect(svc.start(staff, { pnr: 'OW224F', lastName: 'Eriksson' })).resolves.toMatchObject({ id: c.id })
+  })
+
   it('only the owner may give a seat hold back', async () => {
     owned()
     const { svc, seats } = build()

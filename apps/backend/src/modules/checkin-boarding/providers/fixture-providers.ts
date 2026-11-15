@@ -308,6 +308,7 @@ export class FixturePayments implements PaymentProvider {
 @Injectable()
 export class FixtureScreening implements ScreeningProvider {
   private seq = 0
+  private readonly held = new Set<string>()
 
   /** Held when the passport last four match the demo value or the passenger is flagged by name. */
   async check(input: {
@@ -318,13 +319,14 @@ export class FixtureScreening implements ScreeningProvider {
   }): Promise<{ runId: string; outcome: 'clear' | 'held' }> {
     this.seq += 1
     const held = input.numberLast4 === HOLD_LAST4 || input.lastName.toUpperCase() === 'KOWALSKI'
+    if (held) this.held.add(input.passengerId)
     // A UUID, not `scr-N`, like the run ids of feature 7.
     return { runId: randomUUID(), outcome: held ? 'held' : 'clear' }
   }
 
-  /** The fixtures have no security review, so a passenger they held stays held. */
-  async status(): Promise<'clear' | 'held' | 'denied' | 'not_screened'> {
-    return 'held'
+  /** The fixtures have no security review, so a passenger they held stays held; anyone else has no run on record. */
+  async status(input: { passengerId: string }): Promise<'clear' | 'held' | 'denied' | 'not_screened'> {
+    return this.held.has(input.passengerId) ? 'held' : 'not_screened'
   }
 }
 

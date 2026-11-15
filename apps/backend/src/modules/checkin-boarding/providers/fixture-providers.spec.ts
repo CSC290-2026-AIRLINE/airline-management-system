@@ -87,6 +87,13 @@ describe('FixtureScreening', () => {
     ).toMatchObject({ outcome: 'clear' })
   })
 
+  it('status remembers who check() held and knows nothing about anyone else', async () => {
+    const screening = new FixtureScreening()
+    await screening.check({ passengerId: 'pax-hd224h', flightId: 'flt-fy204', numberLast4: '0000', lastName: 'Kowalski' })
+    expect(await screening.status({ passengerId: 'pax-hd224h', flightId: 'flt-fy204' })).toBe('held')
+    expect(await screening.status({ passengerId: 'pax-er224f', flightId: 'flt-fy204' })).toBe('not_screened')
+  })
+
   it('the run id is a UUID: check_in.screening_run_id is a uuid column in the real database', async () => {
     const screening = new FixtureScreening()
     const first = await screening.check({ passengerId: 'pax-er224f', flightId: 'flt-fy204', numberLast4: '02C3', lastName: 'Eriksson' })

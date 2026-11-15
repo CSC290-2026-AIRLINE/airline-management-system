@@ -351,6 +351,15 @@ export class PrismaCheckInRepository implements CheckInRepository {
       return toEventRecord(row)
     } catch (error) {
       if (!isUniqueViolation(error) || (input.event !== 'boarded' && input.event !== 'no_show')) throw error
+      if (input.event === 'no_show') {
+        // The pass boarded while the gate was closing: nothing to write (a rejection needs a staff id and a scanned
+        // reference, which a gate close has not), the caller gets the final row that won.
+        const final = await this.db.boarding_event.findFirst({
+          where: { boarding_pass_id: input.boarding_pass_id ?? '', event: { in: ['boarded', 'no_show'] } },
+        })
+        if (!final) throw error
+        return toEventRecord(final)
+      }
       // The pass boarded already: the second scan is a rejection, written in its own row.
       const row = await this.db.boarding_event.create({ data: { ...input, event: 'rejected', reason: 'ALREADY_BOARDED' } })
       return toEventRecord(row)

@@ -5,7 +5,7 @@ import { decideScan } from './domain/boarding'
 import { computeWindow } from './domain/window'
 import { CheckInError, invalidState, notFound, validation } from './errors'
 import { toFlightSummary, toGateInfo, toGateList, toHeadcount } from './mappers'
-import { AUDIT, BOOKINGS, CLOCK, FLIGHTS, NOTIFY, POLICE, SEATS, SENSOR, SETTINGS } from './providers/providers'
+import { AUDIT, BOOKINGS, CLOCK, FLIGHTS, NOTIFY, POLICE, SCREENING, SEATS, SENSOR, SETTINGS } from './providers/providers'
 import type {
   AuditProvider,
   BookingPassenger,
@@ -15,6 +15,7 @@ import type {
   FlightRecord,
   NotifyProvider,
   PoliceProvider,
+  ScreeningProvider,
   SeatProvider,
   SensorProvider,
   SettingsProvider,
@@ -46,6 +47,7 @@ export class GateService {
     @Inject(BOOKINGS) private readonly bookings: BookingProvider,
     @Inject(POLICE) private readonly police: PoliceProvider,
     @Inject(SEATS) private readonly seats: SeatProvider,
+    @Inject(SCREENING) private readonly screening: ScreeningProvider,
     @Inject(SENSOR) private readonly sensor: SensorProvider,
     @Inject(NOTIFY) private readonly notify: NotifyProvider,
     @Inject(AUDIT) private readonly audit: AuditProvider,
@@ -156,7 +158,7 @@ export class GateService {
     }
 
     const pass = await this.store.passByReference(reference)
-    const record = pass ? await this.store.getCheckIn(pass.check_in_id) : null
+    let record = pass ? await this.store.getCheckIn(pass.check_in_id) : null
     const booking = record ? await this.bookings.byBookingPassengerId(record.booking_passenger_id) : null
     const passengerName = this.nameOf(booking)
     const passRow = record ? await this.store.flightBoarding(record.flight_id) : null
@@ -180,6 +182,14 @@ export class GateService {
         message: `${reference} is not a boarding pass for any flight today.`,
         passenger: null,
         correctGate: null,
+      }
+    }
+
+    // A hold can come after the pass was issued (feature 7 re-screens): the gate asks where the passenger stands now.
+    if (record.status === 'checked_in') {
+      const standing = await this.screening.status({ passengerId: record.passenger_id, flightId: record.flight_id })
+      if (standing === 'held' || standing === 'denied') {
+        record = await this.store.updateCheckIn(record.id, { status: standing === 'held' ? 'on_hold' : 'denied' })
       }
     }
 
@@ -339,7 +349,8 @@ export class GateService {
     for (const record of records) {
       const pass = passes.find((p) => p.check_in_id === record.id)
       if (pass) {
-        if (final.has(pass.id)) continue
+        // Only a passenger who could still board is a no-show; a cancelled or denied check-in keeps its status.
+        if (final.has(pass.id) || (record.status !== 'checked_in' && record.status !== 'on_hold')) continue
         const written = await this.store.appendEvent({
           flight_id: flightId,
           gate_id: boarding.gate_id,
