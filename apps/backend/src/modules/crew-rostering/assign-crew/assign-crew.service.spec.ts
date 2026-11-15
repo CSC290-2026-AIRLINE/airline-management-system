@@ -1,9 +1,12 @@
 import type { DbService } from '@backend/db/db.service'
 import { AssignCrewService, type Leg, type RuleLimitsRow, type RunPairing } from './assign-crew.service'
+import type { SimulationClock } from '../../admin-console/simulation-clock'
 
 // The services only need these for types; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
+
+const fakeClock = () => ({ now: () => new Date() })
 
 const RUN = '7c1b9d2e-3a44-4c1f-8f0a-5b6d7e8f9a00'
 const HOUR = 3_600_000
@@ -76,7 +79,7 @@ interface Internals {
 }
 
 function service() {
-  return new AssignCrewService({} as unknown as DbService)
+  return new AssignCrewService({} as unknown as DbService, fakeClock() as unknown as SimulationClock)
 }
 const internals = (instance: AssignCrewService) => instance as unknown as Internals
 
@@ -205,7 +208,7 @@ describe('AssignCrewService.autoAssign re-run', () => {
       pairing_leg_assignment: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
     }
-    const instance = new AssignCrewService(db as unknown as DbService)
+    const instance = new AssignCrewService(db as unknown as DbService, fakeClock() as unknown as SimulationClock)
     const loose = instance as unknown as { loadRun: unknown; check: unknown }
     loose.loadRun = jest.fn().mockResolvedValue({ run: { status: 'draft', base_airport: 'BKK' }, pairings: [flight], context: {} })
     loose.check = jest.fn().mockResolvedValue({})
@@ -219,7 +222,7 @@ describe('AssignCrewService.autoAssign re-run', () => {
 })
 
 describe('AssignCrewService.scopeOf', () => {
-  const service = new AssignCrewService({} as unknown as DbService)
+  const service = new AssignCrewService({} as unknown as DbService, fakeClock() as unknown as SimulationClock)
   const pairings = ['p-1', 'p-2', 'p-3', 'p-4'].map((id) => ({ id })) as unknown as RunPairing[]
 
   it('is the pairings somebody is crewed on, so the rest raise nothing', () => {

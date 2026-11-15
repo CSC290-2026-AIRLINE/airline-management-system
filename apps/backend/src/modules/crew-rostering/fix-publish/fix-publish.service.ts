@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { AuditService, type AuditWriteInput } from '@backend/modules/admin-console/audit/audit.service'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import {
   AssignCrewService,
   type Context,
@@ -303,6 +304,7 @@ export class FixPublishService {
     private readonly db: DbService,
     private readonly assignCrew: AssignCrewService,
     private readonly audit: AuditService,
+    private readonly clock: SimulationClock,
   ) {}
 
   /** One Feature 8 audit row, written with the caller's transaction client so it commits or rolls back with the change. */
@@ -376,7 +378,7 @@ export class FixPublishService {
       if (leaving.length > 0) {
         await tx.pairing_leg_assignment.updateMany({
           where: { id: { in: leaving.map((row) => row.id) } },
-          data: { unassigned_at: new Date(), reason: SWAP_REASON },
+          data: { unassigned_at: this.clock.now(), reason: SWAP_REASON },
         })
       }
       await tx.pairing_leg_assignment.createMany({
@@ -386,7 +388,7 @@ export class FixPublishService {
           crew_id: chosen.id,
           role,
           assigned_by: 'ops',
-          assigned_at: new Date(),
+          assigned_at: this.clock.now(),
         })),
       })
 
@@ -442,7 +444,7 @@ export class FixPublishService {
     await this.db.$transaction(async (tx) => {
       const done = await tx.rule_break.updateMany({
         where: { id: breakId, resolved_at: null },
-        data: { resolved_at: new Date(), resolution: 'overridden', overridden_by: staff.id, override_reason: reason },
+        data: { resolved_at: this.clock.now(), resolution: 'overridden', overridden_by: staff.id, override_reason: reason },
       })
       if (done.count === 0) throw new ConflictException('This item was closed while you were writing the reason')
       await this.writeAudit(tx, actor, {
@@ -489,7 +491,7 @@ export class FixPublishService {
     const actor = await this.audit.resolveActor(actorUserId)
     await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
-      await tx.pairing_leg_assignment.update({ where: { id: row.id }, data: { unassigned_at: new Date(), reason: input.reason } })
+      await tx.pairing_leg_assignment.update({ where: { id: row.id }, data: { unassigned_at: this.clock.now(), reason: input.reason } })
       await this.writeAudit(tx, actor, {
         action: 'update',
         entityType: 'pairing_leg_assignment',
@@ -565,7 +567,7 @@ export class FixPublishService {
           })
         }
 
-        const now = new Date()
+        const now = this.clock.now()
         const flipped = await tx.roster_run.updateMany({
           where: { id: rosterRunId, status: 'draft' },
           data: { status: 'published', published_at: now, updated_at: now },
@@ -575,9 +577,9 @@ export class FixPublishService {
           action: 'status_change',
           entityType: 'roster_run',
           entityId: rosterRunId,
-          summary: 'Roster published',
+          summary: left.length > 0 ? `Roster published; ${left.length} pairings moved to a new draft run` : 'Roster published',
           before: { status: 'draft' },
-          after: { status: 'published', published_at: now.toISOString() },
+          after: { status: 'published', published_at: now.toISOString(), ...(left.length > 0 ? { movedToNextRun: left.length } : {}) },
         })
       },
       { timeout: 30_000 },
@@ -1011,8 +1013,8 @@ export class FixPublishService {
     const pairingIds = pairings.map((pairing) => pairing.id)
 
     const deps = [...legs.values()].map((leg) => leg.dep.getTime())
-    const from = new Date((deps.length > 0 ? Math.min(...deps) : Date.now()) - 28 * DAY)
-    const to = new Date((deps.length > 0 ? Math.max(...deps) : Date.now()) + 3 * DAY)
+    const from = new Date((deps.length > 0 ? Math.min(...deps) : this.clock.now().getTime()) - 28 * DAY)
+    const to = new Date((deps.length > 0 ? Math.max(...deps) : this.clock.now().getTime()) + 3 * DAY)
 
     const pool = await client.crew.findMany({
       where: { deleted_at: null, base_airport: run.base_airport },

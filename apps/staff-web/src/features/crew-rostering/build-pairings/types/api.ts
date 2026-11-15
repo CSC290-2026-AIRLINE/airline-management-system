@@ -126,6 +126,12 @@ function query(params: BuildPairingParams): string {
 
 export function createBuildPairingsApi(fetchWithAuth: FetchWithAuth) {
   return {
+    /** The simulation clock's now (an ISO instant): the real time until Platform shifts it. */
+    async getClock(): Promise<Date> {
+      const { now } = await request<{ now: string }>(fetchWithAuth, '/clock')
+      return new Date(now)
+    },
+
     async listBases(): Promise<string[]> {
       const rows = await request<{ code: string; name: string }[]>(fetchWithAuth, '/bases')
       return rows.map((row) => row.code)

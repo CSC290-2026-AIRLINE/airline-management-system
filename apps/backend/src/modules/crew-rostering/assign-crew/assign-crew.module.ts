@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { AuditModule } from '../../admin-console/audit/audit.module'
 import { AssignCrewController } from './assign-crew.controller'
 import { AssignCrewService } from './assign-crew.service'
 
@@ -9,11 +10,13 @@ import { AssignCrewService } from './assign-crew.service'
  * the pairings Build pairings committed through `roster_run_pairing` rather than by
  * importing that step's service, so the two stay independently replaceable — the same
  * reason this module does not import `setup-crew` for the crew list. `DbModule` is
- * `@Global()`, so no import is needed for `DbService`.
+ * `@Global()`, so no import is needed for `DbService`. It imports Feature 15's `AuditModule` for the one simulation
+ * clock, which stamps `assigned_at` and `resolved_at`.
  *
  * Routes are authenticated by default via the global `JwtAuthGuard`; none is `@Public()`.
  */
 @Module({
+  imports: [AuditModule],
   controllers: [AssignCrewController],
   providers: [AssignCrewService],
   exports: [AssignCrewService],

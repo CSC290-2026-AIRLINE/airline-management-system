@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
+import { SimulationClock } from '../../admin-console/simulation-clock'
 import { loadBaseContext } from '../base-context'
 import { LOCAL_MISS_RATE, POLICE_SHORT_RATE, pickOne } from './random-pick'
 import { isoDate, isRestBetween, shortName } from '../crew-format'
@@ -312,7 +313,10 @@ const DAY = 86_400_000
 
 @Injectable()
 export class AssignCrewService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly clock: SimulationClock,
+  ) {}
 
   /** Bases a run can be crewed from — the same set Build pairings offers. */
   async listBases(): Promise<string[]> {
@@ -425,7 +429,7 @@ export class AssignCrewService {
               crew_id: member.id,
               role,
               assigned_by: 'auto',
-              assigned_at: new Date(),
+              assigned_at: this.clock.now(),
             })
           }
         }
@@ -775,7 +779,7 @@ export class AssignCrewService {
 
       const fixed = [...open.entries()].filter(([key]) => !foundKeys.has(key)).map(([, row]) => row.id)
       if (fixed.length > 0) {
-        await tx.rule_break.updateMany({ where: { id: { in: fixed } }, data: { resolved_at: new Date(), resolution: 'fixed' } })
+        await tx.rule_break.updateMany({ where: { id: { in: fixed } }, data: { resolved_at: this.clock.now(), resolution: 'fixed' } })
       }
 
       const fresh: Prisma.rule_breakCreateManyInput[] = []

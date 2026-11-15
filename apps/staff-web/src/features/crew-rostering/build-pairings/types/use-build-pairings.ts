@@ -128,6 +128,23 @@ export function useBuildPairings(): BuildPairingsState {
     }
   }, [getApi, signedIn])
 
+  // The page opens on today and tomorrow by the simulation clock. The browser's date is only the first guess, used until the
+  // clock answers; a window that came from the URL, or that the operator already changed, is left alone.
+  const keepDates = useRef(parseWindowSearch(search).dateFrom !== undefined || parseWindowSearch(search).dateTo !== undefined)
+  useEffect(() => {
+    if (!signedIn || keepDates.current) return
+    let cancelled = false
+    getApi()
+      .getClock()
+      .then((now) => {
+        if (!cancelled && !keepDates.current) setParams((current) => ({ ...current, ...todayAndTomorrow(now) }))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [getApi, signedIn])
+
   // Which run the chosen window already has. Reads only the run; the pairings stay empty until Generate is pressed.
   const { dateFrom, dateTo, base } = params
   useEffect(() => {
@@ -395,8 +412,14 @@ export function useBuildPairings(): BuildPairingsState {
     hasGenerated,
     metrics,
     continueWindow,
-    setDateFrom: (value) => setParam('dateFrom', value),
-    setDateTo: (value) => setParam('dateTo', value),
+    setDateFrom: (value) => {
+      keepDates.current = true
+      setParam('dateFrom', value)
+    },
+    setDateTo: (value) => {
+      keepDates.current = true
+      setParam('dateTo', value)
+    },
     setBase: (value) => setParam('base', value),
     generate,
     clearPairings,

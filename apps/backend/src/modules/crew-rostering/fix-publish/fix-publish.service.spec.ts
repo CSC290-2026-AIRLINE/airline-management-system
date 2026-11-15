@@ -1,6 +1,7 @@
 import { ConflictException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import type { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import type { AssignCrewService } from '../assign-crew/assign-crew.service'
 import { FixPublishService } from './fix-publish.service'
 
@@ -9,6 +10,8 @@ jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
 
 const RUN = '7c1b9d2e-3a44-4c1f-8f0a-5b6d7e8f9a00'
+
+const fakeClock = () => ({ now: () => new Date() })
 
 /** Stands in for Feature 15's `AuditService`: the actor is resolved up front and every row goes through `write`. */
 function fakeAudit() {
@@ -59,6 +62,7 @@ function setupPublish(
     db as unknown as DbService,
     assign as unknown as AssignCrewService,
     audit as unknown as AuditService,
+    fakeClock() as unknown as SimulationClock,
   )
   jest
     .spyOn(service as unknown as { buildState: () => Promise<unknown> }, 'buildState')
@@ -158,7 +162,12 @@ describe('FixPublishService cover rules', () => {
   }
 
   function judge(who: ReturnType<typeof member>, world: Record<string, unknown> = {}) {
-    const service = new FixPublishService({} as DbService, {} as AssignCrewService, {} as AuditService)
+    const service = new FixPublishService(
+      {} as DbService,
+      {} as AssignCrewService,
+      {} as AuditService,
+      fakeClock() as unknown as SimulationClock,
+    )
     const candidateFor = (
       service as unknown as {
         candidateFor: (m: unknown, p: unknown, w: unknown) => { allowed: boolean; checks: { ok: boolean; reason?: string }[] }
@@ -256,7 +265,12 @@ describe('FixPublishService swap, who comes off', () => {
 
   type Internals = { leavingRows: (plan: unknown, world: unknown) => { id: string }[] }
   const leaving = (plan: unknown, over: Record<string, unknown> = {}) => {
-    const service = new FixPublishService({} as DbService, {} as AssignCrewService, {} as AuditService)
+    const service = new FixPublishService(
+      {} as DbService,
+      {} as AssignCrewService,
+      {} as AuditService,
+      fakeClock() as unknown as SimulationClock,
+    )
     return (service as unknown as Internals).leavingRows(plan, { ...world, ...over }).map((item) => item.id)
   }
 
@@ -291,7 +305,12 @@ describe('FixPublishService swap, who comes off', () => {
       pairing_leg_assignment: { updateMany: jest.fn(), createMany: jest.fn() },
     }
     const db = { $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)) }
-    const service = new FixPublishService(db as unknown as DbService, {} as AssignCrewService, fakeAudit() as unknown as AuditService)
+    const service = new FixPublishService(
+      db as unknown as DbService,
+      {} as AssignCrewService,
+      fakeAudit() as unknown as AuditService,
+      fakeClock() as unknown as SimulationClock,
+    )
     const internals = service as unknown as Record<'readBreak' | 'loadWorld' | 'planFor' | 'check', unknown>
     jest.spyOn(internals as { readBreak: () => Promise<unknown> }, 'readBreak').mockResolvedValue({
       id: 'brk-1',
@@ -322,6 +341,7 @@ describe('FixPublishService.seatsToFill', () => {
     {} as unknown as DbService,
     {} as unknown as AssignCrewService,
     fakeAudit() as unknown as AuditService,
+    fakeClock() as unknown as SimulationClock,
   )
   const seatsToFill = (plan: unknown, world: unknown): number =>
     (service as unknown as { seatsToFill: (plan: unknown, world: unknown) => number }).seatsToFill(plan, world)
