@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
+import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
@@ -28,8 +29,8 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
-        active ? 'border-[#9db4d9] bg-[#e8eef9] text-foreground' : 'border-border bg-background text-foreground hover:bg-accent',
+        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+        active ? 'border-navy bg-[#EAF0FB] text-navy' : 'border-border bg-card text-foreground hover:border-navy/40',
       )}
     >
       {children}
@@ -38,14 +39,15 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 function StatusPill({ status }: { status: PayRunStatus }) {
+  // The same colours as the refund status badge.
   const styles: Record<PayRunStatus, [string, string]> = {
-    draft: ['Draft', 'bg-[#e8eef9] text-[#1e3a8a]'],
-    approved: ['Approved', 'bg-warning-soft text-warning'],
-    paid: ['Paid', 'bg-success-soft text-success-strong'],
-    cancelled: ['Cancelled', 'bg-secondary text-muted-foreground'],
+    draft: ['Draft', 'bg-[#EAF0FB] text-[#1E3A8A]'],
+    approved: ['Approved', 'bg-amber-100 text-amber-900'],
+    paid: ['Paid', 'bg-emerald-100 text-emerald-900'],
+    cancelled: ['Cancelled', 'bg-muted text-muted-foreground'],
   }
   const [label, cls] = styles[status]
-  return <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-semibold', cls)}>{label}</span>
+  return <Badge className={cn('border-0', cls)}>{label}</Badge>
 }
 
 /**
@@ -85,7 +87,7 @@ export function PayRunsPage({ selectedRunId }: { selectedRunId?: string }) {
         onClick={() => select(r.id)}
         className={cn(
           'w-full rounded-lg border bg-card px-3 py-2 text-left shadow-xs transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
-          r.id === selected && 'border-2 border-[#475569] bg-[#f1f5f9]',
+          r.id === selected && 'border-navy bg-[#EAF0FB]',
         )}
       >
         <span className="flex items-center justify-between gap-2">
@@ -100,8 +102,8 @@ export function PayRunsPage({ selectedRunId }: { selectedRunId?: string }) {
   )
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-5 p-4 md:p-6">
-      <CrewPayHeader viewer={overview.data?.viewer} title="Pay Runs" />
+    <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 md:px-8">
+      <CrewPayHeader viewer={overview.data?.viewer} title="Pay Runs" subtitle="Crew pay run drafts, approvals and payouts." />
 
       {overview.loading && !overview.data && <LoadingCard />}
       {overview.error && <LoadErrorCard message={overview.error} onRetry={overview.reload} />}
@@ -155,6 +157,13 @@ export function PayRunsPage({ selectedRunId }: { selectedRunId?: string }) {
               </section>
             ))}
             {shown.length === 0 && <p className="text-sm text-muted-foreground">No runs match.</p>}
+            {shown.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {shown.length} {shown.length === 1 ? 'run' : 'runs'} shown.
+                {overview.data.accrued.lines.length > 0 &&
+                  ` ${overview.data.accrued.lines.length} accrued ${overview.data.accrued.lines.length === 1 ? 'line' : 'lines'} from duties after a period end ${overview.data.accrued.lines.length === 1 ? 'is' : 'are'} not in any run yet; they go into the next run.`}
+              </p>
+            )}
           </aside>
 
           <section className="min-w-0">
@@ -204,16 +213,16 @@ function Stepper({ status }: { status: PayRunStatus }) {
               className={cn(
                 'grid size-6 shrink-0 place-items-center rounded-full border text-xs font-semibold',
                 current
-                  ? 'border-[#0f172a] bg-background text-foreground'
+                  ? 'border-navy bg-background text-foreground'
                   : done
-                    ? 'border-[#0f172a] bg-[#0f172a] text-white'
+                    ? 'border-navy bg-navy text-white'
                     : 'border-border text-muted-foreground',
               )}
             >
               {n}
             </span>
             <span className={cn('text-xs', done ? 'font-semibold text-foreground' : 'text-muted-foreground')}>{label}</span>
-            {n < steps.length && <span className={cn('h-px flex-1', n < reached ? 'bg-[#0f172a]' : 'bg-border')} aria-hidden="true" />}
+            {n < steps.length && <span className={cn('h-px flex-1', n < reached ? 'bg-navy' : 'bg-border')} aria-hidden="true" />}
           </li>
         )
       })}
@@ -447,7 +456,7 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
               const flagged = x.hasAdjustment && r.status === 'draft'
               const failed = x.payout?.status === 'failed' ? x.payout : null
               return (
-                <TableRow key={x.crew.id} className={cn(flagged && 'bg-[#fef9e7] hover:bg-[#fdf3cf]')}>
+                <TableRow key={x.crew.id} className={cn(flagged && 'bg-amber-50 hover:bg-amber-100')}>
                   <TableCell className="font-semibold">{x.name}</TableCell>
                   <TableCell className="text-muted-foreground">{rankLabel(x.crew.role)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatAmount(x.base)}</TableCell>
@@ -507,6 +516,11 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
           </span>
         </div>
       </div>
+
+      <p className="px-1 text-xs text-muted-foreground">
+        Overtime = duty hours over {r.rules.overtime_threshold_hours} × rate × {r.rules.overtime_multiplier}, rounded half up per line. A
+        late correction from feature 8 becomes an adjustment line.
+      </p>
 
       <ApproveDialog
         run={r}

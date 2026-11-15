@@ -53,8 +53,12 @@ export function MyPayPage() {
     paidLines.filter((l) => l.pay_run_id === runId && l.line_type === type).reduce((s, l) => s + Number(l.amount), 0)
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-5 p-4 md:p-6">
-      <CrewPayHeader viewer={pay?.viewer} title="My Pay" />
+    <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 md:px-8">
+      <CrewPayHeader
+        viewer={pay?.viewer}
+        title="My Pay"
+        subtitle={`Only your own pay is shown. Amounts are in ${pay?.currency ?? 'USD'}. Hours come from your roster in feature 8.`}
+      />
 
       {data.loading && data.data === undefined && <LoadingCard />}
       {data.error && <LoadErrorCard message={data.error} onRetry={data.reload} />}
@@ -142,6 +146,11 @@ export function MyPayPage() {
               </Table>
             )}
           </section>
+
+          <p className="px-1 text-xs text-muted-foreground">
+            If your hours are corrected after a run is paid, the difference appears as an adjustment in the next run. Paid lines never
+            change.
+          </p>
         </>
       )}
     </main>
