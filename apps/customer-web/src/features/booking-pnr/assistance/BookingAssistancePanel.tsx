@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Accessibility, Plus } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
+import { Field } from '@customer-web/components/ui/field'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import { ApiError } from '../api/client'
 import type { ApiErrorBody } from '../api/types'
@@ -36,20 +37,21 @@ export function BookingAssistancePanel({ reference, onChanged }: { reference: st
         <div className="booking-assistance__heading">
           <p className={detailStyles.muted}>Request support for a passenger and track the airport team’s response.</p>
           <div className="booking-assistance__flight-filter">
-            <label htmlFor="assistance-flight">Flight</label>
-            <Select value={segmentId} onValueChange={setSegmentId}>
-              <SelectTrigger id="assistance-flight">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">All flights</SelectItem>
-                {booking.segments.map((segment) => (
-                  <SelectItem key={segment.bookingSegmentId} value={segment.bookingSegmentId}>
-                    {segment.flightNumber} · {segment.origin} → {segment.destination}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Field id="assistance-flight" label="Flight">
+              <Select value={segmentId} onValueChange={setSegmentId}>
+                <SelectTrigger id="assistance-flight" aria-labelledby="assistance-flight-label">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All flights</SelectItem>
+                  {booking.segments.map((segment) => (
+                    <SelectItem key={segment.bookingSegmentId} value={segment.bookingSegmentId}>
+                      {segment.flightNumber} · {segment.origin} → {segment.destination}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
           </div>
         </div>
         {booking.passengers.map((passenger) => {

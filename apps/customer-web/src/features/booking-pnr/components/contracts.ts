@@ -25,6 +25,10 @@ export interface AssistanceFieldsProps {
   disabled?: boolean
   popupContainer?: HTMLElement | null
   bookingMode?: boolean
+  /** The message under the assistance type, when it is missing. */
+  typeError?: string
+  /** The message under the note, when it is missing. */
+  noteError?: string
 }
 
 export interface SeatTakenDialogProps {

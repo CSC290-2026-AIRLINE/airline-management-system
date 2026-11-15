@@ -210,6 +210,10 @@
   flex-shrink: 0;
   font-size: 11px;
 }
+/* The demo picker is a shared field, whose label carries its own size. The demo helper keeps its smaller one. */
+.f3-passenger-heading .f3-demo-picker > label {
+  font-size: 11px;
+}
 .f3-passenger-fields {
   gap: 16px;
 }

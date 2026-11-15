@@ -20,11 +20,15 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit, passengerName
   const [value, setValue] = useState<AssistanceValue>({ serviceCode: null, note: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /* Whether the customer has tried to send the request. The messages under the fields wait for that, so the form is not
+     red while it is still empty. */
+  const [attempted, setAttempted] = useState(false)
 
   function close() {
     if (saving) return
     setValue({ serviceCode: null, note: '' })
     setError(null)
+    setAttempted(false)
     onClose()
   }
 
@@ -34,16 +38,21 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit, passengerName
     if (!open && dialog.open) dialog.close()
   }, [open, dialog])
 
+  /** The message under each field that is wrong. */
+  function problems(current: AssistanceValue): { type?: string; note?: string } {
+    const found: { type?: string; note?: string } = {}
+    if (!current.serviceCode) found.type = 'Choose an assistance type before submitting.'
+    if ((current.serviceCode === 'UMNR' || current.serviceCode === 'MEDA') && !current.note.trim())
+      found.note = 'Please add a note for the airport team.'
+    return found
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!value.serviceCode) {
-      setError('Choose an assistance type before submitting.')
-      return
-    }
-    if ((value.serviceCode === 'UMNR' || value.serviceCode === 'MEDA') && !value.note.trim()) {
-      setError('Please add a note for the airport team.')
-      return
-    }
+    setAttempted(true)
+    /* The problems are read here, not from the state, because the state only changes after this submit. */
+    const found = problems(value)
+    if (found.type || found.note) return
     setSaving(true)
     setError(null)
     try {
@@ -62,6 +71,9 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit, passengerName
       setSaving(false)
     }
   }
+
+  /* The messages under the fields wait for the first try, so the form is not red while it is still empty. */
+  const found = attempted ? problems(value) : {}
 
   return (
     <dialog
@@ -87,8 +99,15 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit, passengerName
         {passengerName ? `${passengerName} · ` : ''}
         {flightLabel ?? 'Staff will review your request and update its status in your booking.'}
       </p>
-      <form onSubmit={(event) => void submit(event)}>
-        <AssistanceFields value={value} onChange={setValue} disabled={saving} popupContainer={dialog} />
+      <form onSubmit={(event) => void submit(event)} noValidate>
+        <AssistanceFields
+          value={value}
+          onChange={setValue}
+          disabled={saving}
+          popupContainer={dialog}
+          typeError={found.type}
+          noteError={found.note}
+        />
         {error && <p role="alert">{error}</p>}
         <div className="assistance-request-dialog__actions">
           <button className={controls.secondary} type="button" onClick={close} disabled={saving}>

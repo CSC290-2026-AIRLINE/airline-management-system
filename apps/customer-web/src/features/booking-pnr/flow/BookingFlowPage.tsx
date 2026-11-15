@@ -40,6 +40,9 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   const [contact, setContact] = useState<BookingContact>(() => restored?.contact ?? { email: '', phone: '', promoCode: '' })
   const [step, setStep] = useState<BookingStep>(() => restored?.step ?? 2)
   const [error, setError] = useState<string | null>(null)
+  /* Whether the customer has tried to go on to the seats. The messages under the fields wait for that, so the form is
+     not full of red text before anything has been typed. */
+  const [attempted, setAttempted] = useState(false)
   const [busy, setBusy] = useState(false)
   const [held, setHeld] = useState<HoldBookingResponse | null>(() => restored?.held ?? null)
   const [assistance, setAssistance] = useState<Record<string, AssistanceValue>>(() => restored?.assistance ?? {})
@@ -85,19 +88,31 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
     setItinerary(next)
     setTravellers((current) => travellersFor(next, current))
     setError(null)
+    /* The party may have changed, so the messages about the old one do not apply any more. */
+    setAttempted(false)
     setStep(2)
   }
   function continueToSeats() {
     if (!itinerary) return
+    /* The messages under the fields appear from the first try, and follow the values from then on, so a fixed field
+       loses its message right away. */
+    setAttempted(true)
+    const issues = validateTravellers(travellers, contact, itinerary)
+    if (issues) {
+      setError(null)
+      return
+    }
     const missingNote = Object.values(assistance).some(
       (value) =>
         (value.serviceCodes ?? (value.serviceCode ? [value.serviceCode] : [])).some((code) => code === 'UMNR' || code === 'MEDA') &&
         !value.note.trim(),
     )
-    const message =
-      validateTravellers(travellers, contact, itinerary) ?? (missingNote ? 'Add a note for each UMNR or MEDA assistance request.' : null)
-    setError(message)
-    if (!message) setStep(3)
+    if (missingNote) {
+      setError('Add a note for each UMNR or MEDA assistance request.')
+      return
+    }
+    setError(null)
+    setStep(3)
   }
   /** The route bar sends the customer back to a step they have finished. */
   function goToStep(next: BookingStep) {
@@ -118,7 +133,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
     setError(null)
     try {
       const validation = validateTravellers(travellers, contact, itinerary)
-      if (validation) throw new Error(validation)
+      if (validation) throw new Error(validation.message)
       validateSeatChoices(selected, travellers, itinerary)
       const signature = JSON.stringify(travellers)
       const ids = resolved.current?.signature === signature ? resolved.current.ids : await passengerResolver(travellers)
@@ -306,6 +321,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                 }}
                 onContinue={continueToSeats}
                 error={error}
+                issues={attempted ? validateTravellers(travellers, contact, itinerary) : null}
                 demoProfiles={!resolvePassengers && demo.enabled ? demo.profiles : undefined}
                 demoLoading={demo.loading}
                 demoError={demo.error}

@@ -2,7 +2,20 @@ import type { DemoPassenger } from './demo-passengers'
 import type { FormEvent, ReactNode } from 'react'
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
-import { ageAt, passengerType, type BookingContact, type TravellerDraft } from '../flow/draft'
+import { DatePicker } from '@customer-web/components/ui/date-picker'
+import { Field } from '@customer-web/components/ui/field'
+import {
+  ageAt,
+  contactFieldId,
+  passengerType,
+  travellerFieldId,
+  type BookingContact,
+  type TravellerDraft,
+  type TravellerIssues,
+} from '../flow/draft'
+
+/** The earliest date of birth the calendar offers. The year list runs from here to the year of the first departure. */
+const EARLIEST_BIRTH = '1900-01-01'
 
 interface Props {
   itinerary: SearchItinerary
@@ -18,6 +31,8 @@ interface Props {
   /** Whether the passenger details are read-only. Defaults to read-only when demo travellers are offered. */
   lockDetails?: boolean
   renderAssistance?: (traveller: TravellerDraft) => ReactNode
+  /** What is wrong with the details, with a message for every field that is wrong. */
+  issues?: TravellerIssues | null
   error: string | null
 }
 export function PassengersPage({
@@ -34,6 +49,7 @@ export function PassengersPage({
   demoError,
   lockDetails,
   renderAssistance,
+  issues,
 }: Props) {
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -41,8 +57,16 @@ export function PassengersPage({
   }
   const departure = itinerary.request.legs[0].date
   const locked = lockDetails ?? !!demoProfiles
+  /** The message under a field, when that field is the one that is wrong. */
+  const problemFor = (id: string) => issues?.fields[id]
   return (
-    <form onSubmit={submit} className="f3-passengers-form" aria-label="Passenger details">
+    /* `noValidate` turns off the browser's own bubbles, so every message on this form is one we wrote. */
+    <form onSubmit={submit} className="f3-passengers-form" aria-label="Passenger details" noValidate>
+      {issues && (
+        <p className="f3-flow-error" role="alert">
+          {issues.message}
+        </p>
+      )}
       {demoProfiles && (
         <div className="f3-demo-notice" role="status">
           <strong>Development demo travellers</strong>
@@ -57,6 +81,12 @@ export function PassengersPage({
       )}
       {travellers.map((person, index) => {
         const type = passengerType(person.dateOfBirth, departure)
+        const givenId = travellerFieldId(index, 'givenName')
+        const familyId = travellerFieldId(index, 'familyName')
+        const birthId = travellerFieldId(index, 'dateOfBirth')
+        const passportId = travellerFieldId(index, 'passportNumber')
+        const lapId = travellerFieldId(index, 'lapOfKey')
+        const demoId = `pax-${index}-demo`
         return (
           <fieldset className="f3-passenger-card" key={person.key}>
             <legend className="f3-passenger-legend">
@@ -72,8 +102,7 @@ export function PassengersPage({
                 <h2>{[person.givenName, person.familyName].filter(Boolean).join(' ') || 'Traveller details'}</h2>
               </div>
               {demoProfiles && (
-                <label className="f3-demo-picker">
-                  Fill from demo traveller
+                <Field id={demoId} label="Fill from demo traveller" className="f3-demo-picker">
                   <Select
                     value={person.demoPassengerId ?? ''}
                     disabled={demoLoading}
@@ -88,7 +117,7 @@ export function PassengersPage({
                       })
                     }}
                   >
-                    <SelectTrigger aria-label="Fill from demo traveller">
+                    <SelectTrigger id={demoId} aria-labelledby={`${demoId}-label`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -106,64 +135,76 @@ export function PassengersPage({
                         ))}
                     </SelectContent>
                   </Select>
-                </label>
+                </Field>
               )}
             </div>
             <div className="f3-passenger-fields">
-              <label>
-                Given name (as on passport)
+              <Field id={givenId} label="Given name (as on passport)" error={problemFor(givenId)}>
                 <input
+                  id={givenId}
                   readOnly={locked}
                   autoComplete="given-name"
                   name={`givenName-${index}`}
                   maxLength={100}
                   required
+                  aria-invalid={problemFor(givenId) ? true : undefined}
+                  aria-describedby={problemFor(givenId) ? `${givenId}-error` : undefined}
                   value={person.givenName}
                   onChange={(event) => onTravellerChange(person.key, { givenName: event.target.value })}
                 />
-              </label>
-              <label>
-                Family name
+              </Field>
+              <Field id={familyId} label="Family name" error={problemFor(familyId)}>
                 <input
+                  id={familyId}
                   readOnly={locked}
                   autoComplete="family-name"
                   name={`familyName-${index}`}
                   maxLength={100}
                   required
+                  aria-invalid={problemFor(familyId) ? true : undefined}
+                  aria-describedby={problemFor(familyId) ? `${familyId}-error` : undefined}
                   value={person.familyName}
                   onChange={(event) => onTravellerChange(person.key, { familyName: event.target.value })}
                 />
-              </label>
-              <label>
-                Date of birth
-                <input
-                  readOnly={locked}
-                  aria-label={`Passenger ${index + 1} date of birth`}
-                  type="date"
+              </Field>
+              <Field id={birthId} label="Date of birth" error={problemFor(birthId)}>
+                <DatePicker
+                  id={birthId}
+                  value={person.dateOfBirth}
+                  min={EARLIEST_BIRTH}
                   max={departure}
                   required
-                  value={person.dateOfBirth}
-                  onChange={(event) => onTravellerChange(person.key, { dateOfBirth: event.target.value })}
+                  readOnly={locked}
+                  invalid={!!problemFor(birthId)}
+                  ariaLabelledBy={`${birthId}-label`}
+                  describedBy={problemFor(birthId) ? `${birthId}-error` : undefined}
+                  onChange={(date) => onTravellerChange(person.key, { dateOfBirth: date })}
                 />
-              </label>
-              <label>
-                Passport number
+              </Field>
+              <Field id={passportId} label="Passport number" error={problemFor(passportId)}>
                 <input
+                  id={passportId}
                   readOnly={locked}
                   autoComplete="off"
                   name={`passport-${index}`}
                   maxLength={30}
                   required
+                  aria-invalid={problemFor(passportId) ? true : undefined}
+                  aria-describedby={problemFor(passportId) ? `${passportId}-error` : undefined}
                   value={person.passportNumber}
                   onChange={(event) => onTravellerChange(person.key, { passportNumber: event.target.value })}
                 />
-              </label>
+              </Field>
             </div>
             {(type ?? person.expectedType) === 'infant' && (
-              <label className="f3-lap-field">
-                Travels on the lap of
+              <Field id={lapId} label="Travels on the lap of" error={problemFor(lapId)} className="f3-lap-field">
                 <Select value={person.lapOfKey} onValueChange={(value) => onTravellerChange(person.key, { lapOfKey: value })}>
-                  <SelectTrigger aria-label="Travels on the lap of">
+                  <SelectTrigger
+                    id={lapId}
+                    aria-labelledby={`${lapId}-label`}
+                    aria-invalid={problemFor(lapId) ? true : undefined}
+                    aria-describedby={problemFor(lapId) ? `${lapId}-error` : undefined}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -177,7 +218,7 @@ export function PassengersPage({
                       ))}
                   </SelectContent>
                 </Select>
-              </label>
+              </Field>
             )}
             {renderAssistance?.(person)}
           </fieldset>
@@ -187,42 +228,46 @@ export function PassengersPage({
         <legend className="f3-passenger-legend">Contact for this booking</legend>
         <h2 className="f3-passenger-section-title">Contact for this booking</h2>
         <div className="f3-passenger-fields">
-          <label>
-            Email
+          <Field id={contactFieldId('email')} label="Email" error={problemFor(contactFieldId('email'))}>
             <input
+              id={contactFieldId('email')}
               type="email"
               autoComplete="email"
               required
               maxLength={254}
+              aria-invalid={problemFor(contactFieldId('email')) ? true : undefined}
+              aria-describedby={problemFor(contactFieldId('email')) ? `${contactFieldId('email')}-error` : undefined}
               value={contact.email}
               onChange={(event) => onContactChange({ ...contact, email: event.target.value })}
             />
-          </label>
-          <label>
-            Phone
+          </Field>
+          <Field id={contactFieldId('phone')} label="Phone" error={problemFor(contactFieldId('phone'))}>
             <input
+              id={contactFieldId('phone')}
               type="tel"
               autoComplete="tel"
               required
               maxLength={50}
+              aria-invalid={problemFor(contactFieldId('phone')) ? true : undefined}
+              aria-describedby={problemFor(contactFieldId('phone')) ? `${contactFieldId('phone')}-error` : undefined}
               value={contact.phone}
               onChange={(event) => onContactChange({ ...contact, phone: event.target.value })}
             />
-          </label>
+          </Field>
         </div>
       </fieldset>
       <fieldset className="f3-passenger-card">
         <legend className="f3-passenger-legend">Promo code</legend>
         <h2 className="f3-passenger-section-title">Promo code</h2>
-        <label>
-          Code (optional)
+        <Field id={contactFieldId('promoCode')} label="Code (optional)">
           <input
+            id={contactFieldId('promoCode')}
             autoComplete="off"
             maxLength={100}
             value={contact.promoCode}
             onChange={(event) => onContactChange({ ...contact, promoCode: event.target.value })}
           />
-        </label>
+        </Field>
         <p className="f3-passenger-info">
           The code is checked when you create the booking hold. If the total changes, you can review it before continuing. It is used up
           only when payment succeeds.

@@ -7,6 +7,7 @@ import {
 } from '../../booking-search/search-params'
 import type { PassengerType, HoldBookingResponse, ServiceCode } from '../api/types'
 import type { AssistanceValue } from '../components/contracts'
+import { isDateKey } from '@customer-web/components/ui/date-keys'
 import type { SeatChoice } from './integration'
 export interface TravellerDraft {
   key: string
@@ -100,31 +101,80 @@ export function ageAt(birth: string, departure: string): number {
   return age
 }
 export function passengerType(birth: string, departure: string): PassengerType | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(birth) || !Number.isFinite(Date.parse(birth)) || new Date(birth).toISOString().slice(0, 10) !== birth)
-    return null
+  if (!isDateKey(birth)) return null
   const age = ageAt(birth, departure)
   return age < 0 ? null : age < 2 ? 'infant' : age < 12 ? 'child' : 'adult'
 }
-export function validateTravellers(travellers: TravellerDraft[], contact: BookingContact, itinerary: SearchItinerary): string | null {
+
+/** The fields of the passenger form that can carry a message. */
+export type TravellerField = 'givenName' | 'familyName' | 'dateOfBirth' | 'passportNumber' | 'lapOfKey'
+/** The fields of the contact card that can carry a message. */
+export type ContactField = 'email' | 'phone' | 'promoCode'
+
+/** The id of a traveller field on the passenger form, so the message under it is named after it. */
+export function travellerFieldId(index: number, field: TravellerField): string {
+  return `pax-${index}-${field}`
+}
+
+/** The id of a contact field on the passenger form. */
+export function contactFieldId(field: ContactField): string {
+  return `contact-${field}`
+}
+
+export interface TravellerIssues {
+  /** The message above the form. It names the first field that is wrong. */
+  message: string
+  /** The message under each field that is wrong, keyed by the id of the field. */
+  fields: Record<string, string>
+}
+
+/**
+ * Everything that is wrong with the passenger details. Each message belongs to one field, so the form can show it under
+ * that field, and the first one is also the summary above the form.
+ */
+export function validateTravellers(
+  travellers: TravellerDraft[],
+  contact: BookingContact,
+  itinerary: SearchItinerary,
+): TravellerIssues | null {
   const first = itinerary.request.legs[0].date,
     last = itinerary.request.legs.at(-1)!.date
   const usedLaps = new Set<string>()
+  const fields: Record<string, string> = {}
+  let message = ''
+
+  /** Records the message under a field. The first one also becomes the summary. */
+  function fail(id: string, text: string, passenger?: number) {
+    fields[id] = text
+    if (!message) message = passenger ? `Passenger ${passenger}: ${text}` : text
+  }
+
   for (const [index, person] of travellers.entries()) {
-    if (!person.givenName.trim() || !person.familyName.trim() || !person.passportNumber.trim())
-      return `Complete the name and passport details for passenger ${index + 1}.`
+    const passenger = index + 1
+    if (!person.givenName.trim()) fail(travellerFieldId(index, 'givenName'), 'Enter the given name as on the passport', passenger)
+    if (!person.familyName.trim()) fail(travellerFieldId(index, 'familyName'), 'Enter the family name as on the passport', passenger)
+    if (!person.passportNumber.trim()) fail(travellerFieldId(index, 'passportNumber'), 'Enter the passport number', passenger)
+
     const type = passengerType(person.dateOfBirth, first)
-    if (type !== person.expectedType)
-      return `Passenger ${index + 1}'s date of birth does not match the ${person.expectedType} selected in search. Update the date or return to flights to change your party.`
+    if (!person.dateOfBirth) fail(travellerFieldId(index, 'dateOfBirth'), 'Pick the date of birth', passenger)
+    else if (type !== person.expectedType)
+      fail(
+        travellerFieldId(index, 'dateOfBirth'),
+        `The date of birth has to match the ${person.expectedType} chosen in the search`,
+        passenger,
+      )
     if (type === 'infant') {
-      if (ageAt(person.dateOfBirth, last) >= 2) return 'A lap infant must remain under two until the last flight.'
+      if (ageAt(person.dateOfBirth, last) >= 2)
+        fail(travellerFieldId(index, 'dateOfBirth'), 'A lap infant has to stay under two until the last flight', passenger)
       if (!travellers.some((adult) => adult.key === person.lapOfKey && adult.expectedType === 'adult') || usedLaps.has(person.lapOfKey))
-        return 'Choose a different accompanying adult for each infant.'
+        fail(travellerFieldId(index, 'lapOfKey'), 'Choose a different accompanying adult for each infant', passenger)
       usedLaps.add(person.lapOfKey)
     }
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim()) || !contact.phone.trim())
-    return 'Enter a valid contact email and phone number.'
-  return null
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim())) fail(contactFieldId('email'), 'Enter a valid contact email')
+  if (!contact.phone.trim()) fail(contactFieldId('phone'), 'Enter a contact phone number')
+  if (!message) return null
+  return { message, fields }
 }
 
 /* The booking flow draft: what the customer has typed so far, kept so a refresh does not wipe it.
