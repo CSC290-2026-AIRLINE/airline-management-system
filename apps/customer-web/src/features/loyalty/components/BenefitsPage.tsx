@@ -19,11 +19,14 @@ const BENEFIT_ICON: Record<BenefitKey, ComponentType<LucideProps>> = {
 const BENEFIT_HINT: Record<BenefitKey, string> = {
   lounge: 'Show your member number at the lounge desk. Needs a ticket for a flight leaving within 4 hours.',
   baggage: 'Added to the free allowance of your fare.',
-  checkIn: 'Use the priority lane at the airport.',
+  checkIn: 'Skip the main queue at the check-in counter.',
   boarding: 'Board before other passengers.',
   upgrade: 'One cabin up on flights paid in cash, when seats are free.',
-  insurance: 'Basic cover on each booking.',
+  insurance: 'On every booking you make.',
 }
+
+// The C09 cards use shorter labels than the tier tables on the Join page.
+const CARD_LABEL: Record<BenefitKey, string> = { ...BENEFIT_NAMES, checkIn: 'Priority check-in' }
 
 const HISTORY_TABS: { kind: BenefitUseKind; label: string; title: string; empty: string }[] = [
   { kind: 'lounge_visit', label: 'Lounge visits', title: 'Lounge visit', empty: 'No lounge visits yet.' },
@@ -64,7 +67,7 @@ export function BenefitsPage({ member, tiers, uses }: { member: MemberSummary; t
                     <Icon size={18} />
                   </span>
                   <div className="flex flex-col gap-1 sm:mt-4">
-                    <span className="text-[13px] font-medium">{BENEFIT_NAMES[line.key]}</span>
+                    <span className="text-[13px] font-medium">{CARD_LABEL[line.key]}</span>
                     <strong className="text-lg leading-tight sm:text-[22px]">{valueText(line.key, line.included, line.value)}</strong>
                     <span className="text-xs text-muted">{line.included ? BENEFIT_HINT[line.key] : 'Not part of your tier.'}</span>
                   </div>
@@ -108,11 +111,27 @@ export function BenefitsPage({ member, tiers, uses }: { member: MemberSummary; t
   )
 }
 
+// Card headlines from C09, e.g. "You + 1 guest", "+10 kg free", "After Platinum members".
 function valueText(key: BenefitKey, included: boolean, value: string | null) {
   if (!included) return 'No'
-  if (key === 'upgrade' && value)
-    return value === 'First in line' ? 'Yes, first in line' : `Yes, ${value.charAt(0).toLowerCase()}${value.slice(1)}`
-  return value ?? 'Yes'
+  switch (key) {
+    case 'lounge':
+      return value?.replace(/^Member/, 'You') ?? 'Yes'
+    case 'baggage':
+      return `${value} free`
+    case 'checkIn':
+      return 'Priority lane'
+    case 'boarding':
+      return 'Board first'
+    case 'upgrade':
+      return value === 'First in line' || !value ? 'First in line' : `${value} members`
+    case 'insurance':
+      return value === 'Included' ? 'Basic cover included' : 'Basic cover at member price'
+    default: {
+      const unreachable: never = key
+      return unreachable
+    }
+  }
 }
 
 function BenefitHistory({ uses }: { uses: BenefitUse[] }) {

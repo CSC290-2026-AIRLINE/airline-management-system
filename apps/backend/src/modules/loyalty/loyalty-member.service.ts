@@ -181,7 +181,7 @@ export class LoyaltyMemberService {
         usedAt: u.used_at.toISOString(),
         detail:
           u.benefit_type === 'upgrade'
-            ? `${cabinName(u.from_cabin ?? '')} → ${cabinName(u.to_cabin ?? '')}`
+            ? `${cabinName(u.from_cabin ?? '')} to ${cabinName(u.to_cabin ?? '')}`
             : u.guests === 0
               ? 'Member only'
               : `Member + ${u.guests} guest${u.guests === 1 ? '' : 's'}`,

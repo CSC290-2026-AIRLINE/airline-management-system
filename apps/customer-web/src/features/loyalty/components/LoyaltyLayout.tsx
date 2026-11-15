@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
-import type { MemberSummary } from '../api/types'
-import { CustomerNav } from './CustomerNav'
 import { CONTAINER, cx, focusRing, PAGE } from './ui'
 
 const TABS = [
@@ -21,16 +19,16 @@ const tab = cx(
   focusRing,
 )
 
-// Shell for every Feature 11 customer page: nav, the "My FlySmiles" header with its tabs, then the page body.
-export function LoyaltyLayout({ subtitle, member, children }: { subtitle: string; member?: MemberSummary | null; children: ReactNode }) {
+// Shell for every Feature 11 customer page under the shared SiteHeader: the "My FlySmiles" header with its tabs, then the page body.
+// The Overview tab (C03) has no subtitle; the other tabs do.
+export function LoyaltyLayout({ subtitle, children }: { subtitle?: string; children: ReactNode }) {
   return (
     <div className={PAGE} data-full-bleed>
-      <CustomerNav member={member} />
       <header className="bg-canvas pt-6 sm:bg-white sm:pt-12">
         <div className={cx(CONTAINER, 'flex flex-col gap-5 sm:gap-7')}>
           <div className="flex flex-col gap-1.5">
             <h1 className="text-[22px] leading-tight font-bold sm:text-[32px]">My FlySmiles</h1>
-            <p className="text-[13px] text-muted sm:text-sm">{subtitle}</p>
+            {subtitle && <p className="text-[13px] text-muted sm:text-sm">{subtitle}</p>}
           </div>
           <nav
             aria-label="FlySmiles"
@@ -54,7 +52,6 @@ export function LoyaltyLayout({ subtitle, member, children }: { subtitle: string
 export function LoyaltyBareLayout({ children }: { children: ReactNode }) {
   return (
     <div className={PAGE} data-full-bleed>
-      <CustomerNav />
       <main className="flex flex-1 flex-col pt-3 sm:pt-5">{children}</main>
     </div>
   )

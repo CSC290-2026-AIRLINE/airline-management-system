@@ -33,7 +33,7 @@ export function LoyaltyHomePage() {
 
   if (state.status !== 'ready') {
     return (
-      <LoyaltyLayout subtitle="Your miles, tier and recent activity.">
+      <LoyaltyLayout>
         <Loaded state={state} retry={retry}>
           {() => null}
         </Loaded>
@@ -66,7 +66,7 @@ export function StatementRoutePage({ search, onSearch }: { search: StatementSear
   const member = state.status === 'ready' ? state.data.member : undefined
   if (member === null) return <Navigate to="/loyalty" replace />
   return (
-    <LoyaltyLayout subtitle="Every mile you earned, spent, lost to expiry or had adjusted, with your balance after each." member={member}>
+    <LoyaltyLayout subtitle="Every mile you earned, spent, lost to expiry or had adjusted, with your balance after each.">
       <Loaded state={state} retry={retry}>
         {({ member: m, rows }) => m && <StatementPage member={m} rows={rows} search={search} onSearch={onSearch} />}
       </Loaded>
@@ -84,7 +84,7 @@ export function BenefitsRoutePage() {
   const member = state.status === 'ready' ? state.data.member : undefined
   if (member === null) return <Navigate to="/loyalty" replace />
   return (
-    <LoyaltyLayout subtitle="What your tier gives you, and what you have used." member={member}>
+    <LoyaltyLayout subtitle="What your tier gives you, and what you have used.">
       <Loaded state={state} retry={retry}>
         {({ member: m, tiers, uses }) => m && <BenefitsPage member={m} tiers={tiers} uses={uses} />}
       </Loaded>
@@ -102,7 +102,7 @@ export function RedemptionsRoutePage() {
   const member = state.status === 'ready' ? state.data.member : undefined
   if (member === null) return <Navigate to="/loyalty" replace />
   return (
-    <LoyaltyLayout subtitle="Seats you paid for with miles." member={member}>
+    <LoyaltyLayout subtitle="Seats you paid for with miles.">
       <Loaded state={state} retry={retry}>
         {({ rows }) => <RedemptionsPage rows={rows} />}
       </Loaded>
@@ -113,7 +113,7 @@ export function RedemptionsRoutePage() {
 // Route errorComponent: one bad render shows this inside the page shell instead of blanking the app.
 export function LoyaltyError({ error, reset }: { error: unknown; reset: () => void }) {
   return (
-    <LoyaltyLayout subtitle="Your miles, tier and recent activity.">
+    <LoyaltyLayout>
       <div className="flex flex-col items-start gap-3 rounded-xl border border-[#f3c2bd] bg-white p-5 text-danger" role="alert">
         <strong>Something went wrong on this page.</strong>
         <span className="text-[13px]">{error instanceof Error ? error.message : 'Please try again.'}</span>

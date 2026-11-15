@@ -138,7 +138,7 @@ function Result({ result }: { result: LoungeResult }) {
     switch (result.reason) {
       case 'too_many_guests':
         title = 'Not allowed: too many guests'
-        text = `${tierText} includes the ${loungeLabel(m.guestsAllowed).toLowerCase()}. Check in again with ${m.guestsAllowed ?? 0} guests.`
+        text = `${tierText} includes the ${loungeLabel(m.guestsAllowed).toLowerCase()}. Check in again with ${m.guestsAllowed ?? 0} guest${m.guestsAllowed === 1 ? '' : 's'} or fewer.`
         break
       case 'no_ticket':
         title = 'Not allowed: no ticket in the next 4 hours'

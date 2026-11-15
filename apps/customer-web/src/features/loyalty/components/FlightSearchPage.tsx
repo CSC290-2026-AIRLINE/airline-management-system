@@ -5,7 +5,6 @@ import { useLoyaltyApi } from '../api/use-loyalty-api'
 import { seatsFor, type AwardSearchParams } from '../award-search'
 import { formatMiles } from '../format'
 import { useLoad } from '../use-load'
-import { CustomerNav } from './CustomerNav'
 import { Loaded } from './parts'
 import { CONTAINER, cx, focusRing, PAGE, ui } from './ui'
 
@@ -61,7 +60,6 @@ export function FlightSearchPage({ search, onSearch }: { search: AwardSearchPara
 
   return (
     <div className={PAGE} data-full-bleed>
-      <CustomerNav />
       <main className={cx(CONTAINER, 'flex max-w-[760px] flex-1 flex-col gap-[18px] pt-4 pb-11 sm:pt-8')}>
         <h1 className="text-2xl font-bold sm:text-[28px]">Flight search</h1>
         <Loaded state={routes} retry={retryRoutes}>

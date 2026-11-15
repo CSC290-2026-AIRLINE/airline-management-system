@@ -19,26 +19,6 @@ import {
 
 // Small pieces shared by the Feature 11 customer pages.
 
-// The Flython Airlines mark from the F11 Figma file: an amber-and-white swoosh with a serif wordmark.
-export function FlythonLogo({ tone = 'dark' }: { tone?: 'light' | 'dark' }) {
-  return (
-    <span
-      className={cx('inline-flex items-center gap-2.5', tone === 'light' ? 'text-white' : 'text-navy')}
-      role="img"
-      aria-label="Flython Airlines"
-    >
-      <svg viewBox="0 0 64 36" className="h-7 w-12 flex-none sm:h-8 sm:w-14" aria-hidden="true">
-        <path d="M2 30C14 14 34 6 62 4 44 10 30 16 20 26Z" fill="#f5a524" />
-        <path d="M8 34C20 22 36 15 56 12 42 18 30 24 22 34Z" fill={tone === 'light' ? '#ffffff' : '#9fb2d3'} />
-      </svg>
-      <span className="flex flex-col leading-none">
-        <span className="font-serif text-[22px] font-bold sm:text-[26px]">Flython</span>
-        <span className="mt-0.5 self-center font-serif text-[7px] font-semibold tracking-[0.3em] sm:text-[8px]">AIRLINES</span>
-      </span>
-    </span>
-  )
-}
-
 export function TypePill({ type }: { type: TransactionType }) {
   return <span className={cx(ui.pill, TYPE_PILL[type])}>{TYPE_LABEL[type]}</span>
 }

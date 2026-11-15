@@ -11,7 +11,7 @@ import { AWARD_SEARCH_PATH, cx, NO_TIER_ART, TIER_BAND, TYPE_LABEL, ui } from '.
 // C03 Dashboard, C04 for a new member with no tier, and M1 on a phone.
 export function Dashboard({ member, tiers, activity }: { member: MemberSummary; tiers: TierInfo[]; activity: StatementRow[] }) {
   return (
-    <LoyaltyLayout subtitle="Your miles, tier and recent activity." member={member}>
+    <LoyaltyLayout>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-6">
         <MemberCard member={member} />
         <TierProgress member={member} />
@@ -54,7 +54,7 @@ function MemberCard({ member }: { member: MemberSummary }) {
             </dl>
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] tracking-[0.08em] text-white/75 uppercase">Miles balance</span>
+            <span className="text-[10px] tracking-[0.08em] text-white/75 uppercase">Miles to spend</span>
             <span className="font-mono text-[30px] leading-tight font-bold sm:text-[44px]">{formatMiles(member.milesBalance)} miles</span>
           </div>
           <div className="hidden gap-3 sm:flex">
@@ -97,7 +97,7 @@ function TierProgress({ member }: { member: MemberSummary }) {
       {next ? (
         <>
           <Progress
-            label="Tier miles · flown by you"
+            label="Tier miles · flown by you, last 12 months"
             have={member.tierMiles}
             need={next.minMiles}
             note={`${formatMiles(Math.max(0, next.minMiles - member.tierMiles))} tier miles to ${next.name}`}
@@ -115,7 +115,9 @@ function TierProgress({ member }: { member: MemberSummary }) {
             note={`${Math.max(0, next.minFlights - member.tierFlights)} eligible flights to ${next.name}`}
             bar="bg-link"
           />
-          <p className="text-[11px] text-muted">Either goal in the last 12 months qualifies you. Only your flown seats count.</p>
+          <p className="text-[11px] text-muted">
+            Either goal in the last 12 months qualifies you. Only your flown seats count. Spending miles never lowers your tier miles.
+          </p>
         </>
       ) : (
         <p className="text-[13px] text-muted">Keep flying to renew your tier before it expires.</p>

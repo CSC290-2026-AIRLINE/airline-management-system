@@ -29,7 +29,9 @@ export function MembersPage() {
   const [toast, showToast] = useToast()
   const desktop = useMediaQuery(DESKTOP)
   const found = state.status === 'ready' ? state.data : []
-  const current = picked && found.some((m) => m.id === picked) ? picked : desktop ? found[0]?.id : undefined
+  // S0: before a search or a pick, no member is open. After a search, desktops open the first match.
+  const starting = query.trim() === ''
+  const current = picked && found.some((m) => m.id === picked) ? picked : desktop && !starting ? found[0]?.id : undefined
   // Phones show the results or the member, one at a time; desktops show both side by side.
   const showList = desktop || !current
 
@@ -94,8 +96,15 @@ export function MembersPage() {
               ) : (
                 <>
                   <span className={ui.small}>
-                    {members.length} {desktop ? 'member' : 'result'}
-                    {members.length === 1 ? '' : 's'}
+                    {starting ? (
+                      // An empty search lists the newest members, not this staff member's own lookups.
+                      'Newest members'
+                    ) : (
+                      <>
+                        {members.length} {desktop ? 'member' : 'result'}
+                        {members.length === 1 ? '' : 's'}
+                      </>
+                    )}
                   </span>
                   <ul className={ui.memberList} aria-label="Members found">
                     {members.map((m) => (
@@ -136,10 +145,21 @@ export function MembersPage() {
         {current ? (
           <MemberPanel key={current} api={api} id={current} onAdjusted={showToast} onBack={desktop ? undefined : () => setPicked(null)} />
         ) : (
-          <section className={cx(ui.card, 'max-lg:hidden')}>
-            <p className={ui.muted} style={{ textAlign: 'center', padding: '40px 0' }}>
-              Pick a member to see their balance and ledger.
-            </p>
+          <section className={cx(ui.card, 'grid place-items-center max-lg:hidden')} aria-labelledby="lookup-start">
+            <div className="flex max-w-[340px] flex-col items-center gap-2 py-10 text-center">
+              <span className="mb-2 grid size-16 place-items-center rounded-full bg-[#e8eef7] text-f11-navy" aria-hidden="true">
+                <svg viewBox="0 0 24 24" className="size-7">
+                  <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+                  <path d="m20 20-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </span>
+              <h2 id="lookup-start" className="text-base font-semibold">
+                Look up a member
+              </h2>
+              <p className={ui.muted}>
+                Search by member number, name or email, or pick a member from the list. Their tier, miles balance and full ledger show here.
+              </p>
+            </div>
           </section>
         )}
       </div>

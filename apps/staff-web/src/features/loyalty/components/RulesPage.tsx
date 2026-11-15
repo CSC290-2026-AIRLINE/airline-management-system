@@ -147,7 +147,7 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
       }
       setRules(next)
       setEditing(null)
-      showToast(`${message} · ${AUDIT}`)
+      showToast(`${message}. New activity uses the new values. · ${AUDIT}`)
     } catch (e) {
       setError(errorMessage(e))
     } finally {
