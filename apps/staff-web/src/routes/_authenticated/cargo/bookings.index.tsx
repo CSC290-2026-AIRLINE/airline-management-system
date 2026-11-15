@@ -16,7 +16,7 @@ const VALID_STATUSES = [
 
 export type CargoDeskStatus = (typeof VALID_STATUSES)[number]
 
-export const Route = createFileRoute('/_authenticated/cargo/bookings')({
+export const Route = createFileRoute('/_authenticated/cargo/bookings/')({
   component: CargoDeskPage,
   validateSearch: (search: Record<string, unknown>): { status: CargoDeskStatus } => {
     const raw = search.status

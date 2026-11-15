@@ -149,12 +149,7 @@ export function BookingDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Link
-              to="/cargo/claims/$id"
-              params={{ id: detail.claim.id }}
-              search={{ status: 'all' }}
-              className="text-sm font-medium underline underline-offset-2"
-            >
+            <Link to="/cargo/claims/$id" params={{ id: detail.claim.id }} className="text-sm font-medium underline underline-offset-2">
               {detail.claim.claimRef}
             </Link>
           </CardContent>
@@ -437,12 +432,7 @@ function TestToolsCard({
           </Button>
         )}
         {claimLink && (
-          <Link
-            to="/cargo/claims/$id"
-            params={{ id: claimLink.id }}
-            search={{ status: 'all' }}
-            className="text-xs font-medium underline underline-offset-2"
-          >
+          <Link to="/cargo/claims/$id" params={{ id: claimLink.id }} className="text-xs font-medium underline underline-offset-2">
             View {claimLink.ref}
           </Link>
         )}

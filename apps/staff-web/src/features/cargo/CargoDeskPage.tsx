@@ -6,8 +6,8 @@ import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { Route } from '@staff-web/routes/_authenticated/cargo/bookings'
-import type { CargoDeskStatus } from '@staff-web/routes/_authenticated/cargo/bookings'
+import { Route } from '@staff-web/routes/_authenticated/cargo/bookings.index'
+import type { CargoDeskStatus } from '@staff-web/routes/_authenticated/cargo/bookings.index'
 import { useCargoApi, type DeskBooking, type DeskListResult } from './cargo-api'
 
 const STATUS_TABS: { value: CargoDeskStatus; label: string }[] = [
@@ -234,10 +234,7 @@ function BookingRow({ booking: b }: { booking: DeskBooking }) {
   const navigate = useNavigate()
 
   return (
-    <TableRow
-      className="cursor-pointer"
-      onClick={() => navigate({ to: '/cargo/bookings/$id', params: { id: b.id }, search: { status: 'all' } })}
-    >
+    <TableRow className="cursor-pointer" onClick={() => navigate({ to: '/cargo/bookings/$id', params: { id: b.id } })}>
       <TableCell className="font-mono text-xs font-medium">{b.bookingRef}</TableCell>
       <TableCell className="font-mono text-xs">{b.awbNumber ?? '—'}</TableCell>
       <TableCell className="max-w-[140px] truncate">{b.shipperName}</TableCell>
