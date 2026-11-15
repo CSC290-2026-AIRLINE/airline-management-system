@@ -111,6 +111,9 @@ function Detail({ refundId }: { refundId: string }) {
   }
 
   const needsReview = refund.queue_tab === 'needs_review'
+  /* A payout that failed stays in the queue for a person, but it is not sent to the card again from here: a lost first answer
+   * could pay the customer twice. They can return it as a voucher or reject it. */
+  const payoutFailed = refund.status === 'failed'
 
   return (
     <div className="space-y-4">
@@ -146,6 +149,14 @@ function Detail({ refundId }: { refundId: string }) {
 
         {needsReview ? (
           <div className="space-y-3">
+            {payoutFailed && (
+              <Alert variant="destructive">
+                <AlertDescription className="block">
+                  The payout to the card failed{refund.failure_reason ? ` (${refund.failure_reason})` : ''}. It is not sent to the card
+                  again from here. Return it as a voucher, or reject it.
+                </AlertDescription>
+              </Alert>
+            )}
             {refund.needs_override && (
               <Alert>
                 <AlertDescription className="block">
@@ -180,9 +191,11 @@ function Detail({ refundId }: { refundId: string }) {
               </Alert>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button type="button" disabled={busy} onClick={() => void decide('approve_card')}>
-                Approve and refund to card
-              </Button>
+              {!payoutFailed && (
+                <Button type="button" disabled={busy} onClick={() => void decide('approve_card')}>
+                  Approve and refund to card
+                </Button>
+              )}
               <Button type="button" variant="outline" disabled={busy} onClick={() => void decide('approve_voucher')}>
                 Approve as voucher instead
               </Button>
@@ -204,6 +217,10 @@ function Detail({ refundId }: { refundId: string }) {
                 </Row>
                 {refund.decision.note && <Row label="Reason sent">{refund.decision.note}</Row>}
                 {refund.decision.override && <Row label="Override">Approved outside the fare rules. Logged in the audit trail.</Row>}
+                {refund.method === 'original' && refund.provider_refund_id && (
+                  <Row label="Provider reference">{refund.provider_refund_id}</Row>
+                )}
+                {refund.credit_note_number && <Row label="Credit note">{refund.credit_note_number}</Row>}
               </dl>
             )}
           </div>
