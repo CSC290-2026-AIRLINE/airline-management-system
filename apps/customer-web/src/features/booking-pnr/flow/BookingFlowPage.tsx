@@ -5,6 +5,7 @@ import { FlightSearchPage, type SearchItinerary } from '../../booking-search/pag
 import type { FlightSearchUrlState } from '../../booking-search/search-params'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { HoldBookingRequest, HoldBookingResponse, HoldBookingSeat } from '../api/types'
+import { BookingRouteBar, type BookingStep } from '../components/BookingRouteBar'
 import { PassengersPage } from '../passengers/PassengersPage'
 import {
   clearFlowDraft,
@@ -37,7 +38,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   const [restored] = useState(() => readFlowDraft(itinerary))
   const [travellers, setTravellers] = useState(() => restored?.travellers ?? (itinerary ? travellersFor(itinerary) : []))
   const [contact, setContact] = useState<BookingContact>(() => restored?.contact ?? { email: '', phone: '', promoCode: '' })
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(() => restored?.step ?? 2)
+  const [step, setStep] = useState<BookingStep>(() => restored?.step ?? 2)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [held, setHeld] = useState<HoldBookingResponse | null>(() => restored?.held ?? null)
@@ -97,6 +98,13 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
       validateTravellers(travellers, contact, itinerary) ?? (missingNote ? 'Add a note for each UMNR or MEDA assistance request.' : null)
     setError(message)
     if (!message) setStep(3)
+  }
+  /** The route bar sends the customer back to a step they have finished. */
+  function goToStep(next: BookingStep) {
+    if (next >= step) return
+    setError(null)
+    setPriceChange(null)
+    setStep(next)
   }
   async function createHold(selected: SeatChoice[] = choices, retry?: HoldBookingRequest, expectedTotal?: number) {
     if (!itinerary || inFlight.current) return
@@ -244,14 +252,9 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
             : 'Keep your booking reference for the next step.'}
         </p>
       )}
-      <ol className="f3-flow-stepper" aria-label="Booking progress">
-        {['Flights', 'Passengers', 'Seats', 'Review & pay'].map((label, index) => (
-          <li className={step > index + 1 ? 'is-complete' : undefined} key={label} aria-current={step === index + 1 ? 'step' : undefined}>
-            <span>{step > index + 1 ? '✓' : index + 1}</span>
-            {label}
-          </li>
-        ))}
-      </ol>
+      <div className="f3-flow-route-bar">
+        <BookingRouteBar currentStep={step} onStepClick={goToStep} />
+      </div>
       {priceChange && PriceChangedDialog && (
         <PriceChangedDialog
           {...{

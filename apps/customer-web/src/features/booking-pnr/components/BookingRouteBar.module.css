@@ -1,0 +1,226 @@
+/* The booking route bar: four markers on one rail that fills up to the current step. */
+
+.bar {
+  /* The bar reacts to its own width, not to the window, so it also works inside a narrow column. */
+  container: route-bar / inline-size;
+  background: var(--f3-card);
+  border: 1px solid var(--f3-border);
+  border-radius: 10px;
+}
+
+.inner {
+  --route-marker-size: 30px;
+  --route-rail-thickness: 2px;
+  --route-rail-top: calc((var(--route-marker-size) - var(--route-rail-thickness)) / 2);
+  padding: 18px 24px 16px;
+}
+
+/* The narrow caption: "Step 2 of 4 · Passengers". It is hidden on the wide bar, where the page title says the same. */
+.caption {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--f3-muted);
+}
+
+.caption strong {
+  color: var(--f3-ink);
+  font-weight: 600;
+}
+
+.list {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The rail behind the markers: the grey part first, the navy part up to the current step on top. */
+.list::before,
+.list::after {
+  content: '';
+  position: absolute;
+  top: var(--route-rail-top);
+  left: 12.5%;
+  height: var(--route-rail-thickness);
+  border-radius: var(--route-rail-thickness);
+}
+
+.list::before {
+  right: 12.5%;
+  background: var(--f3-line);
+}
+
+.list::after {
+  width: calc(var(--route-progress) * 25%);
+  background: var(--f3-primary);
+  transition: width 0.25s ease;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 1;
+}
+
+/* The marker and its label. A button on the finished steps, a span on the others, so only the real links are focusable. */
+.target {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+
+button.target {
+  cursor: pointer;
+}
+
+/* The finished steps are links back into the flow, so their label wears the app's link colour. */
+button.target .label {
+  color: var(--f3-link);
+}
+
+button.target:hover .label {
+  color: var(--f3-primary-hover);
+}
+
+button.target:hover .marker {
+  transform: translateY(-1px);
+}
+
+button.target:focus-visible {
+  outline: 2px solid var(--f3-amber);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.marker {
+  display: grid;
+  place-items: center;
+  width: var(--route-marker-size);
+  height: var(--route-marker-size);
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: var(--f3-neutral-soft);
+  color: var(--f3-muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.marker svg {
+  width: 16px;
+  height: 16px;
+}
+
+.done .marker {
+  background: var(--f3-primary);
+  border-color: var(--f3-primary);
+  color: #ffffff;
+}
+
+.current .marker {
+  background: var(--f3-primary);
+  border-color: var(--f3-primary);
+  color: #ffffff;
+  outline: 2px solid var(--f3-amber);
+  outline-offset: 2px;
+}
+
+.upcoming .marker {
+  background: var(--f3-neutral-soft);
+  border-color: var(--f3-border);
+  color: var(--f3-muted);
+}
+
+.label {
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--f3-muted);
+}
+
+.done .label {
+  color: var(--f3-ink);
+}
+
+.current .label {
+  color: var(--f3-ink);
+  font-weight: 600;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The narrow bar: the caption and four dots on one rail, instead of four labelled circles. */
+@container route-bar (max-width: 640px) {
+  .inner {
+    --route-marker-size: 12px;
+    --route-rail-thickness: 4px;
+    /* The dot sits in the middle of a 44px touch target, so the rail moves down with it. */
+    --route-rail-top: 20px;
+    padding: 12px 16px 10px;
+  }
+
+  .caption {
+    display: flex;
+  }
+
+  .target {
+    gap: 0;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .marker {
+    font-size: 0;
+  }
+
+  .marker svg {
+    display: none;
+  }
+
+  .label {
+    display: none;
+  }
+
+  .current .marker {
+    outline-width: 2px;
+    outline-offset: 1px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list::after {
+    transition: none;
+  }
+
+  .marker {
+    transition: none;
+  }
+}

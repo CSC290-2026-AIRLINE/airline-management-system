@@ -4,7 +4,7 @@ import { useBookingPnrApi, type ApiError } from '../api/client'
 import type { BookingDetail, BookingServiceRequest } from '../api/types'
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
-import { BookingStepper } from '../components/BookingStepper'
+import { BookingRouteBar } from '../components/BookingRouteBar'
 import { HoldBanner } from '../components/HoldBanner'
 import { heldSeatCount } from '../lib/booking'
 import { toApiError } from '../lib/errors'
@@ -136,7 +136,7 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
             <p className={styles.subtitle}>Check your itinerary and passengers before paying.</p>
           </header>
 
-          <BookingStepper currentStep={4} />
+          <BookingRouteBar currentStep={4} />
           <HoldBanner
             reference={booking.reference}
             holdExpiresAt={booking.holdExpiresAt}

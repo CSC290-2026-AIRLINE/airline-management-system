@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { SeatDefinition, SeatMap } from '../api/types'
 import type { AssistanceValue } from '../components/contracts'
+import { BookingRouteBar } from '../components/BookingRouteBar'
 import { AssistanceFields } from '../assistance/AssistanceFields'
 import { AssistanceRequestDialog } from '../assistance/AssistanceRequestDialog'
 import { AssistanceStatus } from '../assistance/AssistanceStatus'
@@ -52,9 +53,7 @@ export function SeatDemo() {
       <header className="seat-demo__brand">
         Flython <small>AIRLINES</small>
       </header>
-      <p className="seat-demo__step">
-        Flights — Passengers — <strong>Seats</strong> — Review &amp; pay
-      </p>
+      <BookingRouteBar currentStep={3} />
       <SeatSelection
         currency="USD"
         passengers={passengers}

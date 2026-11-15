@@ -118,6 +118,10 @@
 .f3-search-page .f3-search-card {
   margin-top: 24px;
 }
+/* The route bar sits between the page heading and the search card. */
+.f3-search-route-bar {
+  margin-top: 22px;
+}
 
 /* Search form */
 .f3-search-form {
