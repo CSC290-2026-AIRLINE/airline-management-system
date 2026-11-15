@@ -96,12 +96,26 @@ async function main() {
       fareQuoteId: null,
       fareClassId: request.fareClassId,
       currency: 'USD',
-      pricePerPassenger: 148.5,
+      pricePerPassenger: request.seatType === 'extra_legroom' ? 160.5 : 148.5,
       fareRuleSnapshot: null,
       lines: [{ kind: 'fare', label: 'Fare', amount: 148.5 }],
     }),
   }
-  const holds = new HoldService(db, inventory, pricing, seats, { createForHold: async () => {} }, clock)
+  const layouts = {
+    getSeatMap: async () => ({
+      cabins: [{ cabin: 'economy', capacity: 2 }],
+      rows: [
+        {
+          row: 2,
+          seats: [
+            { seatCode: '2A', row: 2, column: 'A', cabin: 'economy', type: 'standard', blocked: false },
+            { seatCode: '2B', row: 2, column: 'B', cabin: 'economy', type: 'extra_legroom', blocked: false },
+          ],
+        },
+      ],
+    }),
+  }
+  const holds = new HoldService(db, inventory, pricing, seats, { createForHold: async () => {} }, clock, layouts)
   const demoConfig = new ConfigService({ NODE_ENV: 'development' })
   const demos = new DemoPassengerService(db, demoConfig)
   const jwt = new JwtService({ secret: randomBytes(32).toString('hex') })
@@ -299,6 +313,24 @@ async function main() {
   assert.equal(price.body.error.code, 'PRICE_CHANGED')
   assert.equal(await inventory.seatsLeft(priceFlight, 'economy'), 1)
   console.log('PASS: PRICE_CHANGED holds nothing')
+  const seatPriceFlight = await newFlight(2)
+  const seatRequest = {
+    ...body(seatPriceFlight),
+    passengers: passengers.map((passengerId) => ({ passengerId, passengerType: 'adult' })),
+    seats: [{ passengerId: passengers[0], flightId: seatPriceFlight, seatCode: '2B' }],
+    expectedTotal: 297,
+  }
+  const seatPriceChange = await post(0, 'seat-inclusive-price', seatRequest)
+  assert.equal(seatPriceChange.status, 409)
+  assert.equal(seatPriceChange.body.error.details.newTotal, 309)
+  assert.equal(await inventory.seatsLeft(seatPriceFlight, 'economy'), 2)
+  const seatHold = await post(0, 'seat-inclusive-price-accepted', { ...seatRequest, expectedTotal: 309 })
+  assert.equal(seatHold.status, 201, JSON.stringify(seatHold.body))
+  assert.equal(seatHold.body.total, 309)
+  const seatCoupons = await db.booking_coupon.findMany({ where: { booking_id: seatHold.body.bookingId } })
+  assert.equal(Number(seatCoupons.find((coupon) => coupon.passenger_id === passengers[0]).price_total), 160.5)
+  assert.equal(Number(seatCoupons.find((coupon) => coupon.passenger_id === passengers[1]).price_total), 148.5)
+  console.log('PASS: mixed seat types require price acceptance and persist different per-passenger totals in PostgreSQL')
   const before = await db.booking.count()
   rejectSeats = true
   const rollback = await post(0, 'rollback', {

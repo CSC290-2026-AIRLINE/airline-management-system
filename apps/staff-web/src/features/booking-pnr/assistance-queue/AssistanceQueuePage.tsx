@@ -1,3 +1,4 @@
+import { Button } from '@staff-web/components/ui/button'
 import { useCallback, useEffect, useState } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { useBookingPnrApi } from '../api/client'
@@ -54,16 +55,22 @@ export function AssistanceQueuePage() {
   return (
     <main className="assistance-page">
       <header className="assistance-page__header">
-        <p className="assistance-page__eyebrow">Customer management</p>
         <h1>Special Assistance Queue</h1>
         <p>Review requests from bookings. Oldest departure first.</p>
       </header>
       {error && (
         <div role="alert">
           <p>{error}</p>
-          <button type="button" onClick={() => setRevision((value) => value + 1)}>
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => {
+              setLoading(true)
+              setRevision((value) => value + 1)
+            }}
+          >
             Reload requests
-          </button>
+          </Button>
         </div>
       )}
       {loading ? <p role="status">Loading assistance requests…</p> : <AssistanceQueue requests={requests} onUpdate={update} />}

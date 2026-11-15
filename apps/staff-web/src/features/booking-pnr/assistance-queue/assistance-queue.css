@@ -9,37 +9,30 @@
 .assistance-page {
   box-sizing: border-box;
   width: 100%;
-  min-height: 100vh;
+  min-height: 0;
   margin: 0 auto;
-  padding: 48px clamp(20px, 5vw, 72px);
+  padding: 32px 28px 48px;
   background: #f7f9fc;
   color: #0a1424;
   font-family: Inter, system-ui, sans-serif;
   text-align: left;
 }
 .assistance-page__header {
-  margin-bottom: 30px;
+  margin-bottom: 24px;
 }
 .assistance-page__header h1 {
   margin: 0 0 8px;
   color: #14213d;
   font-family: inherit;
-  font-size: clamp(26px, 3vw, 34px);
+  font-size: 28px;
+  letter-spacing: -0.6px;
   font-weight: 700;
   line-height: 1.2;
 }
 .assistance-page__header p {
   margin: 0;
   color: #677287;
-  font-size: 15px;
-}
-.assistance-page__header .assistance-page__eyebrow {
-  margin-bottom: 10px;
-  color: #677287;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 14px;
 }
 .assistance-queue {
   font-size: 14px;
@@ -47,28 +40,48 @@
 .assistance-queue__filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding-bottom: 16px;
   border-bottom: 1px solid #e6e8ef;
 }
+/* The status filters are drawn exactly like the trip-type buttons on the book-for-customer route (One-way / Return /
+   Multi-city): outlined white buttons, with the selected one filled light blue and outlined navy. No hover or press
+   styling, and no focus decoration: the browser restores focus to the last used tab on reload, so a focus ring would
+   show up as a stray outline around the filters. Radix still selects a tab when it takes focus, so the choice stays
+   visible while tabbing. */
 .assistance-queue__tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
+  display: inline-flex;
+  max-width: 100%;
+  height: auto;
+  gap: 8px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .assistance-queue__tabs button {
-  padding: 20px 0 14px;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  background: transparent;
-  color: #677287;
-  font-weight: 600;
+  height: auto;
+  padding: 9px 18px;
+  border: 1px solid #d9dfe9;
+  border-radius: 8px;
+  background: #fff;
+  color: #0a1424;
+  font-weight: 500;
   cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
-.assistance-queue__tabs button[aria-pressed='true'] {
+.assistance-queue__tabs button[data-state='active'] {
   border-color: #102544;
+  background: #eaf2ff;
   color: #102544;
+}
+.assistance-queue__tabs:focus-visible,
+.assistance-queue__tabs button:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 .assistance-queue__tabs span {
   font-weight: 400;
@@ -82,9 +95,21 @@
   font-size: 13px;
   font-weight: 600;
 }
+.assistance-queue__search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.assistance-queue__search-field > svg {
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+  color: #677287;
+}
 .assistance-queue__search input {
-  width: 180px;
-  padding: 9px 12px;
+  width: 220px;
+  min-height: 40px;
+  padding: 9px 12px 9px 36px;
   border: 1px solid #d9dfe9;
   border-radius: 7px;
   background: white;
@@ -139,6 +164,7 @@
   border: 0;
   background: none;
   color: #1d4ed8;
+  height: auto;
   font-weight: 700;
   cursor: pointer;
 }
@@ -171,26 +197,12 @@
   flex-wrap: wrap;
   gap: 8px;
 }
-.assistance-queue__primary,
-.assistance-queue__secondary,
-.assistance-queue__danger {
-  padding: 7px 12px;
-  border: 1px solid #d9dfe9;
-  border-radius: 6px;
-  background: white;
-  color: #102544;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.assistance-queue__primary {
-  border-color: #102544;
-  background: #102544;
-  color: #fff;
-}
 .assistance-queue__danger {
   border-color: #e8b1b4;
+  color: #b8171f;
+}
+.assistance-queue__danger:hover:not(:disabled) {
+  background: #fdecec;
   color: #b8171f;
 }
 .assistance-queue button:disabled {
@@ -229,12 +241,167 @@
 }
 @media (max-width: 600px) {
   .assistance-page {
-    padding: 28px 16px;
+    padding: 24px 16px;
   }
   .assistance-queue__tabs {
     gap: 14px;
   }
-  .assistance-queue__table {
-    min-width: 760px;
+}
+
+.assistance-queue__table tbody tr {
+  transition: background-color 150ms;
+}
+.assistance-queue__table tbody tr:hover {
+  background: #f7f9fc;
+}
+.assistance-queue__table td {
+  overflow-wrap: anywhere;
+}
+.assistance-queue__table .assistance-queue__empty p {
+  margin: 8px 0 16px;
+}
+.assistance-queue__reason {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 112px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-input, #dbe0eb);
+  border-radius: 8px;
+  background: #fff;
+  color: #0a1424;
+  font: inherit;
+  resize: vertical;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms;
+}
+.assistance-queue__reason:focus-visible {
+  outline: none;
+  border-color: #102544;
+  box-shadow: 0 0 0 3px #10254425;
+}
+.assistance-queue__reason::placeholder {
+  color: #8993a4;
+}
+.assistance-queue__reason:disabled {
+  opacity: 0.55;
+}
+.assistance-queue__success {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #e4f5e9;
+  color: #1f8a4c;
+}
+.assistance-queue__error {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #fdecec;
+}
+@media (max-width: 1100px) {
+  .assistance-queue__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+@media (max-width: 800px) {
+  .assistance-queue__filters {
+    align-items: stretch;
+  }
+  .assistance-queue__tabs {
+    flex: 1 1 100%;
+    overflow-x: auto;
+  }
+  .assistance-queue__tabs button {
+    flex: 1;
+    padding: 10px 8px;
+    font-size: 13px;
+  }
+  .assistance-queue__tabs button[data-state='active'] {
+    background: #102544;
+    color: #fff;
+  }
+  .assistance-queue__search {
+    flex: 1;
+    justify-content: space-between;
+  }
+  .assistance-queue__search input {
+    width: 100%;
+  }
+  .assistance-queue__search-field {
+    flex: 1;
+    max-width: 280px;
+  }
+  .assistance-queue__table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+  .assistance-queue__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .assistance-queue__table,
+  .assistance-queue__table tbody {
+    display: block;
+    width: 100%;
+  }
+  .assistance-queue__table tbody {
+    display: grid;
+    gap: 12px;
+  }
+  .assistance-queue__table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid #d9dfe9;
+    border-radius: 10px;
+    background: #fff;
+  }
+  .assistance-queue__table td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    font-size: 13px;
+  }
+  .assistance-queue__table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    color: #677287;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .assistance-queue__table td:nth-child(4),
+  .assistance-queue__table td:last-child,
+  .assistance-queue__table .assistance-queue__empty {
+    grid-column: 1 / -1;
+  }
+  .assistance-queue__actions {
+    flex-direction: row;
+  }
+  .assistance-queue__actions button {
+    flex: 1;
+    min-height: 40px;
+  }
+  .assistance-queue__table .assistance-queue__empty {
+    padding: 24px 8px;
+  }
+  .assistance-page__header h1 {
+    font-size: 26px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistance-queue__tabs button,
+  .assistance-queue__table tbody tr,
+  .assistance-queue__reason {
+    transition: none;
   }
 }

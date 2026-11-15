@@ -28,6 +28,7 @@ function flight(id = 'flight-a', hour = 12) {
     arr_at: new Date(`2026-11-10T${hour + 1}:30:00Z`),
     route: { origin: 'BKK', destination: 'HKT' },
     seat_inventory: [{ cabin: 'economy' }],
+    aircraft: { aircraft_type: { id: 'type', layout: { rows: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'] } } },
   }
 }
 function fixture(flights = [flight()]) {
@@ -48,6 +49,13 @@ function fixture(flights = [flight()]) {
 }
 
 describe('SearchService', () => {
+  it('does not advertise stale inventory for a cabin absent from the assigned aircraft', async () => {
+    const { service, db, quote, availability } = fixture()
+    db.fare_class.findMany.mockResolvedValueOnce([{ id: 'fare-j', code: 'J', cabin: 'business' }])
+    availability.mockResolvedValueOnce([{ flightId: 'flight-a', cabin: 'business', seatsLeft: 12 }])
+    expect((await service.search(request)).legs[0].options).toHaveLength(0)
+    expect(quote).not.toHaveBeenCalled()
+  })
   it('batches inventory once, carries quote ids, and preserves numeric counts above nine', async () => {
     const { service, availability, quote, baseCurrency } = fixture()
     const result = await service.search(request)
@@ -68,6 +76,7 @@ describe('SearchService', () => {
       expect.objectContaining({
         where: {
           status: { in: ['scheduled', 'delayed'] },
+          aircraft: { deleted_at: null, aircraft_type: { deleted_at: null } },
           dep_at: { gte: new Date('2026-11-09T11:00:00Z') },
           seat_inventory: { some: {} },
           OR: [{ service_date: new Date('2026-11-10T00:00:00Z'), route: { origin: 'BKK', destination: 'HKT' } }],

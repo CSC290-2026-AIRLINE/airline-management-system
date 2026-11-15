@@ -222,6 +222,7 @@ export interface SeatDefinition {
   cabin: Cabin
   type: SeatType
   blocked: boolean
+  aisleBefore?: boolean
 }
 
 export interface SeatRow {
@@ -243,7 +244,8 @@ export interface SeatMap {
 }
 
 export interface SeatMapPort {
-  getSeatMap: (flightId: string) => Promise<SeatMap>
+  // Event replay can name the immutable type from that event rather than the flight's latest aircraft.
+  getSeatMap: (flightId: string, aircraftTypeId?: string) => Promise<SeatMap>
 }
 
 export type TripType = 'one_way' | 'return' | 'multi_city'

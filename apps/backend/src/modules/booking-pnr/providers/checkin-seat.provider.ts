@@ -128,6 +128,7 @@ export class CheckinSeatProvider implements SeatProvider {
     options: {
       rejectCheckedIn?: boolean
       payWithCheckout?: boolean
+      capturedPaymentId?: string
       staffOverride?: { userId: string; staffId: string; reason: string }
     } = {},
   ): Promise<{ seatCode: string; type: SeatType }> {
@@ -193,7 +194,7 @@ export class CheckinSeatProvider implements SeatProvider {
       ) {
         throw new BookingError('SEAT_NOT_ALLOWED', 'Seat is not allowed for this passenger')
       }
-      let paymentId = held.payment_id
+      let paymentId = held.payment_id ?? options.capturedPaymentId
       if (Number(held.fee_amount) > 0) {
         if (!paymentId && options.payWithCheckout) {
           const payment = await this.checkout.charge(
@@ -272,9 +273,13 @@ export class CheckinSeatProvider implements SeatProvider {
     })
   }
 
-  async assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType } | null> {
+  async assigned(bookingPassengerId: string, flightId?: string): Promise<{ seatCode: string; type: SeatType } | null> {
     const seats = await this.db.seat_assignment.findMany({
-      where: { status: 'assigned', booking_coupon: { booking_passenger_id: bookingPassengerId } },
+      where: {
+        status: 'assigned',
+        ...(flightId ? { flight_id: flightId } : {}),
+        booking_coupon: { booking_passenger_id: bookingPassengerId },
+      },
       take: 2,
     })
     if (seats.length !== 1) return null
@@ -325,9 +330,13 @@ export class CheckinSeatProvider implements SeatProvider {
     throw new BookingError('SEAT_UNAVAILABLE', 'No standard seats are available')
   }
 
-  async releaseAssigned(bookingPassengerId: string): Promise<void> {
+  async releaseAssigned(bookingPassengerId: string, flightId?: string): Promise<void> {
     const seats = await this.db.seat_assignment.findMany({
-      where: { status: 'assigned', booking_coupon: { booking_passenger_id: bookingPassengerId } },
+      where: {
+        status: 'assigned',
+        ...(flightId ? { flight_id: flightId } : {}),
+        booking_coupon: { booking_passenger_id: bookingPassengerId },
+      },
       select: { id: true },
       take: 2,
     })

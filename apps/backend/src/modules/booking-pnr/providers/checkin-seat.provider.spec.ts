@@ -120,6 +120,60 @@ describe('CheckinSeatProvider', () => {
     expect(update).not.toHaveBeenCalled()
   })
 
+  it('assigns a checkout-captured payment only after verifying its amount, currency and purchase', async () => {
+    findUniqueOrThrow.mockResolvedValue({
+      id: 'lock',
+      flight_id: 'flight',
+      seat_code: '12A',
+      status: 'held',
+      hold_expires_at: new Date('2026-11-10T12:05:00Z'),
+      fee_amount: 12,
+      payment_id: null,
+      booking_coupon_id: 'coupon',
+    })
+    await provider.confirm('lock', { capturedPaymentId: 'captured' })
+    expect(checkout.charge).not.toHaveBeenCalled()
+    expect(payment.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'captured',
+        booking_id: 'booking',
+        purchase_ref: 'seat_assignment:lock',
+        status: 'captured',
+        currency: 'THB',
+        amount_total: 12,
+      },
+      select: { id: true },
+    })
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ payment_id: 'captured', status: 'assigned' }) }),
+    )
+  })
+
+  it('rejects an unrelated checkout payment without releasing the previous seat', async () => {
+    findUniqueOrThrow.mockResolvedValue({
+      id: 'lock',
+      flight_id: 'flight',
+      seat_code: '12A',
+      status: 'held',
+      hold_expires_at: new Date('2026-11-10T12:05:00Z'),
+      fee_amount: 12,
+      payment_id: null,
+      booking_coupon_id: 'coupon',
+    })
+    payment.findFirst.mockResolvedValue(null)
+    await expect(provider.confirm('lock', { capturedPaymentId: 'wrong' })).rejects.toMatchObject({ code: 'SEAT_NOT_ALLOWED' })
+    expect(updateMany).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('scopes check-in seat reads and releases to the requested flight', async () => {
+    findMany.mockResolvedValue([])
+    await provider.assigned('passenger', 'flight-two')
+    await provider.releaseAssigned('passenger', 'flight-two')
+    expect(findMany).toHaveBeenCalledTimes(2)
+    for (const [query] of findMany.mock.calls) expect(query.where.flight_id).toBe('flight-two')
+  })
+
   it('captures the development payment and assigns the paid seat in one transaction', async () => {
     findUniqueOrThrow.mockResolvedValue({
       id: 'lock',

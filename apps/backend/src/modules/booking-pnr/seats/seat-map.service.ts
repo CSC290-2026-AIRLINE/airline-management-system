@@ -53,6 +53,7 @@ export class SeatMapService {
             type: seat.type,
             state,
             fee: fees.get(`${seat.cabin}:${seat.type}`) ?? 0,
+            ...(seat.aisleBefore !== undefined ? { aisleBefore: seat.aisleBefore } : {}),
           }
         }),
       })),

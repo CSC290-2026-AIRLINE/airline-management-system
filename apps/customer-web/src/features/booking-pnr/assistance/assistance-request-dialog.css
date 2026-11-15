@@ -1,37 +1,67 @@
 .assistance-request-dialog {
-  width: min(90vw, 32rem);
-  max-height: 85vh;
+  box-sizing: border-box;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
   overflow-y: auto;
-  border: 0;
-  border-radius: 0.75rem;
-  color: #14213d;
-  padding: 1.5rem;
+  padding: 24px;
+  border: 1px solid var(--f3-border, #d9dfe9);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--f3-ink, #0a1424);
+  font:
+    14px/1.5 Inter,
+    system-ui,
+    sans-serif;
+  text-align: left;
+  box-shadow: 0 20px 50px #08060d40;
 }
 .assistance-request-dialog::backdrop {
-  background: rgb(20 33 61 / 55%);
+  background: #08060d73;
+}
+.assistance-request-dialog h2 {
+  margin: 0 0 8px;
+  font-family: inherit;
+  font-size: 20px;
+}
+.assistance-request-dialog__context {
+  margin: 0 0 20px;
+  color: var(--f3-muted, #677287);
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .assistance-request-dialog [role='alert'] {
-  color: #9b2525;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--f3-danger-soft, #fdecec);
+  color: var(--f3-danger, #b8171f);
 }
 .assistance-request-dialog__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.75rem;
-  margin-top: 1rem;
+  gap: 8px;
+  margin-top: 20px;
 }
-.assistance-request-dialog__actions button {
-  padding: 0.65rem 1rem;
-  border: 1px solid #102544;
-  border-radius: 0.4rem;
-  background: white;
-  color: #102544;
-  cursor: pointer;
+@media (max-width: 600px) {
+  .assistance-request-dialog {
+    padding: 20px 16px;
+  }
+  .assistance-request-dialog__actions {
+    display: grid;
+  }
 }
-.assistance-request-dialog__actions button[type='submit'] {
-  background: #102544;
-  color: white;
-}
-.assistance-request-dialog__actions button:disabled {
-  opacity: 0.6;
-  cursor: wait;
+@media (prefers-reduced-motion: no-preference) {
+  .assistance-request-dialog[open] {
+    animation: assistance-dialog-in 150ms ease-out;
+  }
+  @keyframes assistance-dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }

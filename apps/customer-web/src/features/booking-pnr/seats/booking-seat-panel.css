@@ -1,0 +1,105 @@
+.booking-seat-panel {
+  min-width: 0;
+}
+.booking-seat-panel__card {
+  min-width: 0;
+}
+.booking-seat-panel__passengers {
+  margin-top: 16px;
+}
+.booking-seat-panel__passenger {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--f3-line);
+}
+.booking-seat-panel__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--f3-selected);
+  color: var(--f3-primary);
+}
+.booking-seat-panel__person {
+  flex: 1;
+  min-width: 140px;
+}
+.booking-seat-panel__person strong,
+.booking-seat-panel__person span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.booking-seat-panel__person strong {
+  font-size: 14px;
+}
+.booking-seat-panel__person span {
+  margin-top: 4px;
+  color: var(--f3-muted);
+  font-size: 12px;
+}
+.booking-seat-panel__seat {
+  min-width: 80px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--f3-neutral-soft);
+  color: var(--f3-neutral);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+.booking-seat-panel__seat.is-assigned {
+  background: var(--f3-selected);
+  color: var(--f3-primary);
+}
+.booking-seat-panel__editor {
+  margin-top: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--f3-line);
+}
+.booking-seat-panel__editor:focus {
+  outline: none;
+}
+.booking-seat-panel__editor-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.booking-seat-panel__editor-heading h3 {
+  margin: 0;
+  font-size: 16px;
+  font-family: inherit;
+}
+.booking-seat-panel__editor .seat-picker__rows {
+  max-height: 440px;
+}
+.booking-seat-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+@media (max-width: 600px) {
+  .booking-seat-panel__passenger {
+    gap: 10px;
+  }
+  .booking-seat-panel__passenger > button {
+    width: 100%;
+  }
+  .booking-seat-panel__person {
+    min-width: 100px;
+  }
+  .booking-seat-panel__actions {
+    display: grid;
+  }
+  .booking-seat-panel__editor .seat-picker__row-note {
+    display: none;
+  }
+}

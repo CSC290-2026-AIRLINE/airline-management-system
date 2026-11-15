@@ -1,23 +1,26 @@
 .assistance-status {
-  display: inline-block;
-  padding: 0.2rem 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
   border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 .assistance-status--requested {
-  background: #fff2d6;
-  color: #805000;
+  background: var(--f3-warning-soft, #fef4de);
+  color: var(--f3-warning, #94651c);
 }
 .assistance-status--accepted {
-  background: #e2f5e9;
-  color: #176b38;
+  background: var(--f3-success-soft, #e4f5e9);
+  color: var(--f3-success, #1f8a4c);
 }
 .assistance-status--rejected {
-  background: #fde8e8;
-  color: #9b2525;
+  background: var(--f3-danger-soft, #fdecec);
+  color: var(--f3-danger, #b8171f);
 }
 .assistance-status--completed {
-  background: #e9edf1;
-  color: #465568;
+  background: var(--f3-neutral-soft, #eef2f7);
+  color: var(--f3-neutral, #475569);
 }

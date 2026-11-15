@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
 import type { AssistanceFieldsProps, PriceChangedDialogProps, SeatTakenDialogProps } from '../components/contracts'
 import type { PriceChangedDetails } from '../api/types'
@@ -18,10 +18,12 @@ export interface BookingSeatStepProps {
   choices: SeatChoice[]
   busy: boolean
   error: string | null
+  tripSummary?: ReactNode
+  promoCode?: string
   onChange: (choices: SeatChoice[]) => void
   onBack: () => void
-  onContinue: () => void
-  onSkip: () => void
+  onContinue: (expectedTotal?: number) => void
+  onSkip: (expectedTotal?: number, remainingChoices?: SeatChoice[]) => void
 }
 
 export interface FlowComponents {

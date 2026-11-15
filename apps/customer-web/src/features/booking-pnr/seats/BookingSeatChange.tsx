@@ -3,6 +3,8 @@ import { ApiError } from '../api/client'
 import type { Cabin, SeatMap } from '../api/types'
 import { SeatPicker } from './SeatPicker'
 import { SeatTakenDialog } from './SeatTakenDialog'
+import controls from '../styles/controls.module.css'
+import { formatMoney } from '../lib/format'
 import './seat-selection.css'
 
 interface BookingSeatChangeProps {
@@ -37,6 +39,7 @@ export function BookingSeatChange({
   const [assigned, setAssigned] = useState(false)
   const [taken, setTaken] = useState(false)
   const seats = seatMap.rows.flatMap((row) => row.seats)
+  const selectedSeat = seats.find((seat) => seat.seatCode === selected)
 
   function chooseAnother() {
     setTaken(false)
@@ -75,15 +78,22 @@ export function BookingSeatChange({
 
   return (
     <section className="seat-selection" aria-label="Change your seat">
-      <h2>Choose a seat for {passengerName}</h2>
-      <p>Current seat: {currentSeat ?? 'Not chosen'}</p>
-      <p>Exit-row seats are subject to eligibility rules.</p>
+      <div className="booking-seat-panel__editor-heading">
+        <div>
+          <h3>Choose a seat for {passengerName}</h3>
+          <p className="seat-selection__muted">Current seat: {currentSeat ?? 'Not chosen'} · Exit-row seats have eligibility rules.</p>
+        </div>
+        <button className={controls.secondary} type="button" disabled={saving} onClick={onClose}>
+          Close
+        </button>
+      </div>
       <SeatTakenDialog open={taken} seatCode={selected} onClose={chooseAnother} onChooseAnother={chooseAnother} />
       <SeatPicker
         seats={seats}
         currency={currency}
         selectedCabin={cabin}
         selectedSeatCode={selected}
+        currentSeatCode={currentSeat}
         passengerLabel={passengerName}
         disabledSeatCodes={seats
           .filter((seat) => seat.cabin !== cabin || saving || paymentRequired || assigned)
@@ -93,10 +103,29 @@ export function BookingSeatChange({
           setMessage(null)
         }}
       />
-      {message && <p role="status">{message}</p>}
-      <div className="seat-selection__segments">
+      {selectedSeat && (
+        <div className="seat-selection__selected" role="status">
+          <span>
+            <strong>Seat {selectedSeat.seatCode}</strong>
+            <small>{selectedSeat.type.replaceAll('_', ' ')}</small>
+          </span>
+          <strong>{selectedSeat.fee ? formatMoney(selectedSeat.fee, currency) : 'Free'}</strong>
+        </div>
+      )}
+      {selectedSeat?.type === 'exit' && (
+        <p className="seat-selection__warning" role="status">
+          Exit-row seats require an adult with no assistance request and no infant on their lap.
+        </p>
+      )}
+      {message && (
+        <p className="seat-selection__hint" role="status">
+          {message}
+        </p>
+      )}
+      <div className="booking-seat-panel__actions">
         {import.meta.env.DEV && paymentRequired && paymentLock && onPaySeat && (
           <button
+            className={controls.primary}
             type="button"
             disabled={saving || assigned}
             onClick={() => {
@@ -114,11 +143,16 @@ export function BookingSeatChange({
             {saving ? 'Confirming payment…' : 'Confirm seat payment (development)'}
           </button>
         )}
-        <button type="button" disabled={!selected || saving || paymentRequired || assigned} onClick={() => void submit()}>
+        <button
+          className={controls.primary}
+          type="button"
+          disabled={!selected || saving || paymentRequired || assigned}
+          onClick={() => void submit()}
+        >
           {saving ? 'Saving…' : 'Confirm seat'}
         </button>
-        <button type="button" disabled={saving} onClick={onClose}>
-          Close
+        <button className={controls.secondary} type="button" disabled={saving} onClick={onClose}>
+          {assigned ? 'Done' : 'Cancel'}
         </button>
       </div>
     </section>

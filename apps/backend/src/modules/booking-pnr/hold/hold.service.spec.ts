@@ -50,10 +50,28 @@ function fixture() {
   }
   const inventory = { lock: jest.fn(() => Promise.resolve()), hold: jest.fn(() => Promise.resolve()) }
   const pricing = {
-    quote: jest.fn(() => Promise.resolve({ currency: 'THB', fareClassId: 'fare', fareQuoteId: null, pricePerPassenger: 148.5 })),
+    quote: jest.fn(() =>
+      Promise.resolve({ currency: 'THB', fareClassId: 'fare', fareQuoteId: null as string | null, pricePerPassenger: 148.5 }),
+    ),
   }
   const seats = { holdForBooking: jest.fn(() => Promise.resolve()) }
   const requests = { createForHold: jest.fn(() => Promise.resolve()) }
+  const layouts = {
+    getSeatMap: jest.fn(() =>
+      Promise.resolve({
+        cabins: [{ cabin: 'economy' as const, capacity: 180 }],
+        rows: [
+          {
+            row: 8,
+            seats: [
+              { seatCode: '8A', row: 8, column: 'A', cabin: 'economy' as const, type: 'extra_legroom' as const, blocked: false },
+              { seatCode: '8B', row: 8, column: 'B', cabin: 'economy' as const, type: 'standard' as const, blocked: false },
+            ],
+          },
+        ],
+      }),
+    ),
+  }
   const service = new HoldService(
     db as unknown as DbService,
     inventory as unknown as InventoryPort,
@@ -61,11 +79,79 @@ function fixture() {
     seats as unknown as SeatPort,
     requests,
     { now: () => now },
+    layouts,
   )
-  return { service, db, tx, inventory, pricing, seats, requests, created }
+  return { service, db, tx, inventory, pricing, seats, requests, created, layouts }
 }
 
 describe('HoldService', () => {
+  it('does not report an existing passenger booking as a taken seat', async () => {
+    const { service, tx } = fixture()
+    tx.booking_coupon.createMany.mockRejectedValueOnce({ code: 'P2002', meta: { constraint: 'booking_coupon_person_uq' } })
+    await expect(service.createForUser('user', 'new-key', request)).rejects.toMatchObject({
+      code: 'INVALID_BOOKING_STATE',
+      message: 'A passenger already has an active booking on a selected flight',
+    })
+  })
+
+  it('does not sell a cabin absent from the actual aircraft even if inventory rows are stale', async () => {
+    const { service, layouts, inventory, pricing } = fixture()
+    layouts.getSeatMap.mockResolvedValueOnce({ cabins: [], rows: [] })
+    await expect(service.createForUser('user', 'key', request)).rejects.toMatchObject({ code: 'FARE_UNAVAILABLE' })
+    expect(inventory.hold).not.toHaveBeenCalled()
+    expect(pricing.quote).not.toHaveBeenCalled()
+  })
+  it('includes the chosen seat in each passenger coupon quote while lap infants remain free', async () => {
+    const { service, tx, pricing, layouts } = fixture()
+    tx.passenger.findMany.mockResolvedValueOnce([
+      ...adults,
+      { id: 'adult-2', date_of_birth: new Date('1991-01-01') },
+      { id: 'baby', date_of_birth: new Date('2026-01-01') },
+    ] as passenger[])
+    pricing.quote
+      .mockResolvedValueOnce({ currency: 'THB', fareClassId: 'fare', fareQuoteId: 'extra-quote', pricePerPassenger: 175.25 })
+      .mockResolvedValueOnce({ currency: 'THB', fareClassId: 'fare', fareQuoteId: 'regular-quote', pricePerPassenger: 148.5 })
+    const result = await service.createForUser('user', 'seat-key', {
+      ...request,
+      passengers: [
+        ...request.passengers,
+        { passengerId: 'adult-2', passengerType: 'adult' },
+        { passengerId: 'baby', passengerType: 'infant', lapOfPassengerId: 'adult-2' },
+      ],
+      seats: [{ passengerId: 'adult', flightId: 'flight', seatCode: '8A' }],
+      expectedTotal: 323.75,
+    })
+    expect(result.total).toBe(323.75)
+    expect(layouts.getSeatMap).toHaveBeenCalledTimes(1)
+    expect(pricing.quote).toHaveBeenNthCalledWith(1, expect.objectContaining({ seatType: 'extra_legroom' }))
+    expect(tx.booking_coupon.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ passenger_id: 'adult', fare_quote_id: 'extra-quote', price_total: '175.25' }),
+        expect.objectContaining({ passenger_id: 'adult-2', fare_quote_id: 'regular-quote', price_total: '148.50' }),
+        expect.objectContaining({ passenger_id: 'baby', fare_quote_id: null, price_total: '0.00' }),
+      ],
+    })
+  })
+
+  it('requires acceptance of a seat-inclusive price change before reserving inventory', async () => {
+    const { service, pricing, inventory, tx } = fixture()
+    pricing.quote.mockResolvedValueOnce({ currency: 'THB', fareClassId: 'fare', fareQuoteId: 'seat-quote', pricePerPassenger: 175.25 })
+    await expect(
+      service.createForUser('user', 'key', { ...request, seats: [{ passengerId: 'adult', flightId: 'flight', seatCode: '8A' }] }),
+    ).rejects.toMatchObject({ code: 'PRICE_CHANGED', details: { newTotal: 175.25 } })
+    expect(inventory.hold).not.toHaveBeenCalled()
+    expect(tx.booking.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects a seat absent from the aircraft before pricing or inventory writes', async () => {
+    const { service, pricing, inventory } = fixture()
+    await expect(
+      service.createForUser('user', 'key', { ...request, seats: [{ passengerId: 'adult', flightId: 'flight', seatCode: '99Z' }] }),
+    ).rejects.toMatchObject({ code: 'SEAT_NOT_ALLOWED' })
+    expect(pricing.quote).not.toHaveBeenCalled()
+    expect(inventory.hold).not.toHaveBeenCalled()
+  })
+
   it('holds for the selected customer and records the authenticated staff member', async () => {
     const { service, db, tx } = fixture()
     await service.createForStaff('staff-user', 'target-customer', 'staff-key', request)
@@ -208,14 +294,14 @@ describe('HoldService', () => {
     await service.createForUser('user', 'key', {
       ...request,
       promoCode: 'PROMO',
-      seats: [{ passengerId: 'adult', flightId: 'flight', seatCode: '2A' }],
+      seats: [{ passengerId: 'adult', flightId: 'flight', seatCode: '8B' }],
       serviceRequests: [{ passengerId: 'adult', flightId: 'flight', serviceCode: 'WCHR' }],
     })
     expect(pricing.quote).toHaveBeenCalledWith(expect.objectContaining({ promoCode: 'PROMO' }))
     expect(seats.holdForBooking).toHaveBeenCalledWith(
       tx,
       'booking',
-      [expect.objectContaining({ bookingCouponId: expect.any(String), seatCode: '2A' })],
+      [expect.objectContaining({ bookingCouponId: expect.any(String), seatCode: '8B' })],
       expect.any(Date),
     )
     expect(requests.createForHold).toHaveBeenCalledWith(tx, [

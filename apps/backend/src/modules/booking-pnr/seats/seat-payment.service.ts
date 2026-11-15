@@ -11,6 +11,12 @@ export class SeatPaymentService {
     private readonly seats: CheckinSeatProvider,
     @Inject(BOOKING_READ_PORT) private readonly bookings: BookingReadPort,
   ) {}
+  // Trusted checkout calls this after capturing payment. The seat provider verifies the stored payment's purchase,
+  // amount, currency and booking in the same transaction that assigns the seat. No browser-supplied paid flag.
+  async confirmCapturedPayment(lockId: string, paymentId: string) {
+    const seat = await this.seats.confirm(lockId, { rejectCheckedIn: true, capturedPaymentId: paymentId })
+    return { status: 'assigned' as const, seat }
+  }
   async confirmForUser(reference: string, couponId: string, lockId: string, userId: string, overrideReason?: string) {
     const [customer, staff] = await Promise.all([
       this.db.customer.findFirst({

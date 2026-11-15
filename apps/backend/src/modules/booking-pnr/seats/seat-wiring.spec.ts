@@ -7,6 +7,8 @@ import { FlightImpactService } from '../flight-events/flight-impact.service'
 import { CheckinSeatProvider } from '../providers/checkin-seat.provider'
 import { SeatChangeController } from './seat-change.controller'
 import { SeatChangeService } from './seat-change.service'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import { BOOKING_CLOCK } from '../contracts'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@nestjs/config', () => ({ ConfigService: class {} }))
@@ -45,6 +47,7 @@ describe('Member C backend wiring', () => {
     expect(module.get(CheckinSeatProvider)).toBeInstanceOf(CheckinSeatProvider)
     expect(module.get(FlightImpactService)).toBeInstanceOf(FlightImpactService)
     expect(module.get(ImpactConsumer).impact).toBeInstanceOf(FlightImpactService)
+    expect(module.get(BOOKING_CLOCK)).toBe(module.get(SimulationClock))
     await module.close()
   })
 })

@@ -90,7 +90,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   }
   function continueToSeats() {
     if (!itinerary) return
-    const missingNote = Object.values(assistance).some((value) => ['UMNR', 'MEDA'].includes(value.serviceCode ?? '') && !value.note.trim())
+    const missingNote = Object.values(assistance).some(
+      (value) =>
+        (value.serviceCodes ?? (value.serviceCode ? [value.serviceCode] : [])).some((code) => code === 'UMNR' || code === 'MEDA') &&
+        !value.note.trim(),
+    )
     const missingDemo = demoMode && travellers.some((person) => !person.demoPassengerId)
     const message =
       (missingDemo ? 'Choose a demo traveller for every passenger.' : null) ??
@@ -99,7 +103,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
     setError(message)
     if (!message) setStep(3)
   }
-  async function createHold(selected: SeatChoice[] = choices, retry?: HoldBookingRequest) {
+  async function createHold(selected: SeatChoice[] = choices, retry?: HoldBookingRequest, expectedTotal?: number) {
     if (!itinerary || inFlight.current) return
     // Until Feature 7's resolver is agreed, fail before any hold or profile write.
     if (!passengerResolver) {
@@ -145,13 +149,15 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
         contactEmail: contact.email.trim(),
         contactPhone: contact.phone.trim(),
         promoCode: contact.promoCode.trim() || undefined,
-        expectedTotal: itinerary.expectedTotal,
+        expectedTotal: expectedTotal ?? itinerary.expectedTotal,
         seats,
         serviceRequests: travellers.flatMap((person) => {
           const value = assistance[person.key]
-          return value?.serviceCode
-            ? [{ passengerId: idFor(person.key), serviceCode: value.serviceCode, note: value.note.trim() || undefined }]
-            : []
+          return (value?.serviceCodes ?? (value?.serviceCode ? [value.serviceCode] : [])).map((serviceCode) => ({
+            passengerId: idFor(person.key),
+            serviceCode,
+            note: value.note.trim() || undefined,
+          }))
         }),
       }
       pendingRequest.current = request
@@ -193,6 +199,35 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
       </main>
     )
   const tripCurrency = held?.currency ?? itinerary.selections[0]?.fare.currency ?? 'USD'
+  const tripSummary = (
+    <div className="f3-trip-summary">
+      <h2>Your trip</h2>
+      {itinerary.selections.map(({ flight, fare }) => (
+        <article key={flight.flightId}>
+          <strong>
+            {flight.origin} → {flight.destination}
+          </strong>
+          <p>
+            {flight.flightNumber} · {fare.cabin.replaceAll('_', ' ')}
+          </p>
+          <p>
+            {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
+              new Date(flight.depAt),
+            )}
+          </p>
+        </article>
+      ))}
+      <p>
+        {itinerary.request.adults} adults · {itinerary.request.children} children · {itinerary.request.infants} infants
+      </p>
+      {step !== 3 && (
+        <div className="f3-trip-summary__fare">
+          <span>Fare quote</span>
+          <strong>{formatMoney(itinerary.expectedTotal, tripCurrency)}</strong>
+        </div>
+      )}
+    </div>
+  )
   if (step === 1)
     return (
       <FlightSearchPage
@@ -206,6 +241,14 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
     )
   return (
     <main className="f3-search f3-flow f3-customer-flow">
+      <h1>{step === 2 ? 'Passengers & extras' : step === 3 ? 'Choose your seats' : 'Booking held'}</h1>
+      {step !== 3 && (
+        <p className="f3-search-intro">
+          {step === 2
+            ? 'Enter traveller details exactly as they appear on the passport.'
+            : 'Keep your booking reference for the next step.'}
+        </p>
+      )}
       <ol className="f3-flow-stepper" aria-label="Booking progress">
         {['Flights', 'Passengers', 'Seats', 'Review & pay'].map((label, index) => (
           <li className={step > index + 1 ? 'is-complete' : undefined} key={label} aria-current={step === index + 1 ? 'step' : undefined}>
@@ -214,14 +257,6 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
           </li>
         ))}
       </ol>
-      <h1>{step === 2 ? 'Passengers & extras' : step === 3 ? 'Choose your seats' : 'Booking held'}</h1>
-      <p className="f3-search-intro">
-        {step === 2
-          ? 'Enter traveller details exactly as they appear on the passport.'
-          : step === 3
-            ? 'Seat selection is optional. You can choose later in My Trips or at check-in.'
-            : 'Keep your booking reference for the next step.'}
-      </p>
       {priceChange && PriceChangedDialog && (
         <PriceChangedDialog
           {...{
@@ -257,7 +292,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
           }}
         />
       )}
-      <div className="f3-flow-columns">
+      <div className={`f3-flow-columns${step === 3 && SeatStep ? ' f3-flow-columns--seats' : ''}`}>
         <div>
           {step === 2 && (
             <>
@@ -280,11 +315,9 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                   AssistanceFields
                     ? (person) => (
                         <div className="f3-passenger-assistance">
-                          <h3>
-                            Special assistance <span>(optional)</span>
-                          </h3>
                           <AssistanceFields
                             value={assistance[person.key] ?? { serviceCode: null, note: '' }}
+                            bookingMode
                             disabled={busy}
                             onChange={(value) => {
                               setAssistance((current) => ({ ...current, [person.key]: value }))
@@ -308,6 +341,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                   choices,
                   busy,
                   error,
+                  promoCode: contact.promoCode.trim() || undefined,
                   onChange: (next) => {
                     if (!inFlight.current) {
                       setChoices(next)
@@ -321,11 +355,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                       setStep(2)
                     }
                   },
-                  onContinue: () => void createHold(),
-                  onSkip: () => {
+                  onContinue: (expectedTotal) => void createHold(choices, undefined, expectedTotal),
+                  onSkip: (expectedTotal, remainingChoices = []) => {
                     if (!inFlight.current) {
-                      setChoices([])
-                      void createHold([])
+                      setChoices(remainingChoices)
+                      void createHold(remainingChoices, undefined, expectedTotal)
                     }
                   },
                 }}
@@ -389,29 +423,12 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
             </section>
           )}
         </div>
-        <aside className="f3-flow-summary" aria-label="Your trip">
-          <p className="f3-search-eyebrow">YOUR TRIP</p>
-          {itinerary.selections.map(({ flight, fare }) => (
-            <article key={flight.flightId}>
-              <strong>
-                {flight.origin} → {flight.destination}
-              </strong>
-              <p>
-                {flight.flightNumber} · {fare.cabin.replace('_', ' ')}
-              </p>
-              <p>
-                {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
-                  new Date(flight.depAt),
-                )}
-              </p>
-            </article>
-          ))}
-          <p>
-            {itinerary.request.adults} adults · {itinerary.request.children} children · {itinerary.request.infants} infants
-          </p>
-          <strong>{formatMoney(itinerary.expectedTotal, tripCurrency)}</strong>
-          <p>Seats are held for 15 minutes only after you finish the Seat step.</p>
-        </aside>
+        {!(step === 3 && SeatStep) && (
+          <aside className="f3-flow-summary" aria-label="Your trip">
+            {tripSummary}
+            <p>Seats are held for 15 minutes only after you finish the Seat step.</p>
+          </aside>
+        )}
       </div>
     </main>
   )

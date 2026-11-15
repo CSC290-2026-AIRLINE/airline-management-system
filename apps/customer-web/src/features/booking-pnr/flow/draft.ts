@@ -207,7 +207,16 @@ function sanitiseAssistance(value: unknown, travellers: TravellerDraft[]): Recor
     const raw = entry as Record<string, unknown>
     const code = raw.serviceCode
     if (code !== null && code !== undefined && !(typeof code === 'string' && SERVICE_CODES.includes(code as ServiceCode))) continue
-    result[key] = { serviceCode: (code as ServiceCode | null | undefined) ?? null, note: readText(raw.note, 500) }
+    const serviceCodes = Array.isArray(raw.serviceCodes)
+      ? [
+          ...new Set(
+            raw.serviceCodes.filter((item): item is ServiceCode => typeof item === 'string' && SERVICE_CODES.includes(item as ServiceCode)),
+          ),
+        ]
+      : code
+        ? [code as ServiceCode]
+        : []
+    result[key] = { serviceCode: serviceCodes[0] ?? null, serviceCodes, note: readText(raw.note, 500) }
   }
   return result
 }

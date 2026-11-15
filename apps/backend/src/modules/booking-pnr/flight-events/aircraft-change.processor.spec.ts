@@ -43,6 +43,7 @@ describe('AircraftChangeProcessor', () => {
 
   it('updates capacity and releases only seats missing from the new layout', async () => {
     await expect(processor.process(tx, event)).resolves.toEqual({ releasedCouponIds: ['c2'] })
+    expect(maps.getSeatMap).toHaveBeenCalledWith('flight', 'new-type')
     expect(inventory.setCapacity).toHaveBeenCalledWith(tx, 'flight', 'economy', 1)
     expect(seats.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: { in: ['s2'] }, status: { in: ['held', 'assigned'] } } }),
