@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, UseFilters } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import {
@@ -18,12 +18,14 @@ import {
 } from '../dto/operations.dto'
 import { ConflictService, type ListConflictsQueryDto } from './conflict.service'
 import { FlightConfirmService } from './flight-confirm.service'
-import { FlightInsightService } from './flight-insight.service'
+import { type EventLogQuery, FlightInsightService } from './flight-insight.service'
 import { GateCheckService } from './gate-check.service'
 import { FlightOperationsService } from './flight-operations.service'
 import { StaffActorService } from './staff-actor.service'
+import { FlightErrorFilter } from '../flight-error.filter'
 
 // Operations writes always need a staff member, because every event and resolution records who made it.
+@UseFilters(FlightErrorFilter)
 @Controller('flight-scheduling')
 export class FlightOperationsController {
   constructor(
@@ -83,6 +85,12 @@ export class FlightOperationsController {
   @Get('partner-airlines')
   listPartnerAirlines() {
     return this.operations.listPartnerAirlines()
+  }
+
+  // Declared before the ':id' routes, like the batch routes, so 'events' is never read as an id.
+  @Get('events')
+  eventLog(@Query() query: EventLogQuery) {
+    return this.insight.listEvents(query)
   }
 
   @Get('flights/:id/events')

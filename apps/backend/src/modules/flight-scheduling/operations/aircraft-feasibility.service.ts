@@ -124,7 +124,9 @@ export class AircraftFeasibilityService {
           ],
         },
       })
-      if (others + 1 > window.max_movement_per_hour) {
+      // The last part-hour of a window allows a prorated share of the limit.
+      const allowed = window.max_movement_per_hour * Math.min(1, (to.getTime() - from.getTime()) / HOUR_MS)
+      if (others + 1 > allowed) {
         violations.push({
           kind: 'congestion_exceeded',
           airport,

@@ -9,7 +9,8 @@ import {
 import { DbService } from '@backend/db/db.service'
 import type { GateCheckInput } from '../dto/operations.dto'
 import { UUID } from '../pagination'
-import { AircraftFeasibilityService, type FeasibilityReport } from './aircraft-feasibility.service'
+import { AircraftFeasibilityService, type FeasibilityReport, type GateViolation } from './aircraft-feasibility.service'
+import { type AircraftLeg, checkAircraftFeasibility } from './aircraft-feasibility'
 
 // A flight that is on the ground and not cancelled can still be moved.
 const MOVABLE = ['scheduled', 'delayed']
@@ -36,11 +37,20 @@ export class GateCheckService {
 
   /**
    * One result per proposed flight, in the order sent: the report of its gates, or the reason it could not be checked (an unknown route).
-   * ponytail: the flights are checked against what is saved, not against each other, so two proposed flights of one aircraft that clash
-   * with each other pass here; confirm catches it because it saves them in departure order.
+   * Each flight is checked against what is saved and against the other proposed flights of the same aircraft in this request, so two
+   * proposals that clash with each other are reported here too.
    */
   async check(input: GateCheckInput) {
-    const results: { index: number; flight_number: string; status: number; error?: unknown }[] = []
+    const results: {
+      index: number
+      flight_number: string
+      status: number
+      error?: unknown
+      violations?: GateViolation[]
+      feasible?: boolean
+      outcome?: string
+    }[] = []
+    const legs = new Map<number, { aircraftId: string; leg: AircraftLeg }>()
     for (const [index, f] of input.flights.entries()) {
       const base = { index, flight_number: f.flight_number }
       try {
@@ -74,13 +84,48 @@ export class GateCheckService {
           this.db,
           { congestion: true },
         )
+        legs.set(index, {
+          aircraftId: f.aircraft_id,
+          leg: {
+            flightId: null,
+            flightNumber: f.flight_number,
+            origin: route.origin,
+            destination: route.destination,
+            scheduledDepAt: f.dep_at,
+            depAt: f.dep_at,
+            arrAt: f.arr_at,
+          },
+        })
         results.push({ ...base, status: 200, ...summary(report) })
       } catch (e) {
         if (!(e instanceof HttpException)) throw e
         results.push({ ...base, status: e.getStatus(), error: e.getResponse() })
       }
     }
+    await this.checkProposedAgainstEachOther(results, legs)
     return { results }
+  }
+
+  // Pure position, overlap and turnaround rules between the proposals of one aircraft; the saved neighbours were checked above.
+  private async checkProposedAgainstEachOther(
+    results: { index: number; status: number; feasible?: boolean; outcome?: string; violations?: GateViolation[] }[],
+    legs: Map<number, { aircraftId: string; leg: AircraftLeg }>,
+  ) {
+    for (const [index, { aircraftId, leg }] of legs) {
+      const others = [...legs.entries()].filter(([i, o]) => i !== index && o.aircraftId === aircraftId).map(([, o]) => o.leg)
+      if (others.length === 0) continue
+      const required = await this.feasibility.turnaroundResolver(
+        this.db,
+        aircraftId,
+        [leg, ...others].flatMap((l) => [l.origin, l.destination]),
+      )
+      const clash = checkAircraftFeasibility(leg, others, required).violations
+      const result = results.find((r) => r.index === index)
+      if (!result || clash.length === 0) continue
+      result.violations = [...(result.violations ?? []), ...clash]
+      result.feasible = false
+      result.outcome = 'not_feasible'
+    }
   }
 
   /** Can this saved flight leave at `depAt` instead? It keeps its length and its aircraft, and the same gates run as for a reschedule. */

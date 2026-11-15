@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards, UseFilters } from '@nestjs/common'
 import { StaffGuard } from './operations/staff.guard'
 import type { ListRoutesQueryDto } from './dto/route.dto'
 import { RouteService } from './route.service'
+import { FlightErrorFilter } from './flight-error.filter'
 
+@UseFilters(FlightErrorFilter)
 @Controller('flight-scheduling/routes')
 export class RouteController {
   constructor(private readonly routeService: RouteService) {}

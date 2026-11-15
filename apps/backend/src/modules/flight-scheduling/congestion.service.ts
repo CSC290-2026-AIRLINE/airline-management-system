@@ -38,14 +38,18 @@ export class CongestionService {
             at: departs ? f.dep_at : f.arr_at,
           }
         })
-        // Hours are counted from the window start. ponytail: the last part-hour is not prorated, so a short last hour can read over the limit.
+        // Hours are counted from the window start; the last part-hour allows a prorated share of the limit.
         const perHour = new Map<number, typeof movements>()
         for (const m of movements) {
           const hour = Math.floor((m.at.getTime() - w.starts_at.getTime()) / HOUR_MS)
           perHour.set(hour, [...(perHour.get(hour) ?? []), m])
         }
         const busiest = Math.max(0, ...[...perHour.values()].map((m) => m.length))
-        const over = [...perHour.values()].filter((m) => m.length > w.max_movement_per_hour).flat()
+        const allowed = (hour: number) => {
+          const bucketStart = w.starts_at.getTime() + hour * HOUR_MS
+          return w.max_movement_per_hour * Math.min(1, (w.ends_at.getTime() - bucketStart) / HOUR_MS)
+        }
+        const over = [...perHour.entries()].filter(([hour, m]) => m.length > allowed(hour)).flatMap(([, m]) => m)
         return { ...w, peak_movements: busiest, over_limit: over.sort((a, b) => a.at.getTime() - b.at.getTime()) }
       }),
     )
@@ -87,14 +91,17 @@ export class CongestionService {
 
     const starts_at = localToUtc(date, from, airport.timezone).utc
     const ends_at = localToUtc(date, to, airport.timezone).utc
-    const clash = await this.db.airport_congestion.findFirst({
-      where: { airport: iata, starts_at: { lt: ends_at }, ends_at: { gt: starts_at } },
-    })
-    if (clash) throw new ConflictException(`a congestion window at ${iata} already overlaps those times`)
-
+    // Lock the airport row, then check for overlap and insert, so two concurrent requests cannot both pass the check.
     // created_by stays empty until staff ids are looked up from the token.
-    return this.db.airport_congestion.create({
-      data: { airport: iata, starts_at, ends_at, max_movement_per_hour: limit as number, disruption_reason_code: reason },
+    return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT iata_code FROM airport WHERE iata_code = ${iata} FOR UPDATE`
+      const clash = await tx.airport_congestion.findFirst({
+        where: { airport: iata, starts_at: { lt: ends_at }, ends_at: { gt: starts_at } },
+      })
+      if (clash) throw new ConflictException(`a congestion window at ${iata} already overlaps those times`)
+      return tx.airport_congestion.create({
+        data: { airport: iata, starts_at, ends_at, max_movement_per_hour: limit as number, disruption_reason_code: reason },
+      })
     })
   }
 

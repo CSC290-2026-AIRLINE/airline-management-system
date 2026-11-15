@@ -1,7 +1,9 @@
-import { Controller, Get, Param, Query } from '@nestjs/common'
+import { Controller, Get, Param, Query, UseFilters } from '@nestjs/common'
 import type { ListFlightsQueryDto } from './dto/list-flights-query.dto'
 import { FlightSchedulingService } from './flight-scheduling.service'
+import { FlightErrorFilter } from './flight-error.filter'
 
+@UseFilters(FlightErrorFilter)
 @Controller('flight-scheduling')
 export class FlightSchedulingController {
   constructor(private readonly flightSchedulingService: FlightSchedulingService) {}

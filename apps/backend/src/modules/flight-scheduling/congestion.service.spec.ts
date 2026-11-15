@@ -13,6 +13,8 @@ describe('CongestionService', () => {
     airport: { findUnique: jest.fn() },
     disruption_reason: { findUnique: jest.fn() },
     flight: { findMany: jest.fn() },
+    $queryRaw: jest.fn(),
+    $transaction: jest.fn(),
   }
   const service = new CongestionService(db as never)
 
@@ -21,6 +23,7 @@ describe('CongestionService', () => {
     db.airport.findUnique.mockResolvedValue({ timezone: 'Asia/Bangkok' })
     db.disruption_reason.findUnique.mockResolvedValue({ code: 'APT' })
     db.airport_congestion.findFirst.mockResolvedValue(null)
+    db.$transaction.mockImplementation((fn: (tx: unknown) => unknown) => fn({ ...db, $queryRaw: db.$queryRaw }))
   })
 
   it('stores a local window at the airport as UTC', async () => {
@@ -80,7 +83,14 @@ describe('CongestionService', () => {
     ])
     const { data } = await service.list({})
     expect(data[0].peak_movements).toBe(2)
-    expect(data[0].over_limit.map((m) => `${m.flight_number} ${m.kind}`)).toEqual(['XX101 arrives', 'XX103 departs'])
+    // The window is 1.5 hours, so hour 1 lasts 30 minutes and allows half the limit: its single movement is already over.
+    expect(data[0].over_limit.map((m) => `${m.flight_number} ${m.kind}`)).toEqual(['XX101 arrives', 'XX103 departs', 'XX102 departs'])
+  })
+
+  it('locks the airport row before it checks for an overlap', async () => {
+    db.airport_congestion.create.mockResolvedValue({ id: ID })
+    await service.create(valid)
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1)
   })
 
   it('404s a missing window and 400s a bad id', async () => {

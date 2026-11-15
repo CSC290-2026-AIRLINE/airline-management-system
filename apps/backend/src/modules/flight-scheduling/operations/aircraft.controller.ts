@@ -1,7 +1,9 @@
-import { Controller, Get, Inject } from '@nestjs/common'
+import { Controller, Get, Inject, UseFilters } from '@nestjs/common'
 import { AIRCRAFT_DIRECTORY, type AircraftDirectory } from './aircraft-directory'
+import { FlightErrorFilter } from '../flight-error.filter'
 
 /** The aircraft a flight can be given, for the pickers in the staff screens. Read-only, from the aircraft directory. */
+@UseFilters(FlightErrorFilter)
 @Controller('flight-scheduling/aircraft')
 export class AircraftController {
   constructor(@Inject(AIRCRAFT_DIRECTORY) private readonly aircraft: AircraftDirectory) {}

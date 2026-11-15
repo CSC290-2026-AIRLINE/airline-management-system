@@ -1,4 +1,4 @@
-import { BadGatewayException, NotFoundException } from '@nestjs/common'
+import { BadGatewayException, BadRequestException, NotFoundException } from '@nestjs/common'
 import { FlightInsightService } from './flight-insight.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -7,7 +7,13 @@ const FLIGHT = '00000000-0000-0000-0000-0000000000f1'
 const day = new Date('2026-11-02T00:00:00Z')
 
 describe('FlightInsightService', () => {
-  const db = { flight: { findUnique: jest.fn() }, airport_fee: { findMany: jest.fn() } }
+  const db = {
+    flight: { findUnique: jest.fn() },
+    airport_fee: { findMany: jest.fn() },
+    pricing_setting: { findUnique: jest.fn() },
+    currency_rate: { findMany: jest.fn() },
+    flight_event: { findMany: jest.fn() },
+  }
   const service = new FlightInsightService(db as never)
 
   const flight = (over: object = {}) => ({
@@ -33,6 +39,8 @@ describe('FlightInsightService', () => {
     jest.resetAllMocks()
     db.flight.findUnique.mockResolvedValue(flight())
     db.airport_fee.findMany.mockResolvedValue([])
+    db.pricing_setting.findUnique.mockResolvedValue({ value: 'THB' })
+    db.currency_rate.findMany.mockResolvedValue([])
   })
 
   describe('costEstimate', () => {
@@ -45,7 +53,7 @@ describe('FlightInsightService', () => {
         lines: [{ item: 'Operating cost', amount: 1500, currency: 'THB' }],
         total: { amount: 1500, currency: 'THB' },
       })
-      expect(result.pending).toEqual([expect.stringContaining('seats sold (Feature 3b)')])
+      expect(result.pending).toEqual([expect.stringContaining('seats sold and fares are not connected')])
     })
 
     it('looks for departure fees at the origin and arrival fees at the destination in force on the service date', async () => {
@@ -97,15 +105,95 @@ describe('FlightInsightService', () => {
       expect(result.pending).toEqual(expect.arrayContaining([expect.stringContaining('ZZB parking fee, departure: charged per hour')]))
     })
 
-    it('leaves out the total when the lines are in different currencies', async () => {
+    it('leaves out the total, and says why, while a currency has no exchange rate', async () => {
       db.airport_fee.findMany.mockResolvedValue([fee({ currency: 'USD' })])
-      expect((await service.costEstimate(FLIGHT)).total).toBeNull()
+      const result = await service.costEstimate(FLIGHT)
+      expect(result.total).toBeNull()
+      expect(result.lines[1].amount_in_base).toBeNull()
+      expect(result.pending).toEqual(expect.arrayContaining([expect.stringContaining('no exchange rate from USD to THB')]))
+    })
+
+    it('converts other currencies to the base currency with the currency table', async () => {
+      // 0.025 USD buys one THB, so 20 USD is 800 THB.
+      db.currency_rate.findMany.mockResolvedValue([{ currency_code: 'USD', rate_per_base: '0.025' }])
+      db.airport_fee.findMany.mockResolvedValue([fee({ currency: 'USD', amount: '20.00' })])
+      const result = await service.costEstimate(FLIGHT)
+      expect(result.base_currency).toBe('THB')
+      expect(result.lines.map((l) => l.amount_in_base)).toEqual([1500, 800])
+      expect(result.total).toEqual({ amount: 2300, currency: 'THB' })
+    })
+
+    it('uses the base currency Feature 4 has set, and THB when none is set', async () => {
+      db.pricing_setting.findUnique.mockResolvedValue({ value: 'USD' })
+      expect((await service.costEstimate(FLIGHT)).base_currency).toBe('USD')
+      db.pricing_setting.findUnique.mockResolvedValue(null)
+      expect((await service.costEstimate(FLIGHT)).base_currency).toBe('THB')
     })
 
     it('returns 404 for an unknown or malformed flight id', async () => {
       await expect(service.costEstimate('nope')).rejects.toThrow(NotFoundException)
       db.flight.findUnique.mockResolvedValue(null)
       await expect(service.costEstimate(FLIGHT)).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  describe('listEvents', () => {
+    const event = (seq: number, over: object = {}) => ({
+      id: `e${seq}`,
+      seq: BigInt(seq),
+      type: 'delayed',
+      occurred_at: new Date('2026-11-14T10:00:00Z'),
+      flight_id: FLIGHT,
+      disruption_reason_code: 'WX',
+      delay_minutes: 30,
+      hold_minutes: null,
+      new_destination: null,
+      resolution: null,
+      partner_airline: null,
+      note: null,
+      actor_id: null,
+      flight: { flight_number: 'ZZ101', service_date: day, route: { origin: 'ZZB', destination: 'ZZC' } },
+      disruption_reason: { category: 'weather', description: 'Weather' },
+      ...over,
+    })
+
+    it('lists events newest first and flattens them for the log', async () => {
+      db.flight_event.findMany.mockResolvedValue([
+        event(7),
+        event(6, { actor_id: 'a1', disruption_reason: null, disruption_reason_code: null }),
+      ])
+      const result = await service.listEvents({})
+      expect(db.flight_event.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { seq: 'desc' }, take: 21 }))
+      expect(result.data[0]).toMatchObject({
+        seq: 7,
+        flight_number: 'ZZ101',
+        service_date: '2026-11-02',
+        disruption_category: 'weather',
+        by: 'system',
+      })
+      expect(result.data[1]).toMatchObject({ seq: 6, disruption_category: null, by: 'staff' })
+      expect(result.nextCursor).toBeNull()
+    })
+
+    it('pages by sequence number: one extra row says there is more, and the cursor asks for older events', async () => {
+      db.flight_event.findMany.mockResolvedValue([event(9), event(8), event(7)])
+      const result = await service.listEvents({ limit: '2', cursor: '12' })
+      expect(db.flight_event.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3, where: { seq: { lt: BigInt(12) } } }))
+      expect(result.data.map((e) => e.seq)).toEqual([9, 8])
+      expect(result.nextCursor).toBe('8')
+    })
+
+    it('filters by disruption category, or to events with a reason', async () => {
+      db.flight_event.findMany.mockResolvedValue([])
+      await service.listEvents({ category: 'weather' })
+      expect(db.flight_event.findMany.mock.calls[0][0].where).toEqual({ disruption_reason: { category: 'weather' } })
+      await service.listEvents({ disruptions_only: 'true' })
+      expect(db.flight_event.findMany.mock.calls[1][0].where).toEqual({ disruption_reason_code: { not: null } })
+    })
+
+    it('refuses an unknown category and a malformed cursor', async () => {
+      await expect(service.listEvents({ category: 'sunspots' })).rejects.toThrow(BadRequestException)
+      await expect(service.listEvents({ cursor: 'abc' })).rejects.toThrow(BadRequestException)
     })
   })
 

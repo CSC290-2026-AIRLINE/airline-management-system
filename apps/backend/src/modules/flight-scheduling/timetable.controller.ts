@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards, UseFilters } from '@nestjs/common'
 import { StaffGuard } from './operations/staff.guard'
 import type { ListTimetablesQueryDto } from './dto/timetable.dto'
 import { TimetableService } from './timetable.service'
+import { FlightErrorFilter } from './flight-error.filter'
 
-@Controller('flight-scheduling/timetables')
+@UseFilters(FlightErrorFilter)
+@Controller('flight-scheduling/patterns')
 export class TimetableController {
   constructor(private readonly timetableService: TimetableService) {}
 

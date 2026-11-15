@@ -1,13 +1,16 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common'
+import { Body, Controller, HttpCode, Post, UseFilters } from '@nestjs/common'
 import { ScheduleBuilderService } from './schedule-builder.service'
+import { FlightErrorFilter } from './flight-error.filter'
 
-@Controller('flight-scheduling/schedule-builder')
+@UseFilters(FlightErrorFilter)
+@Controller('flight-scheduling/flights/generate')
 export class ScheduleBuilderController {
   constructor(private readonly scheduleBuilderService: ScheduleBuilderService) {}
 
-  @Post('preview')
-  @HttpCode(200) // nothing is created
-  preview(@Body() body: unknown) {
+  // A preview from patterns or one one-off flight; nothing is saved.
+  @Post()
+  @HttpCode(200)
+  generate(@Body() body: unknown) {
     return this.scheduleBuilderService.preview(body)
   }
 }

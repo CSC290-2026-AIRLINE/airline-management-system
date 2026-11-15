@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import { parsePreviewBody } from './dto/schedule-builder.dto'
+import { parseOneOffBody, parsePreviewBody } from './dto/schedule-builder.dto'
 import { formatLocal, localToUtc } from './local-time'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -25,7 +25,10 @@ export class ScheduleBuilderService {
   constructor(private readonly db: DbService) {}
 
   // Read-only: plans the flights a timetable would generate. Nothing is written, and no aircraft is needed yet.
+  // A body with route_id, flight_number and dep_at plans one one-off flight instead; it goes through the same check,
+  // approval and confirm path afterwards.
   async preview(body: unknown) {
+    if (typeof body === 'object' && body !== null && 'route_id' in body) return this.previewOneOff(body)
     const input = parsePreviewBody(body)
     const timetable = await this.db.flight_pattern.findUnique({ where: { id: input.timetable_id } })
     if (!timetable) throw new NotFoundException('timetable not found')
@@ -99,6 +102,44 @@ export class ScheduleBuilderService {
       summary: { total: flights.length, new: flights.length - alreadyExisting, already_exists: alreadyExisting },
       warnings: flights.length === 0 ? ['this timetable produces no flights in the selected period'] : [],
       flights,
+    }
+  }
+
+  private async previewOneOff(body: unknown) {
+    const input = parseOneOffBody(body)
+    const route = await this.db.route.findUnique({ where: { id: input.route_id } })
+    if (!route) throw new NotFoundException('route not found')
+    const airports = await this.db.airport.findMany({ where: { iata_code: { in: [route.origin, route.destination] } } })
+    const origin = airports.find((a) => a.iata_code === route.origin)
+    const destination = airports.find((a) => a.iata_code === route.destination)
+    if (!origin || !destination) throw new BadRequestException('route airport does not exist')
+    if (!route.is_active || !origin.is_active || !destination.is_active) throw new BadRequestException('route or airport is inactive')
+
+    const arr = new Date(input.dep_at.getTime() + route.block_time_min * 60000)
+    const departureLocal = formatLocal(input.dep_at, origin.timezone)
+    const arrivalLocal = formatLocal(arr, destination.timezone)
+    const serviceDate = departureLocal.slice(0, 10) // the local origin date of the departure
+    const exists = (await this.db.flight.count({ where: { flight_number: input.flight_number, service_date: new Date(serviceDate) } })) > 0
+    const flight: PlannedFlight = {
+      service_date: serviceDate,
+      flight_number: input.flight_number,
+      scheduled_dep_at: input.dep_at.toISOString(),
+      scheduled_arr_at: arr.toISOString(),
+      departure_local: departureLocal,
+      arrival_local: arrivalLocal,
+      overnight: arrivalLocal.slice(0, 10) !== departureLocal.slice(0, 10),
+      already_exists: exists,
+      warnings: exists ? ['a flight with this number already exists on this date; it would be skipped'] : [],
+    }
+    if (exists) throw new ConflictException(`flight ${input.flight_number} already exists on ${serviceDate}`)
+    return {
+      timetable_id: null,
+      flight_number: input.flight_number,
+      route: { id: route.id, origin: route.origin, destination: route.destination, block_time_min: route.block_time_min },
+      period: { from: serviceDate, to: serviceDate },
+      summary: { total: 1, new: 1, already_exists: 0 },
+      warnings: [],
+      flights: [flight],
     }
   }
 }

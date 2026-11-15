@@ -1,11 +1,13 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Query, UseFilters } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { parseApprovalRequestBody, parseRespondBody, parseReviseBody } from '../dto/approval.dto'
 import { ApprovalService, type ListApprovalsQueryDto } from './approval.service'
 import { StaffActorService } from './staff-actor.service'
+import { FlightErrorFilter } from '../flight-error.filter'
 
 // Approval writes always need a staff member, because every request and answer records who made it.
+@UseFilters(FlightErrorFilter)
 @Controller('flight-scheduling/approvals')
 export class ApprovalController {
   constructor(
