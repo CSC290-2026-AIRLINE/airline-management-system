@@ -1,11 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import { AirportTabs } from '../components/AirportTabs'
-import { Card } from '../components/Card'
 import { FormField } from '../components/FormField'
 import { ListState } from '../components/ListState'
-import { PageHeader } from '../components/PageHeader'
-import { StaffShell } from '../components/StaffShell'
 import { StatusPill } from '../components/StatusPill'
 import { Toast } from '../components/Toast'
 import { TableWrap } from '../components/TableWrap'
@@ -13,6 +9,10 @@ import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
 import { useNotice } from '../hooks/useNotice'
 import type { AirportRow } from '../types'
 import '../flight-scheduling.css'
+import { Button } from '@staff-web/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@staff-web/components/ui/table'
 
 const EMPTY_FORM = { iata_code: '', icao_code: '', name: '', city: '', country: '', timezone: '', min_turnaround_min: '' }
 type FormKey = keyof typeof EMPTY_FORM
@@ -38,6 +38,7 @@ export function AirportsPage() {
   const [rowError, setRowError] = useState<string | null>(null)
   const [notice, say] = useNotice()
   const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   // The API validates; a field named in its message gets the red outline.
   const invalid = (key: FormKey) => formError?.includes(key) ?? false
@@ -59,6 +60,7 @@ export function AirportsPage() {
       await send('/airports', 'POST', { ...form, min_turnaround_min: Number(form.min_turnaround_min) })
       say(`${form.iata_code.toUpperCase()} added. It can now be used for routes and fees.`)
       setForm(EMPTY_FORM)
+      setAdding(false)
       airports.reload()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err))
@@ -88,125 +90,131 @@ export function AirportsPage() {
   }
 
   return (
-    <StaffShell>
-      <main className="fs-page">
-        <PageHeader title="Airports">
-          Master data for every airport we fly to. The minimum turnaround feeds the turnaround check; airports are disabled, never deleted.
-        </PageHeader>
-
-        <AirportTabs />
-
-        {rowError && <p role="alert">{rowError}</p>}
-        <ListState
-          loading={airports.loading}
-          error={airports.error}
-          empty={airports.rows.length === 0}
-          noun="airports"
-          emptyText="No airports yet. Add the first one below."
-        />
-
-        {airports.rows.length > 0 && (
-          <TableWrap>
-            <table className="fs-table fs-t-airports">
-              <thead>
-                <tr>
-                  <th>IATA</th>
-                  <th>ICAO</th>
-                  <th>Airport</th>
-                  <th>Time zone</th>
-                  <th>Min turnaround (min)</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {airports.rows.map((a) => (
-                  <tr key={a.iata_code}>
-                    <td className="fs-flight">{a.iata_code}</td>
-                    <td>{a.icao_code}</td>
-                    <td>
-                      {a.name}
-                      <div className="fs-sub">
-                        {a.city} · {a.country}
-                      </div>
-                    </td>
-                    <td>{a.timezone}</td>
-                    <td>
-                      <input
-                        key={`${a.iata_code}-${a.min_turnaround_min}`}
-                        className="fs-input fs-input-narrow"
-                        type="number"
-                        min={1}
-                        aria-label={`${a.iata_code} minimum turnaround in minutes`}
-                        defaultValue={a.min_turnaround_min}
-                        onBlur={(e) => saveTurnaround(a, e.currentTarget.value)}
-                      />
-                    </td>
-                    <td>
-                      <StatusPill status={a.is_active ? 'active' : 'disabled'} />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="fs-button-light"
-                        onClick={() =>
-                          void update(
-                            a,
-                            { is_active: !a.is_active },
-                            a.is_active
-                              ? `${a.iata_code} disabled. It can no longer be picked for new routes; it is never deleted.`
-                              : `${a.iata_code} enabled again.`,
-                          )
-                        }
-                      >
-                        {a.is_active ? 'Disable' : 'Enable'}
-                      </button>
-                    </td>
-                  </tr>
+    <>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {airports.rows.length} {airports.rows.length === 1 ? 'airport' : 'airports'}
+        </p>
+        <Dialog open={adding} onOpenChange={(open) => (setAdding(open), setFormError(null))}>
+          <DialogTrigger asChild>
+            <Button type="button">Add an airport</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add an airport</DialogTitle>
+            </DialogHeader>
+            <form className="grid gap-4" onSubmit={(e) => void add(e)}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {FIELDS.map(([key, label, placeholder]) => (
+                  <FormField
+                    key={key}
+                    label={label}
+                    type={key === 'min_turnaround_min' ? 'number' : 'text'}
+                    value={form[key]}
+                    placeholder={placeholder}
+                    invalid={invalid(key)}
+                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                  />
                 ))}
-              </tbody>
-            </table>
-          </TableWrap>
-        )}
+              </div>
+              {formError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {formError}
+                </p>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setAdding(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={busy}>
+                  Add airport
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
 
-        {airports.hasMore && (
-          <button type="button" onClick={() => void airports.loadMore()} disabled={airports.loadingMore}>
-            {airports.loadingMore ? 'Loading…' : 'Load more'}
-          </button>
-        )}
+      {rowError && <p role="alert">{rowError}</p>}
+      <ListState
+        loading={airports.loading}
+        error={airports.error}
+        empty={airports.rows.length === 0}
+        noun="airports"
+        emptyText="No airports yet. Add the first one."
+      />
 
-        <Card as="form" onSubmit={(e) => void add(e)}>
-          <h2>Add an airport</h2>
-          <div className="fs-form-grid">
-            {FIELDS.map(([key, label, placeholder]) => (
-              <FormField
-                key={key}
-                label={label}
-                half={key === 'city' || key === 'country'}
-                type={key === 'min_turnaround_min' ? 'number' : 'text'}
-                value={form[key]}
-                placeholder={placeholder}
-                invalid={invalid(key)}
-                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-              />
-            ))}
-          </div>
-          {formError && (
-            <p className="fs-error" role="alert">
-              {formError}
-            </p>
-          )}
-          <button type="submit" className="fs-button" disabled={busy}>
-            Add airport
-          </button>
-          <p className="fs-sub">
-            IATA is the International Air Transport Association, ICAO the International Civil Aviation Organization, IANA the Internet
-            Assigned Numbers Authority. Airports are disabled, never deleted.
-          </p>
-        </Card>
+      {airports.rows.length > 0 && (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>IATA</TableHead>
+                <TableHead>ICAO</TableHead>
+                <TableHead>Airport</TableHead>
+                <TableHead>Time zone</TableHead>
+                <TableHead>Min turnaround (min)</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {airports.rows.map((a) => (
+                <TableRow key={a.iata_code}>
+                  <TableCell className="fs-flight">{a.iata_code}</TableCell>
+                  <TableCell>{a.icao_code}</TableCell>
+                  <TableCell>
+                    {a.name}
+                    <div className="fs-sub">
+                      {a.city} · {a.country}
+                    </div>
+                  </TableCell>
+                  <TableCell>{a.timezone}</TableCell>
+                  <TableCell>
+                    <Input
+                      className="w-24"
+                      key={`${a.iata_code}-${a.min_turnaround_min}`}
+                      type="number"
+                      min={1}
+                      aria-label={`${a.iata_code} minimum turnaround in minutes`}
+                      defaultValue={a.min_turnaround_min}
+                      onBlur={(e) => saveTurnaround(a, e.currentTarget.value)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <StatusPill status={a.is_active ? 'active' : 'disabled'} />
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() =>
+                        void update(
+                          a,
+                          { is_active: !a.is_active },
+                          a.is_active
+                            ? `${a.iata_code} disabled. It can no longer be picked for new routes; it is never deleted.`
+                            : `${a.iata_code} enabled again.`,
+                        )
+                      }
+                    >
+                      {a.is_active ? 'Disable' : 'Enable'}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
-        <Toast message={notice} />
-      </main>
-    </StaffShell>
+      {airports.hasMore && (
+        <Button type="button" variant="outline" onClick={() => void airports.loadMore()} disabled={airports.loadingMore}>
+          {airports.loadingMore ? 'Loading…' : 'Load more'}
+        </Button>
+      )}
+
+      <Toast message={notice} />
+    </>
   )
 }

@@ -1,11 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { AuthGate } from '@staff-web/features/flight-scheduling/components/AuthGate'
-import { DisruptionLogPage } from '@staff-web/features/flight-scheduling/pages/DisruptionLogPage'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
+// The disruption log is a tab of the schedule flight page now; this keeps old links working.
 export const Route = createFileRoute('/_authenticated/disruption-log')({
-  component: () => (
-    <AuthGate>
-      <DisruptionLogPage />
-    </AuthGate>
-  ),
+  beforeLoad: () => {
+    throw redirect({ to: '/schedule-board', search: { tab: 'disruptions' }, replace: true })
+  },
 })

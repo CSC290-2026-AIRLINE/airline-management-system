@@ -3,17 +3,18 @@ import { useState } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { BatchActions } from '../components/BatchActions'
 import { ListState } from '../components/ListState'
-import { PageHeader } from '../components/PageHeader'
 import { RouteCodes } from '../components/RouteCodes'
-import { StaffShell } from '../components/StaffShell'
 import { StatusPill } from '../components/StatusPill'
-import { Stats } from '../components/Stats'
 import { TableWrap } from '../components/TableWrap'
+import { DateField } from '../components/DateField'
+import { SelectField } from '../components/SelectField'
 import { capitalize } from '../format'
 import { usePagedList } from '../hooks/usePagedList'
-import { openConflictCount } from '../connected'
 import { FLIGHT_STATUSES, type FlightRow, type RouteRow } from '../types'
 import '../flight-scheduling.css'
+import { Button } from '@staff-web/components/ui/button'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@staff-web/components/ui/table'
+import { Checkbox } from '@staff-web/components/ui/checkbox'
 
 // The staff design shows Bangkok time (UTC+07:00).
 // ponytail: fixed zone; read the origin airport's timezone (GET /flights/:id has it) when other zones matter.
@@ -22,8 +23,6 @@ const dayFormat = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'num
 const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: ZONE })
 const day = (iso: string) => dayFormat.format(new Date(iso))
 const clock = (iso: string) => timeFormat.format(new Date(iso))
-
-const DISRUPTED = ['delayed', 'holding', 'diverted']
 
 export function ScheduleBoardPage() {
   const { fetchWithAuth } = useAppAuth()
@@ -51,7 +50,6 @@ export function ScheduleBoardPage() {
   }
 
   const rows = flights.rows
-  const openConflicts = openConflictCount()
   const selected = rows.filter((f) => picked.has(f.id))
   const allPicked = rows.length > 0 && selected.length === rows.length
   const togglePicked = (id: string) => {
@@ -69,163 +67,126 @@ export function ScheduleBoardPage() {
     status ? capitalize(status) : 'All statuses',
   ].join(' · ')
 
-  const disrupted = rows.filter((f) => DISRUPTED.includes(f.status)).length
-  const cancelled = rows.filter((f) => f.status === 'cancelled').length
-
   return (
-    <StaffShell>
-      <main className="fs-page">
-        <PageHeader
-          title="Schedule board"
-          action={
-            <Link to="/generate-flights" className="fs-button">
-              Generate flights
-            </Link>
-          }
-        >
-          Every confirmed flight, in departure order. Open a flight to change its aircraft or record a disruption, or tick several for a
-          batch action. To add flights, use Generate flights: they are previewed first and saved only when they pass the checks, hold an
-          approval and you confirm them.
-        </PageHeader>
-
-        <Stats
-          items={[
-            {
-              value: (
-                <>
-                  {rows.length}
-                  {flights.hasMore && '+'}
-                </>
-              ),
-              label: 'flights in view',
-            },
-            { value: disrupted, label: 'delayed, holding or diverted' },
-            { value: cancelled, label: 'cancelled' },
-            ...(openConflicts === null ? [] : [{ value: openConflicts, label: 'open conflict' }]),
-          ]}
-        />
-
-        {/* On a phone the filters fold behind a summary row; on desktop the toggle is hidden and the form always shows. */}
-        <div className={filtersOpen ? 'fs-filterbox is-open' : 'fs-filterbox'}>
-          <button type="button" className="fs-filter-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}>
-            <strong>Filters</strong>
-            <span>{filterSummary}</span>
-          </button>
-          <form className="fs-filters" onSubmit={(e) => e.preventDefault()}>
-            <label>
-              Route
-              <select value={routeId} onChange={(e) => setRouteId(e.target.value)}>
-                <option value="">All routes</option>
-                {routes.rows.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.origin} to {r.destination}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Date
-              <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />
-            </label>
-            <label>
-              Status
-              <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                <option value="">All statuses</option>
-                {FLIGHT_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {capitalize(s)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" className="fs-filter-clear" onClick={clearFilters}>
-              Clear filters
-            </button>
-          </form>
-        </div>
-
-        {rows.length > 0 && (
-          <label className="fs-selectall">
-            <input type="checkbox" checked={allPicked} onChange={toggleAll} />
-            Select all · {rows.length} flights
-          </label>
-        )}
-
-        <BatchActions selected={selected} fetcher={fetchWithAuth} onClear={() => setPicked(new Set())} onApply={flights.reload} />
-
-        <ListState
-          loading={flights.loading}
-          error={flights.error}
-          empty={rows.length === 0}
-          noun="flights"
-          emptyText={filtered ? 'No flights match these filters.' : 'No flights have been created yet.'}
-        >
+    <>
+      {/* On a phone the filters fold behind a summary row; on desktop the toggle is hidden and the form always shows. */}
+      <div className={filtersOpen ? 'fs-filterbox is-open' : 'fs-filterbox'}>
+        <button type="button" className="fs-filter-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}>
+          <strong>Filters</strong>
+          <span>{filterSummary}</span>
+        </button>
+        <form className="fs-filters mb-6 flex flex-wrap items-end gap-3" onSubmit={(e) => e.preventDefault()}>
+          <div className="w-48">
+            <SelectField label="Route" value={routeId} onChange={(e) => setRouteId(e.target.value)}>
+              <option value="">All routes</option>
+              {routes.rows.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.origin} to {r.destination}
+                </option>
+              ))}
+            </SelectField>
+          </div>
+          <div className="w-48">
+            <DateField label="Date" value={serviceDate} onChange={setServiceDate} />
+          </div>
+          <div className="w-48">
+            <SelectField label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">All statuses</option>
+              {FLIGHT_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {capitalize(s)}
+                </option>
+              ))}
+            </SelectField>
+          </div>
           {filtered && (
-            <button type="button" className="fs-button-light" onClick={clearFilters}>
+            <Button type="button" variant="ghost" onClick={clearFilters}>
               Clear filters
-            </button>
+            </Button>
           )}
-        </ListState>
+        </form>
+      </div>
 
-        {rows.length > 0 && (
-          <TableWrap>
-            <table className="fs-table fs-t-board">
-              <thead>
-                <tr>
-                  <th className="fs-check">
-                    <input type="checkbox" aria-label="Select all flights" checked={allPicked} onChange={toggleAll} />
-                  </th>
-                  <th>Flight</th>
-                  <th>Route</th>
-                  <th>Date</th>
-                  <th>Departs</th>
-                  <th>Arrives</th>
-                  <th>Aircraft</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((f) => (
-                  <tr key={f.id} className={picked.has(f.id) ? 'fs-row-picked' : undefined}>
-                    <td className="fs-check">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${f.flight_number} on ${f.service_date.slice(0, 10)}`}
-                        checked={picked.has(f.id)}
-                        onChange={() => togglePicked(f.id)}
-                      />
-                    </td>
-                    <td className="fs-flight">
-                      <Link to="/flights/$flightId" params={{ flightId: f.id }}>
-                        {f.flight_number}
-                      </Link>
-                    </td>
-                    <td className="fs-route">
-                      <RouteCodes route={routeById.get(f.route_id)} fallback={f.route_id.slice(0, 8)} />
-                      {f.actual_destination && <> (diverted to {f.actual_destination})</>}
-                    </td>
-                    <td>{day(f.dep_at)}</td>
-                    <td>
-                      {f.dep_at !== f.scheduled_dep_at && <s className="fs-was">{clock(f.scheduled_dep_at)}</s>} {clock(f.dep_at)}
-                    </td>
-                    <td>{clock(f.arr_at)}</td>
-                    <td>{f.aircraft.tail_number}</td>
-                    <td>
-                      <StatusPill status={f.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
-        )}
+      {rows.length > 0 && (
+        <label className="fs-selectall">
+          <Checkbox checked={allPicked} onCheckedChange={() => toggleAll()} />
+          Select all · {rows.length} flights
+        </label>
+      )}
 
-        {flights.hasMore && (
-          <button type="button" onClick={() => void flights.loadMore()} disabled={flights.loadingMore}>
-            {flights.loadingMore ? 'Loading…' : 'Load more'}
-          </button>
+      <BatchActions selected={selected} fetcher={fetchWithAuth} onClear={() => setPicked(new Set())} onApply={flights.reload} />
+
+      <ListState
+        loading={flights.loading}
+        error={flights.error}
+        empty={rows.length === 0}
+        noun="flights"
+        emptyText={filtered ? 'No flights match these filters.' : 'No flights have been created yet.'}
+      >
+        {filtered && (
+          <Button variant="outline" size="sm" type="button" onClick={clearFilters}>
+            Clear filters
+          </Button>
         )}
-      </main>
-    </StaffShell>
+      </ListState>
+
+      {rows.length > 0 && (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="fs-check">
+                  <Checkbox aria-label="Select all flights" checked={allPicked} onCheckedChange={() => toggleAll()} />
+                </TableHead>
+                <TableHead>Flight</TableHead>
+                <TableHead>Route</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Departs</TableHead>
+                <TableHead>Arrives</TableHead>
+                <TableHead>Aircraft</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((f) => (
+                <TableRow key={f.id} className={picked.has(f.id) ? 'fs-row-picked' : undefined}>
+                  <TableCell className="fs-check">
+                    <Checkbox
+                      aria-label={`Select ${f.flight_number} on ${f.service_date.slice(0, 10)}`}
+                      checked={picked.has(f.id)}
+                      onCheckedChange={() => (() => togglePicked(f.id))()}
+                    />
+                  </TableCell>
+                  <TableCell className="fs-flight">
+                    <Link to="/flights/$flightId" params={{ flightId: f.id }}>
+                      {f.flight_number}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="fs-route">
+                    <RouteCodes route={routeById.get(f.route_id)} fallback={f.route_id.slice(0, 8)} />
+                    {f.actual_destination && <> (diverted to {f.actual_destination})</>}
+                  </TableCell>
+                  <TableCell>{day(f.dep_at)}</TableCell>
+                  <TableCell>
+                    {f.dep_at !== f.scheduled_dep_at && <s className="fs-was">{clock(f.scheduled_dep_at)}</s>} {clock(f.dep_at)}
+                  </TableCell>
+                  <TableCell>{clock(f.arr_at)}</TableCell>
+                  <TableCell>{f.aircraft.tail_number}</TableCell>
+                  <TableCell>
+                    <StatusPill status={f.status} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
+
+      {flights.hasMore && (
+        <Button type="button" variant="outline" onClick={() => void flights.loadMore()} disabled={flights.loadingMore}>
+          {flights.loadingMore ? 'Loading…' : 'Load more'}
+        </Button>
+      )}
+    </>
   )
 }

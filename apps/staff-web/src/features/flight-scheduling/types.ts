@@ -118,7 +118,15 @@ export interface FlightEventRow {
 }
 
 // The fixed disruption categories from the spec; every disruption reason belongs to one.
-export const DISRUPTION_CATEGORIES = ['weather', 'technical', 'crew', 'air traffic control', 'security', 'airport operations', 'other']
+export const DISRUPTION_CATEGORIES: { value: string; label: string }[] = [
+  { value: 'weather', label: 'Weather' },
+  { value: 'technical', label: 'Technical' },
+  { value: 'crew', label: 'Crew' },
+  { value: 'air_traffic_control', label: 'Air traffic control' },
+  { value: 'security', label: 'Security' },
+  { value: 'airport_operations', label: 'Airport operations' },
+  { value: 'other', label: 'Other' },
+]
 
 // Shapes for the parts that wait on another feature or a missing table (see connected.ts). ponytail: these are what the screens
 // need, not an agreed contract; align them with the real responses when the endpoints exist.
@@ -191,15 +199,27 @@ export interface ApprovalPolicy {
 }
 
 // One row of the disruption log (events across all flights).
-export interface DisruptionLogRow {
-  at: string
-  flight: string
-  date: string
-  event: string
-  reason: string // "WX · weather" or ''
-  category: string // '' when there is no disruption
-  detail: string
-  by: string
+// GET /events: one row of the disruption log.
+export interface EventLogRow {
+  id: string
+  seq: number
+  type: string // created, delayed, rescheduled, aircraft_changed, holding, hold_ended, diverted, cancelled, departed, arrived
+  occurred_at: string
+  flight_id: string
+  flight_number: string
+  service_date: string
+  origin: string
+  destination: string
+  disruption_reason_code: string | null
+  disruption_category: string | null
+  disruption_reason: string | null
+  delay_minutes: number | null
+  hold_minutes: number | null
+  new_destination: string | null
+  resolution: string | null
+  partner_airline: string | null
+  note: string | null
+  by: 'system' | 'staff'
 }
 
 // GET /flights/:id/availability?dep_at=
@@ -218,7 +238,8 @@ export interface CostEstimate {
   flight_id: string
   flight_number: string
   block_hours: number
-  lines: { item: string; basis: string; amount: number; currency: string }[]
+  base_currency: string
+  lines: { item: string; basis: string; amount: number; currency: string; amount_in_base: number | null }[]
   total: { amount: number; currency: string } | null
   pending: string[]
 }

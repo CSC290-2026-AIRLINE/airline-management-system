@@ -1,11 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { AuthGate } from '@staff-web/features/flight-scheduling/components/AuthGate'
-import { SettingsPage } from '@staff-web/features/flight-scheduling/pages/SettingsPage'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
+// The settings are a tab of the schedule flight page now; this keeps old links working.
 export const Route = createFileRoute('/_authenticated/settings')({
-  component: () => (
-    <AuthGate>
-      <SettingsPage />
-    </AuthGate>
-  ),
+  beforeLoad: () => {
+    throw redirect({ to: '/schedule-board', search: { tab: 'settings' }, replace: true })
+  },
 })

@@ -1,28 +1,31 @@
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Callout } from '../components/Callout'
 import { Card } from '../components/Card'
 import { CONNECTED } from '../connected'
 import { usePartners } from '../hooks/usePartners'
 import { FormField } from '../components/FormField'
 import { ListState } from '../components/ListState'
-import { PageHeader } from '../components/PageHeader'
 import { SegmentedControl } from '../components/SegmentedControl'
 import { SelectField } from '../components/SelectField'
-import { StaffShell } from '../components/StaffShell'
 import { StatusPill } from '../components/StatusPill'
 import { Stats } from '../components/Stats'
 import { TableWrap } from '../components/TableWrap'
 import { Toast } from '../components/Toast'
-import { capitalize, formatDateTime } from '../format'
+import { capitalize, formatDateTime, humanizeTimes } from '../format'
 import { useAircraft } from '../hooks/useAircraft'
 import { useDisruptionReasons } from '../hooks/useDisruptionReasons'
+import { emitChange } from '../hooks/fsChange'
 import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage } from '../hooks/usePagedList'
 import { useResource } from '../hooks/useResource'
 import type { ConflictOptions, ConflictRow, FlightImpact, Resolution } from '../types'
 import '../flight-scheduling.css'
+import { Button } from '@staff-web/components/ui/button'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@staff-web/components/ui/table'
+import { RadioGroup, RadioGroupItem } from '@staff-web/components/ui/radio-group'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 
 const MODES = ['Change aircraft', 'Reschedule', 'Cancel and refund', 'Rebook with partner'] as const
 type Mode = (typeof MODES)[number]
@@ -52,10 +55,15 @@ export function ConflictsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dismissing, setDismissing] = useState(false)
+  const panel = useRef<HTMLDivElement>(null)
   const [dismissReason, setDismissReason] = useState('')
   const [notice, say] = useNotice()
 
   const open = conflicts.data ?? []
+  // The panel opens under the list, so bring it into view when a conflict is chosen.
+  useEffect(() => {
+    if (activeId) panel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [activeId])
   const active = open.find((c) => c.id === activeId) ?? null
   const option = options.data?.options.find((o) => o.resolution === RESOLUTION[mode])
   const available = option?.available === true
@@ -98,6 +106,7 @@ export function ConflictsPage() {
           ? { resolution: 'rebook_partner', reason_code: reason, partner_airline: pick }
           : { resolution: 'cancel_refund', reason_code: reason }
     if (!(await post(`/conflicts/${c.id}/resolve`, body))) return
+    emitChange('conflicts')
     say(`${c.flight.flight_number}: ${mode.toLowerCase()} applied. Conflict resolved.`)
     setActiveId(null)
     conflicts.reload()
@@ -108,84 +117,77 @@ export function ConflictsPage() {
     setDismissing(false)
     if (!ok) return
     setDismissReason('')
+    emitChange('conflicts')
     say(`${c.flight.flight_number} conflict dismissed.`)
     setActiveId(null)
     conflicts.reload()
   }
 
   return (
-    <StaffShell>
-      <main className="fs-page">
-        <PageHeader title="Conflicts">
-          A conflict is a stored record that stays here until staff resolve it or the cause goes away. Choose one of four resolutions; this
-          feature records the decision and publishes the event.
-        </PageHeader>
+    <>
+      <ListState
+        loading={conflicts.loading}
+        error={conflicts.error}
+        empty={open.length === 0}
+        noun="conflicts"
+        emptyText="No open conflicts."
+      />
 
-        <Stats items={[{ value: open.length, label: <>open {open.length === 1 ? 'conflict' : 'conflicts'}</> }]} />
+      {open.length > 0 && (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Kind</TableHead>
+                <TableHead>Flight</TableHead>
+                <TableHead>What failed</TableHead>
+                <TableHead>Detected</TableHead>
+                <TableHead className="sticky right-0 bg-card"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {open.map((c) => (
+                <TableRow key={c.id} className={activeId === c.id ? 'fs-row-on' : undefined}>
+                  <TableCell>
+                    <StatusPill status="cancelled" label={kindLabel(c.kind)} />
+                  </TableCell>
+                  <TableCell>
+                    <span className="fs-flight">{c.flight.flight_number}</span>{' '}
+                    <span className="fs-to">
+                      {c.flight.route.origin} to {c.flight.route.destination} · departs {utc(c.flight.dep_at)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="min-w-64 whitespace-normal">{humanizeTimes(c.detail)}</TableCell>
+                  <TableCell>{utc(c.detected_at)}</TableCell>
+                  <TableCell className="sticky right-0 bg-card">
+                    <Button type="button" onClick={() => choose(c)}>
+                      Resolve
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
-        <ListState
-          loading={conflicts.loading}
-          error={conflicts.error}
-          empty={open.length === 0}
-          noun="conflicts"
-          emptyText="No open conflicts."
-        />
-
-        {open.length > 0 && (
-          <TableWrap>
-            <table className="fs-table fs-t-conflicts">
-              <thead>
-                <tr>
-                  <th>Kind</th>
-                  <th>Flight</th>
-                  <th>What failed</th>
-                  <th>Detected</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {open.map((c) => (
-                  <tr key={c.id} className={activeId === c.id ? 'fs-row-on' : undefined}>
-                    <td>
-                      <StatusPill status="cancelled" label={kindLabel(c.kind)} />
-                    </td>
-                    <td>
-                      <span className="fs-flight">{c.flight.flight_number}</span>{' '}
-                      <span className="fs-to">
-                        {c.flight.route.origin} to {c.flight.route.destination} · departs {utc(c.flight.dep_at)}
-                      </span>
-                    </td>
-                    <td>{c.detail}</td>
-                    <td>{utc(c.detected_at)}</td>
-                    <td>
-                      <button type="button" className="fs-button fs-button-sm" onClick={() => choose(c)}>
-                        Resolve
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
-        )}
-
-        {active && (
+      {active && (
+        <div ref={panel}>
           <Card>
             <h2>
               Resolve {active.flight.flight_number}: {kindLabel(active.kind)}
             </h2>
-            <Callout tone="crit">{active.detail}</Callout>
+            <Callout tone="crit">{humanizeTimes(active.detail)}</Callout>
             {impact.data && (
               <div className="fs-impact">
                 <Stats
                   items={[
-                    { value: impact.data.bookings, label: 'bookings (3b)' },
-                    { value: impact.data.crew, label: 'crew (8)' },
-                    { value: impact.data.bags, label: 'bags (10)' },
-                    { value: impact.data.cargo, label: 'cargo bookings (17)' },
+                    { value: impact.data.bookings, label: 'bookings' },
+                    { value: impact.data.crew, label: 'crew' },
+                    { value: impact.data.bags, label: 'bags' },
+                    { value: impact.data.cargo, label: 'cargo bookings' },
                   ]}
                 />
-                <p className="fs-sub">Impact preview from those features (GET /flights/{'{id}'}/impact).</p>
               </div>
             )}
 
@@ -218,17 +220,16 @@ export function ConflictsPage() {
             )}
 
             {available && mode === 'Change aircraft' && (
-              <div className="fs-options">
+              <RadioGroup value={pick} onValueChange={setPick} className="fs-options">
                 {fleet.map((a) => (
                   <label key={a.id} className={`fs-option${a.usable ? '' : ' fs-option-off'}${pick === a.id ? ' fs-pattern-on' : ''}`}>
-                    <input type="radio" name="aircraft" disabled={!a.usable} checked={pick === a.id} onChange={() => setPick(a.id)} />
+                    <RadioGroupItem value={a.id} disabled={!a.usable} />
                     <span>
                       <b>{a.label.split(' · ')[0]}</b> <span className="fs-to">· {a.label.split(' · ').slice(1).join(' · ')}</span>{' '}
-                      {a.usable && <StatusPill status="ok" label="free for this flight" />}
                     </span>
                   </label>
                 ))}
-              </div>
+              </RadioGroup>
             )}
 
             {available && mode === 'Reschedule' && (
@@ -256,67 +257,56 @@ export function ConflictsPage() {
               </div>
             )}
 
-            {available && (mode === 'Cancel and refund' || mode === 'Rebook with partner') && (
-              <Callout tone="info">
-                {mode === 'Cancel and refund'
-                  ? 'The flight is cancelled and feature 5b refunds the passengers. This feature only records the cancellation.'
-                  : 'The flight is cancelled and feature 3b rebooks the passengers on a partner airline. This feature only records the decision.'}
-              </Callout>
-            )}
-
             {error && !dismissing && <p role="alert">{error}</p>}
 
             <div className="fs-form-actions fs-between">
               <span className="fs-form-actions">
-                <button type="button" className="fs-button" disabled={!ready || busy} onClick={() => void apply(active)}>
+                <Button type="button" disabled={!ready || busy} onClick={() => void apply(active)}>
                   {busy ? 'Applying…' : 'Apply resolution'}
-                </button>
-                <button type="button" className="fs-button-ghost" onClick={() => setActiveId(null)}>
+                </Button>
+                <Button variant="ghost" type="button" onClick={() => setActiveId(null)}>
                   Close
-                </button>
+                </Button>
               </span>
-              <button type="button" className="fs-button-danger" onClick={() => setDismissing(true)}>
+              <Button variant="destructive" type="button" onClick={() => setDismissing(true)}>
                 Dismiss with a reason…
-              </button>
+              </Button>
             </div>
-            <p className="fs-sub fs-mt">
-              Dismiss closes the conflict without a resolution. It needs a reason and an audit entry in feature 15; until feature 15 is
-              connected the server refuses it and the conflict stays open.
-            </p>
           </Card>
-        )}
+        </div>
+      )}
 
-        {dismissing && active && (
-          <div className="fs-modal-backdrop" role="presentation">
-            <div className="fs-modal" role="dialog" aria-modal="true" aria-labelledby="dismiss-title">
-              <h2 id="dismiss-title">Dismiss this conflict?</h2>
-              <p className="fs-sub">
-                {active.flight.flight_number} · {kindLabel(active.kind)}. The conflict closes without a resolution and no event is published
-                for the flight.
-              </p>
-              <FormField
-                label="Reason (required, sent to the audit log)"
-                value={dismissReason}
-                onChange={(e) => setDismissReason(e.target.value)}
-              />
-              <div className="fs-form-actions fs-end">
-                <button type="button" className="fs-button-ghost" onClick={() => setDismissing(false)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="fs-button-danger"
-                  disabled={dismissReason.trim() === '' || busy}
-                  onClick={() => void dismiss(active)}
-                >
-                  Dismiss conflict
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        <Toast message={notice} />
-      </main>
-    </StaffShell>
+      {active && (
+        <Dialog open={dismissing} onOpenChange={setDismissing}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Dismiss this conflict?</DialogTitle>
+              <DialogDescription>
+                {active.flight.flight_number} · {kindLabel(active.kind)}. The conflict closes without a resolution.
+              </DialogDescription>
+            </DialogHeader>
+            <FormField
+              label="Reason (required, sent to the audit log)"
+              value={dismissReason}
+              onChange={(e) => setDismissReason(e.target.value)}
+            />
+            <DialogFooter>
+              <Button variant="ghost" type="button" onClick={() => setDismissing(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                type="button"
+                disabled={dismissReason.trim() === '' || busy}
+                onClick={() => void dismiss(active)}
+              >
+                Dismiss conflict
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      <Toast message={notice} />
+    </>
   )
 }

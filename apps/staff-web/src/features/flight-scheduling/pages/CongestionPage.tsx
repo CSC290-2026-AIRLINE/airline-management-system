@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { Card } from '../components/Card'
 import { FormField } from '../components/FormField'
+import { DateField } from '../components/DateField'
 import { ListState } from '../components/ListState'
 import { PageHeader } from '../components/PageHeader'
 import { SelectField } from '../components/SelectField'
@@ -15,6 +16,9 @@ import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
 import type { AirportRow, CongestionRow } from '../types'
 import '../flight-scheduling.css'
+import { Button } from '@staff-web/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@staff-web/components/ui/dialog'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@staff-web/components/ui/table'
 
 const EMPTY = { airport: '', date: '', from: '', to: '', limit: '1', reason: '' }
 
@@ -26,6 +30,7 @@ export function CongestionPage() {
   const [form, setForm] = useState(EMPTY)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
   const [notice, say] = useNotice()
 
   const zone = (code: string) => airports.rows.find((a) => a.iata_code === code)?.timezone ?? 'UTC'
@@ -47,7 +52,7 @@ export function CongestionPage() {
     setBusy(true)
     setError(null)
     try {
-      await send('/congestion', {
+      await send(`/airports/${form.airport}/congestion`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -61,6 +66,7 @@ export function CongestionPage() {
       })
       say('Window recorded.')
       setForm(EMPTY)
+      setAdding(false)
       windows.reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -82,10 +88,68 @@ export function CongestionPage() {
   return (
     <StaffShell>
       <main className="fs-page">
-        <PageHeader title="Congestion">
-          Record a window in which an airport can only handle so many movements. Flights over the limit get a congestion conflict with a
-          proposed delay that moves them past the window.
-        </PageHeader>
+        <PageHeader
+          title="Congestion"
+          action={
+            <Dialog open={adding} onOpenChange={(open) => (setAdding(open), setError(null))}>
+              <DialogTrigger asChild>
+                <Button type="button">Record a congestion window</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Record a congestion window</DialogTitle>
+                </DialogHeader>
+                <form className="grid gap-4" onSubmit={(e) => void record(e)}>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <SelectField label="Airport" value={form.airport} onChange={(e) => setForm({ ...form, airport: e.target.value })}>
+                      <option value="">Choose an airport</option>
+                      {airports.rows.map((a) => (
+                        <option key={a.iata_code} value={a.iata_code}>
+                          {a.iata_code} · {a.city}
+                        </option>
+                      ))}
+                    </SelectField>
+                    <DateField label="Date" value={form.date} onChange={(value) => setForm({ ...form, date: value })} />
+                    <FormField label="From" type="time" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} />
+                    <FormField label="To" type="time" value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} />
+                    <FormField
+                      label="Max movements per hour"
+                      type="number"
+                      min={1}
+                      value={form.limit}
+                      onChange={(e) => setForm({ ...form, limit: e.target.value })}
+                    />
+                    <SelectField
+                      label="Disruption reason"
+                      value={form.reason}
+                      onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                    >
+                      <option value="">Choose a disruption reason</option>
+                      {reasons.map((r) => (
+                        <option key={r.code} value={r.code}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </SelectField>
+                  </div>
+                  {error && (
+                    <p className="text-sm text-destructive" role="alert">
+                      {error}
+                    </p>
+                  )}
+                  <DialogFooter>
+                    <Button type="button" variant="ghost" onClick={() => setAdding(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={!ready || busy}>
+                      Record window
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          }
+        />
 
         <ListState
           loading={windows.loading}
@@ -96,129 +160,85 @@ export function CongestionPage() {
         />
         {windows.rows.length > 0 && (
           <TableWrap>
-            <table className="fs-table fs-t-congestion">
-              <thead>
-                <tr>
-                  <th>Airport</th>
-                  <th>Window</th>
-                  <th>Limit</th>
-                  <th>Movements</th>
-                  <th>State</th>
-                  <th>Disruption reason</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Airport</TableHead>
+                  <TableHead>Window</TableHead>
+                  <TableHead>Limit</TableHead>
+                  <TableHead>Movements</TableHead>
+                  <TableHead>State</TableHead>
+                  <TableHead>Disruption reason</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {windows.rows.map((w) => (
-                  <tr key={w.id}>
-                    <td className="fs-flight fs-plain">{w.airport}</td>
-                    <td>{windowLabel(w)}</td>
-                    <td>{w.max_movement_per_hour} per hour</td>
-                    <td>
+                  <TableRow key={w.id}>
+                    <TableCell className="fs-flight fs-plain">{w.airport}</TableCell>
+                    <TableCell>{windowLabel(w)}</TableCell>
+                    <TableCell>{w.max_movement_per_hour} per hour</TableCell>
+                    <TableCell>
                       {w.peak_movements} of {w.max_movement_per_hour}
-                    </td>
-                    <td>
+                    </TableCell>
+                    <TableCell>
                       <StatusPill
                         status={w.over_limit.length > 0 ? 'cancelled' : 'active'}
                         label={w.over_limit.length > 0 ? 'Over limit' : 'Within limit'}
                       />
-                    </td>
-                    <td>{reasonLabel(w.disruption_reason_code)}</td>
-                    <td>
-                      <button type="button" className="fs-button-light" onClick={() => void remove(w)}>
+                    </TableCell>
+                    <TableCell>{reasonLabel(w.disruption_reason_code)}</TableCell>
+                    <TableCell>
+                      <Button variant="outline" size="sm" type="button" onClick={() => void remove(w)}>
                         Remove
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </TableWrap>
         )}
 
         {overLimit.length > 0 && (
           <Card>
             <h2>Flights over the limit</h2>
-            <p className="fs-sub">Each one gets a congestion conflict on the Conflicts page, with a delay that moves it past the window.</p>
             <TableWrap spaced>
-              <table className="fs-table fs-t-over">
-                <thead>
-                  <tr>
-                    <th>Flight</th>
-                    <th>Movement</th>
-                    <th>Proposed</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Flight</TableHead>
+                    <TableHead>Movement</TableHead>
+                    <TableHead>Proposed</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {overLimit.flatMap((w) =>
                     w.over_limit.map((o) => {
                       const later = Math.ceil((new Date(w.ends_at).getTime() - new Date(o.at).getTime()) / 60000)
                       return (
-                        <tr key={`${w.id}-${o.flight_id}`}>
-                          <td>
+                        <TableRow key={`${w.id}-${o.flight_id}`}>
+                          <TableCell>
                             <span className="fs-flight">{o.flight_number}</span>{' '}
                             <span className="fs-to">{formatServiceDate(o.service_date)}</span>
-                          </td>
-                          <td>
+                          </TableCell>
+                          <TableCell>
                             {o.kind === 'departs' ? 'Departs' : 'Arrives'} {w.airport} {formatDateTime(o.at, zone(w.airport)).slice(-5)}
-                          </td>
-                          <td>
+                          </TableCell>
+                          <TableCell>
                             {w.airport} is congested from {windowLabel(w)}: {w.peak_movements} movements scheduled in the busiest hour,
                             limit {w.max_movement_per_hour}. Proposed: move {o.flight_number} about {later} minutes later, past the window.
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       )
                     }),
                   )}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </TableWrap>
           </Card>
         )}
 
-        <Card as="form" onSubmit={(e) => void record(e)}>
-          <h2>Record a congestion window</h2>
-          <div className="fs-form-grid">
-            <SelectField label="Airport" value={form.airport} onChange={(e) => setForm({ ...form, airport: e.target.value })}>
-              <option value="">Choose an airport</option>
-              {airports.rows.map((a) => (
-                <option key={a.iata_code} value={a.iata_code}>
-                  {a.iata_code} · {a.city}
-                </option>
-              ))}
-            </SelectField>
-            <FormField label="Date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-            <FormField half label="From" type="time" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} />
-            <FormField half label="To" type="time" value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} />
-            <FormField
-              label="Max movements per hour"
-              type="number"
-              min={1}
-              value={form.limit}
-              onChange={(e) => setForm({ ...form, limit: e.target.value })}
-            />
-            <SelectField label="Disruption reason" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })}>
-              <option value="">Choose a disruption reason</option>
-              {reasons.map((r) => (
-                <option key={r.code} value={r.code}>
-                  {r.label}
-                </option>
-              ))}
-            </SelectField>
-          </div>
-          <p className="fs-sub">
-            Movements are scheduled departures and arrivals, counted per hour from the window start; the last hour is prorated when the
-            window does not end on the hour.
-          </p>
-          {error && (
-            <p className="fs-error" role="alert">
-              {error}
-            </p>
-          )}
-          <button type="submit" className="fs-button fs-mt" disabled={!ready || busy}>
-            Record window
-          </button>
-        </Card>
         <Toast message={notice} />
       </main>
     </StaffShell>

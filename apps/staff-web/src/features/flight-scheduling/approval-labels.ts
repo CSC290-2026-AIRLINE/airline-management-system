@@ -11,6 +11,19 @@ export const STATUS_LABEL: Record<ApprovalStatus, string> = {
   expired: 'Expired',
 }
 
+export const REJECT_LABEL: Record<string, string> = {
+  curfew: 'Curfew',
+  capacity_full: 'Capacity full',
+  no_slot_available: 'No slot available',
+  other: 'Other',
+}
+
+// What the approver said: the reason of a rejection, then the note.
+export function answerText(row: Pick<ApprovalRow, 'reject_reason' | 'response_note'>) {
+  const reason = row.reject_reason ? (REJECT_LABEL[row.reject_reason] ?? row.reject_reason) : null
+  return [reason, row.response_note].filter(Boolean).join(': ') || null
+}
+
 // The fs-status-<tone> class each status uses.
 export const TONE: Record<ApprovalStatus, string> = {
   pending: 'departed',

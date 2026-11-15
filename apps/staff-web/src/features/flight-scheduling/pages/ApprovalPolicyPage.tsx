@@ -1,13 +1,10 @@
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { useEffect, useState } from 'react'
-import { AirportTabs } from '../components/AirportTabs'
 import { Card } from '../components/Card'
 import { FormField } from '../components/FormField'
 import { ListState } from '../components/ListState'
 import { NotConnected } from '../components/NotConnected'
-import { PageHeader } from '../components/PageHeader'
 import { SelectField } from '../components/SelectField'
-import { StaffShell } from '../components/StaffShell'
 import { TableWrap } from '../components/TableWrap'
 import { Toast } from '../components/Toast'
 import { CONNECTED } from '../connected'
@@ -15,6 +12,8 @@ import { useNotice } from '../hooks/useNotice'
 import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
 import type { AirportRow, ApprovalPolicy } from '../types'
 import '../flight-scheduling.css'
+import { Button } from '@staff-web/components/ui/button'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@staff-web/components/ui/table'
 
 // The form keeps every field as text; an empty curfew time or cap means "none".
 interface Draft {
@@ -103,109 +102,98 @@ export function ApprovalPolicyPage() {
   const wrong = editing ? problem(editing) : null
 
   return (
-    <StaffShell>
-      <main className="fs-page">
-        <PageHeader title="Airports">
-          Master data for every airport we fly to. The minimum turnaround feeds the position and turnaround check, the fees feed the cost
-          estimate, and the approval policy drives the simulated approver.
-        </PageHeader>
-        <AirportTabs />
-        {!CONNECTED.approvalPolicy && <NotConnected>Approval policies are hidden until their API is connected.</NotConnected>}
+    <>
+      {!CONNECTED.approvalPolicy && <NotConnected>Approval policies are hidden until their API is connected.</NotConnected>}
 
-        {CONNECTED.approvalPolicy && (
-          <Card first>
-            <h2>Approval policy</h2>
-            <p className="fs-sub">
-              The rules the simulated approver (the origin airport's slot coordinator) follows in automatic mode. Times are local at the
-              airport. Staff edit them without a code change.
-            </p>
-            <ListState
-              loading={airports.loading || (policies === null && error === null)}
-              error={airports.error ?? error}
-              empty={rows.length === 0}
-              noun="approval policies"
-              emptyText="No airports yet."
-            />
-            {rows.length > 0 && (
-              <TableWrap spaced>
-                <table className="fs-table fs-t-policy">
-                  <thead>
-                    <tr>
-                      <th>Airport</th>
-                      <th data-short="Curfew">Curfew (local)</th>
-                      <th data-short="Max dep / hour">Max departures per hour</th>
-                      <th data-short="Offers">Offers other times as</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((p) => (
-                      <tr key={p.airport} className={editing?.airport === p.airport ? 'fs-row-on' : undefined}>
-                        <td className="fs-flight">{p.airport}</td>
-                        <td className={p.curfew_start_local ? undefined : 'fs-to'}>
-                          {p.curfew_start_local ? `${p.curfew_start_local} to ${p.curfew_end_local}` : 'No curfew'}
-                        </td>
-                        <td>{p.max_departure_per_hour ?? 'No limit'}</td>
-                        <td>{p.offer_style === 'slots' ? 'A list of slots' : 'A time window'}</td>
-                        <td>
-                          <button type="button" className="fs-button-light" onClick={() => setEditing(toDraft(p))}>
-                            Edit
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </TableWrap>
-            )}
+      {CONNECTED.approvalPolicy && (
+        <Card first>
+          <h2>Approval policy</h2>
+          <ListState
+            loading={airports.loading || (policies === null && error === null)}
+            error={airports.error ?? error}
+            empty={rows.length === 0}
+            noun="approval policies"
+            emptyText="No airports yet."
+          />
+          {rows.length > 0 && (
+            <TableWrap spaced>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Airport</TableHead>
+                    <TableHead data-short="Curfew">Curfew (local)</TableHead>
+                    <TableHead data-short="Max dep / hour">Max departures per hour</TableHead>
+                    <TableHead data-short="Offers">Offers other times as</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((p) => (
+                    <TableRow key={p.airport} className={editing?.airport === p.airport ? 'fs-row-on' : undefined}>
+                      <TableCell className="fs-flight">{p.airport}</TableCell>
+                      <TableCell className={p.curfew_start_local ? undefined : 'fs-to'}>
+                        {p.curfew_start_local ? `${p.curfew_start_local} to ${p.curfew_end_local}` : 'No curfew'}
+                      </TableCell>
+                      <TableCell>{p.max_departure_per_hour ?? 'No limit'}</TableCell>
+                      <TableCell>{p.offer_style === 'slots' ? 'A list of slots' : 'A time window'}</TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm" type="button" onClick={() => setEditing(toDraft(p))}>
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableWrap>
+          )}
 
-            {editing && (
-              <div>
-                <h3 className="fs-section-title">Edit policy for {editing.airport}</h3>
-                <div className="fs-form-grid">
-                  <FormField
-                    label="Curfew from (empty for none)"
-                    type="time"
-                    value={editing.curfewFrom}
-                    onChange={(e) => setEditing({ ...editing, curfewFrom: e.target.value })}
-                  />
-                  <FormField
-                    label="Curfew to (empty for none)"
-                    type="time"
-                    value={editing.curfewTo}
-                    onChange={(e) => setEditing({ ...editing, curfewTo: e.target.value })}
-                  />
-                  <FormField
-                    label="Max departures per hour (empty for no limit)"
-                    type="number"
-                    min={1}
-                    value={editing.maxPerHour}
-                    onChange={(e) => setEditing({ ...editing, maxPerHour: e.target.value })}
-                  />
-                  <SelectField
-                    label="Offers other times as"
-                    value={editing.offerStyle}
-                    onChange={(e) => setEditing({ ...editing, offerStyle: e.target.value as Draft['offerStyle'] })}
-                  >
-                    <option value="slots">A list of slots</option>
-                    <option value="window">A time window</option>
-                  </SelectField>
-                </div>
-                {wrong && <p role="alert">{wrong}</p>}
-                <div className="fs-form-actions">
-                  <button type="button" className="fs-button" disabled={busy || wrong !== null} onClick={() => void save()}>
-                    Save policy
-                  </button>
-                  <button type="button" className="fs-button-ghost" onClick={() => setEditing(null)}>
-                    Cancel
-                  </button>
-                </div>
+          {editing && (
+            <div>
+              <h3 className="fs-section-title">Edit policy for {editing.airport}</h3>
+              <div className="fs-form-grid">
+                <FormField
+                  label="Curfew from (empty for none)"
+                  type="time"
+                  value={editing.curfewFrom}
+                  onChange={(e) => setEditing({ ...editing, curfewFrom: e.target.value })}
+                />
+                <FormField
+                  label="Curfew to (empty for none)"
+                  type="time"
+                  value={editing.curfewTo}
+                  onChange={(e) => setEditing({ ...editing, curfewTo: e.target.value })}
+                />
+                <FormField
+                  label="Max departures per hour (empty for no limit)"
+                  type="number"
+                  min={1}
+                  value={editing.maxPerHour}
+                  onChange={(e) => setEditing({ ...editing, maxPerHour: e.target.value })}
+                />
+                <SelectField
+                  label="Offers other times as"
+                  value={editing.offerStyle}
+                  onChange={(e) => setEditing({ ...editing, offerStyle: e.target.value as Draft['offerStyle'] })}
+                >
+                  <option value="slots">A list of slots</option>
+                  <option value="window">A time window</option>
+                </SelectField>
               </div>
-            )}
-          </Card>
-        )}
-        <Toast message={notice} />
-      </main>
-    </StaffShell>
+              {wrong && <p role="alert">{wrong}</p>}
+              <div className="fs-form-actions">
+                <Button type="button" disabled={busy || wrong !== null} onClick={() => void save()}>
+                  Save policy
+                </Button>
+                <Button variant="ghost" type="button" onClick={() => setEditing(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+      <Toast message={notice} />
+    </>
   )
 }

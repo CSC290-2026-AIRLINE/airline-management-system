@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { SegmentedControl } from '../components/SegmentedControl'
 import { Callout } from '../components/Callout'
+import { DateField } from '../components/DateField'
 import { FormField } from '../components/FormField'
 import { PageHeader } from '../components/PageHeader'
 import { SelectField } from '../components/SelectField'
@@ -18,14 +19,16 @@ import { usePartners } from '../hooks/usePartners'
 import { capitalize, formatDateTime, localParts, localToIso, WEEKDAYS } from '../format'
 import { useAircraft } from '../hooks/useAircraft'
 import { useDisruptionReasons } from '../hooks/useDisruptionReasons'
+import { emitChange } from '../hooks/fsChange'
 import { useNotice } from '../hooks/useNotice'
-import { BASE, errorMessage } from '../hooks/usePagedList'
+import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
 import { useResource } from '../hooks/useResource'
 import type {
   AirportFeeRow,
   ApprovalRow,
   Availability,
   ConflictRow,
+  AirportRow,
   CostEstimate,
   FlightDetail,
   FlightEventRow,
@@ -33,6 +36,11 @@ import type {
   TimetableRow,
 } from '../types'
 import '../flight-scheduling.css'
+import { Button } from '@staff-web/components/ui/button'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@staff-web/components/ui/table'
+import { Badge } from '@staff-web/components/ui/badge'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 
 const thb = (n: number) => `${Math.round(n).toLocaleString('en-US')} THB`
 const UNIT: Record<string, string> = { per_flight: 'per flight', per_hour: 'per hour on the ground', per_tonne: 'per tonne' }
@@ -49,19 +57,20 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
   const { fetchWithAuth } = useAppAuth()
   const { partnersFor } = usePartners(fetchWithAuth)
   const { aircraft: fleet } = useAircraft(fetchWithAuth)
+  const airports = usePagedList<AirportRow>('/airports?is_active=true&limit=100', fetchWithAuth)
   const flight = useResource<FlightDetail>(`/flights/${flightId}`, fetchWithAuth)
   const events = useResource<FlightEventRow[]>(`/flights/${flightId}/events`, fetchWithAuth)
   const conflicts = useResource<ConflictRow[]>(`/conflicts?flight_id=${flightId}`, fetchWithAuth)
-  const pattern = useResource<TimetableRow>(flight.data?.pattern_id ? `/timetables/${flight.data.pattern_id}` : null, fetchWithAuth)
+  const pattern = useResource<TimetableRow>(flight.data?.pattern_id ? `/patterns/${flight.data.pattern_id}` : null, fetchWithAuth)
 
   const estimate = useResource<CostEstimate>(CONNECTED.costEstimate ? `/flights/${flightId}/cost-estimate` : null, fetchWithAuth)
 
   const originFees = useResource<{ data: AirportFeeRow[] }>(
-    flight.data?.route.origin ? `/airport-fees?airport=${flight.data.route.origin.iata_code}` : null,
+    flight.data?.route.origin ? `/airports/${flight.data.route.origin.iata_code}/fees` : null,
     fetchWithAuth,
   )
   const destinationFees = useResource<{ data: AirportFeeRow[] }>(
-    flight.data ? `/airport-fees?airport=${flight.data.effective_destination}` : null,
+    flight.data ? `/airports/${flight.data.effective_destination}/fees` : null,
     fetchWithAuth,
   )
 
@@ -69,15 +78,19 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
   const [warn, setWarn] = useState(false)
   const [busy, setBusy] = useState(false)
   const [costOpen, setCostOpen] = useState(false)
+  const [tab, setTab] = useState('overview')
 
-  const [mode, setMode] = useState<'delay' | 'cancel'>('delay')
+  const [mode, setMode] = useState<'delay' | 'divert' | 'hold' | 'cancel'>('delay')
+  const [divertTo, setDivertTo] = useState('')
+  const [holdMinutes, setHoldMinutes] = useState('15')
   const [reason, setReason] = useState('')
   const [minutes, setMinutes] = useState('45')
   const [resolution, setResolution] = useState<'refund' | 'rebook_partner'>('refund')
   const [partner, setPartner] = useState('')
   const [note, setNote] = useState('')
   const [aircraft, setAircraft] = useState('')
-  const [proposed, setProposed] = useState('')
+  const [proposed, setProposed] = useState('') // YYYY-MM-DDTHH:mm, local at the origin; either part can still be empty
+  const proposedComplete = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(proposed)
   const [checks, setChecks] = useState<RescheduleCheck[] | null>(null)
   const [slot, setSlot] = useState<{ dep_at: string; arr_at: string } | null>(null)
   const [approval, setApproval] = useState<ApprovalRow | null>(null)
@@ -107,12 +120,17 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
     }
   }
 
-  const record = (action: 'delay' | 'cancel', body: object, success: string) =>
+  const record = (action: 'delay' | 'divert' | 'hold' | 'cancel', body: object, success: string) =>
     send(action, 'POST', { reason_code: reason, ...body }, success)
 
   // The proposed time is typed as local time at the origin airport, which is how the approver and the timetable read it.
   const originZone = flight.data?.route.origin?.timezone ?? 'UTC'
   const asInstant = (local: string) => localToIso(local.slice(0, 10), local.slice(11, 16), originZone)
+
+  function setProposedParts(date: string, time: string) {
+    setProposed(date || time ? `${date}T${time}` : '')
+    forgetCheck()
+  }
 
   function forgetCheck() {
     setChecks(null)
@@ -128,6 +146,7 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
       body: JSON.stringify(body),
     })
     if (!res.ok) throw new Error(await errorMessage(res))
+    emitChange('conflicts') // a delay, a cancel or an aircraft change can raise or clear conflicts
     return (await res.json()) as T
   }
 
@@ -206,10 +225,32 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
   }
 
   let body
-  if (flight.loading) body = <p>Loading flight…</p>
-  else if (flight.error || !flight.data) body = <p role="alert">Could not load the flight: {flight.error}</p>
+  if (flight.loading)
+    body = (
+      <div className="grid gap-4" role="status" aria-label="Loading flight">
+        <Skeleton className="h-36 w-full" />
+        <Skeleton className="h-9 w-72" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    )
+  else if (flight.error || !flight.data)
+    body = (
+      <Callout
+        tone="crit"
+        action={
+          <Button variant="outline" size="sm" onClick={() => flight.reload()}>
+            Try again
+          </Button>
+        }
+      >
+        <b>Could not load the flight.</b> {flight.error}
+      </Callout>
+    )
   else {
     const f = flight.data
+    // A hold needs a flight that has left and not yet arrived (the server judges this on its clock), or one that is already holding.
+    const clockNow = new Date().getTime()
+    const inAir = f.status === 'holding' || (clockNow >= Date.parse(f.dep_at) && clockNow < Date.parse(f.arr_at))
     const destZone = f.route.destination?.timezone ?? 'UTC'
     const origin = f.route.origin?.iata_code ?? '—'
     const destination = f.effective_destination
@@ -275,299 +316,395 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
           </dl>
         </Card>
 
-        <Card>
-          <div className={costOpen ? 'fs-fold is-open' : 'fs-fold'}>
-            <div className="fs-fold-head">
-              <h2>Cost estimate</h2>
-              <button type="button" className="fs-fold-toggle" aria-expanded={costOpen} onClick={() => setCostOpen(!costOpen)}>
-                {cost?.total ? money(cost.total.amount, cost.total.currency) : `${fees.length} ${fees.length === 1 ? 'fee' : 'fees'}`}
-              </button>
-            </div>
-            <div className="fs-fold-body">
-              {cost && (
+        <Tabs value={tab} onValueChange={setTab} className="mt-6 gap-4">
+          <TabsList aria-label="Flight detail sections">
+            <TabsTrigger value="overview">
+              Overview
+              {open.length > 0 && (
+                <Badge variant="destructive" aria-label={`${open.length} open ${open.length === 1 ? 'conflict' : 'conflicts'}`}>
+                  {open.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="operations">Operations</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="[&>:first-child]:mt-0">
+            <>
+              <Card>
+                <div className={costOpen ? 'fs-fold is-open' : 'fs-fold'}>
+                  <div className="fs-fold-head">
+                    <h2>Cost estimate</h2>
+                    <button type="button" className="fs-fold-toggle" aria-expanded={costOpen} onClick={() => setCostOpen(!costOpen)}>
+                      {cost?.total ? money(cost.total.amount, cost.total.currency) : `${fees.length} ${fees.length === 1 ? 'fee' : 'fees'}`}
+                    </button>
+                  </div>
+                  <div className="fs-fold-body">
+                    {cost && (
+                      <>
+                        <TableWrap>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Item</TableHead>
+                                <TableHead>Basis</TableHead>
+                                <TableHead className="fs-num">Amount</TableHead>
+                                <TableHead className="fs-num">In {cost.base_currency}</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {cost.lines.map((c) => (
+                                <TableRow key={c.item}>
+                                  <TableCell>{c.item}</TableCell>
+                                  <TableCell className="fs-to">{c.basis}</TableCell>
+                                  <TableCell className="fs-num">{money(c.amount, c.currency)}</TableCell>
+                                  <TableCell className="fs-num">
+                                    {c.amount_in_base === null ? (
+                                      <span className="fs-to">No exchange rate</span>
+                                    ) : (
+                                      money(c.amount_in_base, cost.base_currency)
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                              <TableRow>
+                                <TableCell>
+                                  <b>Estimated cost</b>
+                                </TableCell>
+                                <TableCell></TableCell>
+                                <TableCell></TableCell>
+                                <TableCell className="fs-num">
+                                  <b>{cost.total ? money(cost.total.amount, cost.total.currency) : 'Not available'}</b>
+                                </TableCell>
+                              </TableRow>
+                            </TableBody>
+                          </Table>
+                        </TableWrap>
+                        {cost.pending.length > 0 && (
+                          <Callout tone="info">
+                            <b>Not included.</b> {cost.pending.join('; ')}.
+                          </Callout>
+                        )}
+                      </>
+                    )}
+                    {cost ? null : estimate.loading ? (
+                      <p className="fs-sub">Loading the estimate…</p>
+                    ) : fees.length === 0 ? (
+                      <p className="fs-sub">
+                        No departure fees at {origin} or arrival fees at {destination} are in force on {day}.
+                      </p>
+                    ) : (
+                      <TableWrap>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Item</TableHead>
+                              <TableHead>Basis</TableHead>
+                              <TableHead className="fs-num">Amount</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {fees.map((fee) => (
+                              <TableRow key={fee.id}>
+                                <TableCell>
+                                  {fee.airport} {fee.fee_type} fee · {fee.applies_on}
+                                </TableCell>
+                                <TableCell className="fs-to">{UNIT[fee.unit] ?? fee.unit}</TableCell>
+                                <TableCell className="fs-num">{thb(fee.amount)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableWrap>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <h2>Open conflicts</h2>
+                {conflicts.error && <p role="alert">Could not load conflicts: {conflicts.error}</p>}
+                {conflicts.loading && <p>Loading conflicts…</p>}
+                {!conflicts.loading && !conflicts.error && open.length === 0 && (
+                  <p className="fs-sub">No open conflicts for this flight.</p>
+                )}
+                {open.map((c) => (
+                  <Callout
+                    key={c.id}
+                    tone="crit"
+                    action={
+                      <Link to="/schedule-board" search={{ tab: 'conflicts' }}>
+                        Resolve
+                      </Link>
+                    }
+                  >
+                    <b>{capitalize(c.kind.replace(/_/g, ' '))}.</b> {c.detail}
+                  </Callout>
+                ))}
+              </Card>
+            </>
+          </TabsContent>
+
+          <TabsContent value="operations" className="[&>:first-child]:mt-0">
+            <>
+              {f.status === 'cancelled' ? (
+                <Callout tone="crit">
+                  <b>This flight is cancelled.</b> A cancelled flight cannot be changed, delayed, diverted or rescheduled. Its history stays
+                  below.
+                </Callout>
+              ) : (
                 <>
-                  <p className="fs-sub">
-                    Block time times the aircraft type operating cost (feature 9), plus departure fees at {origin} and arrival fees at{' '}
-                    {destination} in force on {day}.
-                  </p>
-                  <TableWrap>
-                    <table className="fs-table fs-t-cost">
-                      <thead>
-                        <tr>
-                          <th>Item</th>
-                          <th>Basis</th>
-                          <th className="fs-num">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cost.lines.map((c) => (
-                          <tr key={c.item}>
-                            <td>{c.item}</td>
-                            <td className="fs-to">{c.basis}</td>
-                            <td className="fs-num">{money(c.amount, c.currency)}</td>
-                          </tr>
-                        ))}
-                        <tr>
-                          <td>
-                            <b>Estimated cost</b>
-                          </td>
-                          <td></td>
-                          <td className="fs-num">
-                            <b>{cost.total ? money(cost.total.amount, cost.total.currency) : 'Mixed currencies'}</b>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </TableWrap>
-                  {cost.pending.length > 0 && (
-                    <Callout tone="info">
-                      <b>Not included.</b> {cost.pending.join('; ')}.
-                    </Callout>
+                  <div className="fs-two">
+                    {CONNECTED.aircraft && (
+                      <Card>
+                        <h2>Aircraft</h2>
+                        <SelectField label="Aircraft" value={aircraft} onChange={(e) => setAircraft(e.target.value)}>
+                          <option value="">Choose an aircraft</option>
+                          {fleet.map((a) => (
+                            <option key={a.id} value={a.id} disabled={!a.usable}>
+                              {a.label}
+                            </option>
+                          ))}
+                        </SelectField>
+                        <Button
+                          type="button"
+                          className="fs-mt"
+                          disabled={busy || !aircraft}
+                          onClick={() => void send('aircraft', 'PUT', { aircraft_id: aircraft }, 'Aircraft changed.')}
+                        >
+                          Change aircraft
+                        </Button>
+                      </Card>
+                    )}
+
+                    <Card>
+                      <h2>Record a disruption</h2>
+                      <SegmentedControl
+                        options={inAir ? (['delay', 'divert', 'hold', 'cancel'] as const) : (['delay', 'divert', 'cancel'] as const)}
+                        labels={{
+                          delay: 'Delay',
+                          divert: 'Divert',
+                          hold: f.status === 'holding' ? 'Holding' : 'Hold',
+                          cancel: 'Cancel flight',
+                        }}
+                        value={mode}
+                        onChange={setMode}
+                      />
+                      <div className="fs-form-grid fs-form-grid-2">
+                        {!(mode === 'hold' && f.status === 'holding') && (
+                          <SelectField label="Disruption reason" value={reason} onChange={(e) => setReason(e.target.value)}>
+                            <option value="">Choose a disruption reason</option>
+                            {reasons.map((r) => (
+                              <option key={r.code} value={r.code}>
+                                {r.label}
+                              </option>
+                            ))}
+                          </SelectField>
+                        )}
+                        {mode === 'divert' ? (
+                          <SelectField label="Divert to" value={divertTo} onChange={(e) => setDivertTo(e.target.value)}>
+                            <option value="">Choose an airport</option>
+                            {airports.rows
+                              .filter((a) => a.iata_code !== f.effective_destination)
+                              .map((a) => (
+                                <option key={a.iata_code} value={a.iata_code}>
+                                  {a.iata_code} · {a.city}
+                                </option>
+                              ))}
+                          </SelectField>
+                        ) : mode === 'hold' ? (
+                          f.status === 'holding' ? null : (
+                            <FormField
+                              label="Hold (minutes)"
+                              type="number"
+                              min={1}
+                              value={holdMinutes}
+                              onChange={(e) => setHoldMinutes(e.target.value)}
+                            />
+                          )
+                        ) : mode === 'delay' ? (
+                          <FormField
+                            label="Delay (minutes)"
+                            type="number"
+                            min={1}
+                            value={minutes}
+                            onChange={(e) => setMinutes(e.target.value)}
+                          />
+                        ) : (
+                          <SelectField
+                            label="Resolution"
+                            value={resolution}
+                            onChange={(e) => {
+                              setResolution(e.target.value as 'refund' | 'rebook_partner')
+                              setPartner('')
+                            }}
+                          >
+                            <option value="refund">Refund</option>
+                            {CONNECTED.partnerRoutes && <option value="rebook_partner">Rebook with partner</option>}
+                          </SelectField>
+                        )}
+                      </div>
+                      {mode === 'cancel' && resolution === 'rebook_partner' && (
+                        <SelectField label="Partner airline" value={partner} onChange={(e) => setPartner(e.target.value)}>
+                          <option value="">Choose a partner airline</option>
+                          {partners.map((p) => (
+                            <option key={p}>{p}</option>
+                          ))}
+                        </SelectField>
+                      )}
+                      <FormField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+                      {mode === 'divert' ? (
+                        <Button
+                          variant="destructive"
+                          type="button"
+                          disabled={busy || !reason || !divertTo}
+                          onClick={() => void record('divert', { airport_code: divertTo }, `Flight diverted to ${divertTo}.`)}
+                        >
+                          Divert this flight
+                        </Button>
+                      ) : mode === 'hold' ? (
+                        f.status === 'holding' ? (
+                          <Button type="button" disabled={busy} onClick={() => void send('hold/end', 'POST', {}, 'Hold ended.')}>
+                            End the hold
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            disabled={busy || !reason || !(Number.isInteger(Number(holdMinutes)) && Number(holdMinutes) > 0)}
+                            onClick={() =>
+                              void record('hold', { hold_minutes: Number(holdMinutes) }, `Holding for ${holdMinutes} min recorded.`)
+                            }
+                          >
+                            Record hold
+                          </Button>
+                        )
+                      ) : mode === 'delay' ? (
+                        <Button
+                          type="button"
+                          disabled={busy || !reason || !(Number.isInteger(Number(minutes)) && Number(minutes) > 0)}
+                          onClick={() => void record('delay', { delay_minutes: Number(minutes) }, `Delay of ${minutes} min recorded.`)}
+                        >
+                          Record delay
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="destructive"
+                          type="button"
+                          disabled={busy || !reason || (resolution === 'rebook_partner' && !partner)}
+                          onClick={() =>
+                            void record(
+                              'cancel',
+                              { resolution, ...(resolution === 'rebook_partner' && { partner_airline: partner }) },
+                              'Flight cancelled.',
+                            )
+                          }
+                        >
+                          Cancel this flight
+                        </Button>
+                      )}
+                    </Card>
+                  </div>
+
+                  {CONNECTED.availability && (
+                    <Card>
+                      <h2>Check another time or reschedule</h2>
+                      <div className="fs-filters">
+                        <DateField
+                          label="Proposed departure date"
+                          value={proposed.slice(0, 10)}
+                          onChange={(date) => setProposedParts(date, proposed.slice(11, 16))}
+                        />
+                        <FormField
+                          label="Proposed departure time"
+                          type="time"
+                          value={proposed.slice(11, 16)}
+                          onChange={(e) => setProposedParts(proposed.slice(0, 10), e.target.value)}
+                        />
+                        <FormField
+                          label="Arrival (same flight length)"
+                          value={slot ? localParts(slot.arr_at, destZone).time : '—'}
+                          readOnly
+                        />
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          type="button"
+                          className="fs-align-end"
+                          disabled={!proposedComplete}
+                          onClick={() => void check()}
+                        >
+                          Check availability
+                        </Button>
+                      </div>
+                      {checks && (
+                        <>
+                          <ul className="fs-checks">
+                            {checks.map((c) => (
+                              <li key={c.text}>
+                                <StatusPill status={c.label === 'Passed' ? 'ok' : 'failed'} label={c.label} /> {c.text}
+                              </li>
+                            ))}
+                          </ul>
+                          {CONNECTED.approvalQueue && !approval && (
+                            <div className="fs-form-actions">
+                              <Button
+                                type="button"
+                                disabled={busy || checks.some((c) => c.label !== 'Passed')}
+                                onClick={() => void request(f)}
+                              >
+                                Request approval for {proposed.slice(11, 16)}
+                              </Button>
+                            </div>
+                          )}
+                          {approval?.status === 'approved' && (
+                            <div className="fs-form-actions">
+                              <Button type="button" disabled={busy} onClick={() => void reschedule()}>
+                                Reschedule to {proposed.slice(11, 16)}
+                              </Button>
+                              <span className="fs-sub">Approved by {approval.approver_airport}.</span>
+                            </div>
+                          )}
+                          {approval && approval.status !== 'approved' && (
+                            <Callout
+                              tone="info"
+                              action={
+                                <Link to="/schedule-board" search={{ tab: 'approvals' }}>
+                                  Open Approvals
+                                </Link>
+                              }
+                            >
+                              <b>{STATUS_LABEL[approval.status]}.</b> {approval.response_note ?? 'Waiting for the approver.'} Pick a time
+                              that was offered on the Approvals page, then check that time here again to reschedule.
+                            </Callout>
+                          )}
+                        </>
+                      )}
+                    </Card>
                   )}
                 </>
               )}
-              {cost ? null : estimate.loading ? (
-                <p className="fs-sub">Loading the estimate…</p>
-              ) : fees.length === 0 ? (
-                <p className="fs-sub">
-                  No departure fees at {origin} or arrival fees at {destination} are in force on {day}.
-                </p>
-              ) : (
-                <TableWrap>
-                  <table className="fs-table fs-t-cost">
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>Basis</th>
-                        <th className="fs-num">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fees.map((fee) => (
-                        <tr key={fee.id}>
-                          <td>
-                            {fee.airport} {fee.fee_type} fee · {fee.applies_on}
-                          </td>
-                          <td className="fs-to">{UNIT[fee.unit] ?? fee.unit}</td>
-                          <td className="fs-num">{thb(fee.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </TableWrap>
-              )}
-            </div>
-          </div>
-        </Card>
+            </>
+          </TabsContent>
 
-        <Card>
-          <h2>Open conflicts</h2>
-          {conflicts.error && <p role="alert">Could not load conflicts: {conflicts.error}</p>}
-          {conflicts.loading && <p>Loading conflicts…</p>}
-          {!conflicts.loading && !conflicts.error && open.length === 0 && <p className="fs-sub">No open conflicts for this flight.</p>}
-          {open.map((c) => (
-            <Callout key={c.id} tone="crit" action={<Link to="/conflicts">Resolve</Link>}>
-              <b>{capitalize(c.kind.replace(/_/g, ' '))}.</b> {c.detail}
-            </Callout>
-          ))}
-        </Card>
-
-        {f.status === 'cancelled' ? (
-          <Callout tone="crit">
-            <b>This flight is cancelled.</b> A cancelled flight cannot be changed, delayed, diverted or rescheduled. Its history stays
-            below.
-          </Callout>
-        ) : (
-          <>
-            <div className="fs-two">
-              {CONNECTED.aircraft && (
-                <Card>
-                  <h2>Aircraft</h2>
-                  <p className="fs-sub">
-                    Changing the aircraft publishes flight.aircraft_changed. If the type differs, feature 3b re-seats passengers.
-                  </p>
-                  <SelectField label="Aircraft (from feature 9)" value={aircraft} onChange={(e) => setAircraft(e.target.value)}>
-                    <option value="">Choose an aircraft</option>
-                    {fleet.map((a) => (
-                      <option key={a.id} value={a.id} disabled={!a.usable}>
-                        {a.label}
-                      </option>
-                    ))}
-                  </SelectField>
-                  <button
-                    type="button"
-                    className="fs-button fs-mt"
-                    disabled={busy || !aircraft}
-                    onClick={() => void send('aircraft', 'PUT', { aircraft_id: aircraft }, 'Aircraft changed.')}
-                  >
-                    Change aircraft
-                  </button>
-                </Card>
-              )}
-
-              <Card>
-                <h2>Record a disruption</h2>
-                <p className="fs-sub">
-                  Each one needs a disruption reason and is published to the event stream. Delays, holding and diversions need no approval.
-                </p>
-                <SegmentedControl
-                  options={['delay', 'cancel'] as const}
-                  labels={{ delay: 'Delay', cancel: 'Cancel flight' }}
-                  value={mode}
-                  onChange={setMode}
-                />
-                <div className="fs-form-grid fs-form-grid-2">
-                  <SelectField label="Disruption reason" value={reason} onChange={(e) => setReason(e.target.value)}>
-                    <option value="">Choose a disruption reason</option>
-                    {reasons.map((r) => (
-                      <option key={r.code} value={r.code}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </SelectField>
-                  {mode === 'delay' ? (
-                    <FormField label="Delay (minutes)" type="number" min={1} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
-                  ) : (
-                    <SelectField
-                      label="Resolution"
-                      value={resolution}
-                      onChange={(e) => {
-                        setResolution(e.target.value as 'refund' | 'rebook_partner')
-                        setPartner('')
-                      }}
-                    >
-                      <option value="refund">Refund</option>
-                      {CONNECTED.partnerRoutes && <option value="rebook_partner">Rebook with partner</option>}
-                    </SelectField>
-                  )}
-                </div>
-                {mode === 'cancel' && resolution === 'rebook_partner' && (
-                  <SelectField label="Partner airline" value={partner} onChange={(e) => setPartner(e.target.value)}>
-                    <option value="">Choose a partner airline</option>
-                    {partners.map((p) => (
-                      <option key={p}>{p}</option>
-                    ))}
-                  </SelectField>
-                )}
-                <FormField label="Note (optional, not used for grouping)" value={note} onChange={(e) => setNote(e.target.value)} />
-                <p className="fs-sub">
-                  {mode === 'delay'
-                    ? `A delay moves departure and arrival, then walks ${f.aircraft.tail_number}'s later flights that day and raises or updates cascade conflicts.`
-                    : 'Cancelling publishes flight.cancelled with the resolution. Feature 5b refunds; with a partner rebooking, 3b creates the new segment.'}
-                </p>
-                {mode === 'delay' ? (
-                  <button
-                    type="button"
-                    className="fs-button"
-                    disabled={busy || !reason || !(Number.isInteger(Number(minutes)) && Number(minutes) > 0)}
-                    onClick={() => void record('delay', { delay_minutes: Number(minutes) }, `Delay of ${minutes} min recorded.`)}
-                  >
-                    Record delay
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="fs-button-danger"
-                    disabled={busy || !reason || (resolution === 'rebook_partner' && !partner)}
-                    onClick={() =>
-                      void record(
-                        'cancel',
-                        { resolution, ...(resolution === 'rebook_partner' && { partner_airline: partner }) },
-                        'Flight cancelled.',
-                      )
-                    }
-                  >
-                    Cancel this flight
-                  </button>
-                )}
-              </Card>
-            </div>
-
-            {CONNECTED.availability && (
-              <Card>
-                <h2>Check another time or reschedule</h2>
-                <p className="fs-sub">
-                  A reschedule changes the published timetable, so it needs an approval from the simulated {origin} slot coordinator first.
-                  The checks are read-only until you request approval. Times are local at {origin}.
-                </p>
-                <div className="fs-filters">
-                  <FormField
-                    label="Proposed departure"
-                    type="datetime-local"
-                    value={proposed}
-                    onChange={(e) => {
-                      setProposed(e.target.value)
-                      forgetCheck()
-                    }}
-                  />
-                  <FormField label="Arrival (same flight length)" value={slot ? localParts(slot.arr_at, destZone).time : '—'} readOnly />
-                  <button
-                    type="button"
-                    className="fs-button-light fs-button-lg fs-align-end"
-                    disabled={!proposed}
-                    onClick={() => void check()}
-                  >
-                    Check availability
-                  </button>
-                </div>
-                {checks && (
-                  <>
-                    <ul className="fs-checks">
-                      {checks.map((c) => (
-                        <li key={c.text}>
-                          <StatusPill status={c.label === 'Passed' ? 'ok' : 'failed'} label={c.label} /> {c.text}
-                        </li>
-                      ))}
-                    </ul>
-                    {CONNECTED.approvalQueue && !approval && (
-                      <div className="fs-form-actions">
-                        <button
-                          type="button"
-                          className="fs-button"
-                          disabled={busy || checks.some((c) => c.label !== 'Passed')}
-                          onClick={() => void request(f)}
-                        >
-                          Request approval for {proposed.slice(11, 16)}
-                        </button>
-                        <span className="fs-sub">An approved request lets you move the flight, which publishes flight.rescheduled.</span>
-                      </div>
-                    )}
-                    {approval?.status === 'approved' && (
-                      <div className="fs-form-actions">
-                        <button type="button" className="fs-button" disabled={busy} onClick={() => void reschedule()}>
-                          Reschedule to {proposed.slice(11, 16)}
-                        </button>
-                        <span className="fs-sub">Approved by {approval.approver_airport}.</span>
-                      </div>
-                    )}
-                    {approval && approval.status !== 'approved' && (
-                      <Callout tone="info" action={<Link to="/approvals">Open Approvals</Link>}>
-                        <b>{STATUS_LABEL[approval.status]}.</b> {approval.response_note ?? 'Waiting for the approver.'} Pick a time that was
-                        offered on the Approvals page, then check that time here again to reschedule.
-                      </Callout>
-                    )}
-                  </>
-                )}
-              </Card>
-            )}
-          </>
-        )}
-
-        <Card>
-          <h2>Event history</h2>
-          {events.error && <p role="alert">Could not load events: {events.error}</p>}
-          {events.loading && <p>Loading events…</p>}
-          <ul className="fs-events">
-            {[...(events.data ?? [])].reverse().map((e) => (
-              <li key={e.id}>
-                <span className="fs-to">{formatDateTime(e.occurred_at, originZone)}</span> {eventText(e)}
-              </li>
-            ))}
-            <li>
-              <span className="fs-to">{formatDateTime(f.created_at, originZone)}</span> confirmed and published to other features
-            </li>
-          </ul>
-        </Card>
+          <TabsContent value="history" className="[&>:first-child]:mt-0">
+            <Card>
+              <h2>Event history</h2>
+              {events.error && <p role="alert">Could not load events: {events.error}</p>}
+              {events.loading && <p>Loading events…</p>}
+              <ul className="fs-events">
+                {[...(events.data ?? [])].reverse().map((e) => (
+                  <li key={e.id}>
+                    <span className="fs-to">{formatDateTime(e.occurred_at, originZone)}</span> {eventText(e)}
+                  </li>
+                ))}
+                <li>
+                  <span className="fs-to">{formatDateTime(f.created_at, originZone)}</span> confirmed and published to other features
+                </li>
+              </ul>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </>
     )
   }
@@ -575,13 +712,7 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
   return (
     <StaffShell>
       <main className="fs-page">
-        <Link to="/schedule-board" className="fs-back">
-          ‹ Back to schedule board
-        </Link>
-        <PageHeader title="Flight detail">
-          One saved flight: change its aircraft, record a disruption, check another time or reschedule it through an approval. Every change
-          is one event on the stream.
-        </PageHeader>
+        <PageHeader title="Flight detail" />
         {body}
         <Toast message={notice} tone={warn ? 'warn' : 'default'} />
       </main>
