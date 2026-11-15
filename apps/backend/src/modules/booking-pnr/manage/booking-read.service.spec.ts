@@ -55,7 +55,16 @@ function listPassenger(id: string, type: string, firstName: string, lastName: st
 }
 
 function detailPassenger(id: string, type: string, firstName: string, lastName: string, createdAt: Date, lapOfId: string | null) {
-  return { ...listPassenger(id, type, firstName, lastName, createdAt), lap_of_id: lapOfId }
+  return {
+    ...listPassenger(id, type, firstName, lastName, createdAt),
+    lap_of_id: lapOfId,
+    passenger: {
+      first_name: firstName,
+      last_name: lastName,
+      date_of_birth: new Date('1990-05-04T00:00:00Z'),
+      passport_number: 'X1234567',
+    },
+  }
 }
 
 function detailSegment(segmentOrder: number, origin: string, destination: string, depAt: Date) {
@@ -69,6 +78,7 @@ function detailSegment(segmentOrder: number, origin: string, destination: string
     seat_inventory: {
       flight: {
         flight_number: `FL${segmentOrder}`,
+        service_date: new Date('2026-11-10T00:00:00Z'),
         dep_at: depAt,
         arr_at: new Date(depAt.getTime() + 2 * 60 * 60 * 1000),
         route: { origin, destination },

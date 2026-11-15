@@ -282,6 +282,9 @@ export interface BookingPassengerDto {
   passengerType: PassengerType
   // The adult this infant travels with (booking_passenger.lap_of_id).
   lapOfBookingPassengerId: string | null
+  // The passenger's own details, so a held booking can be re-booked with a corrected name.
+  dateOfBirth: string | null
+  passportNumber: string | null
 }
 
 export interface BookingSegmentDto {
@@ -298,6 +301,8 @@ export interface BookingSegmentDto {
   destination: string
   depAt: Date
   arrAt: Date
+  // The day the flight leaves (flight.service_date), as YYYY-MM-DD. The search form asks for this date.
+  serviceDate: string
 }
 
 export interface BookingCouponDto {

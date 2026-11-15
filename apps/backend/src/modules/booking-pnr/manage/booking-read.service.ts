@@ -94,7 +94,7 @@ const DETAIL_SELECT = {
       passenger_type: true,
       lap_of_id: true,
       created_at: true,
-      passenger: { select: { first_name: true, last_name: true } },
+      passenger: { select: { first_name: true, last_name: true, date_of_birth: true, passport_number: true } },
     },
     orderBy: { created_at: 'asc' },
   },
@@ -111,6 +111,7 @@ const DETAIL_SELECT = {
           flight: {
             select: {
               flight_number: true,
+              service_date: true,
               dep_at: true,
               arr_at: true,
               route: { select: { origin: true, destination: true } },
@@ -552,6 +553,7 @@ export class BookingReadService implements BookingReadPort {
       destination: segment.seat_inventory.flight.route.destination,
       depAt: segment.seat_inventory.flight.dep_at,
       arrAt: segment.seat_inventory.flight.arr_at,
+      serviceDate: segment.seat_inventory.flight.service_date.toISOString().slice(0, 10),
     }))
 
     const total = coupons.reduce((sum, coupon) => sum + Number(coupon.price_total), 0)
@@ -565,6 +567,8 @@ export class BookingReadService implements BookingReadPort {
         lastName: passenger.passenger.last_name,
         passengerType: passenger.passenger_type as PassengerType,
         lapOfBookingPassengerId: passenger.lap_of_id,
+        dateOfBirth: passenger.passenger.date_of_birth ? passenger.passenger.date_of_birth.toISOString().slice(0, 10) : null,
+        passportNumber: passenger.passenger.passport_number,
       })),
       segments,
       coupons: coupons.map<BookingCouponDto>((coupon) => ({

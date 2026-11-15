@@ -24,6 +24,7 @@ import { DevConfirmController } from './confirm/dev-confirm.controller'
 import { HoldExpiryJob } from './confirm/hold-expiry.job'
 import { ReleaseService } from './confirm/release.service'
 import { BookingReadService } from './manage/booking-read.service'
+import { BookingContactService } from './manage/booking-contact.service'
 import { BookingsController } from './manage/bookings.controller'
 import { CustomerBookingsController } from './manage/customer-bookings.controller'
 import {
@@ -123,6 +124,7 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
     CancelForFlightService,
     HoldExpiryJob,
     BookingReadService,
+    BookingContactService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },
     { provide: BOOKING_CLOCK, useExisting: SimulationClock },
