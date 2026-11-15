@@ -178,16 +178,37 @@
 .f3-lookup tbody tr:hover {
   background: #f8faff;
 }
+/* Every row opens the booking, so the row is a target, not plain text. */
+.f3-lookup tbody tr.f3-lookup-row {
+  cursor: pointer;
+}
 .f3-lookup .f3-lookup-right {
   text-align: right;
   white-space: nowrap;
 }
 .f3-lookup-reference {
+  display: inline-block;
   border: 0;
   background: transparent;
   padding: 4px 0;
   color: #102544;
   font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* The chevron is an inline sibling of the reference, not a flex item: a flex container would drop the underline. */
+.f3-lookup-reference svg {
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.f3-lookup-reference:hover {
+  color: #1f408c;
+}
+/* The line that says the rows can be opened, right above them. */
+.f3-lookup-hint {
+  padding: 14px 18px 0;
+  color: #677287;
+  font-size: 12px;
 }
 .f3-lookup-chip {
   display: inline-block;

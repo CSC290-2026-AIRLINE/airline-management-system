@@ -1,5 +1,6 @@
 import { Component, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
+import { ChevronRight } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
@@ -190,6 +191,18 @@ function LookupContent() {
     setError(null)
     void navigate({ to: '/booking-lookup', search: { ...search, page: value > 1 ? value : undefined }, replace: true })
   }
+  /** Opens the details of one booking. The reference in the URL is what the details dialog reads. */
+  function openBooking(reference: string) {
+    void navigate({ to: '/booking-lookup', search: { ...search, reference } })
+  }
+  /**
+   * The same thing for a click anywhere in the row. A click that ends a text selection is a copy, not a click on the
+   * booking, so it is left alone.
+   */
+  function openRow(reference: string) {
+    if (window.getSelection()?.toString()) return
+    openBooking(reference)
+  }
   const start = page?.items.length ? (page.page - 1) * page.pageSize + 1 : 0
   const end = page?.items.length ? start + page.items.length - 1 : 0
   const range = `${query.dateType === 'travelling' ? 'Travelling' : 'Booked'} ${
@@ -315,49 +328,57 @@ function LookupContent() {
           </div>
         )}
         {!loading && !!page?.items.length && (
-          <div className="f3-lookup-table-wrap">
-            <table>
-              <caption className="f3-lookup-sr">Staff bookings. Select a reference to open booking details.</caption>
-              <thead>
-                <tr>
-                  <th>Booking</th>
-                  <th>Lead passenger</th>
-                  <th>Trip</th>
-                  <th>Booked</th>
-                  <th>Status</th>
-                  <th>Assistance</th>
-                  <th className="f3-lookup-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {page.items.map((item) => (
-                  <tr key={item.bookingId}>
-                    <td>
-                      <button
-                        className="f3-lookup-reference"
-                        onClick={() => void navigate({ to: '/booking-lookup', search: { ...search, reference: item.reference } })}
-                      >
-                        {item.reference}
-                      </button>
-                    </td>
-                    <td>{item.leadPassengerName}</td>
-                    <td>
-                      {item.trip}
-                      <small>Travelling {lookupDate(item.travelDate)}</small>
-                    </td>
-                    <td>{lookupShortDate(item.bookedAt)}</td>
-                    <td>
-                      <span className={`f3-lookup-chip is-${item.status}`}>{item.status}</span>
-                    </td>
-                    <td>
-                      {item.openServiceRequests > 0 && <span className="f3-lookup-chip is-held">{item.openServiceRequests} pending</span>}
-                    </td>
-                    <td className="f3-lookup-right">{lookupMoney(item.total, item.currency)}</td>
+          <>
+            <p className="f3-lookup-hint">Select a booking to open its details.</p>
+            <div className="f3-lookup-table-wrap">
+              <table>
+                <caption className="f3-lookup-sr">Staff bookings. Select a booking to open its details.</caption>
+                <thead>
+                  <tr>
+                    <th>Booking</th>
+                    <th>Lead passenger</th>
+                    <th>Trip</th>
+                    <th>Booked</th>
+                    <th>Status</th>
+                    <th>Assistance</th>
+                    <th className="f3-lookup-right">Total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {page.items.map((item) => (
+                    <tr key={item.bookingId} className="f3-lookup-row" onClick={() => openRow(item.reference)}>
+                      <td>
+                        <button
+                          className="f3-lookup-reference"
+                          title={`Open booking ${item.reference}`}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openBooking(item.reference)
+                          }}
+                        >
+                          {item.reference}
+                          <ChevronRight aria-hidden="true" size={14} strokeWidth={2.25} />
+                        </button>
+                      </td>
+                      <td>{item.leadPassengerName}</td>
+                      <td>
+                        {item.trip}
+                        <small>Travelling {lookupDate(item.travelDate)}</small>
+                      </td>
+                      <td>{lookupShortDate(item.bookedAt)}</td>
+                      <td>
+                        <span className={`f3-lookup-chip is-${item.status}`}>{item.status}</span>
+                      </td>
+                      <td>
+                        {item.openServiceRequests > 0 && <span className="f3-lookup-chip is-held">{item.openServiceRequests} pending</span>}
+                      </td>
+                      <td className="f3-lookup-right">{lookupMoney(item.total, item.currency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
         <footer className="f3-lookup-pagination">
           <p>
@@ -377,9 +398,7 @@ function LookupContent() {
           </nav>
         </footer>
       </section>
-      <p className="f3-lookup-info">
-        Click a booking to open its details. Search looks at every date; the filters only narrow the list when the search box is empty.
-      </p>
+      <p className="f3-lookup-info">Search looks at every date; the filters only narrow the list when the search box is empty.</p>
       {reference && (
         <BookingDetailsDialog
           key={reference}
