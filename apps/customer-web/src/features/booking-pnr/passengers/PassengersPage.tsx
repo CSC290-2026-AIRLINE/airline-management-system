@@ -15,6 +15,8 @@ interface Props {
   demoProfiles?: DemoPassenger[]
   demoLoading?: boolean
   demoError?: string | null
+  /** Whether the passenger details are read-only. Defaults to read-only when demo travellers are offered. */
+  lockDetails?: boolean
   renderAssistance?: (traveller: TravellerDraft) => ReactNode
   error: string | null
 }
@@ -30,6 +32,7 @@ export function PassengersPage({
   demoProfiles,
   demoLoading,
   demoError,
+  lockDetails,
   renderAssistance,
 }: Props) {
   function submit(event: FormEvent) {
@@ -37,12 +40,17 @@ export function PassengersPage({
     onContinue()
   }
   const departure = itinerary.request.legs[0].date
+  const locked = lockDetails ?? !!demoProfiles
   return (
     <form onSubmit={submit} className="f3-passengers-form" aria-label="Passenger details">
       {demoProfiles && (
         <div className="f3-demo-notice" role="status">
           <strong>Development demo travellers</strong>
-          <p>Choose a seeded demo traveller for each passenger. Options match ages on the first departure. Demo details are read-only.</p>
+          <p>
+            {locked
+              ? 'Choose a seeded demo traveller for each passenger. Options match ages on the first departure. Demo details are read-only.'
+              : 'Pick a seeded demo traveller to fill the details, or type them yourself. The options match the ages on the first departure.'}
+          </p>
           {demoLoading && <p>Loading demo travellers…</p>}
           {demoError && <p>{demoError}</p>}
         </div>
@@ -105,7 +113,7 @@ export function PassengersPage({
               <label>
                 Given name (as on passport)
                 <input
-                  readOnly={!!demoProfiles}
+                  readOnly={locked}
                   autoComplete="given-name"
                   name={`givenName-${index}`}
                   maxLength={100}
@@ -117,7 +125,7 @@ export function PassengersPage({
               <label>
                 Family name
                 <input
-                  readOnly={!!demoProfiles}
+                  readOnly={locked}
                   autoComplete="family-name"
                   name={`familyName-${index}`}
                   maxLength={100}
@@ -129,7 +137,7 @@ export function PassengersPage({
               <label>
                 Date of birth
                 <input
-                  readOnly={!!demoProfiles}
+                  readOnly={locked}
                   aria-label={`Passenger ${index + 1} date of birth`}
                   type="date"
                   max={departure}
@@ -141,7 +149,7 @@ export function PassengersPage({
               <label>
                 Passport number
                 <input
-                  readOnly={!!demoProfiles}
+                  readOnly={locked}
                   autoComplete="off"
                   name={`passport-${index}`}
                   maxLength={30}

@@ -54,8 +54,6 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   const { holdBooking } = useBookingPnrApi()
   const demo = useDemoPassengers(!resolvePassengers)
   const passengerResolver = resolvePassengers ?? demo.resolve
-  /** The demo picker is the only way to fill the passenger details while it is on, so it has to be used for everyone. */
-  const demoMode = !resolvePassengers && demo.enabled
 
   /* The flow is kept in the session, so a refresh does not wipe the passenger details, the seats and the contact.
      The details stay in sessionStorage, never in the address bar. */
@@ -95,11 +93,8 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
         (value.serviceCodes ?? (value.serviceCode ? [value.serviceCode] : [])).some((code) => code === 'UMNR' || code === 'MEDA') &&
         !value.note.trim(),
     )
-    const missingDemo = demoMode && travellers.some((person) => !person.demoPassengerId)
     const message =
-      (missingDemo ? 'Choose a demo traveller for every passenger.' : null) ??
-      validateTravellers(travellers, contact, itinerary) ??
-      (missingNote ? 'Add a note for each UMNR or MEDA assistance request.' : null)
+      validateTravellers(travellers, contact, itinerary) ?? (missingNote ? 'Add a note for each UMNR or MEDA assistance request.' : null)
     setError(message)
     if (!message) setStep(3)
   }
@@ -311,6 +306,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                 demoProfiles={!resolvePassengers && demo.enabled ? demo.profiles : undefined}
                 demoLoading={demo.loading}
                 demoError={demo.error}
+                lockDetails={false}
                 renderAssistance={
                   AssistanceFields
                     ? (person) => (
