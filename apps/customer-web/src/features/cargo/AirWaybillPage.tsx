@@ -149,12 +149,7 @@ export default function AirWaybillPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3">
               <Cell label="NATURE OF GOODS" value={d.goods.goodsDescription} sub={d.goods.commodityTypeName} className="sm:border-r" />
               <Cell label="RATE" value={fmtMoney(d.quote.currency, d.quote.ratePerKg) + '/kg'} className="sm:border-r" />
-              <div className="relative">
-                <Cell label="FREIGHT CHARGE" value={fmtMoney(d.quote.currency, d.quote.charge)} />
-                <span className="absolute right-3 top-2 rotate-[-8deg] rounded border-2 border-emerald-600 px-2 py-0.5 text-xs font-bold uppercase text-emerald-600 opacity-80">
-                  Paid
-                </span>
-              </div>
+              <Cell label="FREIGHT CHARGE" value={fmtMoney(d.quote.currency, d.quote.charge)} />
             </div>
           </div>
 
