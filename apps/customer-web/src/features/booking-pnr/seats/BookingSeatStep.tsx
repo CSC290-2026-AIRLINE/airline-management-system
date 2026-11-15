@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import type { SeatMap } from '../api/types'
-import type { BookingSeatStepProps } from '../flow/integration'
+import type { BookingSeatStepProps, SeatChoice } from '../flow/integration'
 import { formatMoney } from '../lib/format'
+import { ConfirmSeatsDialog, type PendingHold } from './ConfirmSeatsDialog'
 import { SeatPicker } from './SeatPicker'
 import controls from '../styles/controls.module.css'
 import './seat-selection.css'
@@ -31,6 +32,8 @@ export function BookingSeatStep({
   const quote = useSeatQuote(fetchWithAuth, itinerary, travellers, choices, maps, promoCode)
   const [skipping, setSkipping] = useState(false)
   const [skipError, setSkipError] = useState<string | null>(null)
+  /* What the customer is about to hold. The hold is only made when the dialog is confirmed. */
+  const [pending, setPending] = useState<PendingHold | null>(null)
 
   // A failed hold can mean someone else took a seat; refresh when the flow reports an error.
   useEffect(() => {
@@ -78,6 +81,13 @@ export function BookingSeatStep({
         total + (maps?.[choice.flightId]?.rows.flatMap((row) => row.seats).find((seat) => seat.seatCode === choice.seatCode)?.fee ?? 0),
       0,
     )
+  /** The fees of the seats in a list of choices, over every flight. */
+  const seatFeesFor = (list: SeatChoice[]) =>
+    list.reduce(
+      (total, choice) =>
+        total + (maps?.[choice.flightId]?.rows.flatMap((row) => row.seats).find((seat) => seat.seatCode === choice.seatCode)?.fee ?? 0),
+      0,
+    )
   const selectedSeat = allSeats.find((seat) => seat.seatCode === selected?.seatCode)
   const unavailableChoices = maps
     ? choices.filter((choice) => {
@@ -95,204 +105,237 @@ export function BookingSeatStep({
   )
   const exitSelected = selectedSeat?.type === 'exit'
 
+  /** The customer confirmed what the booking holds, so the hold is made now. */
+  function confirmHold() {
+    if (!pending) return
+    setPending(null)
+    if (pending.kind === 'skip') onSkip(pending.total, pending.choices)
+    else onContinue(pending.total)
+  }
+
   return (
-    <section className="seat-selection" aria-label="Seat selection" aria-busy={busy}>
-      {error && (
-        <p className="seat-selection__error" role="alert">
-          {error}
-        </p>
-      )}
-      {missingCabin && (
-        <p className="seat-selection__error" role="alert">
-          A selected cabin is not available on the assigned aircraft. Go back to flights and choose another cabin.
-        </p>
-      )}
-      {unavailableChoices.length > 0 && (
-        <div className="seat-selection__warning" role="alert">
-          <p>
-            Some chosen seats are no longer available: {unavailableChoices.map((choice) => choice.seatCode).join(', ')}. Clear them or
-            choose replacement seats.
+    <>
+      <section className="seat-selection" aria-label="Seat selection" aria-busy={busy}>
+        {error && (
+          <p className="seat-selection__error" role="alert">
+            {error}
           </p>
-          <button
-            className={controls.secondary}
-            type="button"
-            disabled={busy}
-            onClick={() => onChange(choices.filter((choice) => !unavailableChoices.includes(choice)))}
-          >
-            Clear unavailable seats
-          </button>
-        </div>
-      )}
-      <div className="seat-selection__layout">
-        <div className="seat-selection__map-card">
-          <div className="seat-selection__segments" aria-label="Flights">
-            {itinerary.selections.map(({ flight }) => (
-              <button
-                className={controls.secondary}
-                key={flight.flightId}
-                type="button"
-                disabled={busy}
-                aria-pressed={flightId === flight.flightId}
-                onClick={() => setFlightId(flight.flightId)}
-              >
-                {flight.flightNumber} · {flight.origin} → {flight.destination}
-              </button>
-            ))}
+        )}
+        {missingCabin && (
+          <p className="seat-selection__error" role="alert">
+            A selected cabin is not available on the assigned aircraft. Go back to flights and choose another cabin.
+          </p>
+        )}
+        {unavailableChoices.length > 0 && (
+          <div className="seat-selection__warning" role="alert">
+            <p>
+              Some chosen seats are no longer available: {unavailableChoices.map((choice) => choice.seatCode).join(', ')}. Clear them or
+              choose replacement seats.
+            </p>
+            <button
+              className={controls.secondary}
+              type="button"
+              disabled={busy}
+              onClick={() => onChange(choices.filter((choice) => !unavailableChoices.includes(choice)))}
+            >
+              Clear unavailable seats
+            </button>
           </div>
-          {loadError ? (
-            <div className="seat-selection__error" role="alert">
-              <p>{loadError}</p>
-              <button
-                className={controls.secondary}
-                type="button"
-                onClick={() => {
-                  setLoadError(null)
-                  setRetry((n) => n + 1)
-                }}
-              >
-                Try again
-              </button>
+        )}
+        <div className="seat-selection__layout">
+          <div className="seat-selection__map-card">
+            <div className="seat-selection__segments" aria-label="Flights">
+              {itinerary.selections.map(({ flight }) => (
+                <button
+                  className={controls.secondary}
+                  key={flight.flightId}
+                  type="button"
+                  disabled={busy}
+                  aria-pressed={flightId === flight.flightId}
+                  onClick={() => setFlightId(flight.flightId)}
+                >
+                  {flight.flightNumber} · {flight.origin} → {flight.destination}
+                </button>
+              ))}
             </div>
-          ) : !maps ? (
-            <p className="seat-selection__loading" role="status">
-              Loading seat maps…
-            </p>
-          ) : null}
-          {maps && selection && traveller && map && (
-            <SeatPicker
-              seats={allSeats}
-              currency={currency}
-              bookingLegend
-              selectedCabin={selection.fare.cabin}
-              selectedSeatCode={selected?.seatCode ?? null}
-              seatLabels={seatLabels}
-              passengerLabel={`${traveller.givenName} ${traveller.familyName}`}
-              legendAction={
-                choices.some((choice) => choice.flightId === flightId) ? (
-                  <button
-                    className="seat-picker__legend-action seat-selection__clear"
-                    type="button"
-                    disabled={busy}
-                    aria-label="Clear seats for this flight"
-                    onClick={() => onChange(choices.filter((choice) => choice.flightId !== flightId))}
-                  >
-                    <X aria-hidden="true" size={14} strokeWidth={2} />
-                    Clear seats
-                  </button>
-                ) : null
-              }
-              disabledSeatCodes={allSeats
-                .filter(
-                  (seat) =>
-                    busy ||
-                    seat.cabin !== selection.fare.cabin ||
-                    choices.some(
-                      (choice) => choice.flightId === flightId && choice.travellerKey !== travellerKey && choice.seatCode === seat.seatCode,
-                    ),
-                )
-                .map((seat) => seat.seatCode)}
-              onSelect={(seatCode) => {
-                const remaining = choices.filter((choice) => choice.flightId !== flightId || choice.travellerKey !== travellerKey)
-                // Clicking the seat that is already chosen for this traveller removes the choice.
-                onChange(selected?.seatCode === seatCode ? remaining : [...remaining, { flightId, travellerKey, seatCode }])
-              }}
-            />
-          )}
-          {maps && (!selection || !traveller || !map) && <p role="status">No seat map is available for this flight.</p>}
-        </div>
-        <aside className="seat-selection__summary" aria-label="Passengers and trip summary">
-          <div className="seat-selection__summary-section">
-            <h2>Passengers on {selection?.flight.flightNumber ?? 'this flight'}</h2>
-            <div className="seat-selection__passengers" aria-label="Choose a passenger">
-              {travellers
-                .filter((person) => person.expectedType !== 'infant')
-                .map((person) => {
-                  const seat = choices.find((choice) => choice.flightId === flightId && choice.travellerKey === person.key)
-                  return (
-                    <button
-                      className="seat-selection__passenger"
-                      key={person.key}
-                      type="button"
-                      disabled={busy}
-                      aria-pressed={travellerKey === person.key}
-                      onClick={() => setTravellerKey(person.key)}
-                    >
-                      <span>
-                        <strong>
-                          {person.givenName} {person.familyName} ({person.expectedType})
-                        </strong>
-                      </span>
-                      <span className="seat-selection__seat-code">{seat?.seatCode ?? 'No seat yet'}</span>
-                    </button>
-                  )
-                })}
-            </div>
-            {travellers.some((person) => person.expectedType === 'infant') && (
-              <p className="seat-selection__muted">Infants travel on an adult’s lap and do not need a seat.</p>
-            )}
-            {exitSelected && (
-              <p className="seat-selection__warning" role="status">
-                Exit-row seats require an adult with no assistance request and no infant on their lap.
-              </p>
-            )}
-            <p className="seat-selection__fees">
-              <span>Seat fees</span>
-              <strong>{maps ? formatMoney(seatFees, currency) : '—'}</strong>
-            </p>
-            {quote.error && (
+            {loadError ? (
               <div className="seat-selection__error" role="alert">
-                <p>{quote.error}</p>
-                <button className={controls.secondary} type="button" disabled={busy || skipping} onClick={quote.retry}>
-                  Retry price
+                <p>{loadError}</p>
+                <button
+                  className={controls.secondary}
+                  type="button"
+                  onClick={() => {
+                    setLoadError(null)
+                    setRetry((n) => n + 1)
+                  }}
+                >
+                  Try again
                 </button>
               </div>
-            )}
-            {skipError && (
-              <p className="seat-selection__error" role="alert">
-                {skipError}
+            ) : !maps ? (
+              <p className="seat-selection__loading" role="status">
+                Loading seat maps…
               </p>
+            ) : null}
+            {maps && selection && traveller && map && (
+              <SeatPicker
+                seats={allSeats}
+                currency={currency}
+                bookingLegend
+                selectedCabin={selection.fare.cabin}
+                selectedSeatCode={selected?.seatCode ?? null}
+                seatLabels={seatLabels}
+                passengerLabel={`${traveller.givenName} ${traveller.familyName}`}
+                legendAction={
+                  choices.some((choice) => choice.flightId === flightId) ? (
+                    <button
+                      className="seat-picker__legend-action seat-selection__clear"
+                      type="button"
+                      disabled={busy}
+                      aria-label="Clear seats for this flight"
+                      onClick={() => onChange(choices.filter((choice) => choice.flightId !== flightId))}
+                    >
+                      <X aria-hidden="true" size={14} strokeWidth={2} />
+                      Clear seats
+                    </button>
+                  ) : null
+                }
+                disabledSeatCodes={allSeats
+                  .filter(
+                    (seat) =>
+                      busy ||
+                      seat.cabin !== selection.fare.cabin ||
+                      choices.some(
+                        (choice) =>
+                          choice.flightId === flightId && choice.travellerKey !== travellerKey && choice.seatCode === seat.seatCode,
+                      ),
+                  )
+                  .map((seat) => seat.seatCode)}
+                onSelect={(seatCode) => {
+                  const remaining = choices.filter((choice) => choice.flightId !== flightId || choice.travellerKey !== travellerKey)
+                  // Clicking the seat that is already chosen for this traveller removes the choice.
+                  onChange(selected?.seatCode === seatCode ? remaining : [...remaining, { flightId, travellerKey, seatCode }])
+                }}
+              />
             )}
-            <p className="seat-selection__hint">
-              Pick a passenger, then a seat. Click your seat again to remove it. You can skip any flight and choose later in My Trips or at
-              check-in. Seats you pick are held with your booking.
-            </p>
-            <div className="seat-selection__actions">
-              <button
-                className={controls.primary}
-                type="button"
-                disabled={busy || skipping || quote.loading || quote.total === null || !!missingCabin || unavailableChoices.length > 0}
-                onClick={() => {
-                  if (quote.total !== null) onContinue(quote.total)
-                }}
-              >
-                {busy ? 'Creating booking…' : 'Continue to review'}
-              </button>
-              <button
-                className={controls.secondary}
-                type="button"
-                disabled={busy || skipping || !!missingCabin}
-                onClick={() => {
-                  const remainingChoices = choices.filter((choice) => choice.flightId !== flightId)
-                  setSkipping(true)
-                  setSkipError(null)
-                  void quote
-                    .forChoices(remainingChoices)
-                    .then((total) => onSkip(total, remainingChoices))
-                    .catch((cause: unknown) =>
-                      setSkipError(cause instanceof Error ? cause.message : 'Could not update the price. Please try again.'),
-                    )
-                    .finally(() => setSkipping(false))
-                }}
-              >
-                {skipping ? 'Checking price…' : 'Skip, choose seats later'}
-              </button>
-              <button className={controls.secondary} type="button" disabled={busy || skipping} onClick={onBack}>
-                Back
-              </button>
-            </div>
+            {maps && (!selection || !traveller || !map) && <p role="status">No seat map is available for this flight.</p>}
           </div>
-        </aside>
-      </div>
-    </section>
+          <aside className="seat-selection__summary" aria-label="Passengers and trip summary">
+            <div className="seat-selection__summary-section">
+              <h2>Passengers on {selection?.flight.flightNumber ?? 'this flight'}</h2>
+              <div className="seat-selection__passengers" aria-label="Choose a passenger">
+                {travellers
+                  .filter((person) => person.expectedType !== 'infant')
+                  .map((person) => {
+                    const seat = choices.find((choice) => choice.flightId === flightId && choice.travellerKey === person.key)
+                    return (
+                      <button
+                        className="seat-selection__passenger"
+                        key={person.key}
+                        type="button"
+                        disabled={busy}
+                        aria-pressed={travellerKey === person.key}
+                        onClick={() => setTravellerKey(person.key)}
+                      >
+                        <span>
+                          <strong>
+                            {person.givenName} {person.familyName} ({person.expectedType})
+                          </strong>
+                        </span>
+                        <span className="seat-selection__seat-code">{seat?.seatCode ?? 'No seat yet'}</span>
+                      </button>
+                    )
+                  })}
+              </div>
+              {travellers.some((person) => person.expectedType === 'infant') && (
+                <p className="seat-selection__muted">Infants travel on an adult’s lap and do not need a seat.</p>
+              )}
+              {exitSelected && (
+                <p className="seat-selection__warning" role="status">
+                  Exit-row seats require an adult with no assistance request and no infant on their lap.
+                </p>
+              )}
+              <p className="seat-selection__fees">
+                <span>Seat fees</span>
+                <strong>{maps ? formatMoney(seatFees, currency) : '—'}</strong>
+              </p>
+              {quote.error && (
+                <div className="seat-selection__error" role="alert">
+                  <p>{quote.error}</p>
+                  <button className={controls.secondary} type="button" disabled={busy || skipping} onClick={quote.retry}>
+                    Retry price
+                  </button>
+                </div>
+              )}
+              {skipError && (
+                <p className="seat-selection__error" role="alert">
+                  {skipError}
+                </p>
+              )}
+              <p className="seat-selection__hint">
+                Pick a passenger, then a seat. Click your seat again to remove it. You can skip any flight and choose later in My Trips or
+                at check-in. Seats you pick are held with your booking.
+              </p>
+              <div className="seat-selection__actions">
+                <button
+                  className={controls.primary}
+                  type="button"
+                  disabled={busy || skipping || quote.loading || quote.total === null || !!missingCabin || unavailableChoices.length > 0}
+                  onClick={() => {
+                    if (quote.total === null) return
+                    setPending({ kind: 'continue', total: quote.total, choices, seatFees: seatFeesFor(choices) })
+                  }}
+                >
+                  {busy ? 'Creating booking…' : 'Continue to review'}
+                </button>
+                <button
+                  className={controls.secondary}
+                  type="button"
+                  disabled={busy || skipping || !!missingCabin}
+                  onClick={() => {
+                    const remainingChoices = choices.filter((choice) => choice.flightId !== flightId)
+                    setSkipping(true)
+                    setSkipError(null)
+                    void quote
+                      .forChoices(remainingChoices)
+                      .then((total) =>
+                        setPending({
+                          kind: 'skip',
+                          total,
+                          choices: remainingChoices,
+                          skippedFlightId: flightId,
+                          seatFees: seatFeesFor(remainingChoices),
+                        }),
+                      )
+                      .catch((cause: unknown) =>
+                        setSkipError(cause instanceof Error ? cause.message : 'Could not update the price. Please try again.'),
+                      )
+                      .finally(() => setSkipping(false))
+                  }}
+                >
+                  {skipping ? 'Checking price…' : 'Skip, choose seats later'}
+                </button>
+                <button className={controls.secondary} type="button" disabled={busy || skipping} onClick={onBack}>
+                  Back
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      {/* The dialog sits outside the seat page, so the seat page's own rules do not reach its buttons. */}
+      {pending ? (
+        <ConfirmSeatsDialog
+          open
+          pending={pending}
+          itinerary={itinerary}
+          travellers={travellers}
+          currency={currency}
+          onClose={() => setPending(null)}
+          onConfirm={confirmHold}
+        />
+      ) : null}
+    </>
   )
 }

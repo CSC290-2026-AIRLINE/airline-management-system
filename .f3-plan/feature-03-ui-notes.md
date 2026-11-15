@@ -203,6 +203,20 @@ Content:
   - Info: "Pick a passenger, then a seat. You can skip any flight and choose later in My Trips or at check-in. Seats you pick are held with your booking."
   - Buttons: **Continue to review** (primary), **Skip, choose seats later** (secondary), **Back** (secondary).
 - **"Seats cleared"** state: every passenger shows "No seat yet".
+- Both forward buttons open the confirm dialog below. The hold is only made when the customer confirms it.
+
+### C9 – Confirm the seats (dialog)
+Frame:
+- `04c Seat selection — Confirm and continue`
+
+Content:
+- Title "Confirm and continue to review & pay".
+- Text: "Your seats are held for 15 minutes from the moment you continue. You can still change them from Review & pay before you pay, but the clock has started. Nothing is charged now."
+- One block per flight, for example "FL203 · BKK → NRT", then one row per passenger: "Anya Saranpat (adult) — 14C", "Mali Saranpat (child) — No seat yet — choose later", "Baby Saranpat (infant) — Travels on an adult’s lap".
+- Price: "Seat fees USD 0.00" and **Total USD 1,740.00**.
+- Buttons **Keep choosing seats** (secondary) and **Confirm and continue to review & pay** (primary).
+- "Skip, choose seats later" opens the same dialog, with the note "You are skipping the seats on FL203. You can choose them later in My Trips or at check-in."
+- The seat step is the last point where nothing is held, so the hold starts with an explicit yes.
 
 ### A – Seat taken (dialog)
 Frame: `P2 Seat no longer available`
