@@ -82,7 +82,7 @@
 /* The heading of a card and the actions that change it. */
 .cardHeader {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -96,7 +96,7 @@
 .cardActions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 

@@ -67,6 +67,11 @@
   font-size: 13px;
 }
 
+/* "Complete payment" goes to another page, so it keeps the underline that tells a link from an action on the page. */
+.actions a.cardLink:hover {
+  text-decoration: underline;
+}
+
 /* The 393 px card: the reference on top, then the route, the party, the dates and the note. */
 .mobileRow,
 .summary,

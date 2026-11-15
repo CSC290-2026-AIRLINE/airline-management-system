@@ -404,12 +404,12 @@ function FlightsCard({
       <div className={styles.cardHeader}>
         <h2>Flights</h2>
         <div className={styles.cardActions}>
-          <button type="button" className={controls.link} onClick={onChangeFlights}>
+          <button type="button" className={controls.action} onClick={onChangeFlights}>
             Change flights
           </button>
           {onEdit ? (
-            <button type="button" className={controls.link} onClick={onEdit}>
-              Edit
+            <button type="button" className={controls.action} onClick={onEdit}>
+              Back to flights
             </button>
           ) : null}
         </div>
@@ -460,12 +460,12 @@ function PassengersCard({
       <div className={styles.cardHeader}>
         <h2>Passengers</h2>
         <div className={styles.cardActions}>
-          <button type="button" className={controls.link} onClick={onEditDetails}>
+          <button type="button" className={controls.action} onClick={onEditDetails}>
             Edit details
           </button>
           {onEdit ? (
-            <button type="button" className={controls.link} onClick={onEdit}>
-              Edit
+            <button type="button" className={controls.action} onClick={onEdit}>
+              Back to passengers
             </button>
           ) : null}
         </div>
@@ -514,7 +514,7 @@ function PassengersCard({
             {booking.contactPhone ? ` · ${booking.contactPhone}` : ''}
           </p>
         </div>
-        <button type="button" className={controls.link} onClick={onEditContact}>
+        <button type="button" className={controls.action} onClick={onEditContact}>
           Change contact details
         </button>
       </div>

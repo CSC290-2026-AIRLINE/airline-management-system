@@ -64,6 +64,10 @@ These hex values come from the repo: staff-web `src/index.css` on `dev`, Feature
   - Secondary: white, 1px border ("Back to flights", "Keep booking").
   - Destructive: red fill ("Yes, cancel", "Cancel booking" inside a dialog, "Reject request").
   - Destructive outline: red text and border ("Cancel booking" on Booking detail, "Reject" in the queue).
+- **Text links:** three kinds, and they never look like each other.
+  - An action that changes the card it sits on ("Change flights", "Edit details", "Change contact details") is a small outlined button: white, 1px border, 13 px semibold. It is a button, so it has a border.
+  - A quieter action on the page ("Request assistance", "Report a problem") is a blue bold word that darkens on hover and is never underlined.
+  - A link that goes to another page keeps the underline, so the underline always means "this goes somewhere".
 - **Segmented tabs:**
   - Customer: "One-way / Return / Multi-city" and "Upcoming / Past". The selected tab has a light-blue fill and a navy border.
   - Mobile: the selected tab is solid navy.
@@ -240,9 +244,12 @@ Content:
 - **Card "Flights":**
   - One row per flight, for example "FL203 · Thu 12 Nov · Economy / BKK 11:40 → NRT 19:55 · direct".
   - Right side: "Seats 14C (Anya), 14D (Mali)", or "Seats: choose later · **Choose now**" (link).
+  - Card header, on the right: **Change flights** and **Back to flights**, two small outlined buttons (see **D16**).
 - **Card "Passengers":**
   - One row per person: "Anya Saranpat · adult — no extras".
   - A request shows an amber chip, for example "WCHC requested · staff will review".
+  - Card header, on the right: **Edit details** and **Back to passengers**, two small outlined buttons (see **D16**).
+  - Footer row "Contact for this booking" with **Change contact details**, one small outlined button on the right.
 - **Right card "PRICE":**
   - "Adult fare × 2 flights USD 870.00".
   - "Child fare × 2 flights USD 870.00 (same quote as adult)".
@@ -552,6 +559,7 @@ Frame: `03d Queue — Reject dialog (overlay)`
 | D13 | Queue status "Pending" | Database value `requested` | Show "Pending" for `requested` | C |
 | D14 | Booking detail note says the refund is processed by checkout (feature 5a) | Refunds are Feature 5b | Use "refunds (feature 5b)" in the copy | B |
 | D15 | "FEATURE 3 / STAFF VIEW" chips and "Prototype…" or "Preview: …" lines | Prototype labels | Don't build them | All |
+| D16 | Review & pay cards have no Edit links; the stepper and the "Back to seats" button are how the customer changes something | The build lets a held booking change its flights, passengers and contact details from the card headers | Add them as small outlined buttons, and name the ones that step back "Back to flights" and "Back to passengers" to match the "Back to seats" button on the price card | C |
 
 ---
 
