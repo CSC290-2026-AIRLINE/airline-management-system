@@ -18,7 +18,7 @@ import { InspectorSheet } from './components/inspector-sheet'
 import { PageNoticeView } from './components/page-notice'
 import { PairingDetailInspector } from './components/pairing-detail-inspector'
 import { CommitFooter, SummaryMetricsBar } from './components/summary-metrics-bar'
-import { AlertBanner } from '../shared/ui'
+import { AlertBanner, Button } from '../shared/ui'
 import { EditLegsModal } from './modals/edit-legs-modal'
 import { DeletePairingModal } from './modals/delete-pairing-modal'
 
@@ -80,13 +80,18 @@ export function BuildPairingsPage() {
               Turn scheduled flights into pairings that start and end at base. Only valid pairings move on.
             </p>
           </div>
-          <div className="hidden sm:block">
-            <RosterRunBadge
-              base={state.windowRun?.base ?? state.params.base}
-              dateFrom={state.windowRun?.dateFrom ?? state.params.dateFrom}
-              dateTo={state.windowRun?.dateTo ?? state.params.dateTo}
-              status={runStatusLabel(state.windowRun?.status)}
-            />
+          <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
+            <Button variant="outline" className="h-10 max-sm:w-full" onClick={() => void navigate({ to: '/published-rosters' })}>
+              Published rosters
+            </Button>
+            <div className="hidden sm:block">
+              <RosterRunBadge
+                base={state.windowRun?.base ?? state.params.base}
+                dateFrom={state.windowRun?.dateFrom ?? state.params.dateFrom}
+                dateTo={state.windowRun?.dateTo ?? state.params.dateTo}
+                status={runStatusLabel(state.windowRun?.status)}
+              />
+            </div>
           </div>
         </header>
 

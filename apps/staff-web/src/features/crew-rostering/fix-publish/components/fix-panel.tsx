@@ -11,7 +11,6 @@
  * `compact` is the phone layout: no facts table or apply summary, shorter candidate cards.
  */
 import { useState, type ReactNode } from 'react'
-import { Link } from '@tanstack/react-router'
 import { Button, CheckIcon, EmptyFaceIcon } from '../../shared/ui'
 import { ROLE_LABELS, crewOn, languageName } from '../types/labels'
 import { ReplacementPicker } from './replacement-picker'
@@ -162,7 +161,7 @@ export function FixPanel({
         </div>
       )}
 
-      {!closed && set && set.allowedCount === 0 && <NobodyLegal item={item} base={base} compact={compact} />}
+      {!closed && set && set.allowedCount === 0 && <NobodyLegal item={item} base={base} />}
 
       {!compact && canSwap && (
         <ApplySummary
@@ -333,25 +332,19 @@ function ApplySummary({
 
 /**
  * Nobody at the base passes every rule for this seat. Law rules cannot be overridden, so the only way out is more
- * crew (or freeing someone from another pairing): say so, and go straight to the page where crew are added.
+ * crew (or freeing someone from another pairing). The note says so and stays on the page: the workspace holds the
+ * operator's place, and sending them to another page to look would throw it away.
  */
-function NobodyLegal({ item, base, compact }: { item: FixBreak; base: string; compact: boolean }) {
+function NobodyLegal({ item, base }: { item: FixBreak; base: string }) {
   const seat = seatName(item)
   return (
-    <div className="mt-5 flex flex-col gap-3 rounded-xl border border-border-desc/60 bg-page-bg/60 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mt-5 rounded-xl border border-border-desc/60 bg-page-bg/60 px-4 py-3.5">
       <p className="text-sm leading-relaxed text-primary-text/75">
         No {seat} based at {base} is free and legal for {item.flightNumber}.{' '}
         {item.severity === 'law'
           ? 'This is a law rule, so it cannot be overridden: add crew based at ' + base + ', or free one from another pairing in this run.'
           : 'Add crew based at ' + base + ', free one from another pairing, or override it with a reason.'}
-        {!compact && ' New crew appear here as soon as you come back.'}
       </p>
-      <Link
-        to="/setup-crew"
-        className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-border-desc/70 bg-white px-4 text-sm font-semibold text-primary-text transition-colors hover:bg-page-bg"
-      >
-        Open Crew
-      </Link>
     </div>
   )
 }

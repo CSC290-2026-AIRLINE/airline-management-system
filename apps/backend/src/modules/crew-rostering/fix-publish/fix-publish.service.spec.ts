@@ -368,3 +368,67 @@ describe('FixPublishService.seatsToFill', () => {
     expect(seatsToFill({ ...plan('cabin_crew'), mode: 'replace-subject' }, world([]))).toBe(1)
   })
 })
+
+describe('FixPublishService history', () => {
+  function setupHistory(runs: unknown[], counts: unknown[], found: unknown = { id: RUN }) {
+    const db = {
+      roster_run: { findMany: jest.fn().mockResolvedValue(runs), findUnique: jest.fn().mockResolvedValue(found) },
+      rule_break: { groupBy: jest.fn().mockResolvedValue(counts) },
+    }
+    const service = new FixPublishService(
+      db as unknown as DbService,
+      {} as unknown as AssignCrewService,
+      fakeAudit() as unknown as AuditService,
+      fakeClock() as unknown as SimulationClock,
+    )
+    return { service, db }
+  }
+
+  it('lists published runs with their legs and how each break was closed', async () => {
+    const { service, db } = setupHistory(
+      [
+        {
+          id: RUN,
+          base_airport: 'BKK',
+          date_from: new Date('2026-09-15'),
+          date_to: new Date('2026-09-19'),
+          published_at: new Date('2026-09-14T02:00:00Z'),
+          roster_run_pairing: [{ pairing: { _count: { pairing_leg: 2 } } }, { pairing: { _count: { pairing_leg: 2 } } }],
+        },
+      ],
+      [
+        { roster_run_id: RUN, resolution: 'fixed', _count: { _all: 2 } },
+        { roster_run_id: RUN, resolution: 'overridden', _count: { _all: 1 } },
+      ],
+    )
+
+    const [row] = await service.listPublished()
+
+    expect(db.roster_run.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { status: 'published' } }))
+    expect(row).toEqual({
+      id: RUN,
+      base: 'BKK',
+      dateFrom: '2026-09-15',
+      dateTo: '2026-09-19',
+      publishedAt: '2026-09-14T02:00:00.000Z',
+      pairings: 2,
+      legs: 4,
+      fixed: 2,
+      overridden: 1,
+      open: 0,
+    })
+  })
+
+  it('asks for no break counts when nothing is published', async () => {
+    const { service, db } = setupHistory([], [])
+
+    expect(await service.listPublished()).toEqual([])
+    expect(db.rule_break.groupBy).not.toHaveBeenCalled()
+  })
+
+  it('refuses a run id that does not exist', async () => {
+    const { service } = setupHistory([], [], null)
+
+    await expect(service.getRun(RUN)).rejects.toThrow('not found')
+  })
+})

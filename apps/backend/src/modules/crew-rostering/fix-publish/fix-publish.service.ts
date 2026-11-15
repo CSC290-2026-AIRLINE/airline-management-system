@@ -168,6 +168,22 @@ export interface FixOutcome {
   state: FixPublishState
 }
 
+/** One published roster run, for the history list. */
+export interface PublishedRunSummary {
+  id: string
+  base: string
+  dateFrom: string
+  dateTo: string
+  /** When it was published, by the simulation clock. */
+  publishedAt: string | null
+  pairings: number
+  legs: number
+  /** Breaks closed by a swap, closed by a written override, and still open. */
+  fixed: number
+  overridden: number
+  open: number
+}
+
 export interface WindowParams {
   dateFrom: string
   dateTo: string
@@ -328,6 +344,52 @@ export class FixPublishService {
     return run
       ? this.buildState(run.id)
       : { rosterRun: null, assignments: [], breaks: [], publishChecks: [], uncoveredLegIds: [], limits: null, remainingPairings: 0 }
+  }
+
+  /** The state of one run by its id, so a published roster can be reopened whatever else is in its window. */
+  async getRun(rosterRunId: string): Promise<FixPublishState> {
+    const run = await this.db.roster_run.findUnique({ where: { id: rosterRunId }, select: { id: true } })
+    if (!run) throw new NotFoundException('That roster run was not found')
+    return this.buildState(rosterRunId)
+  }
+
+  /** Every published run, newest first: the history of rosters that went live. Reads only; nothing is re-checked. */
+  async listPublished(): Promise<PublishedRunSummary[]> {
+    const runs = await this.db.roster_run.findMany({
+      where: { status: 'published' },
+      orderBy: [{ published_at: 'desc' }, { created_at: 'desc' }],
+      select: {
+        id: true,
+        base_airport: true,
+        date_from: true,
+        date_to: true,
+        published_at: true,
+        roster_run_pairing: { select: { pairing: { select: { _count: { select: { pairing_leg: true } } } } } },
+      },
+    })
+    const counts =
+      runs.length === 0
+        ? []
+        : await this.db.rule_break.groupBy({
+            by: ['roster_run_id', 'resolution'],
+            where: { roster_run_id: { in: runs.map((run) => run.id) } },
+            _count: { _all: true },
+          })
+    const countOf = (runId: string, resolution: string | null): number =>
+      counts.find((row) => row.roster_run_id === runId && row.resolution === resolution)?._count._all ?? 0
+
+    return runs.map((run) => ({
+      id: run.id,
+      base: run.base_airport,
+      dateFrom: isoDate(run.date_from),
+      dateTo: isoDate(run.date_to),
+      publishedAt: run.published_at === null ? null : run.published_at.toISOString(),
+      pairings: run.roster_run_pairing.length,
+      legs: run.roster_run_pairing.reduce((total, row) => total + row.pairing._count.pairing_leg, 0),
+      fixed: countOf(run.id, 'fixed'),
+      overridden: countOf(run.id, 'overridden'),
+      open: countOf(run.id, null),
+    }))
   }
 
   /** Re-checks every rule against the roster as it stands now, then returns the page state. */

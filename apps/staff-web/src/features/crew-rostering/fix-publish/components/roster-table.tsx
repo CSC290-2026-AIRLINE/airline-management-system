@@ -24,6 +24,8 @@ interface RosterTableProps {
   updated: boolean
   onSickCall: (legId: string) => void
   onFindCover: (legId: string) => void
+  /** Drawn inside another card (the history page): no card of its own, no title, no explanation. */
+  embedded?: boolean
 }
 
 /** What is open on a leg: nothing, an empty seat, or some other break. */
@@ -39,22 +41,29 @@ function legState(legId: string, openBreaks: readonly FixBreak[]): LegState {
 
 const HEADINGS = ['Flight', 'Route', 'Time', 'Captain', 'First officer', 'Cabin crew', 'Local crew', 'Police', 'Status', 'Action']
 
-export function RosterTable({ assignments, openBreaks, updated, onSickCall, onFindCover }: RosterTableProps) {
+export function RosterTable({ assignments, openBreaks, updated, onSickCall, onFindCover, embedded = false }: RosterTableProps) {
   const ordered = [...assignments].sort((a, b) => a.leg.departureAt.localeCompare(b.leg.departureAt))
 
   return (
-    <section id="published-roster" className="rounded-2xl border border-border-desc/40 bg-card-bg p-5 lg:p-7">
-      <h2 className="text-xl font-extrabold tracking-tight text-primary-text lg:text-2xl">
-        Published roster
-        <span className="lg:hidden"> ({ordered.length} legs)</span>
-        {updated ? ' · updated' : ''}
-      </h2>
-      <p className="mt-1.5 hidden text-sm leading-relaxed text-primary-text/60 lg:block">
-        This roster is live. Later changes (sick calls, flight delays or cancellations) are re-checked against every rule.
-      </p>
-      <p className="mt-1 text-xs text-primary-text/55 lg:hidden">Use Sick call on a leg to remove someone from it.</p>
+    <section
+      id={embedded ? undefined : 'published-roster'}
+      className={embedded ? '' : 'rounded-2xl border border-border-desc/40 bg-card-bg p-5 lg:p-7'}
+    >
+      {!embedded && (
+        <>
+          <h2 className="text-xl font-extrabold tracking-tight text-primary-text lg:text-2xl">
+            Published roster
+            <span className="lg:hidden"> ({ordered.length} legs)</span>
+            {updated ? ' · updated' : ''}
+          </h2>
+          <p className="mt-1.5 hidden text-sm leading-relaxed text-primary-text/60 lg:block">
+            This roster is live. Later changes (sick calls, flight delays or cancellations) are re-checked against every rule.
+          </p>
+          <p className="mt-1 text-xs text-primary-text/55 lg:hidden">Use Sick call on a leg to remove someone from it.</p>
+        </>
+      )}
 
-      <div className="mt-5 hidden overflow-x-auto xl:block">
+      <div className={`${embedded ? '' : 'mt-5 '}hidden overflow-x-auto xl:block`}>
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="border-b border-border-desc/40">
@@ -83,7 +92,7 @@ export function RosterTable({ assignments, openBreaks, updated, onSickCall, onFi
         </table>
       </div>
 
-      <ul className="mt-4 flex flex-col gap-3 xl:hidden">
+      <ul className={`${embedded ? '' : 'mt-4 '}flex flex-col gap-3 xl:hidden`}>
         {ordered.map((assignment) => {
           const state = legState(assignment.leg.legId, openBreaks)
           return (

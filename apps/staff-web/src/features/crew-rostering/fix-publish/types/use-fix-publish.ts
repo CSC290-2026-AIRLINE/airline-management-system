@@ -77,6 +77,8 @@ export interface FixPublishState {
   uncoveredLegIds: readonly string[]
   /** Pairings left in a new draft run after this roster was published: the next round starts in Assign crew with these. */
   remainingPairings: number
+  /** The URL asked to open straight in the fix workspace. */
+  startInFix: boolean
 }
 
 export function useFixPublish(): FixPublishState {
@@ -92,6 +94,9 @@ export function useFixPublish(): FixPublishState {
 
   const search = useSearch({ strict: false }) as Record<string, unknown>
   const [params] = useState<BuildPairingParams>(() => ({ ...DEFAULT_PARAMS, ...parseWindowSearch(search) }))
+  // A run named in the URL (a published roster reopened from the history page) wins over the window, which could
+  // hold a newer draft beside it.
+  const [{ runId, fix: startInFix = false }] = useState(() => parseWindowSearch(search))
 
   const [data, setData] = useState<FixPublishData | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -105,8 +110,7 @@ export function useFixPublish(): FixPublishState {
     if (!signedIn) return
     let cancelled = false
     const api = getApi()
-    api
-      .getState(params)
+    ;(runId ? api.getRun(runId) : api.getState(params))
       // Opening the page re-checks every rule first, so the breaks shown are what the rules say
       // about the roster as it is now, and a run nobody has crewed yet cannot look ready to publish.
       .then((loaded) => (loaded.rosterRun ? api.check(loaded.rosterRun.id) : loaded))
@@ -123,7 +127,7 @@ export function useFixPublish(): FixPublishState {
     return () => {
       cancelled = true
     }
-  }, [getApi, signedIn, params])
+  }, [getApi, signedIn, params, runId])
 
   const breaks = useMemo(() => [...(data?.breaks ?? [])].sort((a, b) => a.position - b.position), [data])
   const openBreaks = useMemo(() => breaks.filter((item) => item.resolution === undefined), [breaks])
@@ -265,6 +269,8 @@ export function useFixPublish(): FixPublishState {
           overridden > 0
             ? `All breaks closed · ${fixed} fixed, ${overridden} overridden with a reason. The roster is ready to publish.`
             : 'All breaks fixed · the roster is legal and ready to publish.',
+        shortText:
+          overridden > 0 ? `All breaks closed · ${fixed} fixed, ${overridden} overridden with a reason. Ready to publish.` : undefined,
       }
     }
 
@@ -309,5 +315,6 @@ export function useFixPublish(): FixPublishState {
     rosterFor,
     uncoveredLegIds: data?.uncoveredLegIds ?? [],
     remainingPairings: data?.remainingPairings ?? 0,
+    startInFix,
   }
 }

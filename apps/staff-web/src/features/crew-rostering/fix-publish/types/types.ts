@@ -135,6 +135,8 @@ export type RosterStatus = 'draft' | 'published'
 export interface PageBanner {
   tone: 'success' | 'warning' | 'info'
   text: string
+  /** The shorter sentence a phone shows, when the full one is too long for it. */
+  shortText?: string
 }
 
 /** One pairing's row in the publish-checks table. */
@@ -172,4 +174,20 @@ export interface FixOutcome {
   banner: string
   closed: boolean
   state: FixPublishData
+}
+
+/** One published roster run, as the history page lists it. */
+export interface PublishedRunSummary {
+  id: string
+  base: string
+  dateFrom: string
+  dateTo: string
+  /** When it went live, by the simulation clock. */
+  publishedAt: string | null
+  pairings: number
+  legs: number
+  /** Breaks closed by a swap, closed by a written override, and still open. */
+  fixed: number
+  overridden: number
+  open: number
 }

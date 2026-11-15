@@ -1,6 +1,12 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseFilters, UseGuards } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
-import { FixPublishService, type FixOutcome, type FixPublishState, type WindowParams } from './fix-publish.service'
+import {
+  FixPublishService,
+  type FixOutcome,
+  type FixPublishState,
+  type PublishedRunSummary,
+  type WindowParams,
+} from './fix-publish.service'
 import { asObjectOrEmpty, requireDate, requireText, requireUuid } from '../request-parsing'
 import { RosteringExceptionFilter } from '../rostering-error'
 import { StaffOnlyGuard } from '../staff-only.guard'
@@ -22,6 +28,18 @@ export class FixPublishController {
   @Get('state')
   async getState(@Query() query: Record<string, string | undefined>): Promise<FixPublishState> {
     return this.fixPublishService.getState(parseWindow(query))
+  }
+
+  /** Every published roster, newest first, for the history page. */
+  @Get('published')
+  async listPublished(): Promise<PublishedRunSummary[]> {
+    return this.fixPublishService.listPublished()
+  }
+
+  /** One run by id, with its roster, breaks and publish checks. */
+  @Get('runs/:rosterRunId')
+  async getRun(@Param('rosterRunId') rosterRunId: string): Promise<FixPublishState> {
+    return this.fixPublishService.getRun(requireUuid(rosterRunId, 'rosterRunId'))
   }
 
   /** Re-reads the flights and re-checks every rule, for when feature 2 has moved something. */

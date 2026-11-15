@@ -1,6 +1,6 @@
 import { requestJson, type FetchWithAuth } from '../../build-pairings/types/api'
 import type { BuildPairingParams } from '../../build-pairings/types/types'
-import type { FixOutcome, FixPublishData } from './types'
+import type { FixOutcome, FixPublishData, PublishedRunSummary } from './types'
 
 /**
  * Calls to `/api/crew-rostering/fix-publish`, through `fetchWithAuth` so every request
@@ -18,6 +18,12 @@ export function createFixPublishApi(fetchWithAuth: FetchWithAuth) {
   return {
     getState: (params: BuildPairingParams) =>
       request<FixPublishData>(`/state?${new URLSearchParams({ dateFrom: params.dateFrom, dateTo: params.dateTo, base: params.base })}`),
+
+    /** One run by its id, so a published roster reopens whatever else shares its window. */
+    getRun: (rosterRunId: string) => request<FixPublishData>(`/runs/${rosterRunId}`),
+
+    /** Every published run, newest first. */
+    listPublished: () => request<PublishedRunSummary[]>('/published'),
 
     check: (rosterRunId: string) => post<FixPublishData>(`/runs/${rosterRunId}/check`),
 
