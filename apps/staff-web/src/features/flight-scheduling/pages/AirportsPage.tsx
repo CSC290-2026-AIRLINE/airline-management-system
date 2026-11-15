@@ -24,9 +24,24 @@ const FIELDS: [FormKey, string, string][] = [
   ['name', 'Airport name', 'Don Mueang International'],
   ['city', 'City', 'Bangkok'],
   ['country', 'Country code', 'th'], // the API takes a 2-letter lower-case code (th, jp), not the country name
-  ['timezone', 'Time zone (IANA name)', 'Asia/Bangkok'],
+  ['timezone', 'Time zone (type or pick)', 'Asia/Bangkok'], // typed, with the TIME_ZONES list as suggestions
   ['min_turnaround_min', 'Min turnaround (min)', '40'],
 ]
+
+// Every IANA name the browser knows, offered as suggestions while typing. Bangkok first because every airport in the seed uses it.
+const TIME_ZONES = ['Asia/Bangkok', ...Intl.supportedValuesOf('timeZone').filter((z) => z !== 'Asia/Bangkok')]
+
+// The city part of a zone name: Asia/Ho_Chi_Minh becomes "ho chi minh".
+const zoneCity = (zone: string) => (zone.split('/').pop() ?? '').replaceAll('_', ' ').toLowerCase()
+
+// Only a warning: a zone is named after its big city (Phuket and Chiang Mai use Asia/Bangkok), so a city with no zone of its own is fine.
+// It speaks up when the city is itself a zone name and the chosen zone is another one, for example Tokyo with Asia/Bangkok.
+function zoneWarning(city: string, timezone: string) {
+  const typed = city.trim().toLowerCase()
+  if (!typed || !timezone || zoneCity(timezone) === typed) return null
+  const own = TIME_ZONES.find((z) => zoneCity(z) === typed)
+  return own ? `${city.trim()} has its own time zone, ${own}, but ${timezone} is selected. Check the time zone.` : null
+}
 
 export function AirportsPage() {
   const { fetchWithAuth } = useAppAuth()
@@ -110,13 +125,24 @@ export function AirportsPage() {
                     key={key}
                     label={label}
                     type={key === 'min_turnaround_min' ? 'number' : 'text'}
+                    list={key === 'timezone' ? 'fs-time-zones' : undefined}
                     value={form[key]}
                     placeholder={placeholder}
                     invalid={invalid(key)}
                     onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                   />
                 ))}
+                <datalist id="fs-time-zones">
+                  {TIME_ZONES.map((z) => (
+                    <option key={z} value={z} />
+                  ))}
+                </datalist>
               </div>
+              {zoneWarning(form.city, form.timezone) && (
+                <p className="text-sm text-amber-700" role="status">
+                  {zoneWarning(form.city, form.timezone)}
+                </p>
+              )}
               {formError && (
                 <p className="text-sm text-destructive" role="alert">
                   {formError}
