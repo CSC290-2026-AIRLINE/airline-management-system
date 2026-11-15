@@ -221,7 +221,7 @@ export function DevCrewPayPage() {
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 md:px-8">
       <header>
-        <h1 className="m-0 font-sans text-2xl font-semibold text-foreground">Crew pay test tools</h1>
+        <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">Crew pay test tools</h1>
         <p className="mt-1 mb-0 max-w-3xl text-sm text-muted-foreground">Sample crew work for Pay Runs and My Pay (development only).</p>
       </header>
       {import.meta.env.DEV ? (

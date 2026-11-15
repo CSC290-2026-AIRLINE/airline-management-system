@@ -70,7 +70,8 @@ export function ApproveDialog({
               Approve {runLabel(run.period_start, run.period_end)} run?
             </DialogTitle>
             <DialogDescription>
-              Total {formatAmount(run.total)} {run.currency} for {run.crew.length} crew.
+              Total {formatAmount(run.total)} {run.currency} for {run.crew.length} crew. After approval the run is locked; only Pay run
+              remains.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 rounded-md bg-muted/60 p-3">

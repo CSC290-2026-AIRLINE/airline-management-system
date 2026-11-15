@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { Badge } from '@customer-web/components/ui/badge'
 import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent } from '@customer-web/components/ui/card'
@@ -69,7 +70,7 @@ export function MyRefundsPage({ tab, onTabChange }: MyRefundsPageProps) {
   return (
     <RefundsShell
       title="My refunds"
-      subtitle="Every refund you have asked for, and where it stands."
+      subtitle="To ask for a new refund, open the receipt in Receipts."
       current="refunds"
       action={
         <Button type="button" onClick={() => setRequesting(true)}>
@@ -88,7 +89,7 @@ export function MyRefundsPage({ tab, onTabChange }: MyRefundsPageProps) {
           type="search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search refund or booking"
+          placeholder="Search booking ref or refund number (e.g. REF-0121)"
           aria-label="Search refund or booking"
           className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none sm:w-72"
         />
@@ -109,7 +110,8 @@ export function MyRefundsPage({ tab, onTabChange }: MyRefundsPageProps) {
       </ul>
 
       <p className="mt-6 text-sm text-muted-foreground">
-        Requests inside the fare rules are refunded automatically. Anything else is reviewed by our staff.
+        Refunds to a card take 5–10 working days to show on your statement. The voucher share of a mixed payment comes back as a new
+        voucher. Staff approve anything outside the fare rules.
       </p>
 
       {requesting && (
@@ -139,7 +141,7 @@ function RefundCard({ refund }: { refund: MyRefundDto }) {
               <p className="m-0 mt-0.5 text-sm text-muted-foreground">
                 Booking {refund.booking_reference} · asked {formatDate(refund.requested_at)}
                 {refund.completed_at && ` · paid ${formatDate(refund.completed_at)}`}
-                {refund.decided_at && ` · decided ${formatDate(refund.decided_at)}`}
+                {refund.decided_at && ' · Decided by staff'}
               </p>
             </div>
             <div className="flex flex-col items-end gap-1.5">
@@ -154,7 +156,10 @@ function RefundCard({ refund }: { refund: MyRefundDto }) {
             <p className="m-0 text-sm text-muted-foreground">
               {refund.voucher_code && (
                 <>
-                  Voucher <span className="font-mono font-semibold text-foreground">{refund.voucher_code}</span>
+                  Voucher <span className="font-mono font-semibold text-foreground">{refund.voucher_code}</span> ·{' '}
+                  <Link to="/vouchers" className="text-primary underline underline-offset-4">
+                    View my vouchers
+                  </Link>
                 </>
               )}
               {refund.voucher_code && refund.credit_note_number && ' · '}

@@ -20,7 +20,7 @@ export function StaffPageShell({ title, subtitle, children }: StaffPageShellProp
     <AppShell>
       <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
         <header className="mb-6">
-          <h1 className="m-0 font-sans text-2xl font-semibold text-foreground">{title}</h1>
+          <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">{title}</h1>
           {subtitle && <p className="mt-1 mb-0 max-w-3xl text-sm text-muted-foreground">{subtitle}</p>}
         </header>
         {children}

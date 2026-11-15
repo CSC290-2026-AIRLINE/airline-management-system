@@ -10,7 +10,8 @@ interface RefundsFrameProps {
   /** The page's name in the words a person would use, for the no-access screen. */
   screenName: string
   title: string
-  description: string
+  /** The line under the title. Left out when the frame has none. */
+  description?: string
   children: ReactNode
 }
 
@@ -38,8 +39,8 @@ function Gate({ screenCode, screenName, title, description, children }: RefundsF
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
       <header className="mb-6">
-        <h1 className="m-0 font-sans text-2xl font-semibold text-foreground">{title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">{title}</h1>
+        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </header>
       {children}
     </main>

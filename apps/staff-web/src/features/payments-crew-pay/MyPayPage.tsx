@@ -59,6 +59,9 @@ export function MyPayPage() {
         title="My Pay"
         subtitle={`Only your own pay is shown. Amounts are in ${pay?.currency ?? 'USD'}. Hours come from your roster in feature 8.`}
       />
+      <p className="m-0 rounded-md border border-line bg-card px-3 py-2 text-sm text-muted-foreground">
+        Stretch feature. Crew pay is not in the first iteration.
+      </p>
 
       {data.loading && data.data === undefined && <LoadingCard />}
       {data.error && <LoadErrorCard message={data.error} onRetry={data.reload} />}

@@ -104,6 +104,9 @@ export function PayRunsPage({ selectedRunId }: { selectedRunId?: string }) {
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 md:px-8">
       <CrewPayHeader viewer={overview.data?.viewer} title="Pay Runs" subtitle="Crew pay run drafts, approvals and payouts." />
+      <p className="m-0 rounded-md border border-line bg-card px-3 py-2 text-sm text-muted-foreground">
+        Stretch feature. Crew pay is not in the first iteration. Payouts use the fake provider; no real money moves.
+      </p>
 
       {overview.loading && !overview.data && <LoadingCard />}
       {overview.error && <LoadErrorCard message={overview.error} onRetry={overview.reload} />}
@@ -375,6 +378,9 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
             {notice.text}
           </p>
         )}
+        <p className="mt-3 mb-0 text-xs text-muted-foreground">
+          Paid lines never change. A correction on a paid run becomes an adjustment line in the next run.
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -530,7 +536,9 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
           await api.approve(r.id, reason)
           setNotice({
             tone: 'good',
-            text: r.needs_admin ? 'Approved. You can now pay the run.' : 'Approved. You can now pay the run.',
+            text: r.needs_admin
+              ? 'Approved. Override recorded in the audit trail. You can now pay the run.'
+              : 'Approved. You can now pay the run.',
           })
           refresh()
         }}
@@ -548,9 +556,12 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
             failed > 0
               ? {
                   tone: 'bad',
-                  text: `Paid. ${sent} payouts were sent; ${failed} failed and can be retried below.`,
+                  text:
+                    failed === 1
+                      ? "One crew member's payout failed (fake provider error). The other payouts in the run were paid. Retry the payout."
+                      : `${failed} crew members' payouts failed (fake provider error). The other ${sent} payouts in the run were paid. Retry the payouts.`,
                 }
-              : { tone: 'good', text: `Paid. ${sent} payouts were sent.` },
+              : { tone: 'good', text: `Paid. ${sent} payouts were sent through the fake provider.` },
           )
           refresh()
         }}
@@ -564,7 +575,7 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
           await api.addAdjustment({ crew_id: crewId, amount, description: reason, pay_run_id: r.id })
           setNotice({
             tone: 'good',
-            text: `Adjustment of ${formatAmount(amount)} ${r.currency} added.`,
+            text: `Adjustment of ${formatAmount(amount)} ${r.currency} added. This run still needs an override to approve.`,
           })
           refresh()
         }}

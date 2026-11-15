@@ -24,7 +24,7 @@ export function RefundQueuePage({ tab, onTabChange }: RefundQueuePageProps) {
       screenCode="f5.refund_queue"
       screenName="Refund queue"
       title="Refund queue"
-      description="Review refund requests, decide them, and see what has been paid out."
+      description="Refunds waiting for a decision, and recent outcomes."
     >
       <Queue tab={tab} onTabChange={onTabChange} />
     </RefundsFrame>
@@ -142,6 +142,10 @@ function Queue({ tab, onTabChange }: RefundQueuePageProps) {
           </TableBody>
         </Table>
       </div>
+
+      <p className="m-0 text-sm text-muted-foreground">
+        Select a row to open that refund. Automatic refunds (flight cancelled, inside fare rules) skip this queue and show under Done.
+      </p>
     </div>
   )
 }

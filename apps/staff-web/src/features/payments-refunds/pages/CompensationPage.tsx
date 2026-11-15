@@ -50,7 +50,7 @@ export function CompensationPage({ filter, onFilterChange }: CompensationPagePro
       screenCode="f5.compensation_vouchers"
       screenName="Compensation & vouchers"
       title="Compensation & vouchers"
-      description="Issue a voucher or a card refund to a booking, and void a voucher that is still unused."
+      description="Issue a voucher or a card refund, and manage vouchers."
     >
       <Compensation filter={filter} onFilterChange={onFilterChange} />
     </RefundsFrame>
@@ -135,17 +135,22 @@ function Compensation({ filter, onFilterChange }: CompensationPageProps) {
         </Alert>
       )}
 
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h2 className="m-0 font-sans text-base font-semibold text-foreground">Compensation history</h2>
+        <span className="text-sm text-muted-foreground">· all vouchers and card refunds</span>
+      </div>
+
       <div className="overflow-x-auto rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Type</TableHead>
-              <TableHead>Booking</TableHead>
-              <TableHead className="text-right">Value</TableHead>
-              <TableHead>Code or reference</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Reason</TableHead>
               <TableHead>Issued</TableHead>
+              <TableHead>Booking</TableHead>
+              <TableHead>Kind</TableHead>
+              <TableHead>Code / reference</TableHead>
+              <TableHead className="text-right">Value</TableHead>
+              <TableHead>Reason</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -166,15 +171,15 @@ function Compensation({ filter, onFilterChange }: CompensationPageProps) {
             )}
             {data?.items.map((entry) => (
               <TableRow key={entry.id}>
-                <TableCell>{KIND_LABELS[entry.kind]}</TableCell>
+                <TableCell>{formatDateTime(entry.issued_at)}</TableCell>
                 <TableCell>{entry.booking_reference}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatMoney(entry.value, entry.currency)}</TableCell>
+                <TableCell>{KIND_LABELS[entry.kind]}</TableCell>
                 <TableCell className="font-mono text-sm">{entry.reference}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatMoney(entry.value, entry.currency)}</TableCell>
+                <TableCell>{entry.reason}</TableCell>
                 <TableCell>
                   <Badge className={cn('border-0', statusTone(entry.status_label))}>{entry.status_label}</Badge>
                 </TableCell>
-                <TableCell>{entry.reason}</TableCell>
-                <TableCell>{formatDateTime(entry.issued_at)}</TableCell>
                 <TableCell className="text-right">
                   {entry.can_void && (
                     <Button type="button" size="sm" variant="outline" onClick={() => setVoiding(entry)}>
@@ -187,6 +192,11 @@ function Compensation({ filter, onFilterChange }: CompensationPageProps) {
           </TableBody>
         </Table>
       </div>
+
+      <p className="m-0 text-sm text-muted-foreground">
+        Vouchers can be voided until they are used. A card refund cannot be taken back once it is sent to the card. Refunds the customer
+        asked for are in the Refund queue.
+      </p>
 
       <IssueDialog
         open={issuing}
@@ -257,7 +267,7 @@ function IssueDialog({ open, onClose, onIssued }: { open: boolean; onClose: () =
         <form onSubmit={(event) => void submit(event)} className="space-y-4">
           <DialogHeader>
             <DialogTitle>Issue compensation</DialogTitle>
-            <DialogDescription>A voucher is added to the booking, or the money goes back to the card. Either is logged.</DialogDescription>
+            <DialogDescription>Issuing is logged in the audit trail with your name and the reason.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-1.5">

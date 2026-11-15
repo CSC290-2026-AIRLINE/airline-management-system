@@ -105,7 +105,8 @@ export function MyVouchersPage() {
       </ul>
 
       <p className="mt-6 text-sm text-muted-foreground">
-        A voucher is used once, in full, on one booking. Anything left over is not carried forward.
+        A voucher is used once, in full, at checkout. If it is worth more than your total, the excess is forfeited, so use it on a booking
+        at least as large as its value.
       </p>
     </RefundsShell>
   )
