@@ -36,6 +36,25 @@ export type ReceiptStatus = 'paid' | 'miles_and_cash' | 'flown'
 export const RECEIPT_FILTERS = ['all', 'flights', 'miles_and_cash', 'cargo', 'credit_note'] as const
 export type ReceiptFilter = (typeof RECEIPT_FILTERS)[number]
 
+/** The customer-facing state of a payment, as the backend's `payment-status.ts` names it. */
+export type CustomerPaymentState = 'authorised' | 'captured' | 'confirming' | 'failed' | 'expired' | 'refunded'
+
+/** What `GET /api/payments/:id` answers: the state the selling feature's confirmation page polls. */
+export interface PaymentStatusDto {
+  id: string
+  status: PaymentStatus
+  state: CustomerPaymentState
+  amount_total: number
+  voucher_amount: number
+  card_amount: number
+  currency: string
+  capture_stalled: boolean
+  /** When the hold runs out. */
+  expires_at: string
+  receipt_id: string | null
+  updated_at: string
+}
+
 /** One line on a receipt. */
 export interface PaymentLineDto {
   line_type: string

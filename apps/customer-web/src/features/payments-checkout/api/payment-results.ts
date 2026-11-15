@@ -1,5 +1,8 @@
+import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import { MOCK_PAYMENT_RESULTS } from './mock-payment-results'
+import { failure } from './receipts'
 import type { PaymentResultDto } from '../payment-result'
+import type { PaymentStatusDto } from '../types'
 
 /** A short delay so the loading state is real rather than theoretical. */
 const LATENCY_MS = 120
@@ -9,15 +12,28 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * The mock payment result API.
- *
- * It answers with the states the frames show, so the page can be written against the real shape before the API is
- * switched on.
- *
- * TODO(F5a): replace this with a call for the payment Stripe hands back (`GET /api/payments/:reference`). Nothing
- * else in the feature changes when that happens.
+ * The prototype's states, from the mock: what the page shows when it is opened without a payment (`/payments/result`,
+ * `/payments/result?state=capture_stalled`). The frames' own states live here so each one has an address.
  */
 export async function listPaymentResults(): Promise<PaymentResultDto[]> {
   await delay(LATENCY_MS)
   return MOCK_PAYMENT_RESULTS
+}
+
+/**
+ * The real payment result API: `GET /api/payments/:id`, the call Stripe's return address leads to. The backend answers
+ * 404 for a payment that is not this customer's.
+ *
+ * `fetchWithAuth` is not memoised, so the object is rebuilt each render; never put it in a dependency array.
+ */
+export function usePaymentStatusApi() {
+  const { fetchWithAuth } = useAppAuth()
+
+  return {
+    getPaymentStatus: async (paymentId: string): Promise<PaymentStatusDto> => {
+      const res = await fetchWithAuth(`/api/payments/${encodeURIComponent(paymentId)}`)
+      if (!res.ok) throw await failure(res)
+      return (await res.json()) as PaymentStatusDto
+    },
+  }
 }

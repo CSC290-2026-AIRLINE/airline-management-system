@@ -25,6 +25,14 @@ export function isPaymentResultState(value: string): value is PaymentResultState
   return (PAYMENT_RESULT_STATES as readonly string[]).includes(value)
 }
 
+/** How the customer left the Stripe page: `paid` is the success address, `cancelled` is the back link. */
+export type PaymentOutcome = 'paid' | 'cancelled'
+
+/** Whether a string from the URL is a Stripe outcome. */
+export function isPaymentOutcome(value: string): value is PaymentOutcome {
+  return value === 'paid' || value === 'cancelled'
+}
+
 /** The state's name, in the words the frames use. */
 export const PAYMENT_RESULT_LABELS: Record<PaymentResultState, string> = {
   processing: 'Processing',

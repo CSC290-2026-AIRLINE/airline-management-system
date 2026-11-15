@@ -17,7 +17,7 @@ export interface ReceiptQuery {
 }
 
 /** A readable message from the backend's error body, led by the status so a 404 can be told from a failure. */
-async function failure(res: Response): Promise<Error> {
+export async function failure(res: Response): Promise<Error> {
   try {
     const body = (await res.json()) as { message?: string | string[] }
     const message = Array.isArray(body.message) ? body.message.join('. ') : body.message
