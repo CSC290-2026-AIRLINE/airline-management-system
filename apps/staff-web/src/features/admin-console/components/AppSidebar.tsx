@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Banknote, ChevronRight, CreditCard, Gift, LogOut, Search, TriangleAlert, Undo2 } from 'lucide-react'
+import { Banknote, ChevronRight, CreditCard, Gift, LogOut, Search, TriangleAlert, Undo2, Wallet } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@staff-web/components/ui/collapsible'
 import { ScrollArea } from '@staff-web/components/ui/scroll-area'
 import {
@@ -26,14 +26,15 @@ import { ADMIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM, type NavItem } from '
  * The Payments & Refunds screens (Feature 5), in the F5 frames' order. An item gets a `to` once its route exists; the rest
  * stay dimmed until then.
  *
- * TODO(F5): Pay Runs arrives with Feature 5c. Add its `to` when its route lands.
+ * Pay Runs and My Pay are Feature 5c's (crew pay).
  */
 const PAYMENTS_ITEMS: NavItem[] = [
   { label: 'Payment Lookup', icon: Search, to: '/payments/lookup' },
   { label: 'Refund Queue', icon: Undo2, to: '/payments/refunds' },
   { label: 'Compensation & Vouchers', icon: Gift, to: '/payments/compensation' },
   { label: 'Payment Exceptions', icon: TriangleAlert, to: '/payments/exceptions' },
-  { label: 'Pay Runs', icon: Banknote },
+  { label: 'Pay Runs', icon: Banknote, to: '/payments/pay-runs' },
+  { label: 'My Pay', icon: Wallet, to: '/payments/my-pay' },
 ]
 
 /**
@@ -87,7 +88,7 @@ function PaymentsSubGroup() {
         <CollapsibleTrigger asChild>
           <SidebarMenuButton className="pl-4" tooltip="Payments & Refunds">
             <CreditCard />
-            <span>Payments & Refunds</span>
+            <span className="truncate">Payments & Refunds</span>
             <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/payments:rotate-90 motion-reduce:transition-none" />
           </SidebarMenuButton>
         </CollapsibleTrigger>
