@@ -164,15 +164,22 @@ export function EditLegsModal({
           ))}
         </ol>
 
+        {/* Two buttons rather than one with overriding classes: colour utilities for the two layouts fought in the
+            built stylesheet and left white text on a white phone button. Only one of them is ever displayed. */}
         <button
           type="button"
           onClick={() => setAdding(true)}
-          // Navy by default; the phone variant is the only one that overrides it. Pairing `bg-white` with `sm:bg-btn-navy` is not
-          // safe: the built stylesheet puts `.bg-white` after the `sm:` rule, which left white text on a white button.
-          className="mt-4 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-btn-navy px-4 text-sm font-bold text-white transition-colors hover:bg-btn-navy-hover sm:h-10 sm:w-auto max-sm:border max-sm:border-border-desc/70 max-sm:bg-white max-sm:text-primary-text max-sm:hover:bg-page-bg"
+          className="mt-4 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-border-desc/70 bg-white px-4 text-sm font-bold text-primary-text transition-colors hover:bg-page-bg sm:hidden"
         >
-          <PlusIcon className="hidden h-3.5 w-3.5 sm:block" />
-          <span className="sm:hidden">+ </span>Add leg
+          + Add leg
+        </button>
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="mt-4 hidden h-10 items-center justify-center gap-1.5 rounded-lg bg-btn-navy px-4 text-sm font-bold text-white transition-colors hover:bg-btn-navy-hover sm:inline-flex"
+        >
+          <PlusIcon className="h-3.5 w-3.5" />
+          Add leg
         </button>
 
         {dirty && (
