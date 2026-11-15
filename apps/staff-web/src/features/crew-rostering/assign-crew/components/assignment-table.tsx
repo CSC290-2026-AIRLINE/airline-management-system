@@ -30,7 +30,17 @@ function complement(have: number, need: number): string {
 /** The tag beside a local-crew name is the country, which reads faster than the language code. */
 const COUNTRY_BY_LANGUAGE: Record<string, string> = { ja: 'JP', ko: 'KR', th: 'TH', zh: 'CN', en: 'GB', ms: 'MY', id: 'ID', vi: 'VN' }
 
-function Names({ members, missingLabel }: { members: readonly { name: string }[]; missingLabel?: string }) {
+function Names({
+  members,
+  missingLabel,
+  notRequired = false,
+}: {
+  members: readonly { name: string }[]
+  missingLabel?: string
+  /** The leg needs nobody in this seat (police on a domestic flight), so an empty list is not a gap. */
+  notRequired?: boolean
+}) {
+  if (members.length === 0 && notRequired) return <span>—</span>
   if (members.length === 0) {
     return <span className="rounded-full bg-invalid-bg px-2.5 py-0.5 text-[11px] font-bold text-invalid">None</span>
   }
@@ -134,7 +144,11 @@ export function AssignmentsTable({ assignments, breaksByLeg }: AssignmentsProps)
                     )}
                   </td>
                   <td className="px-3 py-3.5 text-primary-text">
-                    <Names members={assignment.police} missingLabel={policeMissing(assignment)} />
+                    <Names
+                      members={assignment.police}
+                      missingLabel={policeMissing(assignment)}
+                      notRequired={assignment.policeRequired === 0}
+                    />
                   </td>
                   <td className="px-3 py-3.5">
                     <StatusCell breaks={breaks} />
@@ -199,7 +213,16 @@ export function AssignmentCards({ assignments, breaksByLeg }: AssignmentsProps) 
                     )
                   }
                 />
-                <Row label="Police" value={<Names members={assignment.police} missingLabel={policeMissing(assignment)} />} />
+                <Row
+                  label="Police"
+                  value={
+                    <Names
+                      members={assignment.police}
+                      missingLabel={policeMissing(assignment)}
+                      notRequired={assignment.policeRequired === 0}
+                    />
+                  }
+                />
               </dl>
             </li>
           )
