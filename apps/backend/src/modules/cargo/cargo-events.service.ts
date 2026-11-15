@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { simNow } from '@backend/modules/pricing/fare-quote/sim-clock'
@@ -127,6 +127,11 @@ export class CargoEventsService {
         if (code === 'P2002' || code === 'P2003') {
           throw new ConflictException({
             error: { code: 'INVALID_TRANSITION', message: 'Transition rejected by database constraint' },
+          })
+        }
+        if (code === '23514' || code === 'P2004') {
+          throw new BadRequestException({
+            error: { code: 'CONSTRAINT_VIOLATION', message: 'Event data violates a database check constraint' },
           })
         }
       }

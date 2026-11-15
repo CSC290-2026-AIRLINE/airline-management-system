@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Res, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
 import type { Response } from 'express'
 import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { StaffProfilesGuard } from '@backend/modules/passenger-profiles/staff-profiles.guard'
 import { CargoDeskService } from './cargo-desk.service'
 
@@ -76,18 +77,18 @@ export class CargoDeskController {
   }
 
   @Put('bookings/:id/acceptance')
-  acceptBooking(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: AcceptanceDto) {
-    return this.desk.acceptBooking(id, dto.measured_weight_kg, dto.measured_volume_m3)
+  acceptBooking(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: AcceptanceDto, @CurrentUser() user: { id: string }) {
+    return this.desk.acceptBooking(id, dto.measured_weight_kg, dto.measured_volume_m3, user.id)
   }
 
   @Post('bookings/:id/rejection')
-  rejectBooking(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: RejectionDto) {
-    return this.desk.rejectBooking(id, dto.measured_weight_kg, dto.measured_volume_m3, dto.reason)
+  rejectBooking(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: RejectionDto, @CurrentUser() user: { id: string }) {
+    return this.desk.rejectBooking(id, dto.measured_weight_kg, dto.measured_volume_m3, dto.reason, user.id)
   }
 
   @Post('bookings/:id/events')
-  postEvent(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: PostEventDto) {
-    return this.desk.postEvent(id, dto.event, dto.note)
+  postEvent(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: PostEventDto, @CurrentUser() user: { id: string }) {
+    return this.desk.postEvent(id, dto.event, dto.note, user.id)
   }
 
   @Get('flights')

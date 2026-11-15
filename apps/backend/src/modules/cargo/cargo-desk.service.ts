@@ -1,4 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { availableKg, chargeableKg, exceedsTolerance } from './cargo-calc'
 import { getAircraftCapacity, loadedBaggageKg, refundFull, seatsTakenOnFlight } from './cargo-deps'
@@ -312,8 +319,9 @@ export class CargoDeskService {
     }
   }
 
-  async acceptBooking(id: string, measuredWeightKg: number, measuredVolumeM3: number) {
+  async acceptBooking(id: string, measuredWeightKg: number, measuredVolumeM3: number, userId: string) {
     return this.db.$transaction(async (tx) => {
+      const staffId = await this.resolveStaffId(tx, userId)
       const settings = await this.loadSettingsFull(tx)
       const measuredChargeable = chargeableKg(measuredWeightKg, measuredVolumeM3, settings.volumetricKgPerM3)
 
@@ -321,6 +329,7 @@ export class CargoDeskService {
         bookingId: id,
         eventType: 'accepted',
         actorType: 'staff',
+        staffId,
         measuredWeightKg,
         measuredVolumeM3,
         measuredChargeableKg: measuredChargeable,
@@ -330,8 +339,9 @@ export class CargoDeskService {
     })
   }
 
-  async rejectBooking(id: string, measuredWeightKg: number, measuredVolumeM3: number, reason: string) {
+  async rejectBooking(id: string, measuredWeightKg: number, measuredVolumeM3: number, reason: string, userId: string) {
     return this.db.$transaction(async (tx) => {
+      const staffId = await this.resolveStaffId(tx, userId)
       const settings = await this.loadSettingsFull(tx)
       const measuredChargeable = chargeableKg(measuredWeightKg, measuredVolumeM3, settings.volumetricKgPerM3)
 
@@ -367,6 +377,7 @@ export class CargoDeskService {
         bookingId: id,
         eventType: 'rejected',
         actorType: 'staff',
+        staffId,
         measuredWeightKg,
         measuredVolumeM3,
         measuredChargeableKg: measuredChargeable,
@@ -378,7 +389,7 @@ export class CargoDeskService {
     })
   }
 
-  async postEvent(id: string, eventType: string, note?: string) {
+  async postEvent(id: string, eventType: string, note: string | undefined, userId: string) {
     const ALLOWED = new Set(['loaded', 'delivered', 'cancelled'])
     if (!ALLOWED.has(eventType)) {
       throw new BadRequestException({
@@ -387,6 +398,7 @@ export class CargoDeskService {
     }
 
     return this.db.$transaction(async (tx) => {
+      const staffId = await this.resolveStaffId(tx, userId)
       const booking = await tx.cargo_booking.findUnique({
         where: { id },
         select: {
@@ -425,6 +437,7 @@ export class CargoDeskService {
           bookingId: id,
           eventType: 'cancelled',
           actorType: 'staff',
+          staffId,
           refundId: refundResult.refundId,
           note,
         })
@@ -481,6 +494,7 @@ export class CargoDeskService {
         bookingId: id,
         eventType,
         actorType: 'staff',
+        staffId,
         note: note || undefined,
       })
       return { status: event.status_after }
@@ -856,6 +870,17 @@ export class CargoDeskService {
       volumetricKgPerM3: Number(map.get('volumetric_kg_per_m3') ?? 167),
       tolerancePercent: Number(map.get('weight_tolerance_percent') ?? 10),
     }
+  }
+
+  private async resolveStaffId(tx: Parameters<Parameters<DbService['$transaction']>[0]>[0], userId: string): Promise<string> {
+    const staff = await (tx as DbService).staff.findFirst({
+      where: { user_id: userId, deleted_at: null },
+      select: { id: true },
+    })
+    if (!staff) {
+      throw new ForbiddenException({ error: { code: 'STAFF_NOT_FOUND', message: 'No active staff account for the signed-in user' } })
+    }
+    return staff.id
   }
 
   private async statusCounts(): Promise<Record<string, number>> {
