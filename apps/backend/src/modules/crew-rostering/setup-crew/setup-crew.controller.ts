@@ -26,6 +26,7 @@ import {
   type FleetOptionRow,
   type LanguageOptionRow,
 } from './setup-crew.service'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
 import { RosteringExceptionFilter } from '../rostering-error'
 import { StaffOnlyGuard } from '../staff-only.guard'
@@ -84,18 +85,22 @@ export class SetupCrewController {
   }
 
   @Post('crew')
-  async createCrew(@Body() body: unknown): Promise<CrewMemberRow> {
-    return this.setupCrewService.createCrew(parseProfile(asObject(body)))
+  async createCrew(@Body() body: unknown, @CurrentUser() user: { id: string }): Promise<CrewMemberRow> {
+    return this.setupCrewService.createCrew(parseProfile(asObject(body)), user.id)
   }
 
   @Put('crew/:crewId')
-  async updateCrew(@Param('crewId') crewId: string, @Body() body: unknown): Promise<CrewMemberRow> {
-    return this.setupCrewService.updateCrew(requireUuid(crewId, 'crewId'), parseProfile(asObject(body)))
+  async updateCrew(@Param('crewId') crewId: string, @Body() body: unknown, @CurrentUser() user: { id: string }): Promise<CrewMemberRow> {
+    return this.setupCrewService.updateCrew(requireUuid(crewId, 'crewId'), parseProfile(asObject(body)), user.id)
   }
 
   @Post('crew/:crewId/certifications')
-  async addCertification(@Param('crewId') crewId: string, @Body() body: unknown): Promise<CertificationRow> {
-    return this.setupCrewService.addCertification(requireUuid(crewId, 'crewId'), parseCertification(asObject(body)))
+  async addCertification(
+    @Param('crewId') crewId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: { id: string },
+  ): Promise<CertificationRow> {
+    return this.setupCrewService.addCertification(requireUuid(crewId, 'crewId'), parseCertification(asObject(body)), user.id)
   }
 
   @Put('crew/:crewId/certifications/:certificationId')
@@ -103,18 +108,24 @@ export class SetupCrewController {
     @Param('crewId') crewId: string,
     @Param('certificationId') certificationId: string,
     @Body() body: unknown,
+    @CurrentUser() user: { id: string },
   ): Promise<CertificationRow> {
     return this.setupCrewService.updateCertification(
       requireUuid(crewId, 'crewId'),
       requireUuid(certificationId, 'certificationId'),
       parseCertification(asObject(body)),
+      user.id,
     )
   }
 
   @Delete('crew/:crewId/certifications/:certificationId')
   @HttpCode(204)
-  async removeCertification(@Param('crewId') crewId: string, @Param('certificationId') certificationId: string): Promise<void> {
-    await this.setupCrewService.removeCertification(requireUuid(crewId, 'crewId'), requireUuid(certificationId, 'certificationId'))
+  async removeCertification(
+    @Param('crewId') crewId: string,
+    @Param('certificationId') certificationId: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<void> {
+    await this.setupCrewService.removeCertification(requireUuid(crewId, 'crewId'), requireUuid(certificationId, 'certificationId'), user.id)
   }
 }
 

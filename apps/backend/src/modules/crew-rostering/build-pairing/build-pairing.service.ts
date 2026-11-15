@@ -1,7 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
+import { AuditService } from '../../admin-console/audit/audit.service'
 import { loadBaseContext } from '../base-context'
+import { writeRosteringAudit } from '../rostering-audit'
 import { RosteringErrorCode, rosteringError } from '../rostering-error'
 import { buildChains } from './chain-builder'
 import { isRestBetween, localDay, shortName } from '../crew-format'
@@ -262,7 +264,10 @@ function committedOf(
 
 @Injectable()
 export class BuildPairingService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: AuditService,
+  ) {}
 
   /** Bases pairings can be built at. Every active airport. */
   async listBases(): Promise<{ code: string; name: string }[]> {
@@ -399,7 +404,7 @@ export class BuildPairingService {
    * taken off lose their assignments and rule breaks (the foreign keys require it). Seats on
    * the legs that stay are kept, and the next auto-assign and check fill and re-judge the rest.
    */
-  async saveLegs(pairingId: string, legs: SaveLegInput[]): Promise<SaveLegsResult> {
+  async saveLegs(pairingId: string, legs: SaveLegInput[], actorUserId?: string): Promise<SaveLegsResult> {
     const flightIds = [...new Set(legs.map((leg) => leg.flightId))]
     if (flightIds.length === 0) throw new BadRequestException('A pairing needs at least one flight. Delete the pairing instead.')
 
@@ -438,6 +443,28 @@ export class BuildPairingService {
               })
             }
             await tx.pairing.update({ where: { id: pairingId }, data: { updated_at: new Date() } })
+            const numberOf = new Map(flights.map((flight) => [flight.id, flight.flight_number]))
+            const wasLegs = this.sortedLegs(row).map((leg) => leg.flight.flight_number)
+            await writeRosteringAudit(
+              this.audit,
+              actorUserId,
+              {
+                action: 'update',
+                entityType: 'pairing',
+                entityId: pairingId,
+                summary: `Pairing ${row.code} legs edited${added.length > 0 ? `, added ${added.map((id) => numberOf.get(id)).join(', ')}` : ''}${
+                  removedLegIds.length > 0
+                    ? `, removed ${row.pairing_leg
+                        .filter((leg) => !keep.has(leg.flight.id))
+                        .map((leg) => leg.flight.flight_number)
+                        .join(', ')}`
+                    : ''
+                }`,
+                before: { flights: wasLegs },
+                after: { flights: legs.map((leg) => numberOf.get(leg.flightId)) },
+              },
+              tx,
+            )
           }),
         'One of these flights was added to another pairing at the same time.',
       )
@@ -501,17 +528,29 @@ export class BuildPairingService {
   }
 
   /** Hard-deletes a draft pairing; its flights go back to the unpaired list. */
-  async deletePairing(pairingId: string): Promise<DeletePairingResult> {
+  async deletePairing(pairingId: string, actorUserId?: string): Promise<DeletePairingResult> {
     const row = await this.findPairing(pairingId)
     const run = row.roster_run_pairing?.roster_run ?? null
     if (run?.status === 'published') throw this.inUse(row.code)
 
+    const legs = this.sortedLegs(row)
     await this.db.$transaction(async (tx) => {
       if (run) await this.withdrawFromRun(tx, pairingId)
       await tx.pairing.delete({ where: { id: pairingId } })
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'delete',
+          entityType: 'pairing',
+          entityId: pairingId,
+          summary: `Pairing ${row.code} deleted${run ? ' from its draft roster run' : ''}; its flights are unpaired again`,
+          before: { flights: legs.map((leg) => leg.flight.flight_number), rosterRunId: run?.id ?? null },
+        },
+        tx,
+      )
     })
 
-    const legs = this.sortedLegs(row)
     return {
       id: row.id,
       code: row.code,
@@ -539,7 +578,7 @@ export class BuildPairingService {
    * that fails them is left out and reported by its `ref`. So are drafts with a leg outside the
    * run's dates and drafts with a flight that someone else paired in the meantime.
    */
-  async commitPairings(params: BuildParams, drafts: CommitDraft[]): Promise<CommitResult> {
+  async commitPairings(params: BuildParams, drafts: CommitDraft[], actorUserId?: string): Promise<CommitResult> {
     if (drafts.length === 0)
       throw new BadRequestException(rosteringError(RosteringErrorCode.NO_PAIRINGS, 'Choose at least one valid pairing to commit'))
     const context = await this.loadContext(params.base)
@@ -613,6 +652,21 @@ export class BuildPairingService {
               select: { id: true, code: true },
             })
             stored.push({ ref: draft.ref, id: created.id, code: created.code })
+            await writeRosteringAudit(
+              this.audit,
+              actorUserId,
+              {
+                action: 'create',
+                entityType: 'pairing',
+                entityId: created.id,
+                summary: `Pairing ${created.code} committed to the roster run for ${params.base} ${params.dateFrom} to ${params.dateTo}`,
+                after: {
+                  flights: legs.map((leg) => byId.get(leg.flightId)?.flight_number),
+                  rosterRunId: target.id,
+                },
+              },
+              tx,
+            )
           }
           if (stored.length > 0) {
             await tx.roster_run_pairing.createMany({ data: stored.map((row) => ({ roster_run_id: target.id, pairing_id: row.id })) })

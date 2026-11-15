@@ -1,10 +1,17 @@
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { BuildPairingService } from './build-pairing.service'
+import type { AuditService } from '../../admin-console/audit/audit.service'
 
 // The service only needs these two for types and the unique-violation check; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
+
+/** Feature 15's audit writer, as the service only calls it. */
+const fakeAudit = () => ({
+  resolveActor: jest.fn().mockResolvedValue({ type: 'staff', id: 'user-1', role: 'ops' }),
+  write: jest.fn().mockResolvedValue({ id: 'audit-1', seq: '1' }),
+})
 
 const HOUR = 3_600_000
 const DAY0 = Date.UTC(2026, 8, 15)
@@ -54,7 +61,8 @@ function setup(options: { flights: ReturnType<typeof flight>[]; runs?: { id: str
     flight: { findMany: jest.fn().mockResolvedValue(options.flights) },
     $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)),
   }
-  return { service: new BuildPairingService(db as unknown as DbService), tx, created }
+  const audit = fakeAudit()
+  return { audit, service: new BuildPairingService(db as unknown as DbService, audit as unknown as AuditService), tx, created }
 }
 
 const leg = (flightId: string, addedManually = false) => ({ flightId, addedManually })
@@ -76,6 +84,33 @@ describe('BuildPairingService.commitPairings', () => {
       { flight_id: '2', added_by: 'ops' },
     ])
     expect(tx.roster_run_pairing.createMany).toHaveBeenCalledWith({ data: [{ roster_run_id: 'run-new', pairing_id: 'pairing-201' }] })
+  })
+
+  it('writes one audit row per pairing it stores, in the same transaction, with the flights and the run', async () => {
+    const { service, tx, audit } = setup({ flights: [out, back] })
+
+    await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1'), leg('2')] }], 'user-1')
+
+    expect(audit.resolveActor).toHaveBeenCalledWith('user-1')
+    expect(audit.write).toHaveBeenCalledTimes(1)
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceFeature: '8',
+        action: 'create',
+        entityType: 'pairing',
+        entityId: 'pairing-201',
+        after: { flights: ['FD1', 'FD2'], rosterRunId: 'run-new' },
+      }),
+      tx,
+    )
+  })
+
+  it('writes no audit row for a draft it leaves out', async () => {
+    const { service, audit } = setup({ flights: [out, back] })
+
+    await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1')] }], 'user-1').catch(() => undefined)
+
+    expect(audit.write).not.toHaveBeenCalled()
   })
 
   it('reuses the draft run for the window instead of creating another', async () => {
@@ -166,7 +201,8 @@ function setupEdit() {
     flight: { findMany: jest.fn().mockResolvedValue([{ id: '1', flight_number: 'FD1', pairing_leg: { pairing_id: 'pairing-1' } }]) },
     $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)),
   }
-  return { service: new BuildPairingService(db as unknown as DbService), tx, db }
+  const audit = fakeAudit()
+  return { audit, service: new BuildPairingService(db as unknown as DbService, audit as unknown as AuditService), tx, db }
 }
 
 describe('BuildPairingService.saveLegs on a committed pairing', () => {
@@ -180,6 +216,24 @@ describe('BuildPairingService.saveLegs on a committed pairing', () => {
     expect(tx.pairing_leg_assignment.deleteMany).toHaveBeenCalledWith({ where: { pairing_leg_id: { in: ['leg-2'] } } })
     expect(tx.pairing_leg.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['leg-2'] } } })
     expect(result.withdrawnFromRun).toBe(false)
+  })
+
+  it('records which flights were added and taken off, in the transaction that changes them', async () => {
+    const { service, tx, audit } = setupEdit()
+
+    await service.saveLegs('pairing-1', [leg('1')], 'user-1')
+
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'update',
+        entityType: 'pairing',
+        entityId: 'pairing-1',
+        summary: expect.stringContaining('removed FD2'),
+        before: { flights: ['FD1', 'FD2'] },
+        after: { flights: ['FD1'] },
+      }),
+      tx,
+    )
   })
 
   it('is still in the run after the next Generate, which drops only pairings outside every run', async () => {
@@ -215,7 +269,8 @@ describe('BuildPairingService.flightImpact', () => {
         ]),
       },
     }
-    return { service: new BuildPairingService(db as unknown as DbService), db }
+    const audit = fakeAudit()
+    return { audit, service: new BuildPairingService(db as unknown as DbService, audit as unknown as AuditService), db }
   }
 
   it('counts the pairings that use the flight and the crew on them once each', async () => {

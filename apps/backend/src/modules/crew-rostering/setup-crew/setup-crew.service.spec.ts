@@ -1,9 +1,18 @@
 import type { DbService } from '@backend/db/db.service'
 import { SetupCrewService } from './setup-crew.service'
+import type { AuditService } from '../../admin-console/audit/audit.service'
+import type { SimulationClock } from '../../admin-console/simulation-clock'
 
 // The service only needs these two for types and the unique-violation check; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
+
+/** The audit writer and the simulation clock, as the services only call them. */
+const fakeAudit = () => ({
+  resolveActor: jest.fn().mockResolvedValue({ type: 'staff', id: 'user-1', role: 'ops' }),
+  write: jest.fn().mockResolvedValue({ id: 'a', seq: '1' }),
+})
+const fakeClock = () => ({ now: () => new Date() })
 
 function member(id: string, role = 'captain') {
   return {
@@ -61,7 +70,15 @@ function setup(crew: ReturnType<typeof member>[], assignments: ReturnType<typeof
       }),
     },
   }
-  return { db, reads, service: new SetupCrewService(db as unknown as DbService) }
+  return {
+    db,
+    reads,
+    service: new SetupCrewService(
+      db as unknown as DbService,
+      fakeAudit() as unknown as AuditService,
+      fakeClock() as unknown as SimulationClock,
+    ),
+  }
 }
 
 describe('SetupCrewService.listCrew', () => {
