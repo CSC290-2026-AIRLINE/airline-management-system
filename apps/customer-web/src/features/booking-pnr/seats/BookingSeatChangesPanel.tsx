@@ -12,9 +12,14 @@ import './seat-selection.css'
 interface BookingSeatChangesPanelProps {
   reference: string
   onChanged: () => void
+  /** The id the route bar jumps to. */
+  id?: string
 }
 
-export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatChangesPanelProps) {
+// A seat can be changed while the booking is on hold and after it is confirmed. A cancelled or expired booking is closed.
+const EDITABLE_STATUSES = ['held', 'confirmed']
+
+export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: BookingSeatChangesPanelProps) {
   const { fetchWithAuth } = useAppAuth()
   const [booking, setBooking] = useState<BookingDetail | null>(null)
   const [selectedCoupon, setSelectedCoupon] = useState<string | null>(null)
@@ -90,19 +95,23 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
         </button>
       </section>
     )
-  if (!booking || booking.status !== 'confirmed') return null
+  if (!booking || !EDITABLE_STATUSES.includes(booking.status)) return null
   const coupon = booking.coupons.find((item) => item.couponId === selectedCoupon)
   const segment = booking.segments.find((item) => item.bookingSegmentId === coupon?.bookingSegmentId)
   const passenger = booking.passengers.find((item) => item.bookingPassengerId === coupon?.bookingPassengerId)
 
   return (
-    <section id="seats" tabIndex={-1} className="booking-seat-panel" aria-label="Manage seats" aria-busy={loading}>
+    <section id={id} tabIndex={-1} className="booking-seat-panel" aria-label="Manage seats" aria-busy={loading}>
       <h2 className={detailStyles.sectionTitle}>Seats</h2>
       <div className={`${detailStyles.card} booking-seat-panel__card`}>
-        <p className={detailStyles.muted}>Choose a seat for each passenger, or change an existing seat before check-in.</p>
+        <p className={detailStyles.muted}>
+          {booking.status === 'held'
+            ? 'Choose a seat for each passenger, or change a seat while the hold runs.'
+            : 'Choose a seat for each passenger, or change an existing seat before check-in.'}
+        </p>
         <div className="booking-seat-panel__passengers">
           {booking.coupons
-            .filter((item) => item.status === 'confirmed')
+            .filter((item) => EDITABLE_STATUSES.includes(item.status))
             .map((item) => {
               const person = booking.passengers.find((candidate) => candidate.bookingPassengerId === item.bookingPassengerId)
               const flight = booking.segments.find((candidate) => candidate.bookingSegmentId === item.bookingSegmentId)
@@ -159,6 +168,7 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
               cabin={segment.cabin}
               passengerName={`${passenger.firstName} ${passenger.lastName}`}
               currentSeat={coupon.seatCode}
+              heldBooking={booking.status === 'held'}
               onChangeSeat={async (seatCode) => {
                 const response = await fetchWithAuth(
                   `/api/bookings/${encodeURIComponent(reference)}/coupons/${encodeURIComponent(coupon.couponId)}/seat`,
@@ -172,6 +182,8 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
                   const body = (await response.json().catch(() => null)) as ApiErrorBody | null
                   throw new ApiError(body?.error?.code ?? 'REQUEST_FAILED', body?.error?.message ?? 'Seat change failed', response.status)
                 }
+                // A seat can cost more than the one it replaces, so the page reads the new total.
+                onChanged()
                 return (await response.json()) as { status: 'assigned' | 'payment_required'; lock?: { id: string } }
               }}
               onPaySeat={async (lockId) => {

@@ -25,10 +25,12 @@ export interface BookingRouteBarProps {
   currentStep: BookingStep
   /** Called when a finished step is clicked, to go back to it. */
   onStepClick?: (step: BookingStep) => void
+  /** Where a finished step points to, e.g. { 1: '#review-flights' }. Those steps are rendered as links. */
+  hrefs?: Partial<Record<BookingStep, string>>
   marker?: RouteBarMarker
 }
 
-export function BookingRouteBar({ currentStep, onStepClick, marker = 'icons' }: BookingRouteBarProps) {
+export function BookingRouteBar({ currentStep, onStepClick, hrefs, marker = 'icons' }: BookingRouteBarProps) {
   const current = ROUTE.find((item) => item.step === currentStep) ?? ROUTE[0]
   // The rail fills from the first marker to the current one: 0, 1, 2 or 3 steps of 4.
   const style = { '--route-progress': currentStep - 1 } as CSSProperties
@@ -52,12 +54,19 @@ export function BookingRouteBar({ currentStep, onStepClick, marker = 'icons' }: 
               ) : (
                 <item.icon aria-hidden="true" />
               )
+            // Only a finished step can be pointed at, never a step the customer has not reached.
+            const href = state === 'done' ? hrefs?.[item.step] : undefined
             return (
               <li key={item.step} className={`${styles.step} ${styles[state]}`} aria-current={state === 'current' ? 'step' : undefined}>
                 <span className={styles.srOnly}>
                   Step {item.step} of 4{state === 'done' ? ', completed' : ''}
                 </span>
-                {state === 'done' && onStepClick ? (
+                {href ? (
+                  <a href={href} className={styles.target}>
+                    <span className={styles.marker}>{glyph}</span>
+                    <span className={styles.label}>{item.label}</span>
+                  </a>
+                ) : state === 'done' && onStepClick ? (
                   <button
                     type="button"
                     className={styles.target}

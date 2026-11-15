@@ -6,6 +6,7 @@ import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { BookingRouteBar } from '../components/BookingRouteBar'
 import { HoldBanner } from '../components/HoldBanner'
+import { BookingSeatChangesPanel } from '../seats/BookingSeatChangesPanel'
 import { heldSeatCount } from '../lib/booking'
 import { toApiError } from '../lib/errors'
 import { formatCabin, formatDate, formatMoney, formatTime } from '../lib/format'
@@ -118,14 +119,6 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
     }
   }
 
-  function goBack() {
-    if (window.history.length > 1) {
-      window.history.back()
-      return
-    }
-    void navigate({ to: '/search' })
-  }
-
   return (
     <>
       <main className={styles.page}>
@@ -136,7 +129,9 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
             <p className={styles.subtitle}>Check your itinerary and passengers before paying.</p>
           </header>
 
-          <BookingRouteBar currentStep={4} />
+          {/* The finished steps jump to the part of this page that holds the details. The seats and the passenger
+              details are fixed for this hold, so the bar is a way to read them again, not a way to change them. */}
+          <BookingRouteBar currentStep={4} hrefs={{ 1: '#review-flights', 2: '#review-passengers', 3: '#review-seats' }} />
           <HoldBanner
             reference={booking.reference}
             holdExpiresAt={booking.holdExpiresAt}
@@ -158,6 +153,8 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
             <div className={styles.mainColumn}>
               <FlightsCard booking={booking} />
               <PassengersCard booking={booking} />
+              {/* The seat of a held booking can still be changed, so the panel works on a hold too. */}
+              <BookingSeatChangesPanel id="review-seats" reference={booking.reference} onChanged={() => void onReload()} />
             </div>
 
             <aside className={styles.summaryColumn}>
@@ -178,7 +175,12 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
                     Pay now
                   </button>
                 )}
-                <button type="button" className={controls.secondary} onClick={goBack} disabled={isConfirming || isCancelling}>
+                <button
+                  type="button"
+                  className={controls.secondary}
+                  onClick={() => document.getElementById('review-seats')?.scrollIntoView({ behavior: 'smooth' })}
+                  disabled={isConfirming || isCancelling}
+                >
                   Back to seats
                 </button>
                 <button
@@ -195,7 +197,7 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
               </div>
 
               {!import.meta.env.DEV ? <p className={styles.note}>Pay now will open checkout when it is connected.</p> : null}
-              <p className={styles.note}>You can go back to change seats or passengers. Your hold keeps running.</p>
+              <p className={styles.note}>You can change your seat while the hold runs. Your hold keeps running.</p>
               <p className={styles.note}>Want a meal on board? You can add meals from your booking once it is paid.</p>
             </aside>
           </div>
@@ -236,7 +238,7 @@ function FlightsCard({ booking }: { booking: BookingDetail }) {
   }
 
   return (
-    <section className={styles.card}>
+    <section className={styles.card} id="review-flights">
       <h2>Flights</h2>
       {booking.segments.map((segment) => {
         const seats = seatsBySegment.get(segment.bookingSegmentId) ?? []
@@ -267,7 +269,7 @@ function PassengersCard({ booking }: { booking: BookingDetail }) {
   }
 
   return (
-    <section className={styles.card}>
+    <section className={styles.card} id="review-passengers">
       <h2>Passengers</h2>
       {booking.passengers.map((passenger) => {
         const requests = requestsByPassenger.get(passenger.bookingPassengerId) ?? []

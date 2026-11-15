@@ -85,24 +85,34 @@
   color: inherit;
 }
 
-button.target {
+button.target,
+a.target {
   cursor: pointer;
 }
 
+/* A link must not carry the underline the browser gives it. */
+a.target {
+  text-decoration: none;
+}
+
 /* The finished steps are links back into the flow, so their label wears the app's link colour. */
-button.target .label {
+button.target .label,
+a.target .label {
   color: var(--f3-link);
 }
 
-button.target:hover .label {
+button.target:hover .label,
+a.target:hover .label {
   color: var(--f3-primary-hover);
 }
 
-button.target:hover .marker {
+button.target:hover .marker,
+a.target:hover .marker {
   transform: translateY(-1px);
 }
 
-button.target:focus-visible {
+button.target:focus-visible,
+a.target:focus-visible {
   outline: 2px solid var(--f3-amber);
   outline-offset: 4px;
   border-radius: 8px;
