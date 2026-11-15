@@ -138,11 +138,6 @@ export interface AircraftOption {
   usable: boolean
 }
 
-export interface GateResult {
-  passed: boolean
-  text: string
-}
-
 // One read-only check before a reschedule (aircraft, range, position and turnaround, congestion).
 export interface RescheduleCheck {
   label: 'Passed' | 'Failed'
@@ -150,12 +145,6 @@ export interface RescheduleCheck {
 }
 
 export type Approval = 'none' | 'not_requested' | 'pending' | 'approved' | 'offered' | 'rejected'
-
-export interface ApprovalAnswer {
-  approval: Approval
-  text: string
-  slots: string[] // HH:MM departures offered, when approval is 'offered'
-}
 
 export type ApprovalStatus = 'pending' | 'approved' | 'alternative_offered' | 'rejected' | 'superseded' | 'consumed' | 'expired'
 
