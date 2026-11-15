@@ -82,6 +82,7 @@ export interface ComplaintView {
   passengerName: string
   contactEmail: string | null
   ownerName: string | null
+  ownerStaffId?: string | null
   /** Employee complaints. */
   location: string | null
   staffName: string | null
@@ -246,6 +247,7 @@ export function toComplaintView(row: CaseRow): ComplaintView {
     passengerName: fullName(row.passenger) ?? '',
     contactEmail: row.contact_email,
     ownerName: fullName(row.staff),
+    ownerStaffId: row.owner_staff_id,
     location: row.employee_complaint?.location ?? null,
     staffName: row.employee_complaint?.staff_name ?? null,
     flightNumber: details?.flight.flight_number ?? null,

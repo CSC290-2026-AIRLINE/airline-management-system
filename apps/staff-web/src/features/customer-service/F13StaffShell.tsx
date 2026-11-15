@@ -4,6 +4,7 @@ import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import flythonLogoDark from '../../assets/flython-logo-dark.svg'
 import sidebarPattern from '../admin-console/assets/sidebar-pattern.png'
 import { StaffChartsView, StaffDeliveryLogView, StaffTemplatesView } from './StaffExtraViews'
+import { useComplaintsApi } from './api'
 
 function useSimulationClock() {
   // Start simulation at Monday 12 Oct 2026, 20:30:00 (Figma seed date)
@@ -32,9 +33,15 @@ function useSimulationClock() {
 export function F13StaffShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const { logout } = useAppAuth()
+  const api = useComplaintsApi()
+  const [me, setMe] = useState<{ name: string; roleName: string; isSupervisor: boolean } | null>(null)
   const clockText = useSimulationClock()
   const [collapsed, setCollapsed] = useState(false)
   const [activeTab, setActiveTab] = useState<'queue' | 'charts' | 'delivery' | 'templates'>('queue')
+
+  useEffect(() => {
+    void api.getMe().then(setMe).catch(() => {})
+  }, [])
 
   const navItems: { key: 'queue' | 'charts' | 'delivery' | 'templates'; label: string; short: string }[] = [
     { key: 'queue', label: 'Complaint queue', short: 'Q' },
@@ -314,7 +321,7 @@ export function F13StaffShell({ children }: { children: ReactNode }) {
                 </span>
               </div>
               <div style={{ fontSize: '15px', fontWeight: 600, color: '#FFFFFF', textAlign: 'left' }}>
-                Tong Charoen
+                {me?.name ?? 'Tong Charoen'}
               </div>
             </div>
 
@@ -329,7 +336,7 @@ export function F13StaffShell({ children }: { children: ReactNode }) {
                 textAlign: 'left',
               }}
             >
-              Customer Service Staff (supervisor). Navigation follows assigned staff permissions.
+              {me ? `${me.roleName}. Navigation follows assigned staff permissions.` : 'Customer Service Staff (supervisor). Navigation follows assigned staff permissions.'}
             </p>
 
             {/* Sign Out link */}

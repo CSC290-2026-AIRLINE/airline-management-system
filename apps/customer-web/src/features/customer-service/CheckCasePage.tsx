@@ -177,7 +177,7 @@ export function CheckCasePage() {
   const navigate = useNavigate()
   const { user } = useAppAuth()
   const { caseNumber, bookingRef: urlBookingRef, surname: urlSurname, guest: urlGuest } = useSearch({
-    from: '/_authenticated/complaints/check',
+    from: '/complaints/check',
   })
   const api = useComplaintsApi()
 
@@ -189,9 +189,9 @@ export function CheckCasePage() {
   const isGuestMode = !user || guestLookupOverride || urlGuest === '1'
 
   // Inputs for 06c / 06d "Card / Check a case"
-  const [caseInput, setCaseInput] = useState(caseNumber ?? '')
-  const [bookingRefInput, setBookingRefInput] = useState(urlBookingRef ?? 'P4LM8T')
-  const [surnameInput, setSurnameInput] = useState(urlSurname ?? 'Prasert')
+  const [caseInput, setCaseInput] = useState<string>(caseNumber ?? '')
+  const [bookingRefInput, setBookingRefInput] = useState<string>(urlBookingRef ?? '')
+  const [surnameInput, setSurnameInput] = useState<string>(urlSurname ?? '')
 
   // State for signed-in account's own complaints (06)
   const [cases, setCases] = useState<Complaint[] | null>(null)
@@ -329,15 +329,15 @@ export function CheckCasePage() {
       to: '/complaints/check',
       search: {
         caseNumber: complaint?.caseNumber || caseInput || undefined,
-        bookingRef: bookingRefInput || 'P4LM8T',
-        surname: surnameInput || 'Prasert',
+        bookingRef: bookingRefInput || undefined,
+        surname: surnameInput || undefined,
         guest: '1',
       },
     })
   }
 
   const allCases = cases ?? []
-  const activeBookingRef = complaint?.bookingRef || bookingRefInput || 'P4LM8T'
+  const activeBookingRef = complaint?.bookingRef || bookingRefInput || ''
   const currentStepIdx = complaint
     ? Math.max(
         0,

@@ -22,7 +22,7 @@ export interface CaseEvent {
 
 export interface CompensationDecision {
   type: string
-  amount: string
+  amount: number | string
   reason: string
   sentAt: string
 }
@@ -35,6 +35,7 @@ export interface Complaint {
   passengerName: string
   contactEmail: string | null
   ownerName: string | null
+  ownerStaffId?: string | null
   location: string | null
   staffName: string | null
   flightNumber: string | null

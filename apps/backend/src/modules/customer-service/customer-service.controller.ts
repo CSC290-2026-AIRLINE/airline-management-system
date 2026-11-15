@@ -1,4 +1,18 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { Public } from '@backend/auth/decorators/public.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
@@ -11,6 +25,8 @@ import {
   UpdateCaseStatusDto,
   UpdateNotificationTemplateDto,
 } from './dto/staff-actions.dto'
+import { CustomerServiceStaffGuard } from './guards/customer-service-staff.guard'
+import { SupervisorOnly } from './decorators/supervisor-only.decorator'
 
 // Scoped to this module, like pricing's pipe: other teams' endpoints keep their own rules.
 const validation = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
@@ -28,7 +44,7 @@ export class CustomerComplaintsController {
 
   /**
    * Public endpoint for "I'm a passenger without an account".
-   * Verifies `booking_reference` + `surname` against `booking_passenger` and writes to `complaint_case` with `customer_id = NULL`.
+   * Requires booking_reference + surname and verifies against booking_passenger.
    */
   @Public()
   @Post('guest')
@@ -38,6 +54,7 @@ export class CustomerComplaintsController {
 
   /**
    * Public endpoint for checking a case without an account.
+   * Requires booking_reference + surname to match the booking_passenger on the case.
    */
   @Public()
   @Get('guest/:caseNumber')
@@ -46,7 +63,10 @@ export class CustomerComplaintsController {
     @Query('booking_reference') bookingReference?: string,
     @Query('surname') surname?: string,
   ) {
-    return this.service.getGuestCase(caseNumber, bookingReference, surname)
+    if (!bookingReference?.trim() || !surname?.trim()) {
+      throw new BadRequestException('Booking reference and surname are required')
+    }
+    return this.service.getGuestCase(caseNumber, bookingReference.trim().toUpperCase(), surname.trim())
   }
 
   @Get()
@@ -58,13 +78,30 @@ export class CustomerComplaintsController {
   findOne(@Param('caseNumber') caseNumber: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.getForCustomer(user.id, caseNumber)
   }
+
+  @Post(':caseNumber/reopen')
+  @HttpCode(200)
+  reopen(@Param('caseNumber') caseNumber: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.reopenForCustomer(user.id, caseNumber)
+  }
 }
 
-/** The staff complaints inbox. */
+/** The staff complaints inbox. Protected by CustomerServiceStaffGuard. */
 @Controller('staff/complaints')
+@UseGuards(CustomerServiceStaffGuard)
 @UsePipes(validation)
 export class StaffComplaintsController {
   constructor(private readonly service: CustomerServiceService) {}
+
+  @Get('me')
+  getMe(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.getCurrentStaff(user.id)
+  }
+
+  @Get('staff-members')
+  getStaffMembers() {
+    return this.service.getStaffMembers()
+  }
 
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
@@ -81,11 +118,13 @@ export class StaffComplaintsController {
     return this.service.getDeliveryLogForStaff(user.id)
   }
 
+  @SupervisorOnly()
   @Get('templates')
   getTemplates(@CurrentUser() user: AuthenticatedUser) {
     return this.service.getTemplatesForStaff(user.id)
   }
 
+  @SupervisorOnly()
   @Patch('templates/:code')
   updateTemplate(
     @Param('code') code: string,
@@ -100,9 +139,10 @@ export class StaffComplaintsController {
     return this.service.getForStaff(user.id, id)
   }
 
+  @SupervisorOnly()
   @Patch(':id/assign')
   assignOwner(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignCaseOwnerDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.assignOwner(user.id, id, dto.ownerName)
+    return this.service.assignOwner(user.id, id, dto.staffId)
   }
 
   @Patch(':id/status')
@@ -116,6 +156,7 @@ export class StaffComplaintsController {
     return this.service.addNote(user.id, id, dto.note)
   }
 
+  @SupervisorOnly()
   @Post(':id/compensation')
   @HttpCode(201)
   decideCompensation(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideCompensationDto, @CurrentUser() user: AuthenticatedUser) {

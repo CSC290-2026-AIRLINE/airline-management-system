@@ -1,15 +1,13 @@
-import { Transform } from 'class-transformer'
-import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator'
+import { Transform, Type } from 'class-transformer'
+import { IsBoolean, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator'
 import { CASE_STATUSES, type CaseStatus } from '../customer-service.constants'
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
 
 export class AssignCaseOwnerDto {
-  @Transform(trim)
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
-  @MaxLength(120)
-  ownerName!: string
+  staffId!: string
 }
 
 export class UpdateCaseStatusDto {
@@ -32,17 +30,13 @@ export class AddCaseNoteDto {
 }
 
 export class DecideCompensationDto {
-  @Transform(trim)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  type!: string
+  @IsIn(['voucher', 'refund'] as const)
+  type!: 'voucher' | 'refund'
 
-  @Transform(trim)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  amount!: string
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  amount!: number
 
   @Transform(trim)
   @IsString()
@@ -75,4 +69,3 @@ export class UpdateNotificationTemplateDto {
   @MaxLength(4000)
   bodyTemplate?: string
 }
-

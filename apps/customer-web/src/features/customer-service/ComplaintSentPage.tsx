@@ -15,7 +15,7 @@ const TRACKER_STEPS: { status: CaseStatus; label: string }[] = [
 ]
 
 export function ComplaintSentPage() {
-  const { caseNumber, bookingRef, surname, guest } = useSearch({ from: '/_authenticated/complaints/sent' })
+  const { caseNumber, bookingRef, surname, guest } = useSearch({ from: '/complaints/sent' })
   const navigate = useNavigate()
   const { user } = useAppAuth()
   const api = useComplaintsApi()
@@ -29,7 +29,7 @@ export function ComplaintSentPage() {
     complaint?.fromSource === 'No account'
 
   const fetchCase = useEffectEvent((n: string) =>
-    isGuest ? api.getGuest(n, bookingRef, surname) : api.get(n),
+    isGuest ? api.getGuest(n, bookingRef, surname) : api.get(n, bookingRef, surname),
   )
 
   useEffect(() => {
@@ -48,11 +48,11 @@ export function ComplaintSentPage() {
     }
   }, [caseNumber])
 
-  const activeBookingRef = complaint?.bookingRef || bookingRef || 'P4LM8T'
+  const activeBookingRef = complaint?.bookingRef || bookingRef || ''
   const activeSurname =
     surname ||
     (complaint?.passengerName ? complaint.passengerName.trim().split(/\s+/).pop() : undefined) ||
-    'Prasert'
+    ''
   const currentStepIdx = Math.max(
     0,
     TRACKER_STEPS.findIndex((s) => s.status === (complaint?.status ?? 'with_supervisor')),

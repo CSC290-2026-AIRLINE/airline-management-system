@@ -61,33 +61,31 @@ export function MakeComplaintPage() {
   const accountMode: 'account' | 'guest' = !user || manualGuestChoice ? 'guest' : 'account'
 
   // Guest fields
-  const [bookingRef, setBookingRef] = useState('P4LM8T')
-  const [surname, setSurname] = useState('Prasert')
-  const [guestEmail, setGuestEmail] = useState('s.prasert@example.com')
-  const [guestPhone, setGuestPhone] = useState('+66 81 234 5678')
+  const [bookingRef, setBookingRef] = useState('')
+  const [surname, setSurname] = useState('')
+  const [guestEmail, setGuestEmail] = useState('')
+  const [guestPhone, setGuestPhone] = useState('')
 
   // Right column quick lookup fields
-  const [checkCaseNumber, setCheckCaseNumber] = useState('CS-2026-000124')
-  const [checkBookingRef, setCheckBookingRef] = useState('P4LM8T')
-  const [checkSurname, setCheckSurname] = useState('Prasert')
+  const [checkCaseNumber, setCheckCaseNumber] = useState('')
+  const [checkBookingRef, setCheckBookingRef] = useState('')
+  const [checkSurname, setCheckSurname] = useState('')
 
   // Type selection
-  const [type, setType] = useState<ComplaintType>('food')
+  const [type, setType] = useState<ComplaintType>('employee')
 
   // Employee details
   const [location, setLocation] = useState('gate')
-  const [staffName, setStaffName] = useState('Woman at gate C4, short hair, name tag said Mali')
+  const [staffName, setStaffName] = useState('')
 
   // Flight / Food common fields
-  const [flightNumber, setFlightNumber] = useState('FY308')
-  const [serviceDate, setServiceDate] = useState('2026-10-12')
-  const [mealSelection, setMealSelection] = useState('FY308 · 12 Oct · Vegetarian meal (VGML)')
+  const [flightNumber, setFlightNumber] = useState('')
+  const [serviceDate, setServiceDate] = useState('')
+  const [mealSelection, setMealSelection] = useState('')
 
   // Issue & description
-  const [issue, setIssue] = useState('missing')
-  const [description, setDescription] = useState(
-    'Malee pre-ordered a vegetarian meal (VGML). The crew said it was not loaded, so she only had bread and fruit on the 6-hour flight.',
-  )
+  const [issue, setIssue] = useState('delay')
+  const [description, setDescription] = useState('')
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -331,25 +329,6 @@ export function MakeComplaintPage() {
                     />
                   </Field>
                 </div>
-                {bookingRef && surname && (
-                  <div
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: '8px',
-                      backgroundColor: '#ECFDF5',
-                      border: '1px solid #A7F3D0',
-                      fontSize: '13.5px',
-                      color: '#065F46',
-                      fontWeight: 500,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      textAlign: 'left',
-                    }}
-                  >
-                    <span style={{ fontWeight: 700 }}>✓</span> Booking found · Somchai Prasert · FY402 BKK → CNX · Fri 9 Oct
-                  </div>
-                )}
               </div>
             )}
           </div>

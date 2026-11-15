@@ -133,6 +133,8 @@ export function ComplaintsDashboard() {
   const api = useComplaintsApi()
   const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [staffMembers, setStaffMembers] = useState<{ id: string; name: string; roleCode: string }[]>([])
+  const [currentStaff, setCurrentStaff] = useState<{ id: string; name: string; roleCode: string; isSupervisor: boolean } | null>(null)
 
   // Figma Filters: TYPE (All | Employee | Flight | Food), STATUS (Open | Resolved | Closed | All), OWNER
   const [filterType, setFilterType] = useState<ComplaintType | 'all'>('all')
@@ -152,6 +154,11 @@ export function ComplaintsDashboard() {
   const [busy, setBusy] = useState(false)
 
   const fetchList = useEffectEvent(() => api.list())
+
+  useEffect(() => {
+    void api.getStaffMembers().then(setStaffMembers).catch(() => {})
+    void api.getMe().then(setCurrentStaff).catch(() => {})
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -202,11 +209,11 @@ export function ComplaintsDashboard() {
 
   useEffect(() => {
     if (selected) {
-      setOwnerDraft(selected.ownerName ?? '')
+      setOwnerDraft(selected.ownerStaffId ?? '')
       setResolutionDraft('Not a duplicate')
       setNoteDraft('')
       setCompTypeDraft(selected.compensation?.type ?? 'Travel voucher')
-      setCompAmountDraft(selected.compensation?.amount ?? '1,000 THB')
+      setCompAmountDraft(selected.compensation?.amount ? String(selected.compensation.amount) : '1,000')
       setCompReasonDraft(selected.compensation?.reason ?? '')
     }
   }, [selected?.id])
@@ -249,11 +256,11 @@ export function ComplaintsDashboard() {
     if (!selected || !compReasonDraft.trim()) return
     setBusy(true)
     try {
+      const parsedAmount = Number(String(compAmountDraft).replace(/[^0-9.]/g, '')) || 1000
       await api.sendCompensation(selected.id, {
         type: compTypeDraft,
-        amount: compAmountDraft,
+        amount: parsedAmount,
         reason: compReasonDraft.trim(),
-        sentAt: new Date().toISOString(),
       })
       setReloadToken((n) => n + 1)
     } finally {
@@ -512,7 +519,7 @@ export function ComplaintsDashboard() {
               >
                 <option value="Anyone">Anyone</option>
                 <option value="Unassigned">Unassigned</option>
-                {STAFF_OWNERS.map((owner) => (
+                {(staffMembers.length > 0 ? staffMembers.map((s) => s.name) : STAFF_OWNERS).map((owner) => (
                   <option key={owner} value={owner}>
                     {owner}
                   </option>
@@ -832,6 +839,7 @@ export function ComplaintsDashboard() {
                   <select
                     value={ownerDraft}
                     onChange={(e) => setOwnerDraft(e.target.value)}
+                    disabled={!currentStaff?.isSupervisor}
                     style={{
                       flex: 1,
                       padding: '10px 12px',
@@ -844,16 +852,17 @@ export function ComplaintsDashboard() {
                     }}
                   >
                     <option value="">Pick who handles this case</option>
-                    {STAFF_OWNERS.map((owner) => (
-                      <option key={owner} value={owner}>
-                        {owner}
+                    {staffMembers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.roleCode})
                       </option>
                     ))}
                   </select>
                   <button
                     type="button"
-                    disabled={busy || !ownerDraft}
+                    disabled={busy || !ownerDraft || !currentStaff?.isSupervisor}
                     onClick={() => void handleAssign()}
+                    title={!currentStaff?.isSupervisor ? 'Supervisor only' : undefined}
                     style={{
                       backgroundColor: '#0A1424',
                       color: '#FFFFFF',
@@ -862,8 +871,8 @@ export function ComplaintsDashboard() {
                       padding: '10px 16px',
                       fontSize: '14px',
                       fontWeight: 600,
-                      cursor: busy || !ownerDraft ? 'not-allowed' : 'pointer',
-                      opacity: busy || !ownerDraft ? 0.65 : 1,
+                      cursor: busy || !ownerDraft || !currentStaff?.isSupervisor ? 'not-allowed' : 'pointer',
+                      opacity: busy || !ownerDraft || !currentStaff?.isSupervisor ? 0.65 : 1,
                     }}
                   >
                     Assign
@@ -1029,8 +1038,15 @@ export function ComplaintsDashboard() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px' }}>
                     <button
                       type="button"
-                      disabled={busy || !compReasonDraft.trim()}
+                      disabled={busy || !compReasonDraft.trim() || !currentStaff?.isSupervisor || Boolean(selected.compensation)}
                       onClick={() => void handleSendComp()}
+                      title={
+                        !currentStaff?.isSupervisor
+                          ? 'Supervisor only'
+                          : selected.compensation
+                            ? 'Compensation already decided'
+                            : undefined
+                      }
                       style={{
                         backgroundColor: '#FFFFFF',
                         border: '1px solid #D1D9E3',
@@ -1039,7 +1055,14 @@ export function ComplaintsDashboard() {
                         padding: '10px 16px',
                         fontSize: '14px',
                         fontWeight: 600,
-                        cursor: busy || !compReasonDraft.trim() ? 'not-allowed' : 'pointer',
+                        cursor:
+                          busy || !compReasonDraft.trim() || !currentStaff?.isSupervisor || Boolean(selected.compensation)
+                            ? 'not-allowed'
+                            : 'pointer',
+                        opacity:
+                          busy || !compReasonDraft.trim() || !currentStaff?.isSupervisor || Boolean(selected.compensation)
+                            ? 0.65
+                            : 1,
                         whiteSpace: 'nowrap',
                       }}
                     >

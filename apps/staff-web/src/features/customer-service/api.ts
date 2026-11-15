@@ -642,13 +642,16 @@ export function useComplaintsApi() {
   return {
     list: () => request<Complaint[]>(''),
     get: (id: string) => request<Complaint>(`/${id}`),
-    assignOwner: (id: string, ownerName: string) =>
-      request<Complaint>(`/${id}/assign`, { method: 'PATCH', body: JSON.stringify({ ownerName }) }),
+    getMe: () =>
+      request<{ id: string; name: string; roleCode: string; roleName: string; isSupervisor: boolean }>('/me'),
+    getStaffMembers: () => request<{ id: string; name: string; roleCode: string }[]>('/staff-members'),
+    assignOwner: (id: string, staffId: string) =>
+      request<Complaint>(`/${id}/assign`, { method: 'PATCH', body: JSON.stringify({ staffId }) }),
     setStatus: (id: string, status: CaseStatus, resolutionNote?: string) =>
       request<Complaint>(`/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, resolutionNote }) }),
     addNote: (id: string, note: string) =>
       request<Complaint>(`/${id}/notes`, { method: 'POST', body: JSON.stringify({ note }) }),
-    sendCompensation: (id: string, comp: CompensationDecision) =>
+    sendCompensation: (id: string, comp: { type: string; amount: number; reason: string }) =>
       request<Complaint>(`/${id}/compensation`, { method: 'POST', body: JSON.stringify(comp) }),
     getCharts: () => request<StaffChartsResponse>('/charts'),
     getDeliveryLog: () => request<StaffDeliveryLogResponse>('/delivery-log'),
