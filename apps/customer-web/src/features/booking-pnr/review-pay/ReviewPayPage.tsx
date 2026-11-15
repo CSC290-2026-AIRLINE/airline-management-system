@@ -4,18 +4,48 @@ import { useBookingPnrApi, type ApiError } from '../api/client'
 import type { BookingDetail, BookingServiceRequest } from '../api/types'
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
-import { BookingStepper } from '../components/BookingStepper'
+import { BookingRouteBar, type BookingStep } from '../components/BookingRouteBar'
 import { HoldBanner } from '../components/HoldBanner'
+import { BookingSeatChangesPanel } from '../seats/BookingSeatChangesPanel'
+import { AssistanceRequestDialog } from '../assistance/AssistanceRequestDialog'
+import type { AssistanceValue } from '../components/contracts'
 import { heldSeatCount } from '../lib/booking'
 import { toApiError } from '../lib/errors'
 import { formatCabin, formatDate, formatMoney, formatTime } from '../lib/format'
 import { CancelHoldDialog } from './CancelHoldDialog'
+import { ChangeFlightsDialog } from './ChangeFlightsDialog'
 import { ConfirmedState } from './ConfirmedState'
+import { EditContactDialog } from './EditContactDialog'
+import { EditPassengersDialog } from './EditPassengersDialog'
+import { searchParamsForBooking } from './search-params-for-booking'
 import styles from './ReviewPayPage.module.css'
 import controls from '../styles/controls.module.css'
 import '../styles/tokens.css'
 
-export function ReviewPayPage({ reference }: { reference: string }) {
+/** The steps of the booking, the same ones the route bar shows. */
+const STEPS: BookingStep[] = [1, 2, 3, 4]
+
+/** What the page says on each step of the held booking. */
+const STEP_COPY: Record<BookingStep, { subtitle: string; note: string }> = {
+  1: {
+    subtitle: 'The flights of this booking.',
+    note: 'Changing your flights releases this hold and takes you back to the search.',
+  },
+  2: {
+    subtitle: 'The passengers of this booking.',
+    note: 'You can change the contact details and add assistance while the hold runs.',
+  },
+  3: {
+    subtitle: 'The seats of this booking.',
+    note: 'You can change your seat while the hold runs. Your hold keeps running.',
+  },
+  4: {
+    subtitle: 'Check your itinerary and passengers before paying.',
+    note: 'You can go back to your flights, passengers and seats before you pay. Your hold keeps running.',
+  },
+}
+
+export function ReviewPayPage({ reference, step }: { reference: string; step: BookingStep }) {
   const navigate = useNavigate()
   const { booking, error, isLoading, reload } = useBooking(reference)
 
@@ -49,10 +79,10 @@ export function ReviewPayPage({ reference }: { reference: string }) {
     return <LoadingState />
   }
 
-  return <HeldReview booking={booking} onReload={reload} />
+  return <HeldReview booking={booking} onReload={reload} step={step} />
 }
 
-function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: () => Promise<void> }) {
+function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onReload: () => Promise<void>; step: BookingStep }) {
   const navigate = useNavigate()
   const api = useBookingPnrApi()
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -60,11 +90,29 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
   const [isCancelling, setIsCancelling] = useState(false)
   const [confirmError, setConfirmError] = useState<ApiError | null>(null)
   const [cancelError, setCancelError] = useState<ApiError | null>(null)
+  const [contactOpen, setContactOpen] = useState(false)
+  const [flightsOpen, setFlightsOpen] = useState(false)
+  const [isReleasing, setIsReleasing] = useState(false)
+  const [releaseError, setReleaseError] = useState<ApiError | null>(null)
+  const [assistancePassengerId, setAssistancePassengerId] = useState<string | null>(null)
+  const [passengersOpen, setPassengersOpen] = useState(false)
 
   const countdownPaused = isConfirming || isCancelling || cancelOpen || confirmError !== null || cancelError !== null
 
   const seatCount = heldSeatCount(booking)
   const seatLabel = seatCount > 0 ? `${seatCount} held seat${seatCount === 1 ? '' : 's'}` : 'held seats'
+  const copy = STEP_COPY[step]
+  // Step 4 is the review & pay itself, the page the customer pays on. The other steps show one part of the booking.
+  const isPayStep = step === 4
+
+  /** Opens another step of this booking, so the customer can walk back and forth while the hold runs. */
+  function goToStep(next: BookingStep) {
+    void navigate({
+      to: '/review-pay/$reference',
+      params: { reference: booking.reference },
+      search: { step: next },
+    })
+  }
 
   async function handleConfirm() {
     setIsConfirming(true)
@@ -118,13 +166,36 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
     }
   }
 
-  function goBack() {
-    if (window.history.length > 1) {
-      window.history.back()
-      return
-    }
-    void navigate({ to: '/search' })
+  /** The contact details of a held booking can be changed in place: the price does not move. */
+  async function handleSaveContact(contact: { contactEmail: string; contactPhone: string }) {
+    await api.updateContact(booking.reference, contact)
+    await onReload()
   }
+
+  /** The flights of a held booking cannot be swapped, so changing them releases the hold and starts a new search. */
+  async function handleChangeFlights() {
+    setIsReleasing(true)
+    setReleaseError(null)
+    try {
+      await api.cancelBooking(booking.reference)
+      void navigate({ to: '/search', search: searchParamsForBooking(booking) })
+    } catch (error) {
+      setReleaseError(toApiError(error))
+    } finally {
+      setIsReleasing(false)
+    }
+  }
+
+  /** The pay action belongs to the review & pay step. The other steps send the customer back to it. */
+  const payAction = import.meta.env.DEV ? (
+    <button type="button" className={controls.primary} onClick={() => void handleConfirm()} disabled={isConfirming || isCancelling}>
+      {isConfirming ? 'Confirming…' : 'Confirm booking (dev)'}
+    </button>
+  ) : (
+    <button type="button" className={controls.primary} disabled title="Checkout (feature 5a) is not connected yet.">
+      Pay now
+    </button>
+  )
 
   return (
     <>
@@ -133,10 +204,16 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
           <header className={styles.header}>
             <p className={styles.eyebrow}>Booking {booking.reference}</p>
             <h1>Review &amp; pay</h1>
-            <p className={styles.subtitle}>Check your itinerary and passengers before paying.</p>
+            <p className={styles.subtitle}>{copy.subtitle}</p>
           </header>
 
-          <BookingStepper currentStep={4} />
+          {/* The bar takes the customer back to a step of this booking. Every step but the one they are on can be
+              opened, so they can walk back and forth while the hold runs. */}
+          <BookingRouteBar
+            currentStep={step}
+            clickableSteps={STEPS.filter((item) => item !== step)}
+            onStepClick={(next) => goToStep(next)}
+          />
           <HoldBanner
             reference={booking.reference}
             holdExpiresAt={booking.holdExpiresAt}
@@ -156,47 +233,68 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
 
           <div className={styles.columns}>
             <div className={styles.mainColumn}>
-              <FlightsCard booking={booking} />
-              <PassengersCard booking={booking} />
+              {step === 1 || isPayStep ? (
+                <FlightsCard
+                  booking={booking}
+                  onEdit={isPayStep ? () => goToStep(1) : undefined}
+                  onChangeFlights={() => setFlightsOpen(true)}
+                />
+              ) : null}
+              {step === 2 || isPayStep ? (
+                <PassengersCard
+                  booking={booking}
+                  onEdit={isPayStep ? () => goToStep(2) : undefined}
+                  onEditContact={() => setContactOpen(true)}
+                  onEditDetails={() => setPassengersOpen(true)}
+                  onRequestAssistance={(passengerId) => setAssistancePassengerId(passengerId)}
+                />
+              ) : null}
+              {/* The seat of a held booking can still be changed, so the panel works on a hold too. */}
+              {step === 3 || isPayStep ? <BookingSeatChangesPanel reference={booking.reference} onChanged={() => void onReload()} /> : null}
             </div>
 
             <aside className={styles.summaryColumn}>
               <PriceCard booking={booking} />
 
               <div className={styles.actions}>
-                {import.meta.env.DEV ? (
+                {isPayStep ? (
+                  payAction
+                ) : (
+                  <Link
+                    to="/review-pay/$reference"
+                    params={{ reference: booking.reference }}
+                    search={{ step: 4 }}
+                    className={controls.primary}
+                  >
+                    Back to review &amp; pay
+                  </Link>
+                )}
+                {isPayStep ? (
+                  <button type="button" className={controls.secondary} onClick={() => goToStep(3)}>
+                    Back to seats
+                  </button>
+                ) : null}
+                <Link to="/search" className={controls.secondary}>
+                  Search again
+                </Link>
+                {isPayStep ? (
                   <button
                     type="button"
-                    className={controls.primary}
-                    onClick={() => void handleConfirm()}
+                    className={controls.secondary}
+                    onClick={() => {
+                      setCancelError(null)
+                      setCancelOpen(true)
+                    }}
                     disabled={isConfirming || isCancelling}
                   >
-                    {isConfirming ? 'Confirming…' : 'Confirm booking (dev)'}
+                    Cancel
                   </button>
-                ) : (
-                  <button type="button" className={controls.primary} disabled title="Checkout (feature 5a) is not connected yet.">
-                    Pay now
-                  </button>
-                )}
-                <button type="button" className={controls.secondary} onClick={goBack} disabled={isConfirming || isCancelling}>
-                  Back to seats
-                </button>
-                <button
-                  type="button"
-                  className={controls.secondary}
-                  onClick={() => {
-                    setCancelError(null)
-                    setCancelOpen(true)
-                  }}
-                  disabled={isConfirming || isCancelling}
-                >
-                  Cancel
-                </button>
+                ) : null}
               </div>
 
-              {!import.meta.env.DEV ? <p className={styles.note}>Pay now will open checkout when it is connected.</p> : null}
-              <p className={styles.note}>You can go back to change seats or passengers. Your hold keeps running.</p>
-              <p className={styles.note}>Want a meal on board? You can add meals from your booking once it is paid.</p>
+              {isPayStep && !import.meta.env.DEV ? <p className={styles.note}>Pay now will open checkout when it is connected.</p> : null}
+              <p className={styles.note}>{copy.note}</p>
+              {isPayStep ? <p className={styles.note}>Want a meal on board? You can add meals from your booking once it is paid.</p> : null}
             </aside>
           </div>
         </div>
@@ -214,11 +312,77 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
         }}
         onConfirm={() => void handleCancel()}
       />
+
+      {/* The dialogs are mounted while they are open, so they always start with the details the booking holds now. */}
+      {contactOpen ? (
+        <EditContactDialog
+          open
+          contactEmail={booking.contactEmail}
+          contactPhone={booking.contactPhone}
+          onClose={() => setContactOpen(false)}
+          onSave={handleSaveContact}
+        />
+      ) : null}
+
+      {flightsOpen ? (
+        <ChangeFlightsDialog
+          open
+          reference={booking.reference}
+          seatLabel={seatLabel}
+          isReleasing={isReleasing}
+          error={releaseError}
+          onKeep={() => {
+            setFlightsOpen(false)
+            setReleaseError(null)
+          }}
+          onConfirm={() => void handleChangeFlights()}
+        />
+      ) : null}
+
+      {passengersOpen ? (
+        <EditPassengersDialog
+          open
+          booking={booking}
+          onClose={() => setPassengersOpen(false)}
+          onRebooked={(reference) => {
+            void navigate({ to: '/review-pay/$reference', params: { reference } })
+          }}
+        />
+      ) : null}
+
+      <AssistanceRequestDialog
+        open={assistancePassengerId !== null}
+        onClose={() => setAssistancePassengerId(null)}
+        passengerName={booking.passengers
+          .filter((person) => person.bookingPassengerId === assistancePassengerId)
+          .map((person) => `${person.firstName} ${person.lastName}`)
+          .join('')}
+        flightLabel="All flights"
+        onSubmit={async (value: AssistanceValue) => {
+          if (!assistancePassengerId || !value.serviceCode) return
+          await api.createServiceRequest(booking.reference, {
+            bookingPassengerId: assistancePassengerId,
+            bookingSegmentId: null,
+            serviceCode: value.serviceCode,
+            note: value.note || null,
+          })
+          await onReload()
+        }}
+      />
     </>
   )
 }
 
-function FlightsCard({ booking }: { booking: BookingDetail }) {
+function FlightsCard({
+  booking,
+  onEdit,
+  onChangeFlights,
+}: {
+  booking: BookingDetail
+  /** Jumps back to the flights step. Only on the review & pay step, where the card is a summary of the other steps. */
+  onEdit?: () => void
+  onChangeFlights: () => void
+}) {
   const passengerById = new Map(booking.passengers.map((passenger) => [passenger.bookingPassengerId, passenger]))
   const seatsBySegment = new Map<string, string[]>()
 
@@ -237,7 +401,19 @@ function FlightsCard({ booking }: { booking: BookingDetail }) {
 
   return (
     <section className={styles.card}>
-      <h2>Flights</h2>
+      <div className={styles.cardHeader}>
+        <h2>Flights</h2>
+        <div className={styles.cardActions}>
+          <button type="button" className={controls.action} onClick={onChangeFlights}>
+            Change flights
+          </button>
+          {onEdit ? (
+            <button type="button" className={controls.action} onClick={onEdit}>
+              Back to flights
+            </button>
+          ) : null}
+        </div>
+      </div>
       {booking.segments.map((segment) => {
         const seats = seatsBySegment.get(segment.bookingSegmentId) ?? []
         return (
@@ -258,7 +434,20 @@ function FlightsCard({ booking }: { booking: BookingDetail }) {
   )
 }
 
-function PassengersCard({ booking }: { booking: BookingDetail }) {
+function PassengersCard({
+  booking,
+  onEdit,
+  onEditContact,
+  onEditDetails,
+  onRequestAssistance,
+}: {
+  booking: BookingDetail
+  /** Jumps back to the passengers step. Only on the review & pay step, where the card is a summary of the other steps. */
+  onEdit?: () => void
+  onEditContact: () => void
+  onEditDetails: () => void
+  onRequestAssistance: (passengerId: string) => void
+}) {
   const requestsByPassenger = new Map<string, BookingServiceRequest[]>()
   for (const request of booking.serviceRequests) {
     const requests = requestsByPassenger.get(request.bookingPassengerId) ?? []
@@ -268,7 +457,19 @@ function PassengersCard({ booking }: { booking: BookingDetail }) {
 
   return (
     <section className={styles.card}>
-      <h2>Passengers</h2>
+      <div className={styles.cardHeader}>
+        <h2>Passengers</h2>
+        <div className={styles.cardActions}>
+          <button type="button" className={controls.action} onClick={onEditDetails}>
+            Edit details
+          </button>
+          {onEdit ? (
+            <button type="button" className={controls.action} onClick={onEdit}>
+              Back to passengers
+            </button>
+          ) : null}
+        </div>
+      </div>
       {booking.passengers.map((passenger) => {
         const requests = requestsByPassenger.get(passenger.bookingPassengerId) ?? []
         const lapAdult = passenger.lapOfBookingPassengerId
@@ -297,9 +498,26 @@ function PassengersCard({ booking }: { booking: BookingDetail }) {
                 ))
               )}
             </div>
+            <div className={styles.passengerActions}>
+              <button type="button" className={controls.link} onClick={() => onRequestAssistance(passenger.bookingPassengerId)}>
+                Request assistance
+              </button>
+            </div>
           </div>
         )
       })}
+      <div className={styles.contactRow}>
+        <div>
+          <p className={styles.muted}>Contact for this booking</p>
+          <p className={styles.contactDetails}>
+            {booking.contactEmail}
+            {booking.contactPhone ? ` · ${booking.contactPhone}` : ''}
+          </p>
+        </div>
+        <button type="button" className={controls.action} onClick={onEditContact}>
+          Change contact details
+        </button>
+      </div>
     </section>
   )
 }

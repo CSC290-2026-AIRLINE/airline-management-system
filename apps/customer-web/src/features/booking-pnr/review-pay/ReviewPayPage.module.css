@@ -2,7 +2,7 @@
 .page {
   box-sizing: border-box;
   width: 100%;
-  max-width: 1040px;
+  max-width: 1200px;
   margin: 40px auto 0;
   color: var(--f3-ink);
   font-family: var(--f3-font);
@@ -14,7 +14,7 @@
   flex-direction: column;
   gap: 20px;
   width: 100%;
-  max-width: 1040px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
@@ -77,6 +77,27 @@
   margin: 0 0 12px;
   font-size: 16px;
   color: var(--f3-ink);
+}
+
+/* The heading of a card and the actions that change it. */
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.cardHeader h2 {
+  margin: 0;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .flightRow {
@@ -150,6 +171,27 @@
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* The action under a passenger: asking the airport team for help. */
+.passengerActions {
+  flex-basis: 100%;
+}
+
+.contactRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--f3-line);
+}
+
+.contactDetails {
+  margin: 2px 0 0;
+  font-size: 14px;
 }
 
 .warningChip {

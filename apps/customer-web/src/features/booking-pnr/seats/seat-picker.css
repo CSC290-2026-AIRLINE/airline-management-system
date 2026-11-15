@@ -16,6 +16,10 @@
   align-items: center;
   gap: 6px;
 }
+/* The action of the legend row sits right after the last legend item. */
+.seat-picker__legend-action {
+  align-self: center;
+}
 .seat-picker__swatch {
   position: relative;
   display: inline-grid;

@@ -18,6 +18,8 @@ export interface BookingPassenger {
   lastName: string
   passengerType: PassengerType
   lapOfBookingPassengerId: string | null
+  dateOfBirth: string | null
+  passportNumber: string | null
 }
 
 export interface BookingSegment {
@@ -32,6 +34,7 @@ export interface BookingSegment {
   destination: string
   depAt: string
   arrAt: string
+  serviceDate: string
 }
 
 export interface BookingCoupon {

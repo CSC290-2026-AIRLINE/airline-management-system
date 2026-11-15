@@ -4,52 +4,10 @@ import type { FlightSearchFormProps } from './contracts'
 import type { FlightSearchLeg, TripType } from '../api/types'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import { DatePicker } from '@customer-web/components/ui/date-picker'
+import { Field } from '@customer-web/components/ui/field'
+import { todayKey } from '@customer-web/components/ui/date-keys'
 import { fieldKey, searchIssues, type SearchField } from './search-validation'
 import { AIRPORTS } from './airports'
-
-function today() {
-  const date = new Date()
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-/** A date as a screen reader reads it out, so the chosen day is announced with the field it belongs to. */
-function spokenDate(key: string) {
-  if (!key) return ''
-  const [year, month, day] = key.split('-').map(Number)
-  return new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(
-    new Date(year, month - 1, day),
-  )
-}
-
-interface FieldProps {
-  /** The id of the control, so the label can point at it. */
-  id: string
-  /** The text above the control. */
-  label: string
-  /** The message under the control, when the value is wrong. */
-  error?: string
-  children: ReactNode
-}
-
-/**
- * A label, a control and the message under it. The message sits outside the label, so it never becomes part of the
- * name a screen reader reads for the field, and the control points at it with `aria-describedby`.
- */
-function Field({ id, label, error, children }: FieldProps) {
-  return (
-    <div className="f3-search-field">
-      <label id={`${id}-label`} htmlFor={id}>
-        {label}
-      </label>
-      {children}
-      {error && (
-        <p className="f3-search-field-error" id={`${id}-error`}>
-          {error}
-        </p>
-      )}
-    </div>
-  )
-}
 
 export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMessage }: FlightSearchFormProps) {
   /* The messages are shown once the search has been pressed, so the form is not full of red text before the customer
@@ -115,9 +73,6 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
   function dateField(leg: FlightSearchLeg, index: number, label: string, min: string) {
     const issue = messageFor({ kind: 'leg', legIndex: index, field: 'date' })
     const id = fieldKey({ kind: 'leg', legIndex: index, field: 'date' })
-    /* The calendar trigger is a button, so the name comes from the label. The chosen day is part of that name, so a
-       screen reader says which day the field holds. */
-    const spoken = spokenDate(leg.date)
     return (
       <Field key={`${index}-date`} id={id} label={label} error={issue}>
         <DatePicker
@@ -126,7 +81,7 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
           min={min}
           required
           invalid={!!issue}
-          ariaLabel={spoken ? `${label} date, ${spoken}` : `${label} date`}
+          ariaLabelledBy={`${id}-label`}
           describedBy={issue ? `${id}-error` : undefined}
           onChange={(date) => setLeg(index, { date })}
         />
@@ -147,8 +102,8 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
       <div className="f3-search-leg-row" key="return">
         {airportSelect(outbound, 0, 'origin', 'From')}
         {airportSelect(outbound, 0, 'destination', 'To')}
-        {dateField(outbound, 0, 'Depart', today())}
-        {dateField(inbound, 1, 'Return', outbound.date || today())}
+        {dateField(outbound, 0, 'Depart', todayKey())}
+        {dateField(inbound, 1, 'Return', outbound.date || todayKey())}
       </div>,
     )
   } else {
@@ -160,7 +115,7 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
         <div className="f3-search-leg-row" key={index}>
           {airportSelect(leg, index, 'origin', fromLabel)}
           {airportSelect(leg, index, 'destination', 'To')}
-          {dateField(leg, index, 'Depart', index > 0 ? value.legs[index - 1].date || today() : today())}
+          {dateField(leg, index, 'Depart', index > 0 ? value.legs[index - 1].date || todayKey() : todayKey())}
           {value.tripType === 'multi_city' && index === lastLeg && (
             <div className="f3-search-leg-actions">
               {value.legs.length > 2 && (

@@ -13,11 +13,6 @@ body {
   font-size: 1.4rem;
   font-weight: 700;
 }
-.seat-demo__step {
-  color: #617185;
-  font-size: 0.9rem;
-  margin: 2rem 0;
-}
 .seat-demo__layout {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(240px, 1fr);

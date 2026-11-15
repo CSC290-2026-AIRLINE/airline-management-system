@@ -1,15 +1,14 @@
-import type { BookingCoupon, BookingDetail } from '../api/types'
+import { Armchair } from 'lucide-react'
+import type { BookingCoupon, BookingDetail, BookingStatus } from '../api/types'
 import { StatusChip } from '../components/StatusChip'
 import { formatFlightDate, formatTicketNumber, formatTime } from '../lib/format'
-import controls from '../styles/controls.module.css'
-import { FeatureAction } from './FeatureAction'
-import { couponChip, SEAT_PICKER_DISABLED } from './booking-detail-model'
+import { couponChip } from './booking-detail-model'
 import styles from './FlightsCard.module.css'
 
 /**
  * The flights of a booking: one row per flight, with the seats, the ticket number and the coupon (frame 08).
  */
-export function FlightsCard({ booking }: { booking: BookingDetail }) {
+export function FlightsCard({ booking, status = booking.status }: { booking: BookingDetail; status?: BookingStatus }) {
   const passengerById = new Map(booking.passengers.map((passenger) => [passenger.bookingPassengerId, passenger]))
   const couponsBySegment = new Map<string, BookingCoupon[]>()
   const infantIds = new Set(
@@ -68,10 +67,20 @@ export function FlightsCard({ booking }: { booking: BookingDetail }) {
                         }
 
                         if (!coupon.seatCode) {
+                          // A seat can be chosen while the booking is on hold and after it is confirmed, as long as the
+                          // coupon itself is still open.
+                          const canChooseSeat =
+                            (status === 'held' || status === 'confirmed') && (coupon.status === 'held' || coupon.status === 'confirmed')
+
                           return (
-                            <p className={styles.seat} key={coupon.couponId}>
-                              {name} · Seat not chosen{' '}
-                              <FeatureAction label="Choose seat" reason={SEAT_PICKER_DISABLED} className={controls.link} />
+                            <p className={styles.seatRow} key={coupon.couponId}>
+                              <span className={styles.seat}>{name} · Seat not chosen</span>
+                              {canChooseSeat ? (
+                                <a href="#seats" className={styles.chooseSeat} aria-label={`Choose seat for ${name}`}>
+                                  <Armchair aria-hidden="true" size={14} strokeWidth={2} />
+                                  Choose seat
+                                </a>
+                              ) : null}
                             </p>
                           )
                         }

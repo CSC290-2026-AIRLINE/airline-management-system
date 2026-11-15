@@ -645,7 +645,18 @@ async function main(): Promise<void> {
     })
     assert(coupons.length === seated, `The business booking has ${coupons.length} coupon(s), not ${seated}.`)
     for (const coupon of coupons) {
-      assert(coupon.fare_quote_id === businessFare!.fareQuoteId, 'A business coupon does not carry the J fare quote.')
+      // A hold prices every passenger's actual seat, so the coupon carries the J quote of the seat it holds. That is a
+      // different row from the seat-less quote of the search, but it is the same class on the same flight.
+      const quote = coupon.fare_quote_id
+        ? await prisma.fare_quote.findUnique({
+            where: { id: coupon.fare_quote_id },
+            select: { flight_id: true, fare_class_id: true, seat_type: true },
+          })
+        : null
+      assert(Boolean(quote), 'A business coupon carries no fare quote.')
+      assert(quote!.flight_id === fixtures.flights.business.id, 'A business coupon is priced for another flight.')
+      assert(quote!.fare_class_id === businessFare!.fareClassId, 'A business coupon is not priced at the J class.')
+      assert(quote!.seat_type === 'normal', 'A business coupon is not priced for the seat it holds.')
       assert(
         Math.round(Number(coupon.price_total) * 100) === Math.round(businessFare!.pricePerPassenger * 100),
         'A business coupon is not priced at the J quote.',

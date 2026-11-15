@@ -13,6 +13,8 @@ interface BookingSeatChangeProps {
   cabin: Cabin
   passengerName: string
   currentSeat: string | null
+  /** The booking is still on hold, so the seat is held rather than assigned. */
+  heldBooking?: boolean
   onChangeSeat: (seatCode: string) => Promise<{ status: 'assigned' | 'payment_required'; lock?: { id: string } }>
   onPaySeat?: (lockId: string) => Promise<void>
   onRefresh: () => Promise<void>
@@ -26,6 +28,7 @@ export function BookingSeatChange({
   cabin,
   passengerName,
   currentSeat,
+  heldBooking = false,
   onChangeSeat,
   onPaySeat,
   onRefresh,
@@ -62,7 +65,7 @@ export function BookingSeatChange({
         setMessage('This seat is held temporarily. Payment is required before it is assigned.')
       } else {
         setAssigned(true)
-        setMessage(`Seat ${selected} has been assigned.`)
+        setMessage(heldBooking ? `Seat ${selected} is held for you.` : `Seat ${selected} has been assigned.`)
       }
     } catch (error) {
       if (error instanceof ApiError && error.code === 'SEAT_UNAVAILABLE') setTaken(true)

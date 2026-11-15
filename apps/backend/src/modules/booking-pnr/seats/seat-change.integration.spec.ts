@@ -8,6 +8,7 @@ import { DbService } from '@backend/db/db.service'
 import { BookingErrorFilter } from '../common/booking-error.filter'
 import { BOOKING_READ_PORT } from '../contracts'
 import { CheckinSeatProvider } from '../providers/checkin-seat.provider'
+import { HeldSeatChangeService } from './held-seat-change.service'
 import { SeatChangeController } from './seat-change.controller'
 import { SeatChangeService } from './seat-change.service'
 
@@ -34,6 +35,7 @@ describe('Customer seat-change flow', () => {
     check_in: checkIn,
   }
   const seats = { hold: jest.fn(), confirm: jest.fn(), release: jest.fn() }
+  const heldSeats = { changeSeat: jest.fn() }
   const bookings = {
     getBookingDetail: jest.fn((_reference: string, viewer: { customerId?: string; staff?: boolean }) =>
       Promise.resolve(
@@ -52,6 +54,7 @@ describe('Customer seat-change flow', () => {
         { provide: DbService, useValue: db },
         { provide: CheckinSeatProvider, useValue: seats },
         { provide: BOOKING_READ_PORT, useValue: bookings },
+        { provide: HeldSeatChangeService, useValue: heldSeats },
         {
           provide: JwtService,
           useValue: { verifyAsync: jest.fn((token: string) => Promise.resolve({ sub: token, email: 'test@example.com' })) },
@@ -69,6 +72,9 @@ describe('Customer seat-change flow', () => {
     seats.hold.mockReset().mockResolvedValue({ id: 'lock', fee: 0 })
     seats.confirm.mockReset().mockResolvedValue({ seatCode: '4A', type: 'standard' })
     seats.release.mockReset().mockResolvedValue(undefined)
+    heldSeats.changeSeat
+      .mockReset()
+      .mockResolvedValue({ status: 'assigned', seat: { seatCode: '4A', type: 'standard' }, total: 96, currency: 'USD' })
   })
   afterAll(async () => app.close())
 
@@ -100,5 +106,16 @@ describe('Customer seat-change flow', () => {
     const response = await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer owner').send({ seatCode: '4A' }).expect(200)
     expect(response.body).toMatchObject({ status: 'payment_required' })
     expect(seats.confirm).not.toHaveBeenCalled()
+  })
+
+  it('changes the seat of a booking that is still on hold', async () => {
+    bookings.getBookingDetail.mockResolvedValueOnce({
+      status: 'held',
+      coupons: [{ couponId, status: 'held', flightId: 'flight', bookingPassengerId: 'passenger' }],
+    })
+    const response = await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer owner').send({ seatCode: '4A' }).expect(200)
+    expect(response.body).toMatchObject({ status: 'assigned', seat: { seatCode: '4A' }, total: 96 })
+    expect(heldSeats.changeSeat).toHaveBeenCalledWith('ABC123', couponId, '4A')
+    expect(seats.hold).not.toHaveBeenCalled()
   })
 })

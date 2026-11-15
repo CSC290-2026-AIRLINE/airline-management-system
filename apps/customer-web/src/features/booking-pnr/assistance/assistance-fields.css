@@ -12,13 +12,13 @@
   font-size: 14px;
   font-weight: 600;
 }
-.assistance-fields label {
-  display: grid;
-  gap: 6px;
+/* The label, the control and the message under it come from the shared field component. This only sets the space the
+   fields take in this panel and the colour of their labels. */
+.assistance-fields .cw-field {
   margin: 12px 0 6px;
+}
+.assistance-fields .cw-field > label {
   color: #677287;
-  font-size: 13px;
-  font-weight: 500;
 }
 .assistance-fields__checks {
   display: flex;

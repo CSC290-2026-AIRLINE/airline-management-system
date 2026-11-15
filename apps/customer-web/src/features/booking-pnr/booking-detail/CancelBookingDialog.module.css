@@ -60,9 +60,14 @@
   color: inherit;
   font: inherit;
   font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
   cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+/* The "Retry" word sits in the red error box, so it darkens like the red buttons do instead of underlining. */
+.retry:hover {
+  filter: brightness(0.9);
 }
 
 .retry:focus-visible {

@@ -36,6 +36,9 @@ const DEMO_PASSENGER_PASSPORT = 'F03SEED001'
 const EXTRA_PASSENGER_PASSPORT = 'F03SEED002'
 const SMOKE_PRICING_RULE_ID = 'f0300000-0000-4000-8000-000000000001'
 
+// The demo aircraft type. A type's layout cannot change, so a new layout gets a new code (F03A320-V2).
+const AIRCRAFT_TYPE_CODE = 'F03A320'
+
 // The service dates the demo flights fly on. The last one is far enough ahead for the Q class, which can only be
 // bought seven days before departure, so it flies on its own aircraft.
 const SERVICE_DAYS = [
@@ -76,13 +79,36 @@ async function seedAirportsAndRoutes() {
   return routes
 }
 
-async function seedAircraft() {
-  const layout = demoAircraftLayout()
-  const aircraftType = await prisma.aircraft_type.upsert({
-    where: { code: 'F03A320' },
-    update: {},
-    create: {
-      code: 'F03A320',
+/** A JSON value as a string that does not depend on the key order, so two layouts can be compared. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) => (left < right ? -1 : 1))
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
+/**
+ * The aircraft type that carries the demo layout. The layout of a type is immutable in the database, so a type is
+ * matched by its layout and a changed layout gets a new versioned code (F03A320, F03A320-V2, ...).
+ */
+async function seedAircraftType(layout: ReturnType<typeof demoAircraftLayout>) {
+  const types = await prisma.aircraft_type.findMany({ where: { deleted_at: null }, orderBy: { code: 'asc' } })
+  const demoTypes = types.filter((type) => type.code === AIRCRAFT_TYPE_CODE || type.code.startsWith(`${AIRCRAFT_TYPE_CODE}-V`))
+  const matching = demoTypes.find((type) => canonicalJson(type.layout) === canonicalJson(layout))
+  if (matching) return matching
+
+  const usedCodes = new Set(types.map((type) => type.code))
+  let version = 1
+  let code = AIRCRAFT_TYPE_CODE
+  while (usedCodes.has(code)) {
+    version += 1
+    code = `${AIRCRAFT_TYPE_CODE}-V${version}`
+  }
+  return prisma.aircraft_type.create({
+    data: {
+      code,
       manufacturer: 'Airbus',
       model: 'A320',
       layout,
@@ -94,30 +120,37 @@ async function seedAircraft() {
       cost_currency: 'USD',
     },
   })
+}
 
-  const primary = await prisma.aircraft.upsert({
-    where: { tail_number: 'HS-F03A' },
-    update: {},
-    create: {
-      tail_number: 'HS-F03A',
-      aircraft_type_id: aircraftType.id,
-      entry_into_service_date: new Date('2024-01-01T00:00:00Z'),
-      base_airport_code: 'BKK',
-    },
-  })
+/**
+ * The demo aircraft. Its type is moved to the one that carries the demo layout, so the search offers the cabins of
+ * the current layout. The tail number is unique only for live rows, so Prisma's upsert cannot use it.
+ */
+async function seedAircraftRow(tailNumber: string, aircraftTypeId: string) {
+  const existing = await prisma.aircraft.findFirst({ where: { tail_number: tailNumber, deleted_at: null } })
+  if (!existing) {
+    return prisma.aircraft.create({
+      data: {
+        tail_number: tailNumber,
+        aircraft_type_id: aircraftTypeId,
+        entry_into_service_date: new Date('2024-01-01T00:00:00Z'),
+        base_airport_code: 'BKK',
+      },
+    })
+  }
+  if (existing.aircraft_type_id === aircraftTypeId) return existing
+  return prisma.aircraft.update({ where: { id: existing.id }, data: { aircraft_type_id: aircraftTypeId } })
+}
 
+async function seedAircraft() {
+  // The layout of a type never changes: the database refuses it, so a new layout is a new type code (A320-V2).
+  // The demo aircraft therefore has to point at the type that carries the current demo layout, or the search keeps
+  // showing the cabins of the older layout only.
+  const aircraftType = await seedAircraftType(demoAircraftLayout())
+  const primary = await seedAircraftRow('HS-F03A', aircraftType.id)
   // A second aircraft for the flights far ahead: the pricing smoke puts its own flights on the first one on the same
   // day, and an aircraft can only fly one flight at a time.
-  const farAhead = await prisma.aircraft.upsert({
-    where: { tail_number: 'HS-F03B' },
-    update: {},
-    create: {
-      tail_number: 'HS-F03B',
-      aircraft_type_id: aircraftType.id,
-      entry_into_service_date: new Date('2024-01-01T00:00:00Z'),
-      base_airport_code: 'BKK',
-    },
-  })
+  const farAhead = await seedAircraftRow('HS-F03B', aircraftType.id)
 
   return { primary, farAhead }
 }

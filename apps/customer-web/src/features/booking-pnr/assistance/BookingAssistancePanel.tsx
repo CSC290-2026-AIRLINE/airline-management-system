@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { Accessibility, Plus } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
-import { useAppAuth } from '@customer-web/auth/AuthProvider'
-import { ApiError } from '../api/client'
-import type { ApiErrorBody } from '../api/types'
+import { Field } from '@customer-web/components/ui/field'
+import { useBookingPnrApi } from '../api/client'
 import { useBooking } from '../api/useBooking'
 import { AssistanceRequestDialog } from './AssistanceRequestDialog'
 import { AssistanceStatus } from './AssistanceStatus'
@@ -12,7 +11,7 @@ import detailStyles from '../booking-detail/BookingDetailPage.module.css'
 import './booking-assistance-panel.css'
 
 export function BookingAssistancePanel({ reference, onChanged }: { reference: string; onChanged: () => void }) {
-  const { fetchWithAuth } = useAppAuth()
+  const api = useBookingPnrApi()
   const { booking, reload, isLoading, error } = useBooking(reference)
   const [passengerId, setPassengerId] = useState<string | null>(null)
   const [segmentId, setSegmentId] = useState('')
@@ -36,20 +35,21 @@ export function BookingAssistancePanel({ reference, onChanged }: { reference: st
         <div className="booking-assistance__heading">
           <p className={detailStyles.muted}>Request support for a passenger and track the airport team’s response.</p>
           <div className="booking-assistance__flight-filter">
-            <label htmlFor="assistance-flight">Flight</label>
-            <Select value={segmentId} onValueChange={setSegmentId}>
-              <SelectTrigger id="assistance-flight">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">All flights</SelectItem>
-                {booking.segments.map((segment) => (
-                  <SelectItem key={segment.bookingSegmentId} value={segment.bookingSegmentId}>
-                    {segment.flightNumber} · {segment.origin} → {segment.destination}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Field id="assistance-flight" label="Flight">
+              <Select value={segmentId} onValueChange={setSegmentId}>
+                <SelectTrigger id="assistance-flight" aria-labelledby="assistance-flight-label">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All flights</SelectItem>
+                  {booking.segments.map((segment) => (
+                    <SelectItem key={segment.bookingSegmentId} value={segment.bookingSegmentId}>
+                      {segment.flightNumber} · {segment.origin} → {segment.destination}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
           </div>
         </div>
         {booking.passengers.map((passenger) => {
@@ -99,20 +99,12 @@ export function BookingAssistancePanel({ reference, onChanged }: { reference: st
         flightLabel={booking.segments.find((segment) => segment.bookingSegmentId === segmentId)?.flightNumber ?? 'All flights'}
         onSubmit={async (value) => {
           if (!passengerId || !value.serviceCode) return
-          const response = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}/service-requests`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              bookingPassengerId: passengerId,
-              bookingSegmentId: segmentId || null,
-              serviceCode: value.serviceCode,
-              note: value.note || null,
-            }),
+          await api.createServiceRequest(reference, {
+            bookingPassengerId: passengerId,
+            bookingSegmentId: segmentId || null,
+            serviceCode: value.serviceCode,
+            note: value.note || null,
           })
-          if (!response.ok) {
-            const body = (await response.json().catch(() => null)) as ApiErrorBody | null
-            throw new ApiError(body?.error?.code ?? 'REQUEST_FAILED', body?.error?.message ?? 'Request failed', response.status)
-          }
           await reload()
           onChanged()
         }}

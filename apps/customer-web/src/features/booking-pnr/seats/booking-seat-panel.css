@@ -1,5 +1,7 @@
 .booking-seat-panel {
   min-width: 0;
+  /* The flights card links to #seats, so the jump does not land flush against the top of the page. */
+  scroll-margin-top: 24px;
 }
 .booking-seat-panel__card {
   min-width: 0;

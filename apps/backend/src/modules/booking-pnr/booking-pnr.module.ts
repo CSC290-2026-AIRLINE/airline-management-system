@@ -24,6 +24,7 @@ import { DevConfirmController } from './confirm/dev-confirm.controller'
 import { HoldExpiryJob } from './confirm/hold-expiry.job'
 import { ReleaseService } from './confirm/release.service'
 import { BookingReadService } from './manage/booking-read.service'
+import { BookingContactService } from './manage/booking-contact.service'
 import { BookingsController } from './manage/bookings.controller'
 import { CustomerBookingsController } from './manage/customer-bookings.controller'
 import {
@@ -56,6 +57,7 @@ import { SeatMapService } from './seats/seat-map.service'
 import { SeatHoldExpiryService } from './seats/seat-hold-expiry.service'
 import { SeatChangeController } from './seats/seat-change.controller'
 import { SeatChangeService } from './seats/seat-change.service'
+import { HeldSeatChangeService } from './seats/held-seat-change.service'
 import { CheckinSeatMapAdapter } from './providers/checkin-seat-map.adapter'
 import { CheckinSeatProvider } from './providers/checkin-seat.provider'
 import { FlightImpactService } from './flight-events/flight-impact.service'
@@ -102,6 +104,7 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
     FlightEventNotificationsService,
     SeatMapService,
     SeatChangeService,
+    HeldSeatChangeService,
     CheckinSeatMapAdapter,
     CheckinSeatProvider,
     FlightImpactService,
@@ -121,6 +124,7 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
     CancelForFlightService,
     HoldExpiryJob,
     BookingReadService,
+    BookingContactService,
     // Global, but it only catches BookingError, so other modules' errors are untouched.
     { provide: APP_FILTER, useClass: BookingErrorFilter },
     { provide: BOOKING_CLOCK, useExisting: SimulationClock },

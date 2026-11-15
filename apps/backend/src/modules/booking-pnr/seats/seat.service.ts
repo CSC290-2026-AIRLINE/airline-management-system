@@ -48,6 +48,7 @@ export class SeatService implements SeatPort {
             seat_code: choice.seatCode,
             status: 'held',
             hold_expires_at: expiresAt,
+            fee_amount: choice.fee ?? 0,
           },
         })
       } catch (error) {
@@ -69,6 +70,14 @@ export class SeatService implements SeatPort {
   async releaseForBooking(tx: BookingTransaction, bookingId: string, releasedAt: Date): Promise<void> {
     await tx.seat_assignment.updateMany({
       where: { status: { in: ['held', 'assigned'] }, booking_coupon: { booking_id: bookingId } },
+      data: { status: 'released', released_at: releasedAt, updated_at: releasedAt },
+    })
+  }
+
+  /** Releases the seats one coupon holds, so a different seat can take its place. */
+  async releaseForCoupon(tx: BookingTransaction, couponId: string, releasedAt: Date): Promise<void> {
+    await tx.seat_assignment.updateMany({
+      where: { booking_coupon_id: couponId, status: { in: ['held', 'assigned'] } },
       data: { status: 'released', released_at: releasedAt, updated_at: releasedAt },
     })
   }

@@ -2,6 +2,7 @@ import type { ServiceCode } from '../api/types'
 import type { AssistanceFieldsProps } from '../components/contracts'
 import { useId } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
+import { Field } from '@customer-web/components/ui/field'
 import './assistance-fields.css'
 
 const options: Array<{ code: ServiceCode; label: string }> = [
@@ -19,10 +20,19 @@ const bookingLabels: Record<ServiceCode, string> = {
   MEDA: 'medical assistance',
 }
 
-export function AssistanceFields({ value, onChange, disabled = false, popupContainer, bookingMode = false }: AssistanceFieldsProps) {
+export function AssistanceFields({
+  value,
+  onChange,
+  disabled = false,
+  popupContainer,
+  bookingMode = false,
+  typeError,
+  noteError,
+}: AssistanceFieldsProps) {
   const selectedCodes = value.serviceCodes ?? (value.serviceCode ? [value.serviceCode] : [])
   const noteRequired = selectedCodes.some((code) => code === 'UMNR' || code === 'MEDA')
   const codeId = useId()
+  const noteId = useId()
 
   return (
     <fieldset className="assistance-fields" disabled={disabled}>
@@ -46,14 +56,18 @@ export function AssistanceFields({ value, onChange, disabled = false, popupConta
           ))}
         </div>
       ) : (
-        <>
-          <label htmlFor={codeId}>Assistance type</label>
+        <Field id={codeId} label="Assistance type" error={typeError}>
           <Select
             value={value.serviceCode ?? ''}
             disabled={disabled}
             onValueChange={(code) => onChange({ ...value, serviceCode: (code || null) as ServiceCode | null })}
           >
-            <SelectTrigger id={codeId}>
+            <SelectTrigger
+              id={codeId}
+              aria-labelledby={`${codeId}-label`}
+              aria-invalid={typeError ? true : undefined}
+              aria-describedby={typeError ? `${codeId}-error` : undefined}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent container={popupContainer}>
@@ -65,16 +79,24 @@ export function AssistanceFields({ value, onChange, disabled = false, popupConta
               ))}
             </SelectContent>
           </Select>
-        </>
+        </Field>
       )}
       {(bookingMode || value.serviceCode) && (
-        <label>
-          {bookingMode
-            ? 'Note for the airport team (required for UMNR and MEDA)'
-            : `Note for the airport team ${noteRequired ? '(required)' : '(optional)'}`}
+        <Field
+          id={noteId}
+          label={
+            bookingMode
+              ? 'Note for the airport team (required for UMNR and MEDA)'
+              : `Note for the airport team ${noteRequired ? '(required)' : '(optional)'}`
+          }
+          error={noteError}
+        >
           <textarea
-            value={value.note}
+            id={noteId}
             required={noteRequired}
+            aria-invalid={noteError ? true : undefined}
+            aria-describedby={noteError ? `${noteId}-error` : undefined}
+            value={value.note}
             onChange={(event) => onChange({ ...value, note: event.target.value })}
             placeholder={
               bookingMode
@@ -84,7 +106,7 @@ export function AssistanceFields({ value, onChange, disabled = false, popupConta
                   : 'Anything the airport team should know'
             }
           />
-        </label>
+        </Field>
       )}
       <p>
         Wheelchair requests need at least 24 hours before departure. UMNR and MEDA need at least 48 hours. Staff review each request; you

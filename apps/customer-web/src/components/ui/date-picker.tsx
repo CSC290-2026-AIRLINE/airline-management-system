@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { CalendarDaysIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { Popover } from 'radix-ui'
 import {
@@ -11,6 +11,7 @@ import {
   fromKey,
   isSelectable,
   monthStart,
+  spokenDate,
   todayKey,
   toKey,
   weekdayIndex,
@@ -25,9 +26,10 @@ import './date-picker.css'
  * The date travels as a plain `YYYY-MM-DD` string, the same shape the API and the URL use. Dates are read and written
  * in the local time zone, so a date never moves a day because of the offset.
  *
- * The staff console reuses this component through the `@customer-web/*` alias, so the calendar looks the same in both
- * apps. The colours come from variables with a fallback, because the calendar popup is portalled to the body and
- * cannot read the page-scoped variables.
+ * The staff console is meant to reuse this component through the `@customer-web/*` alias, so the calendar looks the same
+ * in both apps. It does not yet: the staff console still uses the browser's own date boxes. The colours below come from
+ * variables with a fallback, because the calendar popup is portalled to the body and cannot read the page-scoped
+ * variables.
  */
 
 /** The months and the weekdays in the order the calendar shows them: Monday first, like the rest of the product. */
@@ -58,6 +60,8 @@ export interface DatePickerProps {
   placeholder?: string
   /** The name of the field for assistive technology. */
   ariaLabel?: string
+  /** The id of the label that names the field, when the label is the visible one. */
+  ariaLabelledBy?: string
   /** The id of the element that describes the field, usually an error message. */
   describedBy?: string
   /** The id of the field. */
@@ -82,6 +86,7 @@ export function DatePicker({
   max,
   placeholder = 'Select date',
   ariaLabel,
+  ariaLabelledBy,
   describedBy,
   id,
   invalid,
@@ -154,6 +159,12 @@ export function DatePicker({
   const viewedYear = fromKey(view).getFullYear()
   const today = todayKey()
   const label = value ? shortDate.format(fromKey(value)) : ''
+  /* The trigger is a button, so its name comes from the visible label with `aria-labelledby`. The chosen day is part of
+     that name as well, because a button that is named by `aria-labelledby` does not read out its own text. It is added
+     with a hidden line, so the name is the label and the day, whatever the page shows. */
+  const spokenId = useId()
+  const triggerLabel = ariaLabelledBy ? undefined : ariaLabel
+  const triggerName = ariaLabelledBy ? `${ariaLabelledBy} ${spokenId}` : undefined
 
   /** The keyboard: the arrows move by a day and a week, Page Up and Down by a month, Shift and Page by a year. */
   function onKeyDown(event: KeyboardEvent) {
@@ -193,7 +204,8 @@ export function DatePicker({
         className={classNames('cw-date-static', invalid && 'is-invalid', className)}
         value={label}
         readOnly
-        aria-label={ariaLabel}
+        aria-label={triggerLabel}
+        aria-labelledby={ariaLabelledBy}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
       />
@@ -208,13 +220,17 @@ export function DatePicker({
           type="button"
           data-slot="date-picker-trigger"
           className={classNames('cw-date-trigger', invalid && 'is-invalid', className)}
-          aria-label={ariaLabel}
+          aria-label={triggerLabel}
+          aria-labelledby={triggerName}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
           data-required={required || undefined}
           disabled={disabled}
         >
           <span className={classNames('cw-date-value', !value && 'is-empty')}>{value ? label : placeholder}</span>
+          <span className="cw-date-spoken" id={spokenId}>
+            {spokenDate(value)}
+          </span>
           <CalendarDaysIcon className="cw-date-icon" />
         </button>
       </Popover.Trigger>

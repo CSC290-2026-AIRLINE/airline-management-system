@@ -18,9 +18,10 @@
   width: 260px;
   max-width: 100%;
 }
-.booking-assistance__flight-filter label {
-  display: block;
-  margin-bottom: 6px;
+/* The label comes with the shared field component, so only the panel's own look is set here. The space between the label
+   and the dropdown is the gap of the shared field. */
+.booking-assistance__flight-filter .cw-field > label {
+  margin-bottom: 0;
   color: var(--f3-muted);
   font-size: 12px;
   font-weight: 600;

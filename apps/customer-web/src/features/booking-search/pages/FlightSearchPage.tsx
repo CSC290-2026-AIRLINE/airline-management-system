@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { BookingRouteBar } from '../../booking-pnr/components/BookingRouteBar'
 import { FlightSearchForm } from '../components/FlightSearchForm'
 import { validateSearch } from '../components/search-validation'
 import { airportCity } from '../components/airports'
@@ -256,6 +257,9 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
             {tripLink.label}
           </a>
         )}
+      </div>
+      <div className="f3-search-route-bar">
+        <BookingRouteBar currentStep={1} />
       </div>
       <FlightSearchForm value={form} onChange={changeForm} onSubmit={submit} isLoading={isLoading} errorMessage={error} />
       <div aria-live="polite" aria-busy={isLoading}>

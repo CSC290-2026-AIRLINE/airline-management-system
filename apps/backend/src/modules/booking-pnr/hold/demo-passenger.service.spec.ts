@@ -18,11 +18,17 @@ function fixture(environment: string) {
       },
     ]),
   )
+  let created = 0
+  const create = jest.fn((args: { data: Record<string, unknown> }) => {
+    created += 1
+    return Promise.resolve({ id: `created-${created}`, ...args.data })
+  })
+  const $transaction = jest.fn((rows: Array<Promise<unknown>>) => Promise.all(rows))
   const service = new DemoPassengerService(
-    { passenger: { findMany } } as unknown as DbService,
+    { passenger: { findMany, create }, $transaction } as unknown as DbService,
     { get: () => environment } as unknown as ConfigService<EnvConfig, true>,
   )
-  return { service, findMany }
+  return { service, findMany, create, $transaction }
 }
 
 describe('DemoPassengerService', () => {
@@ -44,5 +50,35 @@ describe('DemoPassengerService', () => {
     const { service, findMany } = fixture('development')
     findMany.mockResolvedValue([])
     expect(await service.list()).toEqual([])
+  })
+
+  it('turns typed passenger details into passenger records', async () => {
+    const { service, create } = fixture('development')
+    const created = await service.create([
+      { givenName: 'Manual', familyName: 'Traveller', dateOfBirth: '1988-04-05', passportNumber: 'X1234567' },
+      { givenName: 'Second', familyName: 'Traveller', dateOfBirth: '2016-07-08', passportNumber: 'X7654321' },
+    ])
+    expect(created).toEqual([{ id: 'created-1' }, { id: 'created-2' }])
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(create.mock.calls[0][0].data).toEqual({
+      first_name: 'Manual',
+      last_name: 'Traveller',
+      date_of_birth: new Date('1988-04-05T00:00:00Z'),
+      passport_number: 'X1234567',
+    })
+  })
+  it.each(['production', 'test', '', 'staging'])('does not create passenger records in %s', async (environment) => {
+    const { service, create } = fixture(environment)
+    await expect(
+      service.create([{ givenName: 'Manual', familyName: 'Traveller', dateOfBirth: '1988-04-05', passportNumber: 'X1234567' }]),
+    ).rejects.toMatchObject({ status: 404 })
+    expect(create).not.toHaveBeenCalled()
+  })
+  it('rejects a date of birth that is not a real date', async () => {
+    const { service, create } = fixture('development')
+    await expect(
+      service.create([{ givenName: 'Manual', familyName: 'Traveller', dateOfBirth: '2024-02-31', passportNumber: 'X1234567' }]),
+    ).rejects.toMatchObject({ status: 422 })
+    expect(create).not.toHaveBeenCalled()
   })
 })
