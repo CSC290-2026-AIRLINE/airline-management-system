@@ -34,6 +34,19 @@
   color: #677287;
   font-size: 14px;
 }
+.assistance-page__error {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border-radius: 7px;
+  background: #fdecec;
+  color: #b8171f;
+}
+.assistance-page__error p {
+  margin: 0;
+}
+.assistance-page__error button {
+  margin-top: 10px;
+}
 .assistance-queue {
   font-size: 14px;
 }

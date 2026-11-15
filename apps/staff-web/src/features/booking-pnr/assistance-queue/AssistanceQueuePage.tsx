@@ -52,6 +52,12 @@ export function AssistanceQueuePage() {
     }
   }
 
+  function reload() {
+    setError(null)
+    setLoading(true)
+    setRevision((value) => value + 1)
+  }
+
   return (
     <main className="assistance-page">
       <header className="assistance-page__header">
@@ -59,21 +65,18 @@ export function AssistanceQueuePage() {
         <p>Review requests from bookings. Oldest departure first.</p>
       </header>
       {error && (
-        <div role="alert">
+        <div className="assistance-page__error" role="alert">
           <p>{error}</p>
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => {
-              setLoading(true)
-              setRevision((value) => value + 1)
-            }}
-          >
+          <Button variant="outline" type="button" onClick={reload}>
             Reload requests
           </Button>
         </div>
       )}
-      {loading ? <p role="status">Loading assistance requests…</p> : <AssistanceQueue requests={requests} onUpdate={update} />}
+      {loading ? (
+        <p role="status">Loading assistance requests…</p>
+      ) : (
+        (requests.length > 0 || !error) && <AssistanceQueue requests={requests} onUpdate={update} />
+      )}
     </main>
   )
 }
