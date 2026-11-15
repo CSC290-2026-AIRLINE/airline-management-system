@@ -4,6 +4,7 @@ import { useAppAuth } from '../../../../auth/AuthProvider'
 import { parseWindowSearch } from '../../shared/window-search'
 import { createBuildPairingsApi, type CommittedPairing, type GenerateResult } from './api'
 import { DEFAULT_PARAMS } from './mock-data'
+import { todayAndTomorrow } from './format'
 import { validatePairing } from './pairing-engine'
 import type { BuildPairingParams, FlightLeg, LocalDate, Pairing, PairingMetrics, RosterRun, ScheduledFlight } from './types'
 
@@ -26,6 +27,8 @@ export interface BuildPairingsState {
   pairings: Pairing[]
   /** The run for exactly this base and window, once something has been committed to it. */
   rosterRun: RosterRun | null
+  /** The run the API has for these dates and base (or null), independent of what is on screen. */
+  windowRun: RosterRun | null
   selectedId: string | null
   loadState: LoadState
   /** Why the last load or generate failed, in the backend's words. */
@@ -77,11 +80,18 @@ export function useBuildPairings(): BuildPairingsState {
   const signedIn = accessToken !== null
 
   const search = useSearch({ strict: false }) as Record<string, unknown>
-  const [params, setParams] = useState<BuildPairingParams>(() => ({ ...DEFAULT_PARAMS, ...parseWindowSearch(search) }))
+  const [params, setParams] = useState<BuildPairingParams>(() => ({
+    ...DEFAULT_PARAMS,
+    ...todayAndTomorrow(),
+    ...parseWindowSearch(search),
+  }))
   const [bases, setBases] = useState<readonly string[]>(() => [params.base])
   const [flights, setFlights] = useState<ScheduledFlight[]>([])
   const [pairings, setPairings] = useState<Pairing[]>([])
   const [rosterRun, setRosterRun] = useState<RosterRun | null>(null)
+  // The run the API holds for the chosen dates and base, whatever is on screen: the badge reads this, so it still says
+  // Published after Clear and before Generate, instead of guessing from the pairings showing.
+  const [windowRun, setWindowRun] = useState<RosterRun | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // The page opens empty: nothing is shown until the operator presses Generate pairings.
   const [loadState, setLoadState] = useState<LoadState>('idle')
@@ -94,10 +104,11 @@ export function useBuildPairings(): BuildPairingsState {
 
   const dateError = isRangeInverted(params) ? 'Date to must be on or after Date from.' : null
 
-  const apply = useCallback((list: GenerateResult) => {
+  const apply = useCallback((list: GenerateResult, base: string) => {
     setPairings(list.pairings)
     setFlights(list.flights)
     setRosterRun(list.rosterRun)
+    setWindowRun(runWithPairings(list, base))
     setCommitted(list.committed)
     setHasGenerated(list.pairings.length > 0)
     setLoadState('idle')
@@ -116,6 +127,24 @@ export function useBuildPairings(): BuildPairingsState {
       cancelled = true
     }
   }, [getApi, signedIn])
+
+  // Which run the chosen window already has. Reads only the run; the pairings stay empty until Generate is pressed.
+  const { dateFrom, dateTo, base } = params
+  useEffect(() => {
+    if (!signedIn || isRangeInverted({ dateFrom, dateTo, base })) return
+    let cancelled = false
+    getApi()
+      .listPairings({ dateFrom, dateTo, base })
+      .then((list) => {
+        if (!cancelled) setWindowRun(runWithPairings(list, base))
+      })
+      .catch(() => {
+        if (!cancelled) setWindowRun(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [getApi, signedIn, dateFrom, dateTo, base])
 
   /** Runs a write, shows its failure as a notice, and keeps the page usable either way. */
   const mutate = useCallback(async (write: () => Promise<void>) => {
@@ -138,7 +167,7 @@ export function useBuildPairings(): BuildPairingsState {
     getApi()
       .generate(params)
       .then((list) => {
-        apply(list)
+        apply(list, params.base)
         setHasGenerated(true)
         const proposed = list.pairings.filter((pairing) => pairing.rosterRunId == null).length
         const elsewhere = list.committed.some((row) => row.runDateFrom !== params.dateFrom || row.runDateTo !== params.dateTo)
@@ -269,6 +298,7 @@ export function useBuildPairings(): BuildPairingsState {
           })),
         )
         setRosterRun(result.rosterRun)
+        setWindowRun(result.rosterRun)
         const stored = new Map(result.committed.map((row) => [row.ref, row.code]))
         setPairings((current) =>
           current.map((pairing) =>
@@ -341,8 +371,9 @@ export function useBuildPairings(): BuildPairingsState {
   const dismissNotice = useCallback(() => setNotice(null), [])
 
   // Opens the run that already holds committed pairings: this window's if it has some, otherwise the one they were committed to.
+  // Only a draft run can still be crewed. Once it is published there is nothing to continue to, and Assign crew would only refuse.
   const continueWindow = useMemo<BuildPairingParams | null>(() => {
-    if (rosterRun && pairings.some((pairing) => !pairing.deleted && pairing.rosterRunId === rosterRun.id)) return params
+    if (rosterRun?.status === 'draft' && pairings.some((pairing) => !pairing.deleted && pairing.rosterRunId === rosterRun.id)) return params
     const other = committed.find((row) => row.runStatus === 'draft')
     return other ? { dateFrom: other.runDateFrom, dateTo: other.runDateTo, base: params.base } : null
   }, [committed, pairings, params, rosterRun])
@@ -353,6 +384,7 @@ export function useBuildPairings(): BuildPairingsState {
     flights,
     pairings,
     rosterRun,
+    windowRun,
     selectedId,
     // Without a token the load effect never runs, so say why instead of loading forever.
     loadState: signedIn ? loadState : authLoading ? 'loading' : 'error',
@@ -406,4 +438,14 @@ function describeCommitted(committed: readonly CommittedPairing[]): string {
     ([window, codes]) => `${codes.join(', ')} ${codes.length === 1 ? 'is' : 'are'} already committed to the roster run for ${window}`,
   )
   return ` ${parts.join('; ')}. ${committed.length === 1 ? 'Its flights are' : 'Their flights are'} not offered again; use Continue to Assign crew to open that run.`
+}
+
+/**
+ * The roster run that holds committed pairings in the window, whatever dates that run has: pairings committed for 15-19 Sep
+ * are in play for a 9-16 Sep window too. A draft run comes first (it is the one still to crew), then the others. Null when
+ * nothing in the window is committed, which is the only time the badge says Not committed.
+ */
+function runWithPairings(list: { committed: readonly CommittedPairing[] }, base: string): RosterRun | null {
+  const row = list.committed.find((item) => item.runStatus === 'draft') ?? list.committed[0]
+  return row ? { id: row.rosterRunId, base, dateFrom: row.runDateFrom, dateTo: row.runDateTo, status: row.runStatus } : null
 }

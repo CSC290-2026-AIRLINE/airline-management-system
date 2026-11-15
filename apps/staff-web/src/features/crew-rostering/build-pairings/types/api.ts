@@ -20,12 +20,15 @@ interface PairingListPayload {
   pairings: PairingPayload[]
   flights: ScheduledFlight[]
   rosterRun: RosterRun | null
+  /** Pairings of the window already committed to a run, with that run's own dates. */
+  committed: CommittedPairing[]
 }
 
 export interface PairingList {
   pairings: Pairing[]
   flights: ScheduledFlight[]
   rosterRun: RosterRun | null
+  committed: CommittedPairing[]
 }
 
 export interface SaveLegsResult {
@@ -134,11 +137,11 @@ export function createBuildPairingsApi(fetchWithAuth: FetchWithAuth) {
 
     /** A fresh random proposal. Nothing is stored until `commit`. */
     async generate(params: BuildPairingParams): Promise<GenerateResult> {
-      const payload = await request<PairingListPayload & { committed: CommittedPairing[] }>(fetchWithAuth, '/pairings/generate', {
+      const payload = await request<PairingListPayload>(fetchWithAuth, '/pairings/generate', {
         method: 'POST',
         body: JSON.stringify(params),
       })
-      return { ...toList(payload), committed: payload.committed }
+      return toList(payload)
     },
 
     async saveLegs(pairingId: string, legs: readonly FlightLeg[]): Promise<SaveLegsResult> {

@@ -117,6 +117,8 @@ export interface PairingListResult {
   flights: ScheduledFlightRow[]
   /** The run for exactly this base and window, if one exists yet. */
   rosterRun: RosterRunRow | null
+  /** Pairings of this window already committed to a run, whatever that run's own dates are. */
+  committed: CommittedPairingRow[]
 }
 
 export interface SaveLegInput {
@@ -221,7 +223,7 @@ const PAIRING_SELECT = {
   code: true,
   base_airport: true,
   pairing_leg: { select: { id: true, added_by: true, flight: { select: { ...FLIGHT_SELECT, service_date: true } } } },
-  roster_run_pairing: { select: { roster_run: { select: { id: true, status: true } } } },
+  roster_run_pairing: { select: { roster_run: { select: { id: true, status: true, date_from: true, date_to: true } } } },
 } satisfies Prisma.pairingSelect
 
 type FlightDbRow = Prisma.flightGetPayload<{ select: typeof FLIGHT_SELECT }>
@@ -234,6 +236,28 @@ interface LimitsContext {
   airportCountry: Map<string, string>
   /** Duty days are cut at local midnight in the base's timezone. */
   timeZone: string
+}
+
+/** The pairings that sit in a run, with that run's own dates and status (which may differ from the window asked for). */
+function committedOf(
+  rows: readonly {
+    code: string
+    roster_run_pairing: { roster_run: { id: string; status: string; date_from: Date; date_to: Date } } | null
+  }[],
+): CommittedPairingRow[] {
+  return rows.flatMap((row) => {
+    const run = row.roster_run_pairing?.roster_run
+    if (!run) return []
+    return [
+      {
+        code: row.code,
+        rosterRunId: run.id,
+        runDateFrom: run.date_from.toISOString().slice(0, 10),
+        runDateTo: run.date_to.toISOString().slice(0, 10),
+        runStatus: run.status === 'published' ? ('published' as const) : ('draft' as const),
+      },
+    ]
+  })
 }
 
 @Injectable()
@@ -277,6 +301,7 @@ export class BuildPairingService {
         pairingId: flight.pairing_leg?.pairing_id ?? null,
       })),
       rosterRun,
+      committed: committedOf(rows),
     }
   }
 
@@ -354,19 +379,7 @@ export class BuildPairingService {
         pairingId: proposedIn.get(flight.id) ?? flight.pairing_leg?.pairing_id ?? null,
       })),
       rosterRun,
-      committed: committedRows.flatMap((row) => {
-        const run = row.roster_run_pairing?.roster_run
-        if (!run) return []
-        return [
-          {
-            code: row.code,
-            rosterRunId: run.id,
-            runDateFrom: run.date_from.toISOString().slice(0, 10),
-            runDateTo: run.date_to.toISOString().slice(0, 10),
-            runStatus: run.status === 'published' ? ('published' as const) : ('draft' as const),
-          },
-        ]
-      }),
+      committed: committedOf(committedRows),
     }
   }
 
