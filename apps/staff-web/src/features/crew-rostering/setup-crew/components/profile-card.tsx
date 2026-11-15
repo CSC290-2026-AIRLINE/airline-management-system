@@ -5,47 +5,46 @@ import type { CrewMember } from '../types/types'
 /** White rounded panel used by every section of the profile page. */
 export function ProfileCard({
   title,
+  subtitle,
   action,
   children,
   className = '',
 }: {
   title?: string
+  subtitle?: ReactNode
   action?: ReactNode
   children: ReactNode
   className?: string
 }) {
   return (
-    <section className={`flex flex-col rounded-xl border border-border-desc/40 bg-card-bg px-4 py-5 sm:px-5 ${className}`}>
+    <section className={`flex flex-col rounded-2xl border border-border-desc/40 bg-card-bg p-5 lg:p-6 ${className}`}>
       {(title || action) && (
         <div className="flex items-start justify-between gap-3">
-          {title && <h2 className="font-display text-lg font-bold text-primary-text">{title}</h2>}
+          {title && <h2 className="text-lg font-extrabold tracking-tight text-primary-text lg:text-xl">{title}</h2>}
           {action}
         </div>
       )}
+      {subtitle && <p className="mt-1 text-xs leading-relaxed text-primary-text/55 lg:text-sm">{subtitle}</p>}
       {children}
     </section>
   )
 }
 
-/**
- * `Label / value` pair inside a `ProfileCard`. The label sits above the value on
- * a phone, beside it from `sm`, so a long email never squeezes its label.
- */
-export function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+/** A small-caps label above a value, the way every field on the profile is drawn. */
+export function Field({ label, value, className = '' }: { label: string; value: ReactNode; className?: string }) {
   return (
-    <div className="flex flex-col gap-0.5 py-2.5 sm:flex-row sm:items-baseline sm:gap-4">
-      <dt className="text-xs font-medium text-border-desc sm:w-44 sm:shrink-0">{label}</dt>
-      <dd className="text-sm font-medium wrap-break-word text-primary-text">{value ?? '—'}</dd>
+    <div className={`min-w-0 ${className}`}>
+      <dt className="text-[11px] font-semibold tracking-wider text-label uppercase">{label}</dt>
+      <dd className="mt-1 text-sm font-bold wrap-break-word text-primary-text lg:text-base">{value ?? '—'}</dd>
     </div>
   )
 }
 
-/** `MJ`, the large circle avatar on the profile header. */
-export function CrewAvatar({ crew, size = 'lg' }: { crew: CrewMember; size?: 'lg' | 'md' }) {
-  const dimensions = size === 'lg' ? 'h-16 w-16 text-xl sm:h-18 sm:w-18' : 'h-10 w-10 text-sm'
+/** `MJ`, the large light circle on the profile header. */
+export function CrewAvatar({ crew }: { crew: CrewMember }) {
   return (
-    <span className={`flex shrink-0 items-center justify-center rounded-full bg-primary text-white ${dimensions}`}>
-      <span className="font-bold">{initials(crew)}</span>
+    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border-desc/50 bg-band-bg text-lg font-extrabold text-primary lg:h-16 lg:w-16 lg:text-xl">
+      {initials(crew)}
     </span>
   )
 }

@@ -149,3 +149,13 @@ export function certificationIsUrgent(certification: Certification, warningDays:
 export function formatHours(crew: Pick<CrewMember, 'hours28d' | 'hoursCap'>): string {
   return `${crew.hours28d} / ${crew.hoursCap} h`
 }
+
+/** `64/100 h`, the phone list's hours, written without the spaces so the line fits. */
+export function formatHoursCompact(crew: Pick<CrewMember, 'hours28d' | 'hoursCap'>): string {
+  return `${crew.hours28d}/${crew.hoursCap} h`
+}
+
+/** `18 Sep`, the phone's duty rows, which leave the year to the page. */
+export function formatDayMonth(date: LocalDate): string {
+  return `${date.slice(8, 10)} ${MONTHS[monthIndex(date)]}`
+}
