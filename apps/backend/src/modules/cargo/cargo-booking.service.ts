@@ -351,9 +351,10 @@ export class CargoBookingService {
 
   private async nextAwbSerial(tx: Prisma.TransactionClient | DbService): Promise<number> {
     const result = await (tx as DbService).$queryRaw<{ next_serial: number }[]>`
-      SELECT COALESCE(MAX(CAST(SPLIT_PART(awb_number, '-', 2) AS INTEGER)), 0) + 1 AS next_serial
+      SELECT COALESCE(MAX(CAST(SUBSTRING(REPLACE(awb_number, '-', '') FROM 4 FOR 7) AS INTEGER)), 0) + 1 AS next_serial
       FROM cargo_booking
       WHERE awb_number IS NOT NULL
+        AND LENGTH(REPLACE(awb_number, '-', '')) = 11
     `
     return Number(result[0].next_serial)
   }
