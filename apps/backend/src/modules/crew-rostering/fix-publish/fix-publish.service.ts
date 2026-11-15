@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { AuditService, type AuditWriteInput } from '@backend/modules/admin-console/audit/audit.service'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import {
   AssignCrewService,
   type Context,
@@ -14,6 +15,7 @@ import {
   type SeatRole,
 } from '../assign-crew/assign-crew.service'
 import { isoDate, shortName } from '../crew-format'
+import { RosteringErrorCode, rosteringError } from '../rostering-error'
 
 /**
  * Feature 8 · Step 4 — fix and publish.
@@ -74,6 +76,8 @@ export interface ReplacementSetRow {
   /** `2 legal police officers available`, or `0 legal captains available`. */
   availableLabel: string
   allowedCount: number
+  /** How many seats this break is short, so a shortage of three cabin crew can be filled in one go. 1 for most breaks. */
+  seatsToFill: number
   instruction: string
   /** What to say when nobody can be added. */
   blockedNote?: string
@@ -152,6 +156,8 @@ export interface FixPublishState {
   /** Legs with a seat nobody has filled yet. */
   uncoveredLegIds: string[]
   limits: RuleLimitsRow | null
+  /** Pairings of this window still waiting in a newer draft run: what is left after this batch was published. */
+  remainingPairings: number
 }
 
 export interface FixOutcome {
@@ -160,6 +166,22 @@ export interface FixOutcome {
   /** False when the edit was made but the break is still open. */
   closed: boolean
   state: FixPublishState
+}
+
+/** One published roster run, for the history list. */
+export interface PublishedRunSummary {
+  id: string
+  base: string
+  dateFrom: string
+  dateTo: string
+  /** When it was published, by the simulation clock. */
+  publishedAt: string | null
+  pairings: number
+  legs: number
+  /** Breaks closed by a swap, closed by a written override, and still open. */
+  fixed: number
+  overridden: number
+  open: number
 }
 
 export interface WindowParams {
@@ -273,6 +295,8 @@ interface World {
   busy: Map<string, BusyLeg[]>
   /** Who came off which seat, newest first, keyed `legId|role`. */
   removed: Map<string, RemovedMemberRow>
+  /** The pairings in play: the ones crewed, which are the only ones this page judges and publishes. */
+  scope: Set<string>
 }
 
 /** How a break can be closed by changing who is on the roster. */
@@ -296,6 +320,7 @@ export class FixPublishService {
     private readonly db: DbService,
     private readonly assignCrew: AssignCrewService,
     private readonly audit: AuditService,
+    private readonly clock: SimulationClock,
   ) {}
 
   /** One Feature 8 audit row, written with the caller's transaction client so it commits or rolls back with the change. */
@@ -313,11 +338,58 @@ export class FixPublishService {
     const run = await this.db.roster_run.findFirst({
       where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
       select: { id: true },
-      orderBy: { created_at: 'desc' },
+      // A draft first: once a batch is published, the pairings left over wait in a new draft run for the same window.
+      orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
     })
     return run
       ? this.buildState(run.id)
-      : { rosterRun: null, assignments: [], breaks: [], publishChecks: [], uncoveredLegIds: [], limits: null }
+      : { rosterRun: null, assignments: [], breaks: [], publishChecks: [], uncoveredLegIds: [], limits: null, remainingPairings: 0 }
+  }
+
+  /** The state of one run by its id, so a published roster can be reopened whatever else is in its window. */
+  async getRun(rosterRunId: string): Promise<FixPublishState> {
+    const run = await this.db.roster_run.findUnique({ where: { id: rosterRunId }, select: { id: true } })
+    if (!run) throw new NotFoundException('That roster run was not found')
+    return this.buildState(rosterRunId)
+  }
+
+  /** Every published run, newest first: the history of rosters that went live. Reads only; nothing is re-checked. */
+  async listPublished(): Promise<PublishedRunSummary[]> {
+    const runs = await this.db.roster_run.findMany({
+      where: { status: 'published' },
+      orderBy: [{ published_at: 'desc' }, { created_at: 'desc' }],
+      select: {
+        id: true,
+        base_airport: true,
+        date_from: true,
+        date_to: true,
+        published_at: true,
+        roster_run_pairing: { select: { pairing: { select: { _count: { select: { pairing_leg: true } } } } } },
+      },
+    })
+    const counts =
+      runs.length === 0
+        ? []
+        : await this.db.rule_break.groupBy({
+            by: ['roster_run_id', 'resolution'],
+            where: { roster_run_id: { in: runs.map((run) => run.id) } },
+            _count: { _all: true },
+          })
+    const countOf = (runId: string, resolution: string | null): number =>
+      counts.find((row) => row.roster_run_id === runId && row.resolution === resolution)?._count._all ?? 0
+
+    return runs.map((run) => ({
+      id: run.id,
+      base: run.base_airport,
+      dateFrom: isoDate(run.date_from),
+      dateTo: isoDate(run.date_to),
+      publishedAt: run.published_at === null ? null : run.published_at.toISOString(),
+      pairings: run.roster_run_pairing.length,
+      legs: run.roster_run_pairing.reduce((total, row) => total + row.pairing._count.pairing_leg, 0),
+      fixed: countOf(run.id, 'fixed'),
+      overridden: countOf(run.id, 'overridden'),
+      open: countOf(run.id, null),
+    }))
   }
 
   /** Re-checks every rule against the roster as it stands now, then returns the page state. */
@@ -368,7 +440,7 @@ export class FixPublishService {
       if (leaving.length > 0) {
         await tx.pairing_leg_assignment.updateMany({
           where: { id: { in: leaving.map((row) => row.id) } },
-          data: { unassigned_at: new Date(), reason: SWAP_REASON },
+          data: { unassigned_at: this.clock.now(), reason: SWAP_REASON },
         })
       }
       await tx.pairing_leg_assignment.createMany({
@@ -378,7 +450,7 @@ export class FixPublishService {
           crew_id: chosen.id,
           role,
           assigned_by: 'ops',
-          assigned_at: new Date(),
+          assigned_at: this.clock.now(),
         })),
       })
 
@@ -413,7 +485,13 @@ export class FixPublishService {
     const brk = await this.readBreak(breakId)
     if (brk.resolved_at !== null) throw new ConflictException('This item is already closed')
     if (!COMPANY_RULES.has(brk.rule)) {
-      throw new BadRequestException(`${brk.rule} is a law rule and cannot be overridden. Fix it with a swap.`)
+      throw new BadRequestException(
+        rosteringError(
+          RosteringErrorCode.LAW_RULE_NOT_OVERRIDABLE,
+          `${brk.rule} is a law rule and cannot be overridden. Fix it with a swap.`,
+          { rule: brk.rule },
+        ),
+      )
     }
     const staff = actorUserId
       ? await this.db.staff.findFirst({ where: { user_id: actorUserId, deleted_at: null }, select: { id: true } })
@@ -428,7 +506,7 @@ export class FixPublishService {
     await this.db.$transaction(async (tx) => {
       const done = await tx.rule_break.updateMany({
         where: { id: breakId, resolved_at: null },
-        data: { resolved_at: new Date(), resolution: 'overridden', overridden_by: staff.id, override_reason: reason },
+        data: { resolved_at: this.clock.now(), resolution: 'overridden', overridden_by: staff.id, override_reason: reason },
       })
       if (done.count === 0) throw new ConflictException('This item was closed while you were writing the reason')
       await this.writeAudit(tx, actor, {
@@ -475,7 +553,7 @@ export class FixPublishService {
     const actor = await this.audit.resolveActor(actorUserId)
     await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
-      await tx.pairing_leg_assignment.update({ where: { id: row.id }, data: { unassigned_at: new Date(), reason: input.reason } })
+      await tx.pairing_leg_assignment.update({ where: { id: row.id }, data: { unassigned_at: this.clock.now(), reason: input.reason } })
       await this.writeAudit(tx, actor, {
         action: 'update',
         entityType: 'pairing_leg_assignment',
@@ -519,21 +597,39 @@ export class FixPublishService {
         // Checked again under the lock, so what is counted below is the roster as it stands now.
         await this.assignCrew.check(rosterRunId)
 
-        // Only the pairings that were assigned crew are published. The rest go back to Build pairings as drafts, so a
-        // roster is never published with seats nobody was ever assigned to, and they can go into the next run.
-        const { outsideBatch } = await this.assignCrew.loadRun(rosterRunId)
-        if (outsideBatch.length > 0) {
-          await tx.rule_break.deleteMany({ where: { roster_run_id: rosterRunId, pairing_id: { in: outsideBatch } } })
-          await tx.pairing_leg_assignment.deleteMany({ where: { pairing_id: { in: outsideBatch } } })
-          await tx.roster_run_pairing.deleteMany({ where: { roster_run_id: rosterRunId, pairing_id: { in: outsideBatch } } })
+        const pairings = await tx.roster_run_pairing.count({ where: { roster_run_id: rosterRunId } })
+        if (pairings === 0)
+          throw new ConflictException(
+            rosteringError(RosteringErrorCode.ROSTER_EMPTY, 'Commit at least one pairing in Build pairings before publishing'),
+          )
+        const open = await tx.rule_break.count({ where: { roster_run_id: rosterRunId, resolved_at: null } })
+        if (open > 0) {
+          const noun = open === 1 ? 'break' : 'breaks'
+          throw new ConflictException(
+            rosteringError(RosteringErrorCode.ROSTER_HAS_BREAKS, `close ${open} open ${noun} to publish`, { open }),
+          )
         }
 
-        const pairings = await tx.roster_run_pairing.count({ where: { roster_run_id: rosterRunId } })
-        if (pairings === 0) throw new ConflictException('ROSTER_EMPTY · Run auto-assign on at least one pairing before publishing')
-        const open = await tx.rule_break.count({ where: { roster_run_id: rosterRunId, resolved_at: null } })
-        if (open > 0) throw new ConflictException(`ROSTER_HAS_BREAKS · close ${open} open ${open === 1 ? 'break' : 'breaks'} to publish`)
+        // Publishing sends this batch only. Pairings nobody crewed move to a new draft run for the same window, which
+        // Assign crew opens next, so the rest can be crewed and published in another round.
+        const inBatch = await this.assignCrew.scopeIds(rosterRunId)
+        const members = await tx.roster_run_pairing.findMany({ where: { roster_run_id: rosterRunId }, select: { pairing_id: true } })
+        const left = members.map((row) => row.pairing_id).filter((id) => !inBatch.has(id))
+        if (left.length > 0) {
+          const source = await tx.roster_run.findUniqueOrThrow({
+            where: { id: rosterRunId },
+            select: { base_airport: true, date_from: true, date_to: true },
+          })
+          const next = await tx.roster_run.create({ data: { ...source, status: 'draft' }, select: { id: true } })
+          // Their rule breaks (if any) point at the old run, and the foreign key joins run and pairing, so go first.
+          await tx.rule_break.deleteMany({ where: { roster_run_id: rosterRunId, pairing_id: { in: left } } })
+          await tx.roster_run_pairing.updateMany({
+            where: { roster_run_id: rosterRunId, pairing_id: { in: left } },
+            data: { roster_run_id: next.id },
+          })
+        }
 
-        const now = new Date()
+        const now = this.clock.now()
         const flipped = await tx.roster_run.updateMany({
           where: { id: rosterRunId, status: 'draft' },
           data: { status: 'published', published_at: now, updated_at: now },
@@ -543,9 +639,9 @@ export class FixPublishService {
           action: 'status_change',
           entityType: 'roster_run',
           entityId: rosterRunId,
-          summary: 'Roster published',
+          summary: left.length > 0 ? `Roster published; ${left.length} pairings moved to a new draft run` : 'Roster published',
           before: { status: 'draft' },
-          after: { status: 'published', published_at: now.toISOString(), returned_to_drafts: outsideBatch.length },
+          after: { status: 'published', published_at: now.toISOString(), ...(left.length > 0 ? { movedToNextRun: left.length } : {}) },
         })
       },
       { timeout: 30_000 },
@@ -571,22 +667,44 @@ export class FixPublishService {
     const closedFixed = rows.filter((row) => row.resolved_at !== null && row.resolution === 'fixed').map((row) => row.id)
     const trail = await this.swapTrail(closedFixed)
 
-    // Breaks left over from pairings outside the batch are not shown.
-    const breaks = rows
-      .filter((row) => world.pairingById.has(row.pairing_id))
-      .map((row, index) => this.toFixBreakRow(row, index + 1, world, trail))
+    const breaks = rows.map((row, index) => this.toFixBreakRow(row, index + 1, world, trail))
     const uncovered = new Set(
       breaks.filter((item) => item.resolution === undefined && item.code === 'NO_LEGAL_CREW').map((item) => item.legId),
     )
 
+    // Only the batch is shown: the pairings nobody crewed are for the next round and do not belong on this page.
+    const inBatch = (legId: string): boolean => world.scope.has(world.legs.get(legId)?.pairingId ?? '')
+    const remainingPairings = await this.remainingAfter(rosterRunId)
+
     return {
       rosterRun: { ...current.rosterRun, publishedAt: runRow.published_at === null ? null : runRow.published_at.toISOString() },
-      assignments: current.assignments,
+      assignments: current.assignments.filter((assignment) => inBatch(assignment.leg.legId)),
       breaks,
       publishChecks: this.publishChecks(world, breaks, current.rosterRun.status),
       uncoveredLegIds: [...uncovered],
       limits: world.pairings[0]?.limits ?? world.context.defaults,
+      remainingPairings,
     }
+  }
+
+  /** Pairings waiting in a draft run of the same base and window that was made after this run: what its publish left over. */
+  private async remainingAfter(rosterRunId: string): Promise<number> {
+    const run = await this.db.roster_run.findUnique({
+      where: { id: rosterRunId },
+      select: { status: true, base_airport: true, date_from: true, date_to: true, created_at: true },
+    })
+    if (!run || run.status !== 'published') return 0
+    return this.db.roster_run_pairing.count({
+      where: {
+        roster_run: {
+          status: 'draft',
+          base_airport: run.base_airport,
+          date_from: run.date_from,
+          date_to: run.date_to,
+          created_at: { gte: run.created_at },
+        },
+      },
+    })
   }
 
   private toFixBreakRow(
@@ -628,7 +746,7 @@ export class FixPublishService {
         danger: open,
       })
     }
-    const requiredAction = this.requiredAction(row, plan, subject, pairing)
+    const requiredAction = this.requiredAction(row, plan, subject, pairing, this.seatsToFill(plan, world))
     if (open) facts.push({ label: 'Needed', value: requiredAction, danger: true })
 
     return {
@@ -681,18 +799,24 @@ export class FixPublishService {
     }
   }
 
-  private requiredAction(row: BreakDbRow, plan: Plan, subject: CrewDbRow | undefined, pairing: RunPairing | undefined): string {
+  private requiredAction(
+    row: BreakDbRow,
+    plan: Plan,
+    subject: CrewDbRow | undefined,
+    pairing: RunPairing | undefined,
+    seats: number,
+  ): string {
     switch (row.rule) {
       case 'POLICE_MIN':
       case 'POLICE_NO_SEAT':
-        return 'Add 1 police officer'
+        return `Add ${seats} police ${seats === 1 ? 'officer' : 'officers'}`
       case 'NO_LOCAL_CREW':
         return plan.languages.length > 0
           ? `Add 1 cabin crew who speaks ${plan.languages.join(' or ').toUpperCase()}`
           : 'Set local languages in Setup rules'
       case 'NO_LEGAL_CREW': {
         const role = (row.role as SeatRole | null) ?? 'captain'
-        return `Add 1 ${ROLE_LABEL[role].toLowerCase()}${role === 'cabin_crew' ? ` (${pairing?.limits.cabinCrewPerLeg ?? 4} per leg)` : ''}`
+        return `Add ${seats} ${ROLE_LABEL[role].toLowerCase()}${role === 'cabin_crew' ? ` (${pairing?.limits.cabinCrewPerLeg ?? 4} per leg)` : ''}`
       }
       case 'DUTY_LIMIT':
         return 'Change the pairing in Build pairings'
@@ -703,22 +827,24 @@ export class FixPublishService {
 
   /** One row per pairing in the run, for the table above the publish button. */
   private publishChecks(world: World, breaks: FixBreakRow[], status: 'draft' | 'published'): PublishCheckRow[] {
-    return world.pairings.map((pairing) => {
-      const first = pairing.legs[0]
-      const route = first ? [first.origin, ...pairing.legs.map((leg) => leg.destination)].join(' → ') : pairing.code
-      const open = breaks.filter((item) => item.pairingId === pairing.id && item.resolution === undefined)
-      const seat = open.find((item) => item.code === 'NO_LEGAL_CREW')
-      const detail =
-        open.length === 0 ? `${route} · all checks clear` : `${route} · ${open[0].flightNumber} ${open[0].shortDetail} (${open[0].code})`
-      return {
-        pairingId: pairing.code,
-        dateLabel: first ? stamp(first.dep, world.context.timeZone).split(',')[0] : '—',
-        base: world.base,
-        detail,
-        status: seat ? 'Not covered' : open.length > 0 ? 'Rule break' : status === 'published' ? 'Published ✓' : 'Ready to publish',
-        tone: open.length > 0 ? 'bad' : 'good',
-      }
-    })
+    return world.pairings
+      .filter((pairing) => world.scope.has(pairing.id))
+      .map((pairing) => {
+        const first = pairing.legs[0]
+        const route = first ? [first.origin, ...pairing.legs.map((leg) => leg.destination)].join(' → ') : pairing.code
+        const open = breaks.filter((item) => item.pairingId === pairing.id && item.resolution === undefined)
+        const seat = open.find((item) => item.code === 'NO_LEGAL_CREW')
+        const detail =
+          open.length === 0 ? `${route} · all checks clear` : `${route} · ${open[0].flightNumber} ${open[0].shortDetail} (${open[0].code})`
+        return {
+          pairingId: pairing.code,
+          dateLabel: first ? stamp(first.dep, world.context.timeZone).split(',')[0] : '—',
+          base: world.base,
+          detail,
+          status: seat ? 'Not covered' : open.length > 0 ? 'Rule break' : status === 'published' ? 'Published ✓' : 'Ready to publish',
+          tone: open.length > 0 ? 'bad' : 'good',
+        }
+      })
   }
 
   /* ── replacement ────────────────────────────────────────────────────────── */
@@ -787,10 +913,31 @@ export class FixPublishService {
     return [...onePerLeg.values()]
   }
 
+  /**
+   * How many seats a swap in `add` mode has to fill: the cabin crew or police the leg is short, not just one. A seat that
+   * must be a local-language speaker, or any one-person seat, is one.
+   */
+  private seatsToFill(plan: Plan, world: World): number {
+    const leg = plan.scope[0]
+    if (plan.mode !== 'add' || plan.role === null || plan.languages.length > 0 || !leg) return 1
+    const limits = world.pairings.find((pairing) => pairing.id === leg.pairingId)?.limits
+    if (!limits) return 1
+    const need = plan.role === 'cabin_crew' ? limits.cabinCrewPerLeg : plan.role === 'police' ? limits.minPoliceInternational : 1
+    const have = world.assignments.filter((item) => item.legId === leg.id && item.role === plan.role).length
+    return Math.max(1, need - have)
+  }
+
   private replacementSet(plan: Plan, world: World): ReplacementSetRow {
     const role = plan.role
     if (plan.mode === 'none' || role === null) {
-      return { availableLabel: 'Nobody can be offered', allowedCount: 0, instruction: '', blockedNote: plan.blockedNote, candidates: [] }
+      return {
+        availableLabel: 'Nobody can be offered',
+        allowedCount: 0,
+        seatsToFill: 0,
+        instruction: '',
+        blockedNote: plan.blockedNote,
+        candidates: [],
+      }
     }
 
     const scopeIds = new Set(plan.scope.map((leg) => leg.id))
@@ -806,6 +953,7 @@ export class FixPublishService {
     return {
       availableLabel: `${allowed} legal ${allowed === 1 ? ROLE_NOUN[role].one : ROLE_NOUN[role].many} available`,
       allowedCount: allowed,
+      seatsToFill: this.seatsToFill(plan, world),
       instruction:
         plan.mode === 'replace-subject'
           ? `Swap a legal ${ROLE_LABEL[role].toLowerCase()} onto ${plan.scope.length > 1 ? 'this pairing' : flight}. Everyone else stays.`
@@ -922,12 +1070,13 @@ export class FixPublishService {
   /** Everything the page and the candidate rules read, in a handful of queries. */
   private async loadWorld(client: Prisma.TransactionClient, rosterRunId: string): Promise<World> {
     const { run, pairings, context } = await this.assignCrew.loadRun(rosterRunId)
+    const scope = await this.assignCrew.scopeIds(rosterRunId)
     const legs = new Map(pairings.flatMap((pairing) => pairing.legs.map((leg) => [leg.id, leg] as const)))
     const pairingIds = pairings.map((pairing) => pairing.id)
 
     const deps = [...legs.values()].map((leg) => leg.dep.getTime())
-    const from = new Date((deps.length > 0 ? Math.min(...deps) : Date.now()) - 28 * DAY)
-    const to = new Date((deps.length > 0 ? Math.max(...deps) : Date.now()) + 3 * DAY)
+    const from = new Date((deps.length > 0 ? Math.min(...deps) : this.clock.now().getTime()) - 28 * DAY)
+    const to = new Date((deps.length > 0 ? Math.max(...deps) : this.clock.now().getTime()) + 3 * DAY)
 
     const pool = await client.crew.findMany({
       where: { deleted_at: null, base_airport: run.base_airport },
@@ -1002,6 +1151,7 @@ export class FixPublishService {
         legId: row.pairing_leg_id,
         role: row.role as SeatRole,
       })),
+      scope,
       pool,
       crewById,
       busy,

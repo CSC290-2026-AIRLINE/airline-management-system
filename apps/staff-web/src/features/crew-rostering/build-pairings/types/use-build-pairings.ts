@@ -4,13 +4,9 @@ import { useAppAuth } from '../../../../auth/AuthProvider'
 import { parseWindowSearch } from '../../shared/window-search'
 import { createBuildPairingsApi, type CommittedPairing, type GenerateResult } from './api'
 import { DEFAULT_PARAMS } from './mock-data'
+import { todayAndTomorrow } from './format'
 import { validatePairing } from './pairing-engine'
 import type { BuildPairingParams, FlightLeg, LocalDate, Pairing, PairingMetrics, RosterRun, ScheduledFlight } from './types'
-
-/** A pairing is a row in the database once it is committed to a run, or when it is a draft carried over from an earlier round. */
-function isStored(pairing: Pairing): boolean {
-  return pairing.rosterRunId != null || !pairing.id.startsWith('draft-')
-}
 
 /** Transient page-level feedback, rendered as a banner or a toast. */
 export interface PageNotice {
@@ -31,6 +27,8 @@ export interface BuildPairingsState {
   pairings: Pairing[]
   /** The run for exactly this base and window, once something has been committed to it. */
   rosterRun: RosterRun | null
+  /** The run the API has for these dates and base (or null), independent of what is on screen. */
+  windowRun: RosterRun | null
   selectedId: string | null
   loadState: LoadState
   /** Why the last load or generate failed, in the backend's words. */
@@ -61,11 +59,10 @@ export interface BuildPairingsState {
  * All build-pairings state in one place.
  *
  * The flow is propose, adjust, commit. Generate asks the server for a random proposal
- * (`/api/crew-rostering/build-pairing`) and nothing about it is stored. Edit legs and Delete on a proposal
- * change it here, in the page. Commit is the call that stores proposals: it sends the valid pairings, the
- * server checks them again, stores them and gives them to this window's roster run, and Assign crew then
- * opens on exactly those. Once a pairing is committed to a draft run it is a database row: Edit legs and
- * Delete on it are written to the database. Clear and changing the window just drop the proposal.
+ * (`/api/crew-rostering/build-pairing`) and nothing about it is stored. Edit legs and Delete change
+ * the proposal here, in the page. Commit is the one call that writes: it sends the valid pairings,
+ * the server checks them again, stores them and gives them to this window's roster run, and
+ * Assign crew then opens on exactly those. Clear and changing the window just drop the proposal.
  *
  * Validity is recomputed here on every render, with the limits the server attached to each
  * pairing, so a badge and its check list can never disagree. The server's check at commit is
@@ -83,11 +80,18 @@ export function useBuildPairings(): BuildPairingsState {
   const signedIn = accessToken !== null
 
   const search = useSearch({ strict: false }) as Record<string, unknown>
-  const [params, setParams] = useState<BuildPairingParams>(() => ({ ...DEFAULT_PARAMS, ...parseWindowSearch(search) }))
+  const [params, setParams] = useState<BuildPairingParams>(() => ({
+    ...DEFAULT_PARAMS,
+    ...todayAndTomorrow(),
+    ...parseWindowSearch(search),
+  }))
   const [bases, setBases] = useState<readonly string[]>(() => [params.base])
   const [flights, setFlights] = useState<ScheduledFlight[]>([])
   const [pairings, setPairings] = useState<Pairing[]>([])
   const [rosterRun, setRosterRun] = useState<RosterRun | null>(null)
+  // The run the API holds for the chosen dates and base, whatever is on screen: the badge reads this, so it still says
+  // Published after Clear and before Generate, instead of guessing from the pairings showing.
+  const [windowRun, setWindowRun] = useState<RosterRun | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // The page opens empty: nothing is shown until the operator presses Generate pairings.
   const [loadState, setLoadState] = useState<LoadState>('idle')
@@ -100,10 +104,11 @@ export function useBuildPairings(): BuildPairingsState {
 
   const dateError = isRangeInverted(params) ? 'Date to must be on or after Date from.' : null
 
-  const apply = useCallback((list: GenerateResult) => {
+  const apply = useCallback((list: GenerateResult, base: string) => {
     setPairings(list.pairings)
     setFlights(list.flights)
     setRosterRun(list.rosterRun)
+    setWindowRun(runWithPairings(list, base))
     setCommitted(list.committed)
     setHasGenerated(list.pairings.length > 0)
     setLoadState('idle')
@@ -122,6 +127,41 @@ export function useBuildPairings(): BuildPairingsState {
       cancelled = true
     }
   }, [getApi, signedIn])
+
+  // The page opens on today and tomorrow by the simulation clock. The browser's date is only the first guess, used until the
+  // clock answers; a window that came from the URL, or that the operator already changed, is left alone.
+  const keepDates = useRef(parseWindowSearch(search).dateFrom !== undefined || parseWindowSearch(search).dateTo !== undefined)
+  useEffect(() => {
+    if (!signedIn || keepDates.current) return
+    let cancelled = false
+    getApi()
+      .getClock()
+      .then((now) => {
+        if (!cancelled && !keepDates.current) setParams((current) => ({ ...current, ...todayAndTomorrow(now) }))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [getApi, signedIn])
+
+  // Which run the chosen window already has. Reads only the run; the pairings stay empty until Generate is pressed.
+  const { dateFrom, dateTo, base } = params
+  useEffect(() => {
+    if (!signedIn || isRangeInverted({ dateFrom, dateTo, base })) return
+    let cancelled = false
+    getApi()
+      .listPairings({ dateFrom, dateTo, base })
+      .then((list) => {
+        if (!cancelled) setWindowRun(runWithPairings(list, base))
+      })
+      .catch(() => {
+        if (!cancelled) setWindowRun(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [getApi, signedIn, dateFrom, dateTo, base])
 
   /** Runs a write, shows its failure as a notice, and keeps the page usable either way. */
   const mutate = useCallback(async (write: () => Promise<void>) => {
@@ -144,7 +184,7 @@ export function useBuildPairings(): BuildPairingsState {
     getApi()
       .generate(params)
       .then((list) => {
-        apply(list)
+        apply(list, params.base)
         setHasGenerated(true)
         const proposed = list.pairings.filter((pairing) => pairing.rosterRunId == null).length
         const elsewhere = list.committed.some((row) => row.runDateFrom !== params.dateFrom || row.runDateTo !== params.dateTo)
@@ -176,126 +216,81 @@ export function useBuildPairings(): BuildPairingsState {
     setLoadState('idle')
   }, [])
 
-  /** Takes a pairing off the page and puts its flights back in the unpaired list. */
-  const removePairing = useCallback((id: string, releasedFlightIds: readonly string[]) => {
-    const freed = new Set(releasedFlightIds)
-    setPairings((current) => current.filter((pairing) => pairing.id !== id))
-    setFlights((current) => current.map((flight) => (freed.has(flight.id) ? { ...flight, status: 'available', pairingId: null } : flight)))
-    setSelectedId(null)
-  }, [])
-
-  /** Shows an edited pairing on the page and says how the re-check came out. Validity is derived from the legs, never stored. */
-  const applyLegs = useCallback((before: Pairing, saved: Pairing) => {
-    const kept = new Set(saved.legs.map((leg) => leg.flightId))
-    setPairings((current) => current.map((pairing) => (pairing.id === saved.id ? saved : pairing)))
-    setFlights((current) =>
-      current.map((flight) =>
-        kept.has(flight.id)
-          ? { ...flight, status: 'paired', pairingId: saved.id }
-          : flight.pairingId === saved.id
-            ? { ...flight, status: 'available', pairingId: null }
-            : flight,
-      ),
-    )
-
-    const wasBefore = validatePairing(before).status
-    const now = validatePairing(saved).status
-    const added = saved.legs.filter((leg) => !before.legs.some((existing) => existing.flightId === leg.flightId))
-
-    if (added.length > 0) {
-      const changed = wasBefore === now ? 'still' : 'now'
-      const state = now === 'passed' ? 'valid' : 'invalid'
-      setNotice({
-        tone: 'success',
-        variant: 'banner',
-        message: `Legs saved · ${added.map((leg) => `${leg.flightNumber} ${leg.origin} → ${leg.destination}`).join(', ')} added. ${saved.code} re-checked: ${changed} ${state}.`,
-        shortMessage: `Legs saved · ${added.map((leg) => leg.flightNumber).join(', ')} added. ${saved.code} is ${changed} ${now === 'passed' ? 'Valid' : 'Invalid'}`,
-      })
-      return
-    }
-
-    setNotice({
-      tone: 'success',
-      variant: 'toast',
-      message: `${saved.code} saved · re-checked: ${describeOutcome(saved)}`,
-      shortMessage: `${saved.code} saved · re-checked: ${wasBefore === now ? 'still ' : ''}${now === 'passed' ? 'Valid' : 'Invalid'}`,
-    })
-  }, [])
-
   /**
-   * Deletes a pairing. A proposal was never stored, so it just leaves the page. A pairing committed to a draft run is a
-   * row in the database: the server deletes it and its flights go back to the unpaired list. One in a published roster is
-   * refused. Either way the pairing is gone from the page, not left behind as a placeholder.
-   */
-  const deletePairing = useCallback(
-    (id: string) => {
-      const target = pairings.find((pairing) => pairing.id === id)
-      if (!target || target.deleted) return
-      const numbers = target.legs.map((leg) => leg.flightNumber)
-      const listed = numbers.length > 0 ? `${numbers.join(' and ')} ${numbers.length === 1 ? 'is' : 'are'} back in the unpaired list.` : ''
-
-      if (!isStored(target)) {
-        removePairing(
-          id,
-          target.legs.map((leg) => leg.flightId),
-        )
-        setNotice({
-          tone: 'warning',
-          variant: 'banner',
-          message: `${target.code} deleted. ${listed}`.trim(),
-          shortMessage: `${target.code} deleted${numbers.length > 0 ? ` · ${numbers.join(', ')} back in the unpaired list` : ''}`,
-        })
-        return
-      }
-      if (target.rosterRunStatus === 'published') {
-        setNotice({ tone: 'warning', message: `${target.code} is in a published roster. Change its crew in Fix & publish instead.` })
-        return
-      }
-      void mutate(async () => {
-        const result = await getApi().deletePairing(id)
-        removePairing(id, result.releasedFlightIds)
-        setCommitted((current) => current.filter((row) => row.code !== target.code))
-        setNotice({
-          tone: 'warning',
-          variant: 'banner',
-          message: `${target.code} deleted from the draft roster run and the database. ${listed}`.trim(),
-          shortMessage: `${target.code} deleted${numbers.length > 0 ? ` · ${numbers.join(', ')} back in the unpaired list` : ''}`,
-        })
-      })
-    },
-    [getApi, mutate, pairings, removePairing],
-  )
-
-  /**
-   * Edits a pairing's legs. A proposal is only on this page until it is committed, so its edit stays here. A pairing
-   * already committed to a draft run is stored, so its edit is written to the database and the page shows what the
-   * server kept. One in a published roster is changed in Fix & publish. Taking every leg off deletes the pairing.
+   * Applies an edit to a proposal. Proposals live in the page until they are committed, so this
+   * only recomputes the pairing: the page's own legality check gives the answer, and the server
+   * checks again when the pairing is committed.
    */
   const saveLegs = useCallback(
     (id: string, legs: FlightLeg[]) => {
       const before = pairings.find((pairing) => pairing.id === id)
-      if (!before || before.deleted) return
-      if (legs.length === 0) {
-        deletePairing(id)
-        return
-      }
+      // A committed pairing is part of a roster run and is not edited here.
+      if (!before || before.rosterRunId != null) return
       // A pairing's order is its departure order, here as in the database.
-      const sorted = [...legs].sort((a, b) => a.departureAt.localeCompare(b.departureAt))
+      const saved: Pairing = { ...before, legs: [...legs].sort((a, b) => a.departureAt.localeCompare(b.departureAt)) }
+      const kept = new Set(saved.legs.map((leg) => leg.flightId))
+      setPairings((current) => current.map((pairing) => (pairing.id === id ? saved : pairing)))
+      setFlights((current) =>
+        current.map((flight) =>
+          kept.has(flight.id)
+            ? { ...flight, status: 'paired', pairingId: id }
+            : flight.pairingId === id
+              ? { ...flight, status: 'available', pairingId: null }
+              : flight,
+        ),
+      )
 
-      if (!isStored(before)) {
-        applyLegs(before, { ...before, legs: sorted })
+      const wasBefore = validatePairing(before).status
+      const now = validatePairing(saved).status
+      const added = saved.legs.filter((leg) => !before.legs.some((existing) => existing.flightId === leg.flightId))
+
+      if (added.length > 0) {
+        const changed = wasBefore === now ? 'still' : 'now'
+        const state = now === 'passed' ? 'valid' : 'invalid'
+        setNotice({
+          tone: 'success',
+          variant: 'banner',
+          message: `Legs saved · ${added.map((leg) => `${leg.flightNumber} ${leg.origin} → ${leg.destination}`).join(', ')} added. ${saved.code} re-checked: ${changed} ${state}.`,
+          shortMessage: `Legs saved · ${added.map((leg) => leg.flightNumber).join(', ')} added. ${saved.code} is ${changed} ${now === 'passed' ? 'Valid' : 'Invalid'}`,
+        })
         return
       }
-      if (before.rosterRunStatus === 'published') {
-        setNotice({ tone: 'warning', message: `${before.code} is in a published roster. Change its crew in Fix & publish instead.` })
-        return
-      }
-      void mutate(async () => {
-        const result = await getApi().saveLegs(id, sorted)
-        applyLegs(before, { ...before, legs: result.pairing.legs, limits: result.pairing.limits ?? before.limits })
+
+      setNotice({
+        tone: 'success',
+        variant: 'toast',
+        message: `${saved.code} saved · re-checked: ${describeOutcome(saved)}`,
+        shortMessage: `${saved.code} saved · re-checked: ${wasBefore === now ? 'still ' : ''}${now === 'passed' ? 'Valid' : 'Invalid'}`,
       })
     },
-    [applyLegs, deletePairing, getApi, mutate, pairings],
+    [pairings],
+  )
+
+  /** Drops a proposal; its flights go back to the unpaired list. Nothing was stored, so nothing is deleted anywhere. */
+  const deletePairing = useCallback(
+    (id: string) => {
+      const target = pairings.find((pairing) => pairing.id === id)
+      if (!target || target.deleted || target.rosterRunId != null) return
+      const releasedFlightIds = target.legs.map((leg) => leg.flightId)
+      const numbers = target.legs.map((leg) => leg.flightNumber)
+      const freed = new Set(releasedFlightIds)
+      setPairings((current) =>
+        current.map((pairing) =>
+          pairing.id === id ? { ...pairing, legs: [], deleted: true, releasedFlightIds, releasedFlightNumbers: numbers } : pairing,
+        ),
+      )
+      setFlights((current) =>
+        current.map((flight) => (freed.has(flight.id) ? { ...flight, status: 'available', pairingId: null } : flight)),
+      )
+      setSelectedId(null)
+      setNotice({
+        tone: 'warning',
+        variant: 'banner',
+        message: `${target.code} deleted · ${numbers.join(' and ')} ${numbers.length === 1 ? 'is' : 'are'} back in the unpaired list. Generate pairings again to rebuild ${numbers.length === 1 ? 'it' : 'them'}.`,
+        shortMessage: `${target.code} deleted · ${numbers.join(', ')} back in the unpaired list`,
+      })
+    },
+    [pairings],
   )
 
   /**
@@ -320,13 +315,14 @@ export function useBuildPairings(): BuildPairingsState {
           })),
         )
         setRosterRun(result.rosterRun)
-        const stored = new Map(result.committed.map((row) => [row.ref, row]))
+        setWindowRun(result.rosterRun)
+        const stored = new Map(result.committed.map((row) => [row.ref, row.code]))
         setPairings((current) =>
-          current.map((pairing) => {
-            const row = !pairing.deleted && pairing.rosterRunId == null ? stored.get(pairing.code) : undefined
-            // The committed copy has its own id in the database, so the page switches to it.
-            return row ? { ...pairing, id: row.id, code: row.code, rosterRunId: result.rosterRun.id, rosterRunStatus: 'draft' } : pairing
-          }),
+          current.map((pairing) =>
+            !pairing.deleted && pairing.rosterRunId == null && stored.has(pairing.code)
+              ? { ...pairing, code: stored.get(pairing.code) ?? pairing.code, rosterRunId: result.rosterRun.id, rosterRunStatus: 'draft' }
+              : pairing,
+          ),
         )
 
         const skipped = [
@@ -392,8 +388,9 @@ export function useBuildPairings(): BuildPairingsState {
   const dismissNotice = useCallback(() => setNotice(null), [])
 
   // Opens the run that already holds committed pairings: this window's if it has some, otherwise the one they were committed to.
+  // Only a draft run can still be crewed. Once it is published there is nothing to continue to, and Assign crew would only refuse.
   const continueWindow = useMemo<BuildPairingParams | null>(() => {
-    if (rosterRun && pairings.some((pairing) => !pairing.deleted && pairing.rosterRunId === rosterRun.id)) return params
+    if (rosterRun?.status === 'draft' && pairings.some((pairing) => !pairing.deleted && pairing.rosterRunId === rosterRun.id)) return params
     const other = committed.find((row) => row.runStatus === 'draft')
     return other ? { dateFrom: other.runDateFrom, dateTo: other.runDateTo, base: params.base } : null
   }, [committed, pairings, params, rosterRun])
@@ -404,6 +401,7 @@ export function useBuildPairings(): BuildPairingsState {
     flights,
     pairings,
     rosterRun,
+    windowRun,
     selectedId,
     // Without a token the load effect never runs, so say why instead of loading forever.
     loadState: signedIn ? loadState : authLoading ? 'loading' : 'error',
@@ -414,8 +412,14 @@ export function useBuildPairings(): BuildPairingsState {
     hasGenerated,
     metrics,
     continueWindow,
-    setDateFrom: (value) => setParam('dateFrom', value),
-    setDateTo: (value) => setParam('dateTo', value),
+    setDateFrom: (value) => {
+      keepDates.current = true
+      setParam('dateFrom', value)
+    },
+    setDateTo: (value) => {
+      keepDates.current = true
+      setParam('dateTo', value)
+    },
     setBase: (value) => setParam('base', value),
     generate,
     clearPairings,
@@ -457,4 +461,14 @@ function describeCommitted(committed: readonly CommittedPairing[]): string {
     ([window, codes]) => `${codes.join(', ')} ${codes.length === 1 ? 'is' : 'are'} already committed to the roster run for ${window}`,
   )
   return ` ${parts.join('; ')}. ${committed.length === 1 ? 'Its flights are' : 'Their flights are'} not offered again; use Continue to Assign crew to open that run.`
+}
+
+/**
+ * The roster run that holds committed pairings in the window, whatever dates that run has: pairings committed for 15-19 Sep
+ * are in play for a 9-16 Sep window too. A draft run comes first (it is the one still to crew), then the others. Null when
+ * nothing in the window is committed, which is the only time the badge says Not committed.
+ */
+function runWithPairings(list: { committed: readonly CommittedPairing[] }, base: string): RosterRun | null {
+  const row = list.committed.find((item) => item.runStatus === 'draft') ?? list.committed[0]
+  return row ? { id: row.rosterRunId, base, dateFrom: row.runDateFrom, dateTo: row.runDateTo, status: row.runStatus } : null
 }

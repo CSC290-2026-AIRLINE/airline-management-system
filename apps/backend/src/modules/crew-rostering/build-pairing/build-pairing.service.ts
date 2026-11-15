@@ -1,7 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
+import { AuditService } from '../../admin-console/audit/audit.service'
 import { loadBaseContext } from '../base-context'
+import { writeRosteringAudit } from '../rostering-audit'
+import { RosteringErrorCode, rosteringError } from '../rostering-error'
 import { buildChains } from './chain-builder'
 import { isRestBetween, localDay, shortName } from '../crew-format'
 
@@ -116,6 +119,8 @@ export interface PairingListResult {
   flights: ScheduledFlightRow[]
   /** The run for exactly this base and window, if one exists yet. */
   rosterRun: RosterRunRow | null
+  /** Pairings of this window already committed to a run, whatever that run's own dates are. */
+  committed: CommittedPairingRow[]
 }
 
 export interface SaveLegInput {
@@ -179,19 +184,10 @@ export interface CommitDraft {
   legs: SaveLegInput[]
 }
 
-export interface NextRunResult {
-  /** The draft run to carry on in, or null when there was nothing left to put in one. */
-  rosterRun: RosterRunRow | null
-  /** Drafts that were put in the run just now. */
-  moved: number
-  /** Drafts left out because they do not pass the legality checks; they stay drafts for Build pairings. */
-  left: number
-}
-
 export interface CommitResult {
   rosterRun: RosterRunRow
-  /** The pairings this call stored and put in the run, with the id and code each one was given. */
-  committed: { ref: string; id: string; code: string }[]
+  /** The pairings this call stored and put in the run, with the code each one was given. */
+  committed: { ref: string; code: string }[]
   /** Refs of drafts that failed a legality check, and so were not stored. */
   skippedInvalid: string[]
   /** Refs of valid drafts with a leg outside the run's dates. */
@@ -229,7 +225,7 @@ const PAIRING_SELECT = {
   code: true,
   base_airport: true,
   pairing_leg: { select: { id: true, added_by: true, flight: { select: { ...FLIGHT_SELECT, service_date: true } } } },
-  roster_run_pairing: { select: { roster_run: { select: { id: true, status: true } } } },
+  roster_run_pairing: { select: { roster_run: { select: { id: true, status: true, date_from: true, date_to: true } } } },
 } satisfies Prisma.pairingSelect
 
 type FlightDbRow = Prisma.flightGetPayload<{ select: typeof FLIGHT_SELECT }>
@@ -244,9 +240,34 @@ interface LimitsContext {
   timeZone: string
 }
 
+/** The pairings that sit in a run, with that run's own dates and status (which may differ from the window asked for). */
+function committedOf(
+  rows: readonly {
+    code: string
+    roster_run_pairing: { roster_run: { id: string; status: string; date_from: Date; date_to: Date } } | null
+  }[],
+): CommittedPairingRow[] {
+  return rows.flatMap((row) => {
+    const run = row.roster_run_pairing?.roster_run
+    if (!run) return []
+    return [
+      {
+        code: row.code,
+        rosterRunId: run.id,
+        runDateFrom: run.date_from.toISOString().slice(0, 10),
+        runDateTo: run.date_to.toISOString().slice(0, 10),
+        runStatus: run.status === 'published' ? ('published' as const) : ('draft' as const),
+      },
+    ]
+  })
+}
+
 @Injectable()
 export class BuildPairingService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: AuditService,
+  ) {}
 
   /** Bases pairings can be built at. Every active airport. */
   async listBases(): Promise<{ code: string; name: string }[]> {
@@ -285,26 +306,27 @@ export class BuildPairingService {
         pairingId: flight.pairing_leg?.pairing_id ?? null,
       })),
       rosterRun,
+      committed: committedOf(rows),
     }
   }
 
   /**
-   * Lists the window's pairings and proposes new ones from its unpaired flights.
+   * Proposes pairings from the window's unpaired flights. Nothing is stored.
    *
-   * New proposals are a fresh random draw (see `buildChains`) and are not stored: seeds and connections
-   * are picked at random, most chains come home to base and some do not. A chain that cannot close is
-   * offered anyway, as Invalid, so Ops can repair it by hand before committing. Pairings committed earlier
+   * Every call is a fresh random draw (see `buildChains`): seeds and connections are picked at
+   * random, most chains come home to base and some do not. A chain that cannot close is offered
+   * anyway, as Invalid, so Ops can repair it by hand before committing. Pairings committed earlier
    * come back too, with their run, and their flights are not offered again.
    *
-   * Drafts that are already stored (a pairing with no run) come back as they were, same code and flights,
-   * and are not drawn again. That is how the pairings left out of a published roster carry over to the
-   * next one: publishing hands them back as drafts instead of deleting them.
+   * Drafts stored by an earlier version of this step are removed first, since they would hold
+   * flights nobody can see. From here on a pairing exists in the database only once it is committed.
    */
   async generatePairings(params: BuildParams): Promise<GenerateResult> {
     const context = await this.loadContext(params.base)
     const window = this.serviceDates(params)
+    await this.discardDrafts(params)
 
-    const [flights, rosterRun, storedRows, nextNumber] = await Promise.all([
+    const [flights, rosterRun, committedRows, nextNumber] = await Promise.all([
       this.db.flight.findMany({
         where: { service_date: window, status: { notIn: UNPAIRABLE_FLIGHT_STATUSES } },
         select: { ...FLIGHT_SELECT, pairing_leg: { select: { pairing_id: true } } },
@@ -314,6 +336,7 @@ export class BuildPairingService {
       this.db.pairing.findMany({
         where: {
           base_airport: params.base,
+          roster_run_pairing: { isNot: null },
           pairing_leg: { some: { flight: { service_date: window } } },
         },
         select: {
@@ -325,8 +348,6 @@ export class BuildPairingService {
       this.nextPairingNumber(),
     ])
 
-    const committedRows = storedRows.filter((row) => row.roster_run_pairing !== null)
-    const draftRows = storedRows.filter((row) => row.roster_run_pairing === null)
     const free = flights.filter((flight) => flight.pairing_leg === null)
     const chains = buildChains(
       free,
@@ -336,8 +357,7 @@ export class BuildPairingService {
     )
 
     // Pairings committed earlier are listed too, first and locked, so Ops can see what is already on its way to Assign crew.
-    // Stored drafts follow, as the proposals they still are.
-    const pairings: PairingRow[] = [...committedRows, ...draftRows].map((row) => this.toPairingRow(row, context))
+    const pairings: PairingRow[] = committedRows.map((row) => this.toPairingRow(row, context))
     const proposedIn = new Map<string, string>()
     chains.forEach((chain, index) => {
       const code = `P-${nextNumber + index}`
@@ -364,19 +384,7 @@ export class BuildPairingService {
         pairingId: proposedIn.get(flight.id) ?? flight.pairing_leg?.pairing_id ?? null,
       })),
       rosterRun,
-      committed: committedRows.flatMap((row) => {
-        const run = row.roster_run_pairing?.roster_run
-        if (!run) return []
-        return [
-          {
-            code: row.code,
-            rosterRunId: run.id,
-            runDateFrom: run.date_from.toISOString().slice(0, 10),
-            runDateTo: run.date_to.toISOString().slice(0, 10),
-            runStatus: run.status === 'published' ? ('published' as const) : ('draft' as const),
-          },
-        ]
-      }),
+      committed: committedOf(committedRows),
     }
   }
 
@@ -396,7 +404,7 @@ export class BuildPairingService {
    * taken off lose their assignments and rule breaks (the foreign keys require it). Seats on
    * the legs that stay are kept, and the next auto-assign and check fill and re-judge the rest.
    */
-  async saveLegs(pairingId: string, legs: SaveLegInput[]): Promise<SaveLegsResult> {
+  async saveLegs(pairingId: string, legs: SaveLegInput[], actorUserId?: string): Promise<SaveLegsResult> {
     const flightIds = [...new Set(legs.map((leg) => leg.flightId))]
     if (flightIds.length === 0) throw new BadRequestException('A pairing needs at least one flight. Delete the pairing instead.')
 
@@ -435,6 +443,28 @@ export class BuildPairingService {
               })
             }
             await tx.pairing.update({ where: { id: pairingId }, data: { updated_at: new Date() } })
+            const numberOf = new Map(flights.map((flight) => [flight.id, flight.flight_number]))
+            const wasLegs = this.sortedLegs(row).map((leg) => leg.flight.flight_number)
+            await writeRosteringAudit(
+              this.audit,
+              actorUserId,
+              {
+                action: 'update',
+                entityType: 'pairing',
+                entityId: pairingId,
+                summary: `Pairing ${row.code} legs edited${added.length > 0 ? `, added ${added.map((id) => numberOf.get(id)).join(', ')}` : ''}${
+                  removedLegIds.length > 0
+                    ? `, removed ${row.pairing_leg
+                        .filter((leg) => !keep.has(leg.flight.id))
+                        .map((leg) => leg.flight.flight_number)
+                        .join(', ')}`
+                    : ''
+                }`,
+                before: { flights: wasLegs },
+                after: { flights: legs.map((leg) => numberOf.get(leg.flightId)) },
+              },
+              tx,
+            )
           }),
         'One of these flights was added to another pairing at the same time.',
       )
@@ -498,17 +528,29 @@ export class BuildPairingService {
   }
 
   /** Hard-deletes a draft pairing; its flights go back to the unpaired list. */
-  async deletePairing(pairingId: string): Promise<DeletePairingResult> {
+  async deletePairing(pairingId: string, actorUserId?: string): Promise<DeletePairingResult> {
     const row = await this.findPairing(pairingId)
     const run = row.roster_run_pairing?.roster_run ?? null
     if (run?.status === 'published') throw this.inUse(row.code)
 
+    const legs = this.sortedLegs(row)
     await this.db.$transaction(async (tx) => {
       if (run) await this.withdrawFromRun(tx, pairingId)
       await tx.pairing.delete({ where: { id: pairingId } })
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'delete',
+          entityType: 'pairing',
+          entityId: pairingId,
+          summary: `Pairing ${row.code} deleted${run ? ' from its draft roster run' : ''}; its flights are unpaired again`,
+          before: { flights: legs.map((leg) => leg.flight.flight_number), rosterRunId: run?.id ?? null },
+        },
+        tx,
+      )
     })
 
-    const legs = this.sortedLegs(row)
     return {
       id: row.id,
       code: row.code,
@@ -517,52 +559,14 @@ export class BuildPairingService {
     }
   }
 
-  /**
-   * Starts the next roster run for a window whose last run was published.
-   *
-   * The pairings left out of that roster are drafts: stored, in no run. The ones that pass the legality checks are put
-   * in a new draft run for the same base and window, which Assign crew and Fix & publish open from then on, since they
-   * work on the latest run. Drafts that fail a check stay drafts, for Build pairings to repair. If the latest run is
-   * still a draft it is returned as it is, and nothing is moved.
-   */
-  async startNextRun(params: BuildParams): Promise<NextRunResult> {
-    const window = this.serviceDates(params)
-    const latest = await this.db.roster_run.findFirst({
-      where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
-      select: { id: true, status: true },
-      orderBy: { created_at: 'desc' },
-    })
-    const toRow = (id: string): RosterRunRow => ({
-      id,
-      base: params.base,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
-      status: 'draft',
-    })
-    if (latest?.status === 'draft') return { rosterRun: toRow(latest.id), moved: 0, left: 0 }
-
-    const context = await this.loadContext(params.base)
+  private async discardDrafts(params: BuildParams): Promise<{ deleted: number; kept: number }> {
     const rows = await this.db.pairing.findMany({
-      where: { base_airport: params.base, roster_run_pairing: null, pairing_leg: { some: { flight: { service_date: window } } } },
-      select: PAIRING_SELECT,
-      orderBy: { created_at: 'asc' },
+      where: { base_airport: params.base, pairing_leg: { some: { flight: { service_date: this.serviceDates(params) } } } },
+      select: { id: true, roster_run_pairing: { select: { pairing_id: true } } },
     })
-    const usable = rows
-      .map((row) => this.toPairingRow(row, context))
-      .filter(
-        (pairing) => this.evaluate(pairing.legs, params.base, this.limitsFor(pairing.legs, context), context.timeZone).status !== 'failed',
-      )
-    if (usable.length === 0) return { rosterRun: null, moved: 0, left: rows.length }
-
-    const run = await this.db.$transaction(async (tx) => {
-      const created = await tx.roster_run.create({
-        data: { base_airport: params.base, date_from: window.gte, date_to: window.lte, status: 'draft' },
-        select: { id: true },
-      })
-      await tx.roster_run_pairing.createMany({ data: usable.map((pairing) => ({ roster_run_id: created.id, pairing_id: pairing.id })) })
-      return created
-    })
-    return { rosterRun: toRow(run.id), moved: usable.length, left: rows.length - usable.length }
+    const drafts = rows.filter((row) => row.roster_run_pairing === null).map((row) => row.id)
+    if (drafts.length > 0) await this.db.pairing.deleteMany({ where: { id: { in: drafts } } })
+    return { deleted: drafts.length, kept: rows.length - drafts.length }
   }
 
   /**
@@ -574,29 +578,20 @@ export class BuildPairingService {
    * that fails them is left out and reported by its `ref`. So are drafts with a leg outside the
    * run's dates and drafts with a flight that someone else paired in the meantime.
    */
-  async commitPairings(params: BuildParams, drafts: CommitDraft[]): Promise<CommitResult> {
-    if (drafts.length === 0) throw new BadRequestException('NO_PAIRINGS · Choose at least one valid pairing to commit')
+  async commitPairings(params: BuildParams, drafts: CommitDraft[], actorUserId?: string): Promise<CommitResult> {
+    if (drafts.length === 0)
+      throw new BadRequestException(rosteringError(RosteringErrorCode.NO_PAIRINGS, 'Choose at least one valid pairing to commit'))
     const context = await this.loadContext(params.base)
     const window = this.serviceDates(params)
     const runs = await this.db.roster_run.findMany({
       where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
       select: { id: true, status: true },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
     })
-    // The latest run for the window is the one in use. An earlier one that is published does not close the window:
-    // the next roster run for it is a new draft run (see `startNextRun`).
-    if (runs[0]?.status === 'published') {
+    // A published batch with a draft run beside it (the pairings left over) still takes new pairings, into the draft.
+    if (!runs.some((run) => run.status === 'draft') && runs.some((run) => run.status === 'published')) {
       throw new ConflictException(`The roster run for ${params.base} · ${params.dateFrom} to ${params.dateTo} is already published`)
     }
-
-    // A draft that is already stored (carried over from an earlier round) is replaced by its committed copy, so its
-    // flights are not "taken" by it.
-    const storedDrafts = await this.db.pairing.findMany({
-      where: { base_airport: params.base, code: { in: drafts.map((draft) => draft.ref) }, roster_run_pairing: null },
-      select: { id: true, code: true },
-    })
-    const replacing = new Set(storedDrafts.map((row) => row.id))
-    const storedByRef = new Map(storedDrafts.map((row) => [row.code, row.id]))
 
     const flightIds = [...new Set(drafts.flatMap((draft) => draft.legs.map((leg) => leg.flightId)))]
     const flights = await this.db.flight.findMany({
@@ -614,8 +609,7 @@ export class BuildPairingService {
     for (const draft of drafts) {
       const rows = draft.legs.map((leg) => byId.get(leg.flightId)!)
       const unique = new Set(draft.legs.map((leg) => leg.flightId)).size === draft.legs.length
-      const taken = (row: (typeof rows)[number]) => row.pairing_leg !== null && !replacing.has(row.pairing_leg.pairing_id)
-      if (!unique || rows.some((row) => taken(row) || claimed.has(row.id))) {
+      if (!unique || rows.some((row) => row.pairing_leg !== null || claimed.has(row.id))) {
         skippedTaken.push(draft.ref)
         continue
       }
@@ -644,9 +638,6 @@ export class BuildPairingService {
               data: { base_airport: params.base, date_from: window.gte, date_to: window.lte, status: 'draft' },
               select: { id: true, status: true },
             }))
-          // Only the drafts that are being committed are replaced; one that was skipped stays as it was.
-          const replaced = ready.flatMap(({ draft }) => storedByRef.get(draft.ref) ?? [])
-          if (replaced.length > 0) await tx.pairing.deleteMany({ where: { id: { in: replaced } } })
           // One at a time and in order, so the codes follow the order of the list.
           const stored: { ref: string; id: string; code: string }[] = []
           for (const { draft, legs } of ready) {
@@ -661,12 +652,27 @@ export class BuildPairingService {
               select: { id: true, code: true },
             })
             stored.push({ ref: draft.ref, id: created.id, code: created.code })
+            await writeRosteringAudit(
+              this.audit,
+              actorUserId,
+              {
+                action: 'create',
+                entityType: 'pairing',
+                entityId: created.id,
+                summary: `Pairing ${created.code} committed to the roster run for ${params.base} ${params.dateFrom} to ${params.dateTo}`,
+                after: {
+                  flights: legs.map((leg) => byId.get(leg.flightId)?.flight_number),
+                  rosterRunId: target.id,
+                },
+              },
+              tx,
+            )
           }
           if (stored.length > 0) {
             await tx.roster_run_pairing.createMany({ data: stored.map((row) => ({ roster_run_id: target.id, pairing_id: row.id })) })
             await tx.roster_run.update({ where: { id: target.id }, data: { updated_at: new Date() } })
           }
-          return { run: target, committed: stored.map(({ ref, id, code }) => ({ ref, id, code })) }
+          return { run: target, committed: stored.map(({ ref, code }) => ({ ref, code })) }
         }),
       'Some of these flights were paired by someone else at the same time. Generate again.',
     )
@@ -812,10 +818,11 @@ export class BuildPairingService {
   /** The run for exactly this base and window; the newest one if there are several. */
   private async findRun(params: BuildParams): Promise<RosterRunRow | null> {
     const window = this.serviceDates(params)
+    // A draft first, so the pairings left after a published batch are the ones Ops continues with.
     const run = await this.db.roster_run.findFirst({
       where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
       select: { id: true, status: true },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
     })
     return run
       ? {
@@ -855,7 +862,11 @@ export class BuildPairingService {
   }
 
   private inUse(code: string): ConflictException {
-    return new ConflictException(`PAIRING_IN_USE · ${code} is part of a published roster. Change it in Fix & publish instead.`)
+    return new ConflictException(
+      rosteringError(RosteringErrorCode.PAIRING_IN_USE, `${code} is part of a published roster. Change it in Fix & publish instead.`, {
+        pairing: code,
+      }),
+    )
   }
 
   /* ── mapping ────────────────────────────────────────────────────────────── */

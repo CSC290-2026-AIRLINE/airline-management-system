@@ -7,7 +7,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { suggestFixes, validatePairing } from './types/pairing-engine'
+import { explainNoFix, suggestFixes, validatePairing } from './types/pairing-engine'
 import { useBuildPairings } from './types/use-build-pairings'
 import { useMediaQuery } from './types/use-media-query'
 import type { FlightLeg, Pairing } from './types/types'
@@ -18,7 +18,7 @@ import { InspectorSheet } from './components/inspector-sheet'
 import { PageNoticeView } from './components/page-notice'
 import { PairingDetailInspector } from './components/pairing-detail-inspector'
 import { CommitFooter, SummaryMetricsBar } from './components/summary-metrics-bar'
-import { AlertBanner } from '../shared/ui'
+import { AlertBanner, Button } from '../shared/ui'
 import { EditLegsModal } from './modals/edit-legs-modal'
 import { DeletePairingModal } from './modals/delete-pairing-modal'
 
@@ -31,9 +31,6 @@ export function BuildPairingsPage() {
   // Validity is always derived, never stored, so a badge and its checks agree.
   const evaluations = useMemo(() => new Map(state.pairings.map((pairing) => [pairing.id, validatePairing(pairing)])), [state.pairings])
 
-  // A run with nothing committed to it yet is not a draft roster, whatever the database holds.
-  const runHasPairings = state.rosterRun !== null && state.pairings.some((pairing) => pairing.rosterRunId === state.rosterRun?.id)
-
   const selected = state.pairings.find((pairing) => pairing.id === state.selectedId && !pairing.deleted)
   const selectedEvaluation = selected ? evaluations.get(selected.id) : undefined
   // Wide screens keep a side panel once a card has been picked, even after the pick is deleted.
@@ -43,6 +40,10 @@ export function BuildPairingsPage() {
   const windowKey = `${dateFrom}|${dateTo}|${base}|${state.hasGenerated}`
   const [panelFor, setPanelFor] = useState<string | null>(null)
   const fixes = useMemo(() => (selected ? suggestFixes(selected, state.flights) : []), [selected, state.flights])
+  const noFixReason = useMemo(
+    () => (selected && fixes.length === 0 ? explainNoFix(selected, state.flights) : ''),
+    [selected, fixes, state.flights],
+  )
   const showInspector = isWide && panelFor === windowKey
 
   function select(id: string) {
@@ -79,13 +80,18 @@ export function BuildPairingsPage() {
               Turn scheduled flights into pairings that start and end at base. Only valid pairings move on.
             </p>
           </div>
-          <div className="hidden sm:block">
-            <RosterRunBadge
-              base={state.rosterRun?.base ?? state.params.base}
-              dateFrom={state.rosterRun?.dateFrom ?? state.params.dateFrom}
-              dateTo={state.rosterRun?.dateTo ?? state.params.dateTo}
-              status={runStatusLabel(runHasPairings ? state.rosterRun?.status : undefined)}
-            />
+          <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
+            <Button variant="outline" className="h-10 max-sm:w-full" onClick={() => void navigate({ to: '/published-rosters' })}>
+              Published rosters
+            </Button>
+            <div className="hidden sm:block">
+              <RosterRunBadge
+                base={state.windowRun?.base ?? state.params.base}
+                dateFrom={state.windowRun?.dateFrom ?? state.params.dateFrom}
+                dateTo={state.windowRun?.dateTo ?? state.params.dateTo}
+                status={runStatusLabel(state.windowRun?.status)}
+              />
+            </div>
           </div>
         </header>
 
@@ -155,6 +161,7 @@ export function BuildPairingsPage() {
                       pairing={selected}
                       evaluation={selectedEvaluation}
                       fixes={fixes}
+                      noFixReason={noFixReason}
                       isSaving={state.isSaving}
                       onApplyFix={(fix) => state.saveLegs(selected.id, fix.legs)}
                       onEditLegs={() => setEditing(selected)}
@@ -179,6 +186,7 @@ export function BuildPairingsPage() {
             pairing={selected}
             evaluation={selectedEvaluation}
             fixes={fixes}
+            noFixReason={noFixReason}
             isSaving={state.isSaving}
             onApplyFix={(fix) => state.saveLegs(selected.id, fix.legs)}
             onEditLegs={() => setEditing(selected)}

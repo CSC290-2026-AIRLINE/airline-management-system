@@ -1,9 +1,18 @@
 import type { DbService } from '@backend/db/db.service'
 import { SetupCrewService } from './setup-crew.service'
+import type { AuditService } from '../../admin-console/audit/audit.service'
+import type { SimulationClock } from '../../admin-console/simulation-clock'
 
 // The service only needs these two for types and the unique-violation check; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
+
+/** The audit writer and the simulation clock, as the services only call them. */
+const fakeAudit = () => ({
+  resolveActor: jest.fn().mockResolvedValue({ type: 'staff', id: 'user-1', role: 'ops' }),
+  write: jest.fn().mockResolvedValue({ id: 'a', seq: '1' }),
+})
+const fakeClock = () => ({ now: () => new Date() })
 
 function member(id: string, role = 'captain') {
   return {
@@ -61,7 +70,15 @@ function setup(crew: ReturnType<typeof member>[], assignments: ReturnType<typeof
       }),
     },
   }
-  return { db, reads, service: new SetupCrewService(db as unknown as DbService) }
+  return {
+    db,
+    reads,
+    service: new SetupCrewService(
+      db as unknown as DbService,
+      fakeAudit() as unknown as AuditService,
+      fakeClock() as unknown as SimulationClock,
+    ),
+  }
 }
 
 describe('SetupCrewService.listCrew', () => {
@@ -120,54 +137,5 @@ describe('SetupCrewService.listCrew', () => {
     const { crew } = await service.listCrew({})
 
     expect(crew[0]).toMatchObject({ hours28d: 0, upcomingDuties: [] })
-  })
-})
-
-describe('SetupCrewService.deleteCrew', () => {
-  const CREW = '7c1b9d2e-3a44-4c1f-8f0a-5b6d7e8f9a00'
-
-  function setup(options: { exists?: boolean; seats?: number } = {}) {
-    const { exists = true, seats = 0 } = options
-    const db = {
-      crew: {
-        findFirst: jest.fn().mockResolvedValue(exists ? { id: CREW } : null),
-        update: jest.fn().mockResolvedValue({}),
-      },
-      pairing_leg_assignment: { count: jest.fn().mockResolvedValue(seats) },
-    }
-    return { db, service: new SetupCrewService(db as unknown as DbService) }
-  }
-
-  it('marks the crew member deleted and keeps the row', async () => {
-    const { service, db } = setup()
-
-    await service.deleteCrew(CREW)
-
-    expect(db.crew.update).toHaveBeenCalledWith({
-      where: { id: CREW },
-      data: { deleted_at: expect.any(Date), updated_at: expect.any(Date) },
-    })
-  })
-
-  it('counts only seats that are still held', async () => {
-    const { service, db } = setup()
-
-    await service.deleteCrew(CREW)
-
-    expect(db.pairing_leg_assignment.count).toHaveBeenCalledWith({ where: { crew_id: CREW, unassigned_at: null } })
-  })
-
-  it('refuses while the crew member holds a seat on a roster, and changes nothing', async () => {
-    const { service, db } = setup({ seats: 3 })
-
-    await expect(service.deleteCrew(CREW)).rejects.toThrow('CREW_ASSIGNED · This crew member holds 3 seats')
-    expect(db.crew.update).not.toHaveBeenCalled()
-  })
-
-  it('says not found for a crew member who does not exist or is already deleted', async () => {
-    const { service, db } = setup({ exists: false })
-
-    await expect(service.deleteCrew(CREW)).rejects.toThrow('was not found')
-    expect(db.crew.update).not.toHaveBeenCalled()
   })
 })

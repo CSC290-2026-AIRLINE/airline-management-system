@@ -72,6 +72,8 @@ export interface ReplacementSet {
   availableLabel: string
   /** How many of the candidates may be selected. */
   allowedCount: number
+  /** Seats this break is short. More than 1 means several people can be added in one go. */
+  seatsToFill: number
   instruction: string
   /** What to say when nobody can be added. */
   blockedNote?: string
@@ -133,6 +135,8 @@ export type RosterStatus = 'draft' | 'published'
 export interface PageBanner {
   tone: 'success' | 'warning' | 'info'
   text: string
+  /** The shorter sentence a phone shows, when the full one is too long for it. */
+  shortText?: string
 }
 
 /** One pairing's row in the publish-checks table. */
@@ -161,6 +165,8 @@ export interface FixPublishData {
   /** Legs with a seat nobody has filled yet. */
   uncoveredLegIds: string[]
   limits: RuleLimits | null
+  /** Pairings of this window still waiting in a newer draft run: what the publish left for the next round. */
+  remainingPairings: number
 }
 
 /** What an edit answers: the sentence for the panel, whether the item closed, and the new state. */
@@ -168,4 +174,20 @@ export interface FixOutcome {
   banner: string
   closed: boolean
   state: FixPublishData
+}
+
+/** One published roster run, as the history page lists it. */
+export interface PublishedRunSummary {
+  id: string
+  base: string
+  dateFrom: string
+  dateTo: string
+  /** When it went live, by the simulation clock. */
+  publishedAt: string | null
+  pairings: number
+  legs: number
+  /** Breaks closed by a swap, closed by a written override, and still open. */
+  fixed: number
+  overridden: number
+  open: number
 }

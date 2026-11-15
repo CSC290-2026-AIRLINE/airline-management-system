@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, UseFilters, UseGuards } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import {
   SetupRuleService,
@@ -13,6 +13,7 @@ import {
   type RuleSetRow,
 } from './setup-rule.service'
 import { asObject, requireText } from '../request-parsing'
+import { RosteringExceptionFilter } from '../rostering-error'
 import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
@@ -24,6 +25,7 @@ import { StaffOnlyGuard } from '../staff-only.guard'
  */
 @Controller('crew-rostering/setup-rule')
 @UseGuards(StaffOnlyGuard)
+@UseFilters(RosteringExceptionFilter)
 export class SetupRuleController {
   constructor(private readonly setupRuleService: SetupRuleService) {}
 
@@ -64,18 +66,22 @@ export class SetupRuleController {
   }
 
   @Post('country-limits')
-  async createCountryLimit(@Body() body: unknown): Promise<CountryLimitRow> {
-    return this.setupRuleService.createCountryLimit(parseCountryLimit(asObject(body)))
+  async createCountryLimit(@Body() body: unknown, @CurrentUser() user: { id: string }): Promise<CountryLimitRow> {
+    return this.setupRuleService.createCountryLimit(parseCountryLimit(asObject(body)), user?.id)
   }
 
   @Put('country-limits/:countryCode')
-  async updateCountryLimit(@Param('countryCode') countryCode: string, @Body() body: unknown): Promise<CountryLimitRow> {
-    return this.setupRuleService.updateCountryLimit(requireText(countryCode, 'countryCode'), parseCountryLimit(asObject(body)))
+  async updateCountryLimit(
+    @Param('countryCode') countryCode: string,
+    @Body() body: unknown,
+    @CurrentUser() user: { id: string },
+  ): Promise<CountryLimitRow> {
+    return this.setupRuleService.updateCountryLimit(requireText(countryCode, 'countryCode'), parseCountryLimit(asObject(body)), user?.id)
   }
 
   @Delete('country-limits/:countryCode')
-  async deleteCountryLimit(@Param('countryCode') countryCode: string): Promise<void> {
-    await this.setupRuleService.deleteCountryLimit(requireText(countryCode, 'countryCode'))
+  async deleteCountryLimit(@Param('countryCode') countryCode: string, @CurrentUser() user: { id: string }): Promise<void> {
+    await this.setupRuleService.deleteCountryLimit(requireText(countryCode, 'countryCode'), user?.id)
   }
 
   @Get('country-languages')
@@ -84,13 +90,21 @@ export class SetupRuleController {
   }
 
   @Put('country-languages/:countryCode')
-  async upsertCountryLanguages(@Param('countryCode') countryCode: string, @Body() body: unknown): Promise<CountryLanguageRow> {
-    return this.setupRuleService.upsertCountryLanguages(requireText(countryCode, 'countryCode'), parseCountryLanguage(asObject(body)))
+  async upsertCountryLanguages(
+    @Param('countryCode') countryCode: string,
+    @Body() body: unknown,
+    @CurrentUser() user: { id: string },
+  ): Promise<CountryLanguageRow> {
+    return this.setupRuleService.upsertCountryLanguages(
+      requireText(countryCode, 'countryCode'),
+      parseCountryLanguage(asObject(body)),
+      user?.id,
+    )
   }
 
   @Delete('country-languages/:countryCode')
-  async deleteCountryLanguages(@Param('countryCode') countryCode: string): Promise<void> {
-    await this.setupRuleService.deleteCountryLanguages(requireText(countryCode, 'countryCode'))
+  async deleteCountryLanguages(@Param('countryCode') countryCode: string, @CurrentUser() user: { id: string }): Promise<void> {
+    await this.setupRuleService.deleteCountryLanguages(requireText(countryCode, 'countryCode'), user?.id)
   }
 }
 

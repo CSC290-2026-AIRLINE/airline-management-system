@@ -20,30 +20,31 @@ export function RemoveCountryRuleModal({
 }) {
   return (
     <BaseModalOverlay
+      variant="plain"
       width="max-w-md"
       onClose={onCancel}
       title="Remove country rule?"
       footer={
         <>
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" className="h-11" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={onConfirm}>
+          <Button variant="danger" className="h-11" onClick={onConfirm}>
             <span aria-hidden="true">—</span>
             Remove
           </Button>
         </>
       }
     >
-      <p className="text-sm text-primary-text/70">
+      <p className="text-sm leading-relaxed text-primary-text/60">
         {limit.country} goes back to the default limits and its pairings are rechecked. This can&rsquo;t be undone.
       </p>
 
-      <p className="mt-5 text-xs font-semibold text-primary-text/55">Rule to remove</p>
-      <div className="mt-2 rounded-xl border border-border-desc/40 bg-page-bg px-4 py-3.5">
+      <p className="mt-4 text-sm font-bold text-primary-text">Rule to remove</p>
+      <div className="mt-2 rounded-xl border border-border-desc/50 px-4 py-3.5">
         <p className="text-xs text-primary-text/55">Stricter limit by destination</p>
-        <p className="mt-1 font-display text-lg font-bold text-primary-text">{limit.country}</p>
-        <p className="mt-0.5 text-sm text-primary-text/65">{formatLimitPair(limit.minRestHours, limit.maxDutyHours)}</p>
+        <p className="mt-1 text-xl font-extrabold tracking-tight text-primary-text">{limit.country}</p>
+        <p className="mt-0.5 text-xs text-primary-text/55">{formatLimitPair(limit.minRestHours, limit.maxDutyHours)}</p>
       </div>
     </BaseModalOverlay>
   )

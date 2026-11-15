@@ -24,6 +24,7 @@ import { ProgressHeader } from './components/progress-header'
 import { PublishChecks } from './components/publish-checks'
 import { RosterTable } from './components/roster-table'
 import { RulesStrip } from './components/rules-strip'
+import { UncoveredCards } from './components/uncovered-cards'
 import { OverrideModal } from './modals/override-modal'
 import { RemoveMemberModal } from './modals/remove-member-modal'
 import { SickCallModal } from './modals/sick-call-modal'
@@ -41,19 +42,18 @@ export function FixPublishPage() {
   const closed = state.breaks.filter((item) => item.resolution !== undefined)
   const hasOpen = state.openBreaks.length > 0
   const isPublished = state.status === 'published'
+  // A live roster opens on the roster itself; the fix workspace opens when someone goes to cover a seat or review a break.
+  // A draft goes straight to the workspace while anything is open.
+  const [fixing, setFixing] = useState(state.startInFix)
+  const showFix = hasOpen && (!isPublished || fixing)
   const seatOnly = state.openBreaks.every((item) => item.code === 'NO_LEGAL_CREW')
   const windowSearch = { dateFrom: state.params.dateFrom, dateTo: state.params.dateTo, base: state.params.base }
   const hasRun = state.rosterRun !== null
-
-  /**
-   * The next roster run carries on with the pairings the last one left out: with some left, it opens Assign crew on a new
-   * draft run holding just those; with none left, it opens Build pairings for a fresh start.
-   */
-  async function startNextRun() {
-    const carryOn = await state.startNextRun()
-    void navigate(carryOn ? { to: '/assign-crew', search: windowSearch } : { to: '/build-pairings' })
-  }
-  const backToRoster = isPublished && hasOpen
+  const backToRoster = isPublished && showFix
+  const left = state.remainingPairings
+  // Pairings nobody crewed in this round wait in a new draft run: the next round starts in Assign crew with them, not from scratch.
+  const startNext = () => void navigate(left > 0 ? { to: '/assign-crew', search: windowSearch } : { to: '/build-pairings' })
+  const nextLabel = left > 0 ? `Crew the other ${left}` : 'Start next roster run'
   const base = state.rosterRun?.base ?? state.params.base
 
   const panelProps = {
@@ -64,6 +64,8 @@ export function FixPublishPage() {
     isBusy: state.isBusy,
     onOverride: setOverriding,
     onSwap: state.swapIn,
+    isPublished,
+    onLeaveUncovered: () => setFixing(false),
   }
 
   function pickAbsent(assignment: LegAssignment, memberId: string) {
@@ -73,7 +75,7 @@ export function FixPublishPage() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 pb-28 lg:px-9 lg:py-7 lg:pb-9">
+      <div className={`flex min-w-0 flex-1 flex-col gap-5 px-4 pt-1 lg:px-9 lg:py-7 lg:pb-9 ${showFix ? 'pb-8' : 'pb-28'}`}>
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase lg:text-3xl">Fix &amp; publish</h1>
@@ -99,14 +101,21 @@ export function FixPublishPage() {
         {/* The way back. The wizard strip shows where you are but is not itself clickable,
               so before publishing this goes to step 2; once the roster is live and a seat is
               open, it goes back up to the roster the seat belongs to. */}
-        {(!isPublished || hasOpen) && (
+        {isPublished && !showFix && (
           <button
             type="button"
-            onClick={() =>
-              backToRoster
-                ? document.getElementById('published-roster')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                : void navigate({ to: '/assign-crew', search: windowSearch })
-            }
+            onClick={() => void navigate({ to: '/published-rosters' })}
+            className="-mt-1 flex w-fit items-center gap-1.5 text-sm font-semibold text-blue-700 transition-colors hover:text-blue-800 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+          >
+            <ArrowLeftIcon className="h-4 w-4" />
+            Published rosters
+          </button>
+        )}
+
+        {(!isPublished || showFix) && (
+          <button
+            type="button"
+            onClick={() => (backToRoster ? setFixing(false) : void navigate({ to: '/assign-crew', search: windowSearch }))}
             className="-mt-1 flex w-fit items-center gap-1.5 text-sm font-semibold text-blue-700 transition-colors hover:text-blue-800 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
           >
             <ArrowLeftIcon className="h-4 w-4" />
@@ -141,8 +150,15 @@ export function FixPublishPage() {
               tone={state.banner.tone}
               action={
                 isPublished ? (
-                  <Button variant="highlight" className="h-10 shrink-0" onClick={() => void startNextRun()}>
-                    Start next roster run
+                  // A seat is still empty, so this run is not finished: Find cover comes first.
+                  <Button
+                    variant="highlight"
+                    className="h-10 shrink-0"
+                    disabled={hasOpen}
+                    title={hasOpen ? 'Cover the open seats first' : undefined}
+                    onClick={startNext}
+                  >
+                    {nextLabel}
                     <ArrowRightIcon className="h-4 w-4" />
                   </Button>
                 ) : (
@@ -152,19 +168,26 @@ export function FixPublishPage() {
                 )
               }
             >
-              {state.banner.text}
+              {state.banner.shortText ? (
+                <>
+                  <span className="max-lg:hidden">{state.banner.text}</span>
+                  <span className="lg:hidden">{state.banner.shortText}</span>
+                </>
+              ) : (
+                state.banner.text
+              )}
             </NoticeStrip>
           </div>
         )}
 
         {/* What the last fix did. Wide screens print it at the top of the panel; on a phone it is a strip. */}
-        {state.fixNotice && hasOpen && (
+        {state.fixNotice && showFix && (
           <div className="lg:hidden">
             <NoticeStrip tone="success">{state.fixNotice}</NoticeStrip>
           </div>
         )}
 
-        {state.heading && (
+        {state.heading && showFix && (
           <ProgressHeader
             heading={state.heading}
             openCount={state.openBreaks.length}
@@ -176,14 +199,14 @@ export function FixPublishPage() {
           />
         )}
 
-        {hasOpen && hasRun && <RulesStrip limits={state.limits ?? DEFAULT_RULE_LIMITS} />}
+        {showFix && hasRun && <RulesStrip limits={state.limits ?? DEFAULT_RULE_LIMITS} />}
 
         {/* The workspace: list on the left, fix on the right. */}
         {/* Two columns from `xl`, not `lg`: the sidebar is already taking ~260px by
               then, which leaves the fix panel roughly 260px wide — too narrow for the
               facts table and the candidate cards. Between `lg` and `xl` the two stack;
               below `lg` the list collapses into chips and the panel drops its facts table. */}
-        {hasOpen && (
+        {showFix && (
           <>
             {/* The fix panel sets the row's height and the left column fits it: the column sits in an absolutely placed box, so
                   however many breaks there are it adds nothing to the row. The rules card keeps its own height and the list
@@ -223,52 +246,87 @@ export function FixPublishPage() {
                 onSelect={state.selectBreak}
               />
               <FixPanel {...panelProps} compact />
+
+              {/* The bottom bar steps aside while there is work to do; the gate is stated under the fix instead. */}
+              {!isPublished && (
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    type="button"
+                    disabled
+                    className="h-11 w-full cursor-not-allowed rounded-lg bg-border-desc/70 text-sm font-semibold text-white"
+                  >
+                    Publish roster
+                  </button>
+                  <p className="text-center text-[13px] font-medium text-invalid">
+                    ROSTER_HAS_BREAKS · close {state.openBreaks.length} open {state.openBreaks.length === 1 ? 'break' : 'breaks'} before
+                    publishing.
+                  </p>
+                </div>
+              )}
             </div>
           </>
         )}
 
-        {isPublished && (
-          <RosterTable
-            assignments={state.assignments}
-            openBreaks={state.openBreaks}
-            updated={state.isUpdated}
-            onSickCall={(legId) => {
-              const assignment = state.rosterFor(legId)
-              if (assignment) setPicking(assignment)
-            }}
-            onFindCover={state.coverLeg}
-          />
-        )}
+        {!showFix && (
+          <>
+            {/* On a phone the open items and the "Published" card come before the leg cards; on a wide screen the roster comes first. */}
+            <div className="flex flex-col gap-5">
+              {isPublished && (
+                <UncoveredCards
+                  openBreaks={state.openBreaks}
+                  rosterFor={state.rosterFor}
+                  onOpen={(item) => {
+                    state.coverLeg(item.legId)
+                    setFixing(true)
+                  }}
+                />
+              )}
 
-        {!isPublished && !hasOpen && closed.length > 0 && <ClosedList breaks={closed} rosterFor={state.rosterFor} />}
+              {isPublished && (
+                <div className="max-lg:order-2">
+                  <RosterTable
+                    assignments={state.assignments}
+                    openBreaks={state.openBreaks}
+                    updated={state.isUpdated}
+                    onSickCall={(legId) => {
+                      const assignment = state.rosterFor(legId)
+                      if (assignment) setPicking(assignment)
+                    }}
+                    onFindCover={(legId) => {
+                      state.coverLeg(legId)
+                      setFixing(true)
+                    }}
+                  />
+                </div>
+              )}
 
-        <PublishChecks
-          checks={state.publishChecks}
-          openBreaks={state.openBreaks}
-          overriddenCount={closed.filter((item) => item.resolution?.kind === 'overridden').length}
-          isPublished={isPublished}
-        />
+              {!isPublished && closed.length > 0 && <ClosedList breaks={closed} rosterFor={state.rosterFor} />}
 
-        {hasRun && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-border-desc/60 px-5 py-4">
-            <p className="text-xs leading-relaxed text-primary-text/60">
-              Did Flight Scheduling (Feature 2) move or cancel a flight? Re-read the schedule and re-check every rule against the roster.
-            </p>
-            <Button variant="outline" disabled={state.isBusy} onClick={state.recheck}>
-              Re-check roster
-            </Button>
-          </div>
+              <div className="max-lg:order-1">
+                <PublishChecks
+                  checks={state.publishChecks}
+                  openBreaks={state.openBreaks}
+                  overriddenCount={closed.filter((item) => item.resolution?.kind === 'overridden').length}
+                  isPublished={isPublished}
+                />
+              </div>
+            </div>
+          </>
         )}
       </div>
 
-      <MobileBottomBar
-        openCount={state.openBreaks.length}
-        isPublished={isPublished}
-        canPublish={state.canPublish}
-        onBack={() => void navigate({ to: '/assign-crew', search: windowSearch })}
-        onPublish={state.publish}
-        onNextRun={() => void startNextRun()}
-      />
+      {!showFix && (
+        <MobileBottomBar
+          openCount={state.openBreaks.length}
+          isPublished={isPublished}
+          canPublish={state.canPublish}
+          canStartNext={!hasOpen}
+          onBack={() => void navigate({ to: '/assign-crew', search: windowSearch })}
+          onPublish={state.publish}
+          onNextRun={startNext}
+          nextLabel={left > 0 ? `Crew the other ${left}` : 'Start next run'}
+        />
+      )}
 
       {overriding && (
         <OverrideModal
@@ -294,6 +352,7 @@ export function FixPublishPage() {
           onConfirm={(reason) => {
             state.raiseSickCall(removing.assignment.leg.legId, removing.memberId, reason)
             setRemoving(null)
+            setFixing(true)
           }}
         />
       )}
@@ -314,16 +373,20 @@ function MobileBottomBar({
   openCount,
   isPublished,
   canPublish,
+  canStartNext,
   onBack,
   onPublish,
   onNextRun,
+  nextLabel,
 }: {
   openCount: number
   isPublished: boolean
   canPublish: boolean
+  canStartNext: boolean
   onBack: () => void
   onPublish: () => void
   onNextRun: () => void
+  nextLabel: string
 }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 bg-primary px-4 py-3 text-white md:left-(--sidebar-width) md:group-has-data-[collapsible=icon]/sidebar-wrapper:left-(--sidebar-width-icon) lg:hidden">
@@ -345,9 +408,10 @@ function MobileBottomBar({
         <button
           type="button"
           onClick={onNextRun}
-          className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-btn-yellow px-4 text-sm font-bold text-primary-text transition-colors hover:bg-btn-yellow-hover"
+          disabled={!canStartNext}
+          className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-btn-yellow px-4 text-sm font-bold text-primary-text transition-colors hover:bg-btn-yellow-hover disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/50"
         >
-          Start next run
+          {nextLabel}
           <ArrowRightIcon className="h-4 w-4" />
         </button>
       ) : (

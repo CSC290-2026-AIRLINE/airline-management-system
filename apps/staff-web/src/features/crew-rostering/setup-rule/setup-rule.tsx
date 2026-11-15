@@ -15,7 +15,7 @@ import { AlertBanner } from '../shared/ui'
 import { CompanyRulesCard } from './components/company-rules-card'
 import { CountryLanguagesTable } from './components/country-languages-table'
 import { DefaultLimitsCards } from './components/default-limits-cards'
-import { StricterLimitsTable } from './components/stricter-limits-table'
+import { AddRuleButton, StricterLimitsTable } from './components/stricter-limits-table'
 import { ChangesSavedModal } from './modals/changes-saved-modal'
 import { AddCountryLanguageModal, EditCountryLanguageModal } from './modals/country-language-modal'
 import { AddCountryRuleModal, EditCountryRuleModal } from './modals/country-rule-modal'
@@ -61,10 +61,12 @@ export function SetupRulePage() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
-        <header>
-          <h1 className="text-xl font-extrabold tracking-tight text-primary-text uppercase sm:text-2xl">Rules</h1>
-          <p className="mt-1 text-sm text-primary-text/60">Limits every assignment is checked against. The strictest rule wins.</p>
+      <div className="flex min-w-0 flex-1 flex-col gap-5 px-4 pt-1 pb-8 lg:px-9 lg:py-7 lg:pb-9">
+        <header className="max-lg:mt-4">
+          <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase lg:text-3xl">Rules</h1>
+          <p className="mt-1.5 text-sm leading-relaxed text-primary-text/60 lg:text-base">
+            Limits every assignment is checked against. The strictest rule wins.
+          </p>
         </header>
 
         <TabsNav tabs={TABS} active={tab} onChange={setTab} />
@@ -77,16 +79,26 @@ export function SetupRulePage() {
 
         {state.defaults && tab === 'legality' && (
           <>
-            <DefaultLimitsCards defaults={state.defaults} />
-            <CompanyRulesCard rules={state.companyRules} />
-            <StricterLimitsTable
-              defaults={state.defaults}
-              limits={state.countryLimits}
-              onEditDefaults={() => setEditingDefaults(true)}
-              onAdd={() => setAddingRule(true)}
-              onEdit={setEditingRule}
-              onRemove={setRemovingRule}
-            />
+            <AddRuleButton onClick={() => setAddingRule(true)} />
+            {/* Wide screens read defaults, company rules, then the country table; a phone reads defaults, country rules, then company rules. */}
+            <div className="flex flex-col gap-5">
+              <div className="order-1">
+                <DefaultLimitsCards defaults={state.defaults} />
+              </div>
+              <div className="max-lg:order-3 lg:order-2">
+                <CompanyRulesCard rules={state.companyRules} defaults={state.defaults} />
+              </div>
+              <div className="max-lg:order-2 lg:order-3">
+                <StricterLimitsTable
+                  defaults={state.defaults}
+                  limits={state.countryLimits}
+                  onEditDefaults={() => setEditingDefaults(true)}
+                  onAdd={() => setAddingRule(true)}
+                  onEdit={setEditingRule}
+                  onRemove={setRemovingRule}
+                />
+              </div>
+            </div>
           </>
         )}
 
@@ -94,6 +106,7 @@ export function SetupRulePage() {
           <CountryLanguagesTable
             mappings={state.countryLanguages}
             languages={state.languages}
+            defaults={state.defaults}
             editingId={inlineEditingId}
             onAdd={() => setAddingMapping(true)}
             onEdit={setEditingMapping}
@@ -109,12 +122,24 @@ export function SetupRulePage() {
 
         {hasChanges && (
           <BottomUnsavedBar
+            title={tab === 'legality' ? 'Rule changes' : undefined}
             summary={
               tab === 'legality'
                 ? `${state.limitsChangeCount} unsaved change${state.limitsChangeCount === 1 ? '' : 's'} · Saving rechecks affected pairings and roster assignments.`
                 : 'Saving language mappings rechecks local-crew coverage on affected destination legs.'
             }
-            saveLabel={state.isSaving ? 'Saving…' : tab === 'legality' ? 'Save rules' : 'Save changes'}
+            saveLabel={
+              state.isSaving ? (
+                'Saving…'
+              ) : tab === 'legality' ? (
+                'Save rules'
+              ) : (
+                <>
+                  <span className="sm:hidden">Save languages</span>
+                  <span className="max-sm:hidden">Save changes</span>
+                </>
+              )
+            }
             onDiscard={discard}
             onSave={save}
           />

@@ -112,7 +112,7 @@ export interface PageNotice {
  *
  * This is deliberately the same for both modals: `EMPTY_CREW_FORM` seeds a
  * create, `toCrewForm` seeds an edit, and `validateCrewForm` guards both. It is
- * also the shape a future `POST /crew` and `PATCH /crew/:id` would accept.
+ * also the shape a future `POST /crew` and `PUT /crew/:id` would accept.
  */
 export interface CrewProfileInput {
   firstName: string

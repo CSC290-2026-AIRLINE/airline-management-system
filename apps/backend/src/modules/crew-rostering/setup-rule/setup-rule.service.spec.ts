@@ -1,13 +1,20 @@
 import { BadRequestException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { SetupRuleService } from './setup-rule.service'
+import type { AuditService } from '../../admin-console/audit/audit.service'
 
 // The service only needs `DbService` for its type; the real module is ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
 /** Just enough of `DbService` for the language mapping writes, with every write recorded. */
+/** The audit writer and the simulation clock, as the services only call them. */
+const fakeAudit = () => ({
+  resolveActor: jest.fn().mockResolvedValue({ type: 'staff', id: 'user-1', role: 'ops' }),
+  write: jest.fn().mockResolvedValue({ id: 'a', seq: '1' }),
+})
+
 function setup() {
-  const tx = { country_language: { deleteMany: jest.fn(), createMany: jest.fn() } }
+  const tx = { country_language: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn(), createMany: jest.fn() } }
   const db = {
     $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
     // The country checks: an airport is there, or the country already carries a rule or a mapping.
@@ -15,7 +22,8 @@ function setup() {
     country_legality_rule: { findUnique: jest.fn().mockResolvedValue(null) },
     country_language: { findFirst: jest.fn().mockResolvedValue(null) },
   }
-  return { tx, db, service: new SetupRuleService(db as unknown as DbService) }
+  const audit = fakeAudit()
+  return { tx, db, audit, service: new SetupRuleService(db as unknown as DbService, audit as unknown as AuditService) }
 }
 
 describe('SetupRuleService.upsertCountryLanguages', () => {
@@ -80,7 +88,7 @@ function listSetup() {
       ]),
     },
   }
-  return { db, service: new SetupRuleService(db as unknown as DbService) }
+  return { db, service: new SetupRuleService(db as unknown as DbService, fakeAudit() as unknown as AuditService) }
 }
 
 describe('SetupRuleService lists', () => {
@@ -128,7 +136,8 @@ function createSetup() {
     crew_setting: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
   }
-  return { tx, db, service: new SetupRuleService(db as unknown as DbService) }
+  const audit = fakeAudit()
+  return { tx, db, audit, service: new SetupRuleService(db as unknown as DbService, audit as unknown as AuditService) }
 }
 
 describe('SetupRuleService country local crew', () => {
@@ -187,9 +196,12 @@ function defaultsSetup(rules: { country_code: string; min_rest_hours: string; ma
   const tx = { country_legality_rule: { findMany: jest.fn().mockResolvedValue(rules) }, crew_setting: { upsert: jest.fn() } }
   const db = {
     staff: { findFirst: jest.fn().mockResolvedValue({ id: 'staff-1' }) },
+    // The limits as they stand, read before the write so the audit row can say what moved.
+    crew_setting: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
   }
-  return { tx, db, service: new SetupRuleService(db as unknown as DbService) }
+  const audit = fakeAudit()
+  return { tx, db, audit, service: new SetupRuleService(db as unknown as DbService, audit as unknown as AuditService) }
 }
 
 describe('SetupRuleService.updateDefaults', () => {
@@ -235,5 +247,52 @@ describe('SetupRuleService.updateDefaults', () => {
 
     await expect(service.updateDefaults({ ...baseline, ...change }, 'user-1')).rejects.toThrow(field)
     expect(db.$transaction).not.toHaveBeenCalled()
+  })
+})
+
+describe('SetupRuleService audit', () => {
+  it('records a language change in the same transaction, saying what the list was and is', async () => {
+    const { service, tx, audit } = setup()
+    tx.country_language.findMany.mockResolvedValue([{ language_code: 'ja' }])
+
+    await service.upsertCountryLanguages('th', { languages: ['th', 'en'] }, 'user-1')
+
+    expect(audit.resolveActor).toHaveBeenCalledWith('user-1')
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceFeature: '8',
+        action: 'update',
+        entityType: 'country_language',
+        entityId: 'th',
+        before: { languages: ['ja'] },
+        after: { languages: ['en', 'th'] },
+      }),
+      tx,
+    )
+  })
+
+  it('records only the limits that moved when the defaults are saved', async () => {
+    const { service, tx, audit } = defaultsSetup()
+
+    await service.updateDefaults({ ...baseline, minRestHours: 11 }, 'user-1')
+
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'update',
+        entityType: 'crew_setting',
+        entityId: 'defaults',
+        before: { minRestHours: 10 },
+        after: { minRestHours: 11 },
+      }),
+      tx,
+    )
+  })
+
+  it('writes no audit row for a baseline that is refused', async () => {
+    const { service, audit } = defaultsSetup([{ country_code: 'jp', min_rest_hours: '11', max_duty_hours: '12' }])
+
+    await expect(service.updateDefaults({ ...baseline, minRestHours: 12 }, 'user-1')).rejects.toThrow()
+
+    expect(audit.write).not.toHaveBeenCalled()
   })
 })

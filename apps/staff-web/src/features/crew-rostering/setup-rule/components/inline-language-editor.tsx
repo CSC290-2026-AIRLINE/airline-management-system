@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { formatLanguageList } from '../types/format'
 import type { CountryLanguage, LanguageOption } from '../types/types'
 import { Button, MultiSelect } from '../../shared/ui'
 
@@ -28,14 +27,14 @@ export function InlineLanguageEditor({
     <div className="flex flex-col gap-3 rounded-lg bg-info-bg px-4 py-3.5 lg:flex-row lg:items-center lg:gap-6">
       <div className="min-w-0">
         <p className="font-bold text-primary-text">Editing {mapping.country}</p>
-        <p className="mt-0.5 text-xs text-primary-text/55">Currently {formatLanguageList(mapping.languages, languages).toLowerCase()}.</p>
       </div>
 
       {/* Full width: the dropdown panel is absolutely positioned and would be
           clipped by a narrow flex track. */}
       <MultiSelect
         label="Accepted languages"
-        className="lg:w-72"
+        labelClassName="text-[11px] font-semibold tracking-wider text-label"
+        className="lg:w-80"
         placeholder="Select languages"
         options={options}
         selected={selected}

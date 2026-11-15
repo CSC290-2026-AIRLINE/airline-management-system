@@ -5,7 +5,6 @@
  * off the same derived break list the rule-break card renders, so a leg can never
  * show `OK` while a card below says it is broken.
  */
-import type { ReactNode } from 'react'
 import { formatTime, pluralise, ROSTER_TIME_ZONE } from '../../build-pairings/types/format'
 import { RouteText } from '../../build-pairings/components/route-text'
 import type { LegCrew, RosterCrewMember, RosterRuleBreak } from '../types/types'
@@ -30,7 +29,17 @@ function complement(have: number, need: number): string {
 /** The tag beside a local-crew name is the country, which reads faster than the language code. */
 const COUNTRY_BY_LANGUAGE: Record<string, string> = { ja: 'JP', ko: 'KR', th: 'TH', zh: 'CN', en: 'GB', ms: 'MY', id: 'ID', vi: 'VN' }
 
-function Names({ members, missingLabel }: { members: readonly { name: string }[]; missingLabel?: string }) {
+function Names({
+  members,
+  missingLabel,
+  notRequired = false,
+}: {
+  members: readonly { name: string }[]
+  missingLabel?: string
+  /** The leg needs nobody in this seat (police on a domestic flight), so an empty list is not a gap. */
+  notRequired?: boolean
+}) {
+  if (members.length === 0 && notRequired) return <span>—</span>
   if (members.length === 0) {
     return <span className="rounded-full bg-invalid-bg px-2.5 py-0.5 text-[11px] font-bold text-invalid">None</span>
   }
@@ -134,7 +143,11 @@ export function AssignmentsTable({ assignments, breaksByLeg }: AssignmentsProps)
                     )}
                   </td>
                   <td className="px-3 py-3.5 text-primary-text">
-                    <Names members={assignment.police} missingLabel={policeMissing(assignment)} />
+                    <Names
+                      members={assignment.police}
+                      missingLabel={policeMissing(assignment)}
+                      notRequired={assignment.policeRequired === 0}
+                    />
                   </td>
                   <td className="px-3 py-3.5">
                     <StatusCell breaks={breaks} />
@@ -158,63 +171,67 @@ export function AssignmentCards({ assignments, breaksByLeg }: AssignmentsProps) 
       <ul className="mt-3 flex flex-col gap-3">
         {assignments.map((assignment) => {
           const breaks = breaksByLeg.get(assignment.leg.legId) ?? []
+          const local = assignment.localCrew[0]
+          const policeShort = assignment.police.length < assignment.policeRequired
           return (
             <li
               key={assignment.leg.legId}
-              className={`rounded-xl border p-4 ${breaks.length > 0 ? 'border-invalid/30 bg-invalid/5' : 'border-border-desc/40 bg-card-bg'}`}
+              className={`rounded-xl border px-4 py-3.5 ${breaks.length > 0 ? 'border-invalid/30 bg-invalid/5' : 'border-border-desc/50 bg-card-bg'}`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-bold text-primary-text">
-                    {assignment.leg.flightNumber} ·{' '}
-                    <RouteText
-                      route={[assignment.leg.origin, assignment.leg.destination]}
-                      arrowSize="h-3.5 w-3.5"
-                      arrowClassName="text-primary-text"
-                    />
-                  </p>
-                  <p className="mt-0.5 text-[13px] text-primary-text/60">
-                    {assignment.pairingCode} · {formatShortDate(assignment.leg.departureAt)} · {formatTime(assignment.leg.departureAt)}–
-                    {formatTime(assignment.leg.arrivalAt)}
-                  </p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-bold text-primary-text">
+                  {assignment.leg.flightNumber} ·{' '}
+                  <RouteText
+                    route={[assignment.leg.origin, assignment.leg.destination]}
+                    arrowSize="h-3.5 w-3.5"
+                    arrowClassName="text-primary-text"
+                  />
+                </p>
+                <div className="shrink-0">
+                  <StatusCell breaks={breaks} />
                 </div>
-                <StatusCell breaks={breaks} />
               </div>
-              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[13px]">
-                <Row label="Captain" value={assignment.captain?.name ?? '—'} />
-                <Row label="First officer" value={assignment.firstOfficer?.name ?? '—'} />
-                <Row label="Cabin crew" value={complement(assignment.cabinCrew.length, assignment.cabinRequired)} />
-                <Row
-                  label="Local crew"
-                  value={
-                    !assignment.leg.international ? (
-                      '—'
-                    ) : assignment.localCrew.length === 0 ? (
-                      <Names members={[]} />
-                    ) : (
-                      <>
-                        {assignment.localCrew[0].name}
-                        <LanguageBadge member={assignment.localCrew[0]} assignment={assignment} />
-                      </>
-                    )
-                  }
-                />
-                <Row label="Police" value={<Names members={assignment.police} missingLabel={policeMissing(assignment)} />} />
-              </dl>
+              <div className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-primary-text/70">
+                <p>
+                  {assignment.pairingCode} · {formatShortDate(assignment.leg.departureAt)} · {formatTime(assignment.leg.departureAt)}–
+                  {formatTime(assignment.leg.arrivalAt)}
+                </p>
+                <p>
+                  Capt {assignment.captain?.name ?? '—'} · FO {assignment.firstOfficer?.name ?? '—'}
+                </p>
+                <p>
+                  Cabin {complement(assignment.cabinCrew.length, assignment.cabinRequired)} ·{' '}
+                  {!assignment.leg.international ? (
+                    'Local —'
+                  ) : local ? (
+                    <>
+                      Local {local.name}
+                      {(() => {
+                        const code = local.languages.find((language) => assignment.leg.localLanguages.includes(language))
+                        return code ? ` (${COUNTRY_BY_LANGUAGE[code] ?? code})` : ''
+                      })()}
+                    </>
+                  ) : (
+                    <>
+                      Local <span className="font-semibold text-invalid">none</span>
+                    </>
+                  )}
+                  {assignment.policeRequired > 0 && (
+                    <>
+                      {' '}
+                      ·{' '}
+                      <span className={policeShort ? 'font-semibold text-invalid' : undefined}>
+                        Police {assignment.police.length} of {assignment.policeRequired}
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
             </li>
           )
         })}
       </ul>
     </section>
-  )
-}
-
-function Row({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[11px] font-semibold tracking-wide text-primary-text/50 uppercase">{label}</dt>
-      <dd className="text-primary-text/85">{value}</dd>
-    </div>
   )
 }
 

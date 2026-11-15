@@ -197,3 +197,14 @@ export function formatDurationSpaced(minutes: number): string {
   if (rest === 0) return `${hours} h`
   return `${hours} h ${rest} m`
 }
+
+/**
+ * Today and tomorrow, as `YYYY-MM-DD` in the browser's clock: the window Build pairings opens on, so the operator picks from
+ * "now" instead of a fixed date. Feature 1's simulation clock replaces `now` when it is wired in.
+ */
+export function todayAndTomorrow(now: Date = new Date()): { dateFrom: string; dateTo: string } {
+  const key = (date: Date): string =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+  return { dateFrom: key(now), dateTo: key(tomorrow) }
+}

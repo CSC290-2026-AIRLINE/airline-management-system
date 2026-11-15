@@ -1,9 +1,12 @@
 import type { DbService } from '@backend/db/db.service'
 import { AssignCrewService, type Leg, type RuleLimitsRow, type RunPairing } from './assign-crew.service'
+import type { SimulationClock } from '../../admin-console/simulation-clock'
 
 // The services only need these for types; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
+
+const fakeClock = () => ({ now: () => new Date() })
 
 const RUN = '7c1b9d2e-3a44-4c1f-8f0a-5b6d7e8f9a00'
 const HOUR = 3_600_000
@@ -76,7 +79,7 @@ interface Internals {
 }
 
 function service() {
-  return new AssignCrewService({} as unknown as DbService)
+  return new AssignCrewService({} as unknown as DbService, fakeClock() as unknown as SimulationClock)
 }
 const internals = (instance: AssignCrewService) => instance as unknown as Internals
 
@@ -205,7 +208,7 @@ describe('AssignCrewService.autoAssign re-run', () => {
       pairing_leg_assignment: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
     }
-    const instance = new AssignCrewService(db as unknown as DbService)
+    const instance = new AssignCrewService(db as unknown as DbService, fakeClock() as unknown as SimulationClock)
     const loose = instance as unknown as { loadRun: unknown; check: unknown }
     loose.loadRun = jest.fn().mockResolvedValue({ run: { status: 'draft', base_airport: 'BKK' }, pairings: [flight], context: {} })
     loose.check = jest.fn().mockResolvedValue({})
@@ -218,64 +221,21 @@ describe('AssignCrewService.autoAssign re-run', () => {
   })
 })
 
-describe('AssignCrewService batch', () => {
-  const run = { id: RUN, status: 'draft', base_airport: 'BKK' }
+describe('AssignCrewService.scopeOf', () => {
+  const service = new AssignCrewService({} as unknown as DbService, fakeClock() as unknown as SimulationClock)
+  const pairings = ['p-1', 'p-2', 'p-3', 'p-4'].map((id) => ({ id })) as unknown as RunPairing[]
 
-  /** `loadRun` against a database that knows which pairings have someone assigned. */
-  function loadSetup(status: 'draft' | 'published', crewed: string[]) {
-    const db = {
-      roster_run: { findUnique: jest.fn().mockResolvedValue({ ...run, status }) },
-      pairing_leg_assignment: { findMany: jest.fn().mockResolvedValue(crewed.map((id) => ({ pairing_id: id }))) },
-    }
-    const instance = new AssignCrewService(db as unknown as DbService)
-    const loose = instance as unknown as { loadContext: unknown; toRunPairings: unknown }
-    loose.loadContext = jest.fn().mockResolvedValue({})
-    loose.toRunPairings = jest.fn().mockReturnValue(['p-1', 'p-2', 'p-3'].map((id) => ({ id, code: id, legs: [], limits: LIMITS })))
-    return { instance, db }
-  }
-
-  it('is the pairings somebody was assigned to while the run is a draft, and reports the rest', async () => {
-    const { instance } = loadSetup('draft', ['p-2'])
-
-    const loaded = await instance.loadRun(RUN)
-
-    expect(loaded.pairings.map((pairing) => pairing.id)).toEqual(['p-2'])
-    expect(loaded.outsideBatch).toEqual(['p-1', 'p-3'])
+  it('is the pairings somebody is crewed on, so the rest raise nothing', () => {
+    const scope = service.scopeOf(pairings, [{ pairing_id: 'p-1' }, { pairing_id: 'p-1' }, { pairing_id: 'p-3' }])
+    expect([...scope].sort()).toEqual(['p-1', 'p-3'])
   })
 
-  it('returns every pairing when auto-assign asks for them all', async () => {
-    const { instance, db } = loadSetup('draft', ['p-2'])
-
-    const loaded = await instance.loadRun(RUN, { all: true })
-
-    expect(loaded.pairings).toHaveLength(3)
-    expect(loaded.outsideBatch).toEqual([])
-    expect(db.pairing_leg_assignment.findMany).not.toHaveBeenCalled()
+  it('also counts the pairings just sent to auto-assign, even if nobody could be put on them', () => {
+    const scope = service.scopeOf(pairings, [{ pairing_id: 'p-1' }], ['p-2'])
+    expect([...scope].sort()).toEqual(['p-1', 'p-2'])
   })
 
-  it('treats every pairing of a published run as part of it', async () => {
-    const { instance } = loadSetup('published', [])
-
-    const loaded = await instance.loadRun(RUN)
-
-    expect(loaded.pairings).toHaveLength(3)
-    expect(loaded.outsideBatch).toEqual([])
-  })
-
-  it('drops the open breaks of a pairing outside the batch when the run is checked', async () => {
-    const deleteMany = jest.fn().mockResolvedValue({ count: 2 })
-    const db = { rule_break: { deleteMany }, pairing_leg_assignment: { findMany: jest.fn().mockResolvedValue([]) } }
-    const instance = new AssignCrewService(db as unknown as DbService)
-    const loose = instance as unknown as Record<string, unknown>
-    loose.loadRun = jest.fn().mockResolvedValue({ run, pairings: [], context: {}, outsideBatch: ['p-1'] })
-    loose.activeAssignments = jest.fn().mockResolvedValue([])
-    loose.evaluate = jest.fn().mockReturnValue([])
-    loose.storeBreaks = jest.fn()
-    loose.toResult = jest.fn().mockReturnValue({})
-    loose.openBreaks = jest.fn().mockResolvedValue([])
-
-    await instance.check(RUN)
-
-    expect(deleteMany).toHaveBeenCalledWith({ where: { roster_run_id: RUN, resolved_at: null, pairing_id: { in: ['p-1'] } } })
+  it('is the whole run while nobody is crewed, so an untouched run never looks ready to publish', () => {
+    expect([...service.scopeOf(pairings, [])].sort()).toEqual(['p-1', 'p-2', 'p-3', 'p-4'])
   })
 })

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
+import { SimulationClock } from '../../admin-console/simulation-clock'
 import { loadBaseContext } from '../base-context'
 import { LOCAL_MISS_RATE, POLICE_SHORT_RATE, pickOne } from './random-pick'
 import { isoDate, isRestBetween, shortName } from '../crew-format'
@@ -312,7 +313,10 @@ const DAY = 86_400_000
 
 @Injectable()
 export class AssignCrewService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly clock: SimulationClock,
+  ) {}
 
   /** Bases a run can be crewed from — the same set Build pairings offers. */
   async listBases(): Promise<string[]> {
@@ -326,10 +330,11 @@ export class AssignCrewService {
     const window = { gte: new Date(`${params.dateFrom}T00:00:00.000Z`), lte: new Date(`${params.dateTo}T00:00:00.000Z`) }
 
     const [run, uncommitted] = await Promise.all([
+      // A draft first: once a batch is published, the pairings left over wait in a new draft run for the same window.
       this.db.roster_run.findFirst({
         where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
         select: RUN_SELECT,
-        orderBy: { created_at: 'desc' },
+        orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
       }),
       this.db.pairing.findMany({
         where: { base_airport: params.base, roster_run_pairing: { is: null }, pairing_leg: { some: { flight: { service_date: window } } } },
@@ -348,6 +353,24 @@ export class AssignCrewService {
     }
   }
 
+  /**
+   * The pairings of a run that are in play: those somebody is crewed on, plus `include` (the ones just sent to auto-assign,
+   * which may have come out with nobody on them). A run nobody has crewed yet has no batch, so every pairing counts and the
+   * page cannot look ready to publish. The pairings left out are not wrong, they are for the next round.
+   */
+  scopeOf(pairings: readonly RunPairing[], assignments: readonly { pairing_id: string }[], include: readonly string[] = []): Set<string> {
+    const crewed = new Set([...assignments.map((row) => row.pairing_id), ...include])
+    return crewed.size > 0
+      ? new Set(pairings.filter((pairing) => crewed.has(pairing.id)).map((pairing) => pairing.id))
+      : new Set(pairings.map((pairing) => pairing.id))
+  }
+
+  /** The scope of a run as it stands in the database. */
+  async scopeIds(rosterRunId: string): Promise<Set<string>> {
+    const { pairings } = await this.loadRun(rosterRunId)
+    return this.scopeOf(pairings, await this.activeAssignments(pairings))
+  }
+
   /** What is stored for the run now, without re-checking. */
   async getRun(rosterRunId: string): Promise<RunResult> {
     const { run, pairings } = await this.loadRun(rosterRunId)
@@ -363,8 +386,7 @@ export class AssignCrewService {
    * (`assigned_by = 'ops'`) stay, and the seats they fill are not filled again.
    */
   async autoAssign(rosterRunId: string, pairingIds: string[], options: AutoAssignOptions = {}): Promise<RunResult> {
-    // Every pairing in the run, crewed or not: the ones picked here are what becomes the batch.
-    const { run, pairings } = await this.loadRun(rosterRunId, { all: true })
+    const { run, pairings } = await this.loadRun(rosterRunId)
     if (run.status === 'published') throw new ConflictException('This roster is published and can no longer be crewed automatically')
 
     const unknown = pairingIds.find((id) => !pairings.some((pairing) => pairing.id === id))
@@ -407,7 +429,7 @@ export class AssignCrewService {
               crew_id: member.id,
               role,
               assigned_by: 'auto',
-              assigned_at: new Date(),
+              assigned_at: this.clock.now(),
             })
           }
         }
@@ -432,17 +454,15 @@ export class AssignCrewService {
       if (rows.length > 0) await tx.pairing_leg_assignment.createMany({ data: rows })
     })
 
-    return this.check(rosterRunId)
+    return this.check(rosterRunId, [...targetIds])
   }
 
   /** Re-checks every rule on the run against what is stored, and records the result. */
-  async check(rosterRunId: string): Promise<RunResult> {
-    const { run, pairings, context, outsideBatch } = await this.loadRun(rosterRunId)
-    // A pairing nobody has been assigned to is not part of this batch yet, so it carries no breaks of its own.
-    if (outsideBatch.length > 0) {
-      await this.db.rule_break.deleteMany({ where: { roster_run_id: rosterRunId, resolved_at: null, pairing_id: { in: outsideBatch } } })
-    }
+  async check(rosterRunId: string, include: readonly string[] = []): Promise<RunResult> {
+    const { run, pairings, context } = await this.loadRun(rosterRunId)
     const assignments = await this.activeAssignments(pairings)
+    // Only the pairings in play are judged: the ones Ops crewed. The rest wait for the next round and raise nothing.
+    const inScope = this.scopeOf(pairings, assignments, include)
     const crewIds = [...new Set(assignments.map((row) => row.crew_id))]
     const legs = pairings.flatMap((pairing) => pairing.legs)
     const history =
@@ -453,7 +473,12 @@ export class AssignCrewService {
             select: ASSIGNMENT_SELECT,
           })
 
-    const found = this.evaluate(pairings, assignments, this.busyByCrew(history), context)
+    const found = this.evaluate(
+      pairings.filter((pairing) => inScope.has(pairing.id)),
+      assignments,
+      this.busyByCrew(history),
+      context,
+    )
     await this.storeBreaks(rosterRunId, found)
     return this.toResult(run, pairings, assignments, await this.openBreaks(rosterRunId))
   }
@@ -754,7 +779,7 @@ export class AssignCrewService {
 
       const fixed = [...open.entries()].filter(([key]) => !foundKeys.has(key)).map(([, row]) => row.id)
       if (fixed.length > 0) {
-        await tx.rule_break.updateMany({ where: { id: { in: fixed } }, data: { resolved_at: new Date(), resolution: 'fixed' } })
+        await tx.rule_break.updateMany({ where: { id: { in: fixed } }, data: { resolved_at: this.clock.now(), resolution: 'fixed' } })
       }
 
       const fresh: Prisma.rule_breakCreateManyInput[] = []
@@ -834,38 +859,11 @@ export class AssignCrewService {
   /* ── reads ──────────────────────────────────────────────────────────────── */
 
   /** The run with its pairings and legs, for the step that fixes and publishes it. */
-  /**
-   * The run with its pairings.
-   *
-   * While the run is a draft, its *batch* is the pairings somebody has been assigned to: what Fix & publish shows
-   * and what publishing covers. The rest are committed but not crewed yet, and come back in `outsideBatch`.
-   * `all` returns every pairing in the run, which auto-assign needs to pick from. A published run is all batch.
-   */
-  async loadRun(
-    rosterRunId: string,
-    options: { all?: boolean } = {},
-  ): Promise<{ run: RunDbRow; pairings: RunPairing[]; context: Context; outsideBatch: string[] }> {
+  async loadRun(rosterRunId: string): Promise<{ run: RunDbRow; pairings: RunPairing[]; context: Context }> {
     const run = await this.db.roster_run.findUnique({ where: { id: rosterRunId }, select: RUN_SELECT })
     if (!run) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
     const context = await this.loadContext(run.base_airport)
-    const every = this.toRunPairings(run, context)
-    if (options.all || run.status === 'published' || every.length === 0) return { run, pairings: every, context, outsideBatch: [] }
-
-    const crewed = new Set(
-      (
-        await this.db.pairing_leg_assignment.findMany({
-          where: { pairing_id: { in: every.map((pairing) => pairing.id) }, unassigned_at: null },
-          select: { pairing_id: true },
-          distinct: ['pairing_id'],
-        })
-      ).map((row) => row.pairing_id),
-    )
-    return {
-      run,
-      pairings: every.filter((pairing) => crewed.has(pairing.id)),
-      context,
-      outsideBatch: every.filter((pairing) => !crewed.has(pairing.id)).map((pairing) => pairing.id),
-    }
+    return { run, pairings: this.toRunPairings(run, context), context }
   }
 
   private async activeAssignments(pairings: RunPairing[]): Promise<(AssignmentDbRow & { crew: CrewDbRow })[]> {

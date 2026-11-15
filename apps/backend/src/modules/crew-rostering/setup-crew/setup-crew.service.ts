@@ -1,8 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
+import { AuditService } from '../../admin-console/audit/audit.service'
+import { SimulationClock } from '../../admin-console/simulation-clock'
 import { countryName } from '../country-names'
 import { localTime } from '../crew-format'
+import { changedFields, writeRosteringAudit } from '../rostering-audit'
 
 /**
  * Feature 8 · Step 1 — crew directory.
@@ -185,6 +188,36 @@ const CREW_SELECT = {
   crew_certification: { select: { id: true, name: true, aircraft_type: true, expires_on: true } },
 } as const
 
+/**
+ * What an audit row says about a crew profile. Date of birth, email and phone are personal data: they are left out, and an
+ * edit that moves one only shows `contactDetailsChanged`, so the log says it happened without holding the values.
+ */
+function profileView(row: {
+  first_name: string
+  last_name: string
+  employee_number: string
+  role: string
+  base_airport: string
+  fleet_aircraft_type: string
+  languages: string[]
+  licence_number: string
+  licence_expires_on: Date
+  date_of_birth: Date | null
+  email: string | null
+  phone: string | null
+}): Record<string, unknown> {
+  return {
+    name: `${row.first_name} ${row.last_name}`,
+    employeeNo: row.employee_number,
+    role: row.role,
+    base: row.base_airport,
+    fleet: row.fleet_aircraft_type,
+    languages: row.languages,
+    licenceNumber: row.licence_number,
+    licenceExpiresOn: localDate(row.licence_expires_on),
+  }
+}
+
 /** `YYYY-MM-DD` in UTC — the shape every date field leaves the service in. */
 function localDate(value: Date | null): string | null {
   return value === null ? null : value.toISOString().slice(0, 10)
@@ -203,7 +236,11 @@ function hoursBetween(from: Date, to: Date): number {
 
 @Injectable()
 export class SetupCrewService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: AuditService,
+    private readonly clock: SimulationClock,
+  ) {}
 
   /** Bases the crew directory can filter on: every active airport. */
   async listBases(): Promise<BaseOptionRow[]> {
@@ -297,28 +334,43 @@ export class SetupCrewService {
     return `EMP-${highest + 1}`
   }
 
-  async createCrew(input: CrewProfileInput): Promise<CrewMemberRow> {
+  async createCrew(input: CrewProfileInput, actorUserId?: string): Promise<CrewMemberRow> {
     await this.assertEmployeeNoFree(input.employeeNo)
     await this.assertLicenceNumberFree(input.licenceNumber)
     await this.assertBaseActive(input.base)
     const fleet = await this.resolveFleet(input.fleet)
 
-    const created = await this.db.crew.create({
-      data: {
-        first_name: input.firstName,
-        last_name: input.lastName,
-        employee_number: input.employeeNo,
-        role: input.role,
-        base_airport: input.base,
-        fleet_aircraft_type: fleet,
-        languages: input.languages,
-        licence_number: input.licenceNumber,
-        licence_expires_on: new Date(input.licenceExpiresOn),
-        date_of_birth: input.dateOfBirth === null ? null : new Date(input.dateOfBirth),
-        email: input.email,
-        phone: input.phone,
-      },
-      select: CREW_SELECT,
+    const created = await this.db.$transaction(async (tx) => {
+      const row = await tx.crew.create({
+        data: {
+          first_name: input.firstName,
+          last_name: input.lastName,
+          employee_number: input.employeeNo,
+          role: input.role,
+          base_airport: input.base,
+          fleet_aircraft_type: fleet,
+          languages: input.languages,
+          licence_number: input.licenceNumber,
+          licence_expires_on: new Date(input.licenceExpiresOn),
+          date_of_birth: input.dateOfBirth === null ? null : new Date(input.dateOfBirth),
+          email: input.email,
+          phone: input.phone,
+        },
+        select: CREW_SELECT,
+      })
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'create',
+          entityType: 'crew',
+          entityId: row.id,
+          summary: `Crew ${row.employee_number} ${row.first_name} ${row.last_name} added as ${row.role} at ${row.base_airport}`,
+          after: profileView(row),
+        },
+        tx,
+      )
+      return row
     })
 
     return (await this.memberRows([created]))[0]
@@ -330,7 +382,7 @@ export class SetupCrewService {
    * The two unique columns are re-checked only when they actually move, so saving an
    * unchanged profile does not collide with the crew member's own row.
    */
-  async updateCrew(crewId: string, input: CrewProfileInput): Promise<CrewMemberRow> {
+  async updateCrew(crewId: string, input: CrewProfileInput, actorUserId?: string): Promise<CrewMemberRow> {
     const current = await this.db.crew.findFirst({ where: { id: crewId, deleted_at: null }, select: CREW_SELECT })
     if (!current) throw new NotFoundException(`Crew ${crewId} was not found`)
 
@@ -339,70 +391,107 @@ export class SetupCrewService {
     await this.assertBaseActive(input.base)
     const fleet = await this.resolveFleet(input.fleet)
 
-    const updated = await this.db.crew.update({
-      where: { id: crewId },
-      data: {
-        first_name: input.firstName,
-        last_name: input.lastName,
-        employee_number: input.employeeNo,
-        role: input.role,
-        base_airport: input.base,
-        fleet_aircraft_type: fleet,
-        languages: input.languages,
-        licence_number: input.licenceNumber,
-        licence_expires_on: new Date(input.licenceExpiresOn),
-        date_of_birth: input.dateOfBirth === null ? null : new Date(input.dateOfBirth),
-        email: input.email,
-        phone: input.phone,
-        updated_at: new Date(),
-      },
-      select: CREW_SELECT,
+    const updated = await this.db.$transaction(async (tx) => {
+      const row = await tx.crew.update({
+        where: { id: crewId },
+        data: {
+          first_name: input.firstName,
+          last_name: input.lastName,
+          employee_number: input.employeeNo,
+          role: input.role,
+          base_airport: input.base,
+          fleet_aircraft_type: fleet,
+          languages: input.languages,
+          licence_number: input.licenceNumber,
+          licence_expires_on: new Date(input.licenceExpiresOn),
+          date_of_birth: input.dateOfBirth === null ? null : new Date(input.dateOfBirth),
+          email: input.email,
+          phone: input.phone,
+          updated_at: new Date(),
+        },
+        select: CREW_SELECT,
+      })
+      const moved = changedFields(profileView(current), profileView(row))
+      const contact = (crew: typeof row) => JSON.stringify([crew.date_of_birth, crew.email, crew.phone])
+      const contactMoved = contact(current) !== contact(row)
+      if (contactMoved) moved.after.contactDetailsChanged = true
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'update',
+          entityType: 'crew',
+          entityId: crewId,
+          summary: `Crew ${row.employee_number} ${row.first_name} ${row.last_name} edited: ${Object.keys(moved.after).join(', ') || 'nothing changed'}`,
+          before: moved.before,
+          after: moved.after,
+        },
+        tx,
+      )
+      return row
     })
 
     return (await this.memberRows([updated]))[0]
   }
 
-  async addCertification(crewId: string, input: CertificationInput): Promise<CertificationRow> {
+  async addCertification(crewId: string, input: CertificationInput, actorUserId?: string): Promise<CertificationRow> {
     await this.assertCrewExists(crewId)
     const aircraftType = await this.resolveCertificationType(input.aircraftType)
-    return this.writeCertification(crewId, { name: input.name, aircraft_type: aircraftType }, input.expiresOn)
+    return this.writeCertification(crewId, { name: input.name, aircraft_type: aircraftType }, input.expiresOn, actorUserId)
   }
 
-  async updateCertification(crewId: string, certificationId: string, input: CertificationInput): Promise<CertificationRow> {
+  async updateCertification(
+    crewId: string,
+    certificationId: string,
+    input: CertificationInput,
+    actorUserId?: string,
+  ): Promise<CertificationRow> {
     await this.assertCertificationBelongsToCrew(crewId, certificationId)
     const aircraftType = await this.resolveCertificationType(input.aircraftType)
+    const before = await this.readCertification(certificationId)
     await this.mapDuplicateCertification(() =>
-      this.db.crew_certification.update({
-        where: { id: certificationId },
-        data: { name: input.name, aircraft_type: aircraftType, expires_on: new Date(input.expiresOn) },
+      this.db.$transaction(async (tx) => {
+        await tx.crew_certification.update({
+          where: { id: certificationId },
+          data: { name: input.name, aircraft_type: aircraftType, expires_on: new Date(input.expiresOn) },
+        })
+        await writeRosteringAudit(
+          this.audit,
+          actorUserId,
+          {
+            action: 'update',
+            entityType: 'crew_certification',
+            entityId: certificationId,
+            summary: `Certification ${input.name} of crew ${crewId} edited`,
+            before: { name: before.name, aircraftType: before.aircraftType, expiresOn: before.expiresOn },
+            after: { name: input.name, aircraftType, expiresOn: input.expiresOn },
+          },
+          tx,
+        )
       }),
     )
     return this.readCertification(certificationId)
   }
 
-  /**
-   * Removes a crew member by setting `deleted_at`, so the row and everything that points at it stay in the database
-   * and the employee and licence numbers are free to use again (their unique indexes skip deleted rows).
-   *
-   * Refused while the crew member still holds a seat on a roster, because deleting them would leave a rostered
-   * seat with nobody on it. They are taken off the roster first (Fix & publish), then deleted.
-   */
-  async deleteCrew(crewId: string): Promise<void> {
-    await this.assertCrewExists(crewId)
-    const seats = await this.db.pairing_leg_assignment.count({ where: { crew_id: crewId, unassigned_at: null } })
-    if (seats > 0) {
-      throw new ConflictException(
-        `CREW_ASSIGNED · This crew member holds ${seats} ${seats === 1 ? 'seat' : 'seats'} on a roster. Take them off the roster first.`,
-      )
-    }
-    const now = new Date()
-    await this.db.crew.update({ where: { id: crewId }, data: { deleted_at: now, updated_at: now } })
-  }
-
   /** Hard delete — a certification is a fact about the crew member, not a soft-deleted row. */
-  async removeCertification(crewId: string, certificationId: string): Promise<void> {
+  async removeCertification(crewId: string, certificationId: string, actorUserId?: string): Promise<void> {
     await this.assertCertificationBelongsToCrew(crewId, certificationId)
-    await this.db.crew_certification.delete({ where: { id: certificationId } })
+    const before = await this.readCertification(certificationId)
+    await this.db.$transaction(async (tx) => {
+      await tx.crew_certification.delete({ where: { id: certificationId } })
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'delete',
+          entityType: 'crew_certification',
+          entityId: certificationId,
+          summary: `Certification ${before.name} removed from crew ${crewId}`,
+          before: { name: before.name, aircraftType: before.aircraftType, expiresOn: before.expiresOn },
+        },
+        tx,
+      )
+    })
   }
 
   private async assertCrewExists(crewId: string): Promise<void> {
@@ -435,11 +524,27 @@ export class SetupCrewService {
     crewId: string,
     data: { name: string; aircraft_type: string | null },
     expiresOn: string,
+    actorUserId?: string,
   ): Promise<CertificationRow> {
     const created = await this.mapDuplicateCertification(() =>
-      this.db.crew_certification.create({
-        data: { crew_id: crewId, name: data.name, aircraft_type: data.aircraft_type, expires_on: new Date(expiresOn) },
-        select: { id: true, name: true, aircraft_type: true, expires_on: true },
+      this.db.$transaction(async (tx) => {
+        const row = await tx.crew_certification.create({
+          data: { crew_id: crewId, name: data.name, aircraft_type: data.aircraft_type, expires_on: new Date(expiresOn) },
+          select: { id: true, name: true, aircraft_type: true, expires_on: true },
+        })
+        await writeRosteringAudit(
+          this.audit,
+          actorUserId,
+          {
+            action: 'create',
+            entityType: 'crew_certification',
+            entityId: row.id,
+            summary: `Certification ${row.name} added to crew ${crewId}`,
+            after: { name: row.name, aircraftType: row.aircraft_type, expiresOn },
+          },
+          tx,
+        )
+        return row
       }),
     )
     return { id: created.id, name: created.name, aircraftType: created.aircraft_type, expiresOn: localDate(created.expires_on) as string }
@@ -515,7 +620,7 @@ export class SetupCrewService {
     if (crewIds.length === 0) return duties
 
     const rows = await this.db.pairing_leg_assignment.findMany({
-      where: { crew_id: { in: crewIds }, unassigned_at: null, pairing_leg: { flight: { scheduled_dep_at: { gte: new Date() } } } },
+      where: { crew_id: { in: crewIds }, unassigned_at: null, pairing_leg: { flight: { scheduled_dep_at: { gte: this.clock.now() } } } },
       select: {
         crew_id: true,
         pairing_leg_id: true,
@@ -571,7 +676,7 @@ export class SetupCrewService {
     const hours = new Map<string, number>()
     if (crewIds.length === 0) return hours
 
-    const now = new Date()
+    const now = this.clock.now()
     const since = new Date(now.getTime() - HOURS_WINDOW_DAYS * 86_400_000)
     const rows = await this.db.pairing_leg_assignment.findMany({
       where: { crew_id: { in: crewIds }, unassigned_at: null, pairing_leg: { flight: { scheduled_dep_at: { gte: since, lte: now } } } },

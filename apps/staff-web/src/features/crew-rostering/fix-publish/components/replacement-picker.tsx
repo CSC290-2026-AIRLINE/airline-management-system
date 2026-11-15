@@ -10,6 +10,7 @@
  * and the button. Selecting is one step and pressing the button is another, so the operator can
  * read a candidate's checks against the one they intend to pick without the roster changing.
  */
+import { useState } from 'react'
 import { CheckIcon, CrossIcon } from '../../shared/ui'
 import { ROLE_LABELS, languageName } from '../types/labels'
 import type { RosterLeg } from '../../assign-crew/types/types'
@@ -18,7 +19,8 @@ import type { FixBreak, ReplacementCandidate } from '../types/types'
 interface ReplacementPickerProps {
   /** The break being fixed. Carries the role, so the panel needs no extra props. */
   item: FixBreak
-  chosenId: string | null
+  /** Who is picked. One person, unless the break is short several seats. */
+  chosenIds: readonly string[]
   onChoose: (candidateId: string) => void
   base: string
   /** The leg being crewed, to name the language a local-crew candidate speaks. */
@@ -27,10 +29,11 @@ interface ReplacementPickerProps {
   compact?: boolean
 }
 
-export function ReplacementPicker({ item, chosenId, onChoose, base, leg, compact = false }: ReplacementPickerProps) {
+export function ReplacementPicker({ item, chosenIds, onChoose, base, leg, compact = false }: ReplacementPickerProps) {
   const set = item.replacement
   if (!set) return null
   const bestId = set.candidates.find((candidate) => candidate.allowed)?.member.id
+  const multi = set.seatsToFill > 1
 
   return (
     <section aria-label="Replacement crew" className="mt-4">
@@ -46,10 +49,12 @@ export function ReplacementPicker({ item, chosenId, onChoose, base, leg, compact
             <CandidateCard
               groupName={`candidate-${item.id}-${compact ? 'm' : 'd'}`}
               candidate={candidate}
-              selected={candidate.member.id === chosenId}
+              selected={chosenIds.includes(candidate.member.id)}
+              multi={multi}
               isBest={candidate.member.id === bestId}
               compact={compact}
               subtitle={subtitleOf(candidate, item, base, leg, compact)}
+              item={item}
               onSelect={() => onChoose(candidate.member.id)}
             />
           </li>
@@ -77,25 +82,35 @@ function CandidateCard({
   groupName,
   candidate,
   selected,
+  multi,
   isBest,
   compact,
   subtitle,
+  item,
   onSelect,
 }: {
   groupName: string
   candidate: ReplacementCandidate
   selected: boolean
+  /** Several seats are short, so cards are checkboxes. */
+  multi: boolean
   isBest: boolean
   compact: boolean
   subtitle: string
+  item: FixBreak
   onSelect: () => void
 }) {
   const { member, checks, allowed } = candidate
   const failures = checks.filter((check) => !check.ok)
   const active = selected && allowed
+  // A hint that follows the pointer over a legal card that is not picked yet: choosing is one step, pressing the button another.
+  const [tip, setTip] = useState<{ x: number; y: number } | null>(null)
+  const hint = allowed && !active && !compact
 
   return (
     <label
+      onMouseMove={hint ? (event) => setTip({ x: event.clientX, y: event.clientY }) : undefined}
+      onMouseLeave={hint ? () => setTip(null) : undefined}
       className={`group relative block rounded-xl border bg-white px-4 py-3.5 transition-colors ${
         allowed ? 'cursor-pointer' : 'cursor-not-allowed'
       } ${
@@ -107,7 +122,7 @@ function CandidateCard({
       }`}
     >
       <input
-        type="radio"
+        type={multi ? 'checkbox' : 'radio'}
         name={groupName}
         checked={active}
         disabled={!allowed}
@@ -119,11 +134,11 @@ function CandidateCard({
       <div className="flex items-start gap-3">
         <span
           aria-hidden="true"
-          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary ${
+          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center ${multi ? 'rounded-md' : 'rounded-full'} border-2 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary ${
             active ? 'border-btn-yellow' : 'border-border-desc'
           }`}
         >
-          {active && <span className="h-2.5 w-2.5 rounded-full bg-btn-navy" />}
+          {active && <span className={`h-2.5 w-2.5 ${multi ? 'rounded-sm' : 'rounded-full'} bg-btn-navy`} />}
         </span>
 
         <div className="min-w-0 flex-1">
@@ -169,6 +184,15 @@ function CandidateCard({
           )}
         </div>
       </div>
+      {hint && tip && (
+        <span
+          role="tooltip"
+          style={{ left: tip.x + 14, top: tip.y + 16 }}
+          className="pointer-events-none fixed z-50 rounded-md bg-primary px-2.5 py-1.5 text-[12px] font-medium whitespace-nowrap text-white shadow-lg"
+        >
+          Select {member.name} · then press the {item.removed || item.code === 'POLICE_MIN' || multi ? 'add' : 'swap'} button
+        </span>
+      )}
     </label>
   )
 }

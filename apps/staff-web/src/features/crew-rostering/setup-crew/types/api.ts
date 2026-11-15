@@ -51,7 +51,7 @@ function toProfileBody(input: CrewProfileInput) {
 
 export function createSetupCrewApi(fetchWithAuth: FetchWithAuth) {
   const request = <T>(path: string, init?: RequestInit) => requestJson<T>(fetchWithAuth, `${BASE_PATH}${path}`, init)
-  const send = (method: 'POST' | 'PATCH', body: unknown): RequestInit => ({ method, body: JSON.stringify(body) })
+  const send = (method: 'POST' | 'PUT', body: unknown): RequestInit => ({ method, body: JSON.stringify(body) })
 
   return {
     async listOptions(): Promise<SetupCrewOptions> {
@@ -78,17 +78,14 @@ export function createSetupCrewApi(fetchWithAuth: FetchWithAuth) {
     },
 
     async updateCrew(crewId: string, input: CrewProfileInput): Promise<CrewMember> {
-      return toCrewMember(await request<CrewPayload>(`/crew/${crewId}`, send('PATCH', toProfileBody(input))))
+      return toCrewMember(await request<CrewPayload>(`/crew/${crewId}`, send('PUT', toProfileBody(input))))
     },
-
-    /** A soft delete on the server: the row is marked deleted, not removed. Refused while the person holds a seat on a roster. */
-    deleteCrew: (crewId: string) => requestVoid(fetchWithAuth, `${BASE_PATH}/crew/${crewId}`, { method: 'DELETE' }),
 
     addCertification: (crewId: string, input: CertificationInput) =>
       request<Certification>(`/crew/${crewId}/certifications`, send('POST', input)),
 
     updateCertification: (crewId: string, certificationId: string, input: CertificationInput) =>
-      request<Certification>(`/crew/${crewId}/certifications/${certificationId}`, send('PATCH', input)),
+      request<Certification>(`/crew/${crewId}/certifications/${certificationId}`, send('PUT', input)),
 
     removeCertification: (crewId: string, certificationId: string) =>
       requestVoid(fetchWithAuth, `${BASE_PATH}/crew/${crewId}/certifications/${certificationId}`, { method: 'DELETE' }),

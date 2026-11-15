@@ -20,12 +20,15 @@ interface PairingListPayload {
   pairings: PairingPayload[]
   flights: ScheduledFlight[]
   rosterRun: RosterRun | null
+  /** Pairings of the window already committed to a run, with that run's own dates. */
+  committed: CommittedPairing[]
 }
 
 export interface PairingList {
   pairings: Pairing[]
   flights: ScheduledFlight[]
   rosterRun: RosterRun | null
+  committed: CommittedPairing[]
 }
 
 export interface SaveLegsResult {
@@ -62,8 +65,8 @@ export interface CommitDraft {
 
 export interface CommitResult {
   rosterRun: RosterRun
-  /** The pairings that were stored, with the id and code each one was given. */
-  committed: { ref: string; id: string; code: string }[]
+  /** The pairings that were stored, with the code each one was given. */
+  committed: { ref: string; code: string }[]
   /** Refs of drafts that failed a legality check on the server. */
   skippedInvalid: string[]
   skippedOutsideWindow: string[]
@@ -71,24 +74,25 @@ export interface CommitResult {
   skippedTaken: string[]
 }
 
-/** The backend's error message, so a 409 like `PAIRING_IN_USE` reaches the operator verbatim. */
+/** The backend's error: its message for the operator, and its `code` (such as `PAIRING_IN_USE`) for the UI to switch on. */
 export class ApiError extends Error {
   readonly status: number
+  readonly code: string | undefined
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
-/** A non-2xx answer as an `ApiError` carrying the backend's message. */
+/** A non-2xx answer as an `ApiError`. The body is `{ error: { code, message, details? } }`. */
 async function toApiError(response: Response): Promise<ApiError> {
-  const body = (await response.json().catch(() => null)) as { message?: string | string[] } | null
-  const message = Array.isArray(body?.message) ? body.message.join(' ') : body?.message
-  return new ApiError(message ?? `Request failed (${response.status})`, response.status)
+  const body = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null
+  return new ApiError(body?.error?.message ?? `Request failed (${response.status})`, response.status, body?.error?.code)
 }
 
-/** JSON request to the API; a non-2xx answer becomes an `ApiError` carrying the backend's message. */
+/** JSON request to the API; a non-2xx answer becomes an `ApiError` carrying the backend's message and code. */
 export async function requestJson<T>(fetchWithAuth: FetchWithAuth, path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetchWithAuth(path, {
     ...init,
@@ -122,6 +126,12 @@ function query(params: BuildPairingParams): string {
 
 export function createBuildPairingsApi(fetchWithAuth: FetchWithAuth) {
   return {
+    /** The simulation clock's now (an ISO instant): the real time until Platform shifts it. */
+    async getClock(): Promise<Date> {
+      const { now } = await request<{ now: string }>(fetchWithAuth, '/clock')
+      return new Date(now)
+    },
+
     async listBases(): Promise<string[]> {
       const rows = await request<{ code: string; name: string }[]>(fetchWithAuth, '/bases')
       return rows.map((row) => row.code)
@@ -133,11 +143,11 @@ export function createBuildPairingsApi(fetchWithAuth: FetchWithAuth) {
 
     /** A fresh random proposal. Nothing is stored until `commit`. */
     async generate(params: BuildPairingParams): Promise<GenerateResult> {
-      const payload = await request<PairingListPayload & { committed: CommittedPairing[] }>(fetchWithAuth, '/pairings/generate', {
+      const payload = await request<PairingListPayload>(fetchWithAuth, '/pairings/generate', {
         method: 'POST',
         body: JSON.stringify(params),
       })
-      return { ...toList(payload), committed: payload.committed }
+      return toList(payload)
     },
 
     async saveLegs(pairingId: string, legs: readonly FlightLeg[]): Promise<SaveLegsResult> {

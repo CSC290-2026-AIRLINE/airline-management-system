@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { formatDay, formatTime } from '../types/format'
-import { validatePairing } from '../types/pairing-engine'
+import { explainNoFix, suggestFixes, validatePairing, type PairingFix } from '../types/pairing-engine'
 import type { FlightLeg, Pairing } from '../types/types'
 import { ArrowDownIcon, ArrowUpIcon, BaseModalOverlay, Button, GripIcon, MinusIcon, PlusIcon } from '../../shared/ui'
 import { AddLegModal } from './add-leg-modal'
@@ -30,6 +30,13 @@ export function EditLegsModal({
 
   const wasValid = useMemo(() => validatePairing(pairing).status === 'passed', [pairing])
   const preview = useMemo(() => validatePairing({ ...pairing, legs }), [pairing, legs])
+  // Worked out from the flights the API sent for this window, against the legs as they are right now in this dialog.
+  const problems = useMemo(() => preview.checks.filter((check) => check.status === 'failed'), [preview])
+  const fixes = useMemo(() => suggestFixes({ ...pairing, legs }, allFlights), [pairing, legs, allFlights])
+  const noFixReason = useMemo(
+    () => (fixes.length === 0 ? explainNoFix({ ...pairing, legs }, allFlights) : ''),
+    [fixes, pairing, legs, allFlights],
+  )
   const dirty = legs.map((leg) => leg.flightId).join() !== pairing.legs.map((leg) => leg.flightId).join()
 
   const route = legs.length === 0 ? [] : [legs[0].origin, ...legs.map((leg) => leg.destination)]
@@ -75,6 +82,32 @@ export function EditLegsModal({
           {pairing.code} · <span className="sm:hidden">{route.join(' → ')}</span>
           <span className="hidden sm:inline">{route.join(' → ')}</span>
         </p>
+
+        {problems.length > 0 && (
+          <section aria-label="What to fix" className="mt-3 rounded-xl border border-invalid/30 bg-invalid/5 px-4 py-3.5">
+            <p className="text-[11px] font-bold tracking-widest text-invalid uppercase">
+              {pairing.code} is Invalid · {problems.length} {problems.length === 1 ? 'problem' : 'problems'}
+            </p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {problems.map((problem) => (
+                <li key={problem.code} className="text-sm text-invalid">
+                  <span className="font-bold">{problem.code}</span> · {problem.detail}
+                </li>
+              ))}
+            </ul>
+
+            <p className="mt-3.5 text-[11px] font-bold tracking-widest text-primary-text/55 uppercase">Suggested fixes</p>
+            {fixes.length > 0 ? (
+              <ul className="mt-2 flex flex-col gap-2">
+                {fixes.map((fix) => (
+                  <FixRow key={fix.id} fix={fix} onApply={() => setLegs(fix.legs)} />
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm leading-relaxed text-primary-text/75">{noFixReason}</p>
+            )}
+          </section>
+        )}
 
         {wasValid && (
           <p className="mt-3 rounded-lg border border-amber-line bg-amber-tint px-3.5 py-2.5 text-sm font-semibold text-amber-ink">
@@ -131,10 +164,23 @@ export function EditLegsModal({
           ))}
         </ol>
 
-        <Button variant="primary" className="mt-4 w-full sm:w-auto" onClick={() => setAdding(true)}>
+        {/* Two buttons rather than one with overriding classes: colour utilities for the two layouts fought in the
+            built stylesheet and left white text on a white phone button. Only one of them is ever displayed. */}
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="mt-4 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-border-desc/70 bg-white px-4 text-sm font-bold text-primary-text transition-colors hover:bg-page-bg sm:hidden"
+        >
+          + Add leg
+        </button>
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="mt-4 hidden h-10 items-center justify-center gap-1.5 rounded-lg bg-btn-navy px-4 text-sm font-bold text-white transition-colors hover:bg-btn-navy-hover sm:inline-flex"
+        >
           <PlusIcon className="h-3.5 w-3.5" />
           Add leg
-        </Button>
+        </button>
 
         {dirty && (
           <p
@@ -181,6 +227,21 @@ export function EditLegsModal({
         />
       )}
     </>
+  )
+}
+
+/** One suggested repair. Applying it changes the legs in this dialog only; nothing is saved until Save & re-check. */
+function FixRow({ fix, onApply }: { fix: PairingFix; onApply: () => void }) {
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-lg border border-valid/30 bg-white px-3.5 py-2.5">
+      <span className="min-w-0">
+        <span className="block text-sm font-bold text-primary-text">{fix.title}</span>
+        <span className="block text-xs leading-snug text-primary-text/60">{fix.detail}</span>
+      </span>
+      <Button variant="primary" className="shrink-0 px-3 py-1.5" onClick={onApply}>
+        Apply
+      </Button>
+    </li>
   )
 }
 

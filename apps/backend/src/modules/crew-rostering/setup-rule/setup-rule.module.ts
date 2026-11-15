@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { AuditModule } from '../../admin-console/audit/audit.module'
 import { SetupRuleController } from './setup-rule.controller'
 import { SetupRuleService } from './setup-rule.service'
 
@@ -13,6 +14,7 @@ import { SetupRuleService } from './setup-rule.service'
  * Routes are authenticated by default via the global `JwtAuthGuard`; none is `@Public()`.
  */
 @Module({
+  imports: [AuditModule],
   controllers: [SetupRuleController],
   providers: [SetupRuleService],
   exports: [SetupRuleService],

@@ -11,14 +11,13 @@
  */
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertBanner, ChevronLeftIcon, EmptyFaceIcon, Toast } from '../shared/ui'
+import { AlertBanner, ArrowLeftIcon, EmptyFaceIcon, Toast } from '../shared/ui'
 import { CrewDirectoryTable, NoCrewMatchState } from './components/crew-directory-table'
 import { CrewFilterBar } from './components/crew-filter-bar'
 import { CrewProfileView } from './components/crew-profile-view'
 import { CrewSummaryCards } from './components/crew-summary-cards'
 import { CertificationModal } from './modals/certification-modal'
 import { CrewProfileModal } from './modals/crew-profile-modal'
-import { DeleteCrewModal } from './modals/delete-crew-modal'
 import { useSetupCrew } from './types/use-setup-crew'
 import type { Certification, CertificationInput } from './types/types'
 
@@ -28,7 +27,6 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
 
   const [creating, setCreating] = useState(false)
   const [editingProfile, setEditingProfile] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [addingCertification, setAddingCertification] = useState(false)
   const [editingCertification, setEditingCertification] = useState<Certification | null>(null)
 
@@ -46,15 +44,26 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="flex min-w-0 flex-1 flex-col gap-5 px-4 py-6 sm:px-6 sm:py-7 lg:px-8">
+      <div className="flex min-w-0 flex-1 flex-col gap-5 px-4 pt-1 pb-8 lg:px-9 lg:py-7 lg:pb-9">
+        <header className="max-lg:mt-4">
+          <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase lg:text-3xl">
+            {crew ? 'Crew profile' : 'Crew'}
+          </h1>
+          <p className="mt-1.5 text-sm leading-relaxed text-primary-text/60 lg:text-base">
+            {crew
+              ? 'Profile, qualifications, eligibility and upcoming duties.'
+              : 'Crew profiles used for automatic assignment: role, home base and languages.'}
+          </p>
+        </header>
+
         {crew ? (
           <>
             <button
               type="button"
               onClick={() => navigate({ to: '/setup-crew' })}
-              className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-primary-text/70 transition-colors hover:text-primary"
+              className="flex w-fit items-center gap-1.5 text-sm font-semibold text-blue-700 transition-colors hover:text-blue-800 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
             >
-              <ChevronLeftIcon className="h-4 w-4" />
+              <ArrowLeftIcon className="h-4 w-4" />
               Back
             </button>
 
@@ -62,54 +71,62 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
               crew={crew}
               expiryWarningDays={state.expiryWarningDays}
               onEditProfile={() => setEditingProfile(true)}
-              onDelete={() => setDeleting(true)}
               onAddCertification={() => setAddingCertification(true)}
               onEditCertification={(certification) => setEditingCertification(certification)}
             />
           </>
         ) : (
           <>
-            <header>
-              <h1 className="text-xl font-extrabold tracking-tight text-primary-text uppercase sm:text-2xl">Setup crew</h1>
-              <p className="mt-1 text-sm text-primary-text/60">
-                The master crew list. Licence, type ratings and 28-day hours decide who auto-assign can put on a flight.
-              </p>
-            </header>
-
             <CrewSummaryCards metrics={state.metrics} />
 
-            <CrewFilterBar
-              filters={state.filters}
-              bases={state.bases}
-              resultCount={state.visibleCrew.length}
-              onSearchChange={state.setSearch}
-              onBaseChange={state.setBase}
-              onRoleChange={state.setRole}
-              onCreate={() => setCreating(true)}
-            />
+            {/* One card from `lg`, holding the filters and the table. On a phone the filters sit on the page and only the list is a card. */}
+            <div className="flex flex-col gap-5 lg:gap-6 lg:rounded-2xl lg:border lg:border-border-desc/40 lg:bg-card-bg lg:p-7">
+              <CrewFilterBar
+                filters={state.filters}
+                bases={state.bases}
+                resultCount={state.visibleCrew.length}
+                onSearchChange={state.setSearch}
+                onBaseChange={state.setBase}
+                onRoleChange={state.setRole}
+                onCreate={() => setCreating(true)}
+              />
 
-            {isLoading && <p className="text-sm text-primary-text/60">Loading crew…</p>}
+              {isLoading && <p className="text-sm text-primary-text/60">Loading crew…</p>}
 
-            {state.loadState === 'error' && <AlertBanner tone="warning">Could not load the crew list. Try again shortly.</AlertBanner>}
+              {state.loadState === 'error' && <AlertBanner tone="warning">Could not load the crew list. Try again shortly.</AlertBanner>}
 
-            {/* An id that no longer resolves is a dead link, not an empty roster. */}
-            {crewId && !crew && !isLoading && state.loadState !== 'error' && <UnknownCrewState />}
+              {/* An id that no longer resolves is a dead link, not an empty roster. */}
+              {crewId && !crew && !isLoading && state.loadState !== 'error' && <UnknownCrewState />}
 
-            {!crewId && state.loadState === 'idle' && state.visibleCrew.length === 0 && (
-              <NoCrewMatchState searchTerm={state.filters.search} onClear={state.clearFilters} />
-            )}
+              {state.loadState === 'idle' && (
+                <section className="max-lg:rounded-2xl max-lg:border max-lg:border-border-desc/40 max-lg:bg-card-bg max-lg:p-5">
+                  <h2 className="text-lg font-extrabold tracking-tight text-primary-text lg:text-2xl">
+                    <span className="lg:hidden">Crew profiles</span>
+                    <span className="max-lg:hidden">Profiles</span>
+                  </h2>
+                  <p className="mt-1 text-xs text-primary-text/55 lg:text-sm">
+                    <span className="lg:hidden">
+                      {state.visibleCrew.length} of {state.metrics.totalCrew} crew members shown
+                    </span>
+                    <span className="max-lg:hidden">
+                      Showing {state.visibleCrew.length} of {state.metrics.totalCrew} crew members
+                    </span>
+                  </p>
 
-            {!crewId && state.loadState === 'idle' && state.visibleCrew.length > 0 && (
-              <>
-                <p className="text-xs font-medium text-primary-text/55">
-                  {state.visibleCrew.length} of {state.metrics.totalCrew} crew
-                </p>
-                <CrewDirectoryTable
-                  crew={state.visibleCrew}
-                  onSelect={(id) => navigate({ to: '/setup-crew/$crewId', params: { crewId: id } })}
-                />
-              </>
-            )}
+                  <div className="mt-4">
+                    <CrewDirectoryTable
+                      crew={state.visibleCrew}
+                      onSelect={(id) => navigate({ to: '/setup-crew/$crewId', params: { crewId: id } })}
+                      empty={<NoCrewMatchState searchTerm={state.filters.search} onClear={state.clearFilters} />}
+                    />
+                  </div>
+
+                  <p className="mt-4 text-xs leading-relaxed text-primary-text/55 lg:text-[13px]">
+                    Languages determine local-crew eligibility. Police are rostered as crew and fly as passengers.
+                  </p>
+                </section>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -144,18 +161,6 @@ export function SetupCrewPage({ crewId }: { crewId?: string }) {
           onCancel={() => setEditingProfile(false)}
           onSubmit={async (input) => {
             if (await state.updateCrew(crew.id, input)) setEditingProfile(false)
-          }}
-        />
-      )}
-
-      {deleting && crew && (
-        <DeleteCrewModal
-          crew={crew}
-          onCancel={() => setDeleting(false)}
-          onConfirm={async () => {
-            const deleted = await state.deleteCrew(crew.id)
-            setDeleting(false)
-            if (deleted) void navigate({ to: '/setup-crew' })
           }}
         />
       )}

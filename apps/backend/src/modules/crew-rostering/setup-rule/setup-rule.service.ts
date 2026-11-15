@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { AuditService } from '../../admin-console/audit/audit.service'
+import { changedFields, writeRosteringAudit } from '../rostering-audit'
 import { LOCAL_CREW_KEY_PREFIX } from '../base-context'
 
 /**
@@ -145,7 +147,10 @@ function num(value: string | number | null | undefined, fallback: number): numbe
 
 @Injectable()
 export class SetupRuleService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: AuditService,
+  ) {}
 
   /**
    * Everything the Rules page loads, in one response.
@@ -231,6 +236,7 @@ export class SetupRuleService {
     const actor = actorUserId
       ? await this.db.staff.findFirst({ where: { user_id: actorUserId, deleted_at: null }, select: { id: true } })
       : null
+    const before = await this.getDefaults()
 
     await this.db.$transaction(async (tx) => {
       // A country rule may only tighten the baseline. A baseline that moves past one would leave it looser than the
@@ -254,6 +260,20 @@ export class SetupRuleService {
           create: { key, value, updated_by: actor?.id ?? null },
         })
       }
+      const moved = changedFields({ ...before }, { ...next })
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'update',
+          entityType: 'crew_setting',
+          entityId: 'defaults',
+          summary: `Default legality limits edited: ${Object.keys(moved.after).join(', ') || 'nothing changed'}`,
+          before: moved.before,
+          after: moved.after,
+        },
+        tx,
+      )
     })
 
     return next
@@ -303,7 +323,7 @@ export class SetupRuleService {
    * a *longer* duty day than the company allows is rejected rather than silently
    * written, because that is the one edit that would make the roster less legal.
    */
-  async createCountryLimit(input: CountryLimitInput): Promise<CountryLimitRow> {
+  async createCountryLimit(input: CountryLimitInput, actorUserId?: string): Promise<CountryLimitRow> {
     const code = await this.resolveCountryCode(input.country)
     const existing = await this.db.country_legality_rule.findUnique({ where: { country_code: code }, select: { country_code: true } })
     if (existing) throw new BadRequestException(`${countryLabel(code)} already has a rule`)
@@ -315,35 +335,74 @@ export class SetupRuleService {
         data: { country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours },
       })
       await this.writeLocalCrew(tx, code, input.minLocalCrew)
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'create',
+          entityType: 'country_legality_rule',
+          entityId: code,
+          summary: `Stricter limits added for ${countryLabel(code)}`,
+          after: { minRestHours: input.minRestHours, maxDutyHours: input.maxDutyHours, minLocalCrew: input.minLocalCrew },
+        },
+        tx,
+      )
     })
 
     return (await this.limitRows([{ country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours }]))[0]
   }
 
-  async updateCountryLimit(countryCode: string, input: CountryLimitInput): Promise<CountryLimitRow> {
+  async updateCountryLimit(countryCode: string, input: CountryLimitInput, actorUserId?: string): Promise<CountryLimitRow> {
     const code = await this.resolveCountryCode(countryCode)
     await this.assertRuleExists(code)
     await this.assertTightens(input.minRestHours, input.maxDutyHours)
     this.assertLocalCrew(input.minLocalCrew)
 
     await this.db.$transaction(async (tx) => {
+      const was = await tx.country_legality_rule.findUnique({ where: { country_code: code } })
       await tx.country_legality_rule.update({
         where: { country_code: code },
         data: { min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours },
       })
       await this.writeLocalCrew(tx, code, input.minLocalCrew)
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'update',
+          entityType: 'country_legality_rule',
+          entityId: code,
+          summary: `Stricter limits edited for ${countryLabel(code)}`,
+          before: { minRestHours: was ? Number(was.min_rest_hours) : null, maxDutyHours: was ? Number(was.max_duty_hours) : null },
+          after: { minRestHours: input.minRestHours, maxDutyHours: input.maxDutyHours, minLocalCrew: input.minLocalCrew },
+        },
+        tx,
+      )
     })
     return (await this.limitRows([{ country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours }]))[0]
   }
 
   /** Removes the country override, which puts the destination back on the baseline. */
-  async deleteCountryLimit(countryCode: string): Promise<void> {
+  async deleteCountryLimit(countryCode: string, actorUserId?: string): Promise<void> {
     const code = await this.resolveCountryCode(countryCode)
     await this.assertRuleExists(code)
     // The country's own local-crew number goes with its rule, so it goes back to the default too.
     await this.db.$transaction(async (tx) => {
+      const was = await tx.country_legality_rule.findUnique({ where: { country_code: code } })
       await tx.country_legality_rule.delete({ where: { country_code: code } })
       await tx.crew_setting.deleteMany({ where: { key: `${LOCAL_CREW_KEY_PREFIX}${code}` } })
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'delete',
+          entityType: 'country_legality_rule',
+          entityId: code,
+          summary: `Stricter limits removed for ${countryLabel(code)}, back to the defaults`,
+          before: { minRestHours: was ? Number(was.min_rest_hours) : null, maxDutyHours: was ? Number(was.max_duty_hours) : null },
+        },
+        tx,
+      )
     })
   }
 
@@ -374,7 +433,7 @@ export class SetupRuleService {
    * and an added one is an insert. Done in a transaction because a half-written
    * mapping would report a local crew member the page does not have.
    */
-  async upsertCountryLanguages(countryCode: string, input: CountryLanguageInput): Promise<CountryLanguageRow> {
+  async upsertCountryLanguages(countryCode: string, input: CountryLanguageInput, actorUserId?: string): Promise<CountryLanguageRow> {
     const code = await this.resolveCountryCode(countryCode)
     if (input.country && (await this.resolveCountryCode(input.country)) !== code) {
       throw new BadRequestException(`country ${input.country} does not match ${countryLabel(code)} in the URL`)
@@ -382,10 +441,24 @@ export class SetupRuleService {
     const wanted = [...new Set(input.languages.map((language) => language.toLowerCase()))]
 
     await this.db.$transaction(async (tx) => {
+      const was = await tx.country_language.findMany({ where: { country_code: code }, select: { language_code: true } })
       await tx.country_language.deleteMany({ where: { country_code: code } })
       if (wanted.length > 0) {
         await tx.country_language.createMany({ data: wanted.map((languageCode) => ({ country_code: code, language_code: languageCode })) })
       }
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: was.length === 0 ? 'create' : 'update',
+          entityType: 'country_language',
+          entityId: code,
+          summary: `Local languages for ${countryLabel(code)} set to ${wanted.join(', ') || 'none'}`,
+          before: { languages: was.map((row) => row.language_code).sort() },
+          after: { languages: [...wanted].sort() },
+        },
+        tx,
+      )
     })
 
     return {
@@ -396,10 +469,25 @@ export class SetupRuleService {
     }
   }
 
-  async deleteCountryLanguages(countryCode: string): Promise<void> {
+  async deleteCountryLanguages(countryCode: string, actorUserId?: string): Promise<void> {
     const code = await this.resolveCountryCode(countryCode)
-    const { count } = await this.db.country_language.deleteMany({ where: { country_code: code } })
-    if (count === 0) throw new NotFoundException(`${countryLabel(code)} has no language mapping`)
+    await this.db.$transaction(async (tx) => {
+      const was = await tx.country_language.findMany({ where: { country_code: code }, select: { language_code: true } })
+      if (was.length === 0) throw new NotFoundException(`${countryLabel(code)} has no language mapping`)
+      await tx.country_language.deleteMany({ where: { country_code: code } })
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'delete',
+          entityType: 'country_language',
+          entityId: code,
+          summary: `Local languages removed for ${countryLabel(code)}`,
+          before: { languages: was.map((row) => row.language_code).sort() },
+        },
+        tx,
+      )
+    })
   }
 
   /** Accepts a 2-letter code in either case and returns the lower-case code the tables store. */

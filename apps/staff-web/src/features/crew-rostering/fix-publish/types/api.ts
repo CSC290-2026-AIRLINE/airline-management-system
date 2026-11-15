@@ -1,6 +1,6 @@
 import { requestJson, type FetchWithAuth } from '../../build-pairings/types/api'
 import type { BuildPairingParams } from '../../build-pairings/types/types'
-import type { FixOutcome, FixPublishData } from './types'
+import type { FixOutcome, FixPublishData, PublishedRunSummary } from './types'
 
 /**
  * Calls to `/api/crew-rostering/fix-publish`, through `fetchWithAuth` so every request
@@ -9,7 +9,6 @@ import type { FixOutcome, FixPublishData } from './types'
  */
 
 const BASE_PATH = '/api/crew-rostering/fix-publish'
-const NEXT_RUN_PATH = '/api/crew-rostering/build-pairing/runs/next'
 
 export function createFixPublishApi(fetchWithAuth: FetchWithAuth) {
   const request = <T>(path: string, body?: unknown) =>
@@ -20,15 +19,11 @@ export function createFixPublishApi(fetchWithAuth: FetchWithAuth) {
     getState: (params: BuildPairingParams) =>
       request<FixPublishData>(`/state?${new URLSearchParams({ dateFrom: params.dateFrom, dateTo: params.dateTo, base: params.base })}`),
 
-    /**
-     * Starts the next draft roster run for the window from the drafts the last one left out. `rosterRun` is null when
-     * there was nothing to carry over.
-     */
-    startNextRun: (params: BuildPairingParams) =>
-      requestJson<{ rosterRun: { id: string } | null; moved: number; left: number }>(fetchWithAuth, NEXT_RUN_PATH, {
-        method: 'POST',
-        body: JSON.stringify(params),
-      }),
+    /** One run by its id, so a published roster reopens whatever else shares its window. */
+    getRun: (rosterRunId: string) => request<FixPublishData>(`/runs/${rosterRunId}`),
+
+    /** Every published run, newest first. */
+    listPublished: () => request<PublishedRunSummary[]>('/published'),
 
     check: (rosterRunId: string) => post<FixPublishData>(`/runs/${rosterRunId}/check`),
 

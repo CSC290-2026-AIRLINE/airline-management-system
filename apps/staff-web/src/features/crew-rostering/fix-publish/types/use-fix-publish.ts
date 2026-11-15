@@ -61,9 +61,8 @@ export interface FixPublishState {
   canPublish: boolean
   publishChecks: PublishCheck[]
   publish: () => void
-  /** Starts the next roster run from the pairings the last one left out. Resolves `true` when there is a run to carry on in. */
-  startNextRun: () => Promise<boolean>
-  swapIn: (breakId: string, candidateId: string) => void
+  /** Puts each chosen person on the seat, one request after the other; the first rejection stops the rest. */
+  swapIn: (breakId: string, candidateIds: readonly string[]) => void
   overrideBreak: (breakId: string, reason: string) => void
   /** True once a seat a sick call left open has been refilled. */
   isUpdated: boolean
@@ -76,6 +75,10 @@ export interface FixPublishState {
   rosterFor: (legId: string) => LegAssignment | undefined
   /** Legs that are still missing a seat. */
   uncoveredLegIds: readonly string[]
+  /** Pairings left in a new draft run after this roster was published: the next round starts in Assign crew with these. */
+  remainingPairings: number
+  /** The URL asked to open straight in the fix workspace. */
+  startInFix: boolean
 }
 
 export function useFixPublish(): FixPublishState {
@@ -91,6 +94,9 @@ export function useFixPublish(): FixPublishState {
 
   const search = useSearch({ strict: false }) as Record<string, unknown>
   const [params] = useState<BuildPairingParams>(() => ({ ...DEFAULT_PARAMS, ...parseWindowSearch(search) }))
+  // A run named in the URL (a published roster reopened from the history page) wins over the window, which could
+  // hold a newer draft beside it.
+  const [{ runId, fix: startInFix = false }] = useState(() => parseWindowSearch(search))
 
   const [data, setData] = useState<FixPublishData | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -104,8 +110,7 @@ export function useFixPublish(): FixPublishState {
     if (!signedIn) return
     let cancelled = false
     const api = getApi()
-    api
-      .getState(params)
+    ;(runId ? api.getRun(runId) : api.getState(params))
       // Opening the page re-checks every rule first, so the breaks shown are what the rules say
       // about the roster as it is now, and a run nobody has crewed yet cannot look ready to publish.
       .then((loaded) => (loaded.rosterRun ? api.check(loaded.rosterRun.id) : loaded))
@@ -122,7 +127,7 @@ export function useFixPublish(): FixPublishState {
     return () => {
       cancelled = true
     }
-  }, [getApi, signedIn, params])
+  }, [getApi, signedIn, params, runId])
 
   const breaks = useMemo(() => [...(data?.breaks ?? [])].sort((a, b) => a.position - b.position), [data])
   const openBreaks = useMemo(() => breaks.filter((item) => item.resolution === undefined), [breaks])
@@ -147,14 +152,31 @@ export function useFixPublish(): FixPublishState {
   }, [])
 
   const swapIn = useCallback(
-    (breakId: string, candidateId: string) => {
-      if (isBusy) return
+    (breakId: string, candidateIds: readonly string[]) => {
+      if (isBusy || candidateIds.length === 0) return
       const target = breaks.find((item) => item.id === breakId)
-      const who = target?.replacement?.candidates.find((candidate) => candidate.member.id === candidateId)?.member.name
-      void edit(() => getApi().swap(breakId, candidateId)).then((answer) => {
+      const who = target?.replacement?.candidates.find((candidate) => candidate.member.id === candidateIds[0])?.member.name
+      let stoppedBy: string | null = null
+      void edit(async () => {
+        let last: FixOutcome | null = null
+        for (const candidateId of candidateIds) {
+          try {
+            last = await getApi().swap(breakId, candidateId)
+          } catch (error) {
+            // The first one failing is the whole edit failing; a later one leaves what was already added in place.
+            if (!last) throw error
+            stoppedBy = error instanceof Error ? error.message : 'A swap failed.'
+            break
+          }
+          if (last.closed) break
+        }
+        return last as FixOutcome
+      }).then((answer) => {
+        if (stoppedBy) setLoadError(stoppedBy)
         if (!answer || !('banner' in answer)) return
         setFixNotice(answer.banner)
-        setSelectedId(null)
+        // A seat still short keeps its item selected, so the next one can be added straight away.
+        if (answer.closed) setSelectedId(null)
         // On a live roster, filling an empty seat is the "roster updated" moment.
         if (answer.closed && status === 'published' && target) {
           setUpdateNote(`${who ?? 'A replacement'} filled the open seat on ${target.flightNumber}.`)
@@ -196,20 +218,6 @@ export function useFixPublish(): FixPublishState {
     void edit(() => getApi().publish(runId)).then(() => setSelectedId(null))
   }, [canPublish, data, edit, getApi])
 
-  const startNextRun = useCallback(async (): Promise<boolean> => {
-    if (isBusy) return false
-    setIsBusy(true)
-    try {
-      const next = await getApi().startNextRun(params)
-      return next.rosterRun !== null
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Could not start the next roster run.')
-      return false
-    } finally {
-      setIsBusy(false)
-    }
-  }, [getApi, isBusy, params])
-
   const recheck = useCallback(() => {
     const runId = data?.rosterRun?.id
     if (!runId || isBusy) return
@@ -239,9 +247,12 @@ export function useFixPublish(): FixPublishState {
       }
       if (updateNote) return { tone: 'success', text: `Roster updated · ${updateNote}` }
       const range = formatDateRange(data.rosterRun.dateFrom, data.rosterRun.dateTo)
+      const left = data.remainingPairings
       return {
         tone: 'success',
-        text: `Roster published · ${range} · ${data.assignments.length} legs. Crew notification (Feature 13) is not connected yet.`,
+        text: `Roster published · ${range} · ${data.assignments.length} legs.${
+          left > 0 ? ` ${left} ${left === 1 ? 'pairing is' : 'pairings are'} still to crew: continue in Assign crew.` : ''
+        } Crew notification (Feature 13) is not connected yet.`,
       }
     }
 
@@ -258,6 +269,8 @@ export function useFixPublish(): FixPublishState {
           overridden > 0
             ? `All breaks closed · ${fixed} fixed, ${overridden} overridden with a reason. The roster is ready to publish.`
             : 'All breaks fixed · the roster is legal and ready to publish.',
+        shortText:
+          overridden > 0 ? `All breaks closed · ${fixed} fixed, ${overridden} overridden with a reason. Ready to publish.` : undefined,
       }
     }
 
@@ -293,7 +306,6 @@ export function useFixPublish(): FixPublishState {
     canPublish,
     publishChecks: data?.publishChecks ?? [],
     publish,
-    startNextRun,
     swapIn,
     overrideBreak,
     isUpdated: updateNote !== null,
@@ -302,5 +314,7 @@ export function useFixPublish(): FixPublishState {
     recheck,
     rosterFor,
     uncoveredLegIds: data?.uncoveredLegIds ?? [],
+    remainingPairings: data?.remainingPairings ?? 0,
+    startInFix,
   }
 }

@@ -6,6 +6,7 @@ import type { SetupCrewService } from './setup-crew.service'
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
 
+const USER = { id: 'user-1' }
 const ID = '0f4b6a52-6d1c-4f0e-9a52-0d3d6a9b7c11'
 
 function setup() {
@@ -24,8 +25,8 @@ describe('SetupCrewController ids', () => {
     const { controller, service } = setup()
 
     await expect(controller.getCrew('abc')).rejects.toThrow(BadRequestException)
-    await expect(controller.updateCrew('abc', {})).rejects.toThrow('crewId must be a UUID')
-    await expect(controller.addCertification('abc', {})).rejects.toThrow(BadRequestException)
+    await expect(controller.updateCrew('abc', {}, USER)).rejects.toThrow('crewId must be a UUID')
+    await expect(controller.addCertification('abc', {}, USER)).rejects.toThrow(BadRequestException)
     expect(service.getCrew).not.toHaveBeenCalled()
     expect(service.updateCrew).not.toHaveBeenCalled()
   })
@@ -33,8 +34,8 @@ describe('SetupCrewController ids', () => {
   it('answers 400 when the certification id is not a UUID', async () => {
     const { controller, service } = setup()
 
-    await expect(controller.updateCertification(ID, 'nope', {})).rejects.toThrow('certificationId must be a UUID')
-    await expect(controller.removeCertification(ID, 'nope')).rejects.toThrow(BadRequestException)
+    await expect(controller.updateCertification(ID, 'nope', {}, USER)).rejects.toThrow('certificationId must be a UUID')
+    await expect(controller.removeCertification(ID, 'nope', USER)).rejects.toThrow(BadRequestException)
     expect(service.removeCertification).not.toHaveBeenCalled()
   })
 
@@ -42,9 +43,9 @@ describe('SetupCrewController ids', () => {
     const { controller, service } = setup()
 
     await controller.getCrew(ID)
-    await controller.removeCertification(ID, ID)
+    await controller.removeCertification(ID, ID, USER)
 
     expect(service.getCrew).toHaveBeenCalledWith(ID)
-    expect(service.removeCertification).toHaveBeenCalledWith(ID, ID)
+    expect(service.removeCertification).toHaveBeenCalledWith(ID, ID, 'user-1')
   })
 })

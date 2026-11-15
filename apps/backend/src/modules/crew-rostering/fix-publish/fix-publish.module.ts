@@ -1,5 +1,6 @@
 import { Module, type OnModuleInit } from '@nestjs/common'
 import { AdminConsoleModule } from '../../admin-console/admin-console.module'
+import { AuditModule } from '../../admin-console/audit/audit.module'
 import { AdminConsoleService } from '../../admin-console/admin-console.service'
 import { AssignCrewModule } from '../assign-crew/assign-crew.module'
 import { F08_SCREENS } from '../crew-rostering.screens'
@@ -20,7 +21,7 @@ import { FixPublishService } from './fix-publish.service'
  * Routes are authenticated by default via the global `JwtAuthGuard`; none is `@Public()`.
  */
 @Module({
-  imports: [AssignCrewModule, AdminConsoleModule],
+  imports: [AssignCrewModule, AdminConsoleModule, AuditModule],
   controllers: [FixPublishController],
   providers: [FixPublishService],
   exports: [FixPublishService],

@@ -1,12 +1,15 @@
-import { Button, PlusIcon, SearchInput, SelectDropdown } from '../../shared/ui'
+import { Button, InputField, SelectDropdown } from '../../shared/ui'
 import { ALL_ROLES } from '../types/types'
 import type { CrewFilters } from '../types/types'
+
+/** Small caps above each field, as the mockups draw the filter row. */
+const LABEL = 'text-[11px] font-semibold tracking-wider text-label uppercase'
 
 /**
  * Search box, the two filter dropdowns and the create CTA.
  *
- * Wraps to one column on a phone; from `md` the search takes the free space and
- * the dropdowns sit on one line, with the CTA pinned to the right.
+ * On a phone the search takes a row, the two dropdowns share the next one and the button is full width.
+ * From `lg` it is one line: the search takes the free space and the button sits on the right.
  */
 export function CrewFilterBar({
   filters,
@@ -26,12 +29,21 @@ export function CrewFilterBar({
   onCreate: () => void
 }) {
   return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-end">
-      <SearchInput className="md:flex-1" value={filters.search} onValueChange={onSearchChange} placeholder="Name or employee number" />
+    <div className="grid grid-cols-2 gap-x-3 gap-y-4 lg:flex lg:items-end lg:gap-4">
+      <InputField
+        label="Search"
+        type="search"
+        className="col-span-2 lg:flex-1"
+        labelClassName={LABEL}
+        value={filters.search}
+        placeholder="Name or employee number"
+        onChange={(event) => onSearchChange(event.target.value)}
+      />
 
       <SelectDropdown
         label="Base airport"
-        className="md:w-44"
+        className="lg:w-44"
+        labelClassName={LABEL}
         value={filters.base}
         onChange={(event) => onBaseChange(event.target.value)}
         options={[{ value: 'all', label: 'All bases' }, ...bases.map((base) => ({ value: base, label: base }))]}
@@ -39,14 +51,14 @@ export function CrewFilterBar({
 
       <SelectDropdown
         label="Role"
-        className="md:w-48"
+        className="lg:w-44"
+        labelClassName={LABEL}
         value={filters.role}
         onChange={(event) => onRoleChange(event.target.value)}
         options={[{ value: 'all', label: 'All roles' }, ...ALL_ROLES.map((role) => ({ value: role, label: role }))]}
       />
 
-      <Button variant="primary" onClick={onCreate} className="md:mb-0.5 shrink-0 self-start md:self-auto">
-        <PlusIcon className="h-4 w-4" />
+      <Button variant="primary" onClick={onCreate} className="col-span-2 h-11 lg:col-span-1 lg:ml-auto lg:px-6">
         Create crew profile
       </Button>
 

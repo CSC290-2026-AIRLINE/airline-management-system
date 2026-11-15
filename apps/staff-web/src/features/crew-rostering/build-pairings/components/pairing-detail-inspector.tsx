@@ -16,6 +16,7 @@ export function PairingDetailInspector({
   pairing,
   evaluation,
   fixes,
+  noFixReason,
   isSaving,
   onApplyFix,
   onEditLegs,
@@ -26,6 +27,8 @@ export function PairingDetailInspector({
   evaluation: PairingEvaluation
   /** One-step repairs for an Invalid pairing; empty when it is Valid or has none. */
   fixes: readonly PairingFix[]
+  /** Why no suggested fix applies, from the schedule the API sent. */
+  noFixReason?: string
   isSaving: boolean
   onApplyFix: (fix: PairingFix) => void
   onEditLegs: () => void
@@ -33,7 +36,6 @@ export function PairingDetailInspector({
   onClose?: () => void
 }) {
   const committed = pairing.rosterRunId != null
-  const published = committed && pairing.rosterRunStatus === 'published'
   const invalid = evaluation.status === 'failed' && !committed
   // The "each flight leaves where the last landed" row only earns its place once it fails.
   const checks = evaluation.checks.filter((check) => check.code !== 'SEQUENCE_BROKEN' || check.status === 'failed')
@@ -154,25 +156,23 @@ export function PairingDetailInspector({
             </ul>
           ) : (
             <p className="text-sm text-primary-text/60">
-              No single change makes this pairing valid. Use Edit legs to add, remove or reorder flights, or delete it.
+              {noFixReason || 'No single change makes this pairing valid. Open Edit legs to add, remove or reorder flights, or delete it.'}
             </p>
           )}
         </section>
       )}
 
-      {published ? (
+      {committed ? (
         <p className="rounded-lg bg-info-bg px-4 py-3 text-sm text-primary">
-          This pairing is in a published roster, so it is not edited here. Change its crew in Fix &amp; publish.
+          This pairing is already committed to a roster run, so it is not edited here. Continue to Assign crew to crew it.
         </p>
       ) : (
-        <footer
-          className={`flex flex-wrap gap-3 ${invalid ? 'border-t border-border-desc/40 pt-4' : ''} ${onClose ? 'justify-center' : ''}`}
-        >
-          <Button variant={invalid ? 'primary' : 'outline'} className="whitespace-nowrap" onClick={onEditLegs}>
+        <footer className={`flex gap-3 ${invalid ? 'border-t border-border-desc/40 pt-4' : ''} ${onClose ? 'justify-center' : ''}`}>
+          <Button variant={invalid ? 'primary' : 'outline'} onClick={onEditLegs}>
             <PencilIcon className="h-4 w-4" />
             Edit legs
           </Button>
-          <Button variant="danger" className="whitespace-nowrap" onClick={onDelete}>
+          <Button variant="danger" onClick={onDelete}>
             <MinusIcon className="h-4 w-4" />
             Delete pairing
           </Button>

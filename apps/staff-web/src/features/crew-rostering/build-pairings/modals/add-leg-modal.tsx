@@ -24,7 +24,18 @@ export function AddLegModal({
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const lastLeg = pairing.legs.at(-1)
-  const candidates = useMemo(() => findAddLegCandidates(allFlights, pairing, pairing.base), [allFlights, pairing])
+  // A flight that would leave the pairing Valid is offered first, so the operator can close it in one click.
+  const candidates = useMemo(
+    () =>
+      findAddLegCandidates(allFlights, pairing, pairing.base)
+        .map((candidate) => ({
+          ...candidate,
+          fixes: validatePairing({ ...pairing, legs: [...pairing.legs, toLeg(candidate)] }).status === 'passed',
+        }))
+        .sort((a, b) => Number(b.fixes) - Number(a.fixes)),
+    [allFlights, pairing],
+  )
+  const alreadyValid = useMemo(() => validatePairing(pairing).status === 'passed', [pairing])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -76,7 +87,17 @@ export function AddLegModal({
         />
       </label>
 
-      <MatchingFlightsList candidates={filtered} selectedId={selectedId} onSelect={setSelectedId} />
+      <MatchingFlightsList
+        candidates={filtered}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        emptyMessage={emptyMessage(pairing, lastLeg, query.trim() !== '' && candidates.length > 0)}
+        note={
+          !alreadyValid && candidates.length > 0 && !candidates.some((candidate) => candidate.fixes)
+            ? `None of these makes ${pairing.code} Valid on its own. You can add one and then another flight to get back to ${pairing.base}.`
+            : null
+        }
+      />
 
       <p className="mt-4 text-sm text-primary-text/55">{footnote(selected, pairing)}</p>
     </BaseModalOverlay>
@@ -136,21 +157,36 @@ function shortDay(instant: string): string {
   return formatDay(instant).replace(/^\w+\s/, '')
 }
 
+/** Why the list is empty, in terms of this pairing, so a dead end explains itself instead of just saying "none". */
+function emptyMessage(pairing: Pairing, lastLeg: FlightLeg | undefined, searching: boolean): string {
+  if (searching) return 'No matching flight. Clear the search to see every flight that connects.'
+  if (!lastLeg) return 'No scheduled flight connects from here.'
+  const closing = lastLeg.destination !== pairing.base
+  return closing
+    ? `No scheduled flight leaves ${lastLeg.destination} after ${lastLeg.flightNumber} lands at ${formatTime(lastLeg.arrivalAt)} on ${formatDay(lastLeg.arrivalAt)}, so ${pairing.code} cannot be brought back to ${pairing.base} from here. Delete it, or ask Flight Scheduling (Feature 2) for a flight out of ${lastLeg.destination}.`
+    : `No scheduled flight leaves ${lastLeg.destination} after ${lastLeg.flightNumber} lands at ${formatTime(lastLeg.arrivalAt)} on ${formatDay(lastLeg.arrivalAt)}.`
+}
+
 function MatchingFlightsList({
   candidates,
   selectedId,
   onSelect,
+  emptyMessage,
+  note,
 }: {
-  candidates: readonly AddLegCandidate[]
+  candidates: readonly (AddLegCandidate & { fixes: boolean })[]
   selectedId: string | null
   onSelect: (id: string) => void
+  emptyMessage: string
+  note: string | null
 }) {
   return (
     <>
       <p className="mt-4 text-[11px] font-semibold tracking-widest text-label uppercase">Matching flights</p>
+      {note && <p className="mt-2 text-sm text-primary-text/65">{note}</p>}
       {candidates.length === 0 ? (
-        <p className="mt-2 rounded-lg border border-dashed border-border-desc/50 px-4 py-8 text-center text-sm text-primary-text/55">
-          No scheduled flight connects from here.
+        <p className="mt-2 rounded-lg border border-dashed border-border-desc/50 px-4 py-8 text-center text-sm leading-relaxed text-primary-text/60">
+          {emptyMessage}
         </p>
       ) : (
         <ul className="mt-2 flex flex-col gap-3" role="radiogroup" aria-label="Connecting flights">
@@ -184,7 +220,7 @@ function MatchingFlightsList({
                       candidate.returnsToBase ? 'bg-valid-bg text-valid' : 'bg-page-bg text-primary-text/60'
                     }`}
                   >
-                    {candidate.badgeLabel}
+                    {candidate.fixes ? 'Recommended · Valid' : candidate.badgeLabel}
                   </span>
                 </label>
               </li>

@@ -29,8 +29,6 @@ export function AssignCrewPage() {
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
 
-  // Pairings in a published run are already crewed and live, so they are not offered for picking again.
-  const published = state.rosterRun?.status === 'published'
   const canRun = state.rosterRun?.status === 'draft' && state.selectedPairings.length > 0 && state.dateError === null && !state.isRunning
   const summary = state.summary
   const hasResults = state.assignments !== null && summary !== null
@@ -63,7 +61,7 @@ export function AssignCrewPage() {
     />
   )
 
-  const pickerOrNotice = (
+  const picker = (
     <PairingsPicker
       pairings={state.pairings}
       selectedIds={state.selectedIds}
@@ -77,20 +75,9 @@ export function AssignCrewPage() {
     />
   )
 
-  const picker = published ? (
-    <PublishedNotice
-      count={state.pairings.length}
-      leftOut={state.uncommitted.length}
-      onViewRoster={openFixPublish}
-      onStartNextRun={state.startNextRun}
-    />
-  ) : (
-    pickerOrNotice
-  )
-
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className={`flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 lg:px-9 lg:py-7 lg:pb-9 ${hasResults ? 'pb-28' : 'pb-8'}`}>
+      <div className={`flex min-w-0 flex-1 flex-col gap-5 px-4 pt-1 lg:px-9 lg:py-7 lg:pb-9 ${hasResults ? 'pb-28' : 'pb-8'}`}>
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase lg:text-3xl">Assign crew</h1>
@@ -127,7 +114,7 @@ export function AssignCrewPage() {
           </p>
         )}
 
-        {published && (
+        {state.rosterRun?.status === 'published' && (
           <p className="rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm font-medium text-primary">
             This roster is published. Change crew in Fix &amp; publish instead of running auto-assign again.
           </p>
@@ -159,7 +146,7 @@ export function AssignCrewPage() {
               )}
             </>
           ) : (
-            !published && <NoCrewAssigned committedCount={state.pairings.length} />
+            <NoCrewAssigned committedCount={state.pairings.length} />
           )}
         </div>
 
@@ -173,35 +160,13 @@ export function AssignCrewPage() {
             {fields}
             {hasResults && (
               <Button fullWidth className="mt-5 h-11" disabled={!canRun} onClick={() => setConfirming(true)}>
-                Re-run auto-assign
+                Run auto-assign
               </Button>
             )}
           </section>
 
-          {/* Before a run the picker is its own card; afterwards it folds away so the results come first. */}
-          {hasResults ? (
-            <details className="group rounded-2xl border border-border-desc/40 bg-card-bg p-5">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-lg font-bold text-primary-text">
-                Committed pairings
-                <span className="text-xs font-semibold text-primary-text/55">{state.selectedIds.length} selected</span>
-              </summary>
-              <div className="mt-3">
-                <PairingsPicker
-                  pairings={state.pairings}
-                  selectedIds={state.selectedIds}
-                  excluded={state.uncommitted}
-                  canRun={canRun}
-                  showRun={false}
-                  onToggle={state.togglePairing}
-                  onSelectAll={state.selectAll}
-                  onClearSelection={state.clearSelection}
-                  onRun={() => setConfirming(true)}
-                />
-              </div>
-            </details>
-          ) : (
-            <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5">{picker}</section>
-          )}
+          {/* Before a run the picker is its own card. Afterwards the design drops it, so the results come first. */}
+          {!hasResults && <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5">{picker}</section>}
 
           <RulesCardCompact limits={state.limits} aircraftType={aircraftType} />
           {hasResults ? (
@@ -215,7 +180,7 @@ export function AssignCrewPage() {
               )}
             </>
           ) : (
-            !published && <NoCrewAssigned committedCount={state.pairings.length} />
+            <NoCrewAssigned committedCount={state.pairings.length} />
           )}
         </PageColumn>
       </div>
@@ -282,47 +247,6 @@ function RunSummaryBanner({ summary, onOpenFix }: { summary: AssignmentSummary; 
         {clean ? 'Fix & publish' : 'Fix breaks'}
         <ArrowRightIcon className="h-4 w-4" />
       </Button>
-    </div>
-  )
-}
-
-/**
- * Stands in for the picker once the window's roster is published. Those pairings are crewed and live, so there is nothing
- * to pick; the way on is Fix & publish for the roster, or the next roster run for what was left out.
- */
-function PublishedNotice({
-  count,
-  leftOut,
-  onViewRoster,
-  onStartNextRun,
-}: {
-  count: number
-  /** Pairings in the window that were left out of the roster and can go in the next one. */
-  leftOut: number
-  onViewRoster: () => void
-  onStartNextRun: () => void
-}) {
-  return (
-    <div className="rounded-xl border border-border-desc/40 bg-page-bg px-5 py-5">
-      <p className="text-sm font-bold text-primary-text">
-        {count} {count === 1 ? 'pairing' : 'pairings'} assigned and published
-      </p>
-      <p className="mt-1.5 text-sm leading-relaxed text-primary-text/70">
-        {leftOut > 0
-          ? `${leftOut} more ${leftOut === 1 ? 'pairing was' : 'pairings were'} left out of this roster. Start the next roster run to crew ${leftOut === 1 ? 'it' : 'them'}.`
-          : 'Nothing is left to crew in this window.'}
-      </p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        {leftOut > 0 && (
-          <Button variant="highlight" onClick={onStartNextRun}>
-            Start next roster run
-            <ArrowRightIcon className="h-4 w-4" />
-          </Button>
-        )}
-        <Button variant="outline" onClick={onViewRoster}>
-          View roster in Fix &amp; publish
-        </Button>
-      </div>
     </div>
   )
 }

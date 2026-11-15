@@ -1,10 +1,9 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, UseFilters, UseGuards } from '@nestjs/common'
 import {
   BuildPairingService,
   type BuildParams,
   type CommitDraft,
   type CommitResult,
-  type NextRunResult,
   type GenerateResult,
   type DeletePairingResult,
   type FlightImpactRow,
@@ -12,7 +11,10 @@ import {
   type SaveLegInput,
   type SaveLegsResult,
 } from './build-pairing.service'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import { SimulationClock } from '../../admin-console/simulation-clock'
 import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
+import { RosteringExceptionFilter } from '../rostering-error'
 import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
@@ -24,8 +26,18 @@ import { StaffOnlyGuard } from '../staff-only.guard'
  */
 @Controller('crew-rostering/build-pairing')
 @UseGuards(StaffOnlyGuard)
+@UseFilters(RosteringExceptionFilter)
 export class BuildPairingController {
-  constructor(private readonly buildPairingService: BuildPairingService) {}
+  constructor(
+    private readonly buildPairingService: BuildPairingService,
+    private readonly clock: SimulationClock,
+  ) {}
+
+  /** The simulation clock's now, which the page opens its date range on. It is the real time until the clock is shifted. */
+  @Get('clock')
+  getClock(): { now: string } {
+    return { now: this.clock.now().toISOString() }
+  }
 
   @Get('bases')
   async listBases(): Promise<{ code: string; name: string }[]> {
@@ -50,25 +62,23 @@ export class BuildPairingController {
 
   /** Stores the chosen pairings and hands them to the window's draft roster run. */
   @Post('pairings/commit')
-  async commitPairings(@Body() body: unknown): Promise<CommitResult> {
+  async commitPairings(@Body() body: unknown, @CurrentUser() user: { id: string }): Promise<CommitResult> {
     const source = asObject(body)
-    return this.buildPairingService.commitPairings(parseBuildParams(source), parseDrafts(source.pairings))
-  }
-
-  /** Starts the next draft roster run for a window, from the drafts the last one left out. */
-  @Post('runs/next')
-  async startNextRun(@Body() body: unknown): Promise<NextRunResult> {
-    return this.buildPairingService.startNextRun(parseBuildParams(asObject(body)))
+    return this.buildPairingService.commitPairings(parseBuildParams(source), parseDrafts(source.pairings), user.id)
   }
 
   @Put('pairings/:pairingId/legs')
-  async saveLegs(@Param('pairingId') pairingId: string, @Body() body: unknown): Promise<SaveLegsResult> {
-    return this.buildPairingService.saveLegs(requireUuid(pairingId, 'pairingId'), parseLegs(asObject(body).legs))
+  async saveLegs(
+    @Param('pairingId') pairingId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: { id: string },
+  ): Promise<SaveLegsResult> {
+    return this.buildPairingService.saveLegs(requireUuid(pairingId, 'pairingId'), parseLegs(asObject(body).legs), user.id)
   }
 
   @Delete('pairings/:pairingId')
-  async deletePairing(@Param('pairingId') pairingId: string): Promise<DeletePairingResult> {
-    return this.buildPairingService.deletePairing(requireUuid(pairingId, 'pairingId'))
+  async deletePairing(@Param('pairingId') pairingId: string, @CurrentUser() user: { id: string }): Promise<DeletePairingResult> {
+    return this.buildPairingService.deletePairing(requireUuid(pairingId, 'pairingId'), user.id)
   }
 }
 

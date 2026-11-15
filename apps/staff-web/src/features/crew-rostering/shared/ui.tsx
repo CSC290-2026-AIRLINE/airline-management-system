@@ -132,12 +132,13 @@ export function DateField({
   label,
   error,
   className = '',
+  labelClassName = 'text-xs font-medium text-border-desc',
   ...rest
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; labelClassName?: string }) {
   const id = useId()
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      <label htmlFor={id} className="text-xs font-medium text-border-desc">
+      <label htmlFor={id} className={labelClassName}>
         {label}
       </label>
       <input
@@ -200,6 +201,7 @@ export function MultiSelect({
   placeholder,
   hint,
   className = '',
+  labelClassName = 'text-xs font-medium text-border-desc',
 }: {
   label: string
   options: readonly SelectOption[]
@@ -207,6 +209,7 @@ export function MultiSelect({
   onChange: (values: string[]) => void
   placeholder: string
   hint?: string
+  labelClassName?: string
   className?: string
 }) {
   const id = useId()
@@ -239,7 +242,7 @@ export function MultiSelect({
 
   return (
     <div ref={containerRef} className={`flex flex-col gap-1.5 ${className}`}>
-      <span id={id} className="text-xs font-medium text-border-desc">
+      <span id={id} className={labelClassName}>
         {label}
       </span>
       <div className="relative">
@@ -341,9 +344,8 @@ export function InfoBox({ children }: { children: ReactNode }) {
 /**
  * Confirmation toast that floats at the top of the viewport and auto-dismisses.
  *
- * Green because every toast this app raises is a success confirmation. The fill
- * is the 100% `valid` token (#059669) rather than the 30% one: the design system
- * scopes the faded green to badges, and this is a solid banner.
+ * Cream with an orange edge and a green tick, as the mockups draw it: every toast
+ * this app raises is a confirmation, and the tick says so.
  *
  * `message` and `shortMessage` are the same sentence at two lengths: the mobile
  * top bar and a 390px viewport cannot fit the full copy without wrapping.
@@ -357,9 +359,9 @@ export function Toast({ message, shortMessage, onDismiss }: { message: string; s
   return (
     <div
       role="status"
-      className="fixed inset-x-3 top-3 z-50 mx-auto flex max-w-fit items-center gap-2.5 rounded-lg bg-valid px-4 py-3 text-sm font-semibold text-white shadow-lg sm:inset-x-0 sm:top-5 sm:max-w-[calc(100%-2rem)] sm:justify-center"
+      className="fixed inset-x-3 top-3 z-50 mx-auto flex max-w-fit items-center gap-2.5 rounded-lg border-l-4 border-btn-yellow bg-amber-tint px-4 py-3 text-sm font-semibold text-primary-text shadow-lg sm:inset-x-0 sm:top-5 sm:max-w-[calc(100%-2rem)] sm:justify-center"
     >
-      <CheckIcon className="h-4 w-4 shrink-0" />
+      <CheckIcon className="h-4 w-4 shrink-0 text-valid" />
       <span className="sm:hidden">{shortMessage}</span>
       <span className="hidden sm:inline">{message}</span>
     </div>
@@ -395,11 +397,17 @@ export function StatCard({ label, value }: { label: string; value: string | numb
  */
 export function RoleBadge({ role }: { role: string }) {
   const styles =
-    role === 'Captain' ? 'bg-primary text-white' : role === 'Cabin Crew' ? 'bg-gold/15 text-primary' : 'bg-page-bg text-primary'
+    role === 'Captain'
+      ? 'bg-primary text-white'
+      : role === 'Cabin Crew'
+        ? 'bg-white text-amber-ink'
+        : role === 'Police'
+          ? 'bg-gold/25 text-primary-text'
+          : 'bg-band-bg text-primary-text/70'
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${
-        role === 'Cabin Crew' ? 'border border-gold/60' : ''
+        role === 'Cabin Crew' ? 'border border-btn-yellow' : ''
       } ${styles}`}
     >
       {role}

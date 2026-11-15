@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { AuditModule } from '../../admin-console/audit/audit.module'
 import { BuildPairingController } from './build-pairing.controller'
 import { BuildPairingService } from './build-pairing.service'
 
@@ -13,6 +14,7 @@ import { BuildPairingService } from './build-pairing.service'
  * Routes are authenticated by default via the global `JwtAuthGuard`; none is `@Public()`.
  */
 @Module({
+  imports: [AuditModule],
   controllers: [BuildPairingController],
   providers: [BuildPairingService],
   exports: [BuildPairingService],
