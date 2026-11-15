@@ -582,7 +582,7 @@ Frame: `03d Queue — Reject dialog (overlay)`
 
 ## 9. How to use these notes with an AI coding tool
 
-1. Keep this file next to the other plan files, for example in `.f3-plan/feature-03-ui-notes.md`.
+1. Keep this file next to the other plan files, for example in `docs/feature-03-plan/feature-03-ui-notes.md`.
 2. For one page at a time, give the tool:
    - the matching section here
    - section 1 (design system)
@@ -590,6 +590,6 @@ Frame: `03d Queue — Reject dialog (overlay)`
    - one existing page to copy the style from
 
    Example:
-   > I'm Member C, task C11. Build the staff Special Assistance Queue page described in @.f3-plan/feature-03-ui-notes.md (sections 1, 5 and "C11 – Special Assistance Queue" in section 6). Use the shadcn components in @apps/staff-web/src/components/ui and the tokens in @apps/staff-web/src/index.css. Data comes from `GET /staff/service-requests` (task C6 in @.f3-plan/feature-03-work-split.md). Apply decisions D12 and D13 from section 7.
+   > I'm Member C, task C11. Build the staff Special Assistance Queue page described in @docs/feature-03-plan/feature-03-ui-notes.md (sections 1, 5 and "C11 – Special Assistance Queue" in section 6). Use the shadcn components in @apps/staff-web/src/components/ui and the tokens in @apps/staff-web/src/index.css. Data comes from `GET /staff/service-requests` (task C6 in @docs/feature-03-plan/feature-03-work-split.md). Apply decisions D12 and D13 from section 7.
 3. Settle the section 7 differences in your group before building the affected pages.
 4. If the tool can read images, also attach a screenshot of the Figma frame; the frame names in this file tell you which one.
