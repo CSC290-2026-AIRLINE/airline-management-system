@@ -220,7 +220,27 @@ export class CounterService {
     if (bag.status === 'tagged') {
       return { bag: toBagView(bag), view: await this.detail(actor, record.id) }
     }
+    // No tag until the fee is paid: the agent takes the money first (`payExcess`).
+    if (bag.excess_fee > 0 && !bag.excess_payment_id) {
+      throw new CheckInError(409, 'EXCESS_UNPAID', 'The excess fee of this bag is not paid', { bagId, fee: bag.excess_fee })
+    }
 
+    const airlineNumber = await this.settings.bagTagAirlineNumber()
+    const tagged = await this.store.updateBag(bagId, {
+      tag_number: bagTagNumber(airlineNumber, await this.store.nextBagTagSeq()),
+      status: 'tagged',
+    })
+    await this.record(actor, 'checked_bag.tag', 'checked_bag', bagId, `bag tagged ${tagged.tag_number}`)
+    return { bag: toBagView(tagged), view: await this.detail(actor, record.id) }
+  }
+
+  /** The agent took the excess fee: every unpaid bag of the check-in is charged in one payment. */
+  async payExcess(actor: Actor, checkInId: string): Promise<StaffCheckInView> {
+    this.staffIdOf(actor)
+    const record = await this.requireCheckIn(checkInId)
+    if (record.status !== 'started' && record.status !== 'checked_in') {
+      throw invalidState('Excess can only be paid while the check-in is open')
+    }
     const bags = await this.bagsOf(record)
     const unpaid = bags.filter((b) => b.excess_fee > 0 && !b.excess_payment_id)
     if (unpaid.length > 0) {
@@ -239,15 +259,9 @@ export class CounterService {
       for (const other of unpaid) {
         await this.store.updateBag(other.id, { excess_payment_id: charge.paymentId })
       }
+      await this.record(actor, 'checked_bag.pay_excess', 'check_in', record.id, `excess of ${unpaid.length} bag(s) paid, ${amount} THB`)
     }
-
-    const airlineNumber = await this.settings.bagTagAirlineNumber()
-    const tagged = await this.store.updateBag(bagId, {
-      tag_number: bagTagNumber(airlineNumber, await this.store.nextBagTagSeq()),
-      status: 'tagged',
-    })
-    await this.record(actor, 'checked_bag.tag', 'checked_bag', bagId, `bag tagged ${tagged.tag_number}`)
-    return { bag: toBagView(tagged), view: await this.detail(actor, record.id) }
+    return this.detail(actor, record.id)
   }
 
   /** Feature 10 looks a bag up by the number on its tag. */

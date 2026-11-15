@@ -105,6 +105,18 @@ export function BagDrop({ api, view, onUpdated }: Props) {
     }
   }
 
+  const pay = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      onUpdated(await api.payExcess(view.checkIn.id))
+    } catch (err) {
+      setError(messageOf(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const tag = async (bagId: string) => {
     setBusy(true)
     setError(null)
@@ -262,7 +274,7 @@ export function BagDrop({ api, view, onUpdated }: Props) {
               Excess to pay: {formatBaht(totals.unpaidFee)} · {unpaidExcessKg} kg × {formatBaht(unpaidRate)} per kg (Feature 4 rate, copied
               at weighing)
             </span>
-            <Button type="button" className={PRIMARY_BUTTON} disabled={busy} onClick={() => void tag(unpaid.id)}>
+            <Button type="button" className={PRIMARY_BUTTON} disabled={busy} onClick={() => void pay()}>
               Take payment {formatBaht(totals.unpaidFee)}
             </Button>
           </span>

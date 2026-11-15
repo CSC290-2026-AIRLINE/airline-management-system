@@ -56,6 +56,11 @@ export class StaffController {
     return this.counter.removeBag(requireActor(actor), id)
   }
 
+  @Post('check-ins/:id/bags/pay')
+  async payExcess(@CurrentActor() actor: Actor | null, @Param('id') id: string): Promise<StaffCheckInView> {
+    return this.counter.payExcess(requireActor(actor), id)
+  }
+
   @Post('bags/:id/tag')
   async tagBag(@CurrentActor() actor: Actor | null, @Param('id') id: string): Promise<{ bag: CheckedBagView; view: StaffCheckInView }> {
     return this.counter.tagBag(requireActor(actor), id)

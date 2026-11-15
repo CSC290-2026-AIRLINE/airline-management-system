@@ -30,6 +30,8 @@ export interface StaffApi {
   detail(id: string): Promise<StaffCheckInView>
   weighBag(id: string, input: BagInput): Promise<StaffCheckInView>
   removeBag(bagId: string): Promise<StaffCheckInView>
+  /** Charges every unpaid excess fee of the check-in; the tags come after. */
+  payExcess(id: string): Promise<StaffCheckInView>
   tagBag(bagId: string): Promise<{ bag: CheckedBagView; view: StaffCheckInView }>
   carryOn(id: string, input: BagInput): Promise<StaffCheckInView>
   clearMismatch(documentId: string): Promise<StaffCheckInView>
@@ -86,6 +88,7 @@ export function createHttpStaffApi(fetchWithAuth: (path: string, init?: RequestI
     detail: (id) => request<StaffCheckInView>(`/api/staff/check-ins/${id}`),
     weighBag: (id, input) => request<StaffCheckInView>(`/api/staff/check-ins/${id}/bags`, post(input)),
     removeBag: (bagId) => request<StaffCheckInView>(`/api/staff/bags/${bagId}`, { method: 'DELETE' }),
+    payExcess: (id) => request<StaffCheckInView>(`/api/staff/check-ins/${id}/bags/pay`, post()),
     tagBag: (bagId) => request<{ bag: CheckedBagView; view: StaffCheckInView }>(`/api/staff/bags/${bagId}/tag`, post()),
     carryOn: (id, input) => request<StaffCheckInView>(`/api/staff/check-ins/${id}/carry-on`, put(input)),
     clearMismatch: (documentId) => request<StaffCheckInView>(`/api/staff/travel-documents/${documentId}/clear-mismatch`, post()),

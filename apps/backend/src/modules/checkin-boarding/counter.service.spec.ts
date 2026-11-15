@@ -151,11 +151,25 @@ describe('CounterService.weighBag', () => {
 })
 
 describe('CounterService.tagBag', () => {
+  it('no tag until the fee is paid: EXCESS_UNPAID names the bag and the fee', async () => {
+    const { counter, store, payments } = build()
+    const id = await pimId(store)
+    const v = await weigh(counter, id, 15, 8)
+    await expect(counter.tagBag(staff, v.bags[1].id)).rejects.toMatchObject({
+      code: 'EXCESS_UNPAID',
+      details: { bagId: v.bags[1].id, fee: 1500 },
+    })
+    expect(payments.charges).toHaveLength(0)
+    expect((await counter.detail(staff, id)).issues).toContain('EXCESS_UNPAID')
+  })
+
   it('pays all unpaid bags together and numbers them', async () => {
     const { counter, store, payments } = build()
     const id = await pimId(store)
     const v = await weigh(counter, id, 15, 8)
     const [b1, b2] = v.bags
+    const paid = await counter.payExcess(staff, id)
+    expect(paid.issues).not.toContain('EXCESS_UNPAID')
     const t = await counter.tagBag(staff, b2.id)
     expect(t.bag).toMatchObject({ tagNumber: '0402000001', status: 'tagged', excessPaymentId: 'pay-1' })
     // The 15 kg bag has no excess, the payment of 1500 baht never covered it.
@@ -171,8 +185,10 @@ describe('CounterService.tagBag', () => {
     const { counter, store, payments } = build()
     const id = await pimId(store)
     const first = await weigh(counter, id, 25)
+    await counter.payExcess(staff, id)
     await counter.tagBag(staff, first.bags[0].id)
     const second = await weigh(counter, id, 10)
+    await counter.payExcess(staff, id)
     await counter.tagBag(staff, second.bags[1].id)
 
     expect(payments.charges.map((c) => c.reference)).toEqual([`check_in:${id}:bags:1`, `check_in:${id}:bags:2`])
@@ -191,6 +207,7 @@ describe('CounterService.tagBag', () => {
     const { counter, store } = build()
     const id = await pimId(store)
     const v = await weigh(counter, id, 5, 25)
+    await counter.payExcess(staff, id)
     const t = await counter.tagBag(staff, v.bags[1].id)
     expect(t.bag.excessPaymentId).toBe('pay-1')
     expect(t.view.bags[0]).toMatchObject({ excessFee: 0, excessPaymentId: null })
@@ -240,6 +257,7 @@ describe('CounterService.removeBag', () => {
     const { counter, store, payments } = build()
     const id = await pimId(store)
     const v = await weigh(counter, id, 25, 10)
+    await counter.payExcess(staff, id)
     const tagged = await counter.tagBag(staff, v.bags[0].id)
     expect(tagged.bag.excessPaymentId).toBe('pay-1')
     // The second bag was charged in the same payment, so it may not be removed.
