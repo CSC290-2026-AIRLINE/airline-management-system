@@ -110,9 +110,9 @@ function StaffBookingContent() {
   }
   function continueToSeats() {
     if (!itinerary) return
-    const message = validateTravellers(travellers, contact, itinerary)
-    if (message) {
-      setError(message)
+    const validation = validateTravellers(travellers, contact, itinerary)
+    if (validation) {
+      setError(validation.message)
       return
     }
     try {
@@ -130,7 +130,7 @@ function StaffBookingContent() {
     setError(null)
     try {
       const validation = validateTravellers(travellers, contact, itinerary)
-      if (validation) throw new Error(validation)
+      if (validation) throw new Error(validation.message)
       const ids = resolveDemoPassengers(travellers, data.profiles)
       const idFor = (key: string) => ids.find((person) => person.key === key)!.passengerId
       const request: BookForCustomerRequest = {
