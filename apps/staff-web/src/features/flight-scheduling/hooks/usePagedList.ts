@@ -20,8 +20,10 @@ export const BASE = '/api/flight-scheduling'
 // "400 Bad Request. icao_code must be 4 letters" from a Nest error body ({ error, message: string | string[] }), else the HTTP status.
 export async function errorMessage(res: Response) {
   try {
-    const body = (await res.json()) as { error?: string; message?: string | string[] }
-    if (body.message) return `${res.status} ${body.error ?? 'Error'}. ${[body.message].flat().join('; ')}`
+    // The API answers { error: { code, message, details? } }; an older body was { error, message }.
+    const body = (await res.json()) as { error?: string | { code?: string; message?: string }; message?: string | string[] }
+    if (typeof body.error === 'object' && body.error?.message) return `${res.status} ${body.error.code ?? 'error'}. ${body.error.message}`
+    if (body.message) return `${res.status} ${typeof body.error === 'string' ? body.error : 'Error'}. ${[body.message].flat().join('; ')}`
   } catch {
     // body was not JSON
   }
@@ -30,7 +32,8 @@ export async function errorMessage(res: Response) {
 
 // GET a cursor-paged list from the flight-scheduling API; `loadMore` appends the next page and `reload` starts over.
 // ponytail: local to this feature, no cache. Swap for TanStack Query once the Dev Leads add the shared setup.
-export function usePagedList<T>(path: string, fetcher: Fetcher) {
+// Pass null to wait (for example until an id is known): nothing is requested and the list stays empty.
+export function usePagedList<T>(path: string | null, fetcher: Fetcher) {
   const fetchRef = useRef(fetcher)
   useEffect(() => {
     fetchRef.current = fetcher
@@ -41,13 +44,14 @@ export function usePagedList<T>(path: string, fetcher: Fetcher) {
   const [version, setVersion] = useState(0)
 
   async function fetchPage(cursor: string | null): Promise<Page<T>> {
-    const url = `${BASE}${path}${cursor ? `${path.includes('?') ? '&' : '?'}cursor=${cursor}` : ''}`
+    const url = `${BASE}${path}${cursor ? `${path?.includes('?') ? '&' : '?'}cursor=${cursor}` : ''}`
     const res = await fetchRef.current(url)
     if (!res.ok) throw new Error(await errorMessage(res))
     return (await res.json()) as Page<T>
   }
 
   useEffect(() => {
+    if (path === null) return
     let stale = false
     fetchPage(null)
       .then((page) => !stale && setState({ path, rows: page.data, next: page.nextCursor, error: null }))
@@ -74,7 +78,7 @@ export function usePagedList<T>(path: string, fetcher: Fetcher) {
 
   return {
     // a state left over from another path is not the answer to this one
-    loading: state?.path !== path,
+    loading: path !== null && state?.path !== path,
     rows: state?.path === path ? state.rows : [],
     error: state?.path === path ? state.error : null,
     hasMore: state?.path === path && state.next !== null,

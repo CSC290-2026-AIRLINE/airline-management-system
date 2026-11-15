@@ -53,3 +53,7 @@ export function localToIso(date: string, time: string, timeZone: string) {
   }
   return new Date(wall - offset(wall - offset(wall))).toISOString()
 }
+
+// Server messages carry instants as ISO text (2026-11-16T01:00:00.000Z); show them as "Mon 16 Nov 01:00 UTC".
+export const humanizeTimes = (text: string) =>
+  text.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (iso) => `${formatDateTime(iso, 'UTC')} UTC`)

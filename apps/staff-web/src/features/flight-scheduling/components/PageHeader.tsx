@@ -1,18 +1,18 @@
 import type { ReactNode } from 'react'
 
-// Page title and its one-line explanation, as at the top of every staff screen.
+// Page title, with the page's main button at the right.
 interface PageHeaderProps {
   title: string
   children?: ReactNode
-  action?: ReactNode // the page's main button, at the right of the title
+  action?: ReactNode
 }
 
 export function PageHeader({ title, children, action }: PageHeaderProps) {
   return (
-    <div className="fs-title-row">
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1>{title}</h1>
-        {children && <p className="fs-lede">{children}</p>}
+        <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">{title}</h1>
+        {children && <p className="mt-2 text-sm text-muted-foreground">{children}</p>}
       </div>
       {action}
     </div>

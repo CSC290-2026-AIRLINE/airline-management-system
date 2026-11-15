@@ -10,6 +10,9 @@ import { FormField } from './FormField'
 import { SelectField } from './SelectField'
 import { StatusPill } from './StatusPill'
 import { Toast } from './Toast'
+import { emitChange } from '../hooks/fsChange'
+import { Button } from '@staff-web/components/ui/button'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@staff-web/components/ui/table'
 
 interface BatchItem {
   flight: FlightRow
@@ -93,7 +96,10 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
     setWarn(changed < items.length)
     say(`${changed} of ${items.length} flights ${mode === 'aircraft' ? 'changed' : 'delayed'}.`)
     setBusy(false)
-    if (changed > 0) onApply()
+    if (changed > 0) {
+      emitChange('conflicts')
+      onApply()
+    }
   }
 
   const failed = result?.filter((i) => !i.ok).length ?? 0
@@ -108,16 +114,16 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
             </span>
             <span className="fs-actions">
               {CONNECTED.aircraft && (
-                <button type="button" className="fs-button-light" onClick={() => setMode('aircraft')}>
+                <Button variant="outline" size="sm" type="button" onClick={() => setMode('aircraft')}>
                   Change aircraft…
-                </button>
+                </Button>
               )}
-              <button type="button" className="fs-button-light" onClick={() => setMode('delay')}>
+              <Button variant="outline" size="sm" type="button" onClick={() => setMode('delay')}>
                 Delay…
-              </button>
-              <button type="button" className="fs-button-ghost" onClick={onClear}>
+              </Button>
+              <Button variant="ghost" type="button" onClick={onClear}>
                 Clear selection
-              </button>
+              </Button>
             </span>
           </div>
           {mode === 'aircraft' && (
@@ -130,9 +136,9 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
                   </option>
                 ))}
               </SelectField>
-              <button type="button" className="fs-button" disabled={!ready || busy} onClick={() => void apply()}>
+              <Button type="button" disabled={!ready || busy} onClick={() => void apply()}>
                 {busy ? 'Applying…' : `Apply to ${count}`}
-              </button>
+              </Button>
             </div>
           )}
           {mode === 'delay' && (
@@ -146,9 +152,9 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
                   </option>
                 ))}
               </SelectField>
-              <button type="button" className="fs-button" disabled={!ready || busy} onClick={() => void apply()}>
+              <Button type="button" disabled={!ready || busy} onClick={() => void apply()}>
                 {busy ? 'Applying…' : `Apply to ${count}`}
-              </button>
+              </Button>
             </div>
           )}
           <p className="fs-sub">
@@ -165,28 +171,28 @@ export function BatchActions({ selected, fetcher, onClear, onApply }: BatchActio
             <StatusPill status={failed === 0 ? 'ok' : 'delayed'} label={`${result.length - failed} ok, ${failed} failed`} />
           </div>
           <div className="fs-table-wrap">
-            <table className="fs-table fs-t-result">
-              <thead>
-                <tr>
-                  <th>Flight</th>
-                  <th>Result</th>
-                  <th>Detail</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Flight</TableHead>
+                  <TableHead>Result</TableHead>
+                  <TableHead>Detail</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {result.map(({ flight, ok, detail }) => (
-                  <tr key={flight.id}>
-                    <td className="fs-flight">
+                  <TableRow key={flight.id}>
+                    <TableCell className="fs-flight">
                       {flight.flight_number} <span className="fs-to">{formatServiceDate(flight.service_date.slice(0, 10))}</span>
-                    </td>
-                    <td>
+                    </TableCell>
+                    <TableCell>
                       <StatusPill status={ok ? 'ok' : 'failed'} label={ok ? 'OK' : 'Failed'} />
-                    </td>
-                    <td>{detail}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell>{detail}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </section>
       )}

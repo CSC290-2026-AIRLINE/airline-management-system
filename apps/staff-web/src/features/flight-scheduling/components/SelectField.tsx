@@ -1,19 +1,22 @@
 import type { SelectHTMLAttributes } from 'react'
+import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect } from '@staff-web/components/ui/native-select'
 
-interface SelectFieldProps extends SelectHTMLAttributes<HTMLSelectElement> {
+interface SelectFieldProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   label: string
   invalid?: boolean
-  half?: boolean // shares a row with the next field on a phone
+  half?: boolean // kept for existing callers; the layout no longer needs it
 }
 
-// Labelled dropdown that looks like FormField.
-export function SelectField({ label, invalid = false, half = false, children, ...select }: SelectFieldProps) {
+// Labelled shadcn NativeSelect.
+export function SelectField({ label, invalid = false, half, children, ...select }: SelectFieldProps) {
+  void half
   return (
-    <label className={`fs-field${invalid ? ' fs-invalid' : ''}${half ? ' fs-half' : ''}`}>
+    <Label className="flex flex-col items-start gap-1.5">
       {label}
-      <select className="fs-input fs-select" aria-invalid={invalid} {...select}>
+      <NativeSelect className="w-full h-9" aria-invalid={invalid} {...select}>
         {children}
-      </select>
-    </label>
+      </NativeSelect>
+    </Label>
   )
 }

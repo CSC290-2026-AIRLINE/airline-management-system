@@ -1,4 +1,6 @@
-// Row of buttons where one is on, like Delay / Cancel flight. `labels` renames an option when its value is not what the button says.
+import { ToggleGroup, ToggleGroupItem } from '@staff-web/components/ui/toggle-group'
+
+// Row of options where one is on, like Delay / Cancel flight, on the shadcn ToggleGroup. `labels` renames an option when its value is not what the button says.
 export function SegmentedControl<T extends string>({
   options,
   value,
@@ -11,12 +13,12 @@ export function SegmentedControl<T extends string>({
   labels?: Partial<Record<T, string>>
 }) {
   return (
-    <div className="fs-seg">
+    <ToggleGroup type="single" variant="outline" value={value} onValueChange={(v) => v && onChange(v as T)}>
       {options.map((o) => (
-        <button key={o} type="button" className={value === o ? 'fs-seg-on' : undefined} onClick={() => onChange(o)}>
+        <ToggleGroupItem key={o} value={o}>
           {labels?.[o] ?? o}
-        </button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   )
 }

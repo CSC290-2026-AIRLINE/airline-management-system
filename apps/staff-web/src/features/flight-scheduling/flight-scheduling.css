@@ -53,11 +53,6 @@
   display: grid;
   flex: 1;
   grid-template-columns: 260px minmax(0, 1fr);
-  font-family: var(--fs-font);
-  /* The scaffold sets 18px / 145% type with letter spacing on :root; the design uses fixed sizes. */
-  font-size: var(--fs-text-label);
-  line-height: 1.4;
-  letter-spacing: 0;
 }
 
 /* The shell takes the whole window; the scaffold's #root is a 1126px column with side borders. */
@@ -67,169 +62,41 @@
   text-align: left;
 }
 
+/* Inside the main staff frame the shell is a plain wrapper: the main sidebar replaces Feature 2's own. */
+.fs-embedded {
+  display: block;
+}
+
 /* sidebar */
-.fs-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-  position: sticky;
-  top: 0;
-  box-sizing: border-box;
-  height: 100svh;
-  padding: 29px 22px 32px;
-  overflow-y: auto;
-  background: var(--fs-sidebar);
-  color: #fff;
-}
-
-.fs-brand {
-  position: relative;
-  margin: 0;
-  padding: 0 0 8px 6px;
-  font-family: var(--fs-font-brand);
-  font-size: var(--fs-text-brand);
-  font-weight: 900;
-  line-height: normal;
-  text-transform: uppercase;
-}
-
-.fs-brand::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 6px;
-  width: 52px;
-  height: 4px;
-  border-radius: var(--fs-radius-xs);
-  background: var(--fs-accent);
-}
-
-.fs-brand-sub {
-  margin: -24px 0 0 6px;
-  color: var(--fs-sidebar-text);
-  font-size: var(--fs-text-caption);
-}
-
-.fs-nav-heading {
-  margin: 0;
-  padding: 0 0 6px 12px;
-  color: var(--fs-sidebar-text);
-  font-size: var(--fs-text-caption);
-  font-weight: 600;
-  letter-spacing: 0.88px;
-  text-transform: uppercase;
-}
-
-.fs-nav-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-  padding: 8px 12px;
-  border-radius: var(--fs-radius-sm);
-  color: #fff;
-  font-size: var(--fs-text-label);
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.fs-nav-badge {
-  min-width: 18px;
-  padding: 1px 0;
-  border-radius: 999px;
-  background: #fff;
-  color: var(--fs-crit);
-  font-size: var(--fs-text-caption);
-  font-weight: 600;
-  text-align: center;
-}
-
-.fs-nav-open,
-.fs-menu-check {
-  display: none;
-}
-
-.fs-nav-active {
-  background: var(--fs-navy-hover);
-}
-
-.fs-nav-soon {
-  color: var(--fs-sidebar-text);
-  cursor: default;
-}
-
-.fs-sidebar-foot {
-  margin-top: auto;
-  padding-left: 14px;
-  color: var(--fs-sidebar-text);
-  font-size: var(--fs-text-caption);
-}
-
-.fs-sidebar-foot p {
-  margin: 0;
-}
-
-.fs-sidebar-foot .fs-foot-title {
-  margin-bottom: 8px;
-  color: #fff;
-  font-size: var(--fs-text-h4);
-  font-weight: 600;
-}
 
 /* page */
 .fs-content {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--fs-page);
 }
 
 .fs-page {
   flex: 1;
-  padding: 24px 60px 64px 40px;
-  color: var(--fs-navy);
+  width: 100%;
+  max-width: 72rem;
+  padding: 24px 24px 40px;
   text-align: left;
 }
 
-.fs-page h1 {
+@media (min-width: 1100px) {
+  .fs-page {
+    padding-inline: 63px;
+  }
+}
+
+.fs-page h2 {
   margin: 0;
-  color: var(--fs-ink);
-  font-size: var(--fs-text-h1);
-  font-weight: 800;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 1.125rem;
+  font-weight: 600;
   letter-spacing: 0;
-  line-height: 1.2;
-}
-
-.fs-lede {
-  max-width: 840px;
-  margin: 8px 0 28px;
-  color: var(--fs-muted);
-  font-size: var(--fs-text-body);
-  line-height: 1.5;
-}
-
-.fs-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 32px;
-  margin: 0 0 24px;
-}
-
-.fs-summary div {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.fs-summary dd {
-  margin: 0;
-  font-size: var(--fs-text-h4);
-  font-weight: 700;
-}
-
-.fs-summary dt {
-  color: var(--fs-muted);
-  font-size: var(--fs-text-label);
 }
 
 /* filter box: a plain wrapper on desktop, a folding panel on a phone (see the 800px block) */
@@ -256,11 +123,6 @@
   font-weight: 500;
 }
 
-.fs-filters label {
-  width: 200px;
-}
-
-.fs-input,
 .fs-filters select,
 .fs-filters input {
   box-sizing: border-box;
@@ -292,7 +154,6 @@
   cursor: pointer;
 }
 
-.fs-input:focus,
 .fs-filters select:focus,
 .fs-filters input:focus {
   border-color: var(--fs-navy);
@@ -300,11 +161,6 @@
   box-shadow:
     0 0 0 0.5px var(--fs-navy),
     0 0 0 3px rgb(16 37 68 / 12%);
-}
-
-.fs-input-narrow {
-  width: 72px;
-  padding: 6px 10px;
 }
 
 .fs-form-grid {
@@ -327,11 +183,6 @@
   color: var(--fs-crit);
 }
 
-.fs-invalid .fs-input {
-  border-color: var(--fs-crit-line);
-  box-shadow: 0 0 0 0.5px var(--fs-crit-line);
-}
-
 .fs-error {
   margin: 0 0 16px;
   padding: 10px 14px;
@@ -342,61 +193,8 @@
 }
 
 /* buttons */
-.fs-button,
-.fs-button-light {
-  border: 1px solid var(--fs-navy);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.fs-button {
-  padding: 12px 16px;
-  border-radius: var(--fs-radius);
-  background: var(--fs-navy);
-  color: #fff;
-  font-size: var(--fs-text-action);
-}
-
-.fs-button:hover {
-  border-color: var(--fs-navy-hover);
-  background: var(--fs-navy-hover);
-}
-
-.fs-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.fs-button-light {
-  padding: 6px 12px;
-  border-radius: var(--fs-radius-sm);
-  background: #fff;
-  color: var(--fs-navy);
-  font-size: var(--fs-text-action);
-}
-
-.fs-button-light:hover {
-  background: var(--fs-tint);
-}
 
 /* table */
-.fs-empty {
-  display: grid;
-  justify-items: center;
-  gap: 16px;
-  padding: 48px 24px;
-  border: 1px solid var(--fs-border);
-  border-radius: var(--fs-radius);
-  background: #fff;
-  color: var(--fs-muted);
-  font-size: var(--fs-text-label);
-  text-align: center;
-}
-
-.fs-empty p {
-  margin: 0;
-}
 
 .fs-table-wrap {
   margin-bottom: 16px;
@@ -442,7 +240,6 @@
 
 .fs-flight {
   font-weight: 600;
-  text-decoration: underline;
 }
 
 .fs-to,
@@ -478,29 +275,6 @@
   background: currentcolor;
 }
 
-.fs-status-departed,
-.fs-status-arrived {
-  background: var(--fs-info-bg);
-  color: var(--fs-navy);
-}
-
-.fs-status-delayed,
-.fs-status-holding,
-.fs-status-diverted {
-  background: var(--fs-warn-bg);
-  color: var(--fs-warn);
-}
-
-.fs-status-cancelled {
-  background: var(--fs-crit-bg);
-  color: var(--fs-crit);
-}
-
-.fs-status-active {
-  background: var(--fs-good-bg);
-  color: var(--fs-good);
-}
-
 /* card and toast */
 .fs-card {
   margin-top: 24px;
@@ -532,13 +306,6 @@
   transform: translateX(-50%);
 }
 
-.fs-nav-link:focus-visible,
-.fs-button:focus-visible,
-.fs-button-light:focus-visible {
-  outline: 2px solid var(--fs-accent);
-  outline-offset: 2px;
-}
-
 /* generate flights page */
 .fs-title-row {
   display: flex;
@@ -547,25 +314,9 @@
   margin-bottom: 28px;
 }
 
-.fs-title-row .fs-lede {
-  margin-bottom: 0;
-}
-
 .fs-title-row > div {
   flex: 1;
   min-width: 0;
-}
-
-a.fs-button,
-a.fs-button-light {
-  display: inline-block;
-  text-decoration: none;
-}
-
-.fs-button-lg {
-  padding: 12px 16px;
-  border-radius: var(--fs-radius);
-  font-size: var(--fs-text-action);
 }
 
 .fs-align-end {
@@ -607,47 +358,6 @@ a.fs-button-light {
   width: 18px;
   height: 18px;
   accent-color: var(--fs-navy);
-}
-
-.fs-callout {
-  margin: 16px 0;
-  padding: 10px 14px;
-  border-radius: var(--fs-radius);
-  font-size: var(--fs-text-label);
-}
-
-.fs-callout-action {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-}
-
-.fs-callout-action a {
-  color: var(--fs-navy);
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.fs-callout-info {
-  background: var(--fs-tint);
-  color: var(--fs-navy);
-}
-
-.fs-callout-warn {
-  background: var(--fs-warn-bg);
-  color: var(--fs-warn);
-}
-
-.fs-callout-crit {
-  background: var(--fs-crit-bg);
-  color: var(--fs-crit);
-}
-
-.fs-callout-good {
-  background: var(--fs-good-bg);
-  color: var(--fs-good);
 }
 
 .fs-section-title {
@@ -698,23 +408,6 @@ a.fs-button-light {
   margin-top: 16px;
 }
 
-.fs-button-ghost {
-  padding: 12px 16px;
-  border: 0;
-  background: none;
-  color: var(--fs-navy);
-  font: inherit;
-  font-size: var(--fs-text-action);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.fs-input:disabled {
-  background: var(--fs-head);
-  color: var(--fs-muted);
-  cursor: not-allowed;
-}
-
 /* top bar, batch actions, demo notice */
 .fs-topbar {
   display: flex;
@@ -740,30 +433,8 @@ a.fs-button-light {
   font-weight: 500;
 }
 
-.fs-chip-check {
-  cursor: pointer;
-}
-
-.fs-chip-check input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--fs-navy);
-  cursor: pointer;
-}
-
 .fs-toast-warn {
   background: var(--fs-warn);
-}
-
-.fs-status-ok {
-  background: var(--fs-good-bg);
-  color: var(--fs-good);
-}
-
-.fs-status-failed {
-  background: var(--fs-crit-bg);
-  color: var(--fs-crit);
 }
 
 .fs-batch {
@@ -844,15 +515,11 @@ a.fs-button-light {
   text-decoration: none;
 }
 
-.fs-card-first {
-  margin-top: 0;
-}
-
 .fs-flight-head {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .fs-flight-no {
@@ -882,8 +549,18 @@ a.fs-button-light {
   margin: 0;
 }
 
+.fs-kv-pairs {
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 12px 24px;
+}
+
 .fs-kv-pairs > div {
-  display: contents;
+  min-width: 0;
+}
+
+/* The service date carries a longer explanation, so it gets two columns. */
+.fs-kv-pairs > div:has(.fs-wide-only) {
+  grid-column: span 2;
 }
 
 .fs-fold-head {
@@ -921,51 +598,6 @@ a.fs-button-light {
   margin-top: 16px;
 }
 
-.fs-seg {
-  display: flex;
-  gap: 8px;
-  margin: 12px 0 16px;
-}
-
-.fs-seg button {
-  padding: 8px 14px;
-  border: 1px solid var(--fs-border);
-  border-radius: var(--fs-radius-sm);
-  background: #fff;
-  color: var(--fs-navy);
-  font: inherit;
-  font-size: var(--fs-text-action);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.fs-seg .fs-seg-on {
-  border-color: var(--fs-navy);
-  background: var(--fs-navy);
-  color: #fff;
-}
-
-.fs-button-danger {
-  padding: 12px 16px;
-  border: 1px solid var(--fs-crit-line);
-  border-radius: var(--fs-radius);
-  background: #fff;
-  color: var(--fs-crit-line);
-  font: inherit;
-  font-size: var(--fs-text-action);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.fs-button-danger:hover {
-  background: var(--fs-crit-bg);
-}
-
-.fs-button-danger:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .fs-checks,
 .fs-events {
   display: grid;
@@ -983,21 +615,12 @@ a.fs-button-light {
 }
 
 /* conflicts */
-.fs-button-sm {
-  padding: 6px 12px;
-  border-radius: var(--fs-radius-sm);
-  font-size: var(--fs-text-caption);
-}
 
 .fs-impact {
   margin: 16px 0;
   padding: 12px 16px;
   border-radius: var(--fs-radius);
   background: var(--fs-tint);
-}
-
-.fs-impact .fs-summary {
-  margin-bottom: 8px;
 }
 
 .fs-reason {
@@ -1048,11 +671,6 @@ a.fs-button-light {
 }
 
 /* tabs, settings rows, small helpers */
-.fs-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
-}
 
 .fs-tab {
   padding: 10px 16px;
@@ -1063,12 +681,6 @@ a.fs-button-light {
   font-size: var(--fs-text-action);
   font-weight: 600;
   text-decoration: none;
-}
-
-.fs-tab-on {
-  border-color: var(--fs-navy);
-  background: var(--fs-navy);
-  color: #fff;
 }
 
 .fs-setting {
@@ -1137,27 +749,10 @@ a.fs-button-light {
 }
 
 /* polish found by looking at every page */
-.fs-page a {
-  color: var(--fs-navy);
-  font-weight: 600;
+.fs-page a:not([data-slot]) {
   text-decoration: underline;
 }
 
-.fs-page a.fs-button,
-.fs-page a.fs-button-light,
-.fs-page a.fs-back,
-.fs-page a.fs-tab {
-  text-decoration: none;
-}
-
-.fs-page a.fs-button,
-.fs-page a.fs-tab-on {
-  color: #fff;
-}
-
-.fs-button,
-.fs-button-light,
-.fs-button-danger,
 .fs-status {
   white-space: nowrap;
 }
@@ -1178,44 +773,11 @@ a.fs-button-light {
   margin-top: 12px;
 }
 
-.fs-sub + .fs-button,
-.fs-sub + .fs-button-danger {
-  margin-top: 12px;
-}
-
 .fs-title-row > .fs-section-title {
   flex: 1;
 }
 
 /* dialog */
-.fs-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: grid;
-  place-items: center;
-  background: rgb(10 20 36 / 45%);
-}
-
-.fs-modal {
-  width: min(560px, calc(100vw - 32px));
-  padding: 24px;
-  border-radius: var(--fs-radius);
-  background: #fff;
-  box-shadow: 0 12px 32px rgb(0 0 0 / 25%);
-}
-
-.fs-modal h2 {
-  margin: 0 0 8px;
-  color: var(--fs-ink);
-  font-size: var(--fs-text-h4);
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-.fs-end {
-  justify-content: flex-end;
-}
 
 .fs-start {
   justify-content: flex-start;
@@ -1223,29 +785,6 @@ a.fs-button-light {
 }
 
 /* mobile bar and menu button are phone-only */
-.fs-mobilebar,
-.fs-menu-close {
-  display: none;
-}
-
-.fs-menu-button {
-  display: inline-grid;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  border: 0;
-  border-radius: var(--fs-radius);
-  background: var(--fs-navy);
-  color: #fff;
-  cursor: pointer;
-}
-
-.fs-mobile-brand {
-  color: var(--fs-navy);
-  font-family: var(--fs-font-brand);
-  font-size: 32px;
-  font-weight: 900;
-}
 
 /* tablet */
 @media (max-width: 1100px) {
@@ -1253,16 +792,8 @@ a.fs-button-light {
     grid-template-columns: 220px minmax(0, 1fr);
   }
 
-  .fs-page {
-    padding: 24px 24px 48px;
-  }
-
   .fs-topbar {
     padding: 16px 24px 0;
-  }
-
-  .fs-brand {
-    font-size: 34px;
   }
 }
 
@@ -1272,96 +803,7 @@ a.fs-button-light {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .fs-sidebar {
-    display: none;
-  }
-
-  .fs-sidebar-open {
-    position: fixed;
-    inset: 0;
-    z-index: 30;
-    display: flex;
-    height: 100svh;
-    padding-top: 20px;
-  }
-
   /* menu: Figma drops the gold bar, the all-caps wordmark and the role note, and counts conflicts in words */
-  .fs-sidebar-open {
-    padding-inline: 16px;
-  }
-
-  .fs-brand {
-    padding-left: 0;
-    text-transform: none;
-  }
-
-  .fs-brand::after,
-  .fs-sidebar-foot,
-  .fs-nav-badge {
-    display: none;
-  }
-
-  .fs-brand-sub {
-    margin: -20px 0 0;
-  }
-
-  .fs-nav-heading {
-    padding-left: 0;
-  }
-
-  .fs-nav-link {
-    justify-content: flex-start;
-    gap: 8px;
-  }
-
-  .fs-nav-open {
-    display: inline;
-  }
-
-  .fs-menu-check {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px;
-    border-radius: var(--fs-radius);
-    background: var(--fs-navy-hover);
-    font-size: var(--fs-text-label);
-    cursor: pointer;
-  }
-
-  .fs-menu-check input {
-    width: 16px;
-    height: 16px;
-    margin: 0;
-    accent-color: var(--fs-accent);
-  }
-
-  .fs-menu-close {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    display: inline-grid;
-    width: 44px;
-    height: 44px;
-    place-items: center;
-    border: 0;
-    border-radius: var(--fs-radius);
-    background: var(--fs-navy-hover);
-    color: #fff;
-    font-size: var(--fs-text-lg);
-    cursor: pointer;
-  }
-
-  .fs-mobilebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin: 16px 16px 0;
-    padding: 8px 8px 8px 16px;
-    border: 1px solid var(--fs-border);
-    border-radius: var(--fs-radius-lg);
-    background: #fff;
-  }
 
   /* the chips share one grey strip; the congestion switch is not in the phone design */
   .fs-topbar {
@@ -1385,26 +827,6 @@ a.fs-button-light {
     white-space: nowrap;
   }
 
-  .fs-chip-who {
-    order: -1;
-  }
-
-  .fs-chip-check {
-    display: none;
-  }
-
-  .fs-page {
-    padding: 16px 16px 40px;
-  }
-
-  .fs-page h1 {
-    font-size: var(--fs-text-title-sm);
-  }
-
-  .fs-lede {
-    font-size: var(--fs-text-label);
-  }
-
   .fs-title-row {
     flex-direction: column;
     align-items: stretch;
@@ -1416,21 +838,6 @@ a.fs-button-light {
     box-sizing: border-box;
     width: 100%;
     text-align: center;
-  }
-
-  .fs-summary {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .fs-summary div {
-    display: grid;
-    gap: 2px;
-    padding: 14px;
-    border: 1px solid var(--fs-border);
-    border-radius: var(--fs-radius-lg);
-    background: #fff;
   }
 
   .fs-filters {
@@ -1446,15 +853,6 @@ a.fs-button-light {
 
   .fs-filterbox.is-open {
     border-color: var(--fs-navy);
-  }
-
-  .fs-callout-action {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .fs-callout-action a {
-    text-align: center;
   }
 
   .fs-filter-toggle {
@@ -1547,14 +945,6 @@ a.fs-button-light {
   }
 
   /* a control with two options fills the row */
-  .fs-seg:has(> :nth-child(2):last-child) {
-    margin-bottom: 8px;
-    overflow: visible;
-  }
-
-  .fs-seg:has(> :nth-child(2):last-child) button {
-    flex: 1;
-  }
 
   .fs-wide-only {
     display: none;
@@ -1568,6 +958,10 @@ a.fs-button-light {
   .fs-kv-pairs > div {
     display: block;
     min-width: 0;
+  }
+
+  .fs-kv-pairs > div:has(.fs-wide-only) {
+    grid-column: auto;
   }
 
   .fs-kv-pairs dt {
@@ -1621,15 +1015,7 @@ a.fs-button-light {
     margin-top: 16px;
   }
 
-  .fs-card.fs-card-first {
-    margin-top: 0;
-  }
-
   .fs-fold:not(.is-open) .fs-fold-head h2 {
-    margin-bottom: 0;
-  }
-
-  .fs-fold > .fs-callout {
     margin-bottom: 0;
   }
 
@@ -1642,11 +1028,6 @@ a.fs-button-light {
   .fs-actions {
     flex-wrap: wrap;
     justify-content: flex-start;
-  }
-
-  .fs-tabs,
-  .fs-seg {
-    flex-wrap: wrap;
   }
 
   .fs-card {
@@ -1699,18 +1080,6 @@ a.fs-button-light {
   }
 
   /* the cost lines are a plain list with dividers, and an open cost card gets the navy outline */
-  .fs-t-cost tr {
-    margin-bottom: 0;
-    padding: 12px 0;
-    border: 0;
-    border-bottom: 1px solid var(--fs-divider);
-    border-radius: 0;
-    background: none;
-  }
-
-  .fs-t-cost tr:last-child {
-    border-bottom: 0;
-  }
 
   .fs-card:has(> .fs-fold.is-open) {
     border-color: var(--fs-navy);
@@ -1761,13 +1130,6 @@ a.fs-button-light {
   }
 
   /* buttons in a row's last cell fill the card */
-  .fs-table td[data-label=''] .fs-button,
-  .fs-table td[data-label=''] .fs-button-light {
-    display: block;
-    box-sizing: border-box;
-    width: 100%;
-    text-align: center;
-  }
 
   .fs-table td[data-label=''] .fs-actions {
     display: grid;
@@ -1784,503 +1146,10 @@ a.fs-button-light {
   }
 
   /* placing cells: a row is 12 columns; cells without a column name carry the card's title row */
-  :is(.fs-t-board, .fs-t-generate) td[data-label='']:first-child {
-    grid-area: 1 / 1 / 2 / 2;
-    align-self: center;
-  }
-
-  :is(.fs-t-board, .fs-t-generate) td[data-label='Flight'] {
-    grid-area: 1 / 2 / 2 / 6;
-  }
-
-  :is(.fs-t-board, .fs-t-generate) td[data-label='Date'] {
-    grid-area: 1 / 6 / 2 / 13;
-    color: var(--fs-muted);
-  }
-
-  :is(.fs-t-board, .fs-t-generate) td[data-label='Status'] {
-    grid-area: 1 / 9 / 2 / 13;
-    justify-self: end;
-  }
-
-  :is(.fs-t-board, .fs-t-generate) td[data-label='Route'] {
-    grid-area: 2 / 1 / 3 / 13;
-  }
-
-  :is(.fs-t-board, .fs-t-generate) td[data-label='Departs'] {
-    grid-area: 3 / 1 / 4 / 5;
-  }
-
-  :is(.fs-t-board, .fs-t-generate) td[data-label='Arrives'] {
-    grid-area: 3 / 5 / 4 / 9;
-  }
-
-  :is(.fs-t-board, .fs-t-generate) td[data-label='Aircraft'] {
-    grid-area: 3 / 9 / 4 / 13;
-  }
-
-  .fs-t-generate td[data-label='Check result'] {
-    grid-area: 4 / 1 / 5 / 13;
-  }
-
-  .fs-t-generate td[data-label='Approval'] {
-    grid-area: 5 / 1 / 6 / 13;
-  }
-
-  .fs-t-board td[data-label='Flight']::before,
-  .fs-t-board td[data-label='Date']::before,
-  .fs-t-board td[data-label='Route']::before,
-  .fs-t-board td[data-label='Status']::before,
-  .fs-t-generate td[data-label='Flight']::before,
-  .fs-t-generate td[data-label='Date']::before,
-  .fs-t-generate td[data-label='Route']::before {
-    display: none;
-  }
-
-  .fs-t-airports td[data-label='IATA'] {
-    grid-area: 1 / 1 / 2 / 4;
-    font-size: var(--fs-text-lg);
-    font-weight: 700;
-  }
-
-  .fs-t-airports td[data-label='ICAO'] {
-    grid-area: 1 / 4 / 2 / 9;
-    color: var(--fs-muted);
-  }
-
-  .fs-t-airports td[data-label='Status'] {
-    grid-area: 1 / 9 / 2 / 13;
-    justify-self: end;
-  }
-
-  .fs-t-airports td[data-label='Airport'] {
-    grid-area: 2 / 1 / 3 / 13;
-  }
-
-  .fs-t-airports td[data-label='Time zone'] {
-    grid-area: 3 / 1 / 4 / 7;
-  }
-
-  .fs-t-airports td[data-label='Min turnaround (min)'] {
-    grid-area: 3 / 7 / 4 / 13;
-  }
-
-  .fs-t-airports td:last-child {
-    grid-area: 4 / 1 / 5 / 13;
-  }
-
-  .fs-t-airports td[data-label='IATA']::before,
-  .fs-t-airports td[data-label='ICAO']::before,
-  .fs-t-airports td[data-label='Airport']::before,
-  .fs-t-airports td[data-label='Status']::before {
-    display: none;
-  }
-
-  .fs-t-routes td[data-label='Route'] {
-    grid-area: 1 / 1 / 2 / 9;
-  }
-
-  .fs-t-routes td[data-label='Status'] {
-    grid-area: 1 / 9 / 2 / 13;
-    justify-self: end;
-  }
-
-  .fs-t-routes td[data-label='Distance (km)'] {
-    grid-area: 2 / 1 / 3 / 7;
-  }
-
-  .fs-t-routes td[data-label='Block time (min)'] {
-    grid-area: 2 / 7 / 3 / 13;
-  }
-
-  .fs-t-routes td[data-label='Partner airlines'] {
-    grid-area: 3 / 1 / 4 / 7;
-  }
-
-  .fs-t-routes td[data-label='Used by'] {
-    grid-area: 3 / 7 / 4 / 13;
-  }
-
-  .fs-t-routes td[data-label='Route']::before,
-  .fs-t-routes td[data-label='Status']::before {
-    display: none;
-  }
-
-  .fs-t-patterns td[data-label='Flight'] {
-    grid-area: 1 / 1 / 2 / 4;
-  }
-
-  .fs-t-patterns td[data-label='Route'] {
-    grid-area: 1 / 4 / 2 / 10;
-  }
-
-  .fs-t-patterns td[data-label='Departs (local)'] {
-    grid-area: 1 / 10 / 2 / 13;
-    font-weight: 700;
-    text-align: right;
-  }
-
-  .fs-t-patterns td[data-label='Days'] {
-    grid-area: 2 / 1 / 3 / 7;
-  }
-
-  .fs-t-patterns td[data-label='Valid'] {
-    grid-area: 2 / 7 / 3 / 13;
-  }
-
-  .fs-t-patterns td[data-label='Generated'] {
-    grid-area: 3 / 1 / 4 / 13;
-  }
-
-  .fs-t-patterns td[data-label='Flight']::before,
-  .fs-t-patterns td[data-label='Route']::before,
-  .fs-t-patterns td[data-label='Departs (local)']::before {
-    display: none;
-  }
-
-  .fs-t-approvals td[data-label='Flight'],
-  .fs-t-requests td[data-label='Flight'] {
-    grid-row: 1;
-    grid-column: 1 / 4;
-  }
-
-  .fs-t-approvals td[data-label='Service date'],
-  .fs-t-requests td[data-label='Service date'] {
-    grid-row: 1;
-    grid-column: 4 / 9;
-    color: var(--fs-muted);
-  }
-
-  .fs-t-approvals td[data-label='Purpose'],
-  .fs-t-requests td[data-label='Purpose'] {
-    grid-row: 1;
-    grid-column: 9 / 13;
-    justify-self: end;
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: var(--fs-head);
-    color: var(--fs-slate);
-    font-size: var(--fs-text-caption);
-    font-weight: 500;
-  }
-
-  .fs-t-approvals td[data-label='Proposed'],
-  .fs-t-requests td[data-label='Proposed'] {
-    grid-row: 2;
-    grid-column: 1 / 7;
-  }
-
-  .fs-t-approvals td[data-label='Aircraft'],
-  .fs-t-requests td[data-label='Aircraft'] {
-    grid-row: 2;
-    grid-column: 7 / 13;
-  }
-
-  .fs-t-approvals td[data-label='Status'] {
-    grid-row: 3;
-  }
-
-  .fs-t-approvals td[data-label='Answer'] {
-    grid-row: 4;
-  }
-
-  .fs-t-approvals td:last-child {
-    grid-row: 5;
-  }
 
   /* approver console card: who answers and when it was asked share a row, then the navy Answer button */
-  .fs-t-requests td[data-label='Approver'] {
-    grid-area: 3 / 1 / 4 / 7;
-  }
-
-  .fs-t-requests td[data-label='Requested (simulation)'] {
-    grid-area: 3 / 7 / 4 / 13;
-  }
-
-  .fs-t-requests td:last-child {
-    grid-row: 4;
-  }
-
-  .fs-t-requests td:last-child .fs-button-light {
-    border-color: var(--fs-navy);
-    background: var(--fs-navy);
-    color: #fff;
-  }
-
-  .fs-t-requests td[data-label='Flight'] {
-    font-size: var(--fs-text-body);
-    font-weight: 700;
-    text-decoration: underline;
-  }
-
-  .fs-t-approvals td[data-label='Flight']::before,
-  .fs-t-approvals td[data-label='Service date']::before,
-  .fs-t-approvals td[data-label='Status']::before,
-  .fs-t-approvals td[data-label='Answer']::before,
-  .fs-t-requests td[data-label='Flight']::before,
-  .fs-t-requests td[data-label='Service date']::before {
-    display: none;
-  }
-
-  .fs-t-approvals td[data-label='Purpose']::before,
-  .fs-t-requests td[data-label='Purpose']::before {
-    content: '•';
-    display: inline;
-    margin: 0 6px 0 0;
-    color: inherit;
-    font-size: inherit;
-    text-transform: none;
-  }
-
-  .fs-t-conflicts td[data-label='Kind'] {
-    grid-area: 1 / 1 / 2 / 6;
-  }
-
-  .fs-t-conflicts td[data-label='Detected'] {
-    grid-area: 1 / 6 / 2 / 13;
-    color: var(--fs-muted);
-    font-size: var(--fs-text-caption);
-    text-align: right;
-  }
-
-  .fs-t-conflicts td[data-label='Flight'] {
-    grid-area: 2 / 1 / 3 / 13;
-  }
-
-  .fs-t-conflicts td[data-label='What failed'] {
-    grid-area: 3 / 1 / 4 / 13;
-  }
-
-  .fs-t-conflicts td:last-child {
-    grid-area: 4 / 1 / 5 / 13;
-  }
-
-  .fs-t-conflicts td[data-label='Detected']::before {
-    display: inline;
-    content: 'Detected ';
-    font-size: inherit;
-    font-weight: 400;
-    text-transform: none;
-  }
-
-  .fs-t-conflicts td[data-label='Kind']::before,
-  .fs-t-conflicts td[data-label='Flight']::before,
-  .fs-t-conflicts td[data-label='What failed']::before {
-    display: none;
-  }
-
-  .fs-t-congestion td[data-label='Airport'] {
-    grid-area: 1 / 1 / 2 / 3;
-    font-weight: 700;
-  }
-
-  .fs-t-congestion td[data-label='Window'] {
-    grid-area: 1 / 3 / 2 / 9;
-    color: var(--fs-muted);
-  }
-
-  .fs-t-congestion td[data-label='State'] {
-    grid-area: 1 / 9 / 2 / 13;
-    justify-self: end;
-  }
-
-  .fs-t-congestion td[data-label='Limit'] {
-    grid-area: 2 / 1 / 3 / 5;
-  }
-
-  .fs-t-congestion td[data-label='Movements'] {
-    grid-area: 2 / 5 / 3 / 9;
-  }
-
-  .fs-t-congestion td[data-label='Disruption reason'] {
-    grid-area: 2 / 9 / 3 / 13;
-  }
-
-  .fs-t-congestion td:last-child {
-    grid-area: 3 / 1 / 4 / 13;
-  }
-
-  .fs-t-congestion td[data-label='Airport']::before,
-  .fs-t-congestion td[data-label='Window']::before,
-  .fs-t-congestion td[data-label='State']::before {
-    display: none;
-  }
-
-  .fs-t-over td[data-label='Flight'] {
-    grid-area: 1 / 1 / 2 / 7;
-  }
-
-  .fs-t-over td[data-label='Movement'] {
-    grid-area: 1 / 7 / 2 / 13;
-    color: var(--fs-muted);
-    text-align: right;
-  }
-
-  .fs-t-over td[data-label='Proposed'] {
-    grid-area: 2 / 1 / 3 / 13;
-  }
-
-  .fs-t-over td:last-child {
-    grid-area: 3 / 1 / 4 / 13;
-  }
-
-  .fs-t-over td[data-label='Flight']::before,
-  .fs-t-over td[data-label='Movement']::before,
-  .fs-t-over td[data-label='Proposed']::before {
-    display: none;
-  }
-
-  .fs-t-dlog td[data-label='Event'] {
-    grid-area: 1 / 1 / 2 / 8;
-  }
-
-  .fs-t-dlog td[data-label='Occurred (simulation)'] {
-    grid-area: 1 / 8 / 2 / 13;
-    color: var(--fs-muted);
-    font-size: var(--fs-text-caption);
-    text-align: right;
-  }
-
-  .fs-t-dlog td[data-label='Flight'] {
-    grid-area: 2 / 1 / 3 / 13;
-  }
-
-  .fs-t-dlog td[data-label='Disruption reason'] {
-    grid-area: 3 / 1 / 4 / 5;
-  }
-
-  .fs-t-dlog td[data-label='Detail'] {
-    grid-area: 3 / 5 / 4 / 10;
-  }
-
-  .fs-t-dlog td[data-label='By'] {
-    grid-area: 3 / 10 / 4 / 13;
-  }
-
-  .fs-t-dlog td[data-label='Event']::before,
-  .fs-t-dlog td[data-label='Occurred (simulation)']::before,
-  .fs-t-dlog td[data-label='Flight']::before {
-    display: none;
-  }
 
   /* title row: fee name, a pill for the movement, small Edit on the right */
-  .fs-t-fees td[data-label='Fee'] {
-    grid-area: 1 / 1 / 2 / 5;
-    align-self: center;
-    font-weight: 700;
-  }
-
-  .fs-t-fees td[data-label='Applies on'] {
-    grid-area: 1 / 5 / 2 / 10;
-    align-self: center;
-    justify-self: start;
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: var(--fs-head);
-    color: var(--fs-slate);
-    font-size: var(--fs-text-caption);
-  }
-
-  .fs-t-fees td[data-label='Applies on']::before {
-    content: '•';
-    display: inline;
-    margin: 0 6px 0 0;
-    color: inherit;
-    font-size: inherit;
-    text-transform: none;
-  }
-
-  .fs-t-fees td:last-child {
-    grid-area: 1 / 10 / 2 / 13;
-    justify-self: end;
-  }
-
-  :is(.fs-t-fees, .fs-t-policy) td:last-child .fs-button-light {
-    display: inline-block;
-    width: auto;
-    padding: 4px 12px;
-    font-size: var(--fs-text-caption);
-  }
-
-  .fs-t-fees td[data-label='Amount'] {
-    grid-area: 2 / 1 / 3 / 7;
-  }
-
-  .fs-t-fees td[data-label='Unit'] {
-    grid-area: 2 / 7 / 3 / 13;
-  }
-
-  .fs-t-fees td[data-label='Effective'] {
-    grid-area: 3 / 1 / 4 / 13;
-  }
-
-  .fs-t-fees td[data-label='Fee']::before {
-    display: none;
-  }
-
-  .fs-t-policy td[data-label='Airport'] {
-    grid-area: 1 / 1 / 2 / 10;
-    align-self: center;
-    font-size: var(--fs-text-body);
-    font-weight: 700;
-  }
-
-  .fs-t-policy td[data-label='Curfew (local)'] {
-    grid-area: 2 / 1 / 3 / 7;
-  }
-
-  .fs-t-policy td[data-label='Max departures per hour'] {
-    grid-area: 2 / 7 / 3 / 13;
-  }
-
-  .fs-t-policy td[data-label='Offers other times as'] {
-    grid-area: 3 / 1 / 4 / 13;
-  }
-
-  .fs-t-policy td:last-child {
-    grid-area: 1 / 10 / 2 / 13;
-    justify-self: end;
-  }
-
-  .fs-t-policy td[data-label='Airport']::before {
-    display: none;
-  }
-
-  .fs-t-cost td[data-label='Item'] {
-    grid-area: 1 / 1 / 2 / 9;
-  }
-
-  .fs-t-cost td[data-label='Amount'] {
-    grid-area: 1 / 9 / 2 / 13;
-    font-weight: 600;
-  }
-
-  .fs-t-cost td[data-label='Basis'] {
-    grid-area: 2 / 1 / 3 / 13;
-    color: var(--fs-muted);
-    font-size: var(--fs-text-caption);
-  }
-
-  .fs-t-cost td::before {
-    display: none;
-  }
-
-  .fs-t-result td[data-label='Flight'] {
-    grid-area: 1 / 1 / 2 / 8;
-  }
-
-  .fs-t-result td[data-label='Result'] {
-    grid-area: 1 / 8 / 2 / 13;
-    justify-self: end;
-  }
-
-  .fs-t-result td[data-label='Detail'] {
-    grid-area: 2 / 1 / 3 / 13;
-  }
-
-  .fs-t-result td::before {
-    display: none;
-  }
 
   /* ---- forms and buttons ---- */
   .fs-field,
@@ -2301,10 +1170,6 @@ a.fs-button-light {
     grid-column: 1 / -1;
   }
 
-  .fs-form-grid > .fs-half {
-    grid-column: auto;
-  }
-
   /* the fee form keeps the desktop order but pairs Amount with Currency and the two dates on a phone */
   .fs-form-fee > :nth-child(4) {
     order: 2;
@@ -2317,24 +1182,6 @@ a.fs-button-light {
   .fs-form-actions {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .fs-card .fs-form-actions .fs-button,
-  .fs-card > .fs-button,
-  .fs-card form > .fs-button,
-  .fs-card .fs-button-danger {
-    box-sizing: border-box;
-    width: 100%;
-    text-align: center;
-  }
-
-  .fs-seg {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-
-  .fs-seg button {
-    flex: none;
   }
 
   .fs-topbar .fs-chip-dot {
@@ -2365,4 +1212,15 @@ a.fs-button-light {
   height: 8px;
   border-radius: 50%;
   background: var(--fs-accent);
+}
+
+/* A placeholder must not look like a value: values use the full text colour, placeholders a lighter one. Dialogs are rendered outside the
+   page frame, so they are matched by their own slot. */
+:is(.fs-shell, [data-slot='dialog-content']) :is(input, textarea, select) {
+  color: var(--foreground);
+}
+
+:is(.fs-shell, [data-slot='dialog-content']) :is(input, textarea)::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.55;
 }

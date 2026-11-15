@@ -1,8 +1,12 @@
-// Confirmation message pinned to the bottom of the screen; pair it with useNotice.
+import { useEffect } from 'react'
+import { toast } from 'sonner'
+
+// Confirmation message as a sonner toast; pair it with useNotice. The <Toaster /> is mounted once in StaffShell.
 export function Toast({ message, tone = 'default' }: { message: string | null; tone?: 'default' | 'warn' }) {
-  return message ? (
-    <p className={`fs-toast${tone === 'warn' ? ' fs-toast-warn' : ''}`} role="status">
-      {message}
-    </p>
-  ) : null
+  useEffect(() => {
+    if (!message) return
+    if (tone === 'warn') toast.warning(message)
+    else toast(message)
+  }, [message, tone])
+  return null
 }
