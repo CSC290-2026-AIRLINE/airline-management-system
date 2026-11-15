@@ -5,7 +5,7 @@
  * label from the run's `crew_setting` limits and records whether a break under it is law or
  * a company rule.
  */
-import { displayRules, rosterRulesNote } from '../types/roster-rules'
+import { displayRules, displayRulesCompact, rosterRulesNote, rosterRulesNoteCompact } from '../types/roster-rules'
 import type { RuleLimits } from '../types/types'
 
 function RuleItem({ number, label }: { number: number; label: string }) {
@@ -39,7 +39,7 @@ export function RulesCard({ limits, aircraftType }: { limits: RuleLimits; aircra
   )
 }
 
-/** Phone variant: a single column, with the description trimmed to fit. */
+/** Phone variant: a plain numbered list, with the description and note trimmed to fit. */
 export function RulesCardCompact({ limits, aircraftType }: { limits: RuleLimits; aircraftType?: string }) {
   return (
     <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5">
@@ -47,12 +47,19 @@ export function RulesCardCompact({ limits, aircraftType }: { limits: RuleLimits;
       <p className="mt-1.5 text-sm leading-relaxed text-primary-text/60">
         Every assignment is checked against these. The strictest country rule wins.
       </p>
-      <ol className="mt-4 flex flex-col gap-2.5">
-        {displayRules(limits).map((rule) => (
-          <RuleItem key={rule.code} number={rule.number} label={rule.label} />
+      <ol className="mt-4 flex flex-col gap-3">
+        {displayRulesCompact(limits).map((rule) => (
+          <li key={rule.code} className="flex items-center gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
+              {rule.number}
+            </span>
+            <span className="text-sm leading-snug font-semibold text-primary-text">{rule.label}</span>
+          </li>
         ))}
       </ol>
-      <p className="mt-4 rounded-lg bg-info-bg px-4 py-3 text-xs leading-relaxed text-primary">{rosterRulesNote(limits, aircraftType)}</p>
+      <p className="mt-4 rounded-lg bg-info-bg px-4 py-3 text-xs leading-relaxed text-primary">
+        {rosterRulesNoteCompact(limits, aircraftType)}
+      </p>
     </section>
   )
 }

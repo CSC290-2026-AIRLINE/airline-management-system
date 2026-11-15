@@ -122,7 +122,7 @@ export function RuleBreaksCard({ breaks, onOpenFix }: { breaks: readonly RosterR
       </ul>
 
       {(lawCodes.length > 0 || companyCodes.length > 0) && (
-        <p className="mt-4 text-[13px] leading-relaxed text-primary-text/55">
+        <p className="mt-4 hidden text-[13px] leading-relaxed text-primary-text/55 lg:block">
           {lawCodes.length > 0 && (
             <>
               {joinCodes(lawCodes)} {lawCodes.length === 1 ? 'is a law rule, so it must' : 'are law rules, so they must'} be fixed with a

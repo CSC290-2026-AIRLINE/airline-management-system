@@ -104,6 +104,30 @@ function joinNumbers(numbers: readonly number[]): string {
   return `${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`
 }
 
+/** Phone wording of the six rules: the full label where it fits, the short one where it does not. */
+const PHONE_LABELS: Partial<Record<RosterRuleCode, (limits: RuleLimits) => string>> = {
+  NO_LOCAL_CREW: () => '1+ local crew speaks the language',
+}
+
+export function displayRulesCompact(limits: RuleLimits): RosterRuleDefinition[] {
+  return displayRules(limits).map((rule) => ({ ...rule, label: PHONE_LABELS[rule.code]?.(limits) ?? rule.label }))
+}
+
+/** The shorter sentence under the six rules on a phone. */
+export function rosterRulesNoteCompact(limits: RuleLimits, aircraftType?: string): string {
+  const rules = displayRules(limits)
+  const law = rules.filter((rule) => rule.severity === 'law').map((rule) => rule.number)
+  const company = rules.filter((rule) => rule.severity === 'company').map((rule) => rule.number)
+  // Rules 1-3 are consecutive, so they read as a range: `1–3 and 6`.
+  const lawText = law.length === 4 ? `${law[0]}–${law[2]} and ${law[3]}` : joinNumbers(law)
+  const leg = aircraftType ? `Each ${aircraftType} leg` : 'Each leg'
+  const rating = aircraftType ? `${aircraftType} type rating` : 'type rating'
+  return (
+    `${leg}: 1 captain, 1 first officer, ${limits.cabinCrewPerLeg} cabin crew, valid licence and ${rating}. ` +
+    `Rules ${lawText} must be fixed by a swap; ${joinNumbers(company)} can be overridden with a reason.`
+  )
+}
+
 /** The sentence under the six rules. `aircraftType` is named when every selected leg flies the same one. */
 export function rosterRulesNote(limits: RuleLimits, aircraftType?: string): string {
   const rules = displayRules(limits)

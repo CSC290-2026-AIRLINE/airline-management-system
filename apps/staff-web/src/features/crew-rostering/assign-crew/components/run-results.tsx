@@ -22,18 +22,34 @@ export function NoCrewAssigned({ committedCount }: { committedCount: number }) {
 /** Flight legs, fully crewed legs and open breaks, taken from the stored run. */
 export function RunStatCards({ summary }: { summary: AssignmentSummary }) {
   const cards = [
-    { label: 'Flight legs', value: summary.totalLegs, tone: 'text-primary-text' },
-    { label: 'Fully crewed', value: summary.fullyCrewedLegs, tone: 'text-primary-text' },
-    { label: 'Open breaks', value: summary.breakCount, tone: 'text-primary-text' },
+    { label: 'Flight legs', value: summary.totalLegs, tint: 'bg-page-bg' },
+    { label: 'Fully crewed', value: summary.fullyCrewedLegs, tint: 'bg-green-tint' },
+    { label: 'Open breaks', value: summary.breakCount, tint: 'bg-invalid-bg' },
   ]
   return (
-    <div className="grid grid-cols-3 gap-3 lg:gap-5">
-      {cards.map((card) => (
-        <div key={card.label} className="rounded-2xl border border-border-desc/40 bg-card-bg px-4 py-4 lg:px-7 lg:py-6">
-          <p className="text-xs text-primary-text/60 lg:text-sm">{card.label}</p>
-          <p className={`mt-2 text-3xl leading-none font-extrabold lg:mt-3 lg:text-4xl ${card.tone}`}>{card.value}</p>
+    <>
+      {/* Desktop: three separate cards, label above the number. */}
+      <div className="hidden grid-cols-3 gap-5 lg:grid">
+        {cards.map((card) => (
+          <div key={card.label} className="rounded-2xl border border-border-desc/40 bg-card-bg px-7 py-6">
+            <p className="text-sm text-primary-text/60">{card.label}</p>
+            <p className="mt-3 text-4xl leading-none font-extrabold text-primary-text">{card.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Phone: one "Run results" card of tinted tiles, number above the label. */}
+      <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5 lg:hidden">
+        <h2 className="text-lg font-bold text-primary-text">Run results</h2>
+        <div className="mt-3 grid grid-cols-3 gap-2.5">
+          {cards.map((card) => (
+            <div key={card.label} className={`rounded-xl px-3.5 py-3.5 ${card.tint}`}>
+              <p className="text-3xl leading-none font-extrabold text-primary-text">{card.value}</p>
+              <p className="mt-2 text-xs font-semibold text-primary-text/70">{card.label}</p>
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      </section>
+    </>
   )
 }

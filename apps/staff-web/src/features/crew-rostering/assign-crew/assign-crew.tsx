@@ -77,7 +77,7 @@ export function AssignCrewPage() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className={`flex min-w-0 flex-1 flex-col gap-5 px-4 pt-5 lg:px-9 lg:py-7 lg:pb-9 ${hasResults ? 'pb-28' : 'pb-8'}`}>
+      <div className={`flex min-w-0 flex-1 flex-col gap-5 px-4 pt-1 lg:px-9 lg:py-7 lg:pb-9 ${hasResults ? 'pb-28' : 'pb-8'}`}>
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-primary-text uppercase lg:text-3xl">Assign crew</h1>
@@ -160,35 +160,13 @@ export function AssignCrewPage() {
             {fields}
             {hasResults && (
               <Button fullWidth className="mt-5 h-11" disabled={!canRun} onClick={() => setConfirming(true)}>
-                Re-run auto-assign
+                Run auto-assign
               </Button>
             )}
           </section>
 
-          {/* Before a run the picker is its own card; afterwards it folds away so the results come first. */}
-          {hasResults ? (
-            <details className="group rounded-2xl border border-border-desc/40 bg-card-bg p-5">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-lg font-bold text-primary-text">
-                Committed pairings
-                <span className="text-xs font-semibold text-primary-text/55">{state.selectedIds.length} selected</span>
-              </summary>
-              <div className="mt-3">
-                <PairingsPicker
-                  pairings={state.pairings}
-                  selectedIds={state.selectedIds}
-                  excluded={state.uncommitted}
-                  canRun={canRun}
-                  showRun={false}
-                  onToggle={state.togglePairing}
-                  onSelectAll={state.selectAll}
-                  onClearSelection={state.clearSelection}
-                  onRun={() => setConfirming(true)}
-                />
-              </div>
-            </details>
-          ) : (
-            <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5">{picker}</section>
-          )}
+          {/* Before a run the picker is its own card. Afterwards the design drops it, so the results come first. */}
+          {!hasResults && <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5">{picker}</section>}
 
           <RulesCardCompact limits={state.limits} aircraftType={aircraftType} />
           {hasResults ? (
