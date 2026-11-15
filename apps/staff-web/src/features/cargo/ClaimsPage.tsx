@@ -5,8 +5,8 @@ import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { Route } from '@staff-web/routes/_authenticated/cargo/claims'
-import type { ClaimFilterStatus } from '@staff-web/routes/_authenticated/cargo/claims'
+import { Route } from '@staff-web/routes/_authenticated/cargo/claims.index'
+import type { ClaimFilterStatus } from '@staff-web/routes/_authenticated/cargo/claims.index'
 import { useCargoApi, type ClaimListItem, type ClaimListResult } from './cargo-api'
 
 const STATUS_TABS: { value: ClaimFilterStatus; label: string }[] = [
@@ -209,10 +209,7 @@ function ClaimRow({ claim: c }: { claim: ClaimListItem }) {
   const status = claimStatus(c)
 
   return (
-    <TableRow
-      className="cursor-pointer"
-      onClick={() => navigate({ to: '/cargo/claims/$id', params: { id: c.id }, search: { status: 'all' } })}
-    >
+    <TableRow className="cursor-pointer" onClick={() => navigate({ to: '/cargo/claims/$id', params: { id: c.id } })}>
       <TableCell className="font-mono text-xs font-medium">{c.claimRef}</TableCell>
       <TableCell className="font-mono text-xs">{c.bookingRef}</TableCell>
       <TableCell className="font-mono text-xs">{c.awbNumber ?? '—'}</TableCell>

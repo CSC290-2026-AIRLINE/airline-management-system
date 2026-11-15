@@ -38,6 +38,9 @@ export interface DeskBooking {
   consigneeName: string
   flightNumber: string
   flightServiceDate: string
+  flightDepAt: string
+  flightOrigin: string
+  flightDestination: string
   commodityTypeName: string
   pieces: number
   quotedChargeableKg: number
@@ -45,11 +48,17 @@ export interface DeskBooking {
   currency: string
   status: string
   bookedAt: string
+  hasRefund: boolean
 }
 
 export interface DeskListResult {
   data: DeskBooking[]
   counts: Record<string, number>
+  filters: {
+    flights: { id: string; flightNumber: string }[]
+    commodityTypes: { id: string; name: string }[]
+  }
+  settings: { holdMinutes: number; claimWindowDays: number }
   page: number
   pageSize: number
   total: number
@@ -206,11 +215,44 @@ export interface FlightWithCargo {
   flightNumber: string
   serviceDate: string
   depAt: string
+  arrAt: string
+  origin: string
+  destination: string
+  routeId: string
   aircraft: string
   status: string
   bookingCount: number
   committedKg: number
   availableKg: number
+}
+
+export interface FlightListResult {
+  flights: FlightWithCargo[]
+  routes: { id: string; origin: string; destination: string }[]
+}
+
+export interface FlightSummary {
+  id: string
+  flightNumber: string
+  serviceDate: string
+  depAt: string
+  arrAt: string
+  status: string
+  aircraft: string
+  origin: string
+  destination: string
+  blockTimeMin: number
+  sellableSeats: number
+  seatsTaken: number
+  holdLimitKg: number
+  reservedPassengers: number
+  reserveKgPerPax: number
+  floorPercent: number
+  baggageReserveKg: number
+  committedKg: number
+  loadedKg: number
+  availableKg: number
+  bookingCutoffAt: string
 }
 
 export interface ManifestRow {
@@ -234,8 +276,10 @@ export interface FlightManifest {
   availableKg: number
   totalDeclaredKg: number
   totalMeasuredKg: number
+  totalPieces: number
+  measuredCount: number
   loadedCount: number
-  bookedCount: number
+  awbCount: number
   rows: ManifestRow[]
 }
 
@@ -358,12 +402,23 @@ export function useCargoApi() {
       return map
     },
 
-    listBookings: (params: { status?: string; q?: string; page?: number; pageSize?: number }) => {
+    listBookings: (params: {
+      status?: string
+      q?: string
+      page?: number
+      pageSize?: number
+      flightId?: string
+      shipDate?: string
+      commodityTypeId?: string
+    }) => {
       const qs = new URLSearchParams()
-      if (params.status && params.status !== 'all') qs.set('status', params.status)
+      if (params.status) qs.set('status', params.status)
       if (params.q) qs.set('q', params.q)
       if (params.page) qs.set('page', String(params.page))
       if (params.pageSize) qs.set('page_size', String(params.pageSize))
+      if (params.flightId) qs.set('flight_id', params.flightId)
+      if (params.shipDate) qs.set('ship_date', params.shipDate)
+      if (params.commodityTypeId) qs.set('commodity_type_id', params.commodityTypeId)
       const query = qs.toString()
       return send<DeskListResult>(`/api/staff/cargo/bookings${query ? `?${query}` : ''}`)
     },
@@ -390,9 +445,24 @@ export function useCargoApi() {
     simulateDeparture: (id: string) => send<{ status: string }>(`/api/staff/cargo/test/bookings/${id}/departed`, { method: 'POST' }),
     simulateArrival: (id: string) => send<{ status: string }>(`/api/staff/cargo/test/bookings/${id}/arrived`, { method: 'POST' }),
 
-    listFlightsWithCargo: (from: string, to: string) =>
-      send<FlightWithCargo[]>(`/api/staff/cargo/flights?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+    listFlightsWithCargo: (from: string, to: string, routeId?: string) => {
+      const qs = new URLSearchParams({ from, to })
+      if (routeId) qs.set('route_id', routeId)
+      return send<FlightListResult>(`/api/staff/cargo/flights?${qs.toString()}`)
+    },
+    getFlightSummary: (flightId: string) => send<FlightSummary>(`/api/staff/cargo/flights/${flightId}`),
     getFlightManifest: (flightId: string) => send<FlightManifest>(`/api/staff/cargo/flights/${flightId}/manifest`),
+    downloadManifestCsv: async (flightId: string, flightNumber: string) => {
+      const res = await fetchWithAuth(`/api/staff/cargo/flights/${flightId}/manifest?format=csv`)
+      if (!res.ok) throw await readError(res)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `manifest-${flightNumber}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    },
 
     listClaims: (params: { status?: string; q?: string; page?: number; pageSize?: number }) => {
       const qs = new URLSearchParams()

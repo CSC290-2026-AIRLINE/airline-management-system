@@ -149,12 +149,7 @@ export function BookingDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Link
-              to="/cargo/claims/$id"
-              params={{ id: detail.claim.id }}
-              search={{ status: 'all' }}
-              className="text-sm font-medium underline underline-offset-2"
-            >
+            <Link to="/cargo/claims/$id" params={{ id: detail.claim.id }} className="text-sm font-medium underline underline-offset-2">
               {detail.claim.claimRef}
             </Link>
           </CardContent>
@@ -330,14 +325,25 @@ export function BookingDetailPage() {
 }
 
 function BackLink() {
+  const { from, flight } = Route.useSearch()
+
+  if (from === 'flight' && flight) {
+    return (
+      <Link to="/cargo/flights" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="size-3.5" />
+        Flight cargo
+      </Link>
+    )
+  }
+
   return (
     <Link
       to="/cargo/bookings"
-      search={{ status: 'all' }}
+      search={{ status: 'booked' }}
       className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="size-3.5" />
-      Back to Cargo Desk
+      Cargo desk
     </Link>
   )
 }
@@ -437,12 +443,7 @@ function TestToolsCard({
           </Button>
         )}
         {claimLink && (
-          <Link
-            to="/cargo/claims/$id"
-            params={{ id: claimLink.id }}
-            search={{ status: 'all' }}
-            className="text-xs font-medium underline underline-offset-2"
-          >
+          <Link to="/cargo/claims/$id" params={{ id: claimLink.id }} className="text-xs font-medium underline underline-offset-2">
             View {claimLink.ref}
           </Link>
         )}

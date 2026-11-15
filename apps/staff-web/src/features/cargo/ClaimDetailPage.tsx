@@ -150,12 +150,7 @@ export function ClaimDetailPage() {
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3">
             <Field label="Booking ref">
-              <Link
-                to="/cargo/bookings/$id"
-                params={{ id: booking.id }}
-                search={{ status: 'all' }}
-                className="text-sm font-medium underline underline-offset-2"
-              >
+              <Link to="/cargo/bookings/$id" params={{ id: booking.id }} className="text-sm font-medium underline underline-offset-2">
                 {booking.bookingRef}
               </Link>
             </Field>
