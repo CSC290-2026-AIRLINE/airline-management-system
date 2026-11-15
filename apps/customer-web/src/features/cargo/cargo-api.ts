@@ -219,6 +219,7 @@ export interface BookingDetail {
 
 export interface ClaimListItem {
   id: string
+  bookingId: string
   claimRef: string
   bookingRef: string
   awbNumber: string | null

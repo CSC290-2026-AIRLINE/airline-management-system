@@ -554,9 +554,12 @@ export class CargoCustomerService {
         let refundResult: { refundId: string }
         try {
           refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'cancel')
-        } catch {
+        } catch (e) {
           throw new InternalServerErrorException({
-            error: { code: 'REFUND_FAILED', message: 'Refund could not be processed — cancellation was not recorded' },
+            error: {
+              code: 'REFUND_FAILED',
+              message: `Refund could not be processed — cancellation was not recorded: ${e instanceof Error ? e.message : String(e)}`,
+            },
           })
         }
         const event = await this.events.appendEvent(tx, {

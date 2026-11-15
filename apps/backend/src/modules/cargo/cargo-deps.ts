@@ -41,6 +41,12 @@ export function seatsTakenOnFlight(db: PrismaLike, flightId: string): number {
 }
 
 // MOCK: replace when Feature 5a payment/refund service is merged
+const REFUND_REASON_MAP: Record<string, string> = {
+  cancel: 'cargo_cancel',
+  rejected: 'cargo_rejected',
+  flight: 'flight_cancelled',
+}
+
 export async function refundFull(
   db: PrismaLike,
   bookingRef: string,
@@ -48,22 +54,36 @@ export async function refundFull(
   amount: number,
   reason: 'cancel' | 'rejected' | 'flight',
 ): Promise<{ refundId: string }> {
+  const dbReason = REFUND_REASON_MAP[reason]
+  const sourceKey = `cargo:${bookingRef}:${reason}`
+
+  const existing = await db.refund.findFirst({ where: { source_key: sourceKey } })
+  if (existing) return { refundId: existing.id }
+
   const now = simNow()
-  const refund = await db.refund.create({
-    data: {
-      payment_id: paymentId,
-      source_key: `cargo-${bookingRef}-${reason}-${Date.now()}`,
-      reason,
-      method: 'original',
-      status: 'completed',
-      amount,
-      voucher_amount: 0,
-      fee_withheld: 0,
-      requested_at: now,
-      completed_at: now,
-    },
-  })
-  return { refundId: refund.id }
+  try {
+    const refund = await db.refund.create({
+      data: {
+        payment_id: paymentId,
+        source_key: sourceKey,
+        reason: dbReason,
+        method: 'original',
+        status: 'succeeded',
+        amount,
+        voucher_amount: 0,
+        fee_withheld: 0,
+        requested_at: now,
+        completed_at: now,
+      },
+    })
+    return { refundId: refund.id }
+  } catch (err: unknown) {
+    if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
+      const dup = await db.refund.findFirst({ where: { source_key: sourceKey } })
+      if (dup) return { refundId: dup.id }
+    }
+    throw err
+  }
 }
 
 // Requirements say to fall back to the reserve when baggage weight is unknown

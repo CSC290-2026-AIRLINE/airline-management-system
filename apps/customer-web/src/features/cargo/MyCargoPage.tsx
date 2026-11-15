@@ -169,35 +169,37 @@ export default function MyCargoPage() {
     <div className="text-left">
       <CargoHero subtitle="Your bookings, tracking and claims. Click a reference to open it." />
 
-      <div className="mx-auto w-full max-w-6xl bg-slate-50 px-6 py-8">
-        {/* Track */}
-        <TrackBox />
+      <div className="bg-slate-50 py-8">
+        <div className="mx-auto w-full max-w-6xl px-6">
+          {/* Track */}
+          <TrackBox />
 
-        {/* Card with tabs */}
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6">
-          {/* Tab row */}
-          <div className="flex gap-6 border-b border-slate-200">
-            <button onClick={() => switchTab('bookings')} className={tabCls('bookings')}>
-              Bookings
-            </button>
-            <button onClick={() => switchTab('claims')} className={tabCls('claims')}>
-              Claims
-            </button>
-            <button onClick={() => switchTab('notices')} className={tabCls('notices')}>
-              Notices
-              {unreadCount > 0 && (
-                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-          </div>
+          {/* Card with tabs */}
+          <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6">
+            {/* Tab row */}
+            <div className="flex gap-6 border-b border-slate-200">
+              <button onClick={() => switchTab('bookings')} className={tabCls('bookings')}>
+                Bookings
+              </button>
+              <button onClick={() => switchTab('claims')} className={tabCls('claims')}>
+                Claims
+              </button>
+              <button onClick={() => switchTab('notices')} className={tabCls('notices')}>
+                Notices
+                {unreadCount > 0 && (
+                  <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
 
-          {/* Tab content */}
-          <div className="pt-5">
-            {tab === 'bookings' && <BookingsTab />}
-            {tab === 'claims' && <ClaimsTab />}
-            {tab === 'notices' && <NoticesTab onCountChange={setUnreadCount} />}
+            {/* Tab content */}
+            <div className="pt-5">
+              {tab === 'bookings' && <BookingsTab />}
+              {tab === 'claims' && <ClaimsTab />}
+              {tab === 'notices' && <NoticesTab onCountChange={setUnreadCount} />}
+            </div>
           </div>
         </div>
       </div>
@@ -542,7 +544,7 @@ function ClaimsTab() {
                     <tr
                       key={c.id}
                       className="cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50"
-                      onClick={() => void navigate({ to: '/cargo/bookings/$id', params: { id: c.id } })}
+                      onClick={() => void navigate({ to: '/cargo/bookings/$id', params: { id: c.bookingId } })}
                     >
                       <td className="py-3 pr-4 font-semibold text-slate-900">{c.claimRef}</td>
                       <td className="py-3 pr-4 text-slate-700">{c.bookingRef}</td>
@@ -569,7 +571,7 @@ function ClaimsTab() {
                 <div
                   key={c.id}
                   className="cursor-pointer rounded-lg border border-slate-200 p-4 transition-colors hover:bg-slate-50"
-                  onClick={() => void navigate({ to: '/cargo/bookings/$id', params: { id: c.id } })}
+                  onClick={() => void navigate({ to: '/cargo/bookings/$id', params: { id: c.bookingId } })}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-slate-900">{c.claimRef}</span>

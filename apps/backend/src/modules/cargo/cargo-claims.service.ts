@@ -401,6 +401,7 @@ export class CargoClaimsService {
     return {
       data: claims.map((c) => ({
         id: c.id,
+        bookingId: c.cargo_booking_id,
         claimRef: c.claim_ref,
         bookingRef: c.cargo_booking.booking_ref,
         awbNumber: c.cargo_booking.awb_number,

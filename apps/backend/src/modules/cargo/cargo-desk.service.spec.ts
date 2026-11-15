@@ -175,11 +175,13 @@ describe('CargoDeskService', () => {
       await expect(service.postEvent('b1', 'loaded', undefined, 'user-no-staff')).rejects.toThrow(ForbiddenException)
     })
 
-    it('returns REFUND_FAILED when refund throws on cancel', async () => {
+    it('returns REFUND_FAILED with real error when refund throws on cancel', async () => {
       const { refundFull } = jest.requireMock('./cargo-deps')
       refundFull.mockRejectedValueOnce(new Error('provider down'))
 
-      await expect(service.postEvent('b1', 'cancelled', 'Customer requested', 'user-1')).rejects.toThrow(InternalServerErrorException)
+      const err = await service.postEvent('b1', 'cancelled', 'Customer requested', 'user-1').catch((e) => e)
+      expect(err).toBeInstanceOf(InternalServerErrorException)
+      expect(err.response.error.message).toContain('provider down')
     })
   })
 })
