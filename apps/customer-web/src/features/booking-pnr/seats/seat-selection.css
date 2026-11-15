@@ -38,6 +38,29 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+/* A quiet pill that turns red on hover: it removes the seats chosen for this flight. */
+.seat-selection__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #677287;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.seat-selection__clear:hover:not(:disabled) {
+  background: #fdecec;
+  color: #b8171f;
+}
 .seat-selection__segments {
   display: flex;
   flex-wrap: wrap;
@@ -233,7 +256,8 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .seat-selection__passenger {
+  .seat-selection__passenger,
+  .seat-selection__clear {
     transition: none;
   }
 }

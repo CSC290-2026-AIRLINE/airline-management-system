@@ -1,11 +1,11 @@
 import { ArrowUp, Check } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { SeatPickerProps } from '../components/contracts'
 import type { Cabin } from '../api/types'
 import { formatCabin, formatMoney } from '../lib/format'
 import './seat-picker.css'
 
-type SeatPickerWithCabinProps = SeatPickerProps & { selectedCabin?: Cabin; bookingLegend?: boolean }
+type SeatPickerWithCabinProps = SeatPickerProps & { selectedCabin?: Cabin; bookingLegend?: boolean; legendAction?: ReactNode }
 
 export function SeatPicker({
   seats,
@@ -17,6 +17,7 @@ export function SeatPicker({
   currentSeatCode,
   selectedCabin,
   bookingLegend = false,
+  legendAction,
   onSelect,
 }: SeatPickerWithCabinProps) {
   const visibleSeats = selectedCabin ? seats.filter((seat) => seat.cabin === selectedCabin) : seats
@@ -71,6 +72,7 @@ export function SeatPicker({
             {item.label}
           </span>
         ))}
+        {legendAction}
       </div>
       {selectedCabin && !bookingLegend && (
         <p className="seat-picker__cabin">{formatCabin(selectedCabin)} · Choose a seat to see its price</p>

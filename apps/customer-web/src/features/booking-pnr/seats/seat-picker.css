@@ -16,6 +16,10 @@
   align-items: center;
   gap: 6px;
 }
+.seat-picker__legend-action {
+  margin-left: auto;
+  align-self: center;
+}
 .seat-picker__swatch {
   position: relative;
   display: inline-grid;

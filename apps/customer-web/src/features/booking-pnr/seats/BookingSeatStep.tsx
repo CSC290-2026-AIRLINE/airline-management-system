@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import type { SeatMap } from '../api/types'
 import type { BookingSeatStepProps } from '../flow/integration'
@@ -166,6 +167,20 @@ export function BookingSeatStep({
               selectedSeatCode={selected?.seatCode ?? null}
               seatLabels={seatLabels}
               passengerLabel={`${traveller.givenName} ${traveller.familyName}`}
+              legendAction={
+                choices.some((choice) => choice.flightId === flightId) ? (
+                  <button
+                    className="seat-picker__legend-action seat-selection__clear"
+                    type="button"
+                    disabled={busy}
+                    aria-label="Clear seats for this flight"
+                    onClick={() => onChange(choices.filter((choice) => choice.flightId !== flightId))}
+                  >
+                    <X aria-hidden="true" size={14} strokeWidth={2} />
+                    Clear seats
+                  </button>
+                ) : null
+              }
               disabledSeatCodes={allSeats
                 .filter(
                   (seat) =>
@@ -176,12 +191,11 @@ export function BookingSeatStep({
                     ),
                 )
                 .map((seat) => seat.seatCode)}
-              onSelect={(seatCode) =>
-                onChange([
-                  ...choices.filter((choice) => choice.flightId !== flightId || choice.travellerKey !== travellerKey),
-                  { flightId, travellerKey, seatCode },
-                ])
-              }
+              onSelect={(seatCode) => {
+                const remaining = choices.filter((choice) => choice.flightId !== flightId || choice.travellerKey !== travellerKey)
+                // Clicking the seat that is already chosen for this traveller removes the choice.
+                onChange(selected?.seatCode === seatCode ? remaining : [...remaining, { flightId, travellerKey, seatCode }])
+              }}
             />
           )}
           {maps && (!selection || !traveller || !map) && <p role="status">No seat map is available for this flight.</p>}
@@ -221,16 +235,6 @@ export function BookingSeatStep({
                 Exit-row seats require an adult with no assistance request and no infant on their lap.
               </p>
             )}
-            {choices.some((choice) => choice.flightId === flightId) && (
-              <button
-                className={controls.link}
-                type="button"
-                disabled={busy}
-                onClick={() => onChange(choices.filter((choice) => choice.flightId !== flightId))}
-              >
-                Clear seats for this flight
-              </button>
-            )}
             <p className="seat-selection__fees">
               <span>Seat fees</span>
               <strong>{maps ? formatMoney(seatFees, currency) : '—'}</strong>
@@ -249,8 +253,8 @@ export function BookingSeatStep({
               </p>
             )}
             <p className="seat-selection__hint">
-              Pick a passenger, then a seat. You can skip any flight and choose later in My Trips or at check-in. Seats you pick are held
-              with your booking.
+              Pick a passenger, then a seat. Click your seat again to remove it. You can skip any flight and choose later in My Trips or at
+              check-in. Seats you pick are held with your booking.
             </p>
             <div className="seat-selection__actions">
               <button
