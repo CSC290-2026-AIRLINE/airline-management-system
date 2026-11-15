@@ -29,19 +29,6 @@ export interface ScheduleApprovals {
   markConsumed(tx: Tx, approvalId: string, flightId: string): Promise<void>
 }
 
-export const APPROVAL_TABLES_MISSING = 'schedule_approval is not in the database schema yet, so no approval can be verified'
-
-@Injectable()
-export class MissingScheduleApprovals implements ScheduleApprovals {
-  consume(): Promise<ApprovalCheck> {
-    return Promise.resolve({ ok: false, rule: 'approval_missing', detail: APPROVAL_TABLES_MISSING })
-  }
-
-  markConsumed(): Promise<void> {
-    return Promise.resolve()
-  }
-}
-
 interface ApprovalRow {
   status: string
   purpose: string

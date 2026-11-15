@@ -5,8 +5,16 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
-import { F9_NOT_CONNECTED, PendingAircraftDirectory } from './aircraft-directory'
+import { type AircraftDirectory, F9_NOT_CONNECTED } from './aircraft-directory'
 import { ConflictService } from './conflict.service'
+
+// What the directory looks like while Feature 9 is not connected: nothing can be told about any aircraft.
+const pendingDirectory: AircraftDirectory = {
+  connected: false,
+  availability: () => Promise.resolve({ kind: 'unknown', detail: F9_NOT_CONNECTED }),
+  typeFacts: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+}
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
@@ -83,7 +91,7 @@ describe('ConflictService', () => {
     })
 
     it('blocks change_aircraft while Feature 9 is not connected, since no aircraft can pass the gates', async () => {
-      const pending = new ConflictService(db as never, operations as never, audit, new PendingAircraftDirectory(), { now: () => SIM_NOW })
+      const pending = new ConflictService(db as never, operations as never, audit, pendingDirectory, { now: () => SIM_NOW })
 
       const { options } = await pending.options(CONFLICT)
 

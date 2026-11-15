@@ -6,7 +6,6 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { FlightOperationsService } from './flight-operations.service'
-import { MissingScheduleApprovals } from './schedule-approvals'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('../settings.service', () => ({ SettingsService: class {} }))
@@ -89,7 +88,9 @@ describe('FlightOperationsService', () => {
     cascade.refresh.mockResolvedValue(NO_CHANGE)
     cascade.supersedeForFlight.mockResolvedValue(0)
     settings.get.mockResolvedValue({ holding_limit_minutes: 30, airline_code: null })
-    approvals.consume.mockImplementation(() => new MissingScheduleApprovals().consume())
+    approvals.consume.mockImplementation(() =>
+      Promise.resolve({ ok: false, rule: 'approval_missing' as const, detail: 'Approval not found' }),
+    )
   })
 
   describe('transaction safety', () => {

@@ -1,6 +1,5 @@
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
 import { FlightConfirmService } from './flight-confirm.service'
-import { MissingScheduleApprovals } from './schedule-approvals'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('../settings.service', () => ({ SettingsService: class {} }))
@@ -96,7 +95,9 @@ describe('FlightConfirmService.confirm', () => {
   })
 
   it('is blocked with 409 while schedule_approval is missing; nothing is saved or published', async () => {
-    approvals.consume.mockImplementation(() => new MissingScheduleApprovals().consume())
+    approvals.consume.mockImplementation(() =>
+      Promise.resolve({ ok: false, rule: 'approval_missing' as const, detail: 'Approval not found' }),
+    )
 
     await expect(service.confirm(input(), STAFF)).rejects.toMatchObject({ response: expect.objectContaining({ rule: 'approval_missing' }) })
     expect(tx.flight.create).not.toHaveBeenCalled()
@@ -167,7 +168,7 @@ describe('FlightConfirmService.confirm', () => {
 })
 
 describe('FlightConfirmService.confirmBatch', () => {
-  const service = new FlightConfirmService({} as never, {} as never, {} as never, {} as never, new MissingScheduleApprovals())
+  const service = new FlightConfirmService({} as never, {} as never, {} as never, {} as never, {} as never)
   const confirm = jest.spyOn(service, 'confirm')
   const flight = (number: string, dep: string) =>
     input({ approval_id: `approval-${number}`, flight_number: number, scheduled_dep_at: new Date(dep) })

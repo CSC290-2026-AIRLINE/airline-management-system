@@ -1,4 +1,4 @@
-import { DbAircraftDirectory, PendingAircraftDirectory } from './aircraft-directory'
+import { DbAircraftDirectory } from './aircraft-directory'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
@@ -152,10 +152,6 @@ describe('DbAircraftDirectory', () => {
           orderBy: { tail_number: 'asc' },
         }),
       )
-    })
-
-    it('is empty while Feature 9 is not connected', async () => {
-      await expect(new PendingAircraftDirectory().list()).resolves.toEqual([])
     })
   })
 })

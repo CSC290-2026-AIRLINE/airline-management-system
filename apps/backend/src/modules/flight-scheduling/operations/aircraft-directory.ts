@@ -41,23 +41,6 @@ export interface AircraftDirectory {
 
 export const F9_NOT_CONNECTED = 'Feature 9 aircraft API is not connected yet'
 
-@Injectable()
-export class PendingAircraftDirectory implements AircraftDirectory {
-  readonly connected = false
-
-  availability(): Promise<AircraftAvailability> {
-    return Promise.resolve({ kind: 'unknown', detail: F9_NOT_CONNECTED })
-  }
-
-  typeFacts(): Promise<AircraftTypeFacts | null> {
-    return Promise.resolve(null)
-  }
-
-  list(): Promise<AircraftSummary[]> {
-    return Promise.resolve([])
-  }
-}
-
 const dayOf = (d: Date) => d.toISOString().slice(0, 10)
 
 /**

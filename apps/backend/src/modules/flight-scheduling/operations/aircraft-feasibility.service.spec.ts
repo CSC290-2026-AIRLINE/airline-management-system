@@ -1,6 +1,14 @@
 import { BadGatewayException, BadRequestException, ConflictException } from '@nestjs/common'
-import { type AircraftDirectory, PendingAircraftDirectory } from './aircraft-directory'
+import { type AircraftDirectory, F9_NOT_CONNECTED } from './aircraft-directory'
 import { AircraftFeasibilityService, assertGatesPass, type FeasibilityCandidate } from './aircraft-feasibility.service'
+
+// What the directory looks like while Feature 9 is not connected: nothing can be told about any aircraft.
+const pendingDirectory: AircraftDirectory = {
+  connected: false,
+  availability: () => Promise.resolve({ kind: 'unknown', detail: F9_NOT_CONNECTED }),
+  typeFacts: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+}
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
@@ -127,7 +135,7 @@ describe('AircraftFeasibilityService.checkAircraftFeasibility', () => {
   })
 
   it('is incomplete, not feasible, while Feature 9 is not connected', async () => {
-    const pendingService = new AircraftFeasibilityService(db as never, new PendingAircraftDirectory())
+    const pendingService = new AircraftFeasibilityService(db as never, pendingDirectory)
     neighbours()
 
     const report = await pendingService.checkAircraftFeasibility(AIRCRAFT, candidate())
@@ -138,7 +146,7 @@ describe('AircraftFeasibilityService.checkAircraftFeasibility', () => {
   })
 
   it('still reports failures found without Feature 9, as not feasible', async () => {
-    const pendingService = new AircraftFeasibilityService(db as never, new PendingAircraftDirectory())
+    const pendingService = new AircraftFeasibilityService(db as never, pendingDirectory)
     neighbours([flightRow('ZZ100', 'ZZA', 'ZZB', '06:00', '08:30')]) // 30 min at ZZB, airport needs 60
 
     const report = await pendingService.checkAircraftFeasibility(AIRCRAFT, candidate())
