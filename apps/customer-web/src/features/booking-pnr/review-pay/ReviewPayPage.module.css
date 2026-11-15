@@ -2,7 +2,7 @@
 .page {
   box-sizing: border-box;
   width: 100%;
-  max-width: 1040px;
+  max-width: 1200px;
   margin: 40px auto 0;
   color: var(--f3-ink);
   font-family: var(--f3-font);
@@ -14,7 +14,7 @@
   flex-direction: column;
   gap: 20px;
   width: 100%;
-  max-width: 1040px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 

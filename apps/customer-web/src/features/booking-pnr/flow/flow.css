@@ -200,13 +200,14 @@
   color: #475569;
 }
 /* Passenger cards follow the Feature 3 form hierarchy. */
+/* The content column is the 1200 px column of the other customer pages, so the flow does not jump in width. */
 .f3-customer-flow > * {
-  max-width: 1000px;
+  max-width: 1200px;
   margin-left: auto;
   margin-right: auto;
 }
 .f3-customer-flow .f3-search-intro {
-  max-width: 1000px;
+  max-width: 1200px;
   margin-bottom: 24px !important;
 }
 .f3-flow h1 {
