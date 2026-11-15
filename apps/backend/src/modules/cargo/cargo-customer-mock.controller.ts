@@ -32,27 +32,36 @@ export class CargoCustomerMockController {
     const charge = Number(booking.quoted_charge)
     const now = simNow()
 
-    const payment = await this.db.payment.create({
-      data: {
-        source_feature: 17,
-        purchase_ref: booking.booking_ref,
-        payer_customer_id: customerId,
-        cargo_booking_id: booking.id,
-        idempotency_key: `test-cargo-${booking.booking_ref}`,
-        status: 'captured',
-        provider: 'fake',
-        currency: booking.currency,
-        amount_total: charge,
-        voucher_amount: 0,
-        card_amount: charge,
-        started_at: now,
-        expires_at: new Date(now.getTime() + 3_600_000),
-        authorised_at: now,
-        captured_at: now,
-      },
+    const existing = await this.db.payment.findFirst({
+      where: { cargo_booking_id: booking.id, status: 'captured' },
+      select: { id: true },
     })
 
-    const result = await this.bookings.confirmCargoBooking(booking.booking_ref, payment.id, charge)
+    const paymentId = existing
+      ? existing.id
+      : (
+          await this.db.payment.create({
+            data: {
+              source_feature: 17,
+              purchase_ref: booking.booking_ref,
+              payer_customer_id: customerId,
+              cargo_booking_id: booking.id,
+              idempotency_key: `test-cargo-${booking.booking_ref}-${Date.now()}`,
+              status: 'captured',
+              provider: 'fake',
+              currency: booking.currency,
+              amount_total: charge,
+              voucher_amount: 0,
+              card_amount: charge,
+              started_at: now,
+              expires_at: new Date(now.getTime() + 3_600_000),
+              authorised_at: now,
+              captured_at: now,
+            },
+          })
+        ).id
+
+    const result = await this.bookings.confirmCargoBooking(booking.booking_ref, paymentId, charge)
     return { awbNumber: result.awbNumber }
   }
 }

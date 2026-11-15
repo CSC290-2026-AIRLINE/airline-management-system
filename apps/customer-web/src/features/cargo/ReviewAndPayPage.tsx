@@ -23,13 +23,6 @@ function fmtMoney(currency: string, amount: number) {
   return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function fmtAwb(raw: string | null): string {
-  if (!raw) return ''
-  const digits = raw.replace(/\D/g, '')
-  if (digits.length === 11) return `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10)}`
-  return raw
-}
-
 function flightDuration(dep: string, arr: string): string {
   const ms = new Date(arr).getTime() - new Date(dep).getTime()
   const h = Math.floor(ms / 3_600_000)
@@ -81,13 +74,7 @@ function ProgressSteps({ step }: { step: 1 | 2 | 3 }) {
 
 /* ── Hold expired dialog ────────────────────────────────────────── */
 
-function HoldExpiredDialog({
-  detail,
-  holdMinutes,
-}: {
-  detail: BookingDetail
-  holdMinutes: number
-}) {
+function HoldExpiredDialog({ detail, holdMinutes }: { detail: BookingDetail; holdMinutes: number }) {
   const navigate = useNavigate()
 
   return (
@@ -133,15 +120,7 @@ function HoldExpiredDialog({
 
 /* ── Cancel dialog ──────────────────────────────────────────────── */
 
-export function CancelDialog({
-  detail,
-  onClose,
-  onDone,
-}: {
-  detail: BookingDetail
-  onClose: () => void
-  onDone: () => void
-}) {
+export function CancelDialog({ detail, onClose, onDone }: { detail: BookingDetail; onClose: () => void; onDone: () => void }) {
   const api = useCustomerCargoApi()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -342,7 +321,15 @@ export default function ReviewAndPayPage() {
 
   return (
     <div className="text-left">
-      <PayPageContent detail={detail} settings={settings} paying={paying} payError={payError} onPay={handlePay} onCancel={() => setShowCancel(true)} onExpired={() => setShowExpired(true)} />
+      <PayPageContent
+        detail={detail}
+        settings={settings}
+        paying={paying}
+        payError={payError}
+        onPay={handlePay}
+        onCancel={() => setShowCancel(true)}
+        onExpired={() => setShowExpired(true)}
+      />
       {showCancel && (
         <CancelDialog
           detail={detail}
@@ -402,8 +389,8 @@ function PayPageContent({
                 <div className="flex items-start gap-2 text-sm text-amber-900">
                   <span className="text-lg">⏱</span>
                   <span>
-                    <strong>Your space is held</strong> · {g.declaredWeightKg} kg on {f.flightNumber}. Pay before the timer ends or the space
-                    is released.
+                    <strong>Your space is held</strong> · {g.declaredWeightKg} kg on {f.flightNumber}. Pay before the timer ends or the
+                    space is released.
                   </span>
                 </div>
                 <span className="rounded-full bg-amber-900 px-3 py-1 text-sm font-semibold text-white">{countdown.label} left</span>
@@ -434,9 +421,7 @@ function PayPageContent({
                         <span className="text-sm">✈</span>
                         <div className="h-px w-8 bg-slate-300" />
                       </div>
-                      <div className="whitespace-nowrap text-[11px] text-slate-400">
-                        {flightDuration(f.depAt, f.arrAt)} · direct
-                      </div>
+                      <div className="whitespace-nowrap text-[11px] text-slate-400">{flightDuration(f.depAt, f.arrAt)} · direct</div>
                     </div>
                     {/* Arrival */}
                     <div className="text-right">
@@ -467,7 +452,10 @@ function PayPageContent({
                   <Row label="Commodity" value={g.commodityTypeName} />
                   <Row label={`Distance band (${q.distanceKm} km)`} value={`${q.distanceKm} km`} />
                   <Row label="Actual weight" value={`${g.declaredWeightKg} kg`} />
-                  <Row label="Volume weight" value={`${q.chargeableKg >= g.declaredWeightKg ? q.chargeableKg : g.declaredVolumeM3 * (settings?.volumetricKgPerM3 ?? 167)} kg`} />
+                  <Row
+                    label="Volume weight"
+                    value={`${q.chargeableKg >= g.declaredWeightKg ? q.chargeableKg : g.declaredVolumeM3 * (settings?.volumetricKgPerM3 ?? 167)} kg`}
+                  />
                   <Row label="Chargeable weight" value={`${q.chargeableKg} kg`} bold />
                   <Row label="Rate" value={`${fmtMoney(q.currency, q.ratePerKg)} / kg`} />
 
@@ -498,15 +486,13 @@ function PayPageContent({
                   </div>
                   <div className="flex justify-between">
                     <span className="font-medium text-slate-900">Total to pay</span>
-                    <span className="font-bold text-slate-900">{fmtMoney(q.currency, q.charge)} {q.currency}</span>
+                    <span className="font-bold text-slate-900">
+                      {fmtMoney(q.currency, q.charge)} {q.currency}
+                    </span>
                   </div>
                 </div>
 
-                <Button
-                  className="mb-2 h-11 w-full bg-[#1e2a5a] text-white hover:bg-[#1e2a5a]/90"
-                  disabled={paying}
-                  onClick={onPay}
-                >
+                <Button className="mb-2 h-11 w-full bg-[#1e2a5a] text-white hover:bg-[#1e2a5a]/90" disabled={paying} onClick={onPay}>
                   {paying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Pay {fmtMoney(q.currency, q.charge)}
                 </Button>

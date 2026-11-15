@@ -302,7 +302,7 @@ export class CargoDeskService {
 
       let refundResult: { refundId: string }
       try {
-        refundResult = refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'rejected')
+        refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'rejected')
       } catch {
         throw new InternalServerErrorException({
           error: { code: 'REFUND_FAILED', message: 'Refund could not be processed — rejection was not recorded' },
@@ -361,7 +361,7 @@ export class CargoDeskService {
         }
         let refundResult: { refundId: string }
         try {
-          refundResult = refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'cancel')
+          refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'cancel')
         } catch {
           throw new InternalServerErrorException({
             error: { code: 'REFUND_FAILED', message: 'Refund could not be processed — cancellation was not recorded' },

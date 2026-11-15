@@ -553,7 +553,7 @@ export class CargoCustomerService {
       return this.db.$transaction(async (tx) => {
         let refundResult: { refundId: string }
         try {
-          refundResult = refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'cancel')
+          refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'cancel')
         } catch {
           throw new InternalServerErrorException({
             error: { code: 'REFUND_FAILED', message: 'Refund could not be processed — cancellation was not recorded' },

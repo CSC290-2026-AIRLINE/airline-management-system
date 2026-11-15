@@ -1,6 +1,7 @@
 import type { DbService } from '@backend/db/db.service'
+import { simNow } from '@backend/modules/pricing/fare-quote/sim-clock'
 
-type PrismaLike = Pick<DbService, 'aircraft' | 'flight_setting'>
+type PrismaLike = Pick<DbService, 'aircraft' | 'flight_setting' | 'refund'>
 
 export interface AircraftCapacity {
   holdLimitKg: number
@@ -40,17 +41,29 @@ export function seatsTakenOnFlight(db: PrismaLike, flightId: string): number {
 }
 
 // MOCK: replace when Feature 5a payment/refund service is merged
-export function refundFull(
+export async function refundFull(
   db: PrismaLike,
   bookingRef: string,
   paymentId: string,
   amount: number,
   reason: 'cancel' | 'rejected' | 'flight',
-): { refundId: string } {
-  void db
-  void paymentId
-  void amount
-  return { refundId: `mock-refund-${bookingRef}-${reason}` }
+): Promise<{ refundId: string }> {
+  const now = simNow()
+  const refund = await db.refund.create({
+    data: {
+      payment_id: paymentId,
+      source_key: `cargo-${bookingRef}-${reason}-${Date.now()}`,
+      reason,
+      method: 'original',
+      status: 'completed',
+      amount,
+      voucher_amount: 0,
+      fee_withheld: 0,
+      requested_at: now,
+      completed_at: now,
+    },
+  })
+  return { refundId: refund.id }
 }
 
 // Requirements say to fall back to the reserve when baggage weight is unknown

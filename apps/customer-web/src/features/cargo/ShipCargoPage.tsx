@@ -46,6 +46,10 @@ const selectCls =
 const inputCls =
   'flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
+function Req() {
+  return <span className="ml-0.5 text-red-500">*</span>
+}
+
 /* ── Main component ────────────────────────────────────────────── */
 
 export default function ShipCargoPage() {
@@ -87,6 +91,7 @@ export default function ShipCargoPage() {
 
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [flaggedField, setFlaggedField] = useState('')
 
   /* ── Data loading ──────────────────────────────────────────── */
 
@@ -196,12 +201,14 @@ export default function ShipCargoPage() {
     routeId && shipDate && commodityTypeId && Number(pieces) >= 1 && Number(weightKg) > 0 && Number(volumeM3) > 0 && description.trim()
 
   const quoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [quotedKey, setQuotedKey] = useState('')
 
   const fetchQuote = useCallback(async () => {
     if (!canQuote) {
       setQuote(null)
       setQuoteError(null)
       setFieldErrors({})
+      setQuotedKey('')
       return
     }
     setQuoteLoading(true)
@@ -219,7 +226,11 @@ export default function ShipCargoPage() {
         un_number: isDangerous && unNumber ? unNumber : undefined,
       })
       setQuote(result)
+      setQuotedKey(
+        `${routeId}|${shipDate}|${commodityTypeId}|${pieces}|${weightKg}|${volumeM3}|${description}|${isDangerous ? unNumber : ''}`,
+      )
     } catch (err) {
+      setQuotedKey('')
       if (err instanceof CargoApiError) {
         const e = { code: err.code, message: err.message }
         setQuoteError(e)
@@ -248,6 +259,9 @@ export default function ShipCargoPage() {
     }
   }, [fetchQuote])
 
+  const quoteInputKey = `${routeId}|${shipDate}|${commodityTypeId}|${pieces}|${weightKg}|${volumeM3}|${description}|${isDangerous ? unNumber : ''}`
+  const isQuoteStale = quote !== null && quotedKey !== quoteInputKey
+
   const flightInfoNote = useMemo(() => {
     if (!quote || quoteError || !dayFlights.length) return ''
     const assignedIdx = dayFlights.findIndex((f) => f.id === quote.flightId)
@@ -262,10 +276,54 @@ export default function ShipCargoPage() {
     return ''
   }, [quote, quoteError, dayFlights, weightKg])
 
-  const canSubmit = quote && !quoteError && shipperCompany.trim() && consigneeName.trim() && consigneeAddress.trim() && !submitting
+  /* ── Submit readiness ──────────────────────────────────────── */
+
+  const missingFields = useMemo(() => {
+    const missing: { label: string; id: string }[] = []
+    if (!fromAirport) missing.push({ label: 'Origin', id: 'from' })
+    if (!toAirport) missing.push({ label: 'Destination', id: 'to' })
+    if (!shipDate) missing.push({ label: 'Ship date', id: 'shipDateSection' })
+    if (!commodityTypeId) missing.push({ label: 'Commodity type', id: 'commodityType' })
+    if (!pieces || Number(pieces) < 1) missing.push({ label: 'Pieces', id: 'pieces' })
+    if (!weightKg || Number(weightKg) <= 0) missing.push({ label: 'Weight', id: 'weight' })
+    if (!volumeM3 || Number(volumeM3) <= 0) missing.push({ label: 'Volume', id: 'volume' })
+    if (!description.trim()) missing.push({ label: 'Goods description', id: 'description' })
+    if (isDangerous && !unNumber.trim()) missing.push({ label: 'UN number', id: 'unNumber' })
+    if (!shipperCompany.trim()) missing.push({ label: 'Shipper', id: 'shipperCompany' })
+    if (!consigneeName.trim()) missing.push({ label: 'Consignee name', id: 'consigneeName' })
+    if (!consigneeAddress.trim()) missing.push({ label: 'Consignee address', id: 'consigneeAddress' })
+    return missing
+  }, [
+    fromAirport,
+    toAirport,
+    shipDate,
+    commodityTypeId,
+    pieces,
+    weightKg,
+    volumeM3,
+    description,
+    isDangerous,
+    unNumber,
+    shipperCompany,
+    consigneeName,
+    consigneeAddress,
+  ])
+
+  const disabledReason = useMemo(() => {
+    if (submitting) return null
+    if (missingFields.length > 0) return `Fill in: ${missingFields.map((f) => f.label).join(', ')}`
+    if (quoteError) {
+      if (quoteError.code === 'NO_FLIGHT_AVAILABLE') return 'No flight has room on this day'
+      return 'Fix the error in the goods section'
+    }
+    if (!quote || quoteLoading || isQuoteStale) return 'Waiting for quote…'
+    return null
+  }, [submitting, missingFields, quoteError, quote, quoteLoading, isQuoteStale])
+
+  const canSubmit = !submitting && disabledReason === null
 
   async function handleSubmit() {
-    if (!canSubmit) return
+    if (!canSubmit || !quote) return
     setSubmitting(true)
     setSubmitError('')
     try {
@@ -284,13 +342,45 @@ export default function ShipCargoPage() {
         consignee_address: consigneeAddress.trim(),
         consignee_phone: consigneePhone.trim() || undefined,
       })
-      void navigate({ to: '/cargo/bookings/$id', params: { id: result.id } })
+      void navigate({ to: '/cargo/bookings/$id/pay', params: { id: result.id } })
     } catch (err) {
       setSubmitError(err instanceof CargoApiError ? err.message : 'Something went wrong. Please try again.')
     } finally {
       setSubmitting(false)
     }
   }
+
+  function handleDisabledClick() {
+    if (missingFields.length === 0) return
+    const first = missingFields[0]
+    setFlaggedField(first.id)
+    const el = document.getElementById(first.id)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      if (el.tagName === 'INPUT' || el.tagName === 'SELECT') el.focus()
+    }
+  }
+
+  useEffect(() => {
+    if (flaggedField) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFlaggedField('')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    fromAirport,
+    toAirport,
+    shipDate,
+    commodityTypeId,
+    pieces,
+    weightKg,
+    volumeM3,
+    description,
+    unNumber,
+    shipperCompany,
+    consigneeName,
+    consigneeAddress,
+  ])
 
   const daysWithRoom = useMemo(() => {
     const wt = Number(weightKg) || 0
@@ -331,8 +421,14 @@ export default function ShipCargoPage() {
                     <div>
                       <label htmlFor="from" className="mb-1 block text-xs text-slate-600">
                         From
+                        <Req />
                       </label>
-                      <select id="from" value={fromAirport} onChange={(e) => setFromAirport(e.target.value)} className={selectCls}>
+                      <select
+                        id="from"
+                        value={fromAirport}
+                        onChange={(e) => setFromAirport(e.target.value)}
+                        className={`${selectCls}${flaggedField === 'from' ? ' !border-red-500' : ''}`}
+                      >
                         <option value="">Select origin</option>
                         {origins.map(([code, name]) => (
                           <option key={code} value={code}>
@@ -344,13 +440,14 @@ export default function ShipCargoPage() {
                     <div>
                       <label htmlFor="to" className="mb-1 block text-xs text-slate-600">
                         To
+                        <Req />
                       </label>
                       <select
                         id="to"
                         value={toAirport}
                         onChange={(e) => setToAirport(e.target.value)}
                         disabled={!fromAirport}
-                        className={selectCls}
+                        className={`${selectCls}${flaggedField === 'to' ? ' !border-red-500' : ''}`}
                       >
                         <option value="">Select destination</option>
                         {destinations.map(([code, name]) => (
@@ -363,8 +460,11 @@ export default function ShipCargoPage() {
                   </div>
 
                   {/* Ship date */}
-                  <div>
-                    <label className="mb-1 block text-xs text-slate-600">Ship date</label>
+                  <div id="shipDateSection">
+                    <label className="mb-1 block text-xs text-slate-600">
+                      Ship date
+                      <Req />
+                    </label>
                     {shipDate ? (
                       (() => {
                         const di = shipDates.find((d) => d.date === shipDate)
@@ -400,6 +500,7 @@ export default function ShipCargoPage() {
                       calMonth={calMonth}
                       onCalMonthChange={setCalMonth}
                       weightKg={Number(weightKg) || 0}
+                      flagged={flaggedField === 'shipDateSection'}
                     />
                   )}
 
@@ -459,12 +560,13 @@ export default function ShipCargoPage() {
                     <div>
                       <label htmlFor="commodityType" className="mb-1 block text-xs text-slate-600">
                         Commodity type
+                        <Req />
                       </label>
                       <select
                         id="commodityType"
                         value={commodityTypeId}
                         onChange={(e) => setCommodityTypeId(e.target.value)}
-                        className={selectCls}
+                        className={`${selectCls}${flaggedField === 'commodityType' ? ' !border-red-500' : ''}`}
                       >
                         <option value="">Select</option>
                         {commodityTypes.map((c) => (
@@ -477,6 +579,7 @@ export default function ShipCargoPage() {
                     <div>
                       <label htmlFor="pieces" className="mb-1 block text-xs text-slate-600">
                         Pieces
+                        <Req />
                       </label>
                       <Input
                         id="pieces"
@@ -484,13 +587,14 @@ export default function ShipCargoPage() {
                         min="1"
                         value={pieces}
                         onChange={(e) => setPieces(e.target.value)}
-                        className={`h-10 bg-white ${fieldErrors.pieces ? 'border-red-500' : 'border-slate-300'}`}
+                        className={`h-10 bg-white ${fieldErrors.pieces || flaggedField === 'pieces' ? 'border-red-500' : 'border-slate-300'}`}
                       />
                       {fieldErrors.pieces && <FieldError error={fieldErrors.pieces} />}
                     </div>
                     <div>
                       <label htmlFor="weight" className="mb-1 block text-xs text-slate-600">
                         Weight (kg)
+                        <Req />
                       </label>
                       <Input
                         id="weight"
@@ -499,13 +603,14 @@ export default function ShipCargoPage() {
                         step="0.1"
                         value={weightKg}
                         onChange={(e) => setWeightKg(e.target.value)}
-                        className={`h-10 bg-white ${fieldErrors.weightKg ? 'border-red-500' : 'border-slate-300'}`}
+                        className={`h-10 bg-white ${fieldErrors.weightKg || flaggedField === 'weight' ? 'border-red-500' : 'border-slate-300'}`}
                       />
                       {fieldErrors.weightKg && <FieldError error={fieldErrors.weightKg} />}
                     </div>
                     <div>
                       <label htmlFor="volume" className="mb-1 block text-xs text-slate-600">
                         Volume (m³)
+                        <Req />
                       </label>
                       <Input
                         id="volume"
@@ -514,7 +619,7 @@ export default function ShipCargoPage() {
                         step="0.001"
                         value={volumeM3}
                         onChange={(e) => setVolumeM3(e.target.value)}
-                        className="h-10 border-slate-300 bg-white"
+                        className={`h-10 bg-white ${flaggedField === 'volume' ? 'border-red-500' : 'border-slate-300'}`}
                       />
                     </div>
                   </div>
@@ -523,6 +628,7 @@ export default function ShipCargoPage() {
                   <div>
                     <label htmlFor="description" className="mb-1 block text-xs text-slate-600">
                       Goods description
+                      <Req />
                     </label>
                     <input
                       id="description"
@@ -530,7 +636,7 @@ export default function ShipCargoPage() {
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder="Describe the goods being shipped"
-                      className={`${inputCls} ${fieldErrors.description ? '!border-red-500' : ''}`}
+                      className={`${inputCls} ${fieldErrors.description || flaggedField === 'description' ? '!border-red-500' : ''}`}
                     />
                     {fieldErrors.description && <FieldError error={fieldErrors.description} />}
                   </div>
@@ -547,6 +653,7 @@ export default function ShipCargoPage() {
                     <div>
                       <label htmlFor="unNumber" className="mb-1 block text-xs text-slate-600">
                         UN number
+                        <Req />
                       </label>
                       <input
                         id="unNumber"
@@ -555,7 +662,7 @@ export default function ShipCargoPage() {
                         value={unNumber}
                         onChange={(e) => setUnNumber(e.target.value)}
                         maxLength={6}
-                        className={`${inputCls} ${fieldErrors.unNumber ? '!border-red-500' : ''}`}
+                        className={`${inputCls} ${fieldErrors.unNumber || flaggedField === 'unNumber' ? '!border-red-500' : ''}`}
                       />
                       <p className="mt-1 text-xs text-slate-500">Needed for dangerous goods: UN and four digits.</p>
                       <FieldError error={fieldErrors.unNumber} />
@@ -567,25 +674,27 @@ export default function ShipCargoPage() {
                     <div>
                       <label htmlFor="shipperCompany" className="mb-1 block text-xs text-slate-600">
                         Shipper
+                        <Req />
                       </label>
                       <Input
                         id="shipperCompany"
                         placeholder="Company"
                         value={shipperCompany}
                         onChange={(e) => setShipperCompany(e.target.value)}
-                        className="h-10 border-slate-300 bg-white"
+                        className={`h-10 bg-white ${flaggedField === 'shipperCompany' ? 'border-red-500' : 'border-slate-300'}`}
                       />
                     </div>
                     <div>
                       <label htmlFor="consigneeName" className="mb-1 block text-xs text-slate-600">
-                        Consignee
+                        Consignee name
+                        <Req />
                       </label>
                       <Input
                         id="consigneeName"
                         placeholder="Name"
                         value={consigneeName}
                         onChange={(e) => setConsigneeName(e.target.value)}
-                        className="h-10 border-slate-300 bg-white"
+                        className={`h-10 bg-white ${flaggedField === 'consigneeName' ? 'border-red-500' : 'border-slate-300'}`}
                       />
                     </div>
                   </div>
@@ -622,22 +731,16 @@ export default function ShipCargoPage() {
                   <div>
                     <label htmlFor="consigneeAddress" className="mb-1 block text-xs text-slate-600">
                       Consignee address
+                      <Req />
                     </label>
                     <Input
                       id="consigneeAddress"
                       placeholder="Address"
                       value={consigneeAddress}
                       onChange={(e) => setConsigneeAddress(e.target.value)}
-                      className="h-10 border-slate-300 bg-white"
+                      className={`h-10 bg-white ${flaggedField === 'consigneeAddress' ? 'border-red-500' : 'border-slate-300'}`}
                     />
                   </div>
-
-                  {submitError && (
-                    <div className="flex items-start gap-2 rounded-md bg-red-50 p-3 text-sm text-red-700">
-                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                      {submitError}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -659,10 +762,13 @@ export default function ShipCargoPage() {
                 quote={quote}
                 quoteError={quoteError}
                 quoteLoading={quoteLoading}
-                canSubmit={!!canSubmit}
+                canSubmit={canSubmit}
                 submitting={submitting}
                 volumeM3={volumeM3}
                 onSubmit={handleSubmit}
+                disabledReason={disabledReason}
+                onDisabledClick={handleDisabledClick}
+                submitError={submitError}
               />
             </div>
           </div>
@@ -819,6 +925,9 @@ function QuoteCard({
   submitting,
   volumeM3,
   onSubmit,
+  disabledReason,
+  onDisabledClick,
+  submitError,
 }: {
   quote: QuoteResult | null
   quoteError: { code: string; message: string } | null
@@ -827,6 +936,9 @@ function QuoteCard({
   submitting: boolean
   volumeM3: string
   onSubmit: () => void
+  disabledReason: string | null
+  onDisabledClick: () => void
+  submitError: string
 }) {
   const hasQuoteValues = quote != null
   const commodityBand = hasQuoteValues ? `${quote.commodityName}, ${quote.bandLabel}` : '—'
@@ -861,13 +973,24 @@ function QuoteCard({
           <p className="text-xs text-red-600">No flight available on the selected date.</p>
         )}
 
+        {submitError && (
+          <div className="flex items-start gap-2 rounded-md bg-red-50 p-3 text-sm text-red-700">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            {submitError}
+          </div>
+        )}
+
+        {disabledReason && <p className="text-center text-xs text-slate-400">{disabledReason}</p>}
+
         <Button
-          className="mt-2 h-11 w-full rounded-md bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50"
-          onClick={onSubmit}
-          disabled={!canSubmit}
+          className={`mt-2 h-11 w-full rounded-md ${
+            canSubmit || submitting ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+          }`}
+          onClick={canSubmit ? onSubmit : !submitting ? onDisabledClick : undefined}
+          type="button"
         >
           {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Book and pay
+          {submitting ? 'Booking…' : 'Book and pay'}
         </Button>
       </div>
     </div>
@@ -883,6 +1006,7 @@ function ShipCalendar({
   calMonth,
   onCalMonthChange,
   weightKg,
+  flagged,
 }: {
   dates: ShipDateInfo[]
   value: string
@@ -890,6 +1014,7 @@ function ShipCalendar({
   calMonth: { year: number; month: number }
   onCalMonthChange: (m: { year: number; month: number }) => void
   weightKg: number
+  flagged?: boolean
 }) {
   const dateMap = useMemo(() => new Map(dates.map((d) => [d.date, d])), [dates])
   const validRange = useMemo(() => {
@@ -919,7 +1044,7 @@ function ShipCalendar({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className={`overflow-hidden rounded-xl border ${flagged ? 'border-red-500' : 'border-slate-200'} bg-white`}>
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <button onClick={prevMonth} className="rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700">

@@ -1,358 +1,352 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
-import { ArrowLeft, AlertCircle, Clock, Loader2, Plane, Package, MapPin, FileText, Printer } from 'lucide-react'
+import { AlertCircle, Check, Loader2, Printer } from 'lucide-react'
 import { Button } from '@customer-web/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@customer-web/components/ui/card'
-import { Badge } from '@customer-web/components/ui/badge'
 import { Input } from '@customer-web/components/ui/input'
 import { Label } from '@customer-web/components/ui/label'
 import { useCustomerCargoApi, CargoApiError, type BookingDetail } from './cargo-api'
+import CargoHero from './CargoHero'
+import { CancelDialog } from './ReviewAndPayPage'
 
-function statusVariant(s: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+/* ── Formatting helpers ─────────────────────────────────────────── */
+
+function fmtDate(iso: string) {
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(iso))
+}
+
+function fmtDateTime(iso: string) {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(iso))
+}
+
+function fmtDateShort(iso: string) {
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(iso))
+}
+
+function fmtTimeShort(iso: string) {
+  return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso))
+}
+
+function fmtMoney(currency: string, amount: number) {
+  return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function fmtAwb(raw: string | null): string {
+  if (!raw) return ''
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length === 11) return `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10)}`
+  return raw
+}
+
+function statusLabel(s: string): string {
+  if (s === 'held') return 'Awaiting payment'
+  if (s === 'in_transit') return 'In transit'
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+/* ── Status pill colours ────────────────────────────────────────── */
+
+function statusPill(s: string) {
   switch (s) {
     case 'held':
-      return 'outline'
+      return 'bg-amber-100 text-amber-800'
     case 'booked':
     case 'accepted':
     case 'loaded':
     case 'in_transit':
+      return 'bg-blue-100 text-blue-800'
     case 'arrived':
-      return 'default'
+      return 'bg-emerald-100 text-emerald-800'
     case 'delivered':
-      return 'secondary'
+      return 'bg-emerald-100 text-emerald-800'
     case 'cancelled':
     case 'expired':
     case 'rejected':
-      return 'destructive'
+      return 'bg-slate-100 text-slate-600'
     default:
-      return 'outline'
+      return 'bg-slate-100 text-slate-600'
   }
 }
 
-function statusLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+/* ── Status messages ────────────────────────────────────────────── */
+
+function statusMessage(d: BookingDetail): string {
+  switch (d.status) {
+    case 'held':
+      return `Your space is held. Pay before the hold expires to confirm your booking.`
+    case 'booked':
+      return `Paid and confirmed. Bring the cargo to the ${d.flight.origin} cargo terminal before departure.`
+    case 'accepted':
+      return `Your cargo has been accepted at the ${d.flight.origin} terminal and is being prepared for loading.`
+    case 'loaded':
+      return `Your cargo is loaded onto ${d.flight.flightNumber} and ready for departure.`
+    case 'in_transit':
+      return `Your cargo is on ${d.flight.flightNumber} heading to ${d.flight.destinationName}.`
+    case 'arrived':
+      return `Your cargo has arrived at ${d.flight.destinationName} (${d.flight.destination}). The consignee can collect it.`
+    case 'delivered':
+      return `Your cargo has been collected from the ${d.flight.destination} cargo terminal.`
+    case 'cancelled':
+      return `This booking has been cancelled.`
+    case 'expired':
+      return `The hold expired before payment. The space has been released.`
+    case 'rejected':
+      return `This booking was rejected. Contact cargo support for details.`
+    default:
+      return ''
+  }
 }
 
-export default function ShipmentDetailPage() {
-  const { id } = useParams({ from: '/_authenticated/cargo/bookings/$id' })
-  const api = useCustomerCargoApi()
+/* ── Stepper ────────────────────────────────────────────────────── */
 
-  const [detail, setDetail] = useState<BookingDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+const STEPPER_STEPS = ['booked', 'accepted', 'loaded', 'in_transit', 'arrived', 'delivered']
+const STEPPER_LABELS = ['Booked', 'Accepted', 'Loaded', 'In transit', 'Arrived', 'Delivered']
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const d = await api.getBookingDetail(id)
-      setDetail(d)
-    } catch (err) {
-      setError(err instanceof CargoApiError ? err.message : 'Failed to load booking')
-    } finally {
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load()
-  }, [load])
-
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-8">
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      </div>
-    )
-  }
-
-  if (error || !detail) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-8">
-        <div className="flex items-start gap-2 text-sm text-destructive">
-          <AlertCircle className="mt-0.5 h-4 w-4" />
-          {error || 'Booking not found'}
-        </div>
-        <Link to="/cargo" className="mt-4 inline-block text-sm text-primary underline">
-          ← Back to My Cargo
-        </Link>
-      </div>
-    )
-  }
+function StatusStepper({ current }: { current: string }) {
+  const idx = STEPPER_STEPS.indexOf(current)
+  if (idx < 0) return null
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <Link to="/cargo" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> My Cargo
-      </Link>
-
-      {/* Header */}
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold">{detail.bookingRef}</h1>
-        <Badge variant={statusVariant(detail.status)}>{statusLabel(detail.status)}</Badge>
-        {detail.awbNumber && <span className="text-sm text-muted-foreground">AWB {detail.awbNumber}</span>}
-      </div>
-
-      <div className="grid gap-4">
-        {/* Actions */}
-        <ActionSection detail={detail} onReload={load} />
-
-        {/* Goods */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Package className="h-4 w-4" /> Goods
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-              <Dt>Commodity</Dt>
-              <Dd>{detail.goods.commodityTypeName}</Dd>
-              <Dt>Handling</Dt>
-              <Dd className="capitalize">{detail.goods.handlingClass}</Dd>
-              <Dt>Pieces</Dt>
-              <Dd>{detail.goods.pieces}</Dd>
-              <Dt>Weight</Dt>
-              <Dd>{detail.goods.declaredWeightKg} kg</Dd>
-              <Dt>Volume</Dt>
-              <Dd>{detail.goods.declaredVolumeM3} m³</Dd>
-              {detail.goods.unNumber && (
-                <>
-                  <Dt>UN Number</Dt>
-                  <Dd>{detail.goods.unNumber}</Dd>
-                </>
-              )}
-              <Dt>Description</Dt>
-              <Dd className="col-span-full sm:col-span-2">{detail.goods.goodsDescription}</Dd>
-            </dl>
-          </CardContent>
-        </Card>
-
-        {/* Price */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Price</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-              <Dt>Distance</Dt>
-              <Dd>{detail.quote.distanceKm} km</Dd>
-              <Dt>Chargeable kg</Dt>
-              <Dd>{detail.quote.chargeableKg} kg</Dd>
-              <Dt>Rate per kg</Dt>
-              <Dd>
-                {detail.quote.currency} {detail.quote.ratePerKg.toFixed(2)}
-              </Dd>
-              <Dt>Charge</Dt>
-              <Dd className="font-semibold">
-                {detail.quote.currency} {detail.quote.charge.toFixed(2)}
-              </Dd>
-            </dl>
-          </CardContent>
-        </Card>
-
-        {/* Flight */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Plane className="h-4 w-4" /> Flight
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-              <Dt>Flight</Dt>
-              <Dd>{detail.flight.flightNumber}</Dd>
-              <Dt>Route</Dt>
-              <Dd>
-                {detail.flight.origin} → {detail.flight.destination}
-              </Dd>
-              <Dt>Departure</Dt>
-              <Dd>{new Date(detail.flight.depAt).toLocaleString()}</Dd>
-              <Dt>Arrival</Dt>
-              <Dd>{new Date(detail.flight.arrAt).toLocaleString()}</Dd>
-            </dl>
-          </CardContent>
-        </Card>
-
-        {/* Shipper & Consignee */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <MapPin className="h-4 w-4" /> Shipper & Consignee
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Shipper</p>
-                <p className="text-sm font-medium">{detail.shipper.name}</p>
-                {detail.shipper.phone && <p className="text-sm text-muted-foreground">{detail.shipper.phone}</p>}
+    <div className="mt-5 flex items-start justify-between">
+      {STEPPER_STEPS.map((step, i) => {
+        const reached = i <= idx
+        return (
+          <div key={step} className="flex flex-1 flex-col items-center">
+            <div className="flex w-full items-center">
+              {i > 0 && <div className={`h-0.5 flex-1 ${i <= idx ? 'bg-blue-600' : 'bg-slate-200'}`} />}
+              <div
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                  reached ? 'bg-blue-600 text-white' : 'border-2 border-slate-300 bg-white'
+                }`}
+              >
+                {reached && <Check className="h-3.5 w-3.5" />}
               </div>
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase text-muted-foreground">Consignee</p>
-                <p className="text-sm font-medium">{detail.consignee.name}</p>
-                <p className="text-sm text-muted-foreground">{detail.consignee.address}</p>
-                {detail.consignee.phone && <p className="text-sm text-muted-foreground">{detail.consignee.phone}</p>}
+              {i < STEPPER_STEPS.length - 1 && <div className={`h-0.5 flex-1 ${i < idx ? 'bg-blue-600' : 'bg-slate-200'}`} />}
+            </div>
+            <span className={`mt-1.5 text-center text-[11px] ${reached ? 'font-medium text-blue-700' : 'text-slate-400'}`}>
+              {STEPPER_LABELS[i]}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ── Timeline ───────────────────────────────────────────────────── */
+
+function timelineTitle(eventType: string): string {
+  switch (eventType) {
+    case 'held':
+      return 'Held'
+    case 'booked':
+      return 'Paid and confirmed'
+    case 'accepted':
+      return 'Accepted at terminal'
+    case 'loaded':
+      return 'Loaded on aircraft'
+    case 'departed':
+      return 'Departed'
+    case 'arrived':
+      return 'Arrived'
+    case 'delivered':
+      return 'Delivered'
+    case 'cancelled':
+      return 'Cancelled'
+    case 'expired':
+      return 'Hold expired'
+    case 'rejected':
+      return 'Rejected'
+    default:
+      return eventType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+}
+
+function timelineDescription(event: BookingDetail['timeline'][number], d: BookingDetail): string {
+  switch (event.eventType) {
+    case 'held':
+      return `${d.goods.declaredWeightKg} kg reserved on ${d.flight.flightNumber}`
+    case 'booked':
+      return `${fmtMoney(d.quote.currency, d.quote.charge)} paid. Air Waybill ${fmtAwb(d.awbNumber)} issued`
+    case 'accepted':
+      return `Measured ${d.goods.declaredWeightKg} kg, ${d.goods.declaredVolumeM3} m³. Your paid charge stays the same`
+    case 'loaded':
+      return `Loaded onto ${d.flight.flightNumber}`
+    case 'departed':
+      return `${d.flight.flightNumber} departed ${d.flight.origin}`
+    case 'arrived':
+      return `${d.flight.flightNumber} arrived at ${d.flight.destination}`
+    case 'delivered':
+      return `Collected from ${d.flight.destination} cargo terminal`
+    case 'cancelled':
+      return d.awbNumber ? 'Full refund' : 'Nothing to refund'
+    case 'expired':
+      return 'Hold expired. Space released'
+    case 'rejected':
+      return event.note ?? 'Booking rejected'
+    default:
+      return event.note ?? ''
+  }
+}
+
+function isNegativeEvent(eventType: string): boolean {
+  return eventType === 'cancelled' || eventType === 'expired' || eventType === 'rejected'
+}
+
+function ActivityTimeline({ detail }: { detail: BookingDetail }) {
+  const events = [...detail.timeline].reverse()
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+      <h2 className="mb-4 text-base font-semibold text-slate-900">Activity</h2>
+      <div className="space-y-0">
+        {events.map((e, i) => {
+          const neg = isNegativeEvent(e.eventType)
+          return (
+            <div key={e.id} className="relative flex gap-4 pb-6 last:pb-0">
+              {/* Vertical line */}
+              {i < events.length - 1 && <div className="absolute left-[7px] top-4 h-full w-0.5 bg-slate-200" />}
+              {/* Dot */}
+              <div className={`relative mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full ${neg ? 'bg-red-500' : 'bg-blue-600'}`} />
+              {/* Content */}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <span className="font-semibold text-slate-900">{timelineTitle(e.eventType)}</span>
+                  <span className="text-xs text-slate-400">
+                    {fmtTimeShort(e.occurredAt)} · {fmtDateShort(e.occurredAt)}
+                    {e.airportCode ? ` · ${e.airportCode}` : ''}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-sm text-slate-500">{timelineDescription(e, detail)}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Air Waybill */}
-        {detail.awbNumber && <AirWaybill detail={detail} />}
-
-        {/* Claim */}
-        {detail.claim && <ClaimCard claim={detail.claim} />}
-
-        {/* Timeline */}
-        {detail.timeline.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Clock className="h-4 w-4" /> Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ol className="space-y-3">
-                {detail.timeline.map((e) => (
-                  <li key={e.id} className="flex gap-3 text-sm">
-                    <time className="shrink-0 text-muted-foreground">{new Date(e.occurredAt).toLocaleString()}</time>
-                    <div>
-                      <span className="font-medium capitalize">{e.eventType.replace(/_/g, ' ')}</span>
-                      {e.airportCode && <span className="ml-1 text-muted-foreground">at {e.airportCode}</span>}
-                      {e.note && <p className="text-muted-foreground">{e.note}</p>}
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </CardContent>
-          </Card>
-        )}
+          )
+        })}
       </div>
     </div>
   )
 }
 
-function Dt({ children }: { children: React.ReactNode }) {
-  return <dt className="text-muted-foreground">{children}</dt>
-}
+/* ── AWB / Booking card (right column) ─────────────────────────── */
 
-function Dd({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <dd className={className}>{children}</dd>
-}
-
-/* ── Action section ──────────────────────────────────────────────── */
-
-function ActionSection({ detail, onReload }: { detail: BookingDetail; onReload: () => Promise<void> }) {
-  const api = useCustomerCargoApi()
-  const [actionLoading, setActionLoading] = useState(false)
-  const [actionError, setActionError] = useState('')
-
-  const isHeld = detail.status === 'held'
-  const isBooked = detail.status === 'booked'
-  const isDelivered = detail.status === 'delivered'
-  const canCancel = isHeld || isBooked
-  const canClaim = isDelivered && !detail.claim
-  const canMockPay = isHeld && detail.mock_payment_available
-
-  const [showCancel, setShowCancel] = useState(false)
-  const [showClaim, setShowClaim] = useState(false)
-
-  async function handleMockPay() {
-    setActionLoading(true)
-    setActionError('')
-    try {
-      await api.mockPay(detail.id)
-      await onReload()
-    } catch (err) {
-      setActionError(err instanceof CargoApiError ? err.message : 'Payment failed')
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  async function handleCancel() {
-    setActionLoading(true)
-    setActionError('')
-    try {
-      await api.cancelBooking(detail.id)
-      setShowCancel(false)
-      await onReload()
-    } catch (err) {
-      setActionError(err instanceof CargoApiError ? err.message : 'Cancellation failed')
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  if (!canMockPay && !canCancel && !canClaim && !isHeld) return null
+function AwbCard({ detail }: { detail: BookingDetail }) {
+  const d = detail
+  const f = d.flight
+  const g = d.goods
+  const q = d.quote
+  const hasPaid = !!d.awbNumber
 
   return (
-    <Card>
-      <CardContent className="grid gap-3 p-4">
-        {isHeld && (
-          <div className="flex items-center gap-2 text-sm text-amber-600">
-            <Clock className="h-4 w-4" />
-            Hold expires {new Date(detail.holdExpiresAt).toLocaleString()}
-          </div>
-        )}
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+      <div className="mb-4 flex items-start justify-between">
+        <h2 className="text-base font-semibold text-slate-900">{hasPaid ? 'Air Waybill' : 'Booking'}</h2>
+        {hasPaid && <span className="text-sm font-bold text-slate-900">{fmtAwb(d.awbNumber)}</span>}
+      </div>
 
-        <div className="flex flex-wrap gap-2">
-          {canMockPay && (
-            <Button onClick={handleMockPay} disabled={actionLoading}>
-              {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Pay now (test payment)
-            </Button>
-          )}
-          {canCancel && !showCancel && (
-            <Button variant="destructive" onClick={() => setShowCancel(true)}>
-              Cancel booking
-            </Button>
-          )}
-          {canClaim && !showClaim && (
-            <Button variant="outline" onClick={() => setShowClaim(true)}>
-              <FileText className="mr-1 h-4 w-4" /> File a claim
-            </Button>
-          )}
+      <div className="space-y-3 text-sm">
+        <AwbRow label="Flight" value={`${f.flightNumber} · ${f.origin} → ${f.destination}`} />
+        <AwbRow label="Departs" value={fmtDateTime(f.depAt)} />
+        <AwbRow label="Shipper" value={d.shipper.name} />
+        <AwbRow label="Consignee" value={d.consignee.name} />
+        <AwbRow label="Declared" value={`${g.declaredWeightKg} kg · ${g.declaredVolumeM3} m³`} />
+        <AwbRow label="Chargeable weight" value={`${q.chargeableKg} kg`} />
+        <AwbRow label="Rate" value={`${fmtMoney(q.currency, q.ratePerKg)} / kg`} />
+
+        <hr className="border-slate-200" />
+
+        <div className="flex items-baseline justify-between">
+          <span className="text-slate-600">{hasPaid ? 'Freight charge (paid)' : 'Amount due'}</span>
+          <span className="text-xl font-bold text-slate-900">{fmtMoney(q.currency, q.charge)}</span>
         </div>
-
-        {showCancel && (
-          <div className="rounded-md border border-destructive/20 bg-destructive/5 p-4">
-            <p className="mb-3 text-sm">
-              {isHeld
-                ? 'Cancel this booking? Nothing has been charged.'
-                : `Cancel this booking? A full refund of ${detail.quote.currency} ${detail.quote.charge.toFixed(2)} will be issued.`}
-            </p>
-            <div className="flex gap-2">
-              <Button variant="destructive" size="sm" onClick={handleCancel} disabled={actionLoading}>
-                {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Confirm cancel
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowCancel(false)}>
-                Keep booking
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {showClaim && (
-          <ClaimForm bookingId={detail.id} pieces={detail.goods.pieces} onDone={onReload} onCancel={() => setShowClaim(false)} />
-        )}
-
-        {actionError && (
-          <div className="flex items-start gap-2 text-sm text-destructive">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            {actionError}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
-/* ── Claim form ──────────────────────────────────────────────────── */
+function AwbRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <span className="shrink-0 text-slate-500">{label}</span>
+      <span className="text-right font-medium text-slate-900">{value}</span>
+    </div>
+  )
+}
+
+/* ── Status-specific info box (under right card) ───────────────── */
+
+function statusInfoContent(d: BookingDetail): { title: string; message: string } | null {
+  const f = d.flight
+  switch (d.status) {
+    case 'booked':
+      return { title: 'Next step: at the terminal', message: `Staff weigh the cargo on ${fmtDate(f.depAt)}.` }
+    case 'in_transit':
+      return {
+        title: 'On its way',
+        message: `Your cargo is on ${f.flightNumber} to ${f.destinationName}. We will send you a notice when it lands.`,
+      }
+    case 'arrived':
+      return {
+        title: 'Ready for collection',
+        message: `The cargo is at the ${f.destinationName} (${f.destination}) cargo terminal. The consignee can collect it with Air Waybill ${fmtAwb(d.awbNumber)}.`,
+      }
+    case 'accepted':
+    case 'loaded':
+      return {
+        title: 'Cancelling is no longer free',
+        message:
+          'While the booking is held or booked, cancelling returns the full amount. This cargo is already accepted at the terminal, so ask the cargo desk to cancel it.',
+      }
+    default:
+      return null
+  }
+}
+
+function StatusInfoBox({ detail }: { detail: BookingDetail }) {
+  const info = statusInfoContent(detail)
+  if (!info) return null
+
+  return (
+    <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <p className="text-sm font-semibold text-blue-900">{info.title}</p>
+      <p className="mt-1 text-sm text-blue-800">{info.message}</p>
+    </div>
+  )
+}
+
+/* ── Cancelled info box ─────────────────────────────────────────── */
+
+function CancelledBox({ detail }: { detail: BookingDetail }) {
+  if (detail.status !== 'cancelled' && detail.status !== 'expired') return null
+
+  const hadPaid = !!detail.awbNumber
+  const f = detail.flight
+
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+      {hadPaid ? (
+        <>
+          <p className="text-sm font-semibold text-emerald-900">Refunded {fmtMoney(detail.quote.currency, detail.quote.charge)}</p>
+          <p className="mt-1 text-sm text-emerald-800">A refund was issued. The weight on {f.flightNumber} is free again.</p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-semibold text-emerald-900">Booking cancelled</p>
+          <p className="mt-1 text-sm text-emerald-800">
+            Nothing was charged, so there is nothing to refund. The {detail.goods.declaredWeightKg} kg on {f.flightNumber} is free again.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+/* ── Claim form ─────────────────────────────────────────────────── */
 
 function ClaimForm({
   bookingId,
@@ -396,8 +390,8 @@ function ClaimForm({
   }
 
   return (
-    <div className="rounded-md border p-4">
-      <h3 className="mb-3 text-sm font-semibold">File a Claim</h3>
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+      <h3 className="mb-3 text-base font-semibold text-slate-900">File a Claim</h3>
       <div className="grid gap-3">
         <div className="grid gap-2">
           <Label>Claim type</Label>
@@ -407,7 +401,7 @@ function ClaimForm({
                 key={t}
                 onClick={() => setClaimType(t)}
                 className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                  claimType === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                  claimType === t ? 'bg-[#1e2a5a] text-white' : 'bg-slate-100 text-slate-600'
                 }`}
               >
                 {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -451,13 +445,18 @@ function ClaimForm({
           />
         </div>
         {error && (
-          <div className="flex items-start gap-2 text-sm text-destructive">
+          <div className="flex items-start gap-2 text-sm text-red-600">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             {error}
           </div>
         )}
         <div className="flex gap-2">
-          <Button size="sm" onClick={handleSubmit} disabled={!valid || submitting}>
+          <Button
+            size="sm"
+            className="bg-[#1e2a5a] text-white hover:bg-[#1e2a5a]/90"
+            onClick={handleSubmit}
+            disabled={!valid || submitting}
+          >
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Submit claim
           </Button>
@@ -470,13 +469,256 @@ function ClaimForm({
   )
 }
 
-/* ── Air Waybill ─────────────────────────────────────────────────── */
+/* ── Claim card ─────────────────────────────────────────────────── */
 
-function AirWaybill({ detail }: { detail: BookingDetail }) {
-  function handlePrint() {
-    const win = window.open('', '_blank')
-    if (!win) return
-    win.document.write(`<!DOCTYPE html>
+function ClaimCard({ claim }: { claim: NonNullable<BookingDetail['claim']> }) {
+  const decisionPill =
+    claim.decision?.decision === 'approved'
+      ? 'bg-emerald-100 text-emerald-800'
+      : claim.decision?.decision === 'rejected'
+        ? 'bg-red-100 text-red-800'
+        : 'bg-amber-100 text-amber-800'
+  const decisionLabel = claim.decision ? (claim.decision.decision === 'approved' ? 'Approved' : 'Rejected') : 'Open'
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <h2 className="text-base font-semibold text-slate-900">Claim {claim.claimRef}</h2>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${decisionPill}`}>{decisionLabel}</span>
+      </div>
+
+      <div className="space-y-2 text-sm">
+        <AwbRow label="Type" value={claim.claimType.charAt(0).toUpperCase() + claim.claimType.slice(1)} />
+        <AwbRow label="Pieces affected" value={String(claim.piecesAffected)} />
+        <AwbRow label="Claimed amount" value={fmtMoney(claim.currency, claim.claimedAmount)} />
+        <AwbRow label="Filed" value={fmtDateTime(claim.filedAt)} />
+        <div className="text-sm">
+          <span className="text-slate-500">Description</span>
+          <p className="mt-0.5 text-slate-900">{claim.description}</p>
+        </div>
+      </div>
+
+      {claim.decision && (
+        <div className="mt-3 border-t border-slate-200 pt-3">
+          <div className="space-y-2 text-sm">
+            <AwbRow label="Decision" value={claim.decision.decision.charAt(0).toUpperCase() + claim.decision.decision.slice(1)} />
+            {claim.decision.approvedAmount != null && (
+              <AwbRow label="Approved amount" value={fmtMoney(claim.currency, claim.decision.approvedAmount)} />
+            )}
+            <div className="text-sm">
+              <span className="text-slate-500">Note</span>
+              <p className="mt-0.5 text-slate-900">{claim.decision.note}</p>
+            </div>
+            <AwbRow label="Decided" value={fmtDateTime(claim.decision.decidedAt)} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Main page ──────────────────────────────────────────────────── */
+
+export default function ShipmentDetailPage() {
+  const { id } = useParams({ from: '/_authenticated/cargo/bookings/$id/' })
+  const api = useCustomerCargoApi()
+
+  const [detail, setDetail] = useState<BookingDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [showCancel, setShowCancel] = useState(false)
+  const [showClaim, setShowClaim] = useState(false)
+
+  const confirmed = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('confirmed') === '1'
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const d = await api.getBookingDetail(id)
+      setDetail(d)
+    } catch (err) {
+      setError(err instanceof CargoApiError ? err.message : 'Failed to load booking')
+    } finally {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load()
+  }, [load])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      </div>
+    )
+  }
+
+  if (error || !detail) {
+    return (
+      <div className="mx-auto max-w-6xl px-6 py-8 text-left">
+        <div className="flex items-start gap-2 text-sm text-red-600">
+          <AlertCircle className="mt-0.5 h-4 w-4" />
+          {error || 'Booking not found'}
+        </div>
+        <Link to="/cargo" className="mt-4 inline-block text-sm text-blue-600 underline">
+          ← Back to My Cargo
+        </Link>
+      </div>
+    )
+  }
+
+  const d = detail
+  const f = d.flight
+  const isHeld = d.status === 'held'
+  const canCancel = d.status === 'held' || d.status === 'booked'
+  const isDelivered = d.status === 'delivered'
+  const canClaim = isDelivered && !d.claim
+  const isCancelledOrExpired = d.status === 'cancelled' || d.status === 'expired'
+  const showStepper = !isCancelledOrExpired && d.status !== 'rejected' && d.status !== 'held'
+
+  const subtitle = d.awbNumber
+    ? `Air Waybill ${fmtAwb(d.awbNumber)} · ${f.flightNumber} · ${f.origin} → ${f.destination}`
+    : isCancelledOrExpired
+      ? `${f.flightNumber} · ${f.origin} → ${f.destination} · no Air Waybill was issued`
+      : `${f.flightNumber} · ${f.origin} → ${f.destination} · the Air Waybill is issued when you pay`
+
+  return (
+    <div className="text-left">
+      {/* Hero */}
+      <CargoHero
+        title={d.bookingRef}
+        titleRight={<span className={`rounded-full px-3 py-1 text-xs font-medium ${statusPill(d.status)}`}>{statusLabel(d.status)}</span>}
+        subtitle={subtitle}
+        activeTab="mycargo"
+      />
+
+      <div className="bg-slate-50 py-8">
+        <div className="mx-auto w-full max-w-6xl px-6">
+          {/* Confirmed banner */}
+          {confirmed && d.awbNumber && (
+            <div className="mb-6 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+                <Check className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-emerald-900">Booking confirmed</p>
+                <p className="text-sm text-emerald-800">
+                  {fmtMoney(d.quote.currency, d.quote.charge)} was paid. Your Air Waybill {fmtAwb(d.awbNumber)} is issued and you can print
+                  it now.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Action row */}
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <Link to="/cargo" className="text-sm font-medium text-blue-600 hover:text-blue-700">
+              ← My cargo
+            </Link>
+            <div className="flex flex-wrap gap-2">
+              {isHeld && (
+                <Link to="/cargo/bookings/$id/pay" params={{ id: d.id }}>
+                  <Button className="bg-[#1e2a5a] text-white hover:bg-[#1e2a5a]/90">
+                    Pay now · {fmtMoney(d.quote.currency, d.quote.charge)}
+                  </Button>
+                </Link>
+              )}
+              {d.awbNumber && (
+                <Button variant="outline" onClick={() => printAwb(d)}>
+                  <Printer className="mr-1.5 h-4 w-4" />
+                  Print Air Waybill
+                </Button>
+              )}
+              {canCancel && (
+                <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => setShowCancel(true)}>
+                  Cancel booking
+                </Button>
+              )}
+              {canClaim && !showClaim && (
+                <Button variant="outline" onClick={() => setShowClaim(true)}>
+                  File a claim
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Shipment status card */}
+          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Shipment status</p>
+            <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl font-bold text-slate-900">{statusLabel(d.status)}</span>
+                  <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                    {f.flightNumber} · {f.origin} → {f.destination}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-slate-600">{statusMessage(d)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-400">Departs</p>
+                <p className="text-sm font-semibold text-slate-900">{fmtDateTime(f.depAt)}</p>
+              </div>
+            </div>
+            {showStepper && <StatusStepper current={d.status} />}
+          </div>
+
+          {/* Cancelled box */}
+          {isCancelledOrExpired && (
+            <div className="mb-6">
+              <CancelledBox detail={d} />
+            </div>
+          )}
+
+          {/* Two-column layout */}
+          <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+            {/* Left column */}
+            <div className="space-y-6">
+              {/* Activity timeline */}
+              {d.timeline.length > 0 && <ActivityTimeline detail={d} />}
+
+              {/* Claim form */}
+              {showClaim && <ClaimForm bookingId={d.id} pieces={d.goods.pieces} onDone={load} onCancel={() => setShowClaim(false)} />}
+
+              {/* Claim card */}
+              {d.claim && <ClaimCard claim={d.claim} />}
+            </div>
+
+            {/* Right column */}
+            <div>
+              <AwbCard detail={d} />
+              <StatusInfoBox detail={d} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Cancel dialog */}
+      {showCancel && (
+        <CancelDialog
+          detail={d}
+          onClose={() => setShowCancel(false)}
+          onDone={() => {
+            setShowCancel(false)
+            void load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ── Print AWB ──────────────────────────────────────────────────── */
+
+function printAwb(detail: BookingDetail) {
+  const win = window.open('', '_blank')
+  if (!win) return
+  win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>AWB ${detail.awbNumber}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -529,108 +771,7 @@ function AirWaybill({ detail }: { detail: BookingDetail }) {
   <tr><th>Total charge</th><td>${detail.quote.currency} ${detail.quote.charge.toFixed(2)}</td></tr>
 </table>
 </body></html>`)
-    win.document.close()
-    win.focus()
-    win.print()
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FileText className="h-4 w-4" /> Air Waybill
-          </CardTitle>
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Printer className="mr-1 h-4 w-4" /> Print
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-          <Dt>AWB Number</Dt>
-          <Dd className="font-medium">{detail.awbNumber}</Dd>
-          <Dt>Shipper</Dt>
-          <Dd>{detail.shipper.name}</Dd>
-          <Dt>Consignee</Dt>
-          <Dd>{detail.consignee.name}</Dd>
-          <Dt>Flight</Dt>
-          <Dd>
-            {detail.flight.flightNumber} · {detail.flight.origin} → {detail.flight.destination}
-          </Dd>
-          <Dt>Pieces</Dt>
-          <Dd>{detail.goods.pieces}</Dd>
-          <Dt>Weight</Dt>
-          <Dd>{detail.goods.declaredWeightKg} kg</Dd>
-          <Dt>Volume</Dt>
-          <Dd>{detail.goods.declaredVolumeM3} m³</Dd>
-          <Dt>Chargeable kg</Dt>
-          <Dd>{detail.quote.chargeableKg} kg</Dd>
-          <Dt>Rate</Dt>
-          <Dd>
-            {detail.quote.currency} {detail.quote.ratePerKg.toFixed(2)}/kg
-          </Dd>
-          <Dt>Charge</Dt>
-          <Dd className="font-semibold">
-            {detail.quote.currency} {detail.quote.charge.toFixed(2)}
-          </Dd>
-        </dl>
-      </CardContent>
-    </Card>
-  )
-}
-
-/* ── Claim card ──────────────────────────────────────────────────── */
-
-function ClaimCard({ claim }: { claim: NonNullable<BookingDetail['claim']> }) {
-  const decisionVariant =
-    claim.decision?.decision === 'approved' ? 'secondary' : claim.decision?.decision === 'rejected' ? 'destructive' : 'outline'
-  const decisionLabel = claim.decision ? (claim.decision.decision === 'approved' ? 'Approved' : 'Rejected') : 'Open'
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <FileText className="h-4 w-4" /> Claim {claim.claimRef}
-          <Badge variant={decisionVariant}>{decisionLabel}</Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-          <Dt>Type</Dt>
-          <Dd className="capitalize">{claim.claimType}</Dd>
-          <Dt>Pieces affected</Dt>
-          <Dd>{claim.piecesAffected}</Dd>
-          <Dt>Claimed amount</Dt>
-          <Dd>
-            {claim.currency} {claim.claimedAmount.toFixed(2)}
-          </Dd>
-          <Dt>Filed</Dt>
-          <Dd>{new Date(claim.filedAt).toLocaleString()}</Dd>
-          <Dt>Description</Dt>
-          <Dd className="col-span-full sm:col-span-2">{claim.description}</Dd>
-        </dl>
-        {claim.decision && (
-          <div className="mt-3 border-t pt-3">
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-              <Dt>Decision</Dt>
-              <Dd className="capitalize">{claim.decision.decision}</Dd>
-              {claim.decision.approvedAmount != null && (
-                <>
-                  <Dt>Approved amount</Dt>
-                  <Dd>
-                    {claim.currency} {claim.decision.approvedAmount.toFixed(2)}
-                  </Dd>
-                </>
-              )}
-              <Dt>Note</Dt>
-              <Dd className="col-span-full sm:col-span-2">{claim.decision.note}</Dd>
-              <Dt>Decided</Dt>
-              <Dd>{new Date(claim.decision.decidedAt).toLocaleString()}</Dd>
-            </dl>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
+  win.document.close()
+  win.focus()
+  win.print()
 }
