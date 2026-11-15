@@ -82,6 +82,9 @@ async function main(): Promise<void> {
     payout: await db.payout.count(),
     payment: await db.payment.count(),
   })
+  // A development database may already hold sample work from earlier use of the tools: start from a clean slate.
+  await call(boss, 'DELETE', '/dev/crew-pay')
+  await call(me, 'DELETE', '/dev/payments')
   const before = await tally()
   console.log(`Base ${base}`)
 
