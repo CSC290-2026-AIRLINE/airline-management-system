@@ -1,0 +1,69 @@
+/* The dialogs of the review & pay page: the contact form and the flights notice. They share the field metrics of the
+   booking flow, because the review & pay page is not inside the search page's own stylesheet. */
+
+.rp-dialog-form {
+  display: grid;
+  gap: 14px;
+}
+
+.rp-dialog-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  box-sizing: border-box;
+  border: 1px solid var(--f3-input-border, #dbe0eb);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: white;
+  color: var(--f3-ink);
+  font-size: 15px;
+}
+
+.rp-dialog-form input:focus-visible {
+  outline: none;
+  border-color: var(--f3-primary);
+  box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
+}
+
+.rp-dialog-form input[aria-invalid='true'] {
+  border-color: var(--f3-danger, #b8171f);
+}
+
+.rp-dialog-error {
+  margin: 0;
+  color: var(--f3-danger, #b8171f);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.rp-dialog-note {
+  margin: 0;
+  color: var(--f3-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.rp-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+/* One passenger in the re-book form. */
+.rp-passenger {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--f3-border, #dbe0eb);
+  border-radius: 10px;
+}
+
+.rp-passenger legend {
+  padding: 0 6px;
+  color: var(--f3-ink);
+  font-size: 13px;
+  font-weight: 600;
+}

@@ -19,6 +19,9 @@ export interface BookingPassenger {
   passengerType: PassengerType
   // The adult this infant travels with.
   lapOfBookingPassengerId: string | null
+  // The passenger's own details, so a held booking can be re-booked with a corrected name.
+  dateOfBirth: string | null
+  passportNumber: string | null
 }
 
 export interface BookingSegment {
@@ -34,6 +37,8 @@ export interface BookingSegment {
   destination: string
   depAt: string
   arrAt: string
+  // The day the flight leaves, as YYYY-MM-DD. The search form asks for this date.
+  serviceDate: string
 }
 
 export interface BookingCoupon {
@@ -85,6 +90,12 @@ export interface BookingSummary {
   holdExpiresAt: string
   confirmedAt: string | null
   cancelledAt: string | null
+}
+
+/** The contact details of a booking, as the booking route returns them after a change. */
+export interface BookingContact {
+  contactEmail: string
+  contactPhone: string | null
 }
 
 export interface BookingDetail extends BookingSummary {

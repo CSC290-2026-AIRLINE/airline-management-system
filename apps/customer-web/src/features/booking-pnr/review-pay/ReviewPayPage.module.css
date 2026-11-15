@@ -79,6 +79,27 @@
   color: var(--f3-ink);
 }
 
+/* The heading of a card and the actions that change it. */
+.cardHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.cardHeader h2 {
+  margin: 0;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .flightRow {
   display: flex;
   justify-content: space-between;
@@ -150,6 +171,27 @@
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* The action under a passenger: asking the airport team for help. */
+.passengerActions {
+  flex-basis: 100%;
+}
+
+.contactRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--f3-line);
+}
+
+.contactDetails {
+  margin: 2px 0 0;
+  font-size: 14px;
 }
 
 .warningChip {

@@ -1,6 +1,7 @@
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import type {
   ApiErrorBody,
+  BookingContact,
   BookingDetail,
   CancelBookingResult,
   CancelPreview,
@@ -8,6 +9,7 @@ import type {
   CustomerTrips,
   HoldBookingRequest,
   HoldBookingResponse,
+  ServiceCode,
 } from './types'
 
 export class ApiError extends Error {
@@ -88,5 +90,42 @@ export function useBookingPnrApi() {
     return (await response.json()) as CustomerTrips
   }
 
-  return { getBooking, holdBooking, devConfirmBooking, getCancelPreview, cancelBooking, getCustomerTrips }
+  /** The contact details of a booking that is still on hold. */
+  async function updateContact(reference: string, input: { contactEmail: string; contactPhone?: string }): Promise<BookingContact> {
+    const response = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}/contact`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    if (!response.ok) {
+      throw await readError(response)
+    }
+    return (await response.json()) as BookingContact
+  }
+
+  /** A special-assistance request for a passenger of a booking that is still on hold. */
+  async function createServiceRequest(
+    reference: string,
+    input: { bookingPassengerId: string; bookingSegmentId?: string | null; serviceCode: ServiceCode; note?: string | null },
+  ): Promise<void> {
+    const response = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}/service-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    if (!response.ok) {
+      throw await readError(response)
+    }
+  }
+
+  return {
+    getBooking,
+    holdBooking,
+    devConfirmBooking,
+    getCancelPreview,
+    cancelBooking,
+    getCustomerTrips,
+    updateContact,
+    createServiceRequest,
+  }
 }
