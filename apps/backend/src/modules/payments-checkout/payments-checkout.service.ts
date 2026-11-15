@@ -478,7 +478,16 @@ export class PaymentsCheckoutService {
     if (!this.gateway.verifyWebhook || !this.gateway.parseEvent) {
       throw new BadRequestException('This payment provider sends no webhooks')
     }
-    if (!rawBody || !this.gateway.verifyWebhook(rawBody, signature)) {
+    // A rejection used to be silent, which made a wrong secret hard to find. Say why, never what the secret is.
+    if (!rawBody) {
+      this.logger.warn('Webhook rejected: the request carries no raw body (`rawBody: true` must be set in main.ts)')
+      throw new BadRequestException('The webhook signature is not valid')
+    }
+    if (!this.gateway.verifyWebhook(rawBody, signature)) {
+      this.logger.warn(
+        'Webhook rejected: its signature does not match STRIPE_WEBHOOK_SECRET. Use the whsec_ that this run of `stripe listen` printed, ' +
+          'check the line in apps/backend/.env has nothing else on it, and restart the backend.',
+      )
       throw new BadRequestException('The webhook signature is not valid')
     }
     const event = await this.gateway.parseEvent(rawBody)

@@ -12,7 +12,7 @@ import { PaymentsCheckoutService } from '../payments-checkout.service'
  * It reads the Stripe settings from `apps/backend/.env` the way the app does and never prints them. It creates a
  * payment for the first customer, asks for the Stripe page through the real route, and prints the payment id and the
  * page's address. It leaves the payment in place: pay it with the test card 4242 4242 4242 4242, with `npm run dev` and
- * `stripe listen --forward-to localhost:8080/api/webhooks/stripe` running, and watch the payment become `captured`.
+ * `stripe listen --events payment_intent.amount_capturable_updated,payment_intent.payment_failed,checkout.session.expired,refund.updated,refund.failed --forward-to localhost:8080/api/webhooks/stripe` running, and watch the payment become `captured`.
  *
  * Run it with `--clean <payment id>` afterwards to remove the payment and end an unpaid page.
  *

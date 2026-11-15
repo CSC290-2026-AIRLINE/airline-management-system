@@ -11,6 +11,7 @@ const JOB_INTERVAL_MS = 60_000
 export class CrewPayJobService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(CrewPayJobService.name)
   private timer: NodeJS.Timeout | null = null
+  private startupTimer: NodeJS.Timeout | null = null
   private running = false
 
   constructor(private readonly crewPay: CrewPayService) {}
@@ -18,11 +19,13 @@ export class CrewPayJobService implements OnApplicationBootstrap, OnModuleDestro
   onApplicationBootstrap() {
     if (process.env.NODE_ENV === 'test') return
     // Startup catch-up first, then every minute.
-    setTimeout(() => void this.runOnce(), 5_000)
+    this.startupTimer = setTimeout(() => void this.runOnce(), 5_000)
     this.timer = setInterval(() => void this.runOnce(), JOB_INTERVAL_MS)
   }
 
   onModuleDestroy() {
+    // Both timers: the startup one must not fire against a database the app has already closed.
+    if (this.startupTimer) clearTimeout(this.startupTimer)
     if (this.timer) clearInterval(this.timer)
   }
 

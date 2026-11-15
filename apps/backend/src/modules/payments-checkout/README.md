@@ -255,8 +255,8 @@ Feature 5b decides a refund; 5a sends the money back and keeps the documents. 5b
 A `pending` refund ends with Stripe's `refund.updated` / `refund.failed` webhook. The refund carries `refund_id` and
 `payment_id` as metadata, so the webhook names the refund 5b made; 5a hands it to the settler 5b registered
 (`registerRefundSettler`). **Enable these events on a Stripe webhook endpoint**: `payment_intent.amount_capturable_updated`,
-`payment_intent.payment_failed`, `checkout.session.expired`, `refund.updated`, `refund.failed` (`stripe listen` forwards them
-all). The fake provider refunds on the spot, so a demo needs no webhook.
+`payment_intent.payment_failed`, `checkout.session.expired`, `refund.updated`, `refund.failed` (`stripe listen` needs them named with `--events`; the command is
+below). The fake provider refunds on the spot, so a demo needs no webhook.
 
 ### Trying Stripe in test mode
 
@@ -271,7 +271,7 @@ STRIPE_WEBHOOK_SECRET="whsec_…"      # printed by `stripe listen`, below
 Forward Stripe's webhooks to your machine with the Stripe CLI, then pay with the test card `4242 4242 4242 4242`:
 
 ```
-stripe listen --forward-to localhost:8080/api/webhooks/stripe
+stripe listen --events payment_intent.amount_capturable_updated,payment_intent.payment_failed,checkout.session.expired,refund.updated,refund.failed --forward-to localhost:8080/api/webhooks/stripe
 ```
 
 `demo/stripe-smoke.ts` checks the whole flow against the real database **without** Stripe (Stripe's API is replaced by a
