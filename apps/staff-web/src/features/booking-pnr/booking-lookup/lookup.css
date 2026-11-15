@@ -186,23 +186,29 @@
   text-align: right;
   white-space: nowrap;
 }
+/* The reference opens the booking, so it wears the link colour and a pill on hover instead of an underline, and the
+   chevron sits level with the text. The negative margin keeps the reference in line with the other cells. */
 .f3-lookup-reference {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: -7px;
   border: 0;
   background: transparent;
-  padding: 4px 0;
-  color: #102544;
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: #1f408c;
   font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-/* The chevron is an inline sibling of the reference, not a flex item: a flex container would drop the underline. */
-.f3-lookup-reference svg {
-  margin-left: 4px;
-  vertical-align: middle;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 .f3-lookup-reference:hover {
-  color: #1f408c;
+  background: #e3ecfb;
+  color: #16306b;
+}
+.f3-lookup-reference svg {
+  color: #677287;
 }
 /* The line that says the rows can be opened, right above them. */
 .f3-lookup-hint {
