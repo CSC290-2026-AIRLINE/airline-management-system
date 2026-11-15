@@ -3,7 +3,7 @@
   box-sizing: border-box;
   width: 100%;
   max-width: 1200px;
-  margin: 40px auto 0;
+  margin: 24px auto 0;
   color: var(--f3-ink);
   font-family: var(--f3-font);
   text-align: left;
@@ -12,38 +12,55 @@
 .shell {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
 }
 
+/* The header of the page: the title with the booking reference beside it, and the line that says which part of the
+   booking the customer is looking at. */
 .header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   text-align: left;
 }
 
-.eyebrow {
-  margin: 0 0 6px;
-  color: var(--f3-muted);
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* The booking reference, next to the title: the customer reads it out to the airline. */
+.reference {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--f3-neutral-soft);
+  color: var(--f3-neutral);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .header h1 {
-  margin: 0 0 6px;
+  margin: 0;
   font-family: var(--f3-font);
-  font-size: 30px;
-  line-height: 1.15;
+  font-size: 24px;
+  line-height: 1.2;
   /* The global h1 rule tracks -1.68px for the 56 px home hero. The page titles follow the flight search instead. */
-  letter-spacing: -0.6px;
+  letter-spacing: -0.4px;
   color: var(--f3-ink);
 }
 
 .subtitle {
   margin: 0;
   color: var(--f3-muted);
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .columns {
@@ -282,10 +299,10 @@
 
 @media (max-width: 600px) {
   .page {
-    margin-top: 24px;
+    margin-top: 16px;
   }
 
   .header h1 {
-    font-size: 26px;
+    font-size: 22px;
   }
 }

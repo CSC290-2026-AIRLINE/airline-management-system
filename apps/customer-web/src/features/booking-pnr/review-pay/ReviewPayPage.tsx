@@ -202,8 +202,10 @@ function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onRel
       <main className={styles.page}>
         <div className={styles.shell}>
           <header className={styles.header}>
-            <p className={styles.eyebrow}>Booking {booking.reference}</p>
-            <h1>Review &amp; pay</h1>
+            <div className={styles.titleRow}>
+              <h1>Review &amp; pay</h1>
+              <span className={styles.reference}>Booking {booking.reference}</span>
+            </div>
             <p className={styles.subtitle}>{copy.subtitle}</p>
           </header>
 
