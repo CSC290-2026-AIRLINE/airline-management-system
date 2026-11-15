@@ -3,9 +3,9 @@ import {
   flightSearchStateFromParams,
   parseFlightSearchParams,
   type FlightSearchUrlState,
-} from '../../../../../customer-web/src/features/booking-search/search-params'
-import type { SearchItinerary } from '../../../../../customer-web/src/features/booking-search/pages/FlightSearchPage'
-import { travellersFor, type BookingContact, type TravellerDraft } from '../../../../../customer-web/src/features/booking-pnr/flow/draft'
+} from '@customer-web/features/booking-search/search-params'
+import type { SearchItinerary } from '@customer-web/features/booking-search/pages/FlightSearchPage'
+import { travellersFor, type BookingContact, type TravellerDraft } from '@customer-web/features/booking-pnr/flow/draft'
 import type { HoldBookingResponse, PassengerType } from '../api/types'
 
 export type StaffBookingStep = 'search' | 'passengers' | 'seats' | 'held'

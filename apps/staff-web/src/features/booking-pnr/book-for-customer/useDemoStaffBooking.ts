@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import type { DemoPassenger } from '../../../../../customer-web/src/features/booking-pnr/passengers/demo-passengers'
+import type { DemoPassenger } from '@customer-web/features/booking-pnr/passengers/demo-passengers'
 
 export interface DemoBookingCustomer {
   id: string

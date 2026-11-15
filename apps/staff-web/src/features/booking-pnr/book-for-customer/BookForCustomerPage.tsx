@@ -1,22 +1,17 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
-import { FlightSearchPage, type SearchItinerary } from '../../../../../customer-web/src/features/booking-search/pages/FlightSearchPage'
-import type { FlightSearchUrlState } from '../../../../../customer-web/src/features/booking-search/search-params'
-import { PassengersPage } from '../../../../../customer-web/src/features/booking-pnr/passengers/PassengersPage'
-import {
-  travellersFor,
-  validateTravellers,
-  type BookingContact,
-  type TravellerDraft,
-} from '../../../../../customer-web/src/features/booking-pnr/flow/draft'
-import { resolveDemoPassengers } from '../../../../../customer-web/src/features/booking-pnr/passengers/demo-passengers'
+import { FlightSearchPage, type SearchItinerary } from '@customer-web/features/booking-search/pages/FlightSearchPage'
+import type { FlightSearchUrlState } from '@customer-web/features/booking-search/search-params'
+import { PassengersPage } from '@customer-web/features/booking-pnr/passengers/PassengersPage'
+import { travellersFor, validateTravellers, type BookingContact, type TravellerDraft } from '@customer-web/features/booking-pnr/flow/draft'
+import { resolveDemoPassengers } from '@customer-web/features/booking-pnr/passengers/demo-passengers'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { BookForCustomerRequest, HoldBookingResponse } from '../api/types'
 import { lookupMoney as money } from '../booking-lookup/lookup-utils'
 import { useDemoStaffBooking } from './useDemoStaffBooking'
 import { clearBookingDraft, readBookingDraft, saveBookingDraft, type StaffBookingStep } from './booking-draft'
-import '../../../../../customer-web/src/features/booking-pnr/flow/flow.css'
+import '@customer-web/features/booking-pnr/flow/flow.css'
 import './staff-booking.css'
 
 class StaffBookingBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
