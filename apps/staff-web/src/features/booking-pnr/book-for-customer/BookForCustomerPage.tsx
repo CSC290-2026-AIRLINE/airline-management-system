@@ -5,14 +5,34 @@ import { FlightSearchPage, type SearchItinerary } from '@customer-web/features/b
 import type { FlightSearchUrlState } from '@customer-web/features/booking-search/search-params'
 import { PassengersPage } from '@customer-web/features/booking-pnr/passengers/PassengersPage'
 import { travellersFor, validateTravellers, type BookingContact, type TravellerDraft } from '@customer-web/features/booking-pnr/flow/draft'
+import { validateSeatChoices, type SeatChoice } from '@customer-web/features/booking-pnr/flow/integration'
 import { resolveDemoPassengers } from '@customer-web/features/booking-pnr/passengers/demo-passengers'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { BookForCustomerRequest, HoldBookingResponse } from '../api/types'
 import { lookupMoney as money } from '../booking-lookup/lookup-utils'
 import { useDemoStaffBooking } from './useDemoStaffBooking'
 import { clearBookingDraft, readBookingDraft, saveBookingDraft, type StaffBookingStep } from './booking-draft'
+import { STAFF_BOOKING_STAGES } from './booking-stages'
+import { StaffBookingStepper } from './StaffBookingStepper'
+import { StaffSeatStep } from './StaffSeatStep'
 import '@customer-web/features/booking-pnr/flow/flow.css'
 import './staff-booking.css'
+
+/** The title and the line under it of each step of the staff flow. */
+const STEP_COPY: Record<'passengers' | 'seats' | 'held', { title: string; intro: string }> = {
+  passengers: {
+    title: 'Passengers & extras',
+    intro: 'Enter every traveller exactly as their passport shows. Nothing is held until you create the booking.',
+  },
+  seats: {
+    title: 'Choose seats',
+    intro: 'Pick a seat for each traveller, or hold the booking without any. The seats are held for 15 minutes with the booking.',
+  },
+  held: {
+    title: 'Booking held',
+    intro: 'The booking is held, not ticketed. Share the reference with your customer before the hold expires.',
+  },
+}
 
 class StaffBookingBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
@@ -51,6 +71,7 @@ function StaffBookingContent() {
   const [itinerary, setItinerary] = useState<SearchItinerary | null>(restored?.itinerary ?? null)
   const [travellers, setTravellers] = useState<TravellerDraft[]>(restored?.travellers ?? [])
   const [contact, setContact] = useState<BookingContact>(restored?.contact ?? { email: '', phone: '', promoCode: '' })
+  const [choices, setChoices] = useState<SeatChoice[]>(restored?.choices ?? [])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [held, setHeld] = useState<HoldBookingResponse | null>(restored?.held ?? null)
@@ -60,6 +81,9 @@ function StaffBookingContent() {
   const customerMissing = !data.loading && !data.error && !!customerId && !customer
   const activeStep: StaffBookingStep = customerMissing && step !== 'held' ? 'search' : step
   const tripCurrency = held?.currency ?? itinerary?.selections[0]?.fare.currency ?? 'USD'
+  /* The stepper starts at the passengers step, because the flights are already chosen when it appears. */
+  const stageIndex = activeStep === 'search' ? 0 : activeStep === 'passengers' ? 1 : activeStep === 'seats' ? 2 : 3
+  const stageCopy = STEP_COPY[activeStep === 'seats' ? 'seats' : activeStep === 'held' ? 'held' : 'passengers']
 
   /* Keeps the draft in this tab so a refresh comes back to the same step. */
   useEffect(() => {
@@ -67,8 +91,8 @@ function StaffBookingContent() {
       clearBookingDraft()
       return
     }
-    saveBookingDraft({ version: 1, customerId, step, search: searchState, itinerary, travellers, contact, held, attempt })
-  }, [customerId, step, searchState, itinerary, travellers, contact, held, attempt])
+    saveBookingDraft({ version: 1, customerId, step, search: searchState, itinerary, travellers, contact, choices, held, attempt })
+  }, [customerId, step, searchState, itinerary, travellers, contact, choices, held, attempt])
 
   function chooseCustomer(id: string) {
     const next = data.customers.find((row) => row.id === id)
@@ -76,6 +100,7 @@ function StaffBookingContent() {
     setContact({ email: next?.email ?? '', phone: next?.phone ?? '', promoCode: '' })
     setTravellers([])
     setItinerary(null)
+    setChoices([])
     setHeld(null)
     setError(null)
     setStep('search')
@@ -88,6 +113,7 @@ function StaffBookingContent() {
     setItinerary(null)
     setTravellers([])
     setContact({ email: '', phone: '', promoCode: '' })
+    setChoices([])
     setHeld(null)
     setError(null)
     setAttempt(null)
@@ -96,11 +122,14 @@ function StaffBookingContent() {
   function chooseFlights(selection: SearchItinerary) {
     setItinerary(selection)
     setTravellers((current) => travellersFor(selection, current))
+    setChoices([])
     setError(null)
     setStep('passengers')
   }
   function updateTraveller(key: string, change: Partial<TravellerDraft>) {
     setTravellers((current) => current.map((person) => (person.key === key ? { ...person, ...change } : person)))
+    /* A changed traveller may need another seat, so the chosen seats are dropped. */
+    setChoices([])
     setError(null)
   }
   function continueToSeats() {
@@ -118,7 +147,7 @@ function StaffBookingContent() {
       setError(cause instanceof Error ? cause.message : 'Choose a demo traveller for every passenger.')
     }
   }
-  async function createHold() {
+  async function createHold(expectedTotal: number, selectedSeats: SeatChoice[]) {
     if (!customer || !itinerary || inFlight.current) return
     inFlight.current = true
     setBusy(true)
@@ -126,6 +155,7 @@ function StaffBookingContent() {
     try {
       const validation = validateTravellers(travellers, contact, itinerary)
       if (validation) throw new Error(validation.message)
+      validateSeatChoices(selectedSeats, travellers, itinerary)
       const ids = resolveDemoPassengers(travellers, data.profiles)
       const idFor = (key: string) => ids.find((person) => person.key === key)!.passengerId
       const request: BookForCustomerRequest = {
@@ -146,14 +176,29 @@ function StaffBookingContent() {
         contactEmail: contact.email.trim(),
         contactPhone: contact.phone.trim(),
         promoCode: contact.promoCode.trim() || undefined,
-        expectedTotal: itinerary.expectedTotal,
-        seats: [],
+        expectedTotal,
+        seats: selectedSeats.map((choice) => ({
+          passengerId: idFor(choice.travellerKey),
+          flightId: choice.flightId,
+          seatCode: choice.seatCode,
+        })),
       }
       const body = JSON.stringify(request)
       /* The same request keeps the same idempotency key, so a retry after a refresh is not a second booking. */
       const next = attempt && attempt.body === body ? attempt : { body, key: crypto.randomUUID() }
       setAttempt(next)
-      saveBookingDraft({ version: 1, customerId, step, search: searchState, itinerary, travellers, contact, held, attempt: next })
+      saveBookingDraft({
+        version: 1,
+        customerId,
+        step,
+        search: searchState,
+        itinerary,
+        travellers,
+        contact,
+        choices: selectedSeats,
+        held,
+        attempt: next,
+      })
       const booking = await bookForCustomer(request, next.key)
       setHeld(booking)
       setStep('held')
@@ -161,11 +206,13 @@ function StaffBookingContent() {
       setError(
         cause instanceof ApiError && cause.code === 'PRICE_CHANGED'
           ? 'The fare has changed. Return to flights and check the new price. No booking was held.'
-          : cause instanceof ApiError && cause.code === 'FARE_UNAVAILABLE'
-            ? 'This fare is no longer available. Return to flights and choose another option. No booking was held.'
-            : cause instanceof Error
-              ? cause.message
-              : 'We could not create the booking. Please try again.',
+          : cause instanceof ApiError && cause.code === 'SEAT_UNAVAILABLE'
+            ? 'A chosen seat is no longer available. Pick another seat and try again. No booking was held.'
+            : cause instanceof ApiError && cause.code === 'FARE_UNAVAILABLE'
+              ? 'This fare is no longer available. Return to flights and choose another option. No booking was held.'
+              : cause instanceof Error
+                ? cause.message
+                : 'We could not create the booking. Please try again.',
       )
     } finally {
       inFlight.current = false
@@ -235,20 +282,16 @@ function StaffBookingContent() {
         />
       )}
       {activeStep !== 'search' && itinerary && (
-        <main className="f3-search f3-flow">
-          <ol className="f3-flow-stepper" aria-label="Staff booking progress">
-            {['Flights', 'Passengers', 'Seats', 'Booking held'].map((label, index) => (
-              <li
-                key={label}
-                aria-current={(activeStep === 'passengers' ? 1 : activeStep === 'seats' ? 2 : 3) === index ? 'step' : undefined}
-              >
-                <span>{index + 1}</span>
-                {label}
-              </li>
-            ))}
-          </ol>
-          <h1>{activeStep === 'passengers' ? 'Passengers & extras' : activeStep === 'seats' ? 'Seat choices' : 'Booking held'}</h1>
-          <div className="f3-flow-columns">
+        <main className="f3-search f3-flow f3-staff-flow">
+          <header className="f3-staff-flow__header">
+            <p className="f3-search-eyebrow">
+              STEP {stageIndex + 1} OF {STAFF_BOOKING_STAGES.length} · {STAFF_BOOKING_STAGES[stageIndex]?.label}
+            </p>
+            <h1>{stageCopy.title}</h1>
+            <p className="f3-staff-flow__intro">{stageCopy.intro}</p>
+          </header>
+          <StaffBookingStepper stages={STAFF_BOOKING_STAGES} current={stageIndex} />
+          <div className={`f3-flow-columns${activeStep === 'seats' ? ' f3-flow-columns--seats' : ''}`}>
             <div>
               {activeStep === 'passengers' && (
                 <PassengersPage
@@ -269,50 +312,51 @@ function StaffBookingContent() {
                 />
               )}
               {activeStep === 'seats' && (
-                <section className="f3-passenger-card">
-                  <h2>Choose seats later</h2>
-                  <p>Specific seats are optional. No seats are held until you create the booking below.</p>
-                  <ul>
-                    {travellers.map((person) => (
-                      <li key={person.key}>
-                        {person.givenName} {person.familyName} · {person.expectedType === 'infant' ? 'Travels on a lap' : 'Seat not chosen'}
-                      </li>
-                    ))}
-                  </ul>
-                  {error && (
-                    <p role="alert" className="f3-flow-error">
-                      {error}
-                    </p>
-                  )}
-                  <div className="f3-flow-actions">
-                    <button
-                      className="f3-search-secondary"
-                      disabled={busy}
-                      onClick={() => {
-                        setError(null)
-                        setStep('passengers')
-                      }}
-                    >
-                      Back to passengers
-                    </button>
-                    <button className="f3-search-primary" disabled={busy} onClick={() => void createHold()}>
-                      {busy ? 'Creating booking…' : 'Skip seats & create hold'}
-                    </button>
-                  </div>
-                </section>
+                <StaffSeatStep
+                  itinerary={itinerary}
+                  currency={tripCurrency}
+                  travellers={travellers}
+                  choices={choices}
+                  busy={busy}
+                  error={error}
+                  promoCode={contact.promoCode.trim() || undefined}
+                  onChange={(next) => {
+                    if (!inFlight.current) {
+                      setChoices(next)
+                      setError(null)
+                    }
+                  }}
+                  onBack={() => {
+                    setError(null)
+                    setStep('passengers')
+                  }}
+                  onContinue={(expectedTotal) => void createHold(expectedTotal, choices)}
+                  onSkip={(expectedTotal) => void createHold(expectedTotal, [])}
+                />
               )}
               {activeStep === 'held' && held && (
                 <section className="f3-passenger-card f3-staff-receipt">
                   <span className="f3-staff-held">Held · awaiting payment</span>
-                  <p>Booking reference</p>
-                  <h2>{held.reference}</h2>
-                  <p>{customer ? `Booked for ${customer.name}.` : 'Booked for the selected customer.'} This booking is not confirmed.</p>
-                  <p>
-                    Total: <strong>{money(held.total, held.currency)}</strong>
-                  </p>
-                  <p>
-                    Hold expires{' '}
-                    {new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(held.holdExpiresAt))}
+                  <p className="f3-staff-receipt__label">Booking reference</p>
+                  <h2 className="f3-staff-receipt__reference">{held.reference}</h2>
+                  <dl className="f3-staff-receipt__facts">
+                    <div>
+                      <dt>Customer</dt>
+                      <dd>{customer ? customer.name : 'Selected customer'}</dd>
+                    </div>
+                    <div>
+                      <dt>Total</dt>
+                      <dd>{money(held.total, held.currency)}</dd>
+                    </div>
+                    <div>
+                      <dt>Hold expires</dt>
+                      <dd>
+                        {new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(held.holdExpiresAt))}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="f3-staff-receipt__note">
+                    This booking is not confirmed. The hold ends when the timer runs out or the booking is cancelled.
                   </p>
                   <div className="f3-flow-actions">
                     <button className="f3-search-secondary" type="button" onClick={startNewBooking}>
@@ -325,26 +369,28 @@ function StaffBookingContent() {
                 </section>
               )}
             </div>
-            <aside className="f3-flow-summary" aria-label="Staff trip summary">
-              <p className="f3-search-eyebrow">YOUR CUSTOMER’S TRIP</p>
-              {itinerary.selections.map(({ flight, fare }) => (
-                <article key={flight.flightId}>
-                  <strong>
-                    {flight.origin} → {flight.destination}
-                  </strong>
-                  <p>
-                    {flight.flightNumber} · {fare.cabin.replace('_', ' ')}
-                  </p>
-                  <p>
-                    {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
-                      new Date(flight.depAt),
-                    )}
-                  </p>
-                </article>
-              ))}
-              <strong>{money(itinerary.expectedTotal, tripCurrency)}</strong>
-              <p>The hold lasts 15 minutes from booking creation.</p>
-            </aside>
+            {activeStep !== 'seats' && (
+              <aside className="f3-flow-summary" aria-label="Staff trip summary">
+                <p className="f3-search-eyebrow">YOUR CUSTOMER’S TRIP</p>
+                {itinerary.selections.map(({ flight, fare }) => (
+                  <article key={flight.flightId}>
+                    <strong>
+                      {flight.origin} → {flight.destination}
+                    </strong>
+                    <p>
+                      {flight.flightNumber} · {fare.cabin.replace('_', ' ')}
+                    </p>
+                    <p>
+                      {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
+                        new Date(flight.depAt),
+                      )}
+                    </p>
+                  </article>
+                ))}
+                <strong>{money(itinerary.expectedTotal, tripCurrency)}</strong>
+                <p>The hold lasts 15 minutes from booking creation.</p>
+              </aside>
+            )}
           </div>
         </main>
       )}

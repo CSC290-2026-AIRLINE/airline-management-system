@@ -30,25 +30,219 @@
   border-color: #102544;
   box-shadow: 0 0 0 3px rgba(16, 37, 68, 0.5);
 }
-.f3-staff-booking .f3-flow > h1 {
+.f3-staff-booking > .f3-search:not(.f3-staff-customer) > .f3-search-heading {
+  display: none;
+}
+.f3-staff-booking > .f3-search:not(.f3-staff-customer) {
+  padding-top: 20px;
+}
+
+/* The flow of the staff booking: the title, the progress card and the two columns below it. */
+.f3-staff-booking .f3-staff-flow {
+  min-height: 0;
+  padding-bottom: 48px;
+}
+.f3-staff-booking .f3-staff-flow > * {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.f3-staff-booking .f3-staff-flow__header h1 {
+  margin: 4px 0 6px;
+}
+.f3-staff-booking .f3-staff-flow__intro {
+  margin: 0 0 20px;
+  color: #677287;
+  font-size: 14px;
+}
+
+/* The progress bar: four stages on one rail that fills up to the current stage. */
+.f3-staff-progress {
   margin: 0 0 24px;
 }
-.f3-staff-receipt h2 {
+.f3-staff-progress__caption {
+  display: none;
+  margin: 0 0 10px;
+  color: #677287;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.f3-staff-progress__caption strong {
+  color: #0a1424;
+}
+.f3-staff-progress__list {
+  --staff-step-marker: 28px;
+  --staff-step-rail: 2px;
+  --staff-step-pad: 18px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: var(--staff-step-pad) 20px 16px;
+  list-style: none;
+  background: #ffffff;
+  border: 1px solid #d9dfe9;
+  border-radius: 12px;
+}
+/* The rail behind the markers: the grey part first, the navy part up to the current stage on top. */
+.f3-staff-progress__list::before,
+.f3-staff-progress__list::after {
+  content: '';
+  position: absolute;
+  top: calc(var(--staff-step-pad) + (var(--staff-step-marker) - var(--staff-step-rail)) / 2);
+  left: 12.5%;
+  height: var(--staff-step-rail);
+  border-radius: var(--staff-step-rail);
+}
+.f3-staff-progress__list::before {
+  right: 12.5%;
+  background: #e6e8ef;
+}
+.f3-staff-progress__list::after {
+  width: calc(var(--staff-step-progress) * 25%);
+  background: #102544;
+  transition: width 0.25s ease;
+}
+.f3-staff-progress__step {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  text-align: center;
+}
+.f3-staff-progress__marker {
+  display: grid;
+  place-items: center;
+  width: var(--staff-step-marker);
+  height: var(--staff-step-marker);
+  border: 1px solid #d9dfe9;
+  border-radius: 50%;
+  background: #eef2f7;
+  color: #677287;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.f3-staff-progress__marker svg {
+  width: 14px;
+  height: 14px;
+}
+.f3-staff-progress__step[data-state='done'] .f3-staff-progress__marker {
+  background: #102544;
+  border-color: #102544;
+  color: #ffffff;
+}
+.f3-staff-progress__step[data-state='current'] .f3-staff-progress__marker {
+  background: #102544;
+  border-color: #102544;
+  color: #ffffff;
+  outline: 2px solid #fca311;
+  outline-offset: 2px;
+}
+.f3-staff-progress__label {
+  color: #677287;
+  font-size: 13px;
+  line-height: 1.3;
+}
+.f3-staff-progress__step[data-state='done'] .f3-staff-progress__label {
+  color: #0a1424;
+}
+.f3-staff-progress__step[data-state='current'] .f3-staff-progress__label {
+  color: #0a1424;
+  font-weight: 600;
+}
+.f3-staff-progress__hint {
+  color: #677287;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.f3-staff-progress__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 980px) {
+  .f3-staff-progress__hint {
+    display: none;
+  }
+}
+/* The narrow bar: a caption and four dots on one rail, instead of four labelled circles. */
+@media (max-width: 640px) {
+  .f3-staff-progress__caption {
+    display: block;
+  }
+  .f3-staff-progress__list {
+    --staff-step-marker: 12px;
+    --staff-step-rail: 4px;
+    --staff-step-pad: 14px;
+    padding: var(--staff-step-pad) 16px 12px;
+  }
+  .f3-staff-progress__label {
+    display: none;
+  }
+  .f3-staff-progress__marker {
+    font-size: 0;
+  }
+  .f3-staff-progress__marker svg {
+    display: none;
+  }
+  .f3-staff-progress__step[data-state='current'] .f3-staff-progress__marker {
+    outline-offset: 1px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .f3-staff-progress__list::after {
+    transition: none;
+  }
+}
+
+/* The receipt of a held booking: the reference first, then the facts of the hold. */
+.f3-staff-receipt__label {
+  color: #677287;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.f3-staff-receipt__reference {
   font-size: 32px;
   letter-spacing: 2px;
-  margin: 14px 0;
+  margin: 6px 0 18px;
 }
-.f3-staff-receipt > a {
-  display: inline-block;
-  text-decoration: none;
-  margin-top: 20px;
+.f3-staff-receipt__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 16px 0;
+  border-top: 1px solid #e6e8ef;
+  border-bottom: 1px solid #e6e8ef;
 }
-/* The customer search stylesheet colours every anchor inside .f3-search with the navy text colour. That rule is more
-   specific than the primary button style, so a primary action that is a link ("Open booking lookup") would show navy
-   text on the navy button. This restores the white label of the button. */
-.f3-staff-booking .f3-search a.f3-search-primary {
-  color: #ffffff;
-  text-decoration: none;
+.f3-staff-receipt__facts dt {
+  color: #677287;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.f3-staff-receipt__facts dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.f3-staff-receipt__note {
+  color: #677287;
+  font-size: 13px;
 }
 .f3-staff-held {
   display: inline-block;
@@ -59,9 +253,8 @@
   margin-bottom: 20px;
   font-size: 12px;
 }
-.f3-staff-booking > .f3-search:not(.f3-staff-customer) > .f3-search-heading {
-  display: none;
-}
-.f3-staff-booking > .f3-search:not(.f3-staff-customer) {
-  padding-top: 20px;
+.f3-staff-receipt > a {
+  display: inline-block;
+  text-decoration: none;
+  margin-top: 20px;
 }

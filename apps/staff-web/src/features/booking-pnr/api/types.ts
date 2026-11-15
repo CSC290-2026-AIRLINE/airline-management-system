@@ -113,6 +113,8 @@ export interface SeatDefinition {
   type: SeatType
   state: SeatState
   fee: number
+  /** True when an aisle is in front of the seat, so the map can draw the gap. */
+  aisleBefore?: boolean
 }
 
 export interface SeatRow {

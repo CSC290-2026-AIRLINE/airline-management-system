@@ -6,6 +6,7 @@ import {
 } from '@customer-web/features/booking-search/search-params'
 import type { SearchItinerary } from '@customer-web/features/booking-search/pages/FlightSearchPage'
 import { travellersFor, type BookingContact, type TravellerDraft } from '@customer-web/features/booking-pnr/flow/draft'
+import type { SeatChoice } from '@customer-web/features/booking-pnr/flow/integration'
 import type { HoldBookingResponse, PassengerType } from '../api/types'
 
 export type StaffBookingStep = 'search' | 'passengers' | 'seats' | 'held'
@@ -24,6 +25,8 @@ export interface StaffBookingDraft {
   itinerary: SearchItinerary | null
   travellers: TravellerDraft[]
   contact: BookingContact
+  /** The seats chosen on the seat step, so a refresh keeps them. */
+  choices: SeatChoice[]
   held: HoldBookingResponse | null
   attempt: StaffBookingAttempt | null
 }
@@ -125,6 +128,20 @@ function parseAttempt(value: unknown): StaffBookingAttempt | null {
   return { body: value.body, key: value.key }
 }
 
+/** The chosen seats. A choice that lost its shape in storage is dropped rather than restored. */
+function parseChoices(value: unknown): SeatChoice[] {
+  if (!Array.isArray(value)) return []
+  const choices: SeatChoice[] = []
+  for (const choice of value) {
+    if (!isRecord(choice)) continue
+    if (!isText(choice.travellerKey) || !choice.travellerKey) continue
+    if (!isText(choice.flightId) || !choice.flightId) continue
+    if (!isText(choice.seatCode) || !choice.seatCode) continue
+    choices.push({ travellerKey: choice.travellerKey, flightId: choice.flightId, seatCode: choice.seatCode })
+  }
+  return choices
+}
+
 function parseStep(value: unknown, itinerary: SearchItinerary | null, held: HoldBookingResponse | null): StaffBookingStep {
   if (!isText(value) || !STEPS.includes(value as StaffBookingStep)) return 'search'
   const step = value as StaffBookingStep
@@ -144,14 +161,24 @@ export function readBookingDraft(): StaffBookingDraft | null {
     const itinerary = isItinerary(value.itinerary) ? value.itinerary : null
     const held = isHeld(value.held) ? value.held : null
     const restored = Array.isArray(value.travellers) ? value.travellers.filter(isTraveller) : []
+    const travellers = itinerary ? travellersFor(itinerary, restored) : []
+    /* A choice for a traveller or a flight that is no longer in the booking is dropped. */
+    const choices = itinerary
+      ? parseChoices(value.choices).filter(
+          (choice) =>
+            travellers.some((person) => person.key === choice.travellerKey) &&
+            itinerary.selections.some((selection) => selection.flight.flightId === choice.flightId),
+        )
+      : []
     return {
       version: VERSION,
       customerId,
       step: customerId ? parseStep(value.step, itinerary, held) : 'search',
       search: parseSearch(value.search),
       itinerary,
-      travellers: itinerary ? travellersFor(itinerary, restored) : [],
+      travellers,
       contact: parseContact(value.contact),
+      choices,
       held,
       attempt: parseAttempt(value.attempt),
     }
