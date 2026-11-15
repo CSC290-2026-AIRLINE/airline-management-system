@@ -11,6 +11,7 @@ import type {
   CheckedBagLookup,
   DeliveryChoiceSnapshot,
   EligibleTraveller,
+  VerifiedBookingPassenger,
   VerifiedReportFlight,
   ReportRepository,
   CaseNumberSequence,
@@ -44,6 +45,18 @@ export interface ReportAccessInput {
   passengerId: string
 }
 
+/** The bag details a passenger fills in, shared by signed-in and guest reporting. */
+export type ReportDetailsInput = Pick<
+  CreateReportInput,
+  'tagNumber' | 'bagType' | 'colour' | 'brand' | 'description' | 'contactEmail' | 'contactPhone'
+>
+
+interface ValidatedReportDetails {
+  contactEmail: string | null
+  contactPhone: string | null
+  tagNumber: string | null
+}
+
 export class ReportService {
   private readonly logger = new Logger(ReportService.name)
 
@@ -57,24 +70,7 @@ export class ReportService {
   ) {}
 
   async create(input: CreateReportInput, photo?: UploadedLostReportPhoto): Promise<LostBagReport> {
-    const contactEmail = input.contactEmail?.trim() || null
-    const contactPhone = input.contactPhone?.trim() || null
-    const tagNumber = input.tagNumber?.trim() || null
-
-    if (!contactEmail || !contactPhone) {
-      // At least one contact method is required.
-      if (!contactEmail && !contactPhone) {
-        throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Email or phone is required')
-      }
-    }
-
-    if (!BAG_TYPES.some((type) => type === input.bagType) || !BAG_COLOURS.some((colour) => colour === input.colour)) {
-      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Invalid bag type or colour')
-    }
-
-    if (tagNumber && !isValidBaggageTag(tagNumber)) {
-      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_TAG, 'Invalid baggage tag number')
-    }
+    const details = this.validateReportDetails(input)
 
     // The bag owner. Own bag: the reporter, verified as before. Another traveller: resolved only on the reporter's own
     // verified booking. Either way a failure gets the same generic error, and the tag/duplicate checks below apply to
@@ -99,6 +95,55 @@ export class ReportService {
       throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
     }
 
+    return this.persistVerifiedReport(passenger, input, details, input.reportedByCustomerId ?? null, photo)
+  }
+
+  /**
+   * Creates a report for a bag owner the caller has ALREADY verified on the server (guest reporting resolves the
+   * traveller from booking reference + surname + flight; it never trusts client ids). Same field validation, tag
+   * ownership check, duplicate handling, case number, photo upload and cleanup as `create`.
+   */
+  async createForVerifiedPassenger(
+    passenger: VerifiedBookingPassenger,
+    input: ReportDetailsInput,
+    reportedByCustomerId: string | null,
+    photo?: UploadedLostReportPhoto,
+  ): Promise<LostBagReport> {
+    const details = this.validateReportDetails(input)
+
+    return this.persistVerifiedReport(passenger, input, details, reportedByCustomerId, photo)
+  }
+
+  private validateReportDetails(input: ReportDetailsInput): ValidatedReportDetails {
+    const contactEmail = input.contactEmail?.trim() || null
+    const contactPhone = input.contactPhone?.trim() || null
+    const tagNumber = input.tagNumber?.trim() || null
+
+    if (!contactEmail || !contactPhone) {
+      // At least one contact method is required.
+      if (!contactEmail && !contactPhone) {
+        throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Email or phone is required')
+      }
+    }
+
+    if (!BAG_TYPES.some((type) => type === input.bagType) || !BAG_COLOURS.some((colour) => colour === input.colour)) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Invalid bag type or colour')
+    }
+
+    if (tagNumber && !isValidBaggageTag(tagNumber)) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_TAG, 'Invalid baggage tag number')
+    }
+
+    return { contactEmail, contactPhone, tagNumber }
+  }
+
+  private async persistVerifiedReport(
+    passenger: VerifiedBookingPassenger,
+    input: ReportDetailsInput,
+    { contactEmail, contactPhone, tagNumber }: ValidatedReportDetails,
+    reportedByCustomerId: string | null,
+    photo?: UploadedLostReportPhoto,
+  ): Promise<LostBagReport> {
     if (tagNumber) {
       const checkedBag = await this.checkedBags.findByTag(tagNumber)
 
@@ -117,7 +162,7 @@ export class ReportService {
       bookingPassengerId: passenger.bookingPassengerId,
       passengerId: passenger.passengerId,
       flightId: passenger.flightId,
-      reportedByCustomerId: input.reportedByCustomerId ?? null,
+      reportedByCustomerId,
       reportedByStaffId: null,
       tagNumber,
       bagType: input.bagType,

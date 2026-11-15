@@ -9,7 +9,10 @@ import { BaggageModule } from './modules/baggage/baggage.module'
 import { validateEnv } from './config/env.validation'
 import { BaggageLifecycleModule } from './modules/baggage/baggage-lifecycle.module'
 import { PassengerLostReportModule } from './modules/baggage/passenger-lost-report.module'
+import { ScreeningModule } from './modules/screening/screening.module'
 import { PricingModule } from './modules/pricing/pricing.module'
+import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
+import { WatchlistModule } from './modules/watchlist/watchlist.module'
 
 @Module({
   imports: [
@@ -24,6 +27,9 @@ import { PricingModule } from './modules/pricing/pricing.module'
     BaggageLifecycleModule,
     PassengerLostReportModule,
     PricingModule,
+    PassengerProfilesModule,
+    ScreeningModule,
+    WatchlistModule,
   ],
   controllers: [AppController],
   providers: [AppService],

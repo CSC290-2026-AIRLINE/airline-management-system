@@ -1,0 +1,10 @@
+/* The signed-out header's "Sign in" pill sits where the signed-in header shows the profile (same navy pill). */
+.guest-report-header__sign-in {
+  padding: 0.25rem 1rem;
+  text-decoration: none;
+}
+
+.guest-report-header__sign-in:focus-visible {
+  outline: 2px solid #ff9f0a;
+  outline-offset: 2px;
+}

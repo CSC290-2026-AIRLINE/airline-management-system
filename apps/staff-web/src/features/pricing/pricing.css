@@ -47,8 +47,8 @@
   --pr-text-body: 13px;
   --pr-text-label: 14px;
   --pr-text-title: 36px;
-  --pr-text-subtitle: 16px;
-  --pr-text-card-title: 20px;
+  --pr-text-subtitle: 15.75px; /* text-sm, as on the other pages */
+  --pr-text-card-title: 18px; /* section headings are text-lg on the other pages */
   --pr-text-page-title: 27px;
 }
 .pr-dialog {
@@ -91,10 +91,11 @@
 .pr-title {
   margin: 0 0 4px;
   color: var(--pr-ink);
-  font-family: var(--pr-font);
-  font-size: var(--pr-text-title);
-  font-weight: 800;
-  letter-spacing: normal;
+  /* Same page-title scale as the admin and customer pages: text-2xl, bold, tight tracking. */
+  font-family: var(--font-sans);
+  font-size: var(--pr-text-page-title);
+  font-weight: 700;
+  letter-spacing: -0.025em;
   line-height: 1.2;
 }
 .pr-subtitle,
@@ -104,6 +105,7 @@
 .pr-subtitle {
   max-width: 700px;
   margin: 0;
+  font-family: var(--font-sans);
   font-size: var(--pr-text-subtitle);
 }
 .pr-muted {
@@ -166,7 +168,7 @@
 .pr-editor-title {
   margin: 0;
   color: var(--pr-primary);
-  font: 700 var(--pr-text-card-title) / 1.25 var(--pr-font);
+  font: 600 var(--pr-text-card-title) / 1.25 var(--font-sans);
   letter-spacing: normal;
 }
 .pr-field {
