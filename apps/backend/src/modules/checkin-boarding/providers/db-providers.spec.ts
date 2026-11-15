@@ -56,7 +56,16 @@ describe('DbBookings', () => {
       cabin: 'economy',
       fareClass: 'Y',
       customerUserId: 'u-1',
+      cancelled: false,
     })
+  })
+
+  it('a cancelled booking or coupon marks the passenger cancelled', async () => {
+    const row = couponRow()
+    row.booking_passenger.booking.status = 'cancelled'
+    const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([row]), findFirst: jest.fn() } }
+    const [booking] = await new DbBookings(db as unknown as DbService).findByPnrAndLastName('PL224A', 'sukjai')
+    expect(booking).toMatchObject({ paid: false, cancelled: true })
   })
 
   it('a booking passenger is read for one flight of the trip', async () => {

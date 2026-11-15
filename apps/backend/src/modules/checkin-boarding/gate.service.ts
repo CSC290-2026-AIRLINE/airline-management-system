@@ -185,6 +185,11 @@ export class GateService {
       }
     }
 
+    // Feature 3 does not call us when it cancels a booking: the pass of a cancelled booking is cancelled here.
+    if (booking?.cancelled && record.status !== 'cancelled') {
+      record = await this.store.cancelCheckIn(record.id)
+      await this.offloadBags(record.id)
+    }
     // A hold can come after the pass was issued (feature 7 re-screens): the gate asks where the passenger stands now.
     if (record.status === 'checked_in') {
       const standing = await this.screening.status({ passengerId: record.passenger_id, flightId: record.flight_id })

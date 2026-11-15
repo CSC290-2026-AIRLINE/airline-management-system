@@ -288,6 +288,44 @@ describe('CheckInService owner rule', () => {
   })
 })
 
+describe('CheckInService cancellation', () => {
+  it('a cancelled flight cancels the check-in on its next read and offloads the bags', async () => {
+    const { svc, store } = build()
+    const pim = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-ec224g')!
+    const bag = await store.createBag({
+      check_in_id: pim.id,
+      weight_kg: 10,
+      excess_kg: 0,
+      rate_per_kg: 500,
+      excess_fee: 0,
+      weighed_by: 'staff-demo',
+      tag_number: '0402000009',
+      status: 'tagged',
+    })
+    const flight = FLIGHTS.find((f) => f.id === 'flt-fy204')!
+    flight.status = 'cancelled'
+    try {
+      expect((await svc.get(staff, pim.id)).status).toBe('cancelled')
+    } finally {
+      flight.status = 'scheduled'
+    }
+    expect((await store.getBag(bag.id))?.status).toBe('offloaded')
+    expect((await store.getCheckIn(pim.id))?.status).toBe('cancelled')
+  })
+
+  it('a cancelled booking cancels the check-in on its next read', async () => {
+    const { svc, store } = build()
+    const nok = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-pl224a')!
+    const booking = BOOKINGS.find((b) => b.pnr === 'PL224A')!
+    booking.cancelled = true
+    try {
+      expect((await svc.get(staff, nok.id)).status).toBe('cancelled')
+    } finally {
+      booking.cancelled = false
+    }
+  })
+})
+
 describe('CheckInService.get', () => {
   it('answers NOT_FOUND for an unknown check-in and a staff member may read it', async () => {
     const { svc } = build()

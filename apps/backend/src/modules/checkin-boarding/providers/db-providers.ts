@@ -154,6 +154,7 @@ const toBookingPassenger = (row: CouponRow): BookingPassenger => {
     bookingPassengerId: row.booking_passenger_id,
     pnr: booking.booking_reference,
     paid: booking.status === 'confirmed' && row.status === 'confirmed',
+    cancelled: booking.status === 'cancelled' || row.status === 'cancelled',
     bookingId: booking.id,
     flightId: row.flight_id,
     passengerId: row.passenger_id,

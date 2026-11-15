@@ -140,6 +140,18 @@ describe('GateService.scan', () => {
     expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).toBe('on_hold')
   })
 
+  it('the pass of a booking cancelled after check-in is rejected as CANCELLED', async () => {
+    const { gate, store } = build()
+    const booking = BOOKINGS.find((b) => b.pnr === 'SA224B')!
+    booking.cancelled = true
+    try {
+      expect(await gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'R8KD2WQN' })).toMatchObject({ reason: 'CANCELLED' })
+    } finally {
+      booking.cancelled = false
+    }
+    expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).toBe('cancelled')
+  })
+
   it('a pass of another flight that boards at this gate is the wrong flight', async () => {
     const { gate, store } = build()
     // FY 318 now boards at A1 as well, so the passenger is on the wrong flight, not the wrong gate.

@@ -35,6 +35,7 @@ export const BOOKINGS: BookingPassenger[] = DEMO_PASSENGERS.map((passenger) => (
   bookingPassengerId: `bp-${passenger.pnr.toLowerCase()}`,
   pnr: passenger.pnr,
   paid: true,
+  cancelled: false,
   flightId: DEMO_FLIGHTS[passenger.flight].id,
   passengerId: `pax-${passenger.pnr.toLowerCase()}`,
   firstName: passenger.firstName,

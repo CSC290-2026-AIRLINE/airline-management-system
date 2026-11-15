@@ -58,6 +58,8 @@ export interface BookingPassenger {
   bookingPassengerId: string
   pnr: string
   paid: boolean
+  /** The booking or this coupon was cancelled by feature 3: the check-in follows (see `CheckInService.refreshCancelled`). */
+  cancelled: boolean
   /** The booking this passenger is on; the payments of feature 6 hang on it. */
   bookingId: string
   flightId: string
@@ -160,7 +162,7 @@ export interface TierProvider {
 /** Feature 13 owns notifications. */
 export interface NotifyProvider {
   send(
-    event: 'check_in_completed' | 'boarding_pass_issued' | 'gate_changed' | 'boarding_call',
+    event: 'check_in_completed' | 'boarding_pass_issued' | 'gate_changed' | 'boarding_call' | 'check_in_cancelled',
     payload: Record<string, unknown>,
   ): Promise<void>
 }

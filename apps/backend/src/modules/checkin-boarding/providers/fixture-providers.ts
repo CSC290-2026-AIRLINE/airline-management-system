@@ -364,7 +364,7 @@ export class LoggerNotify implements NotifyProvider {
   private readonly logger = new Logger(LoggerNotify.name)
 
   async send(
-    event: 'check_in_completed' | 'boarding_pass_issued' | 'gate_changed' | 'boarding_call',
+    event: 'check_in_completed' | 'boarding_pass_issued' | 'gate_changed' | 'boarding_call' | 'check_in_cancelled',
     payload: Record<string, unknown>,
   ): Promise<void> {
     this.logger.log(`notify ${event} ${JSON.stringify(payload)}`)

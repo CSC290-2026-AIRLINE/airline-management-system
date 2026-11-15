@@ -360,7 +360,26 @@ export class CheckInService {
     const record = await this.store.getCheckIn(id)
     if (!record) throw notFound('Check-in')
     await this.assertOwner(actor, record)
-    return record
+    return this.refreshCancelled(actor, record)
+  }
+
+  /**
+   * A cancelled flight or booking cancels the check-in (never deleted) and offloads its tagged bags. Features 2 and 3
+   * do not call us when they cancel, so this runs whenever a check-in is read.
+   */
+  async refreshCancelled(actor: Actor, record: CheckInRecord): Promise<CheckInRecord> {
+    if (record.status === 'cancelled' || record.status === 'boarded' || record.status === 'no_show') return record
+    const flight = await this.flightOf(record.flight_id)
+    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id)
+    if (flight.status !== 'cancelled' && !booking?.cancelled) return record
+    const cancelled = await this.store.cancelCheckIn(record.id)
+    for (const bag of await this.store.listBags(record.id)) {
+      if (bag.status !== 'offloaded') await this.store.updateBag(bag.id, { status: 'offloaded' })
+    }
+    const why = flight.status === 'cancelled' ? 'the flight was cancelled' : 'the booking was cancelled'
+    await this.notify.send('check_in_cancelled', { checkInId: record.id, flightNumber: flight.flightNumber, reason: why })
+    await this.record(actor, 'check_in.cancel', 'check_in', record.id, why)
+    return cancelled
   }
 
   /**
