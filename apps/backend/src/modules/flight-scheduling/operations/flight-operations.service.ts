@@ -21,6 +21,7 @@ import type {
 } from '../dto/operations.dto'
 import { prismaCode, UUID } from '../pagination'
 import { SettingsService } from '../settings.service'
+import { legOfFlight } from './aircraft-feasibility'
 import { AircraftFeasibilityService, assertGatesPass } from './aircraft-feasibility.service'
 import { CascadeDetector, type CascadeSummary } from './cascade-detector'
 import { FLIGHT_CLOCK, type FlightClock } from './flight-clock'
@@ -425,18 +426,7 @@ async function assertReason(tx: Tx, code: string) {
   if (!reason?.is_active) throw new UnprocessableEntityException(`Unknown or inactive disruption reason ${code}`)
 }
 
-export function legOf(flight: LockedFlight) {
-  return {
-    flightId: flight.id,
-    flightNumber: flight.flight_number,
-    origin: flight.route.origin,
-    destination: flight.actual_destination ?? flight.route.destination,
-    scheduledDepAt: flight.scheduled_dep_at,
-    depAt: flight.dep_at,
-    arrAt: flight.arr_at,
-    distanceKm: flight.route.distance_km,
-  }
-}
+export const legOf = (flight: LockedFlight) => ({ ...legOfFlight(flight), distanceKm: flight.route.distance_km })
 
 /** Maps errors raised inside a write transaction to the API's errors; anything else is passed through. */
 export function mapWriteError(e: unknown): Error {

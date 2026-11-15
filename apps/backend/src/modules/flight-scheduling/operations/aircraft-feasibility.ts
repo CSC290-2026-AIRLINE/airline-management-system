@@ -15,6 +15,25 @@ export interface AircraftLeg {
   arrAt: Date
 }
 
+/** The leg a saved flight flies. It ends at actual_destination when the flight was diverted. */
+export const legOfFlight = (f: {
+  id: string
+  flight_number: string
+  scheduled_dep_at: Date
+  dep_at: Date
+  arr_at: Date
+  actual_destination: string | null
+  route: { origin: string; destination: string }
+}): AircraftLeg => ({
+  flightId: f.id,
+  flightNumber: f.flight_number,
+  origin: f.route.origin,
+  destination: f.actual_destination ?? f.route.destination,
+  scheduledDepAt: f.scheduled_dep_at,
+  depAt: f.dep_at,
+  arrAt: f.arr_at,
+})
+
 /** Minimum ground time, in minutes, an aircraft needs at an airport before its next departure. */
 export type TurnaroundResolver = (airport: string) => number
 

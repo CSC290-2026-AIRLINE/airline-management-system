@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
-import { type AircraftLeg, findDelayCascade, findPositionBreaks } from './aircraft-feasibility'
+import { type AircraftLeg, findDelayCascade, findPositionBreaks, legOfFlight } from './aircraft-feasibility'
 import { AircraftFeasibilityService } from './aircraft-feasibility.service'
 import { FLIGHT_CLOCK, type FlightClock } from './flight-clock'
 import type { Tx } from './flight-event-writer'
@@ -67,15 +67,7 @@ export class CascadeDetector {
         route: { select: { origin: true, destination: true } },
       },
     })
-    const legs: AircraftLeg[] = flights.map((f) => ({
-      flightId: f.id,
-      flightNumber: f.flight_number,
-      origin: f.route.origin,
-      destination: f.actual_destination ?? f.route.destination,
-      scheduledDepAt: f.scheduled_dep_at,
-      depAt: f.dep_at,
-      arrAt: f.arr_at,
-    }))
+    const legs: AircraftLeg[] = flights.map(legOfFlight)
     const affectable = new Set(flights.filter((f) => OPEN_STATUSES.includes(f.status)).map((f) => f.id))
     const required = await this.feasibility.turnaroundResolver(
       tx,

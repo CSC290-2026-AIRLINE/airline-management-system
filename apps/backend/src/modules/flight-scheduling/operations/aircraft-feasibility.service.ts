@@ -2,7 +2,13 @@ import { BadGatewayException, BadRequestException, ConflictException, Inject, In
 import { DbService } from '@backend/db/db.service'
 import { UUID } from '../pagination'
 import { AIRCRAFT_DIRECTORY, type AircraftDirectory } from './aircraft-directory'
-import { type AircraftLeg, checkAircraftFeasibility, type FeasibilityViolation, type TurnaroundResolver } from './aircraft-feasibility'
+import {
+  type AircraftLeg,
+  checkAircraftFeasibility,
+  type FeasibilityViolation,
+  legOfFlight,
+  type TurnaroundResolver,
+} from './aircraft-feasibility'
 import type { Tx } from './flight-event-writer'
 
 /** A flight to place on an aircraft: proposed (flightId null) or saved (its own row is left out of the comparison). */
@@ -193,15 +199,7 @@ export class AircraftFeasibilityService {
 
     const byId = new Map<string, AircraftLeg>()
     for (const f of [...previous, ...next, ...overlapping]) {
-      byId.set(f.id, {
-        flightId: f.id,
-        flightNumber: f.flight_number,
-        origin: f.route.origin,
-        destination: f.actual_destination ?? f.route.destination,
-        scheduledDepAt: f.scheduled_dep_at,
-        depAt: f.dep_at,
-        arrAt: f.arr_at,
-      })
+      byId.set(f.id, legOfFlight(f))
     }
     return [...byId.values()]
   }
