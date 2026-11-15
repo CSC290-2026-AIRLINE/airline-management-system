@@ -296,7 +296,5 @@
 @media (max-width: 600px) {
   .page {
     margin-top: 24px;
-    /* The layout drops its side padding on the 393 px frame, so the column keeps its own inset. */
-    padding: 0 16px;
   }
 }

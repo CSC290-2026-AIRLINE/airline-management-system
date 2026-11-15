@@ -296,3 +296,10 @@
   margin-left: auto !important;
   margin-right: auto !important;
 }
+@media (max-width: 600px) {
+  /* The shell drops its top padding on a phone, so the flow page keeps its own gap under the header, like the
+     other customer pages. */
+  .f3-customer-layout .f3-search.f3-flow {
+    padding-top: 24px;
+  }
+}

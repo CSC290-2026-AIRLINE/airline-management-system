@@ -112,10 +112,13 @@
   }
 }
 @media (max-width: 600px) {
+  /* The shell owns the page gutter on every width, so every customer page has the same space at its edges. */
   .f3-customer-layout {
-    padding: 0 0 32px;
+    padding: 0 16px 32px;
   }
   .f3-customer-header {
+    /* The header stays edge to edge: it takes back the gutter the shell adds. */
+    margin-inline: -16px;
     border-radius: 0;
     padding: 14px 16px;
     gap: 12px;
