@@ -23,14 +23,17 @@ const ROUTE: RouteStep[] = [
 
 export interface BookingRouteBarProps {
   currentStep: BookingStep
-  /** Called when a finished step is clicked, to go back to it. */
+  /** Called when a step is clicked, to go back to it. */
   onStepClick?: (step: BookingStep) => void
-  /** Where a finished step points to, e.g. { 1: '#review-flights' }. Those steps are rendered as links. */
-  hrefs?: Partial<Record<BookingStep, string>>
+  /**
+   * The steps that can be clicked. Without it only the finished steps are clickable, because a step the customer has
+   * not reached cannot be opened. The review page names them all, so the customer can walk back and forth.
+   */
+  clickableSteps?: readonly BookingStep[]
   marker?: RouteBarMarker
 }
 
-export function BookingRouteBar({ currentStep, onStepClick, hrefs, marker = 'icons' }: BookingRouteBarProps) {
+export function BookingRouteBar({ currentStep, onStepClick, clickableSteps, marker = 'icons' }: BookingRouteBarProps) {
   const current = ROUTE.find((item) => item.step === currentStep) ?? ROUTE[0]
   // The rail fills from the first marker to the current one: 0, 1, 2 or 3 steps of 4.
   const style = { '--route-progress': currentStep - 1 } as CSSProperties
@@ -54,24 +57,19 @@ export function BookingRouteBar({ currentStep, onStepClick, hrefs, marker = 'ico
               ) : (
                 <item.icon aria-hidden="true" />
               )
-            // Only a finished step can be pointed at, never a step the customer has not reached.
-            const href = state === 'done' ? hrefs?.[item.step] : undefined
+            // A finished step can always be opened. The review page opens more than that, so it names the steps.
+            const clickable = clickableSteps ? clickableSteps.includes(item.step) : state === 'done'
             return (
               <li key={item.step} className={`${styles.step} ${styles[state]}`} aria-current={state === 'current' ? 'step' : undefined}>
                 <span className={styles.srOnly}>
                   Step {item.step} of 4{state === 'done' ? ', completed' : ''}
                 </span>
-                {href ? (
-                  <a href={href} className={styles.target}>
-                    <span className={styles.marker}>{glyph}</span>
-                    <span className={styles.label}>{item.label}</span>
-                  </a>
-                ) : state === 'done' && onStepClick ? (
+                {clickable && onStepClick ? (
                   <button
                     type="button"
                     className={styles.target}
                     onClick={() => onStepClick(item.step)}
-                    aria-label={`Go back to ${item.label}`}
+                    aria-label={state === 'done' ? `Go back to ${item.label}` : `Go to ${item.label}`}
                   >
                     <span className={styles.marker}>{glyph}</span>
                     <span className={styles.label}>{item.label}</span>

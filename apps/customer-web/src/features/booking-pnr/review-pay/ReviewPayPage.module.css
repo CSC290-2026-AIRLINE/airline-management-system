@@ -71,8 +71,6 @@
   border-radius: 10px;
   padding: 20px;
   text-align: left;
-  /* The route bar jumps to these cards, so a target keeps some room above it. */
-  scroll-margin-top: 24px;
 }
 
 .card h2 {
@@ -115,7 +113,6 @@
   color: var(--f3-ink);
   font-size: 14px;
   text-align: right;
-  scroll-margin-top: 24px;
 }
 
 .passengerRow {

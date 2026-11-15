@@ -12,14 +12,12 @@ import './seat-selection.css'
 interface BookingSeatChangesPanelProps {
   reference: string
   onChanged: () => void
-  /** The id the route bar jumps to. */
-  id?: string
 }
 
 // A seat can be changed while the booking is on hold and after it is confirmed. A cancelled or expired booking is closed.
 const EDITABLE_STATUSES = ['held', 'confirmed']
 
-export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: BookingSeatChangesPanelProps) {
+export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatChangesPanelProps) {
   const { fetchWithAuth } = useAppAuth()
   const [booking, setBooking] = useState<BookingDetail | null>(null)
   const [selectedCoupon, setSelectedCoupon] = useState<string | null>(null)
@@ -101,7 +99,7 @@ export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: 
   const passenger = booking.passengers.find((item) => item.bookingPassengerId === coupon?.bookingPassengerId)
 
   return (
-    <section id={id} tabIndex={-1} className="booking-seat-panel" aria-label="Manage seats" aria-busy={loading}>
+    <section tabIndex={-1} className="booking-seat-panel" aria-label="Manage seats" aria-busy={loading}>
       <h2 className={detailStyles.sectionTitle}>Seats</h2>
       <div className={`${detailStyles.card} booking-seat-panel__card`}>
         <p className={detailStyles.muted}>

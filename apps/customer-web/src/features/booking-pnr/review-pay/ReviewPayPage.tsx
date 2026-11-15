@@ -4,7 +4,7 @@ import { useBookingPnrApi, type ApiError } from '../api/client'
 import type { BookingDetail, BookingServiceRequest } from '../api/types'
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
-import { BookingRouteBar } from '../components/BookingRouteBar'
+import { BookingRouteBar, type BookingStep } from '../components/BookingRouteBar'
 import { HoldBanner } from '../components/HoldBanner'
 import { BookingSeatChangesPanel } from '../seats/BookingSeatChangesPanel'
 import { heldSeatCount } from '../lib/booking'
@@ -16,7 +16,30 @@ import styles from './ReviewPayPage.module.css'
 import controls from '../styles/controls.module.css'
 import '../styles/tokens.css'
 
-export function ReviewPayPage({ reference }: { reference: string }) {
+/** The steps of the booking, the same ones the route bar shows. */
+const STEPS: BookingStep[] = [1, 2, 3, 4]
+
+/** What the page says on each step of the held booking. */
+const STEP_COPY: Record<BookingStep, { subtitle: string; note: string }> = {
+  1: {
+    subtitle: 'The flights of this booking.',
+    note: 'The flights are fixed for this booking. Your hold keeps running.',
+  },
+  2: {
+    subtitle: 'The passengers of this booking.',
+    note: 'The passenger details are fixed for this booking. Your hold keeps running.',
+  },
+  3: {
+    subtitle: 'The seats of this booking.',
+    note: 'You can change your seat while the hold runs. Your hold keeps running.',
+  },
+  4: {
+    subtitle: 'Check your itinerary and passengers before paying.',
+    note: 'You can change your seat while the hold runs. Your hold keeps running.',
+  },
+}
+
+export function ReviewPayPage({ reference, step }: { reference: string; step: BookingStep }) {
   const navigate = useNavigate()
   const { booking, error, isLoading, reload } = useBooking(reference)
 
@@ -50,10 +73,10 @@ export function ReviewPayPage({ reference }: { reference: string }) {
     return <LoadingState />
   }
 
-  return <HeldReview booking={booking} onReload={reload} />
+  return <HeldReview booking={booking} onReload={reload} step={step} />
 }
 
-function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: () => Promise<void> }) {
+function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onReload: () => Promise<void>; step: BookingStep }) {
   const navigate = useNavigate()
   const api = useBookingPnrApi()
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -66,6 +89,9 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
 
   const seatCount = heldSeatCount(booking)
   const seatLabel = seatCount > 0 ? `${seatCount} held seat${seatCount === 1 ? '' : 's'}` : 'held seats'
+  const copy = STEP_COPY[step]
+  // Step 4 is the review & pay itself, the page the customer pays on. The other steps show one part of the booking.
+  const isPayStep = step === 4
 
   async function handleConfirm() {
     setIsConfirming(true)
@@ -119,6 +145,17 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
     }
   }
 
+  // The pay action belongs to the review & pay step. The other steps send the customer back to it.
+  const payAction = import.meta.env.DEV ? (
+    <button type="button" className={controls.primary} onClick={() => void handleConfirm()} disabled={isConfirming || isCancelling}>
+      {isConfirming ? 'Confirming…' : 'Confirm booking (dev)'}
+    </button>
+  ) : (
+    <button type="button" className={controls.primary} disabled title="Checkout (feature 5a) is not connected yet.">
+      Pay now
+    </button>
+  )
+
   return (
     <>
       <main className={styles.page}>
@@ -126,12 +163,22 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
           <header className={styles.header}>
             <p className={styles.eyebrow}>Booking {booking.reference}</p>
             <h1>Review &amp; pay</h1>
-            <p className={styles.subtitle}>Check your itinerary and passengers before paying.</p>
+            <p className={styles.subtitle}>{copy.subtitle}</p>
           </header>
 
-          {/* The finished steps jump to the part of this page that holds the details. The seats and the passenger
-              details are fixed for this hold, so the bar is a way to read them again, not a way to change them. */}
-          <BookingRouteBar currentStep={4} hrefs={{ 1: '#review-flights', 2: '#review-passengers', 3: '#review-seats' }} />
+          {/* The bar takes the customer back to a step of this booking. Every step but the one they are on can be
+              opened, so they can walk back and forth while the hold runs. */}
+          <BookingRouteBar
+            currentStep={step}
+            clickableSteps={STEPS.filter((item) => item !== step)}
+            onStepClick={(next) => {
+              void navigate({
+                to: '/review-pay/$reference',
+                params: { reference: booking.reference },
+                search: { step: next },
+              })
+            }}
+          />
           <HoldBanner
             reference={booking.reference}
             holdExpiresAt={booking.holdExpiresAt}
@@ -151,54 +198,49 @@ function HeldReview({ booking, onReload }: { booking: BookingDetail; onReload: (
 
           <div className={styles.columns}>
             <div className={styles.mainColumn}>
-              <FlightsCard booking={booking} />
-              <PassengersCard booking={booking} />
+              {step === 1 || isPayStep ? <FlightsCard booking={booking} /> : null}
+              {step === 2 || isPayStep ? <PassengersCard booking={booking} /> : null}
               {/* The seat of a held booking can still be changed, so the panel works on a hold too. */}
-              <BookingSeatChangesPanel id="review-seats" reference={booking.reference} onChanged={() => void onReload()} />
+              {step === 3 || isPayStep ? <BookingSeatChangesPanel reference={booking.reference} onChanged={() => void onReload()} /> : null}
             </div>
 
             <aside className={styles.summaryColumn}>
               <PriceCard booking={booking} />
 
               <div className={styles.actions}>
-                {import.meta.env.DEV ? (
+                {isPayStep ? (
+                  payAction
+                ) : (
+                  <Link
+                    to="/review-pay/$reference"
+                    params={{ reference: booking.reference }}
+                    search={{ step: 4 }}
+                    className={controls.primary}
+                  >
+                    Back to review &amp; pay
+                  </Link>
+                )}
+                <Link to="/search" className={controls.secondary}>
+                  Search again
+                </Link>
+                {isPayStep ? (
                   <button
                     type="button"
-                    className={controls.primary}
-                    onClick={() => void handleConfirm()}
+                    className={controls.secondary}
+                    onClick={() => {
+                      setCancelError(null)
+                      setCancelOpen(true)
+                    }}
                     disabled={isConfirming || isCancelling}
                   >
-                    {isConfirming ? 'Confirming…' : 'Confirm booking (dev)'}
+                    Cancel
                   </button>
-                ) : (
-                  <button type="button" className={controls.primary} disabled title="Checkout (feature 5a) is not connected yet.">
-                    Pay now
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className={controls.secondary}
-                  onClick={() => document.getElementById('review-seats')?.scrollIntoView({ behavior: 'smooth' })}
-                  disabled={isConfirming || isCancelling}
-                >
-                  Back to seats
-                </button>
-                <button
-                  type="button"
-                  className={controls.secondary}
-                  onClick={() => {
-                    setCancelError(null)
-                    setCancelOpen(true)
-                  }}
-                  disabled={isConfirming || isCancelling}
-                >
-                  Cancel
-                </button>
+                ) : null}
               </div>
 
-              {!import.meta.env.DEV ? <p className={styles.note}>Pay now will open checkout when it is connected.</p> : null}
-              <p className={styles.note}>You can change your seat while the hold runs. Your hold keeps running.</p>
-              <p className={styles.note}>Want a meal on board? You can add meals from your booking once it is paid.</p>
+              {isPayStep && !import.meta.env.DEV ? <p className={styles.note}>Pay now will open checkout when it is connected.</p> : null}
+              <p className={styles.note}>{copy.note}</p>
+              {isPayStep ? <p className={styles.note}>Want a meal on board? You can add meals from your booking once it is paid.</p> : null}
             </aside>
           </div>
         </div>
@@ -238,7 +280,7 @@ function FlightsCard({ booking }: { booking: BookingDetail }) {
   }
 
   return (
-    <section className={styles.card} id="review-flights">
+    <section className={styles.card}>
       <h2>Flights</h2>
       {booking.segments.map((segment) => {
         const seats = seatsBySegment.get(segment.bookingSegmentId) ?? []
@@ -269,7 +311,7 @@ function PassengersCard({ booking }: { booking: BookingDetail }) {
   }
 
   return (
-    <section className={styles.card} id="review-passengers">
+    <section className={styles.card}>
       <h2>Passengers</h2>
       {booking.passengers.map((passenger) => {
         const requests = requestsByPassenger.get(passenger.bookingPassengerId) ?? []
