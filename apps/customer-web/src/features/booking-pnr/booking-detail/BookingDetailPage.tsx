@@ -174,8 +174,11 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
           {notice && status !== 'expired' ? <p className={styles.notice}>{notice}</p> : null}
           {cancelled ? <p className={styles.notice}>{cancelNotice(cancelled)}</p> : null}
 
-          <FlightsCard booking={booking} />
-          {status === 'confirmed' && <BookingSeatChangesPanel reference={booking.reference} onChanged={() => void onReload()} />}
+          <FlightsCard booking={booking} status={status} />
+          {/* The seat of a held booking can still be changed, so the panel works on a hold too. */}
+          {(status === 'held' || status === 'confirmed') && (
+            <BookingSeatChangesPanel reference={booking.reference} onChanged={() => void onReload()} />
+          )}
           {(status === 'held' || status === 'confirmed') && (
             <BookingAssistancePanel reference={booking.reference} onChanged={() => void onReload()} />
           )}

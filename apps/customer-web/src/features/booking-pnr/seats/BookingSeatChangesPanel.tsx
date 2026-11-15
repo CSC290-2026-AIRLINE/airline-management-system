@@ -12,12 +12,14 @@ import './seat-selection.css'
 interface BookingSeatChangesPanelProps {
   reference: string
   onChanged: () => void
+  /** The id the page scrolls to when the customer chooses a seat from the flights card. */
+  id?: string
 }
 
 // A seat can be changed while the booking is on hold and after it is confirmed. A cancelled or expired booking is closed.
 const EDITABLE_STATUSES = ['held', 'confirmed']
 
-export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatChangesPanelProps) {
+export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: BookingSeatChangesPanelProps) {
   const { fetchWithAuth } = useAppAuth()
   const [booking, setBooking] = useState<BookingDetail | null>(null)
   const [selectedCoupon, setSelectedCoupon] = useState<string | null>(null)
@@ -29,10 +31,20 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
   const [bookingError, setBookingError] = useState(false)
   const editor = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement | null>(null)
+  const panel = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (selectedCoupon) editor.current?.focus()
   }, [selectedCoupon])
+
+  // The panel only appears once the booking is loaded, so a page that was reloaded with the #seats hash needs the
+  // scroll again: the browser looked for the target before it was on the page.
+  useEffect(() => {
+    if (!booking || window.location.hash !== `#${id}`) {
+      return
+    }
+    panel.current?.scrollIntoView()
+  }, [booking, id])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -99,7 +111,7 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
   const passenger = booking.passengers.find((item) => item.bookingPassengerId === coupon?.bookingPassengerId)
 
   return (
-    <section tabIndex={-1} className="booking-seat-panel" aria-label="Manage seats" aria-busy={loading}>
+    <section id={id} ref={panel} tabIndex={-1} className="booking-seat-panel" aria-label="Manage seats" aria-busy={loading}>
       <h2 className={detailStyles.sectionTitle}>Seats</h2>
       <div className={`${detailStyles.card} booking-seat-panel__card`}>
         <p className={detailStyles.muted}>
