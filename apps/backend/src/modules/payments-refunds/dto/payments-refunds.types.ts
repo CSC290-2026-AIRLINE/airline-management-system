@@ -77,6 +77,8 @@ export interface RefundDetailDto extends RefundSummaryDto {
   needs_override: boolean
   decision: RefundDecisionRecordDto | null
   provider_refund_id: string | null
+  /** Why the provider did not pay a refund to the card (its own code, e.g. `charge_already_refunded`). Null unless `failed`. */
+  failure_reason: string | null
   voucher_code: string | null
   credit_note_number: string | null
 }

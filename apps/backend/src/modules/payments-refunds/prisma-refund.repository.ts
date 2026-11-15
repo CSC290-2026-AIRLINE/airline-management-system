@@ -32,6 +32,8 @@ const REFUND_INCLUDE = {
     },
   },
   refund_line: { select: { payment_line: { select: { description: true } } } },
+  /** The credit note, once a card refund went through (at most one: the schema keeps `(refund_id, payment_id)` unique). */
+  receipt: { select: { document_number: true } },
 } satisfies Prisma.refundInclude
 type RefundRow = Prisma.refundGetPayload<{ include: typeof REFUND_INCLUDE }>
 
@@ -206,6 +208,11 @@ export class PrismaRefundRepository implements RefundRepository {
     if (wasCounted && !isCounted) {
       for (const line of before.refund_line) {
         await tx.payment_line.update({ where: { id: line.payment_line_id }, data: { refunded_amount: { decrement: line.amount } } })
+      }
+    } else if (!wasCounted && isCounted) {
+      /* A failed payout the provider later confirmed, or one staff returned as a voucher, holds its lines again. */
+      for (const line of before.refund_line) {
+        await tx.payment_line.update({ where: { id: line.payment_line_id }, data: { refunded_amount: { increment: line.amount } } })
       }
     }
   }
@@ -413,7 +420,7 @@ export class PrismaRefundRepository implements RefundRepository {
           : `Card (${num(row.payment.amount_total).toFixed(2)}) · no voucher`,
         card_brand: attempt?.card_brand ?? null,
         card_last4: attempt?.card_last4 ?? null,
-        credit_note_number: null,
+        credit_note_number: row.receipt?.document_number ?? null,
         voucher_code: null,
         decided_at: open ? null : row.updated_at,
         decided_by: open ? null : (decided?.actor_role ?? null),

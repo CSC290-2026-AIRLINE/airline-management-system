@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { PAYMENT_REPOSITORY, type PaymentRepository } from './payment.repository'
-import { PAYMENT_GATEWAY, type PaymentGateway } from './payment.gateway'
+import { PAYMENT_GATEWAY, type PaymentGateway, type ProviderEvent } from './payment.gateway'
 import {
   matchesStaffFilter,
   paymentReference,
@@ -35,10 +35,12 @@ import type {
   PaymentStatus,
   ReceiptRecord,
 } from './payment.types'
+import type { CardRefundOutcome, CardRefundRequest, RefundSettler, RefundSucceededRequest } from './card-refund.types'
 import type { ReceiptQueryDto } from './dto/receipt-query.dto'
 import type { StaffPaymentQueryDto } from './dto/staff-payment-query.dto'
 import type { PaymentExceptionTab } from './dto/payment-exceptions-query.dto'
 import type {
+  CheckoutStartedDto,
   PaymentLineDto,
   PaymentProblemDto,
   PaymentProblemListDto,
@@ -139,6 +141,8 @@ export interface CreatePaymentInput {
 @Injectable()
 export class PaymentsCheckoutService {
   private readonly logger = new Logger(PaymentsCheckoutService.name)
+  private readonly sellerConfirmations = new Map<PaymentSourceFeature, (payment: PaymentRecord) => Promise<boolean>>()
+  private refundSettler: RefundSettler | null = null
 
   constructor(
     @Inject(PAYMENT_REPOSITORY) private readonly repo: PaymentRepository,
@@ -292,13 +296,271 @@ export class PaymentsCheckoutService {
     payment.status = 'authorised'
     payment.authorised_at = now
     await this.repo.update(payment)
+    return this.settleAuthorised(payment, confirm)
+  }
 
+  /** An authorised payment: ask the selling feature, then capture on yes or release the card on no. */
+  private async settleAuthorised(payment: PaymentRecord, confirm: () => Promise<boolean>): Promise<PaymentRecord> {
     const confirmed = await confirm()
     if (!confirmed) {
       return this.voidPayment(payment.id, 'seller_declined')
     }
     payment.confirmed_at = this.clock.now()
     return this.capturePayment(payment)
+  }
+
+  /**
+   * How a selling feature confirms a card payment that a hosted provider authorised in the background (Stripe's
+   * webhook): there is no caller to hand `confirmAndSettle` a callback, so the feature registers one for its source.
+   * TODO(F5a): Features 3b, 6, 12 and 17 register theirs. Until one does, an authorised card payment counts as confirmed.
+   */
+  registerSellerConfirmation(sourceFeature: PaymentSourceFeature, confirm: (payment: PaymentRecord) => Promise<boolean>): void {
+    this.sellerConfirmations.set(sourceFeature, confirm)
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  Refunds to the card: what Feature 5b calls                                 */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * How Feature 5b hears a card refund ended later: Stripe's `refund.updated` / `refund.failed` webhook lands here, and 5a
+   * hands it on. The webhook names the refund by the id 5b gave Stripe, so 5a needs to know nothing about refunds.
+   */
+  registerRefundSettler(settle: RefundSettler): void {
+    this.refundSettler = settle
+  }
+
+  /**
+   * Sends money back to the card that paid. It never throws: whatever goes wrong is a `failed` outcome with a code, so the
+   * refund can say why it failed.
+   *
+   * Only a captured payment has money to give back, and never more than its card share: a voucher part of the payment is
+   * not on the card.
+   */
+  async refundToCard(request: CardRefundRequest): Promise<CardRefundOutcome> {
+    const failed = (failure_code: string): CardRefundOutcome => ({ status: 'failed', provider_refund_id: null, failure_code })
+    const payment = await this.repo.findById(request.payment_id)
+    if (!payment) return failed('payment_not_found')
+    if (!this.gateway.refund) return failed('provider_cannot_refund')
+    // Money goes back through the provider that took it. A payment taken by the other one (the fake provider, then Stripe,
+    // or the other way round) is never sent across: a fake "refund" of a Stripe payment would be a refund that never happened.
+    if (payment.provider !== this.gateway.name) return failed('wrong_provider')
+    if (payment.status !== 'captured') return failed('payment_not_captured')
+    if (request.amount > payment.card_amount + 0.005) return failed('exceeds_card_amount')
+
+    const held = payment.attempts.find((a) => a.status === 'authorised')
+    try {
+      const result = await this.gateway.refund({
+        payment_id: payment.id,
+        refund_id: request.refund_id,
+        provider_intent_id: held?.provider_intent_id ?? '',
+        amount: request.amount,
+        currency: payment.currency,
+      })
+      return { status: result.status, provider_refund_id: result.provider_refund_id ?? null, failure_code: result.failure_code ?? null }
+    } catch {
+      this.logger.warn(`The provider refund for payment ${payment.id} threw; it is recorded as failed`)
+      return failed('provider_error')
+    }
+  }
+
+  /**
+   * A card refund went through: issues its credit note, once, and reverses the payment when 5b says nothing is left on it.
+   * Safe to repeat (a webhook can arrive after the answer to the request): the credit note is found by the refund's id.
+   */
+  async recordRefundSucceeded(request: RefundSucceededRequest): Promise<{ credit_note_number: string }> {
+    const payment = await this.requirePayment(request.payment_id)
+    const now = this.clock.now()
+    const note =
+      (await this.repo.findCreditNoteByRefundId(request.refund_id)) ??
+      (await this.repo.insertReceipt({
+        id: randomUUID(),
+        payment_id: payment.id,
+        refund_id: request.refund_id,
+        document_type: 'credit_note',
+        document_number: `CN-${request.refund_id.replace(/-/g, '').slice(0, 8).toUpperCase()}`,
+        amount: request.amount,
+        billing_name: this.customerNameOf(payment),
+        issued_at: now,
+        created_at: now,
+      }))
+    if (request.fully_refunded && payment.status === 'captured') {
+      payment.status = 'reversed'
+      payment.updated_at = now
+      await this.repo.update(payment)
+    }
+    return { credit_note_number: note.document_number }
+  }
+
+  /** A card refund failed. The schema's only way back from `reversed` is a late failure, so the payment is captured again. */
+  async recordRefundFailed(paymentId: string): Promise<void> {
+    const payment = await this.repo.findById(paymentId)
+    if (!payment || payment.status !== 'reversed') return
+    payment.status = 'captured'
+    payment.updated_at = this.clock.now()
+    await this.repo.update(payment)
+  }
+
+  /** The provider's late word on a refund, handed to 5b. Without a settler nothing is lost: the refund stays as it was. */
+  private async applyRefundEvent(event: ProviderEvent): Promise<void> {
+    if (!event.refund_id) {
+      this.logger.warn(`Webhook ${event.type} carries no refund id; it was not made by 5b`)
+      return
+    }
+    if (!this.refundSettler) {
+      this.logger.warn(`Webhook ${event.type} arrived and nothing is registered to settle refunds`)
+      return
+    }
+    await this.refundSettler({
+      refund_id: event.refund_id,
+      provider_refund_id: event.provider_refund_id ?? null,
+      outcome: event.kind === 'refund_succeeded' ? 'succeeded' : 'failed',
+      failure_code: event.failure_code ?? null,
+    })
+  }
+
+  /**
+   * Starts a card payment on the provider's hosted page and returns where to send the customer.
+   *
+   * Only the payer can start it, only while the payment is `created` and its hold has not run out. Asking again ends the
+   * earlier session first, so an old page cannot take money later.
+   */
+  async startCheckout(userId: string, paymentId: string, urls: { success_url: string; cancel_url: string }): Promise<CheckoutStartedDto> {
+    if (!this.gateway.createCheckout) {
+      throw new BadRequestException('This payment provider has no hosted checkout page')
+    }
+    const payment = await this.requirePayment(paymentId)
+    const customerId = await this.repo.resolveCustomerId(userId)
+    if (!customerId || payment.payer_customer_id !== customerId) {
+      throw new NotFoundException(`Payment ${paymentId} not found`)
+    }
+    if (payment.status !== 'created' || payment.provider !== this.gateway.name) {
+      throw new ConflictException(`Payment ${paymentId} is ${payment.status}; there is nothing to pay on a page`)
+    }
+    const now = this.clock.now()
+    if (now > payment.expires_at) {
+      await this.expireIfPastDeadline(paymentId)
+      throw new ConflictException('The hold on this payment has run out')
+    }
+
+    await this.endOpenSession(payment)
+    const session = await this.gateway.createCheckout({
+      payment_id: payment.id,
+      amount: payment.card_amount,
+      currency: payment.currency,
+      description: `Booking ${payment.purchase_ref}`,
+      success_url: urls.success_url,
+      cancel_url: urls.cancel_url,
+      attempt_no: payment.attempts.length + 1,
+    })
+    payment.attempts.push({
+      id: randomUUID(),
+      payment_id: payment.id,
+      provider_session_id: session.session_id,
+      provider_intent_id: session.intent_id,
+      status: 'open',
+      failure_code: null,
+      card_brand: null,
+      card_last4: null,
+      created_at: now,
+      updated_at: now,
+    })
+    payment.updated_at = now
+    await this.repo.update(payment)
+    return { payment_id: payment.id, checkout_url: session.url }
+  }
+
+  /**
+   * A provider's webhook. The signature is checked against the raw bytes first; an event is acted on once (the receipt
+   * table remembers its id), so the provider retrying a delivery never captures twice.
+   */
+  async handleProviderWebhook(rawBody: Buffer | undefined, signature: string | undefined): Promise<{ received: true }> {
+    if (!this.gateway.verifyWebhook || !this.gateway.parseEvent) {
+      throw new BadRequestException('This payment provider sends no webhooks')
+    }
+    if (!rawBody || !this.gateway.verifyWebhook(rawBody, signature)) {
+      throw new BadRequestException('The webhook signature is not valid')
+    }
+    const event = await this.gateway.parseEvent(rawBody)
+    if (!(await this.repo.recordProviderEvent(event.id, event.type, event.payment_id))) return { received: true }
+    await this.applyProviderEvent(event)
+    await this.repo.markProviderEventProcessed(event.id)
+    return { received: true }
+  }
+
+  private async applyProviderEvent(event: ProviderEvent): Promise<void> {
+    if (event.kind === 'ignored') return
+    if (event.kind === 'refund_succeeded' || event.kind === 'refund_failed') return this.applyRefundEvent(event)
+    if (!event.payment_id) return
+    const payment = await this.repo.findById(event.payment_id)
+    if (!payment) {
+      this.logger.warn(`Webhook ${event.type} names a payment that does not exist`)
+      return
+    }
+    const now = this.clock.now()
+    const attempt =
+      payment.attempts.find((a) => event.intent_id !== null && a.provider_intent_id === event.intent_id) ??
+      payment.attempts.find((a) => event.session_id !== null && a.provider_session_id === event.session_id) ??
+      payment.attempts.find((a) => a.status === 'open')
+
+    if (event.kind === 'session_expired') {
+      if (attempt?.status === 'open') {
+        attempt.status = 'expired'
+        attempt.updated_at = now
+        await this.repo.update(payment)
+      }
+      return
+    }
+
+    if (event.kind === 'failed') {
+      // The customer can try another card on the same page until the hold ends, so the payment stays `created`.
+      if (payment.status !== 'created' || !attempt) return
+      attempt.failure_code = event.failure_code ?? 'card_declined'
+      attempt.updated_at = now
+      payment.last_error = attempt.failure_code
+      payment.updated_at = now
+      await this.repo.update(payment)
+      return
+    }
+
+    // The card is held. A payment that is no longer waiting (paid on an old page, or the hold ran out) gets it released.
+    const late = payment.status === 'created' && now > payment.expires_at
+    if (payment.status !== 'created' || late || !attempt) {
+      if (late) await this.expireIfPastDeadline(payment.id)
+      if (event.intent_id) await this.gateway.cancelAuthorisation?.(event.intent_id)
+      return
+    }
+    attempt.status = 'authorised'
+    attempt.provider_intent_id = event.intent_id ?? attempt.provider_intent_id
+    attempt.card_brand = event.card_brand ?? null
+    attempt.card_last4 = event.card_last4 ?? null
+    attempt.updated_at = now
+    payment.status = 'authorised'
+    payment.authorised_at = now
+    payment.last_error = null
+    payment.updated_at = now
+    await this.repo.update(payment)
+    await this.settleAuthorised(payment, () => this.sellerConfirms(payment))
+  }
+
+  private async sellerConfirms(payment: PaymentRecord): Promise<boolean> {
+    const confirm = this.sellerConfirmations.get(payment.source_feature)
+    return confirm ? confirm(payment) : true
+  }
+
+  /** Ends a page nobody has paid on, so it cannot take money after the payment moved on. */
+  private async endOpenSession(payment: PaymentRecord): Promise<void> {
+    const open = payment.attempts.find((a) => a.status === 'open')
+    if (!open) return
+    await this.gateway.expireCheckout?.(open.provider_session_id)
+    open.status = 'cancelled'
+    open.updated_at = this.clock.now()
+  }
+
+  /** Releases the card hold on the provider's side. The fake provider holds nothing, so it does nothing there. */
+  private async releaseCard(payment: PaymentRecord): Promise<void> {
+    const held = payment.attempts.find((a) => a.status === 'authorised')
+    if (held?.provider_intent_id) await this.gateway.cancelAuthorisation?.(held.provider_intent_id)
   }
 
   /**
@@ -331,6 +593,7 @@ export class PaymentsCheckoutService {
     if (payment.status !== 'authorised') {
       throw new ConflictException(`Only an authorised payment can be voided; ${paymentId} is ${payment.status}`)
     }
+    await this.releaseCard(payment)
     const now = this.clock.now()
     const before = payment.status
     payment.status = 'voided'
@@ -356,6 +619,7 @@ export class PaymentsCheckoutService {
     if (now <= payment.expires_at) return payment
 
     if (payment.status === 'created') {
+      await this.endOpenSession(payment)
       payment.status = 'expired'
       payment.last_error = 'hold_expired'
       payment.updated_at = now
@@ -363,6 +627,7 @@ export class PaymentsCheckoutService {
       return this.repo.update(payment)
     }
     if (payment.status === 'authorised') {
+      await this.releaseCard(payment)
       payment.status = 'voided'
       payment.voided_at = now
       payment.last_error = 'hold_expired'
@@ -678,6 +943,7 @@ export class PaymentsCheckoutService {
     const result = await this.gateway.capture({
       payment_id: payment.id,
       provider_session_id: attempt?.provider_session_id ?? '',
+      provider_intent_id: attempt?.provider_intent_id ?? undefined,
       amount: payment.card_amount,
       currency: payment.currency,
     })

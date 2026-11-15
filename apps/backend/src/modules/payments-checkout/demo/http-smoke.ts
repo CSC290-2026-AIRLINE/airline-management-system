@@ -1,3 +1,4 @@
+import './fake-provider-env'
 import 'reflect-metadata'
 import assert from 'node:assert/strict'
 import { JwtService } from '@nestjs/jwt'

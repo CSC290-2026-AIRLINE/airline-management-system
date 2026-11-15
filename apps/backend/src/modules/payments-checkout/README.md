@@ -3,10 +3,10 @@
 The payment module the selling features (3 booking, 6 excess baggage, 12 onboard sale, 17 cargo) call when a customer
 buys something, and the REST surface the two frontends read.
 
-**The storage is real, the provider is still fake.** `PrismaPaymentRepository` reads and writes the `payment`,
-`payment_line`, `payment_attempt` and `receipt` tables behind `PAYMENT_REPOSITORY`. The provider is a fake one behind
-`PAYMENT_GATEWAY`; Stripe replaces it with one line in `payments-checkout.module.ts`. `InMemoryPaymentRepository` is the
-drop-in the unit tests use, so they need no database.
+**The storage is real, and the provider is Stripe or a fake one.** `PrismaPaymentRepository` reads and writes the
+`payment`, `payment_line`, `payment_attempt`, `payment_event_receipt` and `receipt` tables behind `PAYMENT_REPOSITORY`. The
+provider sits behind `PAYMENT_GATEWAY`: `PAYMENT_PROVIDER=stripe` selects `StripePaymentGateway` (test mode only), and the
+default, `fake`, needs no account. `InMemoryPaymentRepository` is the drop-in the unit tests use, so they need no database.
 
 Nothing here touches `schema.prisma`, a migration or the shared seed. Every spot still waiting on another feature
 carries a `TODO(F5a)` saying what replaces it.
@@ -116,6 +116,10 @@ Everything is under the global `/api` prefix and behind the global `JwtAuthGuard
 staff routes add one more gate — the admin console's screen grant (see "Who can open the staff screens").
 
 - `GET /api/payments/:id` — the selling feature's confirmation page polls this and renders the state.
+- `POST /api/payments/:id/checkout` — the payer starts the card payment; the answer is `{ payment_id, checkout_url }` and
+  the customer is sent to `checkout_url`. Only with a provider that hosts a page (Stripe). Stripe sends them back to
+  `<customer app>/payments/result?payment=<id>&outcome=paid|cancelled`.
+- `POST /api/webhooks/stripe` — **public**, Stripe's webhook. Trusted only by its signature, checked against the raw bytes.
 - `GET /api/receipts` — customer-web, the receipts list. Takes `search`, `filter` and `limit`, and returns the counts
   the filter chips show.
 - `GET /api/receipts/:id` — customer-web, one receipt with its lines and any credit note.
@@ -212,15 +216,77 @@ gateway.queueOutcome('decline') // the next call only, then back to the standing
 
 `capture_fails` makes the capture stall, which is what puts a payment on the staff exception list.
 
-## When the real implementation lands
+## Stripe
 
-- **The repository** — done: `PrismaPaymentRepository`. Still to do is `payment_event_receipt`, which the Stripe
-  webhook needs to ignore an event it has already seen.
-- **The provider** — add a `StripePaymentGateway` implementing `authorise` and `capture`. Stripe builds, hosts and
-  serves the checkout page, so 5a only creates the session and reads the result back through the webhook. Only this
-  adapter converts money to cents; the database keeps `NUMERIC(12, 2)`.
+`StripePaymentGateway` (`stripe.gateway.ts`) talks to Stripe's REST API with `fetch`, so there is no SDK to install. It runs
+in **test mode only**: it refuses a key that is not `sk_test_…`, and env validation does the same.
+
+How a card payment goes:
+
+1. The selling feature creates the payment (`createPayment`). Its provider is `stripe` when there is a card amount.
+2. The customer app calls `POST /api/payments/:id/checkout` and redirects to the `checkout_url`. Stripe hosts the page, so
+   card data never reaches us.
+3. The card is **held, not charged** (`capture_method: manual`). Stripe calls `POST /api/webhooks/stripe`
+   (`payment_intent.amount_capturable_updated`); 5a marks the payment `authorised`, asks the selling feature to confirm
+   (`registerSellerConfirmation`), and then captures by the intent id, or releases the card if the seller says no.
+4. A refused card (`payment_intent.payment_failed`) keeps the payment `created`: the customer can try another card on the
+   same page until the hold ends. An unpaid page (`checkout.session.expired`) ends its attempt.
+5. A payment that ends before the card is captured releases the hold on Stripe (`voidPayment`, `expireIfPastDeadline`), and a
+   card authorised after the hold ran out, or on an old page, is released at once.
+
+An event is acted on once: `payment_event_receipt` remembers its id, so Stripe retrying a delivery never captures twice. If
+handling fails, the event stays unprocessed and Stripe's retry runs it again.
+
+### Refunds to the card
+
+Feature 5b decides a refund; 5a sends the money back and keeps the documents. 5b calls these on `PaymentsCheckoutService`
+(its `CardRefundPort`):
+
+- `refundToCard({ payment_id, refund_id, amount })` — asks the provider to refund by the payment intent the card was held
+  on (`POST /v1/refunds`). The idempotency key is the refund's id, so asking twice never refunds twice. It never throws; it
+  answers `succeeded`, `pending` or `failed` with a code. It refuses, without calling the provider, a payment that is not
+  captured, an amount above the payment's card share, and a payment taken by **another provider** than the one in use
+  (`wrong_provider`): a fake provider must never "refund" a Stripe payment, nor Stripe a fake one.
+- `recordRefundSucceeded(...)` — issues the refund's **credit note** (`CN-` and the first eight characters of the refund's
+  id; one per refund, found again if repeated) and, when 5b says nothing is left on the payment, moves it
+  `captured` → `reversed`.
+- `recordRefundFailed(paymentId)` — the schema's only way back from `reversed`: a late failure makes it `captured` again.
+
+A `pending` refund ends with Stripe's `refund.updated` / `refund.failed` webhook. The refund carries `refund_id` and
+`payment_id` as metadata, so the webhook names the refund 5b made; 5a hands it to the settler 5b registered
+(`registerRefundSettler`). **Enable these events on a Stripe webhook endpoint**: `payment_intent.amount_capturable_updated`,
+`payment_intent.payment_failed`, `checkout.session.expired`, `refund.updated`, `refund.failed` (`stripe listen` forwards them
+all). The fake provider refunds on the spot, so a demo needs no webhook.
+
+### Trying Stripe in test mode
+
+You need your own Stripe test account. Put the keys in `apps/backend/.env` (never commit them):
+
+```
+PAYMENT_PROVIDER="stripe"
+STRIPE_SECRET_KEY="sk_test_…"        # Developers → API keys
+STRIPE_WEBHOOK_SECRET="whsec_…"      # printed by `stripe listen`, below
+```
+
+Forward Stripe's webhooks to your machine with the Stripe CLI, then pay with the test card `4242 4242 4242 4242`:
+
+```
+stripe listen --forward-to localhost:8080/api/webhooks/stripe
+```
+
+`demo/stripe-smoke.ts` checks the whole flow against the real database **without** Stripe (Stripe's API is replaced by a
+stand-in and the webhook is signed with a made-up secret). It proves our side; only a test-mode run proves that Stripe
+accepts our requests.
+
+## When the rest lands
+
+- **Seller confirmation** — Features 3b, 6, 12 and 17 register their confirmation with `registerSellerConfirmation`.
+  Until one does, an authorised card payment counts as confirmed.
+- **A refund to the card that must be sent again** — a refund whose payout failed is not retried from the staff screen: a lost
+  first answer could pay the customer twice. The schema's own answer is a new refund (`source_key` `reissue:<refund id>`),
+  which is not built yet. Staff can return it as a voucher or reject it.
 - **The money** — the service works in JS numbers rounded to two decimals; the repository reads the `NUMERIC(12, 2)`
-  columns as numbers. Only a Stripe provider converts to cents.
+  columns as numbers. Only the Stripe gateway converts to minor units.
 
 ## Open questions
 

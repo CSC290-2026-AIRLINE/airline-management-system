@@ -1,3 +1,4 @@
+import '../../payments-checkout/demo/fake-provider-env'
 import 'reflect-metadata'
 import assert from 'node:assert/strict'
 import { JwtService } from '@nestjs/jwt'
@@ -228,7 +229,7 @@ async function main(): Promise<void> {
       reason: 'Seat map error',
     })
     assert.equal(cash.status, 201, JSON.stringify(cash.body))
-    assert.equal(cash.body.status_label, 'Paying to card')
+    assert.equal(cash.body.status_label, 'Refunded')
     step('POST /staff/compensation: bad amount, bad kind, unknown booking refused; a voucher and a card refund -> 201')
 
     const voided = await call(boss, 'POST', `/staff/vouchers/${gift.body.id}/void`, { reason: 'Issued by mistake' })
@@ -241,6 +242,8 @@ async function main(): Promise<void> {
     console.log('\nAll HTTP checks passed against the real database.')
   } finally {
     const refundIds = (await db.refund.findMany({ where: { payment_id: payment.id }, select: { id: true } })).map((row) => row.id)
+    // A credit note names its refund, so it goes first.
+    await db.receipt.deleteMany({ where: { payment_id: payment.id } })
     await db.compensation_voucher.deleteMany({ where: { refund_id: { in: refundIds } } })
     await db.refund_line.deleteMany({ where: { payment_id: payment.id } })
     await db.refund.deleteMany({ where: { payment_id: payment.id } })

@@ -106,7 +106,7 @@ export function paymentReference(payment: Pick<PaymentRecord, 'id' | 'started_at
 /** One step of the state history the staff payment detail shows. */
 export interface PaymentStateStep {
   /** A stable key for the step, so a frontend can key its list without matching on the label. */
-  key: 'created' | 'authorised' | 'confirmed' | 'stalled' | 'captured' | 'failed' | 'voided' | 'expired'
+  key: 'created' | 'authorised' | 'confirmed' | 'stalled' | 'captured' | 'reversed' | 'failed' | 'voided' | 'expired'
   label: string
   /** When it happened, or `null` when the step has not happened. */
   at: Date | null
@@ -140,6 +140,8 @@ export function stateHistoryFor(
   if (payment.confirmed_at) steps.push({ key: 'confirmed', label: 'booking confirmed', at: payment.confirmed_at })
   if (payment.capture_stalled_at) steps.push({ key: 'stalled', label: 'capture stalled', at: payment.capture_stalled_at })
   if (payment.captured_at) steps.push({ key: 'captured', label: 'captured', at: payment.captured_at })
+  // The schema keeps no refund time on the payment; it moved to `reversed` when it was last written.
+  if (payment.status === 'reversed') steps.push({ key: 'reversed', label: 'refunded', at: payment.updated_at })
   if (payment.status === 'failed') steps.push({ key: 'failed', label: 'card declined', at: payment.updated_at })
   if (payment.voided_at) steps.push({ key: 'voided', label: 'authorisation released', at: payment.voided_at })
   if (payment.status === 'expired') steps.push({ key: 'expired', label: 'hold expired', at: payment.expires_at })

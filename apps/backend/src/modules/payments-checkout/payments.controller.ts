@@ -1,8 +1,9 @@
-import { Controller, Get, Param } from '@nestjs/common'
+import { Controller, Get, HttpCode, Param, Post } from '@nestjs/common'
+import { APP_ORIGINS } from '@backend/auth/auth.constants'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { PaymentsCheckoutService } from './payments-checkout.service'
-import type { PaymentStatusDto } from './dto/payments-checkout.types'
+import type { CheckoutStartedDto, PaymentStatusDto } from './dto/payments-checkout.types'
 
 /**
  * `/api/payments/:id` — the status a selling feature's confirmation page polls.
@@ -22,5 +23,17 @@ export class PaymentsController {
   @Get(':id')
   getPaymentStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<PaymentStatusDto> {
     return this.svc.getPaymentStatus(user.id, id)
+  }
+
+  /**
+   * Starts the card payment on the provider's own page; the response says where to send the customer. The page sends them
+   * back to the customer app's result screen, which polls `GET /payments/:id` for the outcome.
+   */
+  @Post(':id/checkout')
+  @HttpCode(200)
+  startCheckout(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<CheckoutStartedDto> {
+    const origin = Object.entries(APP_ORIGINS).find(([, config]) => config.userType === 'customer')?.[0] ?? ''
+    const result = `${origin}/payments/result?payment=${encodeURIComponent(id)}`
+    return this.svc.startCheckout(user.id, id, { success_url: `${result}&outcome=paid`, cancel_url: `${result}&outcome=cancelled` })
   }
 }

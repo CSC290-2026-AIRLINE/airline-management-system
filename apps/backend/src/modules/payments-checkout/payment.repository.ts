@@ -35,12 +35,21 @@ export interface PaymentRepository {
   findReceiptByPaymentId(paymentId: string): Promise<ReceiptRecord | undefined>
   /** The credit note attached to a payment, if the payment was reversed. Feature 5b owns the refund itself. */
   findCreditNoteByPaymentId(paymentId: string): Promise<ReceiptRecord | undefined>
+  /** The credit note of one refund. There is at most one: the schema keeps `(refund_id, payment_id)` unique. */
+  findCreditNoteByRefundId(refundId: string): Promise<ReceiptRecord | undefined>
   /** The staff exception row for a payment, if it has ever been on the list. */
   findException(paymentId: string): Promise<PaymentExceptionRecord | undefined>
   saveException(exception: PaymentExceptionRecord): Promise<PaymentExceptionRecord>
   listExceptions(): Promise<PaymentExceptionRecord[]>
   /** The `customer.id` behind a signed-in user id, or undefined when that user is not a customer. */
   resolveCustomerId(userId: string): Promise<string | undefined>
+  /**
+   * Notes a provider's webhook event (`payment_event_receipt`). True when the event still has to be acted on: it is new,
+   * or an earlier delivery was noted but never finished. False when it was already processed, so a repeat does nothing.
+   */
+  recordProviderEvent(eventId: string, eventType: string, paymentId: string | null): Promise<boolean>
+  /** Marks a noted event as acted on. */
+  markProviderEventProcessed(eventId: string): Promise<void>
 }
 
 /** The statuses that hold the `payment_one_live_per_purchase_uq` slot for a purchase. */
@@ -109,6 +118,10 @@ export class InMemoryPaymentRepository implements PaymentRepository {
     return Promise.resolve(note)
   }
 
+  findCreditNoteByRefundId(refundId: string): Promise<ReceiptRecord | undefined> {
+    return Promise.resolve(this.allReceipts().find((r) => r.refund_id === refundId && r.document_type === 'credit_note'))
+  }
+
   findException(paymentId: string): Promise<PaymentExceptionRecord | undefined> {
     return Promise.resolve(this.exceptions.get(paymentId))
   }
@@ -124,6 +137,20 @@ export class InMemoryPaymentRepository implements PaymentRepository {
 
   resolveCustomerId(userId: string): Promise<string | undefined> {
     return Promise.resolve(resolveMockCustomerId(userId))
+  }
+
+  /** Event id to whether it has been processed. */
+  private readonly providerEvents = new Map<string, boolean>()
+
+  recordProviderEvent(eventId: string): Promise<boolean> {
+    const processed = this.providerEvents.get(eventId)
+    if (processed === undefined) this.providerEvents.set(eventId, false)
+    return Promise.resolve(processed !== true)
+  }
+
+  markProviderEventProcessed(eventId: string): Promise<void> {
+    this.providerEvents.set(eventId, true)
+    return Promise.resolve()
   }
 
   /** The rows as a plain array, so the lookups above stay one-liners. */

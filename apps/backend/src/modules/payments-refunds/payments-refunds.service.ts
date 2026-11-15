@@ -1,6 +1,9 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import type { RefundSettlement } from '@backend/modules/payments-checkout/card-refund.types'
+import { CARD_REFUND_PORT } from './card-refund.port'
+import type { CardRefundPort } from './card-refund.port'
 import type {
   CompensationEntryDto,
   CompensationListDto,
@@ -67,15 +70,22 @@ function matches(search: string | undefined, ...values: (string | null | undefin
  * Every staff decision is written to the audit trail with the staff member's name and the reason, as the frames say.
  *
  * TODO(F5b): the fare rule check comes from Feature 4's `quote-fee` (in-process), the compensation requests from
- * Feature 13's `case_compensation`, and the card refund goes through Feature 5a's payment provider. Each is a mock
- * field today and carries its own TODO.
+ * Feature 13's `case_compensation`. Each is a mock field today and carries its own TODO.
+ *
+ * A card refund goes back through Feature 5a's provider (`CardRefundPort`): the refund is `processing` while the provider
+ * works, `succeeded` with a credit note when the money is on its way back, `failed` with the provider's reason when it
+ * is not. The provider can answer later, by webhook (`settleFromProvider`). Without the port a card refund stays
+ * `processing`, as it did before a provider was connected.
  */
 @Injectable()
 export class PaymentsRefundsService {
+  private readonly logger = new Logger(PaymentsRefundsService.name)
+
   constructor(
     @Inject(REFUND_REPOSITORY) private readonly repo: RefundRepository,
     private readonly clock: SimulationClock,
     private readonly audit: AuditService,
+    @Optional() @Inject(CARD_REFUND_PORT) private readonly cardRefunds?: CardRefundPort,
   ) {}
 
   /* ---- Staff: the refund queue --------------------------------------------------------------------------- */
@@ -113,9 +123,17 @@ export class PaymentsRefundsService {
    */
   async decide(idOrReference: string, actorId: string, dto: RefundDecisionDto): Promise<RefundDetailDto> {
     const refund = await this.requireRefund(idOrReference)
-    if (refund.status !== 'requested' && refund.status !== 'pending_approval') {
+    const waiting = refund.status === 'requested' || refund.status === 'pending_approval'
+    /* A refund whose payout failed stays in the queue for a person to look at, who can still return it as a voucher or reject it. */
+    if (!waiting && refund.status !== 'failed') {
       throw new ConflictException(
         `${referenceOf(refund)} is ${staffRefundLabel(refund.status, refund.method).toLowerCase()} and cannot be decided again`,
+      )
+    }
+    if (refund.status === 'failed' && dto.decision === 'approve_card') {
+      /* Sending it again could pay the customer twice when the first answer was lost, so it is not offered from here. */
+      throw new ConflictException(
+        `${referenceOf(refund)}'s payout to the card failed and is not sent again from here; return it as a voucher or reject it`,
       )
     }
     if (isCompensation(refund)) {
@@ -133,11 +151,13 @@ export class PaymentsRefundsService {
       refund.status = 'processing'
       refund.method = 'original'
       refund.voucher_amount = 0
-      refund.provider_refund_id = providerRefundOf(refund)
+      /* The provider names the refund once it has it; without a provider the module keeps its own placeholder. */
+      refund.provider_refund_id = this.cardRefunds ? null : providerRefundOf(refund)
     } else {
       refund.method = 'voucher'
       refund.voucher_amount = refund.amount
       refund.provider_refund_id = null
+      refund.failure_reason = null
       refund.status = 'succeeded'
       refund.completed_at = now
       voucher = await this.newVoucher({
@@ -171,7 +191,117 @@ export class PaymentsRefundsService {
       after: { status: refund.status, method: refund.method, override },
     })
 
+    /* The decision is saved as "paying to card" before the provider is asked, so a refund is never lost between the two. */
+    if (dto.decision === 'approve_card') await this.payToCard(refund, actorId)
+
     return this.toDetail(refund)
+  }
+
+  /**
+   * A provider's late word on a card refund (Stripe's webhook, handed on by 5a). A repeat does nothing: a refund that is
+   * already settled is left alone. A refund that failed but later succeeded is honoured — the provider's word is the
+   * truth about the money.
+   */
+  async settleFromProvider(settlement: RefundSettlement): Promise<void> {
+    if (!this.cardRefunds) return
+    const refund = await this.repo.findRefundById(settlement.refund_id)
+    if (!refund || refund.method !== 'original') {
+      this.logger.warn(`A provider event names refund ${settlement.refund_id}, which is not a card refund here`)
+      return
+    }
+    const outcome = {
+      status: settlement.outcome,
+      provider_refund_id: settlement.provider_refund_id,
+      failure_code: settlement.failure_code,
+    } as const
+    if (settlement.outcome === 'succeeded' && (refund.status === 'processing' || refund.status === 'failed')) {
+      await this.settleCardPayout(refund, outcome, null)
+    } else if (settlement.outcome === 'failed' && refund.status === 'processing') {
+      await this.settleCardPayout(refund, outcome, null)
+    }
+  }
+
+  /** Asks the provider to send an approved card refund back, and records what it says. */
+  private async payToCard(refund: RefundRecord, actorId: string): Promise<void> {
+    if (!this.cardRefunds) return
+    const outcome = await this.cardRefunds.refundToCard({ payment_id: refund.payment_id, refund_id: refund.id, amount: refund.amount })
+    await this.settleCardPayout(refund, outcome, actorId)
+  }
+
+  /**
+   * Records how a card refund ended. `pending` only notes the provider's id and waits for the webhook.
+   *
+   * On success the credit note comes first and the refund is marked `succeeded` after it: the credit note names the
+   * refund (which is saved by now) and a repeat finds the same note, so a failure between the two is mended by the next
+   * try rather than leaving a refund with no document.
+   */
+  private async settleCardPayout(
+    refund: RefundRecord,
+    outcome: { status: 'succeeded' | 'pending' | 'failed'; provider_refund_id: string | null; failure_code: string | null },
+    actorId: string | null,
+  ): Promise<void> {
+    const port = this.cardRefunds
+    if (!port) return
+    const before = refund.status
+    const now = this.clock.now()
+    if (outcome.provider_refund_id) refund.provider_refund_id = outcome.provider_refund_id
+    refund.updated_at = now
+
+    if (outcome.status === 'pending') {
+      await this.repo.updateRefund(refund)
+      return
+    }
+
+    if (outcome.status === 'succeeded') {
+      const note = await port.recordRefundSucceeded({
+        payment_id: refund.payment_id,
+        refund_id: refund.id,
+        amount: refund.amount,
+        fully_refunded: await this.leavesNothing(refund),
+      })
+      refund.status = 'succeeded'
+      refund.completed_at = now
+      refund.failure_reason = null
+      refund.context.credit_note_number = note.credit_note_number
+      await this.repo.updateRefund(refund)
+    } else {
+      refund.status = 'failed'
+      refund.completed_at = null
+      refund.failure_reason = outcome.failure_code ?? 'refund_failed'
+      await this.repo.updateRefund(refund)
+      await port.recordRefundFailed(refund.payment_id)
+    }
+
+    await this.writeAudit(actorId, {
+      action: 'status_change',
+      entityType: 'refund',
+      entityId: refund.id,
+      summary: `${referenceOf(refund)} card payout ${refund.status}${refund.status === 'failed' ? ` (${refund.failure_reason})` : ''}`,
+      reason: refund.failure_reason,
+      before: { status: before },
+      after: { status: refund.status, provider_refund_id: refund.provider_refund_id, credit_note: refund.context.credit_note_number },
+    })
+  }
+
+  /**
+   * True when this refund, with the others on the payment, gives back everything the payment took: nothing is still
+   * waiting on the provider, and the refunds that count add up to the payment's total. The payment is then `reversed`.
+   */
+  private async leavesNothing(refund: RefundRecord): Promise<boolean> {
+    const booking = await this.repo.findBooking(refund.context.booking_reference)
+    if (!booking || booking.payment_id !== refund.payment_id) return false
+    const others = (await this.repo.listRefunds()).filter(
+      (other) =>
+        other.payment_id === refund.payment_id &&
+        other.id !== refund.id &&
+        other.status !== 'rejected' &&
+        other.status !== 'failed' &&
+        /* A voucher given as goodwill is store credit, not money taken back out of the payment (see `issueCompensation`). */
+        !(other.reason === 'staff_adjustment' && other.method === 'voucher'),
+    )
+    if (others.some((other) => other.status !== 'succeeded')) return false
+    const cents = (value: number) => Math.round(value * 100)
+    return cents(others.reduce((sum, other) => sum + other.amount, 0) + refund.amount) >= cents(booking.total)
   }
 
   /* ---- Customer: My refunds and My vouchers --------------------------------------------------------------- */
@@ -448,8 +578,12 @@ export class PaymentsRefundsService {
     } else {
       const saved = await this.repo.insertRefund(refund)
       /* A card refund is paid out by the provider (Feature 5a's gateway), so it starts as "Paying to card". */
-      saved.provider_refund_id = providerRefundOf(saved)
-      await this.repo.updateRefund(saved)
+      if (this.cardRefunds) {
+        await this.payToCard(saved, actorId)
+      } else {
+        saved.provider_refund_id = providerRefundOf(saved)
+        await this.repo.updateRefund(saved)
+      }
       entry = this.cardRefundEntry(saved)
     }
 
@@ -537,6 +671,7 @@ export class PaymentsRefundsService {
         ? { decided_at: ctx.decided_at.toISOString(), decided_by: ctx.decided_by, note: refund.decision_note, override: ctx.override }
         : null,
       provider_refund_id: refund.provider_refund_id,
+      failure_reason: refund.status === 'failed' ? refund.failure_reason : null,
       voucher_code: ctx.voucher_code,
       credit_note_number: ctx.credit_note_number,
     }
@@ -713,7 +848,7 @@ export class PaymentsRefundsService {
 
   /** Writes the audit row for a staff action. The action is already done, so a failed write is logged, never thrown. */
   private async writeAudit(
-    actorId: string,
+    actorId: string | null,
     row: {
       action: 'create' | 'status_change'
       entityType: string
@@ -724,7 +859,8 @@ export class PaymentsRefundsService {
       after?: unknown
     },
   ): Promise<void> {
-    const actor = await this.audit.resolveActor(actorId).catch(() => AuditService.systemActor())
+    /* A webhook has no staff member behind it: the provider's word is recorded as the system's. */
+    const actor = actorId ? await this.audit.resolveActor(actorId).catch(() => AuditService.systemActor()) : AuditService.systemActor()
     await this.audit.tryWrite({ actor, sourceFeature: '5', ...row })
   }
 }

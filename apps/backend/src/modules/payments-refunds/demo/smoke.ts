@@ -1,3 +1,4 @@
+import '../../payments-checkout/demo/fake-provider-env'
 import 'reflect-metadata'
 import assert from 'node:assert/strict'
 import { NestFactory } from '@nestjs/core'
@@ -60,7 +61,7 @@ async function main(): Promise<void> {
   })
   console.log(`Payment ${ref} for customer ${customer.id}`)
 
-  const made = { refunds: [] as string[], vouchers: [] as string[] }
+  const made = { refunds: [] as string[], vouchers: [] as string[], payments: [] as string[] }
   try {
     /* 1. What the customer can ask about. */
     const refundable = await svc.listMyRefundable(customer.user_id)
@@ -181,11 +182,19 @@ async function main(): Promise<void> {
       staff.user_id,
       Object.assign(new RefundDecisionDto(), { decision: 'approve_card', reason: 'Approved.' }),
     )
-    assert.equal(toCard.status_label, 'Paying to card')
-    const cardRow = await db.refund.findUniqueOrThrow({ where: { id: third.id } })
-    assert.equal(cardRow.status, 'processing')
-    assert.match(cardRow.provider_refund_id ?? '', /^RF-[0-9A-F]{8}$/)
-    step('approve to card: the refund is processing with a provider reference')
+    // The fake provider refunds on the spot, so the refund is paid and has its credit note.
+    assert.equal(toCard.status_label, 'Refunded')
+    const cardRow = await db.refund.findUniqueOrThrow({ where: { id: third.id }, include: { receipt: true } })
+    assert.equal(cardRow.status, 'succeeded')
+    assert.match(cardRow.provider_refund_id ?? '', /^re_test_/)
+    assert.ok(cardRow.completed_at, 'a succeeded refund has a completed_at')
+    assert.equal(cardRow.receipt?.document_type, 'credit_note')
+    assert.equal(Number(cardRow.receipt?.amount), 20)
+    assert.equal(toCard.credit_note_number, cardRow.receipt?.document_number)
+    assert.equal((await db.payment.findUniqueOrThrow({ where: { id: payment.id } })).status, 'captured')
+    step(
+      `approve to card: the refund succeeded with provider id ${cardRow.provider_refund_id} and credit note ${cardRow.receipt?.document_number}`,
+    )
 
     /* 8. Compensation: a voucher, a card refund, then a void. */
     const gift = await svc.issueCompensation(
@@ -209,7 +218,7 @@ async function main(): Promise<void> {
       Object.assign(new IssueCompensationDto(), { booking_reference: ref, kind: 'card_refund', amount: 5, reason: 'Seat map error' }),
     )
     made.refunds.push(cash.id)
-    assert.equal(cash.status_label, 'Paying to card')
+    assert.equal(cash.status_label, 'Refunded')
     const history = await svc.listCompensation({})
     assert.ok(history.items.some((item) => item.id === gift.id) && history.items.some((item) => item.id === cash.id))
     step('issue compensation: a voucher and a card refund are real rows and show in the history')
@@ -232,16 +241,60 @@ async function main(): Promise<void> {
     )
     step('a user who is not the payer is told the booking is not found')
 
+    /* 10. A refund that takes the last of a payment reverses it, and the credit note is a real document. */
+    const ref2 = `${ref}B`
+    const whole = await db.payment.create({
+      data: {
+        source_feature: 12,
+        purchase_ref: ref2,
+        payer_customer_id: customer.id,
+        idempotency_key: `smoke-${ref2}`,
+        status: 'captured',
+        provider: 'fake',
+        currency: 'USD',
+        amount_total: 40,
+        voucher_amount: 0,
+        card_amount: 40,
+        started_at: now,
+        expires_at: new Date(now.getTime() + 30 * 60_000),
+        authorised_at: now,
+        captured_at: now,
+      },
+    })
+    made.payments.push(whole.id)
+    await db.payment_line.create({ data: { payment_id: whole.id, line_type: 'upgrade', description: 'Cabin upgrade', amount: 40 } })
+    await db.payment_attempt.create({
+      data: { payment_id: whole.id, provider_session_id: `smoke-${ref2}`, status: 'authorised', card_brand: 'Visa', card_last4: '4242' },
+    })
+    const lastAsk = await svc.requestRefund(
+      customer.user_id,
+      Object.assign(new CreateRefundRequestDto(), { booking_reference: ref2, item: 'Cabin upgrade', amount: 40, reason: 'Cancelled.' }),
+    )
+    made.refunds.push(lastAsk.id)
+    const last = await svc.decide(
+      lastAsk.reference,
+      staff.user_id,
+      Object.assign(new RefundDecisionDto(), { decision: 'approve_card', reason: 'Refund in full.' }),
+    )
+    assert.equal(last.status_label, 'Refunded')
+    assert.equal((await db.payment.findUniqueOrThrow({ where: { id: whole.id } })).status, 'reversed')
+    const credit = await db.receipt.findFirstOrThrow({ where: { refund_id: lastAsk.id } })
+    assert.equal(credit.document_type, 'credit_note')
+    assert.equal(Number(credit.amount), 40)
+    step(`refunding all of a payment reverses it, and credit note ${credit.document_number} (40.00) is a real receipt row`)
+
     console.log('\nAll checks passed against the real database.')
   } finally {
-    /* Clean up what the test made, in the order the foreign keys allow. */
-    const refundIds = (await db.refund.findMany({ where: { payment_id: payment.id }, select: { id: true } })).map((row) => row.id)
+    /* Clean up what the test made, in the order the foreign keys allow (a credit note names its refund). */
+    const paymentIds = [payment.id, ...made.payments]
+    const refundIds = (await db.refund.findMany({ where: { payment_id: { in: paymentIds } }, select: { id: true } })).map((row) => row.id)
+    await db.receipt.deleteMany({ where: { payment_id: { in: paymentIds } } })
     await db.compensation_voucher.deleteMany({ where: { refund_id: { in: refundIds } } })
-    await db.refund_line.deleteMany({ where: { payment_id: payment.id } })
-    await db.refund.deleteMany({ where: { payment_id: payment.id } })
-    await db.payment_line.deleteMany({ where: { payment_id: payment.id } })
-    await db.payment_attempt.deleteMany({ where: { payment_id: payment.id } })
-    await db.payment.delete({ where: { id: payment.id } })
+    await db.refund_line.deleteMany({ where: { payment_id: { in: paymentIds } } })
+    await db.refund.deleteMany({ where: { payment_id: { in: paymentIds } } })
+    await db.payment_line.deleteMany({ where: { payment_id: { in: paymentIds } } })
+    await db.payment_attempt.deleteMany({ where: { payment_id: { in: paymentIds } } })
+    await db.payment.deleteMany({ where: { id: { in: paymentIds } } })
     console.log(`Cleaned up payment ${ref} (${refundIds.length} refunds).`)
     await app.close()
   }

@@ -51,6 +51,26 @@ Raise these with the reviewer or the Database Team before the real repository is
 - **Fare rule check** comes from Feature 4's `quote-fee`, and the **compensation** request from Feature 13's
   `case_compensation`. Both are fields on the mock row today.
 
+## Paying a refund to the card
+
+Approving a refund to the card (or issuing a card compensation) goes through Feature 5a's provider (`CardRefundPort`, which
+`PaymentsCheckoutService` provides):
+
+1. The decision is saved as `processing` first, so a refund is never lost between the decision and the provider.
+2. 5a asks the provider to refund. **`succeeded`**: 5a issues the credit note (`receipt` row, `document_type` `credit_note`,
+   `refund_id` set), and the refund becomes `succeeded` with its `completed_at`. If every refund on the payment now adds up
+   to what the payment took, the payment becomes `reversed`. **`pending`**: the refund stays `processing` with the
+   provider's id, and Stripe's webhook finishes it (`settleFromProvider`, safe to repeat). **`failed`**: the refund becomes
+   `failed` with the provider's reason, the lines get their amount back, and it stays in the queue for a person.
+3. A goodwill voucher (`staff_adjustment`, method `voucher`) is store credit, not money out of the payment, so it does not
+   count towards "refunded in full".
+4. The provider's word on the money is the truth: a refund marked `failed` that Stripe later reports as `succeeded` is
+   completed (and its lines are counted again).
+
+Without the port (a unit test) a card approval stays `processing` with a placeholder `RF-` id, as it did before a provider
+was connected. The smoke scripts use the fake provider (`demo/fake-provider-env.ts`), which refunds on the spot, so they
+need no Stripe account and do not depend on `.env`.
+
 ## What the real tables need
 
 - A refund is asked for on a **captured payment** of the customer's. The "booking" in a request is the payment's
@@ -75,6 +95,8 @@ node -r tsconfig-paths/register dist/src/modules/payments-refunds/demo/seed-demo
 
 ## Not done yet
 
-- The fare rule check (Feature 4's `quote-fee`) is not connected, so every request reads "Inside rules" and staff decide. A
-  card approval stays `processing`: Feature 5a's provider finishes it.
+- The fare rule check (Feature 4's `quote-fee`) is not connected, so every request reads "Inside rules" and staff decide.
+- A refund whose payout failed is not sent to the card again from the staff screen (a lost first answer could pay the
+  customer twice); staff return it as a voucher or reject it. A new refund with `source_key` `reissue:<refund id>`, the
+  schema's own answer, is not built.
 - `ScreenAccessGuard` and `@RequireScreen` are 5a's, from `payments-checkout/guards`; both modules share them.

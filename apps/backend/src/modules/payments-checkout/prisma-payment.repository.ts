@@ -201,6 +201,12 @@ export class PrismaPaymentRepository implements PaymentRepository {
     return row ? this.toReceipt(row) : undefined
   }
 
+  async findCreditNoteByRefundId(refundId: string): Promise<ReceiptRecord | undefined> {
+    if (!UUID.test(refundId)) return undefined
+    const row = await this.db.receipt.findFirst({ where: { refund_id: refundId, document_type: 'credit_note' } })
+    return row ? this.toReceipt(row) : undefined
+  }
+
   findException(paymentId: string): Promise<PaymentExceptionRecord | undefined> {
     return Promise.resolve(this.exceptions.get(paymentId))
   }
@@ -218,6 +224,25 @@ export class PrismaPaymentRepository implements PaymentRepository {
     if (!UUID.test(userId)) return undefined
     const customer = await this.db.customer.findFirst({ where: { user_id: userId, deleted_at: null }, select: { id: true } })
     return customer?.id
+  }
+
+  async recordProviderEvent(eventId: string, eventType: string, paymentId: string | null): Promise<boolean> {
+    const existing = await this.db.payment_event_receipt.findUnique({ where: { provider_event_id: eventId } })
+    if (existing) return existing.processed_at === null
+    try {
+      await this.db.payment_event_receipt.create({
+        data: { provider_event_id: eventId, event_type: eventType, payment_id: paymentId && UUID.test(paymentId) ? paymentId : null },
+      })
+      return true
+    } catch (error) {
+      // A second delivery of the same event arrived while the first was being noted: the first one acts on it.
+      if (error instanceof Error && 'code' in error && error.code === 'P2002') return false
+      throw error
+    }
+  }
+
+  async markProviderEventProcessed(eventId: string): Promise<void> {
+    await this.db.payment_event_receipt.update({ where: { provider_event_id: eventId }, data: { processed_at: new Date() } })
   }
 
   /** One attempt, created the first time and updated after: the provider's session id is what is unique. */

@@ -1,3 +1,4 @@
+import '../../payments-checkout/demo/fake-provider-env'
 import 'reflect-metadata'
 import assert from 'node:assert/strict'
 import { NestFactory } from '@nestjs/core'

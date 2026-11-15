@@ -9,8 +9,9 @@ export const PAYMENT_GATEWAY = 'PAYMENT_GATEWAY'
  * fake one. When Stripe lands, a `StripePaymentGateway` is added and the module's providers array changes — the service,
  * the controller and the DTOs do not.
  *
- * TODO(F5a): add the Stripe gateway. Stripe builds, hosts and serves the checkout page; 5a only creates the session and
- * reads the result back through the webhook (which the `payment_event_receipt` table is there for).
+ * Stripe's gateway lives in `stripe.gateway.ts`. Stripe builds, hosts and serves the checkout page; 5a only creates the
+ * session and reads the result back through the webhook (which the `payment_event_receipt` table is there for). The fake
+ * provider approves on the spot, so it has no hosted page and implements only `authorise` and `capture`.
  */
 
 /** What the service asks the provider to authorise. */
@@ -35,6 +36,8 @@ export interface AuthoriseResult {
 export interface CaptureRequest {
   payment_id: string
   provider_session_id: string
+  /** The provider's payment id for the authorisation; Stripe captures by it. */
+  provider_intent_id?: string
   amount: number
   currency: string
 }
@@ -46,11 +49,91 @@ export interface CaptureResult {
   failure_code?: string
 }
 
+/** What the service asks the provider to give back to the card. */
+export interface RefundRequest {
+  payment_id: string
+  /** Feature 5b's refund row. It is the provider's idempotency key, and the id a webhook reads the refund back by. */
+  refund_id: string
+  /** The provider's payment id for the card that paid. Stripe refunds by it. */
+  provider_intent_id: string
+  amount: number
+  currency: string
+}
+
+/**
+ * What the provider says about a refund.
+ *
+ * - `succeeded` — the money is going back to the card.
+ * - `pending` — accepted, and the provider will say how it ended (a `refund_*` webhook).
+ * - `failed` — nothing was refunded.
+ */
+export interface RefundResult {
+  status: 'succeeded' | 'pending' | 'failed'
+  provider_refund_id?: string
+  failure_code?: string
+}
+
+/** What the service asks a hosted provider for: a payment page the customer is sent to. */
+export interface CheckoutRequest {
+  payment_id: string
+  amount: number
+  currency: string
+  description: string
+  success_url: string
+  cancel_url: string
+  /** 1 for the first session on a payment, 2 for the next. It keeps the provider's idempotency key unique per session. */
+  attempt_no: number
+}
+
+/** The page the customer pays on. */
+export interface CheckoutSession {
+  session_id: string
+  url: string
+  intent_id: string | null
+}
+
+/**
+ * A provider's webhook event, in the provider's own words reduced to what 5a acts on.
+ *
+ * - `authorised` — the card is held and can be captured.
+ * - `failed` — the card was refused.
+ * - `session_expired` — the customer did not pay on the page in time.
+ * - `refund_succeeded` / `refund_failed` — a refund 5b sent to the card ended (the refund is `refund_id`).
+ * - `ignored` — an event 5a does not act on.
+ */
+export interface ProviderEvent {
+  id: string
+  type: string
+  kind: 'authorised' | 'failed' | 'session_expired' | 'refund_succeeded' | 'refund_failed' | 'ignored'
+  payment_id: string | null
+  session_id: string | null
+  intent_id: string | null
+  /** Feature 5b's refund row, read back from the metadata the refund was made with. */
+  refund_id?: string | null
+  /** The provider's own id for the refund (Stripe `re_…`). */
+  provider_refund_id?: string | null
+  card_brand?: string | null
+  card_last4?: string | null
+  failure_code?: string | null
+}
+
 /** The provider contract. */
 export interface PaymentGateway {
   readonly name: 'fake' | 'stripe'
   authorise(request: AuthoriseRequest): Promise<AuthoriseResult>
   capture(request: CaptureRequest): Promise<CaptureResult>
+  /** Gives money back to the card that paid. Never throws: a provider that cannot be reached is a `failed` result. */
+  refund?(request: RefundRequest): Promise<RefundResult>
+  /** Hosted checkout. Only a provider that serves its own payment page (Stripe) implements these four. */
+  createCheckout?(request: CheckoutRequest): Promise<CheckoutSession>
+  /** Ends a session nobody has paid yet, so an old page cannot take money later. */
+  expireCheckout?(sessionId: string): Promise<void>
+  /** Releases a held card. Safe to call when nothing is held. */
+  cancelAuthorisation?(intentId: string): Promise<void>
+  /** True when the signature header matches the raw bytes of the request. Never throws. */
+  verifyWebhook?(rawBody: Buffer, signatureHeader: string | undefined): boolean
+  /** A verified webhook body as an event. May read the card details from the provider. */
+  parseEvent?(rawBody: Buffer): Promise<ProviderEvent>
 }
 
 /**
@@ -60,8 +143,9 @@ export interface PaymentGateway {
  * - `decline` — the authorisation fails with `card_declined`; the payment goes to `failed`.
  * - `capture_fails` — the authorisation succeeds but every capture fails with `provider_error`; after
  *   `capture_retry_limit` attempts the payment is capture-stalled and lands on the staff exception list.
+ * - `refund_fails` — a refund to the card fails with `provider_error`; the authorisation and the capture still work.
  */
-export const FAKE_OUTCOMES = ['approve', 'decline', 'capture_fails'] as const
+export const FAKE_OUTCOMES = ['approve', 'decline', 'capture_fails', 'refund_fails'] as const
 export type FakeOutcome = (typeof FAKE_OUTCOMES)[number]
 
 /** The fake provider's fee, as a share of the captured amount. Mirrors a card network's usual interchange + markup. */
@@ -114,5 +198,12 @@ export class FakePaymentGateway implements PaymentGateway {
       return Promise.resolve({ ok: false, failure_code: 'provider_error' })
     }
     return Promise.resolve({ ok: true, provider_fee: Math.round(request.amount * FAKE_PROVIDER_FEE_RATE * 100) / 100 })
+  }
+
+  /** The fake provider refunds on the spot, so a demo needs no webhook to finish a card refund. */
+  refund(request: RefundRequest): Promise<RefundResult> {
+    const outcome = this.queued.shift() ?? this.standing
+    if (outcome === 'refund_fails') return Promise.resolve({ status: 'failed', failure_code: 'provider_error' })
+    return Promise.resolve({ status: 'succeeded', provider_refund_id: `re_test_${request.refund_id.replace(/-/g, '').slice(0, 14)}` })
   }
 }

@@ -1,3 +1,4 @@
+import './fake-provider-env'
 import 'reflect-metadata'
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from '@backend/app.module'

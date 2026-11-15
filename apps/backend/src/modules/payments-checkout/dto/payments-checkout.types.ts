@@ -35,6 +35,12 @@ export interface PaymentLineDto {
 }
 
 /** The customer-facing state of a payment, as the selling feature's confirmation page shows it. */
+/** Where to send the customer to pay a card payment on the provider's own page. */
+export interface CheckoutStartedDto {
+  payment_id: string
+  checkout_url: string
+}
+
 export interface PaymentStatusDto {
   id: string
   status: PaymentStatus
