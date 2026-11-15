@@ -14,6 +14,9 @@ interface BookingRow {
   consignee_name: string
   flight_number: string
   flight_service_date: Date
+  flight_dep_at: Date
+  flight_origin: string
+  flight_destination: string
   commodity_type_name: string
   pieces: number
   quoted_chargeable_kg: string
@@ -21,6 +24,7 @@ interface BookingRow {
   currency: string
   current_status: string | null
   booked_at: Date
+  has_refund: boolean
 }
 
 interface StatusCount {
@@ -35,8 +39,16 @@ export class CargoDeskService {
     private readonly events: CargoEventsService,
   ) {}
 
-  async listBookings(opts: { status?: string; q?: string; page: number; pageSize: number }) {
-    const { status, q, page, pageSize } = opts
+  async listBookings(opts: {
+    status?: string
+    q?: string
+    page: number
+    pageSize: number
+    flightId?: string
+    shipDate?: string
+    commodityTypeId?: string
+  }) {
+    const { status, q, page, pageSize, flightId, shipDate, commodityTypeId } = opts
     const offset = (page - 1) * pageSize
     const search = q ? `%${q}%` : null
 
@@ -44,19 +56,51 @@ export class CargoDeskService {
       WITH statused AS (
         SELECT cb.*,
           (SELECT cse.status_after FROM cargo_shipment_event cse
-           WHERE cse.cargo_booking_id = cb.id ORDER BY cse.seq DESC LIMIT 1) AS current_status
+           WHERE cse.cargo_booking_id = cb.id ORDER BY cse.seq DESC LIMIT 1) AS current_status,
+          EXISTS (SELECT 1 FROM cargo_shipment_event cse
+                  WHERE cse.cargo_booking_id = cb.id AND cse.refund_id IS NOT NULL) AS has_refund
         FROM cargo_booking cb
       )
       SELECT
         s.id, s.booking_ref, s.awb_number, s.shipper_name, s.consignee_name,
         f.flight_number, f.service_date AS flight_service_date,
+        f.dep_at AS flight_dep_at,
+        r.origin AS flight_origin, r.destination AS flight_destination,
         cct.name AS commodity_type_name,
         s.pieces,
         s.quoted_chargeable_kg::text AS quoted_chargeable_kg,
         s.quoted_charge::text AS quoted_charge,
-        s.currency, s.current_status, s.booked_at
+        s.currency, s.current_status, s.booked_at, s.has_refund
       FROM statused s
       JOIN cargo_commodity_type cct ON cct.id = s.commodity_type_id
+      JOIN flight f ON f.id = s.flight_id
+      JOIN route r ON r.id = s.route_id
+      WHERE (${status ?? null}::text IS NULL
+             OR s.current_status = ${status ?? null}::text
+             OR (${status ?? null}::text = 'closed' AND s.current_status IN ('expired', 'cancelled', 'rejected')))
+        AND (${search}::text IS NULL
+             OR s.booking_ref ILIKE ${search}::text
+             OR s.awb_number ILIKE ${search}::text
+             OR s.shipper_name ILIKE ${search}::text
+             OR s.consignee_name ILIKE ${search}::text
+             OR f.flight_number ILIKE ${search}::text)
+        AND (${flightId ?? null}::uuid IS NULL OR s.flight_id = ${flightId ?? null}::uuid)
+        AND (${shipDate ?? null}::date IS NULL OR f.service_date = ${shipDate ?? null}::date)
+        AND (${commodityTypeId ?? null}::uuid IS NULL OR s.commodity_type_id = ${commodityTypeId ?? null}::uuid)
+      ORDER BY s.booked_at DESC
+      LIMIT ${pageSize} OFFSET ${offset}
+    `
+
+    const totalRows = await this.db.$queryRaw<{ total: bigint }[]>`
+      WITH statused AS (
+        SELECT cb.id, cb.booking_ref, cb.awb_number, cb.shipper_name, cb.consignee_name,
+          cb.flight_id, cb.commodity_type_id,
+          (SELECT cse.status_after FROM cargo_shipment_event cse
+           WHERE cse.cargo_booking_id = cb.id ORDER BY cse.seq DESC LIMIT 1) AS current_status
+        FROM cargo_booking cb
+      )
+      SELECT COUNT(*)::bigint AS total
+      FROM statused s
       JOIN flight f ON f.id = s.flight_id
       WHERE (${status ?? null}::text IS NULL
              OR s.current_status = ${status ?? null}::text
@@ -65,33 +109,31 @@ export class CargoDeskService {
              OR s.booking_ref ILIKE ${search}::text
              OR s.awb_number ILIKE ${search}::text
              OR s.shipper_name ILIKE ${search}::text
-             OR s.consignee_name ILIKE ${search}::text)
-      ORDER BY s.booked_at DESC
-      LIMIT ${pageSize} OFFSET ${offset}
-    `
-
-    const totalRows = await this.db.$queryRaw<{ total: bigint }[]>`
-      WITH statused AS (
-        SELECT cb.id, cb.booking_ref, cb.awb_number, cb.shipper_name, cb.consignee_name,
-          (SELECT cse.status_after FROM cargo_shipment_event cse
-           WHERE cse.cargo_booking_id = cb.id ORDER BY cse.seq DESC LIMIT 1) AS current_status
-        FROM cargo_booking cb
-      )
-      SELECT COUNT(*)::bigint AS total
-      FROM statused s
-      WHERE (${status ?? null}::text IS NULL
-             OR s.current_status = ${status ?? null}::text
-             OR (${status ?? null}::text = 'closed' AND s.current_status IN ('expired', 'cancelled', 'rejected')))
-        AND (${search}::text IS NULL
-             OR s.booking_ref ILIKE ${search}::text
-             OR s.awb_number ILIKE ${search}::text
-             OR s.shipper_name ILIKE ${search}::text
-             OR s.consignee_name ILIKE ${search}::text)
+             OR s.consignee_name ILIKE ${search}::text
+             OR f.flight_number ILIKE ${search}::text)
+        AND (${flightId ?? null}::uuid IS NULL OR s.flight_id = ${flightId ?? null}::uuid)
+        AND (${shipDate ?? null}::date IS NULL OR f.service_date = ${shipDate ?? null}::date)
+        AND (${commodityTypeId ?? null}::uuid IS NULL OR s.commodity_type_id = ${commodityTypeId ?? null}::uuid)
     `
 
     const total = Number(totalRows[0]?.total ?? 0)
-
     const counts = await this.statusCounts()
+
+    const [flightFilters, commodityFilters, settingsRows] = await Promise.all([
+      this.db.$queryRaw<{ id: string; flight_number: string }[]>`
+        SELECT DISTINCT f.id, f.flight_number
+        FROM cargo_booking cb JOIN flight f ON f.id = cb.flight_id
+        ORDER BY f.flight_number
+      `,
+      this.db.$queryRaw<{ id: string; name: string }[]>`
+        SELECT DISTINCT cct.id, cct.name
+        FROM cargo_booking cb JOIN cargo_commodity_type cct ON cct.id = cb.commodity_type_id
+        ORDER BY cct.name
+      `,
+      this.db.cargo_setting.findMany({ where: { key: { in: ['hold_minutes', 'claim_window_days'] } } }),
+    ])
+
+    const settingsMap = new Map(settingsRows.map((r) => [r.key, r.value]))
 
     return {
       data: rows.map((r) => ({
@@ -102,6 +144,9 @@ export class CargoDeskService {
         consigneeName: r.consignee_name,
         flightNumber: r.flight_number,
         flightServiceDate: r.flight_service_date,
+        flightDepAt: r.flight_dep_at,
+        flightOrigin: r.flight_origin,
+        flightDestination: r.flight_destination,
         commodityTypeName: r.commodity_type_name,
         pieces: r.pieces,
         quotedChargeableKg: Number(r.quoted_chargeable_kg),
@@ -109,8 +154,17 @@ export class CargoDeskService {
         currency: r.currency,
         status: r.current_status ?? 'unknown',
         bookedAt: r.booked_at,
+        hasRefund: r.has_refund,
       })),
       counts,
+      filters: {
+        flights: flightFilters.map((f) => ({ id: f.id, flightNumber: f.flight_number })),
+        commodityTypes: commodityFilters,
+      },
+      settings: {
+        holdMinutes: Number(settingsMap.get('hold_minutes') ?? 15),
+        claimWindowDays: Number(settingsMap.get('claim_window_days') ?? 14),
+      },
       page,
       pageSize,
       total,
@@ -433,21 +487,27 @@ export class CargoDeskService {
     })
   }
 
-  async listFlightsWithCargo(from: string, to: string) {
+  async listFlightsWithCargo(from: string, to: string, routeId?: string) {
     const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
+    const where: Record<string, unknown> = {
+      service_date: { gte: new Date(from + 'T00:00:00Z'), lte: new Date(to + 'T00:00:00Z') },
+    }
+    if (routeId) where.route_id = routeId
+
     const flights = await this.db.flight.findMany({
-      where: {
-        service_date: { gte: new Date(from + 'T00:00:00Z'), lte: new Date(to + 'T00:00:00Z') },
-      },
+      where,
       orderBy: [{ service_date: 'asc' }, { dep_at: 'asc' }],
       select: {
         id: true,
         flight_number: true,
         service_date: true,
+        route_id: true,
         dep_at: true,
+        arr_at: true,
         status: true,
         aircraft_id: true,
         aircraft: { select: { tail_number: true } },
+        route: { select: { origin: true, destination: true } },
         cargo_booking: {
           select: {
             declared_weight_kg: true,
@@ -458,11 +518,18 @@ export class CargoDeskService {
     })
 
     const settings = await this.loadSettings()
+
+    const routeSet = new Map<string, { id: string; origin: string; destination: string }>()
+
     const results: {
       id: string
       flightNumber: string
       serviceDate: Date
       depAt: Date
+      arrAt: Date
+      origin: string
+      destination: string
+      routeId: string
       aircraft: string
       status: string
       bookingCount: number
@@ -471,6 +538,8 @@ export class CargoDeskService {
     }[] = []
 
     for (const f of flights) {
+      routeSet.set(f.route_id, { id: f.route_id, origin: f.route.origin, destination: f.route.destination })
+
       const committed = f.cargo_booking
         .filter((b) => {
           const s = b.cargo_shipment_event[0]?.status_after
@@ -499,6 +568,10 @@ export class CargoDeskService {
         flightNumber: f.flight_number,
         serviceDate: f.service_date,
         depAt: f.dep_at,
+        arrAt: f.arr_at,
+        origin: f.route.origin,
+        destination: f.route.destination,
+        routeId: f.route_id,
         aircraft: f.aircraft.tail_number,
         status: f.status,
         bookingCount,
@@ -507,7 +580,97 @@ export class CargoDeskService {
       })
     }
 
-    return results
+    return { flights: results, routes: Array.from(routeSet.values()) }
+  }
+
+  async getFlightSummary(flightId: string) {
+    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
+    const flight = await this.db.flight.findUnique({
+      where: { id: flightId },
+      select: {
+        id: true,
+        flight_number: true,
+        service_date: true,
+        dep_at: true,
+        arr_at: true,
+        status: true,
+        aircraft_id: true,
+        route_id: true,
+        aircraft: { select: { tail_number: true } },
+        route: { select: { origin: true, destination: true, block_time_min: true } },
+        cargo_booking: {
+          select: {
+            declared_weight_kg: true,
+            cargo_shipment_event: {
+              orderBy: { seq: 'desc' as const },
+              take: 1,
+              select: { status_after: true, measured_weight_kg: true },
+            },
+          },
+        },
+      },
+    })
+    if (!flight) {
+      throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Flight not found' } })
+    }
+
+    const settings = await this.loadSettings()
+    const cutoffHours = await this.loadCutoffHours()
+    const capacity = await getAircraftCapacity(this.db, flight.aircraft_id)
+    const seatsTaken = seatsTakenOnFlight(this.db, flight.id)
+    const floorPax = Math.ceil((capacity.sellableSeats * settings.floorPercent) / 100)
+    const reservedPassengers = Math.max(seatsTaken, floorPax)
+    const baggageReserveKg = reservedPassengers * settings.reserveKgPerPax
+
+    const committedKg = flight.cargo_booking
+      .filter((b) => {
+        const s = b.cargo_shipment_event[0]?.status_after
+        return s != null && COMMITTED.has(s)
+      })
+      .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
+
+    const loadedKg = flight.cargo_booking
+      .filter((b) => {
+        const s = b.cargo_shipment_event[0]?.status_after
+        return s === 'loaded' || s === 'in_transit'
+      })
+      .reduce((sum, b) => {
+        const mw = b.cargo_shipment_event[0]?.measured_weight_kg
+        return sum + (mw ? Number(mw) : Number(b.declared_weight_kg))
+      }, 0)
+
+    const free = capacity.holdLimitKg - baggageReserveKg - committedKg
+    const bookingCutoffAt = new Date(flight.dep_at.getTime() - cutoffHours * 3_600_000)
+
+    return {
+      id: flight.id,
+      flightNumber: flight.flight_number,
+      serviceDate: flight.service_date,
+      depAt: flight.dep_at,
+      arrAt: flight.arr_at,
+      status: flight.status,
+      aircraft: flight.aircraft.tail_number,
+      origin: flight.route.origin,
+      destination: flight.route.destination,
+      blockTimeMin: flight.route.block_time_min,
+      sellableSeats: capacity.sellableSeats,
+      seatsTaken,
+      holdLimitKg: capacity.holdLimitKg,
+      reservedPassengers,
+      reserveKgPerPax: settings.reserveKgPerPax,
+      floorPercent: settings.floorPercent,
+      baggageReserveKg,
+      committedKg,
+      loadedKg,
+      availableKg: free,
+      bookingCutoffAt,
+    }
+  }
+
+  private async loadCutoffHours(): Promise<number> {
+    const rows = await this.db.cargo_setting.findMany()
+    const map = new Map(rows.map((r) => [r.key, r.value]))
+    return Number(map.get('booking_cutoff_hours') ?? 4)
   }
 
   async getFlightManifest(flightId: string) {
@@ -529,33 +692,42 @@ export class CargoDeskService {
       orderBy: { booked_at: 'asc' },
     })
 
-    const rows = bookings.map((b) => {
-      const latestEvent = b.cargo_shipment_event[0]
-      const status = latestEvent?.status_after ?? 'unknown'
-      return {
-        id: b.id,
-        awbNumber: b.awb_number,
-        shipperName: b.shipper_name,
-        consigneeName: b.consignee_name,
-        commodityTypeName: b.cargo_commodity_type.name,
-        handlingClass: b.handling_class,
-        pieces: b.pieces,
-        declaredWeightKg: Number(b.declared_weight_kg),
-        measuredWeightKg: latestEvent?.measured_weight_kg ? Number(latestEvent.measured_weight_kg) : null,
-        status,
-      }
-    })
+    const AWB_STATUSES = new Set(['booked', 'accepted', 'loaded', 'in_transit', 'arrived', 'delivered'])
+    const rows = bookings
+      .map((b) => {
+        const latestEvent = b.cargo_shipment_event[0]
+        const status = latestEvent?.status_after ?? 'unknown'
+        return {
+          id: b.id,
+          awbNumber: b.awb_number,
+          shipperName: b.shipper_name,
+          consigneeName: b.consignee_name,
+          commodityTypeName: b.cargo_commodity_type.name,
+          handlingClass: b.handling_class,
+          pieces: b.pieces,
+          declaredWeightKg: Number(b.declared_weight_kg),
+          measuredWeightKg: latestEvent?.measured_weight_kg ? Number(latestEvent.measured_weight_kg) : null,
+          status,
+        }
+      })
+      .filter((r) => AWB_STATUSES.has(r.status) && r.awbNumber != null)
 
-    const activeRows = rows.filter((r) => COMMITTED.has(r.status))
-    const totalDeclaredKg = activeRows.reduce((s, r) => s + r.declaredWeightKg, 0)
-    const totalMeasuredKg = activeRows.reduce((s, r) => s + (r.measuredWeightKg ?? 0), 0)
+    const totalPieces = rows.reduce((s, r) => s + r.pieces, 0)
+    const totalDeclaredKg = rows.reduce((s, r) => s + r.declaredWeightKg, 0)
+    const totalMeasuredKg = rows.reduce((s, r) => s + (r.measuredWeightKg ?? 0), 0)
+    const measuredCount = rows.filter((r) => r.measuredWeightKg != null).length
     const loadedCount = rows.filter((r) => r.status === 'loaded' || r.status === 'in_transit').length
-    const bookedCount = activeRows.length
 
     const capacity = await getAircraftCapacity(this.db, flight.aircraft_id)
     const seats = seatsTakenOnFlight(this.db, flight.id)
     const settings = await this.loadSettings()
-    const committed = activeRows.reduce((s, r) => s + r.declaredWeightKg, 0)
+
+    const allBookings = bookings.map((b) => ({
+      status: b.cargo_shipment_event[0]?.status_after ?? 'unknown',
+      weight: Number(b.declared_weight_kg),
+    }))
+    const committed = allBookings.filter((b) => COMMITTED.has(b.status)).reduce((s, b) => s + b.weight, 0)
+
     const free = availableKg({
       holdLimitKg: capacity.holdLimitKg,
       sellableSeats: capacity.sellableSeats,
@@ -573,10 +745,45 @@ export class CargoDeskService {
       availableKg: free,
       totalDeclaredKg,
       totalMeasuredKg,
+      totalPieces,
+      measuredCount,
       loadedCount,
-      bookedCount,
+      awbCount: rows.length,
       rows,
     }
+  }
+
+  manifestToCsv(manifest: Awaited<ReturnType<CargoDeskService['getFlightManifest']>>): string {
+    const header = ['AWB', 'Shipper', 'Consignee', 'Commodity', 'Class', 'Pieces', 'Declared kg', 'Measured kg', 'Status']
+    const esc = (v: string) => (v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v)
+    const lines = [header.join(',')]
+    for (const r of manifest.rows) {
+      lines.push(
+        [
+          r.awbNumber ?? '',
+          esc(r.shipperName),
+          esc(r.consigneeName),
+          esc(r.commodityTypeName),
+          r.handlingClass,
+          String(r.pieces),
+          r.declaredWeightKg.toFixed(1),
+          r.measuredWeightKg != null ? r.measuredWeightKg.toFixed(1) : '',
+          r.status,
+        ].join(','),
+      )
+    }
+    lines.push('')
+    lines.push(`Flight,${manifest.flightNumber}`)
+    lines.push(`Service date,${String(manifest.serviceDate)}`)
+    lines.push(`Hold limit kg,${manifest.holdLimitKg.toFixed(1)}`)
+    lines.push(`Committed kg,${manifest.committedKg.toFixed(1)}`)
+    lines.push(`Available kg,${manifest.availableKg.toFixed(1)}`)
+    lines.push(`Total declared kg,${manifest.totalDeclaredKg.toFixed(1)}`)
+    lines.push(`Total measured kg,${manifest.totalMeasuredKg.toFixed(1)}`)
+    lines.push(`Total pieces,${manifest.totalPieces}`)
+    lines.push(`Measured,${manifest.measuredCount} of ${manifest.awbCount}`)
+    lines.push(`Loaded,${manifest.loadedCount} of ${manifest.awbCount}`)
+    return lines.join('\r\n') + '\r\n'
   }
 
   private async loadedCargoKg(tx: Parameters<Parameters<DbService['$transaction']>[0]>[0], flightId: string): Promise<number> {
