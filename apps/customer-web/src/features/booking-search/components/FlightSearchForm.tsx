@@ -108,9 +108,9 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
     )
   } else {
     value.legs.forEach((leg, index) => {
-      /* Every multi-city row is numbered, so the "Remove leg N" button names a row the form actually shows. The
-         one-way form has a single row and keeps the plain "From". */
-      const fromLabel = value.tripType === 'multi_city' || index > 0 ? `Leg ${index + 1} · From` : 'From'
+      /* Every multi-city row is numbered, so the "Remove destination N" button names a row the form actually shows.
+         The one-way form has a single row and keeps the plain "From". */
+      const fromLabel = value.tripType === 'multi_city' || index > 0 ? `Destination ${index + 1} · From` : 'From'
       rows.push(
         <div className="f3-search-leg-row" key={index}>
           {airportSelect(leg, index, 'origin', fromLabel)}
@@ -125,7 +125,7 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
                   onClick={() => onChange({ ...value, legs: value.legs.filter((_, position) => position !== index) })}
                 >
                   <XIcon aria-hidden="true" size={15} strokeWidth={2.25} />
-                  Remove leg {index + 1}
+                  Remove destination {index + 1}
                 </button>
               )}
               {value.legs.length < 5 && (
@@ -139,7 +139,7 @@ export function FlightSearchForm({ value, onChange, onSubmit, isLoading, errorMe
                     })
                   }
                 >
-                  + Add another leg (up to 5)
+                  + Add another destination (up to 5)
                 </button>
               )}
             </div>

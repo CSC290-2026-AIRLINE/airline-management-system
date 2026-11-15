@@ -230,7 +230,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
     submitted?.tripType === 'return'
       ? 'Choose an outbound and a return flight'
       : submitted?.tripType === 'multi_city'
-        ? 'Choose a flight for each leg'
+        ? 'Choose a flight for each destination'
         : 'Choose a flight'
   const adults = submitted?.adults ?? 0
   const children = submitted?.children ?? 0
@@ -316,12 +316,22 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
               )
               const columnStyle = { '--f3-cabin-count': Math.max(1, cabinColumns.length) } as CSSProperties
               const legLabel =
-                submitted?.tripType === 'return' ? (legIndex === 0 ? 'Leg 1 · Outbound' : 'Leg 2 · Return') : `Leg ${legIndex + 1}`
+                submitted?.tripType === 'return'
+                  ? legIndex === 0
+                    ? 'Outbound'
+                    : 'Return'
+                  : submitted?.tripType === 'multi_city'
+                    ? `Destination ${legIndex + 1}`
+                    : null
               return (
-                <section className="f3-search-card f3-search-results" key={legIndex} aria-label={`Leg ${legIndex + 1} results`}>
+                <section
+                  className="f3-search-card f3-search-results"
+                  key={legIndex}
+                  aria-label={legLabel ? `${legLabel} results` : 'Flight results'}
+                >
                   <header>
                     <div>
-                      <p className="f3-search-eyebrow">{legLabel}</p>
+                      {legLabel && <p className="f3-search-eyebrow">{legLabel}</p>}
                       <h2>
                         {airportCity(leg.leg.origin)} → {airportCity(leg.leg.destination)} · {day(leg.leg.date)}
                       </h2>

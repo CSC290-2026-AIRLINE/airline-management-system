@@ -117,7 +117,7 @@ Content:
   - Counters **Adults**, **Children (2–11)**, **Infants (under 2)**.
   - Hint: "Up to 9 adults and children together. Infants sit on a lap, so you can't have more infants than adults."
   - Primary button **Search flights**, on the right.
-- **Multi-city** adds a row "Leg 2 · From / To / Depart" and a secondary button "+ Add another leg (up to 5)".
+- **Multi-city** adds a row "Destination 2 · From / To / Depart" and a secondary button "+ Add another destination (up to 5)".
 - **Empty state card:** "Find your flight". Hint: "Choose where you are flying and when, then press Search flights to see the available flights."
 
 ### A6 – Flight results
@@ -134,8 +134,8 @@ Content:
 - Above the results:
   - left: a small pill "Prices guaranteed until 15:45 · simulated time" (see difference **D1**)
   - right: "SORT" with toggles **Price** (selected) and **Departure**
-- **One card per leg:**
-  - Header "LEG 1 · OUTBOUND" (or "LEG 2 · RETURN", "LEG 2") and the route line "Bangkok → Tokyo Narita · Thu 12 Nov".
+- **One card per destination:**
+  - Header "OUTBOUND" (or "RETURN", "DESTINATION 2") and the route line "Bangkok → Tokyo Narita · Thu 12 Nov". A one-way card has no header label.
   - Right of the header: "Price shown is the total for 1 adult + 1 child" (see **D2**).
   - Table columns: **Flight | Economy | Premium economy | Business**.
 - **Flight cell:**

@@ -52,7 +52,7 @@ export function searchIssues(value: FlightSearchFormValue): SearchIssue[] {
         field: { kind: 'leg', legIndex: index, field: 'origin' },
         key: fieldKey({ kind: 'leg', legIndex: index, field: 'origin' }),
         message: 'Choose the airport you fly from.',
-        summary: `Choose an airport for both ends of leg ${index + 1}.`,
+        summary: `Choose the airports for destination ${index + 1}.`,
       })
     }
     if (!destination) {
@@ -60,7 +60,7 @@ export function searchIssues(value: FlightSearchFormValue): SearchIssue[] {
         field: { kind: 'leg', legIndex: index, field: 'destination' },
         key: fieldKey({ kind: 'leg', legIndex: index, field: 'destination' }),
         message: 'Choose the airport you fly to.',
-        summary: `Choose an airport for both ends of leg ${index + 1}.`,
+        summary: `Choose the airports for destination ${index + 1}.`,
       })
     }
     if (origin && destination && leg.origin === leg.destination) {
@@ -68,7 +68,7 @@ export function searchIssues(value: FlightSearchFormValue): SearchIssue[] {
         field: { kind: 'leg', legIndex: index, field: 'destination' },
         key: fieldKey({ kind: 'leg', legIndex: index, field: 'destination' }),
         message: 'Choose two different airports.',
-        summary: `Choose different airports for leg ${index + 1}.`,
+        summary: `Choose different airports for destination ${index + 1}.`,
       })
     }
     if (!leg.date || leg.date < todayKey()) {
@@ -76,13 +76,13 @@ export function searchIssues(value: FlightSearchFormValue): SearchIssue[] {
         field: { kind: 'leg', legIndex: index, field: 'date' },
         key: fieldKey({ kind: 'leg', legIndex: index, field: 'date' }),
         message: 'Choose today or a later date.',
-        summary: `Choose today or a future date for leg ${index + 1}.`,
+        summary: `Choose today or a future date for destination ${index + 1}.`,
       })
     } else if (index > 0 && leg.date < value.legs[index - 1].date) {
       issues.push({
         field: { kind: 'leg', legIndex: index, field: 'date' },
         key: fieldKey({ kind: 'leg', legIndex: index, field: 'date' }),
-        message: 'This date must be on or after the date of the leg before it.',
+        message: 'This date must be on or after the date of the previous destination.',
         summary: 'Flight dates must be in travel order.',
       })
     }
