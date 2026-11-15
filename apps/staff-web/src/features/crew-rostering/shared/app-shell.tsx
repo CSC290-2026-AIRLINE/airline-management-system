@@ -5,6 +5,7 @@
  * The sidebar is not here: every crew page sits inside the global staff `AppShell`
  * (admin-console), wired once by the `_crew` layout route.
  */
+import type { ReactNode } from 'react'
 import { formatDateRange } from '../build-pairings/types/format'
 import { Button, CheckIcon } from './ui'
 
@@ -127,8 +128,10 @@ export function TabsNav<T extends string>({
             role="tab"
             aria-selected={current}
             onClick={() => onChange(tab.id)}
-            className={`-mb-px flex-1 border-b-2 px-4 py-3 text-sm font-semibold transition-colors sm:flex-none sm:px-8 ${
-              current ? 'border-primary text-primary' : 'border-transparent text-primary-text/55 hover:text-primary-text'
+            className={`-mb-px flex-1 border-b-2 px-4 py-3 text-sm transition-colors sm:flex-none sm:px-8 ${
+              current
+                ? 'border-blue-600 font-bold text-primary-text'
+                : 'border-transparent font-medium text-primary-text/55 hover:text-primary-text'
             }`}
           >
             {tab.label}
@@ -152,23 +155,33 @@ export function TabsNav<T extends string>({
  */
 export function BottomUnsavedBar({
   summary,
+  title,
   saveLabel,
   onDiscard,
   onSave,
 }: {
   summary: string
-  saveLabel: string
+  /** A phone heading: the bar becomes a white card with this title above the text. */
+  title?: string
+  saveLabel: ReactNode
   onDiscard: () => void
   onSave: () => void
 }) {
   return (
-    <div className="sticky bottom-4 flex flex-col gap-3 rounded-xl border border-primary/15 bg-info-bg px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5">
-      <p className="text-sm text-primary-text/75">{summary}</p>
-      <div className="flex flex-col-reverse gap-3 sm:flex-row">
-        <Button variant="outline" onClick={onDiscard} fullWidth>
+    <div
+      className={`sticky bottom-4 flex flex-col gap-3 rounded-xl border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:border-primary/15 sm:bg-info-bg sm:px-5 ${
+        title ? 'border-border-desc/40 bg-card-bg' : 'border-primary/15 bg-info-bg'
+      }`}
+    >
+      <div className="min-w-0">
+        {title && <p className="mb-1 text-base font-extrabold text-primary-text sm:hidden">{title}</p>}
+        <p className="text-xs text-primary-text/75 sm:text-sm">{summary}</p>
+      </div>
+      <div className="flex shrink-0 justify-end gap-3">
+        <Button variant="outline" onClick={onDiscard} className="h-10">
           Discard
         </Button>
-        <Button variant="primary" onClick={onSave} fullWidth>
+        <Button variant="primary" onClick={onSave} className="h-10">
           {saveLabel}
         </Button>
       </div>

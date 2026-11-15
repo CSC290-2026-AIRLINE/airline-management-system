@@ -14,6 +14,9 @@ import { BaseModalOverlay, Button, InputField, SelectDropdown } from '../../shar
  */
 const FORM_ID = 'country-rule-form'
 
+/** Small caps above each field, as the mockups draw the form. */
+const LABEL = 'text-[11px] font-semibold tracking-wider text-label uppercase'
+
 export function AddCountryRuleModal({
   defaults,
   countries,
@@ -108,44 +111,43 @@ function CountryRuleForm({
 
   return (
     <BaseModalOverlay
-      width="max-w-lg"
+      variant="plain"
+      width="max-w-md"
       onClose={onCancel}
-      title={
-        <span className="flex flex-col gap-1">
-          <span>{mode === 'add' ? 'Add country rule' : 'Edit country rule'}</span>
-          <span className="text-sm font-normal text-primary-text/60">
-            Country limits must be at least as strict as the default ({formatHours(defaults.minRestHours)} rest ·{' '}
-            {formatHours(defaults.maxDutyHours)} duty).
-          </span>
-        </span>
-      }
+      title={mode === 'add' ? 'Add country rule' : 'Edit country rule'}
       footer={
         <>
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" className="h-11" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" form={FORM_ID}>
+          <Button variant="primary" type="submit" form={FORM_ID} className="h-11">
             {mode === 'add' ? 'Add rule' : 'Save rule'}
           </Button>
         </>
       }
     >
+      <p className="text-sm leading-relaxed text-primary-text/60">
+        Country limits must be at least as strict as the default ({formatHours(defaults.minRestHours)} rest ·{' '}
+        {formatHours(defaults.maxDutyHours)} duty).
+      </p>
+
       <form
         id={FORM_ID}
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+        className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 sm:gap-x-4"
         onSubmit={(event) => {
           event.preventDefault()
           handleSubmit()
         }}
       >
         {mode === 'edit' ? (
-          <InputField label="Country" value={limit?.country ?? ''} readOnly className="sm:col-span-2" />
+          <InputField label="Country" labelClassName={LABEL} value={limit?.country ?? ''} readOnly className="col-span-2" />
         ) : (
           <SelectDropdown
             label="Country"
+            labelClassName={LABEL}
             value={form.country}
             error={errors.country}
-            className="sm:col-span-2"
+            className="col-span-2"
             options={[
               { value: '', label: 'Select country' },
               ...countries.map((country) => ({ value: country.name, label: country.name })),
@@ -168,10 +170,11 @@ function CountryRuleForm({
         />
         <InputField
           label="Local cabin crew per leg"
+          labelClassName={LABEL}
           inputMode="numeric"
           value={form.minLocalCrew}
           error={errors.minLocalCrew}
-          className="sm:col-span-2"
+          className="col-span-2"
           onChange={(event) => set('minLocalCrew', event.target.value)}
         />
       </form>
@@ -197,7 +200,7 @@ function HoursField({
   const fieldId = `${label.replace(/\s+/g, '-').toLowerCase()}-hours`
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={fieldId} className="text-xs font-medium text-border-desc">
+      <label htmlFor={fieldId} className={LABEL}>
         {label}
       </label>
       <div className="relative">

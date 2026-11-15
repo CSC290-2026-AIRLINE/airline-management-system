@@ -12,6 +12,9 @@ import { BaseModalOverlay, Button, InputField, MultiSelect, SelectDropdown } fro
  */
 const FORM_ID = 'country-language-form'
 
+/** Small caps above each field, as the mockups draw the form. */
+const LABEL = 'text-[11px] font-semibold tracking-wider text-label uppercase'
+
 export function AddCountryLanguageModal({
   countries,
   languages,
@@ -94,38 +97,37 @@ function CountryLanguageForm({
 
   return (
     <BaseModalOverlay
-      width="max-w-lg"
+      variant="plain"
+      width="max-w-md"
       onClose={onCancel}
-      title={
-        <span className="flex flex-col gap-1">
-          <span>{mode === 'add' ? 'Add country' : 'Edit country languages'}</span>
-          <span className="text-sm font-normal text-primary-text/60">Choose the languages that count as local at this destination.</span>
-        </span>
-      }
+      title={mode === 'add' ? 'Add country' : 'Edit country languages'}
       footer={
         <>
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" className="h-11" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" form={FORM_ID}>
+          <Button variant="primary" type="submit" form={FORM_ID} className="h-11">
             {mode === 'add' ? 'Add country' : 'Save'}
           </Button>
         </>
       }
     >
+      <p className="text-sm leading-relaxed text-primary-text/60">Choose the languages that count as local at this destination.</p>
+
       <form
         id={FORM_ID}
-        className="flex flex-col gap-4"
+        className="mt-4 flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault()
           handleSubmit()
         }}
       >
         {mode === 'edit' ? (
-          <InputField label="Country" value={mapping?.country ?? ''} readOnly />
+          <InputField label="Country" labelClassName={LABEL} value={mapping?.country ?? ''} readOnly />
         ) : (
           <SelectDropdown
             label="Country"
+            labelClassName={LABEL}
             value={form.country}
             error={errors.country}
             options={[
@@ -140,6 +142,7 @@ function CountryLanguageForm({
 
         <MultiSelect
           label="Accepted languages"
+          labelClassName={LABEL}
           hint="Used for local-crew eligibility"
           placeholder="Select languages"
           options={languages.map((language) => ({ value: language.code, label: language.name }))}
