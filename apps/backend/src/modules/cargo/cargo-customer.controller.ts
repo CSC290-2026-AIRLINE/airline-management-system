@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, UsePipes, ValidationPipe } from '@nestjs/common'
 import { IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import { Public } from '@backend/auth/decorators/public.decorator'
 import { CargoClaimsService } from './cargo-claims.service'
 import { CargoCustomerService } from './cargo-customer.service'
 
@@ -98,6 +99,28 @@ export class CargoCustomerController {
     return this.svc.listCommodityTypes()
   }
 
+  @Get('routes/:routeId/ship-dates')
+  async getShipDates(@Param('routeId', new ParseUUIDPipe()) routeId: string, @Query('weight_kg') weightKgStr?: string) {
+    const weightKg = weightKgStr ? Number(weightKgStr) : undefined
+    return this.svc.getShipDates(routeId, weightKg)
+  }
+
+  @Get('routes/:routeId/flights')
+  async getRouteFlights(@Param('routeId', new ParseUUIDPipe()) routeId: string, @Query('date') date: string) {
+    return this.svc.getRouteFlights(routeId, date)
+  }
+
+  @Get('settings')
+  async getSettings() {
+    return this.svc.getSettings()
+  }
+
+  @Public()
+  @Get('settings/public')
+  async getPublicSettings() {
+    return this.svc.getSettings()
+  }
+
   // ── Quotes and bookings ───────────────────────────────────────────
 
   @Post('quotes')
@@ -169,6 +192,12 @@ export class CargoCustomerController {
 
   // ── Claims ────────────────────────────────────────────────────────
 
+  @Get('claims/claimable')
+  async listClaimable(@CurrentUser() user: { id: string }) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    return this.svc.listClaimable(customerId)
+  }
+
   @Post('bookings/:id/claims')
   async fileClaim(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: FileClaimDto, @CurrentUser() user: { id: string }) {
     const customerId = await this.svc.resolveCustomerId(user.id)
@@ -218,5 +247,11 @@ export class CargoCustomerController {
   async markNoticeRead(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: { id: string }) {
     const customerId = await this.svc.resolveCustomerId(user.id)
     return this.svc.markNoticeRead(customerId, id)
+  }
+
+  @Post('notices/read-all')
+  async markAllNoticesRead(@CurrentUser() user: { id: string }) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    return this.svc.markAllNoticesRead(customerId)
   }
 }

@@ -16,6 +16,10 @@ describe('chargeableKg', () => {
   it('keeps an exact 0.5 boundary', () => {
     expect(chargeableKg(50.5, 0)).toBe(50.5)
   })
+
+  it('uses custom volumetric factor from settings', () => {
+    expect(chargeableKg(120, 1.2, 200)).toBe(240)
+  })
 })
 
 describe('freightCharge', () => {

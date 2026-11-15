@@ -3,7 +3,10 @@ import { DbService } from '@backend/db/db.service'
 import { simNow } from '@backend/modules/pricing/fare-quote/sim-clock'
 import { CargoBookingService, type QuoteInput, type BookingInput } from './cargo-booking.service'
 import { CargoEventsService } from './cargo-events.service'
-import { refundFull } from './cargo-deps'
+import { refundFull, getAircraftCapacity, seatsTakenOnFlight } from './cargo-deps'
+import { availableKg } from './cargo-calc'
+
+const COMMITTED_STATUSES = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
 
 @Injectable()
 export class CargoCustomerService {
@@ -61,16 +64,209 @@ export class CargoCustomerService {
 
   async getQuote(input: QuoteInput) {
     const result = await this.bookings.quote(input)
+
+    const route = await this.db.route.findUnique({
+      where: { id: result.routeId },
+      include: {
+        airport_route_originToairport: { select: { iata_code: true, name: true } },
+        airport_route_destinationToairport: { select: { iata_code: true, name: true } },
+      },
+    })
+
+    const flight = await this.db.flight.findUnique({
+      where: { id: result.flightId },
+      select: { id: true, aircraft_id: true },
+    })
+
+    const settings = await this.loadSettings()
+    let aircraftName = ''
+    let flightAvailableKg = 0
+    if (flight) {
+      const capacity = await getAircraftCapacity(this.db, flight.aircraft_id)
+      const seats = seatsTakenOnFlight(this.db, flight.id)
+      const committed = await this.committedKg(flight.id)
+      flightAvailableKg = Math.round(
+        availableKg({
+          holdLimitKg: capacity.holdLimitKg,
+          sellableSeats: capacity.sellableSeats,
+          seatsTaken: seats,
+          reserveKgPerPax: settings.reserveKgPerPax,
+          floorPercent: settings.floorPercent,
+          committedKg: committed,
+        }),
+      )
+      const ac = await this.db.aircraft.findUnique({
+        where: { id: flight.aircraft_id },
+        include: { aircraft_type: { select: { manufacturer: true, model: true } } },
+      })
+      aircraftName = ac?.aircraft_type ? `${ac.aircraft_type.manufacturer} ${ac.aircraft_type.model}` : ''
+    }
+
+    const rate = await this.db.cargo_rate.findFirst({
+      where: { id: result.rateId },
+      select: { min_distance_km: true, max_distance_km: true },
+    })
+    const bandLabel = rate ? `${rate.min_distance_km}–${rate.max_distance_km ?? '∞'} km` : ''
+
+    const commodity = await this.db.cargo_commodity_type.findUnique({
+      where: { id: result.commodityTypeId },
+      select: { name: true },
+    })
+
+    const volumetricKg = input.declaredVolumeM3 * settings.volumetricKgPerM3
+
     return {
       flightNumber: result.flightNumber,
+      flightId: result.flightId,
       depAt: result.depAt,
       arrAt: result.arrAt,
+      origin: route?.airport_route_originToairport.iata_code ?? '',
+      originName: route?.airport_route_originToairport.name ?? '',
+      destination: route?.airport_route_destinationToairport.iata_code ?? '',
+      destinationName: route?.airport_route_destinationToairport.name ?? '',
       distanceKm: result.distanceKm,
+      aircraft: aircraftName,
+      availableKg: flightAvailableKg,
+      actualWeightKg: input.declaredWeightKg,
+      volumetricKg: Math.round(volumetricKg * 10) / 10,
       chargeableKg: result.chargeableKg,
+      commodityName: commodity?.name ?? '',
+      bandLabel,
       ratePerKg: result.ratePerKg,
       minCharge: result.minCharge,
       charge: result.charge,
       currency: result.currency,
+      volumetricKgPerM3: settings.volumetricKgPerM3,
+    }
+  }
+
+  async getShipDates(routeId: string, weightKg?: number) {
+    const now = simNow()
+    const settings = await this.loadSettings()
+    const today = now.toISOString().slice(0, 10)
+    const maxDate = new Date(now.getTime() + settings.requestWindowDays * 86_400_000)
+    const cutoffTime = new Date(now.getTime() + settings.cutoffHours * 3_600_000)
+    const dates: { date: string; hasOpenFlight: boolean; maxAvailableKg: number; fits: boolean }[] = []
+
+    for (let d = new Date(today + 'T00:00:00Z'); d <= maxDate; d.setUTCDate(d.getUTCDate() + 1)) {
+      const dateStr = d.toISOString().slice(0, 10)
+      const flights = await this.db.flight.findMany({
+        where: {
+          route_id: routeId,
+          service_date: new Date(dateStr + 'T00:00:00Z'),
+          status: { in: ['scheduled', 'delayed', 'holding'] },
+          dep_at: { gt: cutoffTime },
+        },
+        select: { id: true, aircraft_id: true },
+      })
+
+      let maxAvail = 0
+      for (const f of flights) {
+        const capacity = await getAircraftCapacity(this.db, f.aircraft_id)
+        const seats = seatsTakenOnFlight(this.db, f.id)
+        const committed = await this.committedKg(f.id)
+        const avail = availableKg({
+          holdLimitKg: capacity.holdLimitKg,
+          sellableSeats: capacity.sellableSeats,
+          seatsTaken: seats,
+          reserveKgPerPax: settings.reserveKgPerPax,
+          floorPercent: settings.floorPercent,
+          committedKg: committed,
+        })
+        if (avail > maxAvail) maxAvail = avail
+      }
+
+      dates.push({
+        date: dateStr,
+        hasOpenFlight: flights.length > 0,
+        maxAvailableKg: Math.round(maxAvail),
+        fits: weightKg != null ? maxAvail >= weightKg : true,
+      })
+    }
+
+    return { dates, holdMinutes: settings.holdMinutes }
+  }
+
+  async getRouteFlights(routeId: string, date: string) {
+    const now = simNow()
+    const settings = await this.loadSettings()
+    const cutoffTime = new Date(now.getTime() + settings.cutoffHours * 3_600_000)
+
+    const flights = await this.db.flight.findMany({
+      where: {
+        route_id: routeId,
+        service_date: new Date(date + 'T00:00:00Z'),
+        status: { in: ['scheduled', 'delayed', 'holding'] },
+        dep_at: { gt: cutoffTime },
+      },
+      orderBy: { dep_at: 'asc' },
+      select: {
+        id: true,
+        flight_number: true,
+        dep_at: true,
+        arr_at: true,
+        aircraft_id: true,
+        route: {
+          include: {
+            airport_route_originToairport: { select: { iata_code: true, name: true } },
+            airport_route_destinationToairport: { select: { iata_code: true, name: true } },
+          },
+        },
+      },
+    })
+
+    const result: {
+      id: string
+      flightNumber: string
+      depAt: Date
+      arrAt: Date
+      origin: string
+      originName: string
+      destination: string
+      destinationName: string
+      aircraft: string
+      availableKg: number
+    }[] = []
+    for (const f of flights) {
+      const capacity = await getAircraftCapacity(this.db, f.aircraft_id)
+      const seats = seatsTakenOnFlight(this.db, f.id)
+      const committed = await this.committedKg(f.id)
+      const avail = availableKg({
+        holdLimitKg: capacity.holdLimitKg,
+        sellableSeats: capacity.sellableSeats,
+        seatsTaken: seats,
+        reserveKgPerPax: settings.reserveKgPerPax,
+        floorPercent: settings.floorPercent,
+        committedKg: committed,
+      })
+      const ac = await this.db.aircraft.findUnique({
+        where: { id: f.aircraft_id },
+        include: { aircraft_type: { select: { manufacturer: true, model: true } } },
+      })
+      result.push({
+        id: f.id,
+        flightNumber: f.flight_number,
+        depAt: f.dep_at,
+        arrAt: f.arr_at,
+        origin: f.route.airport_route_originToairport.iata_code,
+        originName: f.route.airport_route_originToairport.name,
+        destination: f.route.airport_route_destinationToairport.iata_code,
+        destinationName: f.route.airport_route_destinationToairport.name,
+        aircraft: ac?.aircraft_type ? `${ac.aircraft_type.manufacturer} ${ac.aircraft_type.model}` : '',
+        availableKg: Math.round(avail),
+      })
+    }
+
+    return result
+  }
+
+  async getSettings() {
+    const settings = await this.loadSettings()
+    return {
+      holdMinutes: settings.holdMinutes,
+      requestWindowDays: settings.requestWindowDays,
+      volumetricKgPerM3: settings.volumetricKgPerM3,
+      claimWindowDays: settings.claimWindowDays,
     }
   }
 
@@ -121,10 +317,14 @@ export class CargoCustomerService {
         ship_date: Date
         commodity_type_name: string
         pieces: number
+        goods_description: string
+        declared_weight_kg: string
         quoted_charge: string
         currency: string
         current_status: string | null
         booked_at: Date
+        hold_expires_at: Date
+        refund_amount: string | null
       }[]
     >`
       WITH statused AS (
@@ -141,8 +341,11 @@ export class CargoCustomerService {
         s.ship_date,
         cct.name AS commodity_type_name,
         s.pieces,
+        s.goods_description,
+        s.declared_weight_kg::text AS declared_weight_kg,
         s.quoted_charge::text AS quoted_charge,
-        s.currency, s.current_status, s.booked_at
+        s.currency, s.current_status, s.booked_at, s.hold_expires_at,
+        (SELECT rf.amount::text FROM refund rf WHERE rf.payment_id = s.payment_id LIMIT 1) AS refund_amount
       FROM statused s
       JOIN cargo_commodity_type cct ON cct.id = s.commodity_type_id
       JOIN flight f ON f.id = s.flight_id
@@ -182,10 +385,14 @@ export class CargoCustomerService {
         shipDate: r.ship_date,
         commodityTypeName: r.commodity_type_name,
         pieces: r.pieces,
+        goodsDescription: r.goods_description,
+        declaredWeightKg: Number(r.declared_weight_kg),
         charge: Number(r.quoted_charge),
         currency: r.currency,
         status: r.current_status ?? 'unknown',
         bookedAt: r.booked_at,
+        holdExpiresAt: r.hold_expires_at,
+        refundAmount: r.refund_amount ? Number(r.refund_amount) : null,
       })),
       page,
       pageSize,
@@ -427,6 +634,78 @@ export class CargoCustomerService {
     return { id: updated.id, readAt: updated.read_at }
   }
 
+  async listClaimable(customerId: string) {
+    const settings = await this.loadSettings()
+    const now = simNow()
+    const windowMs = settings.claimWindowDays * 24 * 3600_000
+
+    const rows = await this.db.$queryRaw<
+      {
+        id: string
+        booking_ref: string
+        awb_number: string | null
+        goods_description: string
+        declared_weight_kg: string
+        flight_number: string
+        origin: string
+        destination: string
+        delivered_at: Date
+      }[]
+    >`
+      SELECT
+        cb.id, cb.booking_ref, cb.awb_number,
+        cb.goods_description, cb.declared_weight_kg::text,
+        f.flight_number, r.origin, r.destination,
+        del.occurred_at AS delivered_at
+      FROM cargo_booking cb
+      JOIN flight f ON f.id = cb.flight_id
+      JOIN route r ON r.id = cb.route_id
+      JOIN cargo_shipment_event del
+        ON del.cargo_booking_id = cb.id AND del.event_type = 'delivered'
+      LEFT JOIN cargo_claim cc ON cc.cargo_booking_id = cb.id
+      WHERE cb.customer_id = ${customerId}::uuid
+        AND cc.id IS NULL
+        AND (SELECT cse.status_after FROM cargo_shipment_event cse
+             WHERE cse.cargo_booking_id = cb.id ORDER BY cse.seq DESC LIMIT 1) = 'delivered'
+        AND del.occurred_at > ${new Date(now.getTime() - windowMs)}::timestamptz
+      ORDER BY del.occurred_at DESC
+    `
+
+    return {
+      claimWindowDays: settings.claimWindowDays,
+      data: rows.map((r) => {
+        const deliveredAt = new Date(r.delivered_at)
+        const deadline = new Date(deliveredAt.getTime() + windowMs)
+        const daysLeft = Math.max(0, Math.ceil((deadline.getTime() - now.getTime()) / 86_400_000))
+        return {
+          id: r.id,
+          bookingRef: r.booking_ref,
+          awbNumber: r.awb_number,
+          goodsDescription: r.goods_description,
+          declaredWeightKg: Number(r.declared_weight_kg),
+          flightNumber: r.flight_number,
+          origin: r.origin,
+          destination: r.destination,
+          deliveredAt: r.delivered_at,
+          claimDeadline: deadline,
+          daysLeft,
+        }
+      }),
+    }
+  }
+
+  async markAllNoticesRead(customerId: string) {
+    const now = simNow()
+    const result = await this.db.cargo_notice.updateMany({
+      where: {
+        cargo_booking: { customer_id: customerId },
+        read_at: null,
+      },
+      data: { read_at: now },
+    })
+    return { marked: result.count }
+  }
+
   async trackBooking(customerId: string, opts: { ref?: string; awb?: string }) {
     if (!opts.ref && !opts.awb) {
       throw new BadRequestException({ error: { code: 'NOT_FOUND', message: 'Provide ref or awb query parameter' } })
@@ -465,11 +744,33 @@ export class CargoCustomerService {
     }
   }
 
+  private async committedKg(flightId: string): Promise<number> {
+    const bookings = await this.db.cargo_booking.findMany({
+      where: { flight_id: flightId },
+      select: {
+        declared_weight_kg: true,
+        cargo_shipment_event: { orderBy: { seq: 'desc' }, take: 1, select: { status_after: true } },
+      },
+    })
+    return bookings
+      .filter((b) => {
+        const status = b.cargo_shipment_event[0]?.status_after
+        return status != null && COMMITTED_STATUSES.has(status)
+      })
+      .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
+  }
+
   private async loadSettings() {
     const rows = await this.db.cargo_setting.findMany()
     const map = new Map(rows.map((r) => [r.key, r.value]))
     return {
       requestWindowDays: Number(map.get('request_window_days') ?? 14),
+      holdMinutes: Number(map.get('hold_minutes') ?? 15),
+      cutoffHours: Number(map.get('booking_cutoff_hours') ?? 4),
+      reserveKgPerPax: Number(map.get('baggage_reserve_kg_per_passenger') ?? 15),
+      floorPercent: Number(map.get('baggage_reserve_floor_percent') ?? 50),
+      volumetricKgPerM3: Number(map.get('volumetric_kg_per_m3') ?? 167),
+      claimWindowDays: Number(map.get('claim_window_days') ?? 14),
     }
   }
 }

@@ -51,14 +51,58 @@ export interface CommodityType {
 
 export interface QuoteResult {
   flightNumber: string
+  flightId: string
   depAt: string
   arrAt: string
+  origin: string
+  originName: string
+  destination: string
+  destinationName: string
   distanceKm: number
+  aircraft: string
+  availableKg: number
+  actualWeightKg: number
+  volumetricKg: number
   chargeableKg: number
+  commodityName: string
+  bandLabel: string
   ratePerKg: number
   minCharge: number
   charge: number
   currency: string
+  volumetricKgPerM3: number
+}
+
+export interface ShipDateInfo {
+  date: string
+  hasOpenFlight: boolean
+  maxAvailableKg: number
+  fits: boolean
+}
+
+export interface ShipDatesResult {
+  dates: ShipDateInfo[]
+  holdMinutes: number
+}
+
+export interface RouteFlight {
+  id: string
+  flightNumber: string
+  depAt: string
+  arrAt: string
+  origin: string
+  originName: string
+  destination: string
+  destinationName: string
+  aircraft: string
+  availableKg: number
+}
+
+export interface CargoSettings {
+  holdMinutes: number
+  requestWindowDays: number
+  volumetricKgPerM3: number
+  claimWindowDays: number
 }
 
 export interface CreateBookingResult {
@@ -80,10 +124,14 @@ export interface MyBooking {
   shipDate: string
   commodityTypeName: string
   pieces: number
+  goodsDescription: string
+  declaredWeightKg: number
   charge: number
   currency: string
   status: string
   bookedAt: string
+  holdExpiresAt: string
+  refundAmount: number | null
 }
 
 export interface MyBookingListResult {
@@ -190,6 +238,25 @@ export interface ClaimListResult {
   totalPages: number
 }
 
+export interface ClaimableBooking {
+  id: string
+  bookingRef: string
+  awbNumber: string | null
+  goodsDescription: string
+  declaredWeightKg: number
+  flightNumber: string
+  origin: string
+  destination: string
+  deliveredAt: string
+  claimDeadline: string
+  daysLeft: number
+}
+
+export interface ClaimableResult {
+  claimWindowDays: number
+  data: ClaimableBooking[]
+}
+
 export interface MockPayResult {
   awbNumber?: string
   error?: { code: string; message: string }
@@ -239,6 +306,16 @@ export function useCustomerCargoApi() {
   return {
     listRoutes: () => send<CargoRoute[]>('/api/cargo/routes'),
     listCommodityTypes: () => send<CommodityType[]>('/api/cargo/commodity-types'),
+    getSettings: () => send<CargoSettings>('/api/cargo/settings'),
+
+    getShipDates: (routeId: string, weightKg?: number) => {
+      const qs = new URLSearchParams()
+      if (weightKg != null) qs.set('weight_kg', String(weightKg))
+      const query = qs.toString()
+      return send<ShipDatesResult>(`/api/cargo/routes/${routeId}/ship-dates${query ? `?${query}` : ''}`)
+    },
+
+    getRouteFlights: (routeId: string, date: string) => send<RouteFlight[]>(`/api/cargo/routes/${routeId}/flights?date=${date}`),
 
     getQuote: (body: {
       route_id: string
@@ -300,6 +377,9 @@ export function useCustomerCargoApi() {
       return send<NoticeListResult>(`/api/cargo/notices${query ? `?${query}` : ''}`)
     },
     markNoticeRead: (id: string) => send<{ id: string; readAt: string }>(`/api/cargo/notices/${id}`, { method: 'PUT' }),
+    markAllNoticesRead: () => send<{ marked: number }>('/api/cargo/notices/read-all', { method: 'POST' }),
+
+    listClaimable: () => send<ClaimableResult>('/api/cargo/claims/claimable'),
 
     trackBooking: (params: { ref?: string; awb?: string }) => {
       const qs = new URLSearchParams()
