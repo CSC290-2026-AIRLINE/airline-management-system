@@ -74,27 +74,29 @@ export class CheckInService {
   ) {}
 
   async start(actor: Actor, input: { pnr: string; lastName: string; firstName?: string }): Promise<CheckInView> {
-    const matches = await this.bookings.findByPnrAndLastName(input.pnr, input.lastName)
+    // One coupon per flight: a return trip lists the same passenger twice. Tell the passengers apart first.
+    const coupons = await this.bookings.findByPnrAndLastName(input.pnr, input.lastName)
+    const passengers = [...new Map(coupons.map((b) => [b.passengerId, b])).values()]
     // A family shares the PNR and the surname: the first name tells the passengers apart.
-    if (matches.length > 1 && !input.firstName) {
+    if (passengers.length > 1 && !input.firstName) {
       throw validation('Several passengers on this booking share the surname; add the first name', {
         reason: 'several_passengers',
-        firstNames: matches.map((b) => b.firstName),
+        firstNames: passengers.map((b) => b.firstName),
       })
     }
     const wanted = input.firstName ? stripNonLetters(input.firstName) : null
-    const booking = wanted ? matches.find((b) => stripNonLetters(b.firstName) === wanted) : matches[0]
-    if (!booking) throw notFound('Booking')
-    this.assertBookingOwner(actor, booking, 'Booking')
-    if (!booking.paid) throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is not paid', { reason: 'unpaid' })
+    const passenger = wanted ? passengers.find((b) => stripNonLetters(b.firstName) === wanted) : passengers[0]
+    if (!passenger) throw notFound('Booking')
+    this.assertBookingOwner(actor, passenger, 'Booking')
+    if (!passenger.paid) throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is not paid', { reason: 'unpaid' })
 
-    const flight = await this.flightOf(booking.flightId)
+    const { booking, flight } = await this.flightToCheckIn(coupons.filter((b) => b.passengerId === passenger.passengerId))
     if (flight.status === 'cancelled') {
       throw new CheckInError(409, 'NOT_ELIGIBLE', 'The flight is cancelled', { reason: 'flight_cancelled' })
     }
     this.assertWindowOpen(flight, await this.windowOf(flight))
 
-    const existing = await this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId)
+    const existing = await this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId, booking.flightId)
     if (existing) {
       // The PNR and the surname proved the booking: the caller resumes the check-in of that booking.
       await this.record(actor, 'check_in.start', 'check_in', existing.id, 'resumed')
@@ -221,7 +223,7 @@ export class CheckInService {
       const record = await this.store.getCheckIn(checkInId)
       if (record && record.flight_id === flightId) {
         bookingPassengerId = record.booking_passenger_id
-        cabin = (await this.bookings.byBookingPassengerId(bookingPassengerId))?.cabin ?? null
+        cabin = (await this.bookings.byBookingPassengerId(bookingPassengerId, flightId))?.cabin ?? null
       }
     }
     return this.seats.seatMap(flightId, { bookingPassengerId, cabin })
@@ -250,7 +252,7 @@ export class CheckInService {
   async releaseSeat(actor: Actor, lockId: string): Promise<void> {
     const held = await this.seats.lock(lockId)
     if (!held) return
-    const record = await this.store.findActiveCheckInByBookingPassenger(held.bookingPassengerId)
+    const record = await this.store.findActiveCheckInByBookingPassenger(held.bookingPassengerId, held.flightId)
     if (record) await this.assertOwner(actor, record)
     await this.seats.release(lockId)
   }
@@ -322,7 +324,7 @@ export class CheckInService {
 
     const booking = await this.bookingOf(record)
     const seat =
-      (await this.seats.assigned(record.booking_passenger_id)) ??
+      (await this.seats.assigned(record.booking_passenger_id, record.flight_id)) ??
       (await this.seats.assignAnyStandard(flight.id, record.booking_passenger_id, {
         avoidExitRow: booking.specialAssistance.length > 0,
       }))
@@ -367,7 +369,7 @@ export class CheckInService {
    */
   private async assertOwner(actor: Actor, record: CheckInRecord): Promise<void> {
     if (actor.staffId) return
-    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
+    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id)
     if (booking) this.assertBookingOwner(actor, booking, 'Check-in')
   }
 
@@ -512,7 +514,7 @@ export class CheckInService {
   }
 
   private async seatChoiceOf(record: CheckInRecord, booking: BookingPassenger): Promise<SeatChoice | null> {
-    const assigned = await this.seats.assigned(record.booking_passenger_id)
+    const assigned = await this.seats.assigned(record.booking_passenger_id, record.flight_id)
     if (!assigned) return null
     return {
       code: assigned.seatCode,
@@ -542,8 +544,17 @@ export class CheckInService {
     return flight
   }
 
+  /** Of a passenger's coupons, the flight that is open for check-in now; else the next one to depart. */
+  private async flightToCheckIn(coupons: BookingPassenger[]): Promise<{ booking: BookingPassenger; flight: FlightRecord }> {
+    const now = this.clock.now()
+    const legs = await Promise.all(coupons.map(async (booking) => ({ booking, flight: await this.flightOf(booking.flightId) })))
+    legs.sort((a, b) => a.flight.depAt.getTime() - b.flight.depAt.getTime())
+    for (const leg of legs) if (isWindowOpen(now, await this.windowOf(leg.flight))) return leg
+    return legs.find((leg) => leg.flight.depAt.getTime() >= now.getTime()) ?? legs[legs.length - 1]
+  }
+
   private async bookingOf(record: CheckInRecord): Promise<BookingPassenger> {
-    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
+    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id)
     if (!booking) throw notFound('Booking')
     return booking
   }

@@ -77,7 +77,8 @@ export interface BookingPassenger {
 
 export interface BookingProvider {
   findByPnrAndLastName(pnr: string, lastName: string): Promise<BookingPassenger[]>
-  byBookingPassengerId(id: string): Promise<BookingPassenger | null>
+  /** The coupon of a booking passenger on one flight: a return trip has one per flight. */
+  byBookingPassengerId(id: string, flightId: string): Promise<BookingPassenger | null>
   listByFlight(flightId: string): Promise<BookingPassenger[]>
 }
 
@@ -107,13 +108,13 @@ export interface SeatProvider {
   release(lockId: string): Promise<void>
   /** A paid seat is confirmed with the payment id, so the row carries both. */
   confirm(lockId: string, paymentId: string | null): Promise<{ seatCode: string; type: SeatType }>
-  assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType; paymentId: string | null } | null>
+  assigned(bookingPassengerId: string, flightId: string): Promise<{ seatCode: string; type: SeatType; paymentId: string | null } | null>
   assignAnyStandard(
     flightId: string,
     bookingPassengerId: string,
     opts: { avoidExitRow: boolean },
   ): Promise<{ seatCode: string; type: SeatType }>
-  releaseAssigned(bookingPassengerId: string): Promise<void>
+  releaseAssigned(bookingPassengerId: string, flightId: string): Promise<void>
 }
 
 /** Feature 4 owns baggage allowance and seat fees. */

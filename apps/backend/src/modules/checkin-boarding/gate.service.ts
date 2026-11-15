@@ -115,7 +115,7 @@ export class GateService {
     const entries: GateListEntry[] = []
     const records = await this.store.listCheckInsByFlight(flightId)
     const [bookings, passes] = await Promise.all([
-      Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id))),
+      Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id))),
       this.store.passesForCheckIns(records.map((record) => record.id)),
     ])
     for (const [index, record] of records.entries()) {
@@ -159,7 +159,7 @@ export class GateService {
 
     const pass = await this.store.passByReference(reference)
     let record = pass ? await this.store.getCheckIn(pass.check_in_id) : null
-    const booking = record ? await this.bookings.byBookingPassengerId(record.booking_passenger_id) : null
+    const booking = record ? await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id) : null
     const passengerName = this.nameOf(booking)
     const passRow = record ? await this.store.flightBoarding(record.flight_id) : null
     // A pass that was closed out is no longer valid, unless the gate itself is closed: then the agent has to
@@ -365,7 +365,7 @@ export class GateService {
         if (written.event !== 'no_show') continue
       } else if (record.status === 'started' || record.status === 'on_hold') {
         // Never checked in, so the seat goes back to the pool.
-        await this.seats.releaseAssigned(record.booking_passenger_id)
+        await this.seats.releaseAssigned(record.booking_passenger_id, record.flight_id)
       } else {
         continue
       }

@@ -46,7 +46,8 @@ describe('FixtureSeats', () => {
     const seat = await seats.assignAnyStandard('flt-fy204', 'bp-er224f', { avoidExitRow: true })
     expect(seat.seatCode).toMatch(/^(?:[6-9]|1[0-9]|20)[A-F]$/)
     expect(seat.type).toBe('standard')
-    expect(await seats.assigned('bp-er224f')).toMatchObject({ seatCode: seat.seatCode })
+    expect(await seats.assigned('bp-er224f', 'flt-fy204')).toMatchObject({ seatCode: seat.seatCode })
+    expect(await seats.assigned('bp-er224f', 'flt-fy318')).toBeNull()
     await expect(seats.assignAnyStandard('flt-fy204', 'bp-ec224g', { avoidExitRow: true })).resolves.not.toMatchObject({
       seatCode: seat.seatCode,
     })

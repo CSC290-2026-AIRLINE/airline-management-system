@@ -183,7 +183,9 @@ describe('PrismaCheckInRepository', () => {
     db.check_in.findFirst.mockResolvedValueOnce(checkInRow)
     const input = { booking_passenger_id: 'bp-1', passenger_id: 'pax-1', flight_id: 'flt-fy204', status: 'started' as const }
     await expect(repo.createCheckIn(input)).resolves.toMatchObject({ id: checkInRow.id })
-    expect(db.check_in.findFirst).toHaveBeenCalledWith({ where: { booking_passenger_id: 'bp-1', status: { not: 'cancelled' } } })
+    expect(db.check_in.findFirst).toHaveBeenCalledWith({
+      where: { booking_passenger_id: 'bp-1', flight_id: 'flt-fy204', status: { not: 'cancelled' } },
+    })
   })
 
   it('a no-show that loses the race writes nothing and hands back the row that won', async () => {

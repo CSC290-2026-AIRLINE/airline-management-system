@@ -75,8 +75,8 @@ export class FixtureBookings implements BookingProvider {
     return BOOKINGS.filter((b) => b.pnr.toUpperCase() === wantedPnr && b.lastName.toUpperCase() === wantedName)
   }
 
-  async byBookingPassengerId(id: string): Promise<BookingPassenger | null> {
-    return BOOKINGS.find((b) => b.bookingPassengerId === id) ?? null
+  async byBookingPassengerId(id: string, flightId: string): Promise<BookingPassenger | null> {
+    return BOOKINGS.find((b) => b.bookingPassengerId === id && b.flightId === flightId) ?? null
   }
 
   async listByFlight(flightId: string): Promise<BookingPassenger[]> {
@@ -112,15 +112,19 @@ interface FixtureLock {
   bookingPassengerId: string
 }
 
+const seatKey = (flightId: string, bookingPassengerId: string): string => `${flightId}:${bookingPassengerId}`
+
 @Injectable()
 export class FixtureSeats implements SeatProvider {
   private readonly locks = new Map<string, FixtureLock>()
+  /** Keyed by flight and booking passenger: a return trip has one seat per flight. */
   private readonly assignments = new Map<string, { seatCode: string; type: SeatType; paymentId: string | null }>()
   private lockSeq = 0
 
   constructor(@Inject(CLOCK) private readonly clock: ClockProvider) {
     for (const seed of SEEDED_PASSES) {
-      this.assignments.set(`bp-${seed.pnr.toLowerCase()}`, {
+      const booking = BOOKINGS.find((b) => b.pnr === seed.pnr)!
+      this.assignments.set(seatKey(booking.flightId, booking.bookingPassengerId), {
         seatCode: seed.seat,
         type: seatOf(seed.seat)?.type ?? 'standard',
         paymentId: null,
@@ -129,7 +133,7 @@ export class FixtureSeats implements SeatProvider {
   }
 
   async seatMap(flightId: string, viewer: { bookingPassengerId: string | null; cabin: Cabin | null }): Promise<SeatMap> {
-    const mine = viewer.bookingPassengerId ? this.assignments.get(viewer.bookingPassengerId)?.seatCode : undefined
+    const mine = viewer.bookingPassengerId ? this.assignments.get(seatKey(flightId, viewer.bookingPassengerId))?.seatCode : undefined
     const takenOnFlight = this.seatsTakenOnFlight(flightId)
     const rows: SeatMap['rows'] = []
 
@@ -162,7 +166,7 @@ export class FixtureSeats implements SeatProvider {
     if (BLOCKED_SEATS.has(seatCode) || TAKEN_SEATS.has(seatCode)) {
       throw new CheckInError(409, 'SEAT_TAKEN', `Seat ${seatCode} is not available`, { seatCode })
     }
-    const own = this.assignments.get(bookingPassengerId)?.seatCode === seatCode
+    const own = this.assignments.get(seatKey(flightId, bookingPassengerId))?.seatCode === seatCode
     if (!own && this.seatsTakenOnFlight(flightId).has(seatCode)) {
       throw new CheckInError(409, 'SEAT_TAKEN', `Seat ${seatCode} is taken`, { seatCode })
     }
@@ -203,12 +207,15 @@ export class FixtureSeats implements SeatProvider {
     }
     this.locks.delete(lockId)
     const type = seatOf(entry.lock.seatCode)?.type ?? 'standard'
-    this.assignments.set(entry.bookingPassengerId, { seatCode: entry.lock.seatCode, type, paymentId })
+    this.assignments.set(seatKey(entry.lock.flightId, entry.bookingPassengerId), { seatCode: entry.lock.seatCode, type, paymentId })
     return { seatCode: entry.lock.seatCode, type }
   }
 
-  async assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType; paymentId: string | null } | null> {
-    return this.assignments.get(bookingPassengerId) ?? null
+  async assigned(
+    bookingPassengerId: string,
+    flightId: string,
+  ): Promise<{ seatCode: string; type: SeatType; paymentId: string | null } | null> {
+    return this.assignments.get(seatKey(flightId, bookingPassengerId)) ?? null
   }
 
   async assignAnyStandard(
@@ -232,12 +239,12 @@ export class FixtureSeats implements SeatProvider {
       free.find((s) => s.type === 'standard' || s.type === 'business') ??
       (opts.avoidExitRow ? undefined : free.find((s) => s.type === 'exit'))
     if (!seat) throw new CheckInError(409, 'SEAT_TAKEN', 'No free seat left on this flight')
-    this.assignments.set(bookingPassengerId, { seatCode: seat.code, type: seat.type, paymentId: null })
+    this.assignments.set(seatKey(flightId, bookingPassengerId), { seatCode: seat.code, type: seat.type, paymentId: null })
     return { seatCode: seat.code, type: seat.type }
   }
 
-  async releaseAssigned(bookingPassengerId: string): Promise<void> {
-    this.assignments.delete(bookingPassengerId)
+  async releaseAssigned(bookingPassengerId: string, flightId: string): Promise<void> {
+    this.assignments.delete(seatKey(flightId, bookingPassengerId))
   }
 
   private statusOf(
@@ -258,7 +265,7 @@ export class FixtureSeats implements SeatProvider {
   private seatsTakenOnFlight(flightId: string): Set<string> {
     const taken = new Set<string>()
     for (const booking of BOOKINGS.filter((b) => b.flightId === flightId)) {
-      const seatCode = this.assignments.get(booking.bookingPassengerId)?.seatCode
+      const seatCode = this.assignments.get(seatKey(flightId, booking.bookingPassengerId))?.seatCode
       if (seatCode) taken.add(seatCode)
     }
     return taken

@@ -129,12 +129,10 @@ export class DbBookings implements BookingProvider {
     return rows.map(toBookingPassenger)
   }
 
-  async byBookingPassengerId(id: string): Promise<BookingPassenger | null> {
-    // shortcut: a booking passenger with several flights answers with its first coupon.
+  async byBookingPassengerId(id: string, flightId: string): Promise<BookingPassenger | null> {
     const row = await this.db.booking_coupon.findFirst({
-      where: { booking_passenger_id: id },
+      where: { booking_passenger_id: id, flight_id: flightId },
       include: COUPON_INCLUDE,
-      orderBy: { created_at: 'asc' },
     })
     return row ? toBookingPassenger(row) : null
   }

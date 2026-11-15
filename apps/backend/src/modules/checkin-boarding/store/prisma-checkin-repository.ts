@@ -76,7 +76,7 @@ export class PrismaCheckInRepository implements CheckInRepository {
     } catch (error) {
       if (!isUniqueViolation(error)) throw error
       // One open check-in per passenger and flight: a double submit gets the one that is already there.
-      const existing = await this.findActiveCheckInByBookingPassenger(input.booking_passenger_id)
+      const existing = await this.findActiveCheckInByBookingPassenger(input.booking_passenger_id, input.flight_id)
       if (!existing) throw error
       return existing
     }
@@ -99,9 +99,9 @@ export class PrismaCheckInRepository implements CheckInRepository {
     return this.updateCheckIn(id, { status: 'cancelled' })
   }
 
-  async findActiveCheckInByBookingPassenger(bookingPassengerId: string): Promise<CheckInRecord | null> {
+  async findActiveCheckInByBookingPassenger(bookingPassengerId: string, flightId: string): Promise<CheckInRecord | null> {
     const row = await this.db.check_in.findFirst({
-      where: { booking_passenger_id: bookingPassengerId, status: { not: 'cancelled' } },
+      where: { booking_passenger_id: bookingPassengerId, flight_id: flightId, status: { not: 'cancelled' } },
     })
     return row ? toCheckInRecord(row) : null
   }

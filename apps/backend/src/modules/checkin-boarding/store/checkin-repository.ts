@@ -32,7 +32,7 @@ export interface CheckInRepository {
   updateCheckIn(id: string, patch: CheckInPatch): Promise<CheckInRecord>
   /** A check-in is cancelled, never deleted. */
   cancelCheckIn(id: string): Promise<CheckInRecord>
-  findActiveCheckInByBookingPassenger(bookingPassengerId: string): Promise<CheckInRecord | null>
+  findActiveCheckInByBookingPassenger(bookingPassengerId: string, flightId: string): Promise<CheckInRecord | null>
   listCheckIns(): Promise<CheckInRecord[]>
   listCheckInsByFlight(flightId: string): Promise<CheckInRecord[]>
   /** The check-ins of a flight; the pnr and the name are the booking's, the service filters those. */

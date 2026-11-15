@@ -102,6 +102,20 @@ afterEach(() => {
 })
 
 describe('CheckInService.start', () => {
+  it('a return trip is one passenger, checked in for the flight that is open now', async () => {
+    const { svc, clock } = build()
+    const anna = BOOKINGS.find((b) => b.pnr === 'ER224F')!
+    addBooking({ ...anna, flightId: 'flt-fy318' })
+    // Both flights are open: the one departing first is checked in, with no "several passengers" question.
+    const out = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(out.flight.id).toBe('flt-fy204')
+    // FY 204 closed at 02:25Z, FY 318 is open until 02:40Z: the same passenger now checks in for the return.
+    clock.set(new Date('2026-11-11T02:30:00.000Z'))
+    const back = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(back.flight.id).toBe('flt-fy318')
+    expect(back.id).not.toBe(out.id)
+  })
+
   it('a family on one PNR is told apart by the first name', async () => {
     const { svc } = build()
     const anna = BOOKINGS.find((b) => b.pnr === 'ER224F')!
@@ -253,7 +267,7 @@ describe('CheckInService owner rule', () => {
     const { svc, store } = build()
     const other: Actor = { userId: 'user-other', staffId: null }
     await expect(svc.start(other, { pnr: 'OW224F', lastName: 'Eriksson' })).rejects.toMatchObject({ code: 'NOT_FOUND' })
-    expect(await store.findActiveCheckInByBookingPassenger('bp-owned')).toBeNull()
+    expect(await store.findActiveCheckInByBookingPassenger('bp-owned', 'flt-fy204')).toBeNull()
     const c = await svc.start(cust, { pnr: 'OW224F', lastName: 'Eriksson' })
     await expect(svc.start(other, { pnr: 'OW224F', lastName: 'Eriksson' })).rejects.toMatchObject({ code: 'NOT_FOUND' })
     await expect(svc.start(staff, { pnr: 'OW224F', lastName: 'Eriksson' })).resolves.toMatchObject({ id: c.id })
@@ -651,7 +665,7 @@ describe('CheckInService seats', () => {
     const lock = await svc.holdSeat(other, 'flt-fy204', { checkInId: b.id, seatCode: '4A' })
     await expect(svc.confirmSeat(cust, a.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'NOT_FOUND' })
     expect(payments.charges).toHaveLength(0)
-    expect(await seats.assigned('bp-test-second')).toBeNull()
+    expect(await seats.assigned('bp-test-second', 'flt-fy204')).toBeNull()
   })
 
   it('a seat hold survives a restart of the service', async () => {
@@ -672,7 +686,7 @@ describe('CheckInService seats', () => {
     const lock = await svc.holdSeat(cust, 'flt-fy204', { checkInId: c.id, seatCode: '7E' })
     await store.updateCheckIn(c.id, { status: 'on_hold' })
     await expect(svc.confirmSeat(cust, c.id, { lockId: lock.id })).rejects.toMatchObject({ code: 'ON_HOLD' })
-    expect(await seats.assigned('bp-er224f')).toBeNull()
+    expect(await seats.assigned('bp-er224f', 'flt-fy204')).toBeNull()
   })
 
   it('an expired seat hold is refused and nothing is charged', async () => {

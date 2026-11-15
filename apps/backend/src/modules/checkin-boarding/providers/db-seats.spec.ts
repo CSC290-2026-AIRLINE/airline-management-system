@@ -207,7 +207,21 @@ describe('DbSeats', () => {
   it('the assigned seat of a passenger is read back', async () => {
     const { seats, db } = build()
     db.seat_assignment.findFirst.mockResolvedValue(seatRow({ status: 'assigned', seat_code: '18B' }))
-    await expect(seats.assigned('bp-1')).resolves.toEqual({ seatCode: '18B', type: 'standard', paymentId: null })
+    await expect(seats.assigned('bp-1', 'flt-fy204')).resolves.toEqual({ seatCode: '18B', type: 'standard', paymentId: null })
+    expect(db.seat_assignment.findFirst).toHaveBeenCalledWith({
+      where: { booking_coupon: { booking_passenger_id: 'bp-1' }, flight_id: 'flt-fy204', status: 'assigned' },
+    })
+  })
+
+  it('releasing the seats of a passenger touches one flight only', async () => {
+    const { seats, db } = build()
+    db.seat_assignment.updateMany.mockResolvedValue({ count: 1 })
+    await seats.releaseAssigned('bp-1', 'flt-fy204')
+    expect(db.seat_assignment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { booking_coupon: { booking_passenger_id: 'bp-1' }, flight_id: 'flt-fy204', status: { in: ['held', 'assigned'] } },
+      }),
+    )
   })
 
   it('a live hold is read back from its row, a released one is not', async () => {

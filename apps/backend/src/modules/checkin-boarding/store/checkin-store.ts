@@ -279,9 +279,10 @@ export class CheckInStore implements CheckInRepository {
     return this.updateCheckIn(id, { status: 'cancelled' })
   }
 
-  async findActiveCheckInByBookingPassenger(bookingPassengerId: string): Promise<CheckInRecord | null> {
+  async findActiveCheckInByBookingPassenger(bookingPassengerId: string, flightId: string): Promise<CheckInRecord | null> {
     for (const record of this.checkIns.values()) {
-      if (record.booking_passenger_id === bookingPassengerId && record.status !== 'cancelled') return record
+      if (record.booking_passenger_id === bookingPassengerId && record.flight_id === flightId && record.status !== 'cancelled')
+        return record
     }
     return null
   }

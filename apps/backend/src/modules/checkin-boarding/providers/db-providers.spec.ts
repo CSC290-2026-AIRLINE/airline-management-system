@@ -59,6 +59,15 @@ describe('DbBookings', () => {
     })
   })
 
+  it('a booking passenger is read for one flight of the trip', async () => {
+    const db = { booking_coupon: { findMany: jest.fn(), findFirst: jest.fn().mockResolvedValue(couponRow()) } }
+    const booking = await new DbBookings(db as unknown as DbService).byBookingPassengerId('bp-1', 'flt-fy204')
+    expect(booking?.flightId).toBe('flt-fy204')
+    expect(db.booking_coupon.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { booking_passenger_id: 'bp-1', flight_id: 'flt-fy204' } }),
+    )
+  })
+
   it('a booking whose customer has no Clerk account has no owner', async () => {
     const seeded = couponRow()
     seeded.booking_passenger.booking.customer = { user_id: 'u-1', user: { clerk_user_id: null } }

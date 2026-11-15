@@ -111,8 +111,9 @@ describe('CheckInStore', () => {
 
   it('finds the active check-in of a booking passenger', async () => {
     const s = store()
-    expect((await s.findActiveCheckInByBookingPassenger('bp-pl224a'))?.status).toBe('checked_in')
-    expect(await s.findActiveCheckInByBookingPassenger('bp-er224f')).toBeNull()
+    expect((await s.findActiveCheckInByBookingPassenger('bp-pl224a', 'flt-fy204'))?.status).toBe('checked_in')
+    expect(await s.findActiveCheckInByBookingPassenger('bp-pl224a', 'flt-fy318')).toBeNull()
+    expect(await s.findActiveCheckInByBookingPassenger('bp-er224f', 'flt-fy204')).toBeNull()
   })
 
   it('hands out bag tag sequence numbers', async () => {

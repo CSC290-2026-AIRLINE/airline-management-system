@@ -158,9 +158,12 @@ export class DbSeats implements SeatProvider {
     return { seatCode: row.seat_code, type: seatOf(row.seat_code)?.type ?? 'standard' }
   }
 
-  async assigned(bookingPassengerId: string): Promise<{ seatCode: string; type: SeatType; paymentId: string | null } | null> {
+  async assigned(
+    bookingPassengerId: string,
+    flightId: string,
+  ): Promise<{ seatCode: string; type: SeatType; paymentId: string | null } | null> {
     const row = await this.db.seat_assignment.findFirst({
-      where: { booking_coupon: { booking_passenger_id: bookingPassengerId }, status: 'assigned' },
+      where: { booking_coupon: { booking_passenger_id: bookingPassengerId }, flight_id: flightId, status: 'assigned' },
     })
     return row ? { seatCode: row.seat_code, type: seatOf(row.seat_code)?.type ?? 'standard', paymentId: row.payment_id } : null
   }
@@ -213,10 +216,10 @@ export class DbSeats implements SeatProvider {
     throw new CheckInError(409, 'SEAT_TAKEN', 'No free seat left on this flight')
   }
 
-  async releaseAssigned(bookingPassengerId: string): Promise<void> {
+  async releaseAssigned(bookingPassengerId: string, flightId: string): Promise<void> {
     const now = this.clock.now()
     await this.db.seat_assignment.updateMany({
-      where: { booking_coupon: { booking_passenger_id: bookingPassengerId }, status: { in: ['held', 'assigned'] } },
+      where: { booking_coupon: { booking_passenger_id: bookingPassengerId }, flight_id: flightId, status: { in: ['held', 'assigned'] } },
       data: { status: 'released', released_at: now, updated_at: now },
     })
   }

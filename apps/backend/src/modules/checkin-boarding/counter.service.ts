@@ -72,7 +72,7 @@ export class CounterService {
     const ids = records.map((record) => record.id)
     // One query per table for the whole list, not one per passenger: a full flight is a few hundred rows.
     const [bookings, documents, bags] = await Promise.all([
-      Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id))),
+      Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id))),
       this.store.documentsForCheckIns(ids),
       this.store.bagsForCheckIns(ids),
     ])
@@ -413,7 +413,7 @@ export class CounterService {
   }
 
   private async bookingOf(record: CheckInRecord): Promise<BookingPassenger> {
-    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id)
+    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id)
     if (!booking) throw notFound('Booking')
     return booking
   }
