@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
+  Banknote,
   Calendar,
   ChartColumn,
   ChevronRight,
-  CreditCard,
   FileText,
+  Gift,
   KeyRound,
   Luggage,
   LogOut,
@@ -23,10 +24,13 @@ import {
   Star,
   Tag,
   Ticket,
+  TriangleAlert,
+  Undo2,
   User,
   UserCheck,
   Users,
   Utensils,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@staff-web/components/ui/collapsible'
@@ -70,7 +74,6 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     label: 'Commercial',
     items: [
       { label: 'Bookings & Inventory', icon: Ticket },
-      { label: 'Payments & Refunds', icon: CreditCard },
       { label: 'Cargo & Air Freight', icon: Package },
     ],
   },
@@ -108,6 +111,16 @@ const PRICING_ITEMS = [
   { to: '/pricing/taxes-promos', label: 'Taxes, Currency & Promos', icon: Percent },
   { to: '/pricing/expenses-payments', label: 'Expenses & Payments', icon: Receipt },
   { to: '/pricing/monthly-report', label: 'Monthly Report', icon: FileText },
+] as const
+
+/** The Payments & Refunds screens (Feature 5), including crew pay (5c). */
+const PAYMENTS_ITEMS = [
+  { to: '/payments/lookup', label: 'Payment Lookup', icon: Search },
+  { to: '/payments/refunds', label: 'Refund Queue', icon: Undo2 },
+  { to: '/payments/compensation', label: 'Compensation & Vouchers', icon: Gift },
+  { to: '/payments/exceptions', label: 'Payment Exceptions', icon: TriangleAlert },
+  { to: '/payments/pay-runs', label: 'Pay Runs', icon: Banknote },
+  { to: '/payments/my-pay', label: 'My Pay', icon: Wallet },
 ] as const
 
 /**
@@ -220,6 +233,24 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             {PRICING_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label} className="pl-4">
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Payments & Refunds">
+            {PAYMENTS_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
                   <Link to={item.to}>
                     <item.icon />
                     <span>{item.label}</span>
