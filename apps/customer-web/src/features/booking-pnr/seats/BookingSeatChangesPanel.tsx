@@ -96,7 +96,7 @@ export function BookingSeatChangesPanel({ reference, onChanged }: BookingSeatCha
   const passenger = booking.passengers.find((item) => item.bookingPassengerId === coupon?.bookingPassengerId)
 
   return (
-    <section className="booking-seat-panel" aria-label="Manage seats" aria-busy={loading}>
+    <section id="seats" tabIndex={-1} className="booking-seat-panel" aria-label="Manage seats" aria-busy={loading}>
       <h2 className={detailStyles.sectionTitle}>Seats</h2>
       <div className={`${detailStyles.card} booking-seat-panel__card`}>
         <p className={detailStyles.muted}>Choose a seat for each passenger, or change an existing seat before check-in.</p>

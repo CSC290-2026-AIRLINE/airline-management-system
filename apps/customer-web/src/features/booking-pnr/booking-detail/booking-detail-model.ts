@@ -10,7 +10,6 @@ import { formatDateTime, formatPassengerCounts } from '../lib/format'
 // The links of this page that point at a feature that is not built yet. The reason is the tooltip of the link.
 export const CHANGE_BOOKING_DISABLED = 'Changing a booking is not available yet.'
 export const COMPLAINT_DISABLED = 'Complaints (feature 13) are not connected yet.'
-export const SEAT_PICKER_DISABLED = 'Seat selection (feature 3) is not connected yet.'
 export const ASSISTANCE_DISABLED = 'Assistance requests (feature 3) are not connected yet.'
 export const CHECK_IN_DISABLED = 'Check-in and boarding passes (feature 6) are not connected yet.'
 export const MEALS_DISABLED = 'Meals (feature 12) are not connected yet.'

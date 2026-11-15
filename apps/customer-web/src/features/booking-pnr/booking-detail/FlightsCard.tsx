@@ -1,9 +1,8 @@
+import { Armchair } from 'lucide-react'
 import type { BookingCoupon, BookingDetail } from '../api/types'
 import { StatusChip } from '../components/StatusChip'
 import { formatFlightDate, formatTicketNumber, formatTime } from '../lib/format'
-import controls from '../styles/controls.module.css'
-import { FeatureAction } from './FeatureAction'
-import { couponChip, SEAT_PICKER_DISABLED } from './booking-detail-model'
+import { couponChip } from './booking-detail-model'
 import styles from './FlightsCard.module.css'
 
 /**
@@ -69,9 +68,14 @@ export function FlightsCard({ booking }: { booking: BookingDetail }) {
 
                         if (!coupon.seatCode) {
                           return (
-                            <p className={styles.seat} key={coupon.couponId}>
-                              {name} · Seat not chosen{' '}
-                              <FeatureAction label="Choose seat" reason={SEAT_PICKER_DISABLED} className={controls.link} />
+                            <p className={styles.seatRow} key={coupon.couponId}>
+                              <span className={styles.seat}>{name} · Seat not chosen</span>
+                              {booking.status === 'confirmed' ? (
+                                <a href="#seats" className={styles.chooseSeat} aria-label={`Choose seat for ${name}`}>
+                                  <Armchair aria-hidden="true" size={14} strokeWidth={2} />
+                                  Choose seat
+                                </a>
+                              ) : null}
                             </p>
                           )
                         }
