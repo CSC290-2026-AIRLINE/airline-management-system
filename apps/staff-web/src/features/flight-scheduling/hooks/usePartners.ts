@@ -12,7 +12,10 @@ interface PartnerRow {
 // codes of those that fly origin to destination, which is what cancel with rebook_partner accepts.
 export function usePartners(fetcher: Fetcher) {
   const res = useResource<PartnerRow[]>(CONNECTED.partnerRoutes ? '/partner-airlines' : null, fetcher)
+  // A backend still running the old code answers without `routes`, so read it as "flies nothing" instead of crashing the page.
   const partnersFor = (origin: string, destination: string) =>
-    (res.data ?? []).filter((p) => p.routes.some((r) => r.origin === origin && r.destination === destination)).map((p) => p.code)
+    (Array.isArray(res.data) ? res.data : [])
+      .filter((p) => (p.routes ?? []).some((r) => r.origin === origin && r.destination === destination))
+      .map((p) => p.code)
   return { partnersFor, loading: res.loading, error: res.error }
 }
