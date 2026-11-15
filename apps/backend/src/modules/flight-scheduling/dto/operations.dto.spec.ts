@@ -1,0 +1,275 @@
+import { BadRequestException } from '@nestjs/common'
+import {
+  parseBatchAircraftBody,
+  parseBatchConfirmBody,
+  parseCancelBody,
+  parseConfirmBody,
+  parseDelayBody,
+  parseDismissBody,
+  parseDivertBody,
+  parseGateCheckBody,
+  parseEndHoldBody,
+  parseHoldBody,
+  parseRescheduleBody,
+  parseResolveBody,
+} from './operations.dto'
+
+const APPROVAL = '00000000-0000-0000-0000-0000000000b1'
+
+const errorsOf = (fn: () => unknown): string[] => {
+  try {
+    fn()
+  } catch (e) {
+    if (e instanceof BadRequestException) return ([] as string[]).concat((e.getResponse() as { message: string | string[] }).message)
+    throw e
+  }
+  throw new Error('expected a BadRequestException')
+}
+
+describe('operations DTO parsers', () => {
+  it('parses a delay and upper-cases the reason code', () => {
+    expect(parseDelayBody({ reason_code: 'zzwx', delay_minutes: 30, note: ' late crew ' })).toEqual({
+      reason_code: 'ZZWX',
+      delay_minutes: 30,
+      note: 'late crew',
+    })
+  })
+
+  it('collects every delay error at once', () => {
+    expect(errorsOf(() => parseDelayBody({ delay_minutes: 0 }))).toEqual([
+      'reason_code is required',
+      'delay_minutes must be a positive whole number of minutes',
+    ])
+  })
+
+  it('sets no business maximum on a delay', () => {
+    expect(parseDelayBody({ reason_code: 'ZZWX', delay_minutes: 3000 }).delay_minutes).toBe(3000)
+    expect(errorsOf(() => parseDelayBody({ reason_code: 'ZZWX', delay_minutes: 2.5 }))).toEqual([
+      'delay_minutes must be a positive whole number of minutes',
+    ])
+  })
+
+  it('parses a hold and allows an empty body to end one', () => {
+    expect(parseHoldBody({ reason_code: 'zzat', hold_minutes: 20 })).toEqual({ reason_code: 'ZZAT', hold_minutes: 20 })
+    expect(errorsOf(() => parseHoldBody({ hold_minutes: 0 }))).toEqual([
+      'reason_code is required',
+      'hold_minutes must be a positive whole number of minutes',
+    ])
+    expect(parseEndHoldBody(undefined)).toEqual({})
+    expect(parseEndHoldBody({ note: ' landed ' })).toEqual({ note: 'landed' })
+  })
+
+  it('rejects a non-object body', () => {
+    expect(() => parseDelayBody([])).toThrow('body must be a JSON object')
+  })
+
+  it('checks the diversion airport code', () => {
+    expect(errorsOf(() => parseDivertBody({ reason_code: 'ZZWX', airport_code: 'ZZDD' }))).toEqual(['airport_code must be 3 letters'])
+  })
+
+  it('needs a partner only when rebooking on a partner', () => {
+    expect(parseCancelBody({ reason_code: 'ZZTX', resolution: 'refund' }).partner_airline).toBeUndefined()
+    expect(errorsOf(() => parseCancelBody({ reason_code: 'ZZTX', resolution: 'rebook_partner' }))).toEqual(['partner_airline is required'])
+    expect(errorsOf(() => parseCancelBody({ reason_code: 'ZZTX', resolution: 'void' }))).toEqual([
+      'resolution must be refund or rebook_partner',
+    ])
+  })
+
+  it('parses each resolution', () => {
+    const aircraft = '00000000-0000-0000-0000-0000000000a2'
+    expect(parseResolveBody({ resolution: 'change_aircraft', aircraft_id: aircraft })).toMatchObject({ aircraft_id: aircraft })
+    expect(
+      parseResolveBody({
+        resolution: 'reschedule',
+        approval_id: APPROVAL,
+        dep_at: '2026-11-02T12:00:00Z',
+        arr_at: '2026-11-02T21:00:00+07:00',
+      }),
+    ).toMatchObject({ dep_at: new Date('2026-11-02T12:00:00Z'), arr_at: new Date('2026-11-02T14:00:00Z') })
+    expect(parseResolveBody({ resolution: 'cancel_refund', reason_code: 'zztx' })).toEqual({
+      resolution: 'cancel_refund',
+      reason_code: 'ZZTX',
+    })
+    expect(parseResolveBody({ resolution: 'rebook_partner', reason_code: 'ZZTX', partner_airline: 'zp' })).toMatchObject({
+      partner_airline: 'ZP',
+    })
+  })
+
+  it('rejects reschedule times without an offset or out of order', () => {
+    expect(
+      errorsOf(() =>
+        parseResolveBody({
+          resolution: 'reschedule',
+          approval_id: APPROVAL,
+          dep_at: '2026-11-02T12:00:00',
+          arr_at: '2026-11-02T14:00:00Z',
+        }),
+      ),
+    ).toEqual(['dep_at must be an ISO 8601 date-time with an offset'])
+    expect(
+      errorsOf(() =>
+        parseResolveBody({
+          resolution: 'reschedule',
+          approval_id: APPROVAL,
+          dep_at: '2026-11-02T12:00:00Z',
+          arr_at: '2026-11-02T11:00:00Z',
+        }),
+      ),
+    ).toEqual(['arr_at must be after dep_at'])
+  })
+
+  it('rejects an unknown resolution and a dismissal without a reason', () => {
+    expect(() => parseResolveBody({ resolution: 'auto' })).toThrow(BadRequestException)
+    expect(errorsOf(() => parseDismissBody({ reason: '  ' }))).toEqual(['reason is required'])
+  })
+
+  describe('parseConfirmBody', () => {
+    const valid = {
+      approval_id: APPROVAL,
+      route_id: '00000000-0000-0000-0000-0000000000c2',
+      flight_number: 'zz101',
+      service_date: '2026-11-03',
+      aircraft_id: '00000000-0000-0000-0000-0000000000a1',
+      scheduled_dep_at: '2026-11-02T18:00:00Z',
+      scheduled_arr_at: '2026-11-02T20:00:00Z',
+    }
+
+    it('parses a proposed flight with its approval', () => {
+      expect(parseConfirmBody(valid)).toMatchObject({ flight_number: 'ZZ101', service_date: new Date('2026-11-03T00:00:00Z') })
+    })
+
+    it('requires the approval and a valid service date', () => {
+      expect(errorsOf(() => parseConfirmBody({ ...valid, approval_id: undefined, service_date: '2026-02-30' }))).toEqual([
+        'approval_id is required',
+        'service_date must be YYYY-MM-DD',
+      ])
+    })
+
+    it('rejects an arrival not after the departure', () => {
+      expect(errorsOf(() => parseConfirmBody({ ...valid, scheduled_arr_at: valid.scheduled_dep_at }))).toEqual([
+        'scheduled_arr_at must be after scheduled_dep_at',
+      ])
+    })
+  })
+
+  describe('parseBatchConfirmBody', () => {
+    const one = (over: object = {}) => ({
+      approval_id: APPROVAL,
+      route_id: '00000000-0000-0000-0000-0000000000c2',
+      flight_number: 'zz101',
+      service_date: '2026-11-03',
+      aircraft_id: '00000000-0000-0000-0000-0000000000a1',
+      scheduled_dep_at: '2026-11-02T18:00:00Z',
+      scheduled_arr_at: '2026-11-02T20:00:00Z',
+      ...over,
+    })
+    const other = '00000000-0000-0000-0000-0000000000b2'
+
+    it('parses a list of flights, each as one confirm', () => {
+      const parsed = parseBatchConfirmBody({ flights: [one(), one({ approval_id: other, flight_number: 'zz102' })] })
+      expect(parsed.flights.map((f) => [f.approval_id, f.flight_number])).toEqual([
+        [APPROVAL, 'ZZ101'],
+        [other, 'ZZ102'],
+      ])
+    })
+
+    it('reports every error with the position of its flight', () => {
+      expect(
+        errorsOf(() => parseBatchConfirmBody({ flights: [one(), one({ approval_id: undefined }), one({ service_date: 'x' })] })),
+      ).toEqual(['flights[1]: approval_id is required', 'flights[2]: service_date must be YYYY-MM-DD'])
+    })
+
+    it('rejects an empty list, a list that is too long and a body without one', () => {
+      expect(errorsOf(() => parseBatchConfirmBody({ flights: [] }))).toEqual(['flights must hold 1 to 50 flights to confirm'])
+      expect(errorsOf(() => parseBatchConfirmBody({ flights: Array.from({ length: 51 }, () => one()) }))).toEqual([
+        'flights must hold 1 to 50 flights to confirm',
+      ])
+      expect(errorsOf(() => parseBatchConfirmBody(one()))).toEqual(['flights must hold 1 to 50 flights to confirm'])
+    })
+
+    it('rejects two flights that use the same approval', () => {
+      expect(errorsOf(() => parseBatchConfirmBody({ flights: [one(), one({ flight_number: 'zz102' })] }))).toEqual([
+        'flights must use a different approval_id each',
+      ])
+    })
+  })
+
+  describe('parseGateCheckBody', () => {
+    const one = (over: object = {}) => ({
+      route_id: '00000000-0000-0000-0000-0000000000c2',
+      flight_number: 'zz101',
+      aircraft_id: '00000000-0000-0000-0000-0000000000a1',
+      dep_at: '2026-11-02T03:00:00Z',
+      arr_at: '2026-11-02T05:00:00Z',
+      ...over,
+    })
+
+    it('parses proposed flights and upper-cases the flight number', () => {
+      const { flights } = parseGateCheckBody({ flights: [one(), one({ flight_number: 'zz102' })] })
+      expect(flights.map((f) => f.flight_number)).toEqual(['ZZ101', 'ZZ102'])
+      expect(flights[0].dep_at).toEqual(new Date('2026-11-02T03:00:00Z'))
+    })
+
+    it('needs no approval and no service date', () => {
+      expect(() => parseGateCheckBody({ flights: [one()] })).not.toThrow()
+    })
+
+    it('reports every error with the position of its flight', () => {
+      expect(
+        errorsOf(() => parseGateCheckBody({ flights: [one(), one({ aircraft_id: 'x' }), one({ arr_at: '2026-11-02T03:00:00Z' })] })),
+      ).toEqual(['flights[1]: aircraft_id must be a UUID', 'flights[2]: arr_at must be after dep_at'])
+    })
+
+    it('rejects an empty list, one that is too long and a body without one', () => {
+      expect(errorsOf(() => parseGateCheckBody({ flights: [] }))).toEqual(['flights must hold 1 to 50 flights to check'])
+      expect(errorsOf(() => parseGateCheckBody({ flights: Array.from({ length: 51 }, () => one()) }))).toEqual([
+        'flights must hold 1 to 50 flights to check',
+      ])
+      expect(errorsOf(() => parseGateCheckBody(one()))).toEqual(['flights must hold 1 to 50 flights to check'])
+    })
+  })
+
+  describe('parseRescheduleBody', () => {
+    const body = { approval_id: APPROVAL, dep_at: '2026-11-02T13:00:00Z', arr_at: '2026-11-02T15:00:00Z' }
+
+    it('parses the approval and the new times, with an optional reason and note', () => {
+      expect(parseRescheduleBody({ ...body, reason_code: 'zzwx', note: ' later ' })).toEqual({
+        approval_id: APPROVAL,
+        dep_at: new Date('2026-11-02T13:00:00Z'),
+        arr_at: new Date('2026-11-02T15:00:00Z'),
+        reason_code: 'ZZWX',
+        note: 'later',
+      })
+    })
+
+    it('requires the approval and times that run forward', () => {
+      expect(errorsOf(() => parseRescheduleBody({ ...body, approval_id: undefined }))).toEqual(['approval_id is required'])
+      expect(errorsOf(() => parseRescheduleBody({ ...body, arr_at: body.dep_at }))).toEqual(['arr_at must be after dep_at'])
+    })
+  })
+
+  describe('parseBatchAircraftBody', () => {
+    const FLIGHT_ID = '00000000-0000-0000-0000-0000000000f1'
+    const AIRCRAFT_ID = '00000000-0000-0000-0000-0000000000a1'
+
+    it('parses the flights and the aircraft, dropping a repeated flight id', () => {
+      expect(parseBatchAircraftBody({ flight_ids: [FLIGHT_ID, FLIGHT_ID], aircraft_id: AIRCRAFT_ID, note: ' swap ' })).toEqual({
+        flight_ids: [FLIGHT_ID],
+        aircraft_id: AIRCRAFT_ID,
+        note: 'swap',
+      })
+    })
+
+    it('rejects no flights, too many, a bad id and a missing aircraft', () => {
+      expect(errorsOf(() => parseBatchAircraftBody({ flight_ids: [], aircraft_id: AIRCRAFT_ID }))).toEqual([
+        'flight_ids must hold 1 to 50 ids',
+      ])
+      expect(errorsOf(() => parseBatchAircraftBody({ flight_ids: ['x'], aircraft_id: AIRCRAFT_ID }))).toEqual(['flight_ids must be UUIDs'])
+      expect(errorsOf(() => parseBatchAircraftBody({ flight_ids: [FLIGHT_ID] }))).toEqual(['aircraft_id is required'])
+      const many = Array.from({ length: 51 }, (_, i) => `00000000-0000-0000-0000-${String(i).padStart(12, '0')}`)
+      expect(errorsOf(() => parseBatchAircraftBody({ flight_ids: many, aircraft_id: AIRCRAFT_ID }))).toEqual([
+        'flight_ids must hold 1 to 50 ids',
+      ])
+    })
+  })
+})
