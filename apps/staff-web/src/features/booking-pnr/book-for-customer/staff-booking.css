@@ -253,8 +253,10 @@
   margin-bottom: 20px;
   font-size: 12px;
 }
-.f3-staff-receipt > a {
-  display: inline-block;
+/* The customer search stylesheet colours every anchor inside .f3-search with the navy text colour. That rule is more
+   specific than the primary button style, so a primary action that is a link ("Open booking lookup") would show navy
+   text on the navy button. This restores the white label of the button. */
+.f3-staff-booking .f3-search a.f3-search-primary {
+  color: #ffffff;
   text-decoration: none;
-  margin-top: 20px;
 }
