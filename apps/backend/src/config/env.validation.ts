@@ -13,6 +13,12 @@ export interface EnvConfig {
   STRIPE_SECRET_KEY: string
   /** Stripe webhook signing secret (`whsec_...`); required only when PAYMENT_PROVIDER is `stripe`. */
   STRIPE_WEBHOOK_SECRET: string
+  /**
+   * Feature 5's development test tools: a payment sandbox and sample crew data (`modules/payments-dev-tools`). Off by
+   * default, and refused when NODE_ENV is `production`.
+   * TODO(F5-dev): delete this setting with the dev tools before the PR merges.
+   */
+  PAYMENT_DEV_TOOLS: boolean
 }
 
 const PAYMENT_PROVIDERS = ['fake', 'stripe'] as const
@@ -49,6 +55,11 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
     }
   }
 
+  const devTools = String(rawConfig.PAYMENT_DEV_TOOLS ?? '').toLowerCase() === 'true'
+  if (devTools && rawConfig.NODE_ENV === 'production') {
+    throw new Error('PAYMENT_DEV_TOOLS must not be on when NODE_ENV is production')
+  }
+
   return {
     DATABASE_URL: String(rawConfig.DATABASE_URL),
     PORT: Number(rawConfig.PORT),
@@ -61,5 +72,6 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
     PAYMENT_PROVIDER: paymentProvider as EnvConfig['PAYMENT_PROVIDER'],
     STRIPE_SECRET_KEY: rawConfig.STRIPE_SECRET_KEY ?? '',
     STRIPE_WEBHOOK_SECRET: rawConfig.STRIPE_WEBHOOK_SECRET ?? '',
+    PAYMENT_DEV_TOOLS: devTools,
   }
 }

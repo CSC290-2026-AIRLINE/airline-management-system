@@ -43,6 +43,20 @@ describe('validateEnv', () => {
     )
   })
 
+  // TODO(F5-dev): delete these two tests with the PAYMENT_DEV_TOOLS setting before the PR merges.
+  it('keeps the payment dev tools off unless they are asked for', () => {
+    expect(validateEnv(validEnv).PAYMENT_DEV_TOOLS).toBe(false)
+    expect(validateEnv({ ...validEnv, PAYMENT_DEV_TOOLS: 'false' }).PAYMENT_DEV_TOOLS).toBe(false)
+    expect(validateEnv({ ...validEnv, PAYMENT_DEV_TOOLS: 'TRUE' }).PAYMENT_DEV_TOOLS).toBe(true)
+  })
+
+  it('refuses the payment dev tools in production', () => {
+    expect(() => validateEnv({ ...validEnv, NODE_ENV: 'production', PAYMENT_DEV_TOOLS: 'true' })).toThrow(
+      'PAYMENT_DEV_TOOLS must not be on when NODE_ENV is production',
+    )
+    expect(validateEnv({ ...validEnv, NODE_ENV: 'production' }).PAYMENT_DEV_TOOLS).toBe(false)
+  })
+
   it('refuses a live Stripe key', () => {
     const env = { ...validEnv, PAYMENT_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_live_x', STRIPE_WEBHOOK_SECRET: 'whsec_x' }
 
