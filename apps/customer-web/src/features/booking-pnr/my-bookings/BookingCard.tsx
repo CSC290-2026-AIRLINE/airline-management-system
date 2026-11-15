@@ -82,7 +82,7 @@ function CardShell({
           View trip
         </Link>
         {model.action.kind === 'complete-payment' ? (
-          <Link to="/review-pay/$reference" params={{ reference: item.reference }} className={`${controls.link} ${styles.cardLink}`}>
+          <Link to="/review-pay/$reference" params={{ reference: item.reference }} className={controls.action}>
             {model.action.label}
           </Link>
         ) : null}
