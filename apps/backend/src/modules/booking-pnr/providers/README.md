@@ -2,6 +2,7 @@
 
 `BookingPnrModule` exports `CheckinSeatProvider`, `BOOKING_PROVIDER` and `SeatPaymentService`. Consumers import the module and bind their provider tokens to these exports. The check-in feature itself is not present on this branch.
 
+- `CheckinSeatModule` binds `SeatMapService`, `CheckinSeatMapAdapter` and `CheckinSeatProvider` for Feature 6 to import. `BookingPnrModule` does not import it, so the dependency stays one-directional.
 - `CheckinSeatProvider` implements seat maps, timed holds, releases, confirmation and standard-seat assignment. `assigned(passengerId, flightId?)` and `releaseAssigned(passengerId, flightId?)` accept a flight selector. Without it, a passenger with multiple live flights is never resolved to an arbitrary flight.
 - `BOOKING_PROVIDER` delegates booking reads to the booking read port. Pass a flight ID to `byBookingPassengerId` for return or multi-city bookings.
 - `AircraftSeatMapAdapter` reads the flight's actual aircraft type layout through `DbService`. It accepts Feature 9's cabin layout, the earlier flat economy layout, and the multi-cabin demo format. Invalid layouts fail closed. Blocked seats are excluded from capacity; layout aisle positions travel to the customer seat picker. The central seat-code constraint supports rows 1–99.
