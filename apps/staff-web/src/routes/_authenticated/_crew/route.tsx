@@ -13,7 +13,7 @@ export const Route = createFileRoute('/_authenticated/_crew')({
 function CrewWorkspace() {
   return (
     <RequireStaff>
-      <AppShell>
+      <AppShell mobileHeader="card">
         <Outlet />
       </AppShell>
     </RequireStaff>
