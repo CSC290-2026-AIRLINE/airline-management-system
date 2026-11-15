@@ -75,6 +75,11 @@ export interface DatePickerProps {
   readOnly?: boolean
   /** Allows the date to be cleared from the calendar. */
   clearable?: boolean
+  /**
+   * The element the calendar is rendered into. A popup portalled to the body is painted under a modal dialog, because
+   * the dialog sits in the browser's top layer, so a field inside a dialog passes the dialog element here.
+   */
+  popupContainer?: HTMLElement | null
   /** Extra class names for the field. */
   className?: string
 }
@@ -94,6 +99,7 @@ export function DatePicker({
   disabled,
   readOnly,
   clearable,
+  popupContainer,
   className,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
@@ -234,7 +240,7 @@ export function DatePicker({
           <CalendarDaysIcon className="cw-date-icon" />
         </button>
       </Popover.Trigger>
-      <Popover.Portal>
+      <Popover.Portal container={popupContainer}>
         <Popover.Content
           className="cw-date-content"
           sideOffset={6}

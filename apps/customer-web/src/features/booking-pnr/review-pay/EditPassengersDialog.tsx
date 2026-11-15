@@ -57,6 +57,8 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
   const api = useBookingPnrApi()
   const demo = useDemoPassengers()
   const [details, setDetails] = useState<Record<string, PassengerDetails>>(() => detailsOf(booking))
+  /* The dialog element, so the calendar of the date fields is rendered inside the dialog and not under it. */
+  const [dialog, setDialog] = useState<HTMLDialogElement | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [attempted, setAttempted] = useState(false)
@@ -195,6 +197,7 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
       open={open}
       title="Passenger details"
       description="A passenger's name belongs to the passenger record, which a hold cannot change. Saving releases this hold and makes a new one with the same flights and seats."
+      dialogRef={setDialog}
       onClose={() => {
         if (!saving) onClose()
       }}
@@ -247,6 +250,7 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
                   invalid={!!found[`${id}-dateOfBirth`]}
                   ariaLabelledBy={`${id}-dateOfBirth-label`}
                   describedBy={found[`${id}-dateOfBirth`] ? `${id}-dateOfBirth-error` : undefined}
+                  popupContainer={dialog}
                   onChange={(date) => update(passenger.bookingPassengerId, { dateOfBirth: date })}
                 />
               </Field>
